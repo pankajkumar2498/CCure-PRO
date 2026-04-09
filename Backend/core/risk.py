@@ -1,0 +1,259 @@
+"""
+core/risk.py
+------------
+OS fingerprinting/inference and host risk scoring.
+Pure logic - no I/O, no imports from engines.
+"""
+
+from typing import Dict, List, Optional, Tuple
+
+from core.constants import OS_TTL_MAP, TCP_WINDOW_OS, RISK_WEIGHTS, RISK_LEVELS
+
+
+# =============================================================================
+# OS Fingerprinting
+# =============================================================================
+
+def fingerprint_os(ttl: int, window: Optional[int] = None) -> Tuple[str, str]:
+    """
+    Returns (os_guess, confidence) based on TTL and optional TCP window size.
+    Confidence: Low / Medium / High
+    """
+    guess = "Unknown"
+    for threshold, label in OS_TTL_MAP:
+        if ttl <= threshold:
+            guess = label
+            break
+
+    conf = "Low"
+    if window and window in TCP_WINDOW_OS:
+        win_os = TCP_WINDOW_OS[window]
+        if "Windows" in guess and "Windows" in win_os:
+            guess = win_os
+            conf  = "High"
+        elif "Linux" in guess and "Linux" in win_os:
+            guess = win_os
+            conf  = "High"
+        else:
+            conf = "Medium"
+    elif window:
+        conf = "Medium"
+
+    return guess, conf
+
+
+def infer_os_from_host(host: Dict) -> Tuple[str, str]:
+    """
+    Best-effort unauthenticated OS inference from service-level evidence.
+
+    This is a fallback for TCP-only scans where raw-packet TTL/window
+    fingerprinting is unavailable. If the host already has an OS guess from
+    packet fingerprints, that result is preserved.
+    """
+    current_guess = host.get("os_guess", "Unknown")
+    current_conf  = host.get("os_confidence", "Low")
+    if current_guess not in ("", "Unknown"):
+        return current_guess, current_conf
+
+    texts: List[str] = []
+    open_ports = set()
+    for port_info in host.get("open_ports", []):
+        port = port_info.get("port")
+        if isinstance(port, int):
+            open_ports.add(port)
+        texts.extend([
+            str(port_info.get("service", "")),
+            str(port_info.get("banner", "")),
+            str(port_info.get("version", "")),
+        ])
+
+    ssh_info  = host.get("ssh_info", {}) or {}
+    http_audit = host.get("http_audit", {}) or {}
+    smb_info  = host.get("smb_info", {}) or {}
+    snmp_info = host.get("snmp_info", {}) or {}
+
+    texts.extend([
+        str(ssh_info.get("banner", "")),
+        str(ssh_info.get("version", "")),
+        str(http_audit.get("server_header", "")),
+        str(snmp_info.get("sys_descr", "")),
+    ])
+    text_blob = " ".join(texts).lower()
+
+    explicit_markers = [
+        ("Windows Server (IIS)", ["microsoft-iis"], "High"),
+        ("Windows (WinRM)", ["winrm", "microsoft-httpapi"], "High"),
+        ("Linux (Ubuntu)", ["ubuntu"], "High"),
+        ("Linux (Debian)", ["debian"], "High"),
+        ("Linux (CentOS/RHEL)", ["centos", "red hat", "redhat", "rhel", "rocky linux", "alma linux"], "High"),
+        ("Linux (Alpine)", ["alpine"], "High"),
+        ("FreeBSD", ["freebsd"], "High"),
+        ("OpenBSD", ["openbsd"], "High"),
+        ("NetBSD", ["netbsd"], "High"),
+        ("macOS", ["darwin", "macos", "mac os x"], "High"),
+        ("Cisco IOS / Network Appliance", ["cisco ios", "routeros", "junos", "fortios"], "High"),
+    ]
+    for label, markers, conf in explicit_markers:
+        if any(marker in text_blob for marker in markers):
+            return label, conf
+
+    scores: Dict[str, int] = {
+        "Windows": 0,
+        "Linux/Unix": 0,
+        "BSD/macOS": 0,
+        "Network Appliance": 0,
+    }
+
+    if 3389 in open_ports:
+        scores["Windows"] += 5
+    if 5985 in open_ports or 5986 in open_ports:
+        scores["Windows"] += 5
+    if 135 in open_ports:
+        scores["Windows"] += 4
+    if 139 in open_ports:
+        scores["Windows"] += 3
+    if 445 in open_ports:
+        if {135, 3389, 5985, 5986} & open_ports:
+            scores["Windows"] += 4
+        else:
+            scores["Windows"] += 2
+            scores["Linux/Unix"] += 1
+
+    if 111 in open_ports:
+        scores["Linux/Unix"] += 4
+    if 2049 in open_ports:
+        scores["Linux/Unix"] += 5
+    if 548 in open_ports:
+        scores["BSD/macOS"] += 4
+    if 22 in open_ports and "openssh" in text_blob:
+        scores["Linux/Unix"] += 2
+
+    if any(term in text_blob for term in ("apache", "nginx")):
+        scores["Linux/Unix"] += 1
+    if any(term in text_blob for term in ("cisco", "routeros", "junos", "fortinet")):
+        scores["Network Appliance"] += 4
+
+    if smb_info.get("open") and smb_info.get("version") == "SMBv2/3" and (135 in open_ports or 3389 in open_ports):
+        scores["Windows"] += 2
+
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    top_label, top_score = ranked[0]
+    next_score = ranked[1][1] if len(ranked) > 1 else 0
+
+    if top_score < 4:
+        return "Unknown", "Low"
+
+    if top_label == "Windows":
+        guess = "Windows (service fingerprint)"
+    elif top_label == "Linux/Unix":
+        guess = "Linux/Unix (service fingerprint)"
+    elif top_label == "BSD/macOS":
+        guess = "BSD/macOS (service fingerprint)"
+    else:
+        guess = "Network Appliance (service fingerprint)"
+
+    if top_score >= 8 and (top_score - next_score) >= 4:
+        conf = "High"
+    elif top_score >= 5 and (top_score - next_score) >= 2:
+        conf = "Medium"
+    else:
+        conf = "Low"
+
+    return guess, conf
+
+
+# =============================================================================
+# Host Risk Scoring
+# =============================================================================
+
+def calculate_risk(
+    open_ports: List[Dict],
+    cves:       List[Dict],
+    http_audit: Dict,
+    tls_info:   Dict,
+) -> Tuple[int, str]:
+    """
+    Returns (score 0-100, risk_level string).
+    Aggregates port risk, CVE severity, HTTP audit issues, TLS grade.
+    """
+    score = 0
+
+    # Port-level risk weights
+    for p in open_ports:
+        score += RISK_WEIGHTS.get(p.get("risk", "Info"), 0)
+
+    # CVE CVSS scores
+    for c in cves:
+        cvss = normalize_cve(c).get("cvss_score", 0)
+        if cvss >= 9.0:    score += 20
+        elif cvss >= 7.0:  score += 10
+        elif cvss >= 4.0:  score += 5
+        else:              score += 2
+
+    # HTTP header issues
+    if http_audit.get("issues"):
+        score += len(http_audit["issues"]) * 2
+
+    # TLS problems
+    if tls_info.get("cert_expired"):     score += 15
+    if tls_info.get("cert_self_signed"): score += 10
+    if tls_info.get("weak_cipher"):      score += 10
+    if tls_info.get("score") == "F":     score += 20
+
+    score = min(score, 100)
+
+    level = "Info"
+    for threshold, lvl in RISK_LEVELS:
+        if score >= threshold:
+            level = lvl
+            break
+
+    return score, level
+
+
+def normalize_cve(cve: Dict) -> Dict:
+    """Normalize CVE entries to the frontend-facing response contract."""
+    cvss = cve.get("cvss_score", cve.get("cvss", 0) or 0)
+    try:
+        cvss = float(cvss)
+    except (TypeError, ValueError):
+        cvss = 0.0
+
+    severity = cve.get("severity")
+    if not severity:
+        if cvss >= 9.0:
+            severity = "Critical"
+        elif cvss >= 7.0:
+            severity = "High"
+        elif cvss >= 4.0:
+            severity = "Medium"
+        elif cvss > 0:
+            severity = "Low"
+        else:
+            severity = "Info"
+
+    cve_id = cve.get("cve_id") or cve.get("cve") or "Unknown"
+    description = cve.get("description") or cve.get("desc") or ""
+
+    return {
+        "cve_id": cve_id,
+        "severity": severity,
+        "cvss_score": cvss,
+        "description": description,
+        # Legacy aliases preserved so older code paths still work.
+        "cve": cve_id,
+        "cvss": cvss,
+        "desc": description,
+    }
+
+
+def deduplicate_cves(cves: List[Dict]) -> List[Dict]:
+    """Remove duplicate CVE entries (same CVE ID)."""
+    seen, unique = set(), []
+    for c in cves:
+        normalized = normalize_cve(c)
+        key = normalized.get("cve_id", "")
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(normalized)
+    return unique

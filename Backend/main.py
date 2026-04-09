@@ -28,12 +28,15 @@ ENDPOINT GROUPS:
    POST  /scan/phases              -> Flexible phase combination
 """
 
+import glob
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -455,6 +458,64 @@ async def scan_phases(req: PhasesRequest, current_user: User = Depends(get_curre
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
     return result
+
+
+# -- REPORTS DOWNLOAD ENDPOINT ------------------------------------------------
+
+# Resolve the reports directory relative to this file so it works regardless
+# of where uvicorn is launched from.
+_REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+
+
+@app.get("/reports/download/{scan_id}", tags=["Reports"])
+def download_report(
+    scan_id: int,
+    fmt: str = "JSON",          # "JSON" or "XML"
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    """
+    Download the PDF report for a completed scan.
+
+    - **scan_id**: the scan DB id returned by /scan/phase1 (stored in frontend as `scanId`)
+    - **fmt**: `JSON` (default) — tabular report, or `XML` — raw XML data report
+
+    The endpoint verifies that the scan belongs to the requesting user,
+    then serves the most recently generated matching PDF from `reports/`.
+    """
+    # Ownership check — 404 hides existence from other users
+    scan = db.query(Scan).filter(
+        Scan.id == scan_id,
+        Scan.user_id == user.id,
+    ).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+
+    fmt_upper = fmt.upper()
+    if fmt_upper not in ("JSON", "XML"):
+        raise HTTPException(status_code=400, detail="fmt must be 'JSON' or 'XML'.")
+
+    # Find the most recently modified PDF that matches the format suffix
+    pattern = os.path.join(_REPORTS_DIR, f"*_{fmt_upper}.pdf")
+    matches = sorted(
+        glob.glob(pattern),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+
+    if not matches:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {fmt_upper} PDF report found yet. Complete a scan first.",
+        )
+
+    pdf_path = matches[0]
+    filename = os.path.basename(pdf_path)
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+    )
 
 
 # -- DOCUMENTATION ENDPOINT ---------------------------------------------------

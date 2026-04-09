@@ -1354,3 +1354,31 @@ a:hover { opacity: .75; }
 .export-icon { font-size: 18px; color: var(--accent); }
 .export-label { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--text); }
 .export-sub   { font-size: 10px; color: var(--text-muted); font-family: var(--mono); }
+
+/* PDF button loading/disabled state */
+.export-btn--loading {
+  opacity: .65;
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--bg-input);
+  pointer-events: none;
+}
+.export-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Inline error shown beneath export buttons */
+.export-error {
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, .08);
+  border: 1px solid rgba(239, 68, 68, .25);
+  border-radius: var(--radius);
+  color: #fca5a5;
+  font-size: 12px;
+  font-family: var(--mono);
+  animation: shake .3s ease;
+}
+

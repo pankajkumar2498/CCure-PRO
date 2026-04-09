@@ -5,11 +5,11 @@
  * User selects hosts for deep audit → "Deep Audit" → /scan/phase3.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate }   from "react-router-dom";
 import AppShell          from "../../components/layout/AppShell";
 import ScanStepper       from "../../components/layout/ScanStepper";
-import RiskBadge         from "../../components/scan/RiskBadge";
+
 import { useScan }       from "../../context/ScanContext";
 import api               from "../../api/axiosInstance";
 

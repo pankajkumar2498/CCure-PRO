@@ -2,7 +2,6 @@
  * src/components/layout/ScanStepper.jsx
  * Progress indicator shown on all 4 scan pages.
  */
-import { useNavigate } from "react-router-dom";
 import { useScan } from "../../context/ScanContext";
 
 const STEPS = [

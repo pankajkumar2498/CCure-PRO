@@ -95,6 +95,18 @@ def refresh_access_token(refresh_token: str) -> Optional[str]:
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         return None
-    user_id = payload.get("sub")
-    username = payload.get("username", "")
-    return create_access_token(int(user_id), username)
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    from auth.models import SessionLocal, User
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+        return create_access_token(user.id, user.username)
+    finally:
+        db.close()

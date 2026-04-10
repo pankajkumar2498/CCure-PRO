@@ -46,8 +46,10 @@ from auth.models import create_tables, User, get_db
 from auth.dependencies import get_current_user
 from scans.router import router as scans_router
 from scans.models import Scan
-from scans.db_helpers import create_scan, update_scan_phase
-
+from scans.db_helpers import create_scan, create_completed_scan, update_scan_phase
+from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
+from engines.credentialed.linux_collector import LinuxCollector
+from engines.credentialed.vuln_matcher    import VulnMatcher
 # -- Logging -------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
@@ -207,6 +209,16 @@ class Phase3Request(BaseModel):
                              description="Host data from Phase 2 output")
     scan_id: Optional[int] = Field(None, description="Scan DB id from Phase 1 (optional)")
 
+
+class CredentialedScanRequest(BaseModel):
+    ip:          str            = Field(...,  example="192.168.1.10",  description="Target IP or hostname")
+    username:    str            = Field(...,  example="root",           description="SSH username")
+    password:    Optional[str]  = Field(None, example="mysecretpass",  description="SSH password (discarded after use)")
+    key_path:    Optional[str]  = Field(None, description="Path to SSH private key")
+    port:        int            = Field(22,   ge=1, le=65535,          description="SSH port")
+    auth_method: str            = Field("password", description="'password' or 'key'")
+    sections:    Optional[List[str]] = Field(None, description="Data categories to collect. None = all")
+    
 
 class PhasesRequest(BaseModel):
     """
@@ -407,6 +419,128 @@ async def scan_phase3(
         )
         result["scan_id"] = req.scan_id
     return result
+
+@app.post("/scan/credentialed", tags=["Credentialed Scans"])
+async def scan_credentialed(
+    req:  CredentialedScanRequest,
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    """
+    🔐 Credentialed SSH Scan (Linux targets).
+    Logs into target via SSH, collects full system info, matches packages to CVEs.
+    Credentials are NEVER stored — used for SSH session only, then discarded (Option A).
+    """
+    import time
+
+    if not PARAMIKO_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Credentialed scanning requires paramiko. Run: pip install paramiko==3.4.0",
+        )
+
+    start_time = time.time()
+
+    if not SSHScanner.test_connectivity(req.ip, req.port, timeout=5):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reach {req.ip}:{req.port} — host is down or port is closed.",
+        )
+
+    try:
+        with SSHScanner(
+            ip        = req.ip,
+            username  = req.username,
+            password  = req.password if req.auth_method == "password" else None,
+            key_path  = req.key_path  if req.auth_method == "key"      else None,
+            port      = req.port,
+            timeout   = 15,
+        ) as ssh:
+            collector   = LinuxCollector(ssh)
+            system_data = collector.collect_all(sections=req.sections)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.exception("Credentialed scan error on %s", req.ip)
+        raise HTTPException(status_code=500, detail=f"Scan error: {exc}")
+
+    packages     = system_data.get("packages", [])
+    matcher      = VulnMatcher()
+    raw_findings = matcher.match_packages(packages)
+    cve_list     = matcher.to_report_format(raw_findings)
+
+    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+    for cve in cve_list:
+        sev = cve.get("severity", "Info")
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    scan_duration = round(time.time() - start_time, 2)
+
+    stored_report = {
+        "scan_type":              "credentialed",
+        "target":                 req.ip,
+        "system_info": {
+            "os_name":        system_data.get("os_name", ""),
+            "os_version_id":  system_data.get("os_version_id", ""),
+            "kernel_version": system_data.get("kernel_version", ""),
+            "hostname":       system_data.get("hostname_fqdn", ""),
+            "uptime":         system_data.get("uptime", ""),
+            "cpu_model":      system_data.get("cpu_model", ""),
+            "cpu_count":      system_data.get("cpu_count", ""),
+            "cpu_arch":       system_data.get("cpu_arch", ""),
+            "memory_summary": system_data.get("memory_summary", {}),
+            "disk_usage":     system_data.get("disk_usage", []),
+        },
+        "packages":                packages,
+        "package_count":           len(packages),
+        "running_services":        system_data.get("running_services", []),
+        "open_ports_credentialed": system_data.get("open_ports_credentialed", []),
+        "users":                   system_data.get("users", []),
+        "suid_binaries":           system_data.get("suid_binaries", []),
+        "world_writable_dirs":     system_data.get("world_writable_dirs", []),
+        "sudo_nopasswd":           system_data.get("sudo_nopasswd", False),
+        "sudo_rules_raw":          system_data.get("sudo_rules_raw", ""),
+        "cron_info_raw":           system_data.get("cron_info_raw", ""),
+        "security_issues":         system_data.get("security_issues", []),
+        "failed_login_count":      system_data.get("failed_login_count", 0),
+        "brute_force_warning":     system_data.get("brute_force_warning", False),
+        "failed_logins_recent":    system_data.get("failed_logins_recent", []),
+        "network_interfaces_raw":  system_data.get("network_interfaces_raw", ""),
+        "env_vars_flagged":        system_data.get("env_vars_summary", []),
+        "cves":                    cve_list,
+        "cve_count":               len(cve_list),
+        "severity_summary":        severity_counts,
+        "scan_duration":           scan_duration,
+    }
+
+    scan = create_completed_scan(
+        db            = db,
+        user_id       = user.id,
+        target        = req.ip,
+        scan_type     = "credentialed",
+        phase         = 3,
+        results       = {"credentialed": {"report": stored_report}},
+        summary       = {
+            "scan_type":      "credentialed",
+            "active_hosts":   1,
+            "package_count":  len(packages),
+            "cve_count":      len(cve_list),
+            "critical_count": severity_counts["Critical"],
+            "high_count":     severity_counts["High"],
+            "medium_count":   severity_counts["Medium"],
+            "low_count":      severity_counts["Low"],
+            "info_count":     severity_counts["Info"],
+            "scan_duration":  scan_duration,
+        },
+        scan_duration = scan_duration,
+    )
+
+    return {
+        "success":  True,
+        "scan_id":  scan.id,
+        "username": req.username,
+        **stored_report,
+    }
 
 
 @app.post("/scan/phases", tags=["Phase-Selective Scans"])

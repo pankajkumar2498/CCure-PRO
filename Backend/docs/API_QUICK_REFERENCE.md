@@ -30,7 +30,7 @@ POST /scan/subnet            CIDR subnet, Phase 1 only
 POST /scan/subnets           Sub-networks grouped by subnet, Phase 1 only
 ```
 
-### Phase-Selective Endpoints (New)
+### Phase-Selective Endpoints
 ```
 POST /scan/phase1            Phase 1 only — Discovery
 POST /scan/phase2            Phase 2 only — Port Scanning
@@ -38,9 +38,152 @@ POST /scan/phase3            Phase 3 + 4 — Vulnerability + Risk Scoring
 POST /scan/phases            Flexible — specify which phases to run
 ```
 
+### Credentialed Scan Endpoint (NEW)
+```
+POST /scan/credentialed      SSH login → full system collection → package CVE matching
+```
+
 ---
 
-## Phase-Selective Endpoint Details
+## Credentialed Scan — POST /scan/credentialed
+
+### Overview
+
+| Attribute          | Unauthenticated         | Credentialed SSH         |
+|--------------------|-------------------------|--------------------------|
+| OS Name            | TTL guess (~"Linux")    | Exact: Ubuntu 22.04.3 LTS |
+| Kernel             | Unknown                 | Exact: 5.15.0-91-generic  |
+| Open Ports         | TCP connect scan        | Live socket table via ss  |
+| Running Services   | Banner grab only        | Full systemctl list       |
+| Installed Packages | Unknown                 | Full dpkg/rpm list        |
+| CVE Accuracy       | ~30% (banner guessing)  | ~90% (real pkg versions)  |
+| Users              | Unknown                 | /etc/passwd analysis      |
+| Sudo Rules         | Unknown                 | sudo -l output            |
+| SUID Binaries      | Unknown                 | find / -perm -4000        |
+
+**Security model: Option A — credentials are NEVER stored.**
+They are transmitted in the request, used for the SSH session lifetime, and
+immediately discarded. Nothing is saved to the database except the scan results.
+
+### Request
+
+```json
+POST /scan/credentialed
+Authorization: Bearer <token>
+
+{
+  "ip":          "192.168.1.10",
+  "username":    "root",
+  "password":    "mysecretpass",
+  "port":        22,
+  "auth_method": "password",
+  "sections":    null
+}
+```
+
+| Field         | Type             | Required | Description |
+|---------------|------------------|----------|-------------|
+| `ip`          | string           | ✓        | Target IP or hostname |
+| `username`    | string           | ✓        | SSH username |
+| `password`    | string           | if auth_method=password | SSH password (discarded after use) |
+| `key_path`    | string           | if auth_method=key | Path to SSH private key |
+| `port`        | int (1–65535)    | –        | SSH port (default: 22) |
+| `auth_method` | "password"/"key" | –        | Auth method (default: "password") |
+| `sections`    | string[] / null  | –        | Data categories to collect. null = all |
+
+**sections values:** `system_info` | `packages` | `services` | `ports` | `users` | `security` | `network` | `history`
+
+### Response
+
+```json
+{
+  "success":     true,
+  "scan_id":     42,
+  "scan_type":   "credentialed",
+  "target":      "192.168.1.10",
+  "username":    "root",
+
+  "system_info": {
+    "os_name":        "Ubuntu 22.04.3 LTS",
+    "os_version_id":  "22.04",
+    "kernel_version": "5.15.0-91-generic",
+    "hostname":       "webserver-01.local",
+    "uptime":         "up 14 days, 3 hours",
+    "cpu_model":      "Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz",
+    "cpu_count":      "4",
+    "cpu_arch":       "x86_64",
+    "memory_summary": { "total": "8.0G", "used": "2.1G", "free": "5.9G" },
+    "disk_usage": [
+      { "filesystem": "/dev/sda1", "size": "100G", "used": "62G", "use_pct": "63%", "mounted_on": "/" }
+    ]
+  },
+
+  "packages":     [ { "name": "openssl", "version": "1.1.1f", "manager": "dpkg" }, "..." ],
+  "package_count": 247,
+
+  "running_services": [
+    { "name": "nginx.service",      "description": "A high performance web server" },
+    { "name": "postgresql.service", "description": "PostgreSQL RDBMS" }
+  ],
+
+  "open_ports_credentialed": [
+    { "state": "LISTEN", "local_addr": "0.0.0.0:22",  "port": "22",  "process": "sshd" },
+    { "state": "LISTEN", "local_addr": "0.0.0.0:80",  "port": "80",  "process": "nginx" },
+    { "state": "LISTEN", "local_addr": "0.0.0.0:443", "port": "443", "process": "nginx" }
+  ],
+
+  "users": [
+    { "username": "root", "uid": "0", "shell": "/bin/bash", "is_root": true },
+    { "username": "deploy", "uid": "1001", "shell": "/bin/bash", "is_root": false }
+  ],
+
+  "suid_binaries":       [ "/usr/bin/sudo", "/usr/bin/passwd", "..." ],
+  "world_writable_dirs": [ "/tmp", "/var/tmp" ],
+  "sudo_nopasswd":       false,
+  "sudo_rules_raw":      "User root may run the following commands:\n    (ALL : ALL) ALL",
+  "security_issues":     [],
+
+  "failed_login_count":   847,
+  "brute_force_warning":  true,
+  "failed_logins_recent": [ "root     ssh:notty    192.168.50.10  Thu Apr 10 14:22 - 14:22", "..." ],
+
+  "cves": [
+    {
+      "cve_id":        "CVE-2022-0778",
+      "severity":      "High",
+      "cvss_score":    7.5,
+      "description":   "Infinite loop in BN_mod_sqrt() allows denial of service via crafted certificate.",
+      "package":       "openssl",
+      "installed_ver": "1.1.1f",
+      "fixed_ver":     "1.1.1o",
+      "source":        "package_version_match"
+    }
+  ],
+  "cve_count":    3,
+  "severity_summary": { "Critical": 0, "High": 2, "Medium": 1, "Low": 0, "Info": 0 },
+
+  "scan_duration": 18.4
+}
+```
+
+### Error Responses
+
+```json
+{ "detail": "Cannot reach 192.168.1.10:22 — host is down or port is closed." }
+{ "detail": "SSH authentication failed for root@192.168.1.10: Authentication failed." }
+{ "detail": "Credentialed scanning requires paramiko. Run: pip install paramiko==3.4.0" }
+```
+
+| HTTP Code | Cause |
+|-----------|-------|
+| 200 | Success |
+| 400 | SSH auth failed, host unreachable, invalid target |
+| 401 | Not logged in (missing/invalid JWT) |
+| 503 | paramiko not installed |
+
+---
+
+## Phase-Selective Endpoint Details (unchanged)
 
 ### POST /scan/phase1 — Discovery
 
@@ -58,129 +201,43 @@ Scan types: `ping | arp | tcp | full | adaptive | stealth`
 ```json
 {
   "success": true,
+  "scan_id": 1,
   "data": [
     {
       "ip_address": "192.168.1.10",
       "is_active": true,
       "mac_address": "aa:bb:cc:dd:ee:ff",
-      "status": "Active",
       "hostname": "server.local",
-      "confidence": "High",
       "os_guess": "Linux",
-      "os_confidence": "Medium",
       "open_ports": [],
       "host_risk_score": 0,
       "host_risk_level": "Info"
     }
   ],
-  "summary": {
-    "total_hosts": 254,
-    "active_hosts": 45,
-    "inactive_hosts": 209,
-    "phase": 1,
-    "scan_duration": 35.2
-  }
+  "summary": { "total_hosts": 254, "active_hosts": 45, "scan_duration": 35.2 }
 }
 ```
 
----
-
 ### POST /scan/phase2 — Port Scanning
 
-**Request** (pass host objects from Phase 1 `data[]`):
 ```json
 {
-  "hosts": [
-    {
-      "ip_address": "192.168.1.10",
-      "is_active": true,
-      "mac_address": "aa:bb:cc:dd:ee:ff"
-    }
-  ],
-  "intensity": "normal"
+  "hosts": [ { "ip_address": "192.168.1.10", "is_active": true } ],
+  "intensity": "normal",
+  "scan_id": 1
 }
 ```
 
 Intensities: `light | normal | deep`
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "ip_address": "192.168.1.10",
-      "is_active": true,
-      "open_ports": [
-        { "port": 22, "service": "ssh", "banner": "OpenSSH 7.4 (protocol 2.0)" },
-        { "port": 80, "service": "http", "banner": "Apache/2.4.6" }
-      ],
-      "host_risk_score": 45,
-      "host_risk_level": "Medium"
-    }
-  ],
-  "summary": {
-    "total_hosts": 5,
-    "hosts_with_ports": 5,
-    "phase": 2,
-    "scan_duration": 8.5
-  }
-}
-```
-
----
-
 ### POST /scan/phase3 — Vulnerability + Risk Scoring
 
-**Request** (pass host objects from Phase 2 `data[]`):
 ```json
 {
-  "hosts": [
-    {
-      "ip_address": "192.168.1.10",
-      "is_active": true,
-      "open_ports": [
-        { "port": 22, "service": "ssh", "banner": "OpenSSH 7.4" }
-      ]
-    }
-  ]
+  "hosts": [ { "ip_address": "192.168.1.10", "open_ports": [ { "port": 22, "service": "ssh" } ] } ],
+  "scan_id": 1
 }
 ```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "ip_address": "192.168.1.10",
-      "is_active": true,
-      "open_ports": ["..."],
-      "tls_info": { "version": "TLSv1.2", "cipher": "ECDHE-RSA-AES256-GCM-SHA384", "score": "A" },
-      "ssh_info": { "version": "2.0", "banner": "OpenSSH 7.4", "algorithms": {} },
-      "http_audit": { "hsts": true, "csp": false, "issues": ["Missing Content-Security-Policy"] },
-      "cves": [
-        {
-          "cve_id": "CVE-2018-15473",
-          "severity": "High",
-          "description": "OpenSSH username enumeration",
-          "cvss_score": 7.5
-        }
-      ],
-      "host_risk_score": 82,
-      "host_risk_level": "Critical"
-    }
-  ],
-  "summary": {
-    "total_hosts": 1,
-    "critical_hosts": 1,
-    "phase": 3,
-    "scan_duration": 45.2
-  }
-}
-```
-
----
 
 ### POST /scan/phases — Flexible
 
@@ -197,59 +254,39 @@ Intensities: `light | normal | deep`
 
 ---
 
-## Legacy Endpoint Details
-
-### POST /scan/host — Single host, all 4 phases
-
-```json
-{ "target": "192.168.1.1", "scan_type": "adaptive" }
-```
-
-### POST /scan/range
-
-```json
-{ "target": "192.168.1.1-50", "scan_type": "adaptive" }
-```
-
-### POST /scan/subnet
-
-```json
-{ "target": "192.168.1.0/24", "scan_type": "adaptive" }
-```
-
-### POST /scan/subnets
-
-```json
-{ "target": "10.0.0.0/16", "subnet_prefix": 24, "scan_type": "adaptive" }
-```
-
----
-
 ## cURL Examples
 
 ```bash
 # Health check
 curl http://localhost:8000/
 
+# Credentialed scan — password auth
+curl -X POST http://localhost:8000/scan/credentialed \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "ip": "192.168.1.10",
+    "username": "root",
+    "password": "mysecretpass",
+    "port": 22
+  }'
+
+# Credentialed scan — specific sections only
+curl -X POST http://localhost:8000/scan/credentialed \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "ip": "192.168.1.10",
+    "username": "ubuntu",
+    "password": "pass",
+    "sections": ["system_info", "packages", "security"]
+  }'
+
 # Phase 1: Discover hosts
 curl -X POST http://localhost:8000/scan/phase1 \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"targets": ["192.168.1.0/24"], "scan_type": "adaptive"}'
-
-# Phase 2: Port scan (paste Phase 1 data[] as hosts value)
-curl -X POST http://localhost:8000/scan/phase2 \
-  -H "Content-Type: application/json" \
-  -d '{"hosts": [...], "intensity": "normal"}'
-
-# Phase 3: Vulnerability scan (paste Phase 2 data[] as hosts value)
-curl -X POST http://localhost:8000/scan/phase3 \
-  -H "Content-Type: application/json" \
-  -d '{"hosts": [...]}'
-
-# Full scan in one call
-curl -X POST http://localhost:8000/scan/phases \
-  -H "Content-Type: application/json" \
-  -d '{"targets": ["192.168.1.10"], "phases": "1+2+3+4", "scan_type": "adaptive", "intensity": "normal"}'
 ```
 
 ---
@@ -257,113 +294,80 @@ curl -X POST http://localhost:8000/scan/phases \
 ## JavaScript Integration
 
 ```javascript
-const API = 'http://localhost:8000';
+const API   = 'http://localhost:8000';
+const TOKEN = localStorage.getItem('token');
+const hdrs  = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` };
 
+// Credentialed scan
+async function credentialedScan(ip, username, password) {
+  const res = await fetch(`${API}/scan/credentialed`, {
+    method:  'POST',
+    headers: hdrs,
+    body:    JSON.stringify({ ip, username, password, port: 22 }),
+  });
+  return res.json();
+}
+
+// Unauthenticated workflow
 async function discover(targets) {
   const res = await fetch(`${API}/scan/phase1`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: hdrs,
     body: JSON.stringify({ targets, scan_type: 'adaptive' })
   });
   return res.json();
 }
-
-async function portScan(hosts, intensity = 'normal') {
-  const res = await fetch(`${API}/scan/phase2`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hosts, intensity })
-  });
-  return res.json();
-}
-
-async function vulnScan(hosts) {
-  const res = await fetch(`${API}/scan/phase3`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hosts })
-  });
-  return res.json();
-}
-
-// Typical flow
-const phase1 = await discover(['192.168.1.0/24']);
-const active = phase1.data.filter(h => h.is_active);
-const phase2 = await portScan(active.slice(0, 5), 'normal');
-const phase3 = await vulnScan([phase2.data[0]]);
-```
-
----
-
-## Error Responses
-
-```json
-{ "success": false, "error": "Invalid target format: 'example.local' not found" }
-{ "success": false, "error": "Invalid phases: 5. Use '1', '1+2', '1+2+3+4', etc." }
-{ "success": false, "error": "No valid targets to scan." }
-```
-
-| HTTP Code | Meaning |
-|-----------|---------|
-| 200 | Success |
-| 400 | Bad request — invalid target, empty hosts, malformed JSON |
-| 503 | API not initialised yet — wait a moment and retry |
-
----
-
-## Field Reference
-
-### Host Object (Phase 1 output)
-```
-ip_address       string    IP address
-is_active        bool      Host is responding
-mac_address      string    MAC (ARP scan only; "N/A" otherwise)
-status           string    "Active" | "Inactive"
-hostname         string    Reverse DNS result
-confidence       string    "High" | "Medium" | "Low"
-os_guess         string    OS identification
-os_confidence    string    "High" | "Medium" | "Low"
-open_ports       array     Empty at Phase 1
-host_risk_score  int       0–100 (0 at Phase 1)
-host_risk_level  string    "Critical" | "High" | "Medium" | "Low" | "Info"
-```
-
-### Port Object (Phase 2 output)
-```
-port     int     Port number
-service  string  Service name from PORT_DB
-banner   string  Raw banner grabbed during scan
-```
-
-### CVE Object (Phase 3 output)
-```
-cve_id       string  CVE identifier, e.g. "CVE-2018-15473"
-severity     string  "Critical" | "High" | "Medium" | "Low"
-description  string  Short description
-cvss_score   float   CVSS score (0.0–10.0)
 ```
 
 ---
 
 ## Typical Scan Times
 
-| Phase | Target | Time |
-|-------|--------|------|
-| Phase 1 (Discovery) | /24 subnet (254 hosts) | 30–60 seconds |
-| Phase 2 (Ports) | 5 hosts, normal intensity | 8–15 seconds |
-| Phase 3 (Vuln) | 1 host | 30–90 seconds |
-| **Total** | 5 hosts, 1 deep audit | **~2 minutes** |
+| Scan Type           | Target              | Time           |
+|---------------------|---------------------|----------------|
+| Phase 1 Discovery   | /24 subnet (254 hosts) | 30–60 seconds |
+| Phase 2 Port Scan   | 5 hosts, normal     | 8–15 seconds   |
+| Phase 3 Vuln Scan   | 1 host              | 30–90 seconds  |
+| **Credentialed**    | **1 host**          | **15–45 seconds** |
+
+Credentialed scans are always single-host (SSH is inherently one machine at a time).
 
 ---
 
-## Valid Target Formats
+## Field Reference
 
-| Format | Example |
-|--------|---------|
-| Single IP | `192.168.1.10` |
-| CIDR | `192.168.1.0/24`, `10.0.0.0/16` |
-| Range | `192.168.1.1-50` |
-| Hostname | `server.local` (resolved via DNS) |
+### Credentialed CVE Object
+```
+cve_id        string    CVE identifier e.g. "CVE-2022-0778"
+severity      string    "Critical" | "High" | "Medium" | "Low" | "Info"
+cvss_score    float     CVSS score (0.0–10.0)
+description   string    Short description
+package       string    Package name where vulnerability was found
+installed_ver string    Installed version on the scanned host
+fixed_ver     string    Version that fixes the CVE (upgrade target)
+source        string    "package_version_match" (for credentialed) vs "banner_match"
+```
+
+### Host Object (Phase 1 output)
+```
+ip_address       string    IP address
+is_active        bool      Host is responding
+mac_address      string    MAC (ARP scan only)
+hostname         string    Reverse DNS result
+os_guess         string    OS identification
+open_ports       array     Empty at Phase 1
+host_risk_score  int       0–100
+host_risk_level  string    "Critical" | "High" | "Medium" | "Low" | "Info"
+```
+
+---
+
+## Tips
+
+- **Credentialed scan first, network scan second** — use `/scan/phase1` to find hosts, then pick one for a credentialed deep dive
+- Use `sections: ["packages", "security"]` for a targeted package + CVE check without collecting everything
+- Phase 1 is fast — always run it first to get the host list before committing to deeper scans
+- Phase 3 is expensive — reserve for 1–3 critical hosts at a time
+- Interactive docs at `http://localhost:8000/docs` let you test all endpoints in the browser
 
 ---
 
@@ -377,13 +381,3 @@ allow_origins=[
     "https://yourdomain.com",     # Production
 ]
 ```
-
----
-
-## Tips
-
-- Phase 1 is fast — always run it first to get the host list before committing to deeper scans
-- Phase 2 is selective — only port scan the hosts you actually care about
-- Phase 3 is expensive — reserve for 1–3 critical hosts at a time
-- Use `light` intensity for speed, `deep` for thoroughness, `normal` for balanced results
-- Interactive docs at `http://localhost:8000/docs` let you test all endpoints in the browser

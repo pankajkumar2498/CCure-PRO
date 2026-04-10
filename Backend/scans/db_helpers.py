@@ -44,6 +44,41 @@ def create_scan(
     return scan
 
 
+def create_completed_scan(
+    db:            Session,
+    user_id:       int,
+    target:        str,
+    scan_type:     str,
+    phase:         int,
+    results:       dict,
+    summary:       dict,
+    scan_duration: Optional[float] = None,
+) -> Scan:
+    """
+    Create a scan row that is already complete.
+
+    Used for scan types that do not progress through the normal
+    phase1 -> phase2 -> phase3 workflow but should still appear in
+    history as finished with their full report persisted.
+    """
+    duration = summary.get("scan_duration", 0.0) if scan_duration is None else scan_duration
+
+    scan = Scan(
+        user_id       = user_id,
+        target        = target,
+        scan_type     = scan_type,
+        phase         = phase,
+        status        = "complete",
+        results       = json.dumps(results),
+        summary       = json.dumps(summary),
+        scan_duration = duration,
+    )
+    db.add(scan)
+    db.commit()
+    db.refresh(scan)
+    return scan
+
+
 def update_scan_phase(
     db:         Session,
     scan_id:    int,

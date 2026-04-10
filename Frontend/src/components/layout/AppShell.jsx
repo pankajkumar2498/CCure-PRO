@@ -8,9 +8,15 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
+// const NAV = [
+//   { to: "/scan",    label: "New Scan",  icon: "⊕" },
+//   { to: "/history", label: "History",   icon: "◧" },
+// ];
+
 const NAV = [
-  { to: "/scan",    label: "New Scan",  icon: "⊕" },
-  { to: "/history", label: "History",   icon: "◧" },
+  { to: "/scan",              label: "Network Scan", icon: "⊕",  exact: true  },
+  { to: "/scan/credentialed", label: "Credentialed", icon: "🔐", exact: false },
+  { to: "/history",           label: "History",      icon: "◧",  exact: false },
 ];
 
 export default function AppShell({ children, saveStatus = "" }) {
@@ -33,7 +39,9 @@ export default function AppShell({ children, saveStatus = "" }) {
             <Link
               key={n.to}
               to={n.to}
-              className={`shell-nav-link ${pathname.startsWith(n.to) ? "shell-nav-link--active" : ""}`}
+              className={`shell-nav-link ${
+                (n.exact ? (pathname === n.to || pathname.startsWith("/scan/phase")) : pathname.startsWith(n.to))
+                  ? "shell-nav-link--active" : ""}`}
             >
               <span className="nav-icon">{n.icon}</span>
               {n.label}

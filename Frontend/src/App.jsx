@@ -12,6 +12,8 @@ import NewScan        from "./pages/scan/NewScan";
 import Phase1Results  from "./pages/scan/Phase1Results";
 import Phase2Results  from "./pages/scan/Phase2Results";
 import Phase3Results  from "./pages/scan/Phase3Results";
+import CredentialedScan    from "./pages/scan/CredentialedScan";
+import CredentialedResults from "./pages/scan/CredentialedResults";
 import ScanHistory    from "./pages/ScanHistory";
 
 export default function App() {
@@ -28,6 +30,10 @@ export default function App() {
           <Route path="/scan/phase1"  element={<PrivateRoute><Phase1Results /></PrivateRoute>} />
           <Route path="/scan/phase2"  element={<PrivateRoute><Phase2Results /></PrivateRoute>} />
           <Route path="/scan/phase3"  element={<PrivateRoute><Phase3Results /></PrivateRoute>} />
+
+          {/* Credentialed scan */}
+          <Route path="/scan/credentialed"         element={<PrivateRoute><CredentialedScan /></PrivateRoute>} />
+          <Route path="/scan/credentialed/results" element={<PrivateRoute><CredentialedResults /></PrivateRoute>} />
 
           {/* History */}
           <Route path="/history"  element={<PrivateRoute><ScanHistory /></PrivateRoute>} />

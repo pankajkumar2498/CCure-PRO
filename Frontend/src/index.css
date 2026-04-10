@@ -1382,3 +1382,327 @@ a:hover { opacity: .75; }
   animation: shake .3s ease;
 }
 
+/* =============================================================================
+   CREDENTIALED SCAN UI — Append these styles to src/index.css
+   ============================================================================= */
+
+/* ── Accuracy callout ────────────────────────────────────────────────────── */
+.cred-callout {
+  background: linear-gradient(135deg, rgba(22,45,69,0.7) 0%, rgba(26,58,82,0.7) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+
+.cred-callout-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.cred-callout-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.cred-stat-num {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cred-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.cred-callout-arrow {
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.cred-callout-divider {
+  width: 1px;
+  height: 48px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+.cred-callout-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Form card ───────────────────────────────────────────────────────────── */
+.cred-form-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cred-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cred-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.cred-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cred-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cred-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.cred-field--wide   { flex: 2; }
+.cred-field--narrow { flex: 0 0 100px; max-width: 120px; }
+.cred-field--pass   { flex: 1.5; }
+
+.field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: .04em;
+}
+
+.field-input {
+  background:    var(--bg-input);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  color:         var(--text);
+  font-family:   var(--sans);
+  font-size:     14px;
+  padding:       9px 12px;
+  outline:       none;
+  transition:    border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+
+.field-input:focus {
+  border-color: var(--border-glow);
+  box-shadow:   0 0 0 3px var(--accent-glow);
+}
+
+.field-input:disabled {
+  opacity: .5;
+  cursor:  not-allowed;
+}
+
+/* ── Auth toggle ─────────────────────────────────────────────────────────── */
+.cred-auth-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.cred-auth-btn {
+  background:    var(--bg-input);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  color:         var(--text-muted);
+  cursor:        pointer;
+  font-size:     13px;
+  padding:       7px 16px;
+  transition:    all .15s;
+}
+
+.cred-auth-btn:hover {
+  border-color: var(--border-glow);
+  color:        var(--text);
+}
+
+.cred-auth-btn--active {
+  background:   var(--accent-glow);
+  border-color: var(--border-glow);
+  color:        var(--accent);
+  font-weight:  600;
+}
+
+/* ── Password field with show/hide ──────────────────────────────────────── */
+.pass-wrap {
+  position: relative;
+  display:  flex;
+}
+
+.pass-wrap .field-input {
+  padding-right: 42px;
+}
+
+.pass-toggle {
+  position:   absolute;
+  right:      10px;
+  top:        50%;
+  transform:  translateY(-50%);
+  background: none;
+  border:     none;
+  cursor:     pointer;
+  font-size:  16px;
+  opacity:    .6;
+  transition: opacity .15s;
+}
+
+.pass-toggle:hover { opacity: 1; }
+
+/* ── Privacy note ────────────────────────────────────────────────────────── */
+.cred-privacy-note {
+  font-size:  12px;
+  color:      var(--text-muted);
+  background: rgba(0,191,255,0.05);
+  border:     1px solid var(--border);
+  border-radius: var(--radius);
+  padding:    8px 12px;
+}
+
+/* ── Sections grid ───────────────────────────────────────────────────────── */
+.cred-sections-grid {
+  display:               grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap:                   10px;
+}
+
+.cred-section-chip {
+  display:       flex;
+  flex-direction: column;
+  gap:           4px;
+  background:    var(--bg-input);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  cursor:        pointer;
+  padding:       10px 12px;
+  transition:    all .15s;
+  user-select:   none;
+}
+
+.cred-section-chip:hover {
+  border-color: var(--border-glow);
+}
+
+.cred-section-chip--on {
+  background:   rgba(0,191,255,0.08);
+  border-color: var(--border-glow);
+}
+
+.csc-icon  { font-size: 18px; line-height: 1; }
+.csc-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.csc-desc  { font-size: 11px; color: var(--text-muted); }
+
+/* ── Submit row ──────────────────────────────────────────────────────────── */
+.cred-submit-row {
+  display:         flex;
+  align-items:     center;
+  justify-content: flex-end;
+  gap:             16px;
+  flex-wrap:       wrap;
+}
+
+.cred-submit-btn {
+  font-size: 15px;
+  padding:   11px 28px;
+  min-width: 220px;
+}
+
+/* ── Results: section toggles ────────────────────────────────────────────── */
+.cred-section-toggle {
+  width:         100%;
+  display:       flex;
+  justify-content: space-between;
+  align-items:   center;
+  background:    var(--bg-card);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  color:         var(--text);
+  cursor:        pointer;
+  font-size:     14px;
+  font-weight:   600;
+  padding:       10px 14px;
+  transition:    border-color .15s, background .15s;
+}
+
+.cred-section-toggle:hover {
+  border-color: var(--border-glow);
+  background:   rgba(0,191,255,0.04);
+}
+
+.cred-section-body {
+  background:    var(--bg-card);
+  border:        1px solid var(--border);
+  border-top:    none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding:       16px;
+}
+
+/* ── Data tables ─────────────────────────────────────────────────────────── */
+.cred-table {
+  width:           100%;
+  border-collapse: collapse;
+  font-size:       13px;
+}
+
+.cred-table th {
+  text-align:  left;
+  color:       var(--text-muted);
+  font-size:   11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding:     6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cred-table td {
+  padding:      6px 10px;
+  color:        var(--text);
+  border-bottom: 1px solid rgba(42,74,106,0.4);
+  vertical-align: middle;
+}
+
+.cred-table tr:hover td {
+  background: rgba(0,191,255,0.04);
+}
+
+/* ── Preformatted text ───────────────────────────────────────────────────── */
+.cred-pre {
+  background:    var(--bg-input);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  color:         var(--text-muted);
+  font-family:   var(--mono);
+  font-size:     11px;
+  line-height:   1.6;
+  overflow:      auto;
+  padding:       10px 14px;
+  white-space:   pre-wrap;
+  word-break:    break-all;
+}

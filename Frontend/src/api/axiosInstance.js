@@ -1,32 +1,30 @@
 /**
  * src/api/axiosInstance.js
- *
- * Axios instance pre-configured with:
- *   • Base URL pointing to FastAPI backend
- *   • Request interceptor  → attach access token from localStorage
- *   • Response interceptor → on 401, try refresh token, then retry once
+ * Axios instance configured with:
+ *   • Base URL pointing to FastAPI backend (Vite proxy)
+ *   • Request interceptor  → attach access_token from localStorage
+ *   • Response interceptor → auto-refresh on 401, retry once
  */
-
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "/",            // Vite proxy handles /auth → localhost:8000
+  baseURL: "/",
   headers: { "Content-Type": "application/json" },
 });
 
-// ── Request interceptor: attach Bearer token ──────────────────────────────────
+// ── Attach Bearer token on every request ──────────────────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// ── Response interceptor: auto-refresh on 401 ─────────────────────────────────
+// ── Auto-refresh 401 responses ────────────────────────────────────────────
 let isRefreshing = false;
 let failedQueue  = [];
 
 const processQueue = (error, token = null) => {
-  failedQueue.forEach((prom) => (error ? prom.reject(error) : prom.resolve(token)));
+  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token)));
   failedQueue = [];
 };
 
@@ -34,7 +32,6 @@ api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
-
     if (err.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -59,9 +56,7 @@ api.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post("/auth/refresh", {
-          refresh_token: refreshToken,
-        });
+        const { data } = await axios.post("/auth/refresh", { refresh_token: refreshToken });
         localStorage.setItem("access_token", data.access_token);
         api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
         processQueue(null, data.access_token);
@@ -76,7 +71,6 @@ api.interceptors.response.use(
         isRefreshing = false;
       }
     }
-
     return Promise.reject(err);
   }
 );

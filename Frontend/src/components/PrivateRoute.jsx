@@ -1,15 +1,8 @@
 /**
  * src/components/PrivateRoute.jsx
- *
- * Wrap any route that requires authentication.
- *
- * Usage in App.jsx:
- *   <Route path="/scan" element={<PrivateRoute><NewScan /></PrivateRoute>} />
- *
- * - Shows a fullscreen spinner while the auth state is still loading.
- * - Redirects to /login (saving the intended path) if not authenticated.
+ * Wraps protected routes. Shows spinner while auth state loads,
+ * then redirects to /login if user is not authenticated.
  */
-
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -24,7 +17,7 @@ export default function PrivateRoute({ children }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#050a0e",
+        background: "#1a2332",
       }}>
         <div className="spinner" />
       </div>
@@ -32,7 +25,6 @@ export default function PrivateRoute({ children }) {
   }
 
   if (!user) {
-    // Save the attempted URL so we can redirect after login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

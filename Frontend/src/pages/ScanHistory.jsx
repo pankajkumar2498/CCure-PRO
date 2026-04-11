@@ -1,93 +1,70 @@
 /**
- * src/pages/ScanHistory.jsx - Page 5
- *
- * All past scans with:
- *   - Filter by status / date
- *   - View detail modal (network scan phases)
- *   - Delete scan
- *   - Re-run scan
+ * src/pages/ScanHistory.jsx
+ * Lists all user scans with:
+ *   • Status + date filters
+ *   • View detail modal (phases / credentialed)
+ *   • Re-run scan (loops back into wizard)
+ *   • Delete scan
+ * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/phase1 (re-run)
  */
-
 import { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import AppShell from "../components/layout/AppShell";
-import RiskBadge from "../components/scan/RiskBadge";
+import { useNavigate } from "react-router-dom";
+import AppLayout  from "../components/layout/AppLayout";
+import RiskBadge  from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
-import { getScans, getScan, deleteScan } from "../api/scans";
+import { getScans, getScan, deleteScan, archiveScan } from "../api/scans";
 import api from "../api/axiosInstance";
 
-const STATUS_COLORS = {
-  complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
-  running:  { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
-  failed:   { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+/* ── constants ── */
+const STATUS_STYLE = {
+  complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)",   border: "rgba(34,197,94,.25)"   },
+  running:  { color: "#f59e0b", bg: "rgba(245,158,11,.1)",  border: "rgba(245,158,11,.25)"  },
+  failed:   { color: "#ef4444", bg: "rgba(239,68,68,.1)",   border: "rgba(239,68,68,.25)"   },
+};
+const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
+const DATE_MS      = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
+
+const isCred    = scan => scan.scan_type === "credentialed";
+const phaseLabel = scan =>
+  isCred(scan) ? "Credentialed Audit" : `P${scan.phase} — ${PHASE_LABELS[scan.phase] || "-"}`;
+
+const fmtDate = iso =>
+  iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+const getScanDisplayDate = scan =>
+  scan.status === "complete" || scan.status === "failed" ? scan.updated_at || scan.created_at : scan.created_at;
+
+const fmtDur = sec =>
+  !sec ? "—" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
+
+const normCve = cve => {
+  const cvss = Number(cve.cvss_score ?? cve.cvss ?? 0) || 0;
+  return {
+    cve_id:      cve.cve_id || cve.cve || "Unknown",
+    severity:    cve.severity || (cvss >= 9 ? "Critical" : cvss >= 7 ? "High" : cvss >= 4 ? "Medium" : cvss > 0 ? "Low" : "Info"),
+    description: cve.description || cve.desc || "",
+  };
 };
 
-const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
-
-const isCredentialedScan = (scan) => scan.scan_type === "credentialed";
-
-const getHistoryPhaseLabel = (scan) =>
-  isCredentialedScan(scan)
-    ? "Credentialed Audit"
-    : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
-
+/* ── sub-components ── */
 function StatusBadge({ status }) {
-  const s = STATUS_COLORS[status] || STATUS_COLORS.running;
+  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 9px",
-        borderRadius: 4,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        color: s.color,
-        fontSize: 11,
-        fontFamily: "var(--mono)",
-        letterSpacing: ".05em",
-      }}
-    >
+    <span style={{
+      display: "inline-block", padding: "2px 9px", borderRadius: 4,
+      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
+      fontSize: 11, fontFamily: "var(--mono)", letterSpacing: ".05em",
+    }}>
       {status}
     </span>
   );
 }
 
-const fmtDate = (iso) =>
-  iso
-    ? new Date(iso).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "-";
-
-const fmtDuration = (sec) => {
-  if (!sec) return "-";
-  return sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
-};
-
-const normalizeCve = (cve) => {
-  const cvss = Number(cve.cvss_score ?? cve.cvss ?? 0) || 0;
-  const severity = cve.severity || (
-    cvss >= 9 ? "Critical" :
-    cvss >= 7 ? "High" :
-    cvss >= 4 ? "Medium" :
-    cvss > 0 ? "Low" : "Info"
-  );
-
-  return {
-    cve_id: cve.cve_id || cve.cve || "Unknown",
-    severity,
-    description: cve.description || cve.desc || "",
-  };
-};
-
 function DetailModal({ scanId, onClose }) {
-  const [detail, setDetail] = useState(null);
+  const [detail,  setDetail]  = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error,   setError]   = useState("");
 
   useEffect(() => {
     getScan(scanId)
@@ -98,10 +75,10 @@ function DetailModal({ scanId, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Scan #{scanId}</h2>
-          <button className="modal-close" onClick={onClose}>x</button>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         {loading && (
@@ -109,68 +86,99 @@ function DetailModal({ scanId, onClose }) {
             <div className="spinner" />
           </div>
         )}
-        {error && <div className="scan-error" style={{ margin: 20 }}>Warning: {error}</div>}
+        {error && <div className="alert alert--error" style={{ margin: 20 }}>{error}</div>}
 
         {detail && (
           <div className="modal-body">
+            {/* Meta grid */}
             <div className="detail-meta">
-              <div className="dm-item"><span className="dm-label">Target</span><code className="ip">{detail.target}</code></div>
-              <div className="dm-item"><span className="dm-label">Scan Type</span>{detail.scan_type}</div>
-              <div className="dm-item"><span className="dm-label">Phase</span>{isCredentialedScan(detail) ? "Credentialed Audit" : (PHASE_LABELS[detail.phase] || detail.phase)}</div>
-              <div className="dm-item"><span className="dm-label">Status</span><StatusBadge status={detail.status} /></div>
-              <div className="dm-item"><span className="dm-label">Duration</span>{fmtDuration(detail.scan_duration)}</div>
-              <div className="dm-item"><span className="dm-label">Created</span>{fmtDate(detail.created_at)}</div>
+              <div className="dm-item">
+                <span className="dm-label">Target</span>
+                <code className="ip-code">{detail.target}</code>
+              </div>
+              <div className="dm-item">
+                <span className="dm-label">Scan Type</span>
+                <span>{detail.scan_type}</span>
+              </div>
+              <div className="dm-item">
+                <span className="dm-label">Phase</span>
+                <span>{isCred(detail) ? "Credentialed" : (PHASE_LABELS[detail.phase] || detail.phase)}</span>
+              </div>
+              <div className="dm-item">
+                <span className="dm-label">Status</span>
+                <StatusBadge status={detail.status} />
+              </div>
+              <div className="dm-item">
+                <span className="dm-label">Duration</span>
+                <span style={{ fontFamily: "var(--mono)" }}>{fmtDur(detail.scan_duration)}</span>
+              </div>
+              <div className="dm-item">
+                <span className="dm-label">Completed</span>
+                <span>{fmtDate(getScanDisplayDate(detail))}</span>
+              </div>
             </div>
 
+            {/* Summary */}
             {detail.summary && Object.keys(detail.summary).length > 0 && (
               <div className="detail-section">
-                <h4 className="section-title">Summary</h4>
-                <div className="kv-grid">
+                <h4 className="section-title" style={{ marginBottom: 8 }}>Summary</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   {Object.entries(detail.summary).map(([k, v]) => (
-                    <div key={k} className="kv-row">
-                      <span className="kv-key">{k.replace(/_/g, " ")}</span>
-                      <span className="kv-val">{String(v)}</span>
+                    <div key={k} style={{ display: "flex", gap: 12, padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-muted)", minWidth: 160 }}>
+                        {k.replace(/_/g, " ")}
+                      </span>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: "0.8rem" }}>{String(v)}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
+            {/* Phase results */}
             {detail.results && Object.entries(detail.results).map(([pk, pd]) => {
-              const hosts = (pd?.data || []).filter((h) => h.is_active);
+              const hosts = (pd?.data || []).filter(h => h.is_active);
               if (!hosts.length) return null;
-
               return (
                 <div key={pk} className="detail-section">
-                  <h4 className="section-title">
+                  <h4 className="section-title" style={{ marginBottom: 8 }}>
                     {PHASE_LABELS[pk.replace("phase", "")] || pk} Results
                     <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>
                       ({hosts.length} host{hosts.length !== 1 ? "s" : ""})
                     </span>
                   </h4>
-
-                  {hosts.map((h) => (
+                  {hosts.map(h => (
                     <div key={h.ip_address} className="detail-host">
                       <div className="detail-host-header">
-                        <code className="ip">{h.ip_address}</code>
-                        {h.hostname && h.hostname !== "Unknown" && <span className="muted small"> {h.hostname}</span>}
+                        <code className="ip-code">{h.ip_address}</code>
+                        {h.hostname && h.hostname !== "Unknown" && (
+                          <span className="muted small"> {h.hostname}</span>
+                        )}
                         {h.host_risk_level && <RiskBadge level={h.host_risk_level} score={h.host_risk_score} />}
-                        {h.open_ports?.length > 0 && <span className="port-count">{h.open_ports.length} ports</span>}
-                        {h.cves?.length > 0 && <span className="cve-count">{h.cves.length} CVEs</span>}
+                        {h.open_ports?.length > 0 && (
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3 }}>
+                            {h.open_ports.length} ports
+                          </span>
+                        )}
+                        {h.cves?.length > 0 && (
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#f97316" }}>
+                            {h.cves.length} CVEs
+                          </span>
+                        )}
                       </div>
-
                       {h.open_ports?.length > 0 && (
-                        <div className="mini-ports" style={{ marginTop: 8 }}>
+                        <div className="port-pills" style={{ marginTop: 8 }}>
                           {h.open_ports.map((p, i) => (
-                            <span key={i} className="port-pill"><code>{p.port}</code> {p.service}</span>
+                            <span key={i} className="port-pill">
+                              <code>{p.port}</code> {p.service}
+                            </span>
                           ))}
                         </div>
                       )}
-
                       {h.cves?.length > 0 && (
                         <div className="cve-list" style={{ marginTop: 10 }}>
                           {h.cves.slice(0, 5).map((rawCve, i) => {
-                            const cve = normalizeCve(rawCve);
+                            const cve = normCve(rawCve);
                             return (
                               <div key={i} className="cve-row">
                                 <span className="cve-id">{cve.cve_id}</span>
@@ -198,34 +206,26 @@ function DetailModal({ scanId, onClose }) {
   );
 }
 
+/* ── Main page ── */
 export default function ScanHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const {
-    setTarget,
-    setScanType,
-    setPhase1Hosts,
-    setPhase1Summary,
-    setScanId,
-    setSaveStatus,
-    resetScan,
-  } = useScan();
+  const { setTarget, setScanType, setPhase1Hosts, setPhase1Summary, setScanId, resetScan } = useScan();
 
-  const [scans, setScans] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [viewId, setViewId] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
-  const [rerunningId, setRerunningId] = useState(null);
+  const [scans,       setScans]       = useState([]);
+  const [total,       setTotal]       = useState(0);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState("");
+  const [viewId,      setViewId]      = useState(null);
+  const [archivingId, setArchivingId] = useState(null);
+  const [deletingId,  setDeletingId]  = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterDate, setFilterDate] = useState("all");
+  const [filterDate,   setFilterDate]   = useState("all");
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const { data } = await getScans(0, 200);
+      const { data } = await getScans(0, 200, "active");
       setScans(data.scans);
       setTotal(data.total);
     } catch {
@@ -235,135 +235,132 @@ export default function ScanHistory() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  const handleView = (scan) => {
-    if (isCredentialedScan(scan)) {
+  const handleView = scan => {
+    if (isCred(scan)) {
       navigate(`/scan/credentialed/results?scan_id=${scan.id}`);
       return;
     }
     setViewId(scan.id);
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm(`Delete Scan #${id}? This cannot be undone.`)) return;
-
+  const handleDelete = async id => {
+    if (!confirm(`Move Scan #${id} to Recycle Bin? You can permanently delete it later from Recycle Bin.`)) return;
     setDeletingId(id);
     try {
       await deleteScan(id);
-      setScans((prev) => prev.filter((s) => s.id !== id));
-      setTotal((prev) => prev - 1);
+      setScans(prev => prev.filter(s => s.id !== id));
+      setTotal(prev => Math.max(prev - 1, 0));
     } catch {
-      alert("Failed to delete scan.");
+      alert("Failed to move scan to Recycle Bin.");
     } finally {
       setDeletingId(null);
     }
   };
 
-  const handleRerun = async (scan) => {
-    setRerunningId(scan.id);
-
+  const handleArchive = async id => {
+    if (!confirm(`Archive Scan #${id}? You can restore it later from Archived Scans.`)) return;
+    setArchivingId(id);
     try {
-      if (isCredentialedScan(scan)) {
-        setSaveStatus("");
+      await archiveScan(id);
+      setScans(prev => prev.filter(s => s.id !== id));
+      setTotal(prev => Math.max(prev - 1, 0));
+    } catch {
+      alert("Failed to archive scan.");
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
+  const handleRerun = async scan => {
+    try {
+      if (isCred(scan)) {
+        resetScan();
         navigate("/scan/credentialed", { state: { prefill: { ip: scan.target } } });
         return;
       }
 
-      resetScan();
-      const target = scan.target;
-      const scanType = scan.scan_type || "adaptive";
-
-      setTarget(target);
-      setScanType(scanType);
-      setSaveStatus("saving");
+      const t  = scan.target;
+      const st = scan.scan_type || "adaptive";
 
       const { data } = await api.post("/scan/phase1", {
-        targets: target.split(",").map((t) => t.trim()).filter(Boolean),
-        scan_type: scanType,
+        targets:   t.split(",").map(x => x.trim()).filter(Boolean),
+        scan_type: st,
       });
+      if (!data.success) throw new Error(data.error || "Re-run failed");
 
-      if (!data.success) {
-        throw new Error(data.error || "Re-run failed");
-      }
-
+      resetScan();
+      setTarget(t);
+      setScanType(st);
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 3000);
       navigate("/scan/phase1");
     } catch (err) {
       alert("Re-run failed: " + (err.response?.data?.detail || err.message));
-      setSaveStatus("error");
-    } finally {
-      setRerunningId(null);
     }
   };
 
-  const DATE_MS = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
-  const now = Date.now();
-  const visible = scans.filter((scan) => {
+  const now     = Date.now();
+  const visible = scans.filter(scan => {
     if (filterStatus !== "all" && scan.status !== filterStatus) return false;
-    if (filterDate !== "all" && now - new Date(scan.created_at).getTime() > DATE_MS[filterDate]) return false;
+    if (filterDate   !== "all" && now - new Date(getScanDisplayDate(scan)).getTime() > DATE_MS[filterDate]) return false;
     return true;
   });
 
   return (
-    <AppShell>
-      <div className="page-content">
-        <div className="history-topbar">
+    <AppLayout pageTitle="Scan History">
+      <div className="page-inner">
+
+        {/* Page header */}
+        <div className="page-title-row">
           <div>
-            <h2 className="history-title">Scan History</h2>
-            <p className="muted" style={{ fontSize: 13, marginTop: 4, fontFamily: "var(--mono)" }}>
-              {total} scan{total !== 1 ? "s" : ""} - {user?.username}
+            <h2 className="page-title">Scan History</h2>
+            <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
+              {total} scan{total !== 1 ? "s" : ""} · {user?.username}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Link to="/scan" className="phase-btn" style={{ textDecoration: "none", display: "inline-flex" }}>
-              New Scan
-            </Link>
-            <button className="phase-btn phase-btn--ghost" onClick={load} disabled={loading} style={{ height: 40 }}>
-              {loading ? <span className="btn-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : "Refresh"}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn--ghost" onClick={load} disabled={loading}>
+              {loading ? <span className="btn-spinner btn-spinner--dark" /> : "Refresh"}
             </button>
           </div>
         </div>
 
-        <div className="history-filters">
+        {/* Filters */}
+        <div className="filter-bar">
           <div className="filter-group">
             <label>Status</label>
             <div className="filter-tabs">
-              {["all", "complete", "running", "failed"].map((status) => (
+              {["all", "complete", "running", "failed"].map(s => (
                 <button
-                  key={status}
-                  className={`filter-tab ${filterStatus === status ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilterStatus(status)}
+                  key={s}
+                  className={`filter-tab ${filterStatus === s ? "filter-tab--active" : ""}`}
+                  onClick={() => setFilterStatus(s)}
                 >
-                  {status}
+                  {s}
                 </button>
               ))}
             </div>
           </div>
-
           <div className="filter-group">
             <label>Time range</label>
             <div className="filter-tabs">
-              {[["all", "All time"], ["1h", "1 hr"], ["24h", "24 hrs"], ["7d", "7 days"], ["30d", "30 days"]].map(([value, label]) => (
+              {[["all","All time"],["1h","1 hr"],["24h","24 hrs"],["7d","7 days"],["30d","30 days"]].map(([v,l]) => (
                 <button
-                  key={value}
-                  className={`filter-tab ${filterDate === value ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilterDate(value)}
+                  key={v}
+                  className={`filter-tab ${filterDate === v ? "filter-tab--active" : ""}`}
+                  onClick={() => setFilterDate(v)}
                 >
-                  {label}
+                  {l}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {error && <div className="scan-error">{error}</div>}
+        {error && <div className="alert alert--error">{error}</div>}
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
@@ -372,18 +369,20 @@ export default function ScanHistory() {
         )}
 
         {!loading && !error && visible.length === 0 && (
-          <div className="history-empty">
-            <span className="empty-icon">*</span>
-            <p>{filterStatus !== "all" || filterDate !== "all" ? "No scans match your filters." : "No scans yet."}</p>
-            <Link to="/scan" className="phase-btn" style={{ display: "inline-flex", marginTop: 16, textDecoration: "none" }}>
-              Start your first scan {"->"}
-            </Link>
+          <div className="empty-state">
+            <span className="empty-state-icon">📋</span>
+            <p className="empty-state-title">
+              {filterStatus !== "all" || filterDate !== "all" ? "No scans match your filters." : "No scans yet."}
+            </p>
+            <button className="btn btn--primary" style={{ marginTop: 16 }} onClick={() => navigate("/scan")}>
+              Start your first scan →
+            </button>
           </div>
         )}
 
         {!loading && visible.length > 0 && (
           <div className="table-wrap">
-            <table className="scan-table history-table">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>#</th>
@@ -398,44 +397,56 @@ export default function ScanHistory() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((scan) => {
+                {visible.map(scan => {
                   const summary = scan.summary || {};
-                  const isRerunning = rerunningId === scan.id;
 
                   return (
-                    <tr key={scan.id} className="tr-host">
-                      <td><code className="ip" style={{ fontSize: 12 }}>#{scan.id}</code></td>
-                      <td><span className="history-target">{scan.target}</span></td>
+                    <tr key={scan.id}>
+                      <td>
+                        <code className="ip-code" style={{ fontSize: 12 }}>#{scan.id}</code>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
+                          {scan.target}
+                        </span>
+                      </td>
                       <td><span className="method-chip">{scan.scan_type}</span></td>
-                      <td><span className="phase-chip">{getHistoryPhaseLabel(scan)}</span></td>
+                      <td>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{phaseLabel(scan)}</span>
+                      </td>
                       <td><StatusBadge status={scan.status} /></td>
                       <td>
                         {summary.active_hosts !== undefined
-                          ? <span style={{ color: "var(--ok)", fontFamily: "var(--mono)" }}>{summary.active_hosts}</span>
-                          : <span className="muted">-</span>}
+                          ? <span style={{ color: "var(--ok)", fontFamily: "var(--mono)", fontWeight: 700 }}>{summary.active_hosts}</span>
+                          : <span className="muted">—</span>}
                       </td>
-                      <td><span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtDuration(scan.scan_duration)}</span></td>
-                      <td><span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(scan.created_at)}</span></td>
+                      <td>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtDur(scan.scan_duration)}</span>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-muted)" }}>
+                          {fmtDate(getScanDisplayDate(scan))}
+                        </span>
+                      </td>
                       <td>
                         <div className="action-btns">
                           <button className="action-btn" onClick={() => handleView(scan)}>View</button>
+                          <button className="action-btn action-btn--rerun" onClick={() => handleRerun(scan)}>
+                            Re-run
+                          </button>
                           <button
-                            className="action-btn action-btn--rerun"
-                            onClick={() => handleRerun(scan)}
-                            disabled={isRerunning || !!rerunningId}
-                            title="Re-run this scan"
+                            className="action-btn"
+                            onClick={() => handleArchive(scan.id)}
+                            disabled={archivingId === scan.id}
                           >
-                            {isRerunning
-                              ? <span className="btn-spinner" style={{ width: 11, height: 11, borderWidth: 2 }} />
-                              : "Re-run"}
+                            {archivingId === scan.id ? "..." : "Archive"}
                           </button>
                           <button
                             className="action-btn action-btn--danger"
                             onClick={() => handleDelete(scan.id)}
                             disabled={deletingId === scan.id}
-                            title="Delete scan"
                           >
-                            {deletingId === scan.id ? "..." : "Delete"}
+                            {deletingId === scan.id ? "…" : "Delete"}
                           </button>
                         </div>
                       </td>
@@ -452,9 +463,10 @@ export default function ScanHistory() {
             Showing {visible.length} of {total} scans
           </p>
         )}
+
       </div>
 
       {viewId && <DetailModal scanId={viewId} onClose={() => setViewId(null)} />}
-    </AppShell>
+    </AppLayout>
   );
 }

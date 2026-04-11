@@ -45,7 +45,7 @@ from auth.router import router as auth_router
 from auth.models import create_tables, User, get_db
 from auth.dependencies import get_current_user
 from scans.router import router as scans_router
-from scans.models import Scan
+from scans.models import Scan, ensure_scan_schema
 from scans.db_helpers import create_scan, create_completed_scan, update_scan_phase
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
 from engines.credentialed.linux_collector import LinuxCollector
@@ -66,6 +66,7 @@ _api_instance: Optional[HostDiscoveryAPI] = None
 async def lifespan(app: FastAPI):
     global _api_instance
     create_tables()                          # ← create users table if not exists
+    ensure_scan_schema()
     _api_instance = HostDiscoveryAPI(silent=False)
     log.info("HostDiscoveryAPI initialised")
     yield

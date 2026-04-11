@@ -1,45 +1,45 @@
 /**
  * src/pages/Register.jsx
+ * Dark-themed registration form matching CAST design.
+ * API: POST /auth/register → { access_token, refresh_token, user }
  */
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function validate(username, email, password, confirm) {
-  if (username.trim().length < 3)  return "Username must be at least 3 characters.";
+  if (username.trim().length < 3) return "Username must be at least 3 characters.";
   if (!/\S+@\S+\.\S+/.test(email)) return "Enter a valid email address.";
   if (password.length < 6)         return "Password must be at least 6 characters.";
   if (password !== confirm)        return "Passwords do not match.";
   return null;
 }
 
+function strengthOf(pw) {
+  if (!pw)           return { label: "",       level: 0 };
+  if (pw.length < 6) return { label: "Weak",   level: 1 };
+  if (pw.length < 10)return { label: "Fair",   level: 2 };
+  if (/[^a-zA-Z0-9]/.test(pw)) return { label: "Strong", level: 4 };
+  return { label: "Good", level: 3 };
+}
+
 export default function Register() {
-  const { register }                    = useAuth();
+  const { register } = useAuth();
 
-  const [username, setUsername]         = useState("");
-  const [email, setEmail]               = useState("");
-  const [password, setPassword]         = useState("");
-  const [confirm, setConfirm]           = useState("");
-  const [error, setError]               = useState("");
-  const [loading, setLoading]           = useState(false);
+  const [username, setUsername] = useState("");
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
 
-  // Live strength indicator
-  const strength = (() => {
-    if (!password)         return { label: "",         level: 0 };
-    if (password.length < 6)  return { label: "Weak",     level: 1 };
-    if (password.length < 10) return { label: "Fair",     level: 2 };
-    if (/[^a-zA-Z0-9]/.test(password)) return { label: "Strong",   level: 4 };
-    return { label: "Good", level: 3 };
-  })();
+  const strength = strengthOf(password);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const validationError = validate(username, email, password, confirm);
-    if (validationError) { setError(validationError); return; }
-
-    setError("");
-    setLoading(true);
+    const ve = validate(username, email, password, confirm);
+    if (ve) { setError(ve); return; }
+    setError(""); setLoading(true);
     try {
       await register(username, email, password);
     } catch (err) {
@@ -51,35 +51,30 @@ export default function Register() {
 
   return (
     <div className="auth-page">
-      <div className="grid-bg" aria-hidden />
-
       <div className="auth-card auth-card--wide">
+        {/* Brand */}
         <div className="auth-brand">
-          <span className="brand-icon">◈</span>
-          <span className="brand-name">CCURE AUDIT</span>
-          <span className="brand-badge">PRO</span>
+          <span className="auth-brand-gem">◈</span>
+          <div className="auth-brand-text">
+            <span className="auth-brand-name">CCure Audit</span>
+            <span className="auth-brand-badge">PRO</span>
+          </div>
         </div>
 
         <h1 className="auth-title">Create account</h1>
         <p className="auth-sub">Join the network intelligence platform</p>
 
         {error && (
-          <div className="auth-error" role="alert">
-            <span className="error-icon">⚠</span> {error}
-          </div>
+          <div className="auth-error" role="alert"><span>⚠</span> {error}</div>
         )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="field">
             <label htmlFor="username">Username</label>
             <input
-              id="username"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="operator_name"
-              required
+              id="username" type="text" autoComplete="username"
+              value={username} onChange={e => setUsername(e.target.value)}
+              placeholder="operator_name" required
             />
             {username && username.length < 3 && (
               <span className="field-hint field-hint--warn">Min. 3 characters</span>
@@ -89,35 +84,23 @@ export default function Register() {
           <div className="field">
             <label htmlFor="email">Email</label>
             <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="operator@domain.com"
-              required
+              id="email" type="email" autoComplete="email"
+              value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="operator@domain.com" required
             />
           </div>
 
           <div className="field">
             <label htmlFor="password">Password</label>
             <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
+              id="password" type="password" autoComplete="new-password"
+              value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" required
             />
-            {/* Strength bar */}
             {password && (
               <div className="strength-bar">
-                {[1, 2, 3, 4].map((n) => (
-                  <span
-                    key={n}
-                    className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`}
-                  />
+                {[1,2,3,4].map(n => (
+                  <span key={n} className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`} />
                 ))}
                 <span className="strength-label">{strength.label}</span>
               </div>
@@ -127,13 +110,9 @@ export default function Register() {
           <div className="field">
             <label htmlFor="confirm">Confirm password</label>
             <input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="••••••••"
-              required
+              id="confirm" type="password" autoComplete="new-password"
+              value={confirm} onChange={e => setConfirm(e.target.value)}
+              placeholder="••••••••" required
             />
             {confirm && confirm !== password && (
               <span className="field-hint field-hint--warn">Passwords don't match</span>

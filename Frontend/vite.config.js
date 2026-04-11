@@ -6,10 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // Proxy API calls to FastAPI so you don't have to hard-code the backend URL
-      "/auth": "http://localhost:8000",
-      "/scan": "http://localhost:8000",
-      "/scans": "http://localhost:8000",
+      "/auth":    "http://localhost:8000",
+      "/scan":    "http://localhost:8000",
+      "/scans":   "http://localhost:8000",
+      "/reports": "http://localhost:8000",
     },
   },
 });

@@ -1,35 +1,29 @@
 /**
  * src/pages/scan/CredentialedScan.jsx
- *
- * New page: /scan/credentialed
- * Form → calls POST /scan/credentialed → navigates to CredentialedResults
- *
- * Credentials are NEVER stored anywhere on the frontend either —
- * they live only in component state and are cleared after submission.
+ * SSH credential form → POST /scan/credentialed → CredentialedResults.
+ * Credentials are NEVER stored — cleared from state immediately after use.
  */
-
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import AppShell from "../../components/layout/AppShell";
+import AppLayout from "../../components/layout/AppLayout";
 import { runCredentialedScan } from "../../api/credentialedScan";
 
 const SECTIONS = [
-  { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel, CPU, RAM, disk" },
-  { key: "packages",    label: "Installed Packages", icon: "📦", desc: "Full dpkg/rpm package list" },
-  { key: "services",    label: "Running Services",   icon: "⚙️",  desc: "Active systemd units" },
-  { key: "ports",       label: "Open Ports",         icon: "🔌", desc: "Live socket table via ss" },
-  { key: "users",       label: "Users",              icon: "👤", desc: "/etc/passwd analysis" },
-  { key: "security",    label: "Security Audit",     icon: "🔒", desc: "SUID, sudo rules, cron, world-writable" },
-  { key: "network",     label: "Network",            icon: "🌐", desc: "Interfaces, ARP, env vars" },
-  { key: "history",     label: "Login History",      icon: "📋", desc: "last / lastb — recent logins & failures" },
+  { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel, CPU, RAM, disk"             },
+  { key: "packages",    label: "Packages",           icon: "📦",  desc: "Full dpkg/rpm package list"             },
+  { key: "services",    label: "Running Services",   icon: "⚙️",  desc: "Active systemd units"                   },
+  { key: "ports",       label: "Open Ports",         icon: "🔌",  desc: "Live socket table via ss"               },
+  { key: "users",       label: "Users",              icon: "👤",  desc: "/etc/passwd analysis"                   },
+  { key: "security",    label: "Security Audit",     icon: "🔒",  desc: "SUID, sudo rules, cron, world-writable" },
+  { key: "network",     label: "Network",            icon: "🌐",  desc: "Interfaces, ARP, env vars"              },
+  { key: "history",     label: "Login History",      icon: "📋",  desc: "last/lastb — recent logins & failures"  },
 ];
 
 export default function CredentialedScan() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const prefillIp = location.state?.prefill?.ip ?? "";
+  const location   = useLocation();
+  const navigate   = useNavigate();
+  const prefillIp  = location.state?.prefill?.ip ?? "";
 
-  // Form state
   const [ip,         setIp]         = useState(prefillIp);
   const [username,   setUsername]   = useState("");
   const [password,   setPassword]   = useState("");
@@ -38,38 +32,25 @@ export default function CredentialedScan() {
   const [authMethod, setAuthMethod] = useState("password");
   const [showPass,   setShowPass]   = useState(false);
   const [sections,   setSections]   = useState(new Set(SECTIONS.map(s => s.key)));
-
-  // Scan state
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
 
   useEffect(() => {
-    if (!prefillIp) {
-      return;
-    }
-    setIp(prefillIp);
-    setPassword("");
-    setKeyPath("");
-    setError("");
+    if (prefillIp) { setIp(prefillIp); setPassword(""); setKeyPath(""); setError(""); }
   }, [prefillIp]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────
-
-  const toggleSection = (key) => {
-    const next = new Set(sections);
-    next.has(key) ? next.delete(key) : next.add(key);
-    setSections(next);
+  const toggleSection = key => {
+    const n = new Set(sections);
+    n.has(key) ? n.delete(key) : n.add(key);
+    setSections(n);
   };
 
   const allSelected  = sections.size === SECTIONS.length;
   const noneSelected = sections.size === 0;
   const toggleAll    = () => setSections(allSelected ? new Set() : new Set(SECTIONS.map(s => s.key)));
 
-  // ── Submit ─────────────────────────────────────────────────────────────
-
   const handleSubmit = async () => {
     setError("");
-
     if (!ip.trim())       return setError("Please enter a target IP or hostname.");
     if (!username.trim()) return setError("Please enter an SSH username.");
     if (authMethod === "password" && !password) return setError("Please enter a password.");
@@ -79,9 +60,9 @@ export default function CredentialedScan() {
     setLoading(true);
     try {
       const { data } = await runCredentialedScan({
-        ip:         ip.trim(),
-        username:   username.trim(),
-        password:   authMethod === "password" ? password : undefined,
+        ip: ip.trim(),
+        username: username.trim(),
+        password:   authMethod === "password" ? password  : undefined,
         keyPath:    authMethod === "key"      ? keyPath.trim() : undefined,
         port:       parseInt(port, 10) || 22,
         authMethod,
@@ -90,16 +71,13 @@ export default function CredentialedScan() {
 
       if (!data.success) throw new Error(data.error || "Scan failed");
 
-      // Clear credentials from memory immediately after success
+      // Clear credentials immediately from memory
       setPassword("");
       setKeyPath("");
 
-      // Keep the report in router state for instant display, but also
-      // include scan_id in the URL so refresh/history can rehydrate it.
       navigate(`/scan/credentialed/results?scan_id=${data.scan_id}`, {
         state: { result: data },
       });
-
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Scan failed");
     } finally {
@@ -107,33 +85,25 @@ export default function CredentialedScan() {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
-
   return (
-    <AppShell>
-      <div className="page-content">
+    <AppLayout pageTitle="Credentialed Scan">
+      <div className="page-inner">
 
-        {/* ── Page header ── */}
-        <div className="page-header">
+        {/* Page header */}
+        <div className="page-title-row">
           <div>
-            <h2 className="page-title">
-              <span style={{ marginRight: 10 }}>🔐</span>
-              Credentialed Scan
-            </h2>
-            <p className="page-sub">
+            <h2 className="page-title">🔐 Credentialed Scan</h2>
+            <p className="page-subtitle">
               SSH into a Linux host for exact OS, package versions, and ~90% accurate CVE matching.
-              Credentials are <strong>never stored</strong> — used only during the scan.
+              Credentials are <strong>never stored</strong> — used only during the scan session.
             </p>
           </div>
-          <button
-            className="phase-btn phase-btn--ghost"
-            onClick={() => navigate("/scan")}
-          >
+          <button className="btn btn--ghost" onClick={() => navigate("/scan")}>
             ← Network Scan
           </button>
         </div>
 
-        {/* ── Accuracy callout ── */}
+        {/* Accuracy callout */}
         <div className="cred-callout">
           <div className="cred-callout-row">
             <div className="cred-callout-stat">
@@ -155,7 +125,7 @@ export default function CredentialedScan() {
           </div>
         </div>
 
-        {/* ── Form card ── */}
+        {/* Form card */}
         <div className="cred-form-card">
 
           {/* Target */}
@@ -164,40 +134,29 @@ export default function CredentialedScan() {
             <div className="cred-row">
               <div className="cred-field cred-field--wide">
                 <label className="field-label">IP / Hostname</label>
-                <input
-                  className="field-input"
-                  type="text"
+                <input className="field-input" type="text"
                   placeholder="192.168.1.10 or server.local"
-                  value={ip}
-                  onChange={e => setIp(e.target.value)}
-                  disabled={loading}
-                  autoComplete="off"
+                  value={ip} onChange={e => setIp(e.target.value)}
+                  disabled={loading} autoComplete="off"
                 />
               </div>
               <div className="cred-field cred-field--narrow">
                 <label className="field-label">SSH Port</label>
-                <input
-                  className="field-input"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={port}
-                  onChange={e => setPort(e.target.value)}
+                <input className="field-input" type="number" min={1} max={65535}
+                  value={port} onChange={e => setPort(e.target.value)}
                   disabled={loading}
                 />
               </div>
             </div>
           </div>
 
-          {/* Auth */}
+          {/* Authentication */}
           <div className="cred-section">
             <h3 className="cred-section-title">Authentication</h3>
 
-            {/* Auth method toggle */}
             <div className="cred-auth-toggle">
               {["password", "key"].map(method => (
-                <button
-                  key={method}
+                <button key={method}
                   className={`cred-auth-btn ${authMethod === method ? "cred-auth-btn--active" : ""}`}
                   onClick={() => setAuthMethod(method)}
                   disabled={loading}
@@ -210,14 +169,10 @@ export default function CredentialedScan() {
             <div className="cred-row">
               <div className="cred-field">
                 <label className="field-label">Username</label>
-                <input
-                  className="field-input"
-                  type="text"
-                  placeholder="root"
-                  value={username}
+                <input className="field-input" type="text"
+                  placeholder="root" value={username}
                   onChange={e => setUsername(e.target.value)}
-                  disabled={loading}
-                  autoComplete="off"
+                  disabled={loading} autoComplete="off"
                 />
               </div>
 
@@ -225,36 +180,25 @@ export default function CredentialedScan() {
                 <div className="cred-field cred-field--pass">
                   <label className="field-label">Password</label>
                   <div className="pass-wrap">
-                    <input
-                      className="field-input"
+                    <input className="field-input"
                       type={showPass ? "text" : "password"}
                       placeholder="••••••••"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      disabled={loading}
-                      autoComplete="current-password"
+                      value={password} onChange={e => setPassword(e.target.value)}
+                      disabled={loading} autoComplete="current-password"
                     />
-                    <button
-                      className="pass-toggle"
-                      onClick={() => setShowPass(p => !p)}
-                      tabIndex={-1}
-                      title={showPass ? "Hide password" : "Show password"}
-                    >
+                    <button className="pass-toggle"
+                      onClick={() => setShowPass(p => !p)} tabIndex={-1}>
                       {showPass ? "🙈" : "👁"}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="cred-field cred-field--wide">
-                  <label className="field-label">Private Key Path (on server)</label>
-                  <input
-                    className="field-input"
-                    type="text"
+                  <label className="field-label">Private Key Path (server-side)</label>
+                  <input className="field-input" type="text"
                     placeholder="/home/user/.ssh/id_rsa"
-                    value={keyPath}
-                    onChange={e => setKeyPath(e.target.value)}
-                    disabled={loading}
-                    autoComplete="off"
+                    value={keyPath} onChange={e => setKeyPath(e.target.value)}
+                    disabled={loading} autoComplete="off"
                   />
                 </div>
               )}
@@ -265,28 +209,24 @@ export default function CredentialedScan() {
             </p>
           </div>
 
-          {/* Sections */}
+          {/* Data categories */}
           <div className="cred-section">
             <div className="cred-section-header">
               <h3 className="cred-section-title">Collect</h3>
-              <button
-                className="phase-btn phase-btn--ghost"
+              <button className="btn btn--ghost"
                 style={{ fontSize: 12, padding: "4px 12px" }}
-                onClick={toggleAll}
-                disabled={loading}
-              >
+                onClick={toggleAll} disabled={loading}>
                 {allSelected ? "Deselect All" : "Select All"}
               </button>
             </div>
             <div className="cred-sections-grid">
               {SECTIONS.map(s => (
-                <label key={s.key} className={`cred-section-chip ${sections.has(s.key) ? "cred-section-chip--on" : ""}`}>
-                  <input
-                    type="checkbox"
+                <label key={s.key}
+                  className={`cred-section-chip ${sections.has(s.key) ? "cred-section-chip--on" : ""}`}>
+                  <input type="checkbox" style={{ display: "none" }}
                     checked={sections.has(s.key)}
                     onChange={() => toggleSection(s.key)}
                     disabled={loading}
-                    style={{ display: "none" }}
                   />
                   <span className="csc-icon">{s.icon}</span>
                   <span className="csc-label">{s.label}</span>
@@ -297,7 +237,7 @@ export default function CredentialedScan() {
           </div>
 
           {/* Error */}
-          {error && <div className="scan-error">⚠ {error}</div>}
+          {error && <div className="alert alert--error">⚠ {error}</div>}
 
           {/* Submit */}
           <div className="cred-submit-row">
@@ -307,19 +247,18 @@ export default function CredentialedScan() {
               </p>
             )}
             <button
-              className="phase-btn phase-btn--danger cred-submit-btn"
+              className="btn btn--danger cred-submit-btn"
               onClick={handleSubmit}
               disabled={loading}
             >
               {loading
                 ? <><span className="btn-spinner" /> Scanning…</>
-                : "🔐 Start Credentialed Scan"
-              }
+                : "🔐 Start Credentialed Scan"}
             </button>
           </div>
 
         </div>
       </div>
-    </AppShell>
+    </AppLayout>
   );
 }

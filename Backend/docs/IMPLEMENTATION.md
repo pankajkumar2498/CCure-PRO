@@ -19,10 +19,10 @@ ORIGINAL:
 
 PHASE-SELECTIVE UPDATE:
 ├── [All above unchanged — fully backward compatible]
-├── run_phase1_only()         ← Discovery on any targets
-├── run_phase2_only()         ← Port scan on selected hosts
-├── run_phase3_only()         ← Vulnerability scan on selected hosts
-└── run_phases()              ← Flexible "1", "1+2", "1+2+3+4"
+├── run_host_discovery_only()   ← Discovery on any targets
+├── run_asset_discovery_only()  ← Port scan on selected hosts
+├── run_advanced_scan_only()    ← Vulnerability scan on selected hosts
+└── run_phases()                ← Flexible "1", "1+2", "1+2+3+4"
 
 CREDENTIALED SCAN (NEW):
 ├── engines/credentialed/ssh_scanner.py      ← Paramiko SSH wrapper
@@ -204,7 +204,7 @@ The version comparator handles common formats: `1.1.1f`, `7.4p1`, `2.4.51`, `2.3
 #### Typical combined workflow
 
 ```
-1. POST /scan/phase1 → discover active hosts on subnet
+1. POST /scan/host-discovery → discover active hosts on subnet
 2. Pick a host of interest from the list
 3. POST /scan/credentialed → SSH into that host, get exact data
 4. Review CVE findings with exact package versions

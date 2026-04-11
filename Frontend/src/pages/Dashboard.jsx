@@ -1,16 +1,21 @@
 /**
  * src/pages/Dashboard.jsx
- * CAST-themed scan template grid — the main landing page after login.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CAST-themed scan template grid — main landing page after login.
  *
- * NAVIGATION MAPPINGS:
- *   Basic Network Scan    → opens the guided discovery flow at /scan
- *   Asset Discovery       → opens /scan/phase2 when phase1 hosts already exist, otherwise /scan
- *   Advanced Scan         → opens /scan for the full guided pipeline from discovery through audit
- *   Credential Validation → opens /scan/credentialed
+ * SCAN MODE → PHASE PIPELINE MAPPING
+ * ────────────────────────────────────
+ *  basic    → Phase 1 only   (Host Discovery, then STOPS)
+ *  asset    → Phase 1 → 2    (always re-runs Phase 1 fresh, no cache reuse)
+ *  advanced → Phase 1 → 2 → 3 → 4  (full pipeline)
+ *
+ * The selected mode is stored in ScanContext.pipelineMode so every
+ * downstream phase-result page knows whether to show the "Next Phase" CTA.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useScan } from "../context/ScanContext";
+import { SCAN_PIPELINES, getScanPipeline } from "../config/scanConfig";
 import AppLayout from "../components/layout/AppLayout";
 
 /* ─── SVG Icons ──────────────────────────────────────────────────────────── */
@@ -39,23 +44,68 @@ const IcoOffline  = ({ c, s=32 }) => <svg width={s} height={s} viewBox="0 0 24 2
 
 /* ─── Scan template definitions ──────────────────────────────────────────── */
 const TEMPLATES = [
-  // Row 1
-  { id:"basic",      title:"Basic Network Scan",         desc:"Start with host discovery and build toward deeper analysis as needed.", Icon:IcoWifi,      bg:"#e8fdf0", color:"#22c55e", route:"/scan",              mapped:true,  badge:"Guided Flow"     },
-  { id:"asset",      title:"Asset Discovery",            desc:"Jump into port and audit stages when discovery results are already available.", Icon:IcoDatabase,  bg:"#eff6ff", color:"#3b82f6", route:"/scan/phase2",       mapped:true,  badge:"Phase 2 & 3", guard:"phase2" },
-  { id:"advanced",   title:"Advanced Scan",              desc:"Launch the guided full pipeline from discovery through vulnerability review.", Icon:IcoLightning, bg:"#fefce8", color:"#eab308", route:"/scan",              mapped:true,  badge:"Full Pipeline"   },
-  { id:"network",    title:"Network Based Scanning",     desc:"Test API endpoints and validate response data automatically.",         Icon:IcoNetwork,   bg:"#f5f3ff", color:"#8b5cf6", mapped:false },
+  // Row 1 — mapped (active) scans
+  {
+    id:       "basic",
+    title:    "Basic Network Scan",
+    desc:     "Identifies Only the Live Hosts in the Network.",
+    Icon:     IcoWifi,
+    bg:       "#e8fdf0",
+    color:    "#22c55e",
+    mapped:   true,
+    // badge:    "Guided Flow",
+    // pipelineMode drives handleCard — links directly to SCAN_PIPELINES["basic"]
+    pipelineMode: "basic",
+  },
+  {
+    id:       "asset",
+    title:    "Asset Discovery",
+    desc:     "Identifies Assets Live in the Network with Basic Information.",
+    Icon:     IcoDatabase,
+    bg:       "#eff6ff",
+    color:    "#3b82f6",
+    mapped:   true,
+    // badge:    "Phase 1 → 2",
+    pipelineMode: "asset",
+  },
+  {
+    id:       "advanced",
+    title:    "Advanced Scan",
+    desc:     "Identifies Hosts and Deeply Scan the Network.",
+    Icon:     IcoLightning,
+    bg:       "#fefce8",
+    color:    "#eab308",
+    mapped:   true,
+    // badge:    "Full Pipeline",
+    pipelineMode: "advanced",
+  },
+  { id:"network",  title:"Network Based Scanning",     desc:"Test API endpoints and validate response data automatically.",         Icon:IcoNetwork,  bg:"#f5f3ff", color:"#8b5cf6", mapped:false },
+
   // Row 2
-  { id:"malware",    title:"Malware Scan",               desc:"Perform rapid connectivity checks and network availability tests.",    Icon:IcoShield,    bg:"#fff1f2", color:"#ef4444", mapped:false },
-  { id:"active",     title:"Active Directory Scan",      desc:"Analyze network traffic suitable for any size infrastructure.",        Icon:IcoDir,       bg:"#eff6ff", color:"#3b82f6", mapped:false },
-  { id:"webapp",     title:"Web Application Scanning",   desc:"Configure custom parameters using advanced rule settings.",           Icon:IcoWebApp,    bg:"#fff7ed", color:"#f97316", mapped:false },
-  { id:"cloud",      title:"Cloud Scanning",             desc:"Verify that code meets quality standards and best practices.",        Icon:IcoCloud,     bg:"#f0f9ff", color:"#0ea5e9", mapped:false },
+  { id:"malware",  title:"Malware Scan",               desc:"Perform rapid connectivity checks and network availability tests.",    Icon:IcoShield,   bg:"#fff1f2", color:"#ef4444", mapped:false },
+  { id:"active",   title:"Active Directory Scan",      desc:"Analyze network traffic suitable for any size infrastructure.",        Icon:IcoDir,      bg:"#eff6ff", color:"#3b82f6", mapped:false },
+  { id:"webapp",   title:"Web Application Scanning",   desc:"Configure custom parameters using advanced rule settings.",            Icon:IcoWebApp,   bg:"#fff7ed", color:"#f97316", mapped:false },
+  { id:"cloud",    title:"Cloud Scanning",             desc:"Verify that code meets quality standards and best practices.",         Icon:IcoCloud,    bg:"#f0f9ff", color:"#0ea5e9", mapped:false },
+
   // Row 3
-  { id:"policy",     title:"Policy Compliance Scanning", desc:"Monitor for malicious activity across all endpoints and systems.",    Icon:IcoPolicy,    bg:"#f0fdf4", color:"#16a34a", mapped:false },
-  { id:"cred",       title:"Credential Validation",      desc:"SSH into Linux hosts for exact CVE matching (~90% accuracy).",        Icon:IcoLock,      bg:"#fefce8", color:"#ca8a04", route:"/scan/credentialed", mapped:true,  badge:"SSH Auth"        },
-  { id:"patch",      title:"Patch Management",           desc:"Analyze mobile app performance on Android and iOS platforms.",        Icon:IcoPatch,     bg:"#f5f3ff", color:"#7c3aed", mapped:false },
-  { id:"agent",      title:"Agent Based Monitoring",     desc:"Automatically optimize system performance and resource utilization.", Icon:IcoAgent,     bg:"#fdf4ff", color:"#a855f7", mapped:false, beta:true },
+  { id:"policy",   title:"Policy Compliance Scanning", desc:"Monitor for malicious activity across all endpoints and systems.",     Icon:IcoPolicy,   bg:"#f0fdf4", color:"#16a34a", mapped:false },
+  {
+    id:       "cred",
+    title:    "Credential Validation",
+    desc:     "Scanning Hosts with Credentials.",
+    Icon:     IcoLock,
+    bg:       "#fefce8",
+    color:    "#ca8a04",
+    mapped:   true,
+    // badge:    "SSH Auth",
+    // Credentialed scan has its own dedicated route — no pipelineMode needed
+    directRoute: "/scan/credentialed",
+  },
+  { id:"patch",   title:"Patch Management",           desc:"Analyze mobile app performance on Android and iOS platforms.",         Icon:IcoPatch,    bg:"#f5f3ff", color:"#7c3aed", mapped:false },
+  { id:"agent",   title:"Agent Based Monitoring",     desc:"Automatically optimize system performance and resource utilization.",  Icon:IcoAgent,    bg:"#fdf4ff", color:"#a855f7", mapped:false, beta:true },
+
   // Row 4
-  { id:"offline",    title:"Offline Configuration Scan", desc:"Audit the configuration of network devices without connectivity.",   Icon:IcoOffline,   bg:"#f8fafc", color:"#64748b", mapped:false },
+  { id:"offline", title:"Offline Configuration Scan", desc:"Audit the configuration of network devices without connectivity.",     Icon:IcoOffline,  bg:"#f8fafc", color:"#64748b", mapped:false },
 ];
 
 /* ─── Scan Card ──────────────────────────────────────────────────────────── */
@@ -68,7 +118,7 @@ function ScanCard({ tpl, onClick }) {
       disabled={!mapped}
       title={!mapped ? "Coming soon" : undefined}
     >
-      {beta  && <span className="scan-card-badge badge-beta">Beta</span>}
+      {beta   && <span className="scan-card-badge badge-beta">Beta</span>}
       {!mapped && <span className="scan-card-badge badge-soon">Soon</span>}
       {mapped && badge && <span className="scan-card-badge badge-api">{badge}</span>}
 
@@ -84,7 +134,7 @@ function ScanCard({ tpl, onClick }) {
 /* ─── Dashboard ──────────────────────────────────────────────────────────── */
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { phase1Hosts, setPhase2Hosts } = useScan();
+  const { setPipelineMode, resetScan } = useScan();
   const [search, setSearch] = useState("");
 
   const filtered = TEMPLATES.filter(t =>
@@ -92,19 +142,41 @@ export default function Dashboard() {
     t.desc.toLowerCase().includes(search.toLowerCase())
   );
 
+  /**
+   * handleCard — the single routing handler for all scan cards.
+   *
+   * Logic:
+   *  1. Cards with `directRoute` (e.g. Credential Validation) navigate directly.
+   *  2. Cards with `pipelineMode` use the SCAN_PIPELINES config:
+   *     - Sets pipelineMode in context so downstream phases know the pipeline.
+   *     - Resets scan state (all three modes always start fresh via /scan).
+   *     - Navigates to the pipeline's entryRoute (/scan).
+   *
+   * NOTE: Asset Discovery no longer skips to /scan/asset-discovery even if phase1 data
+   * exists — it always restarts from Host Discovery as required.
+   */
   const handleCard = (tpl) => {
     if (!tpl.mapped) return;
-    if (tpl.guard === "phase2") {
-      const activeHosts = (phase1Hosts || []).filter((host) => host.is_active);
-      if (activeHosts.length > 0) {
-        setPhase2Hosts(activeHosts);
-        navigate("/scan/phase2");
-        return;
-      }
-      navigate("/scan");
+
+    // ── Dedicated route (e.g. SSH / Credentialed) ──
+    if (tpl.directRoute) {
+      navigate(tpl.directRoute);
       return;
     }
-    navigate(tpl.route);
+
+    // ── Pipeline-driven scan ──
+    if (tpl.pipelineMode) {
+      const pipeline = getScanPipeline(tpl.pipelineMode);
+
+      // Always reset — every scan starts fresh regardless of cached state
+      resetScan();
+
+      // Store the chosen pipeline mode in context
+      setPipelineMode(tpl.pipelineMode);
+
+      // Navigate to entry point (always /scan for all three modes)
+      navigate(pipeline.entryRoute);
+    }
   };
 
   return (
@@ -127,15 +199,6 @@ export default function Dashboard() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-
-        {/* Active modules banner
-        <div className="info-banner">
-          <span className="info-banner-dot" />
-          <span>
-            <strong>4 modules active</strong> &nbsp;—&nbsp;
-            Basic Network Scan (Phase 1) · Asset Discovery (Phase 2+3) · Advanced Scan (Full Pipeline) · Credential Validation (SSH)
-          </span>
-        </div> */}
 
         {/* Template grid */}
         {filtered.length === 0 ? (

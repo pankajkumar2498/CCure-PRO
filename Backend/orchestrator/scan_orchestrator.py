@@ -20,9 +20,9 @@ Supported scan modes (via scan_mode param)
 
 NEW PHASE-SELECTIVE METHODS (Frontend-driven):
 ----------------------------------------------
-  run_phase1_only()  -> Discovery on IPs
-  run_phase2_only()  -> Port scan on already-discovered hosts
-  run_phase3_only()  -> Vulnerability + risk on hosts with ports
+  run_host_discovery_only()  -> Discovery on IPs
+  run_asset_discovery_only()  -> Port scan on already-discovered hosts
+  run_advanced_scan_only()  -> Vulnerability + risk on hosts with ports
   run_phases()       -> Flexible: "1", "1+2", "1+2+3+4"
 """
 
@@ -73,15 +73,15 @@ class ScanOrchestrator:
         orch = ScanOrchestrator(silent=False, intensity="normal")
         
         # Step 1: Quick discovery
-        discovery_result = orch.run_phase1_only(["192.168.1.0/24"], "adaptive")
+        discovery_result = orch.run_host_discovery_only(["192.168.1.0/24"], "adaptive")
         active_hosts = discovery_result["data"]  # 45 hosts found in 30s
         
         # Step 2: User selects 5 hosts, run port scan
         selected = active_hosts[:5]
-        ports_result = orch.run_phase2_only(selected, intensity="normal")
+        ports_result = orch.run_asset_discovery_only(selected, intensity="normal")
         
         # Step 3: User clicks "deep audit", run vuln
-        vuln_result = orch.run_phase3_only(ports_result["data"])
+        vuln_result = orch.run_advanced_scan_only(ports_result["data"])
     """
 
     def __init__(
@@ -228,13 +228,13 @@ class ScanOrchestrator:
     # NEW: PHASE-SELECTIVE METHODS (Frontend-driven orchestration)
     # ------------------------------------------------------------------
 
-    async def run_phase1_only(
+    async def run_host_discovery_only(
         self,
         targets: List[str],
         scan_type: str = "adaptive",
     ) -> Dict:
         """
-        PHASE 1 ONLY: Run discovery on one or more targets.
+        HOST DISCOVERY ONLY: Run discovery on one or more targets.
         
         Args:
             targets: List of IPs, ranges, or subnets
@@ -261,7 +261,7 @@ class ScanOrchestrator:
                 }
             }
         """
-        self._log(f"run_phase1_only -> targets={targets}, scan_type={scan_type}")
+        self._log(f"run_host_discovery_only -> targets={targets}, scan_type={scan_type}")
         
         # Resolve scan type
         try:
@@ -320,17 +320,17 @@ class ScanOrchestrator:
             "summary": summary,
         }
 
-    def run_phase2_only(
+    def run_asset_discovery_only(
         self,
         hosts: List[Dict],
         intensity: str = "normal",
     ) -> Dict:
         """
-        PHASE 2 ONLY: Run port scanning on already-discovered hosts.
+        ASSET DISCOVERY ONLY: Run port scanning on already-discovered hosts.
         
         Args:
             hosts: List of host dicts with at least "ip" and "is_active" fields.
-                   Typically output from run_phase1_only().
+                   Typically output from run_host_discovery_only().
             intensity: "light" | "normal" | "deep"
         
         Returns:
@@ -356,7 +356,7 @@ class ScanOrchestrator:
                 }
             }
         """
-        self._log(f"run_phase2_only -> {len(hosts)} hosts, intensity={intensity}")
+        self._log(f"run_asset_discovery_only -> {len(hosts)} hosts, intensity={intensity}")
         
         try:
             intensity_enum = ScanIntensity(intensity.lower())
@@ -414,16 +414,16 @@ class ScanOrchestrator:
             "summary": summary,
         }
 
-    def run_phase3_only(
+    def run_advanced_scan_only(
         self,
         hosts: List[Dict],
     ) -> Dict:
         """
-        PHASE 3+4 ONLY: Run vulnerability scanning + risk scoring on hosts with ports.
+        ADVANCED SCAN ONLY: Run vulnerability scanning + risk scoring on hosts with ports.
         
         Args:
             hosts: List of host dicts with "ip", "open_ports", etc.
-                   Typically output from run_phase2_only().
+                   Typically output from run_asset_discovery_only().
         
         Returns:
             {
@@ -449,7 +449,7 @@ class ScanOrchestrator:
                 }
             }
         """
-        self._log(f"run_phase3_only -> {len(hosts)} hosts")
+        self._log(f"run_advanced_scan_only -> {len(hosts)} hosts")
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         
@@ -543,19 +543,19 @@ class ScanOrchestrator:
         
         # Phase 1
         if 1 in phase_set:
-            result = await self.run_phase1_only(targets, scan_type)
+            result = await self.run_host_discovery_only(targets, scan_type)
             if not result["success"]:
                 return result
         
         # Phase 2
         if 2 in phase_set:
-            result = self.run_phase2_only(result["data"], intensity)
+            result = self.run_asset_discovery_only(result["data"], intensity)
             if not result["success"]:
                 return result
         
         # Phase 3+4
         if 3 in phase_set or 4 in phase_set:
-            result = self.run_phase3_only(result["data"])
+            result = self.run_advanced_scan_only(result["data"])
             if not result["success"]:
                 return result
         

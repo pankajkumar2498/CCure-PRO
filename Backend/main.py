@@ -1,31 +1,38 @@
 """
 main.py
------------------
+─────────────────────────────────────────────────────────────────────────────
 FastAPI entry point for Ccure Audit Pro Edition v2.
-
-UPDATED WITH: Phase-selective endpoints for frontend-driven orchestration (Option 1).
-
-Run::
-
-    pip install fastapi uvicorn reportlab
-    uvicorn main:app --reload
 
 ENDPOINT GROUPS:
 
 1. HEALTH & INFO
-   GET   /                         -> health + system info
+   GET   /                         → health + system info
 
 2. TRADITIONAL SCANS (Backward Compatible)
-   POST  /scan/host                -> single host (all 4 phases)
-   POST  /scan/range               -> IP range (discovery only)
-   POST  /scan/subnet              -> CIDR subnet (discovery only)
-   POST  /scan/subnets             -> sub-networks of a parent CIDR (discovery only)
+   POST  /scan/host                → single host (all 4 phases)
+   POST  /scan/range               → IP range (discovery only)
+   POST  /scan/subnet              → CIDR subnet (discovery only)
+   POST  /scan/subnets             → sub-networks of a parent CIDR (discovery only)
 
-3. NEW: PHASE-SELECTIVE SCANS (Frontend Orchestration)
-   POST  /scan/phase1              -> Phase 1 only (discovery)
-   POST  /scan/phase2              -> Phase 2 only (port scan)
-   POST  /scan/phase3              -> Phase 3+4 (vulnerability + risk)
-   POST  /scan/phases              -> Flexible phase combination
+3. PHASE-SELECTIVE SCANS (Frontend Orchestration)
+   POST  /scan/host-discovery     → Host Discovery only
+   POST  /scan/asset-discovery    → Asset Discovery (host + port scan)
+   POST  /scan/advanced-scan      → Advanced Scan (vulnerability + risk)
+   POST  /scan/phases             → Flexible phase combination
+
+PIPELINE MODES (NEW)
+─────────────────────
+  Sent by the frontend as `pipeline_mode` in every request:
+
+  "basic"    → phases: [1]          Only Phase 1 runs; scan marked complete after phase1.
+  "asset"    → phases: [1, 2]       Phase 1 then Phase 2; marked complete after phase2.
+  "advanced" → phases: [1, 2, 3, 4] Full pipeline; marked complete after phase3.
+
+  The backend uses pipeline_mode to:
+    - Validate that the incoming phase is part of the declared pipeline.
+    - Decide `is_final` when calling update_scan_phase() — so the scan row
+      is only marked "complete" when its true terminal phase is reached.
+    - Store the mode on the Scan row for use in history / reports.
 """
 
 import logging
@@ -54,6 +61,7 @@ from scans.db_helpers import (
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
 from engines.credentialed.linux_collector import LinuxCollector
 from engines.credentialed.vuln_matcher    import VulnMatcher
+
 # -- Logging -------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
@@ -65,11 +73,52 @@ log = logging.getLogger("ccure.api")
 # -- Application state ---------------------------------------------------------
 _api_instance: Optional[HostDiscoveryAPI] = None
 
+# ─── Pipeline configuration (mirrors src/config/scanConfig.js) ───────────────
+#
+# This is the backend authority on which phases belong to each mode and
+# which phase is the TERMINAL (final) phase that closes the scan record.
+#
+PIPELINE_PHASES: dict[str, list[int]] = {
+    "basic":    [1],
+    "asset":    [1, 2],
+    "advanced": [1, 2, 3, 4],
+}
+
+VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys())
+
+
+def get_terminal_phase(pipeline_mode: str) -> int:
+    """Return the last phase number for a given pipeline mode.
+    Note: For 'advanced', the terminal phase is 3 (Vulnerability & Risk), not 4."""
+    if pipeline_mode == "advanced":
+        return 3
+    phases = PIPELINE_PHASES.get(pipeline_mode, [1])
+    return max(phases)
+
+
+def is_phase_in_pipeline(pipeline_mode: str, phase: int) -> bool:
+    """Return True if the given phase belongs to the declared pipeline."""
+    return phase in PIPELINE_PHASES.get(pipeline_mode, [1])
+
+
+def resolve_pipeline_mode(raw: Optional[str]) -> str:
+    """
+    Normalise and validate the pipeline_mode from a request.
+    Falls back to 'basic' for unknown / missing values.
+    """
+    if raw and raw.lower() in VALID_PIPELINE_MODES:
+        return raw.lower()
+    if raw:
+        log.warning("Unknown pipeline_mode '%s' — defaulting to 'basic'.", raw)
+    return "basic"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _api_instance
-    create_tables()                          # ← create users table if not exists
+    create_tables()
     ensure_scan_schema()
     _api_instance = HostDiscoveryAPI(silent=False)
     log.info("HostDiscoveryAPI initialised")
@@ -79,8 +128,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title       = "Ccure Audit - Pro Edition (Phase-Selective)",
-    description = "CDAC-style network scanner with phase-selective scanning for frontend orchestration.",
-    version     = "2.1.0",
+    description = "CDAC-style network scanner with pipeline-mode scanning for frontend orchestration.",
+    version     = "2.2.0",
     lifespan    = lifespan,
 )
 
@@ -124,144 +173,99 @@ app.include_router(scans_router)
 # -- Request models for TRADITIONAL scans (unchanged) --------------------------
 
 class SingleHostRequest(BaseModel):
-    target:    str   = Field(..., example="192.168.1.1",  description="IP, hostname, or CIDR")
-    scan_type: str   = Field("adaptive", example="adaptive",
-                             description="ping | arp | tcp | full | adaptive | stealth")
+    target:    str = Field(..., example="192.168.1.1")
+    scan_type: str = Field("adaptive", example="adaptive")
 
 class RangeRequest(BaseModel):
-    target:    str   = Field(..., example="192.168.1.1-50", description="IP range")
-    scan_type: str   = Field("adaptive", example="adaptive")
+    target:    str = Field(..., example="192.168.1.1-50")
+    scan_type: str = Field("adaptive", example="adaptive")
 
 class SubnetRequest(BaseModel):
-    target:    str   = Field(..., example="192.168.1.0/24", description="CIDR notation")
-    scan_type: str   = Field("adaptive", example="adaptive")
+    target:    str = Field(..., example="192.168.1.0/24")
+    scan_type: str = Field("adaptive", example="adaptive")
 
 class SubnetsRequest(BaseModel):
-    target:        str = Field(..., example="10.0.0.0/16",   description="Parent CIDR")
-    subnet_prefix: int = Field(24,  example=24, ge=1, le=30, description="Sub-network prefix length")
+    target:        str = Field(..., example="10.0.0.0/16")
+    subnet_prefix: int = Field(24, ge=1, le=30)
     scan_type:     str = Field("adaptive", example="adaptive")
 
 
 # -- NEW REQUEST MODELS for PHASE-SELECTIVE scans ------------------------------
 
-class Phase1Request(BaseModel):
+class HostDiscoveryRequest(BaseModel):
     """
-    Request model for Phase 1 (Discovery only).
-    
-    Example::
-    
-        {
-            "targets": ["192.168.1.0/24", "10.0.0.1-50"],
-            "scan_type": "adaptive"
-        }
+    Host Discovery — Phase 1.
+
+    `pipeline_mode` tells the backend which pipeline this scan belongs to:
+      "basic"    → only Host Discovery will run; scan is immediately marked complete.
+      "asset"    → Host Discovery then Asset Discovery; scan stays 'running' after host discovery.
+      "advanced" → Full pipeline; scan stays 'running' until advanced scan.
+
+    `phases` is the authoritative list from the frontend (informational / audit).
     """
-    targets:    List[str] = Field(..., 
-                                  example=["192.168.1.0/24", "192.168.1.10"],
-                                  description="List of IPs, ranges, or subnets")
-    scan_type:  str       = Field("adaptive", example="adaptive",
-                                  description="ping | arp | tcp | full | adaptive | stealth")
+    targets:       List[str]      = Field(..., example=["192.168.1.0/24"])
+    scan_type:     str            = Field("adaptive", example="adaptive")
+    pipeline_mode: Optional[str]  = Field("basic",
+                                          example="basic",
+                                          description="basic | asset | advanced")
+    phases:        Optional[List[int]] = Field(None,
+                                               example=[1, 2],
+                                               description="Phase list from frontend (informational)")
 
 
-class Phase2Request(BaseModel):
+class AssetDiscoveryRequest(BaseModel):
     """
-    Request model for Phase 2 (Port Scanning only).
-    
-    This takes output from Phase 1 and runs port scanning on those hosts.
-    
-    Example::
-    
-        {
-            "hosts": [
-                {
-                    "ip": "192.168.1.10",
-                    "is_active": true,
-                    "mac": "aa:bb:cc:dd:ee:ff",
-                    ...
-                },
-                ...
-            ],
-            "intensity": "normal",
-            "scan_id": 1
-        }
+    Asset Discovery — Phase 2.
+
+    Must include the same `pipeline_mode` used in the Host Discovery request so the
+    backend can decide whether this is the terminal phase (asset) or not (advanced).
     """
-    hosts:      List[dict] = Field(...,
-                                   description="Host data from Phase 1 output")
-    intensity:  str        = Field("normal", example="normal",
-                                  description="light | normal | deep")
-    scan_id:    Optional[int] = Field(None, description="Scan DB id from Phase 1 (optional)")
+    hosts:         List[dict]     = Field(..., description="Host dicts from Host Discovery")
+    intensity:     str            = Field("normal", example="normal")
+    scan_id:       Optional[int]  = Field(None)
+    pipeline_mode: Optional[str]  = Field("asset",
+                                          example="asset",
+                                          description="basic | asset | advanced")
+    phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
 
 
-class Phase3Request(BaseModel):
+class AdvancedScanRequest(BaseModel):
     """
-    Request model for Phase 3 (Vulnerability + Risk Scoring).
-    
-    This takes output from Phase 2 and runs vulnerability scanning.
-    
-    Example::
-    
-        {
-            "hosts": [
-                {
-                    "ip": "192.168.1.10",
-                    "is_active": true,
-                    "open_ports": [
-                        {"port": 22, "service": "ssh"},
-                        {"port": 80, "service": "http"}
-                    ],
-                    ...
-                },
-                ...
-            ],
-            "scan_id": 1
-        }
+    Advanced Scan — Phase 3.
+
+    Only reached when pipeline_mode is "advanced". Always marks the scan complete.
     """
-    hosts:   List[dict] = Field(...,
-                             description="Host data from Phase 2 output")
-    scan_id: Optional[int] = Field(None, description="Scan DB id from Phase 1 (optional)")
+    hosts:         List[dict]     = Field(..., description="Host dicts from Asset Discovery")
+    scan_id:       Optional[int]  = Field(None)
+    pipeline_mode: Optional[str]  = Field("advanced",
+                                          example="advanced",
+                                          description="basic | asset | advanced")
+    phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
 
 
 class CredentialedScanRequest(BaseModel):
-    ip:          str            = Field(...,  example="192.168.1.10",  description="Target IP or hostname")
-    username:    str            = Field(...,  example="root",           description="SSH username")
-    password:    Optional[str]  = Field(None, example="mysecretpass",  description="SSH password (discarded after use)")
-    key_path:    Optional[str]  = Field(None, description="Path to SSH private key")
-    port:        int            = Field(22,   ge=1, le=65535,          description="SSH port")
-    auth_method: str            = Field("password", description="'password' or 'key'")
-    sections:    Optional[List[str]] = Field(None, description="Data categories to collect. None = all")
-    
+    ip:          str            = Field(..., example="192.168.1.10")
+    username:    str            = Field(..., example="root")
+    password:    Optional[str]  = Field(None)
+    key_path:    Optional[str]  = Field(None)
+    port:        int            = Field(22, ge=1, le=65535)
+    auth_method: str            = Field("password")
+    sections:    Optional[List[str]] = Field(None)
+
 
 class PhasesRequest(BaseModel):
-    """
-    Request model for flexible phase selection.
-    
-    Allows running any combination of phases in sequence.
-    
-    Examples::
-    
-        {"targets": ["192.168.1.0/24"], "phases": "1"}           # Discovery only
-        {"targets": ["192.168.1.0/24"], "phases": "1+2"}         # Discovery + Ports
-        {"targets": ["192.168.1.0/24"], "phases": "1+2+3+4"}     # Full scan
-    """
-    targets:    List[str] = Field(...,
-                                  example=["192.168.1.0/24"],
-                                  description="List of IPs, ranges, or subnets")
+    """Convenience endpoint — run any combination of phases in one call."""
+    targets:    List[str] = Field(..., example=["192.168.1.0/24"])
     phases:     str       = Field("1", example="1+2",
-                                 description="'1' | '1+2' | '1+2+3+4' | etc.")
-    scan_type:  str       = Field("adaptive", example="adaptive",
-                                 description="ping | arp | tcp | full | adaptive | stealth")
-    intensity:  str       = Field("normal", example="normal",
-                                 description="light | normal | deep (for phases 2+)")
+                                 description="'1' | '1+2' | '1+2+3+4'")
+    scan_type:  str       = Field("adaptive", example="adaptive")
+    intensity:  str       = Field("normal",   example="normal")
 
 
 # -- HEALTH & INFO ENDPOINTS ---------------------------------------------------
 
 @app.get("/", tags=["Health"])
 async def root():
-    """
-    Health check + system capabilities.
-    
-    Returns information about the scanner, supported scan types, intensities, etc.
-    """
     return _get_api().get_system_info()
 
 
@@ -269,19 +273,6 @@ async def root():
 
 @app.post("/scan/host", tags=["Traditional Scans"])
 async def scan_host(req: SingleHostRequest, current_user: User = Depends(get_current_user)):
-    """
-    Scan a single host with ALL 4 phases.
-    
-    ⚠️  Note: This runs the full pipeline. For selective scanning, use phase-specific endpoints.
-    
-    Example request::
-    
-        POST /scan/host
-        {
-            "target": "192.168.1.10",
-            "scan_type": "adaptive"
-        }
-    """
     result = await _get_api().scan_single_host(req.target, req.scan_type)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
@@ -290,19 +281,6 @@ async def scan_host(req: SingleHostRequest, current_user: User = Depends(get_cur
 
 @app.post("/scan/range", tags=["Traditional Scans"])
 async def scan_range(req: RangeRequest, current_user: User = Depends(get_current_user)):
-    """
-    Scan an IP range (e.g., 192.168.1.1-50).
-    
-    Runs Phase 1 (discovery) only.
-    
-    Example request::
-    
-        POST /scan/range
-        {
-            "target": "192.168.1.1-50",
-            "scan_type": "adaptive"
-        }
-    """
     result = await _get_api().scan_ip_range(req.target, req.scan_type)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
@@ -311,19 +289,6 @@ async def scan_range(req: RangeRequest, current_user: User = Depends(get_current
 
 @app.post("/scan/subnet", tags=["Traditional Scans"])
 async def scan_subnet(req: SubnetRequest, current_user: User = Depends(get_current_user)):
-    """
-    Scan all hosts in a CIDR subnet.
-    
-    Runs Phase 1 (discovery) only.
-    
-    Example request::
-    
-        POST /scan/subnet
-        {
-            "target": "192.168.1.0/24",
-            "scan_type": "adaptive"
-        }
-    """
     result = await _get_api().scan_subnet(req.target, req.scan_type)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
@@ -332,18 +297,6 @@ async def scan_subnet(req: SubnetRequest, current_user: User = Depends(get_curre
 
 @app.post("/scan/subnets", tags=["Traditional Scans"])
 async def scan_subnets(req: SubnetsRequest, current_user: User = Depends(get_current_user)):
-    """
-    Scan sub-networks within a parent CIDR, grouped by subnet.
-    
-    Example request::
-    
-        POST /scan/subnets
-        {
-            "target": "10.0.0.0/16",
-            "subnet_prefix": 24,
-            "scan_type": "adaptive"
-        }
-    """
     result = await _get_api().scan_subnets_of_subnet(
         req.target, req.subnet_prefix, req.scan_type
     )
@@ -352,112 +305,200 @@ async def scan_subnets(req: SubnetsRequest, current_user: User = Depends(get_cur
     return result
 
 
-# -- NEW PHASE-SELECTIVE ENDPOINTS (Frontend Orchestration) --------------------
+# -- PHASE-SELECTIVE ENDPOINTS -------------------------------------------------
 
-@app.post("/scan/phase1", tags=["Phase-Selective Scans"])
-async def scan_phase1(
-    req:  Phase1Request,
+@app.post("/scan/host-discovery", tags=["Phase-Selective Scans"])
+async def scan_host_discovery(
+    req:  HostDiscoveryRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
-    """Phase 1: host discovery. Saves result to DB and returns scan_id."""
-    orch   = _get_api()._orch
-    result = await orch.run_phase1_only(req.targets, req.scan_type)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+    """
+    Host Discovery: Phase 1.
 
-    # ── Persist to DB ──────────────────────────────────────────────────────
-    target_str = ", ".join(req.targets)
+    Always runs regardless of pipeline_mode.
+
+    DB behaviour by pipeline_mode:
+      basic    → scan is created AND immediately marked `status="complete"`.
+      asset    → scan is created with `status="running"` (Asset Discovery will close it).
+      advanced → scan is created with `status="running"` (Advanced Scan will close it).
+    """
+    mode = resolve_pipeline_mode(req.pipeline_mode)
+    orch = _get_api()._orch
+
+    result = await orch.run_host_discovery_only(req.targets, req.scan_type)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))
+
+    # ── Persist to DB ──────────────────────────────────────────────────────────
+    target_str   = ", ".join(req.targets)
+    terminal     = get_terminal_phase(mode)      # 1, 2, or 4 (mapped to 3 in update_scan_phase)
+    host_discovery_final = (terminal == 1)               # True only for "basic"
+
     scan = create_scan(
-        db        = db,
-        user_id   = user.id,
-        target    = target_str,
-        targets   = req.targets,
-        scan_type = req.scan_type,
-        phase1_data = {"data": result["data"], "summary": result["summary"]},
+        db            = db,
+        user_id       = user.id,
+        target        = target_str,
+        targets       = req.targets,
+        scan_type     = req.scan_type,
+        pipeline_mode = mode,                    # stored for history display
+        phase1_data   = {"data": result["data"], "summary": result["summary"]},
+        is_final      = host_discovery_final,            # marks complete immediately for "basic"
     )
-    result["scan_id"] = scan.id          # ← frontend stores this
+
+    result["scan_id"]       = scan.id
+    result["pipeline_mode"] = mode
+    result["terminal_phase"] = terminal
+    log.info(
+        "Host Discovery complete — scan_id=%s pipeline=%s is_final=%s",
+        scan.id, mode, host_discovery_final,
+    )
     return result
 
 
-@app.post("/scan/phase2", tags=["Phase-Selective Scans"])
-async def scan_phase2(
-    req:  Phase2Request,
+@app.post("/scan/asset-discovery", tags=["Phase-Selective Scans"])
+async def scan_asset_discovery(
+    req:  AssetDiscoveryRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
-    """Phase 2: port scan. Updates DB scan record if scan_id provided."""
-    orch = _get_api()._orch
+    """
+    Asset Discovery: Port Scanning.
+
+    Only valid for `pipeline_mode` = "asset" or "advanced".
+    Calling Asset Discovery with `pipeline_mode` = "basic" is rejected (400).
+
+    DB behaviour:
+      asset    → is_final=True  → scan marked `status="complete"`.
+      advanced → is_final=False → scan stays `status="running"` until Advanced Scan.
+    """
+    mode = resolve_pipeline_mode(req.pipeline_mode)
+
+    # Guard: Asset Discovery must be part of the declared pipeline
+    if not is_phase_in_pipeline(mode, 2):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Asset Discovery is not part of the '{mode}' pipeline "
+                f"(phases: {PIPELINE_PHASES[mode]}). "
+                "Did you select the wrong scan template?"
+            ),
+        )
+
+    orch     = _get_api()._orch
+    terminal = get_terminal_phase(mode)
+    is_final = (terminal == 2)                   # True for "asset", False for "advanced"
+
     try:
-        result = orch.run_phase2_only(req.hosts, req.intensity)
+        result = orch.run_asset_discovery_only(req.hosts, req.intensity)
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+            raise HTTPException(status_code=400, detail=result.get("error", "Asset Discovery failed"))
 
         if req.scan_id:
-            updated_scan = update_scan_phase(
-                db=db,
-                scan_id=req.scan_id,
-                user_id=user.id,
-                phase=2,
-                phase_data={"data": result["data"], "summary": result["summary"]},
-                is_final=False,
+            updated = update_scan_phase(
+                db               = db,
+                scan_id          = req.scan_id,
+                user_id          = user.id,
+                phase            = 2,
+                phase_data       = {"data": result["data"], "summary": result["summary"]},
+                is_final         = is_final,
+                pipeline_mode    = mode,
             )
-            if not updated_scan:
+            if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
             result["scan_id"] = req.scan_id
+
+        result["pipeline_mode"]  = mode
+        result["terminal_phase"] = terminal
+        log.info(
+            "Asset Discovery complete — scan_id=%s pipeline=%s is_final=%s",
+            req.scan_id, mode, is_final,
+        )
         return result
+
     except HTTPException:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, "Phase 2 update failed or scan was not found.")
+            mark_scan_failed(db, req.scan_id, user.id, "Asset Discovery failed.")
         raise
     except Exception as exc:
         if req.scan_id:
             mark_scan_failed(db, req.scan_id, user.id, str(exc))
-        log.exception("Phase 2 scan failed for user_id=%s scan_id=%s", user.id, req.scan_id)
-        raise HTTPException(status_code=500, detail="Phase 2 scan failed.")
+        log.exception("Asset Discovery error — user=%s scan_id=%s", user.id, req.scan_id)
+        raise HTTPException(status_code=500, detail="Asset Discovery scan failed.")
 
 
-@app.post("/scan/phase3", tags=["Phase-Selective Scans"])
-async def scan_phase3(
-    req:  Phase3Request,
+@app.post("/scan/advanced-scan", tags=["Phase-Selective Scans"])
+async def scan_advanced_scan(
+    req:  AdvancedScanRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
-    """Phase 3+4: vulnerability audit. Marks scan complete in DB."""
+    """
+    Advanced Scan: Vulnerability Audit + Risk Scoring.
+
+    Only valid for `pipeline_mode` = "advanced".
+    Calling Advanced Scan with "basic" or "asset" is rejected (400).
+
+    Always marks the scan `status="complete"` and generates PDF reports.
+    """
+    mode = resolve_pipeline_mode(req.pipeline_mode)
+
+    if not is_phase_in_pipeline(mode, 3):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Advanced Scan is not part of the '{mode}' pipeline "
+                f"(phases: {PIPELINE_PHASES[mode]}). "
+                "Use the 'Advanced Scan' template to run vulnerability audits."
+            ),
+        )
+
     orch = _get_api()._orch
+
     try:
-        result = orch.run_phase3_only(req.hosts)
+        result = orch.run_advanced_scan_only(req.hosts)
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+            raise HTTPException(status_code=400, detail=result.get("error", "Advanced Scan failed"))
 
         report_paths = orch.generate_phase_report(result, "phase_selective_scan")
+
         if req.scan_id:
-            updated_scan = update_scan_phase(
-                db=db,
-                scan_id=req.scan_id,
-                user_id=user.id,
-                phase=3,
-                phase_data={"data": result["data"], "summary": result["summary"]},
-                is_final=True,
-                report_json_path=report_paths.get("json_pdf"),
-                report_xml_path=report_paths.get("xml_pdf"),
+            updated = update_scan_phase(
+                db               = db,
+                scan_id          = req.scan_id,
+                user_id          = user.id,
+                phase            = 3,
+                phase_data       = {"data": result["data"], "summary": result["summary"]},
+                is_final         = True,          # Advanced Scan always closes the scan
+                pipeline_mode    = mode,
+                report_json_path = report_paths.get("json_pdf"),
+                report_xml_path  = report_paths.get("xml_pdf"),
             )
-            if not updated_scan:
+            if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
             result["scan_id"] = req.scan_id
 
         if report_paths:
             result["reports"] = report_paths
+
+        result["pipeline_mode"]  = mode
+        result["terminal_phase"] = get_terminal_phase(mode)
+        log.info(
+            "Advanced Scan complete — scan_id=%s pipeline=%s (scan closed)",
+            req.scan_id, mode,
+        )
         return result
+
     except HTTPException:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, "Phase 3 update failed or scan was not found.")
+            mark_scan_failed(db, req.scan_id, user.id, "Advanced Scan failed.")
         raise
     except Exception as exc:
         if req.scan_id:
             mark_scan_failed(db, req.scan_id, user.id, str(exc))
-        log.exception("Phase 3 scan failed for user_id=%s scan_id=%s", user.id, req.scan_id)
-        raise HTTPException(status_code=500, detail="Phase 3 scan failed.")
+        log.exception("Advanced Scan error — user=%s scan_id=%s", user.id, req.scan_id)
+        raise HTTPException(status_code=500, detail="Advanced Scan failed.")
+
 
 @app.post("/scan/credentialed", tags=["Credentialed Scans"])
 async def scan_credentialed(
@@ -466,9 +507,8 @@ async def scan_credentialed(
     user: User    = Depends(get_current_user),
 ):
     """
-    🔐 Credentialed SSH Scan (Linux targets).
-    Logs into target via SSH, collects full system info, matches packages to CVEs.
-    Credentials are NEVER stored — used for SSH session only, then discarded (Option A).
+    SSH Credentialed Scan (Linux targets).
+    Credentials are NEVER stored — used for SSH session only, then discarded.
     """
     import time
 
@@ -554,35 +594,35 @@ async def scan_credentialed(
 
     report_result = {
         "success": True,
-        "data": {"credentialed": {"report": stored_report}},
+        "data":    {"credentialed": {"report": stored_report}},
         "summary": {
-            "scan_type": "credentialed",
-            "active_hosts": 1,
-            "package_count": len(packages),
-            "cve_count": len(cve_list),
+            "scan_type":      "credentialed",
+            "active_hosts":   1,
+            "package_count":  len(packages),
+            "cve_count":      len(cve_list),
             "critical_count": severity_counts["Critical"],
-            "high_count": severity_counts["High"],
-            "medium_count": severity_counts["Medium"],
-            "low_count": severity_counts["Low"],
-            "info_count": severity_counts["Info"],
-            "scan_duration": scan_duration,
+            "high_count":     severity_counts["High"],
+            "medium_count":   severity_counts["Medium"],
+            "low_count":      severity_counts["Low"],
+            "info_count":     severity_counts["Info"],
+            "scan_duration":  scan_duration,
         },
         "metadata": {"target": req.ip, "scan_type": "credentialed"},
     }
     report_paths = _get_api()._orch.generate_phase_report(report_result, "credentialed_scan")
 
     scan = create_completed_scan(
-        db=db,
-        user_id=user.id,
-        target=req.ip,
-        targets=[req.ip],
-        scan_type="credentialed",
-        phase=3,
-        results={"credentialed": {"report": stored_report}},
-        summary=report_result["summary"],
-        scan_duration=scan_duration,
-        report_json_path=report_paths.get("json_pdf"),
-        report_xml_path=report_paths.get("xml_pdf"),
+        db               = db,
+        user_id          = user.id,
+        target           = req.ip,
+        targets          = [req.ip],
+        scan_type        = "credentialed",
+        phase            = 3,
+        results          = {"credentialed": {"report": stored_report}},
+        summary          = report_result["summary"],
+        scan_duration    = scan_duration,
+        report_json_path = report_paths.get("json_pdf"),
+        report_xml_path  = report_paths.get("xml_pdf"),
     )
 
     return {
@@ -595,79 +635,26 @@ async def scan_credentialed(
 
 @app.post("/scan/phases", tags=["Phase-Selective Scans"])
 async def scan_phases(req: PhasesRequest, current_user: User = Depends(get_current_user)):
-    """
-    🚀 FLEXIBLE PHASE SELECTION: Run any combination of phases.
-    
-    This is a convenience endpoint that orchestrates multiple phases in sequence.
-    
-    **Phases parameter**:
-    - "1" → Phase 1 only (discovery)
-    - "1+2" → Phase 1 + 2 (discovery + ports)
-    - "1+2+3+4" → Full scan (all phases, same as /scan/host)
-    - "2" → Will run phase 1 first (prerequisite)
-    
-    Example request (Discovery only)::
-    
-        POST /scan/phases
-        {
-            "targets": ["192.168.1.0/24"],
-            "phases": "1",
-            "scan_type": "adaptive"
-        }
-    
-    Example request (Discovery + Port scan)::
-    
-        POST /scan/phases
-        {
-            "targets": ["192.168.1.0/24"],
-            "phases": "1+2",
-            "scan_type": "adaptive",
-            "intensity": "normal"
-        }
-    
-    Example request (Full scan)::
-    
-        POST /scan/phases
-        {
-            "targets": ["192.168.1.0/24"],
-            "phases": "1+2+3+4",
-            "scan_type": "adaptive",
-            "intensity": "deep"
-        }
-    
-    Response structure is same as individual phase endpoints.
-    """
-    orch = _get_api()._orch
+    """Convenience endpoint — run any combination of phases in one call."""
+    orch   = _get_api()._orch
     result = await orch.run_phases(req.targets, req.phases, req.scan_type, req.intensity)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
     return result
 
 
-# -- REPORTS DOWNLOAD ENDPOINT ------------------------------------------------
+# -- REPORTS DOWNLOAD ----------------------------------------------------------
 
-# Resolve the reports directory relative to this file so it works regardless
-# of where uvicorn is launched from.
 _REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 
 
 @app.get("/reports/download/{scan_id}", tags=["Reports"])
 def download_report(
     scan_id: int,
-    fmt: str = "JSON",          # "JSON" or "XML"
+    fmt:  str     = "JSON",
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
-    """
-    Download the PDF report for a completed scan.
-
-    - **scan_id**: the scan DB id returned by /scan/phase1 (stored in frontend as `scanId`)
-    - **fmt**: `JSON` (default) — tabular report, or `XML` — raw XML data report
-
-    The endpoint verifies that the scan belongs to the requesting user
-    and serves only the report explicitly attached to that scan record.
-    """
-    # Ownership check — 404 hides existence from other users
     scan = db.query(Scan).filter(
         Scan.id == scan_id,
         Scan.user_id == user.id,
@@ -686,73 +673,55 @@ def download_report(
             detail=f"No {fmt_upper} PDF report is attached to this scan.",
         )
 
-    pdf_path = os.path.abspath(pdf_path)
-    if not os.path.isfile(pdf_path):
-        raise HTTPException(
-            status_code=404,
-            detail=f"The stored {fmt_upper} report file could not be found on disk.",
-        )
-
+    pdf_path   = os.path.abspath(pdf_path)
     reports_root = os.path.abspath(_REPORTS_DIR)
+    if not os.path.isfile(pdf_path):
+        raise HTTPException(status_code=404, detail="Report file not found on disk.")
     if os.path.commonpath([reports_root, pdf_path]) != reports_root:
         raise HTTPException(status_code=400, detail="Stored report path is invalid.")
 
-    filename = os.path.basename(pdf_path)
     return FileResponse(
-        path=pdf_path,
-        media_type="application/pdf",
-        filename=filename,
+        path       = pdf_path,
+        media_type = "application/pdf",
+        filename   = os.path.basename(pdf_path),
     )
 
 
-# -- DOCUMENTATION ENDPOINT ---------------------------------------------------
+# -- DOCUMENTATION -------------------------------------------------------------
+
+@app.get("/api/pipeline-modes", tags=["Documentation"])
+async def pipeline_modes():
+    """
+    Lists all valid pipeline modes and their phase sequences.
+    Useful for frontend validation or debugging.
+    """
+    return {
+        "pipeline_modes": {
+            mode: {
+                "phases":         phases,
+                "terminal_phase": max(phases),
+                "description": {
+                    "basic":    "Host Discovery only. Scan is marked complete after Phase 1.",
+                    "asset":    "Host Discovery then Port Scanning. Marked complete after Phase 2.",
+                    "advanced": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
+                }[mode],
+            }
+            for mode, phases in PIPELINE_PHASES.items()
+        }
+    }
+
 
 @app.get("/api/workflow-example", tags=["Documentation"])
 async def workflow_example():
-    """
-    Example workflow for phase-selective scanning.
-    
-    This shows how a frontend should orchestrate the phases for optimal UX.
-    """
     return {
         "workflow": "Frontend-Driven Phase Orchestration",
-        "steps": [
-            {
-                "step": 1,
-                "endpoint": "POST /scan/phase1",
-                "purpose": "Discover all active hosts in subnet",
-                "payload": {
-                    "targets": ["192.168.1.0/24"],
-                    "scan_type": "adaptive"
-                },
-                "time": "~30-45 seconds for /24",
-                "output": "List of 254 hosts (active + inactive)",
-            },
-            {
-                "step": 2,
-                "endpoint": "POST /scan/phase2",
-                "purpose": "User selects 5 hosts and requests port scan",
-                "payload": {
-                    "hosts": "<!-- 5 hosts from step 1 output -->",
-                    "intensity": "normal"
-                },
-                "time": "~5-15 seconds",
-                "output": "Port info on 5 hosts",
-            },
-            {
-                "step": 3,
-                "endpoint": "POST /scan/phase3",
-                "purpose": "User clicks 'Deep Audit' on critical host",
-                "payload": {
-                    "hosts": "<!-- 1 host from step 2 output -->"
-                },
-                "time": "~30-60 seconds",
-                "output": "Full vulnerability report + risk scores",
-            },
-        ],
-        "total_time": "~75-120 seconds",
-        "note": "Compare to naive approach: running full scan on all 254 hosts = 20+ hours",
-        "benefit": "User gets progressive results, controls scope, much faster",
+        "pipeline_modes": {
+            "basic":    {"phases": [1], "description": "Host Discovery only"},
+            "asset":    {"phases": [1, 2], "description": "Discovery → Port Scan"},
+            "advanced": {"phases": [1, 2, 3, 4], "description": "Full pipeline"},
+        },
+        "note": "Each phase endpoint now validates that the incoming phase is "
+                "part of the declared pipeline_mode.",
     }
 
 

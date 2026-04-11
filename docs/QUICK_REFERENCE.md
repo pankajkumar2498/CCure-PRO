@@ -25,9 +25,9 @@ POST /auth/register             Register new user
 POST /auth/login                Login → returns JWT token
 
 # Network scan (unauthenticated — banner-based, ~30% CVE accuracy)
-POST /scan/phase1               Phase 1: host discovery
-POST /scan/phase2               Phase 2: port scanning
-POST /scan/phase3               Phase 3: vulnerability audit + risk scoring
+POST /scan/host-discovery      Host Discovery: discover active hosts
+POST /scan/asset-discovery     Asset Discovery: port scanning
+POST /scan/advanced-scan       Advanced Scan: vulnerability audit + risk scoring
 POST /scan/phases               Flexible: run any phase combination
 POST /scan/host                 Legacy: all 4 phases on single host
 POST /scan/range                Legacy: IP range discovery
@@ -74,13 +74,13 @@ Sections (all collected by default, can limit):
 
 ```bash
 # 1. Discover hosts
-POST /scan/phase1  {"targets": ["192.168.1.0/24"], "scan_type": "adaptive"}
+POST /scan/host-discovery  {"targets": ["192.168.1.0/24"], "scan_type": "adaptive"}
 
-# 2. Port scan selected hosts (use host objects from phase1 data[])
-POST /scan/phase2  {"hosts": [...], "intensity": "normal", "scan_id": 1}
+# 2. Port scan selected hosts (use host objects from host-discovery data[])
+POST /scan/asset-discovery  {"hosts": [...], "intensity": "normal", "scan_id": 1}
 
-# 3. Vulnerability audit (use host objects from phase2 data[])
-POST /scan/phase3  {"hosts": [...], "scan_id": 1}
+# 3. Vulnerability audit (use host objects from asset-discovery data[])
+POST /scan/advanced-scan  {"hosts": [...], "scan_id": 1}
 ```
 
 ---
@@ -90,9 +90,9 @@ POST /scan/phase3  {"hosts": [...], "scan_id": 1}
 | URL | Page | Purpose |
 |-----|------|---------|
 | `/scan` | Network Scan | Enter target subnet, start scan wizard |
-| `/scan/phase1` | Discovery Results | View discovered hosts, select for port scan |
-| `/scan/phase2` | Port Results | View open ports, select for deep audit |
-| `/scan/phase3` | Vulnerability Audit | CVEs, TLS, SSH, HTTP header audit |
+| `/scan/host-discovery` | Discovery Results | View discovered hosts, select for port scan |
+| `/scan/asset-discovery` | Port Results | View open ports, select for deep audit |
+| `/scan/advanced-scan` | Vulnerability Audit | CVEs, TLS, SSH, HTTP header audit |
 | `/scan/credentialed` | Credentialed Scan | SSH scan form — IP, username, password |
 | `/scan/credentialed/results` | SSH Results | Full system info, package CVEs, security audit |
 | `/history` | Scan History | Past scans with delete |

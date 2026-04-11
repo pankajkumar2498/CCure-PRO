@@ -289,6 +289,16 @@ body {
 .page-title { font-size:1.35rem; font-weight:700; color:var(--text); letter-spacing:-0.02em; }
 .page-subtitle { font-size:0.84rem; color:var(--text-muted); margin-top:4px; }
 
+.cred-page-inner { padding:14px 20px 24px; }
+.cred-back-row { margin-bottom:12px; }
+.cred-back-btn { padding: 8px 12px; border-radius: 8px; }
+
+.cred-form-card { padding:20px 24px; }
+.cred-section { padding:14px 0; }
+.cred-auth-toggle { margin-bottom:12px; }
+.cred-submit-row { padding-top:16px; }
+.cred-section-chip { padding:8px 10px; }
+
 /* ────────────────────────────────────────────────────────────────────────────
    AUTH PAGES (Login / Register)
    ────────────────────────────────────────────────────────────────────────── */
@@ -865,8 +875,29 @@ body {
 /* ────────────────────────────────────────────────────────────────────────────
    NEW SCAN PAGE
    ────────────────────────────────────────────────────────────────────────── */
-.new-scan-page { max-width: 860px; margin: 0 auto; }
-.ns-hero { text-align:center; padding:24px 0 20px; }
+.new-scan-page { width:100%; max-width:none; margin:0; }
+.ns-hero { position: relative; text-align:center; padding:24px 0 20px; }
+.ns-back-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ns-back-btn:hover {
+  background: rgba(15, 23, 42, 0.08);
+  border-color: rgba(15, 23, 42, 0.18);
+}
 .ns-title { font-size:1.6rem; font-weight:800; color:var(--text); letter-spacing:-0.03em; }
 .ns-sub   { font-size:0.9rem; color:var(--text-muted); margin-top:6px; }
 
@@ -1118,6 +1149,84 @@ body {
 
 .issue-list { padding-left:18px; margin-top:8px; display:flex; flex-direction:column; gap:3px; }
 .issue-list li { font-size:0.8rem; color:var(--text-muted); }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   MISSING CLASS ALIASES — fixes table and row rendering in Phase1Results
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Phase1Results uses .results-table-wrap / .results-table
+   but global CSS only defined .table-wrap / .data-table  */
+.results-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-white);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+.results-table th {
+  background: var(--bg-app);
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.results-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.results-table tr:last-child td { border-bottom: none; }
+
+/* Row state variants */
+.row--active  { transition: background 0.1s; cursor: pointer; }
+.row--active:hover { background: #f8fafc; }
+.row--inactive { opacity: 0.45; cursor: default; }
+
+/* status-dot variants used in Phase1Results (JSX uses --up/--down
+   but CSS only had .dot-active / .dot-inactive) */
+.status-dot--up   { background: var(--ok);  box-shadow: 0 0 0 2px rgba(34,197,94,0.2); }
+.status-dot--down { background: #cbd5e1; }
+
+/* .phase-action-bar used in Phase1Results footer — maps to .phase-footer style */
+.phase-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-top: 20px;
+}
+
+/* Small button variant used alongside .btn--ghost */
+.btn--sm { padding: 5px 11px; font-size: 0.78rem; }
+
+/* Pipeline badge shown in NewScan hero */
+.ns-pipeline-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(14,165,233,0.25);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
 /* ── Responsive ── */
 @media (max-width:768px) {

@@ -1,13 +1,20 @@
 /**
- * src/pages/scan/Phase1Results.jsx
- * Shows all discovered hosts from POST /scan/phase1.
- * User checks active hosts → "Scan Ports" → navigates to /scan/phase2.
+ * src/pages/scan/Phase1Results.jsx  [FIXED]
+ *
+ * ROOT-CAUSE FIXES:
+ *  1. Render-time navigate() removed → replaced with useEffect guard.
+ *     Calling navigate() during render triggers React's
+ *     "Cannot update a component while rendering a different component"
+ *     error, causing layout instability and potential infinite re-renders.
+ *  2. Guard `if (!phase1Hosts.length) return null` is kept as a pure
+ *     render guard only — no side-effects inside the conditional.
  */
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import AppLayout    from "../../components/layout/AppLayout";
-import ScanStepper  from "../../components/layout/ScanStepper";
-import { useScan }  from "../../context/ScanContext";
+import { useState, useEffect } from "react";
+import { useNavigate }         from "react-router-dom";
+import AppLayout               from "../../components/layout/AppLayout";
+import ScanStepper             from "../../components/layout/ScanStepper";
+import { useScan }             from "../../context/ScanContext";
+import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
 export default function Phase1Results() {
   const navigate = useNavigate();
@@ -15,20 +22,29 @@ export default function Phase1Results() {
     target, scanId,
     phase1Hosts, phase1Summary,
     setPhase2Hosts,
+    pipelineMode,
     saveStatus,
   } = useScan();
 
   const [selected, setSelected] = useState(new Set());
-  const [filter,   setFilter]   = useState("active"); // "active" | "all"
+  const [filter,   setFilter]   = useState("active");
+
+  // ── FIX 1: redirect in useEffect, never during render ──────────────────
+  useEffect(() => {
+    if (!phase1Hosts.length) {
+      navigate("/scan", { replace: true });
+    }
+  }, [phase1Hosts.length, navigate]);
+
+  // Pure render guard — no navigate() call here
+  if (!phase1Hosts.length) return null;
 
   const activeHosts  = phase1Hosts.filter(h => h.is_active);
   const displayHosts = filter === "active" ? activeHosts : phase1Hosts;
 
-  // Redirect if no data
-  if (!phase1Hosts.length) {
-    navigate("/scan", { replace: true });
-    return null;
-  }
+  // ── Pipeline logic ──────────────────────────────────────────────────────
+  const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2);
+  const nextPhase          = getNextPhase(pipelineMode, 1);
 
   const toggleAll = () =>
     selected.size === activeHosts.length
@@ -41,10 +57,11 @@ export default function Phase1Results() {
     setSelected(next);
   };
 
-  const proceed = () => {
+  const proceedToNextPhase = () => {
+    if (!canProceedToPhase2) return;
     const picked = phase1Hosts.filter(h => selected.has(h.ip_address));
     setPhase2Hosts(picked);
-    navigate("/scan/phase2");
+    navigate(nextPhase.route);
   };
 
   return (
@@ -53,7 +70,6 @@ export default function Phase1Results() {
 
       <div className="page-inner">
 
-        {/* Page header */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Discovery Results</h2>
@@ -67,7 +83,6 @@ export default function Phase1Results() {
           </button>
         </div>
 
-        {/* Summary bar */}
         {phase1Summary && (
           <div className="summary-bar">
             <span className="summary-item"><b>{phase1Summary.total_hosts}</b> Total</span>
@@ -80,7 +95,12 @@ export default function Phase1Results() {
           </div>
         )}
 
-        {/* Filter + select-all row */}
+        {!canProceedToPhase2 && (
+          <div className="alert alert--info" style={{ marginBottom: 16 }}>
+            ℹ Basic Network Scan complete. Host Discovery is the final phase for this scan type.
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           <div className="filter-tabs">
             {[
@@ -97,111 +117,77 @@ export default function Phase1Results() {
             ))}
           </div>
 
-          {activeHosts.length > 0 && (
-            <button
-              className="filter-tab"
-              onClick={toggleAll}
-              style={{ marginLeft: "auto" }}
-            >
+          {canProceedToPhase2 && activeHosts.length > 0 && (
+            <button className="btn btn--ghost btn--sm" onClick={toggleAll}>
               {selected.size === activeHosts.length ? "Deselect all" : "Select all active"}
             </button>
           )}
         </div>
 
-        {/* Host table */}
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="results-table-wrap">
+          <table className="results-table">
             <thead>
               <tr>
-                <th style={{ width: 36 }}>
-                  <input
-                    type="checkbox"
-                    checked={selected.size === activeHosts.length && activeHosts.length > 0}
-                    onChange={toggleAll}
-                  />
-                </th>
+                {canProceedToPhase2 && <th style={{ width: 36 }} />}
                 <th>IP Address</th>
                 <th>Hostname</th>
-                <th>MAC Address</th>
-                <th>Vendor</th>
                 <th>Status</th>
                 <th>Method</th>
-                <th>OS Guess</th>
-                <th>Confidence</th>
-                <th>RTT</th>
+                <th>Response</th>
+                <th>MAC</th>
+                <th>Vendor</th>
               </tr>
             </thead>
             <tbody>
               {displayHosts.map(h => (
                 <tr
                   key={h.ip_address}
-                  className={`tr-host ${!h.is_active ? "tr-inactive" : ""} ${selected.has(h.ip_address) ? "tr-selected" : ""}`}
-                  onClick={() => h.is_active && toggle(h.ip_address)}
+                  className={h.is_active ? "row--active" : "row--inactive"}
+                  onClick={() => canProceedToPhase2 && h.is_active && toggle(h.ip_address)}
+                  style={{ cursor: canProceedToPhase2 && h.is_active ? "pointer" : "default" }}
                 >
-                  <td onClick={e => e.stopPropagation()}>
-                    {h.is_active && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(h.ip_address)}
-                        onChange={() => toggle(h.ip_address)}
-                      />
-                    )}
-                  </td>
+                  {canProceedToPhase2 && (
+                    <td>
+                      {h.is_active && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(h.ip_address)}
+                          onChange={() => toggle(h.ip_address)}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      )}
+                    </td>
+                  )}
                   <td><code className="ip-code">{h.ip_address}</code></td>
-                  <td>{h.hostname && h.hostname !== "Unknown" ? h.hostname : <span className="muted">—</span>}</td>
+                  <td>{h.hostname || <span className="muted">—</span>}</td>
                   <td>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                      {h.mac_address && h.mac_address !== "N/A" ? h.mac_address : <span className="muted">—</span>}
-                    </span>
+                    <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                    {h.is_active ? "Active" : "Inactive"}
                   </td>
-                  <td>
-                    {h.vendor && h.vendor !== "N/A"
-                      ? <span className="muted small">{h.vendor}</span>
-                      : <span className="muted">—</span>}
-                  </td>
-                  <td>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span className={`status-dot ${h.is_active ? "dot-active" : "dot-inactive"}`} />
-                      <span style={{ fontSize: 13 }}>{h.status}</span>
-                    </span>
-                  </td>
-                  <td><span className="method-chip">{h.scan_method}</span></td>
-                  <td>
-                    {h.os_guess && h.os_guess !== "Unknown"
-                      ? <span style={{ fontSize: 13 }}>{h.os_guess}</span>
-                      : <span className="muted">—</span>}
-                  </td>
-                  <td>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                      {h.confidence !== "N/A" ? h.confidence : <span className="muted">—</span>}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                      {h.response_time_ms ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}
-                    </span>
-                  </td>
+                  <td>{h.discovery_method || <span className="muted">—</span>}</td>
+                  <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                  <td>{h.mac_address || <span className="muted">—</span>}</td>
+                  <td>{h.vendor || <span className="muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* Footer action */}
-        <div className="phase-footer">
-          <p className="muted" style={{ fontSize: 13 }}>
-            {selected.size === 0
-              ? "Select active hosts above to run port scanning."
-              : `${selected.size} host${selected.size > 1 ? "s" : ""} selected — ready for port scan.`}
-          </p>
-          <button
-            className="btn btn--primary"
-            onClick={proceed}
-            disabled={selected.size === 0}
-          >
-            Scan Ports on Selected →
-          </button>
-        </div>
+        {canProceedToPhase2 && (
+          <div className="phase-action-bar">
+            <p className="muted" style={{ fontSize: "0.85rem" }}>
+              Select active hosts to include in Port Scanning.
+            </p>
+            <button
+              className="btn btn--primary"
+              onClick={proceedToNextPhase}
+              disabled={selected.size === 0}
+            >
+              {nextPhase?.label ?? "Port Scan"} → ({selected.size} host{selected.size !== 1 ? "s" : ""})
+            </button>
+          </div>
+        )}
 
       </div>
     </AppLayout>

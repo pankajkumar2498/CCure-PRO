@@ -32,9 +32,9 @@ POST /scan/subnets           Sub-networks grouped by subnet, Phase 1 only
 
 ### Phase-Selective Endpoints
 ```
-POST /scan/phase1            Phase 1 only — Discovery
-POST /scan/phase2            Phase 2 only — Port Scanning
-POST /scan/phase3            Phase 3 + 4 — Vulnerability + Risk Scoring
+POST /scan/host-discovery    Host Discovery only — Discovery
+POST /scan/asset-discovery   Asset Discovery only — Port Scanning
+POST /scan/advanced-scan     Advanced Scan only — Vulnerability + Risk Scoring
 POST /scan/phases            Flexible — specify which phases to run
 ```
 
@@ -185,7 +185,7 @@ Authorization: Bearer <token>
 
 ## Phase-Selective Endpoint Details (unchanged)
 
-### POST /scan/phase1 — Discovery
+### POST /scan/host-discovery — Discovery
 
 **Request:**
 ```json
@@ -218,7 +218,7 @@ Scan types: `ping | arp | tcp | full | adaptive | stealth`
 }
 ```
 
-### POST /scan/phase2 — Port Scanning
+### POST /scan/asset-discovery — Port Scanning
 
 ```json
 {
@@ -230,7 +230,7 @@ Scan types: `ping | arp | tcp | full | adaptive | stealth`
 
 Intensities: `light | normal | deep`
 
-### POST /scan/phase3 — Vulnerability + Risk Scoring
+### POST /scan/advanced-scan — Vulnerability + Risk Scoring
 
 ```json
 {
@@ -283,7 +283,7 @@ curl -X POST http://localhost:8000/scan/credentialed \
   }'
 
 # Phase 1: Discover hosts
-curl -X POST http://localhost:8000/scan/phase1 \
+curl -X POST http://localhost:8000/scan/host-discovery \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{"targets": ["192.168.1.0/24"], "scan_type": "adaptive"}'
@@ -310,7 +310,7 @@ async function credentialedScan(ip, username, password) {
 
 // Unauthenticated workflow
 async function discover(targets) {
-  const res = await fetch(`${API}/scan/phase1`, {
+  const res = await fetch(`${API}/scan/host-discovery`, {
     method: 'POST', headers: hdrs,
     body: JSON.stringify({ targets, scan_type: 'adaptive' })
   });
@@ -324,9 +324,9 @@ async function discover(targets) {
 
 | Scan Type           | Target              | Time           |
 |---------------------|---------------------|----------------|
-| Phase 1 Discovery   | /24 subnet (254 hosts) | 30–60 seconds |
-| Phase 2 Port Scan   | 5 hosts, normal     | 8–15 seconds   |
-| Phase 3 Vuln Scan   | 1 host              | 30–90 seconds  |
+| Host Discovery      | /24 subnet (254 hosts) | 30–60 seconds |
+| Asset Discovery     | 5 hosts, normal     | 8–15 seconds   |
+| Advanced Scan       | 1 host              | 30–90 seconds  |
 | **Credentialed**    | **1 host**          | **15–45 seconds** |
 
 Credentialed scans are always single-host (SSH is inherently one machine at a time).
@@ -363,10 +363,10 @@ host_risk_level  string    "Critical" | "High" | "Medium" | "Low" | "Info"
 
 ## Tips
 
-- **Credentialed scan first, network scan second** — use `/scan/phase1` to find hosts, then pick one for a credentialed deep dive
+- **Credentialed scan first, network scan second** — use `/scan/host-discovery` to find hosts, then pick one for a credentialed deep dive
 - Use `sections: ["packages", "security"]` for a targeted package + CVE check without collecting everything
-- Phase 1 is fast — always run it first to get the host list before committing to deeper scans
-- Phase 3 is expensive — reserve for 1–3 critical hosts at a time
+- Host discovery is fast — always run it first to get the host list before committing to deeper scans
+- Advanced scan is expensive — reserve it for 1–3 critical hosts at a time
 - Interactive docs at `http://localhost:8000/docs` let you test all endpoints in the browser
 
 ---

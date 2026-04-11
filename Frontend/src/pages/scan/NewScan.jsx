@@ -1,13 +1,21 @@
 /**
  * src/pages/scan/NewScan.jsx
+ * ─────────────────────────────────────────────────────────────────────────────
  * Target input + scan method selector + Start button.
- * API: POST /scan/phase1 → { success, data, summary, scan_id }
- * On success → saves to ScanContext → navigates to /scan/phase1
+ *
+ * API: POST /scan/host-discovery → { success, data, summary, scan_id }
+ *
+ * CHANGE: Now reads `pipelineMode` from ScanContext and includes
+ * `phases` + `pipeline_mode` in the API payload so the backend knows
+ * exactly which phases to queue for this scan session.
+ *
+ * On success → saves Host Discovery data to ScanContext → navigates to /scan/host-discovery
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
 import { useScan } from "../../context/ScanContext";
+import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api         from "../../api/axiosInstance";
 
 const SCAN_TYPES = [
@@ -26,6 +34,7 @@ export default function NewScan() {
   const {
     target, setTarget,
     scanType, setScanType,
+    pipelineMode,                             // ← read from context (set by Dashboard)
     setPhase1Hosts, setPhase1Summary,
     setScanId, setSaveStatus, resetScan,
   } = useScan();
@@ -33,19 +42,36 @@ export default function NewScan() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
+  // Derive display info from the current pipeline
+  const pipeline = getScanPipeline(pipelineMode || "basic");
+
   const handleScan = async () => {
     if (!target.trim()) return;
-    setLoading(true); setError("");
-    resetScan();
-    setTarget(target.trim());
-    setScanType(scanType);
+    setLoading(true);
+    setError("");
     setSaveStatus("saving");
 
+    // NOTE: resetScan() was already called in Dashboard.handleCard before
+    // navigating here, so we only need to restore target + scanType.
+    setTarget(target.trim());
+    setScanType(scanType);
+
     try {
-      const { data } = await api.post("/scan/phase1", {
+      /**
+       * Build the payload with phases array so the backend knows the full
+       * pipeline for this scan session.
+       *
+       * Example payloads:
+       *   basic:    { phases: [1],       pipeline_mode: "basic",    targets: [...], scan_type: "..." }
+       *   asset:    { phases: [1, 2],    pipeline_mode: "asset",    targets: [...], scan_type: "..." }
+       *   advanced: { phases: [1, 2, 3, 4], pipeline_mode: "advanced", targets: [...], scan_type: "..." }
+       */
+      const payload = buildPhasePayload(pipelineMode || "basic", {
         targets:   target.split(",").map(t => t.trim()).filter(Boolean),
         scan_type: scanType,
       });
+
+      const { data } = await api.post("/scan/host-discovery", payload);
       if (!data.success) throw new Error(data.error || "Scan failed");
 
       setPhase1Hosts(data.data);
@@ -53,7 +79,7 @@ export default function NewScan() {
       setScanId(data.scan_id ?? null);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
-      navigate("/scan/phase1");
+      navigate("/scan/host-discovery");
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Scan failed");
       setSaveStatus("error");
@@ -70,9 +96,10 @@ export default function NewScan() {
 
           {/* Hero */}
           <div className="ns-hero">
-            <h1 className="ns-title">Network Intelligence Scan</h1>
+            <button className="ns-back-btn" onClick={() => navigate("/dashboard")}>← Back</button>
+            <h1 className="ns-title">{pipeline.label}</h1>
             <p className="ns-sub">
-              Enter a target to begin phase-selective discovery, port mapping, and vulnerability audit.
+              {pipeline.description}
             </p>
           </div>
 
@@ -136,19 +163,23 @@ export default function NewScan() {
             </button>
           </div>
 
-          {/* Info cards */}
+          {/* Info cards — dynamically show only active phases for this pipeline */}
           <div className="ns-info-grid">
             {[
-              { icon: "①", title: "Discovery",    desc: "Finds all live hosts using ARP, ICMP, or TCP probes."            },
-              { icon: "②", title: "Port Scan",    desc: "Maps open TCP services and grabs banners from selected hosts."    },
-              { icon: "③", title: "Vulnerability",desc: "Checks TLS, SSH, HTTP headers, CVE database, and risk scoring."  },
-            ].map(c => (
-              <div key={c.title} className="ns-info-card">
-                <span className="nic-icon">{c.icon}</span>
-                <h3 className="nic-title">{c.title}</h3>
-                <p className="nic-desc">{c.desc}</p>
-              </div>
-            ))}
+              { phase: 1, icon: "①", title: "Discovery",     desc: "Finds all live hosts using ARP, ICMP, or TCP probes."           },
+              { phase: 2, icon: "②", title: "Port Scan",     desc: "Maps open TCP services and grabs banners from selected hosts."   },
+              { phase: 3, icon: "③", title: "Vulnerability", desc: "Checks TLS, SSH, HTTP headers, CVE database, and risk scoring."  },
+              { phase: 4, icon: "④", title: "Risk Report",   desc: "Aggregates findings into a scored, exportable risk report."      },
+            ]
+              .filter(c => pipeline.phases.includes(c.phase))
+              .map(c => (
+                <div key={c.title} className="ns-info-card">
+                  <span className="nic-icon">{c.icon}</span>
+                  <h3 className="nic-title">{c.title}</h3>
+                  <p className="nic-desc">{c.desc}</p>
+                </div>
+              ))
+            }
           </div>
 
         </div>

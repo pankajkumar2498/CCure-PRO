@@ -1,6 +1,6 @@
 """
 scans/models.py
----------------
+───────────────────────────────────────────────────────────────────────────────
 Scan model — one row per scan session (spans up to 3 phases).
 
 results column stores a JSON blob shaped like:
@@ -9,6 +9,14 @@ results column stores a JSON blob shaped like:
         "phase2": { "data": [...], "summary": {...} },
         "phase3": { "data": [...], "summary": {...} }
     }
+
+Note: Internal database keys remain as "phase1", "phase2", "phase3" for backward compatibility,
+but API endpoints are now /scan/host-discovery, /scan/asset-discovery, /scan/advanced-scan.
+
+NEW COLUMN: `pipeline_mode`
+    Stores which scan template was selected: "basic" | "asset" | "advanced"
+    Used by the history page to display correct pipeline labels and
+    to know which phases are expected for a given scan.
 
 We reuse the same SQLite engine/Base/get_db from auth so every table
 lives in a single ccure_users.db file.
@@ -32,22 +40,25 @@ class Scan(Base):
     user_id       = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # What was scanned
-    target        = Column(String,  nullable=False)   # comma-joined original targets
-    targets_json  = Column(Text,    default="[]")     # original target array for exact reruns
+    target        = Column(String,  nullable=False)
+    targets_json  = Column(Text,    default="[]")
     scan_type     = Column(String,  default="adaptive")
 
+    # NEW: which dashboard template created this scan
+    pipeline_mode = Column(String,  default="basic")   # basic | asset | advanced
+
     # Progress tracking
-    phase         = Column(Integer, default=1)         # highest phase completed (1/2/3)
-    status        = Column(String,  default="running") # running | complete | failed
+    phase         = Column(Integer, default=1)          # highest phase completed
+    status        = Column(String,  default="running")  # running | complete | failed
 
-    # Cumulative results as JSON text
-    results       = Column(Text,    default="{}")      # { phase1:{}, phase2:{}, phase3:{} }
-    summary       = Column(Text,    default="{}")      # latest summary JSON
-    report_json_path = Column(String, nullable=True)
-    report_xml_path  = Column(String, nullable=True)
-    failure_reason   = Column(Text, nullable=True)
+    # Cumulative results
+    results          = Column(Text,    default="{}")
+    summary          = Column(Text,    default="{}")
+    report_json_path = Column(String,  nullable=True)
+    report_xml_path  = Column(String,  nullable=True)
+    failure_reason   = Column(Text,    nullable=True)
 
-    scan_duration = Column(Float,   default=0.0)       # seconds, cumulative
+    scan_duration = Column(Float,   default=0.0)
     is_archived   = Column(Boolean, default=False, nullable=False, index=True)
     archived_at   = Column(DateTime, nullable=True)
     is_deleted    = Column(Boolean, default=False, nullable=False, index=True)
@@ -84,10 +95,7 @@ class ScanPhaseResult(Base):
 def ensure_scan_schema():
     """
     Backfill newer scan columns for existing databases.
-
-    SQLAlchemy's create_all() will create missing tables, but it will not
-    alter an existing scans table. We add the archive/recycle-bin columns here so
-    current local databases keep working after the update.
+    Adds any missing columns safely without dropping existing data.
     """
     inspector = inspect(engine)
     if "scans" not in inspector.get_table_names():
@@ -111,6 +119,11 @@ def ensure_scan_schema():
             conn.execute(text("ALTER TABLE scans ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"))
         if "deleted_at" not in columns:
             conn.execute(text("ALTER TABLE scans ADD COLUMN deleted_at TIMESTAMP"))
+
+        # NEW: pipeline_mode column
+        if "pipeline_mode" not in columns:
+            conn.execute(text("ALTER TABLE scans ADD COLUMN pipeline_mode VARCHAR DEFAULT 'basic'"))
+
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scans_is_archived ON scans (is_archived)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scans_is_deleted ON scans (is_deleted)"))
         conn.execute(text(

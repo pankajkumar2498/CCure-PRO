@@ -1,17 +1,22 @@
 /**
- * src/pages/scan/Phase3Results.jsx
- * Runs POST /scan/phase3 on selected hosts.
- * Displays CVEs, risk scores, TLS, SSH, HTTP headers, SNMP, SMB.
- * Bottom: ExportPanel for JSON/CSV/PDF/Copy.
+ * src/pages/scan/Phase3Results.jsx  [FIXED]
+ *
+ * ROOT-CAUSE FIXES:
+ *  1. Render-time navigate() removed → replaced with useEffect guard.
+ *  2. pipelineMode is now read from context. For advanced scan, a
+ *     "Proceed to Risk Report →" CTA is shown after the audit runs.
+ *  3. Audit results (data.data) are saved to `setPhase3AuditResults`
+ *     in context so Phase4Results can access them without prop-drilling.
  */
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import AppLayout    from "../../components/layout/AppLayout";
-import ScanStepper  from "../../components/layout/ScanStepper";
-import RiskBadge    from "../../components/scan/RiskBadge";
-import ExportPanel  from "../../components/scan/ExportPanel";
-import { useScan }  from "../../context/ScanContext";
-import api          from "../../api/axiosInstance";
+import { useState, useEffect } from "react";
+import { useNavigate }          from "react-router-dom";
+import AppLayout                from "../../components/layout/AppLayout";
+import ScanStepper              from "../../components/layout/ScanStepper";
+import RiskBadge                from "../../components/scan/RiskBadge";
+import ExportPanel              from "../../components/scan/ExportPanel";
+import { useScan }              from "../../context/ScanContext";
+import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
+import api                      from "../../api/axiosInstance";
 
 const SEV_COLOR = {
   Critical: "#ff4d4d",
@@ -59,6 +64,8 @@ export default function Phase3Results() {
   const {
     phase3Results: hosts, scanId, target,
     setPhase3Summary,
+    setPhase3AuditResults,   // ← NEW: saves output to context for Phase4
+    pipelineMode,            // ← NEW: drive Phase4 CTA
     saveStatus, setSaveStatus,
     resetScan,
   } = useScan();
@@ -70,21 +77,36 @@ export default function Phase3Results() {
   const [error,      setError]      = useState("");
   const [hasScanned, setHasScanned] = useState(false);
 
-  if (!hosts.length) {
-    navigate("/scan/phase2", { replace: true });
-    return null;
-  }
+  // ── FIX 1: redirect in useEffect, never during render ──────────────────
+  useEffect(() => {
+    if (!hosts.length) {
+      navigate("/scan/asset-discovery", { replace: true });
+    }
+  }, [hosts.length, navigate]);
+
+  // Pure render guard
+  if (!hosts.length) return null;
+
+  // ── FIX 2: pipeline CTA for advanced scan ──────────────────────────────
+  const canProceedToPhase4 = isPhaseEnabled(pipelineMode, 4);
+  const nextPhase          = getNextPhase(pipelineMode, 3); // PHASES[4] or null
 
   const runScan = async () => {
     setLoading(true);
     setError(""); setResults([]); setSummary(null); setHasScanned(false);
     setSaveStatus("saving");
     try {
-      const { data } = await api.post("/scan/phase3", { hosts, scan_id: scanId });
+      const { data } = await api.post("/scan/advanced-scan", {
+        hosts,
+        scan_id:       scanId,
+        pipeline_mode: pipelineMode,
+      });
       if (!data.success) throw new Error(data.error || "Phase 3 failed");
       setResults(data.data);
       setSummary(data.summary);
       setPhase3Summary(data.summary);
+      // ── FIX 3: persist audit output so Phase4 can read it ────────────
+      setPhase3AuditResults(data.data);
       setExpanded(new Set(data.data.filter(h => h.is_active).map(h => h.ip_address)));
       setHasScanned(true);
       setSaveStatus("saved");
@@ -92,6 +114,7 @@ export default function Phase3Results() {
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Phase 3 failed");
       setSaveStatus("error");
+      setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setLoading(false);
     }
@@ -103,6 +126,11 @@ export default function Phase3Results() {
     setExpanded(n);
   };
 
+  const proceedToPhase4 = () => {
+    if (!canProceedToPhase4 || !nextPhase) return;
+    navigate(nextPhase.route); // "/scan/phase4"
+  };
+
   const activeResults = results.filter(h => h.is_active);
 
   return (
@@ -111,7 +139,6 @@ export default function Phase3Results() {
 
       <div className="page-inner">
 
-        {/* Page header */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Vulnerability Audit</h2>
@@ -121,14 +148,13 @@ export default function Phase3Results() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn--ghost" onClick={() => navigate("/scan/phase2")}>← Back</button>
+            <button className="btn btn--ghost" onClick={() => navigate("/scan/asset-discovery")}>← Back</button>
             <button className="btn btn--danger" onClick={runScan} disabled={loading}>
               {loading ? <><span className="btn-spinner" /> Auditing…</> : "⚡ Run Vulnerability Audit"}
             </button>
           </div>
         </div>
 
-        {/* Progress */}
         {loading && (
           <div className="progress-wrap">
             <div className="progress-bar"><div className="progress-fill" /></div>
@@ -140,7 +166,6 @@ export default function Phase3Results() {
 
         {error && <div className="alert alert--error">⚠ {error}</div>}
 
-        {/* Summary bar */}
         {summary && (
           <div className="summary-bar">
             <span className="summary-item"><b>{summary.total_hosts}</b> Audited</span>
@@ -153,7 +178,6 @@ export default function Phase3Results() {
           </div>
         )}
 
-        {/* Vulnerability cards */}
         {activeResults.map(h => {
           const riskLower = h.host_risk_level?.toLowerCase() || "info";
           const isOpen    = expanded.has(h.ip_address);
@@ -161,7 +185,6 @@ export default function Phase3Results() {
           return (
             <div key={h.ip_address} className={`vuln-card vuln-card--${riskLower}`}>
 
-              {/* Card header */}
               <div className="vuln-card-header" onClick={() => toggleExpand(h.ip_address)}>
                 <div className="vuln-card-title">
                   <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{h.ip_address}</code>
@@ -186,11 +209,9 @@ export default function Phase3Results() {
                 </div>
               </div>
 
-              {/* Card body */}
               {isOpen && (
                 <div className="vuln-card-body">
 
-                  {/* Risk bar */}
                   {h.host_risk_score > 0 && (
                     <div style={{ padding: "12px 0 8px" }}>
                       <div className="risk-bar-wrap">
@@ -205,7 +226,6 @@ export default function Phase3Results() {
                     </div>
                   )}
 
-                  {/* CVEs */}
                   {h.cves?.length > 0 && (
                     <AuditSection title={`⚠ CVE Findings (${h.cves.length})`}>
                       <div className="cve-list">
@@ -232,7 +252,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* Open ports */}
                   {h.open_ports?.length > 0 && (
                     <AuditSection title="🔌 Open Ports">
                       <div className="port-pills">
@@ -249,7 +268,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* TLS */}
                   {h.tls_info?.enabled && (
                     <AuditSection title="🔒 TLS / SSL Certificate">
                       <div className="kv-grid">
@@ -270,7 +288,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* SSH */}
                   {h.ssh_info && Object.keys(h.ssh_info).length > 0 && (
                     <AuditSection title="🖥 SSH">
                       <div className="kv-grid">
@@ -280,7 +297,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* HTTP */}
                   {h.http_audit?.status_code > 0 && (
                     <AuditSection title="🌐 HTTP Security Headers">
                       <div className="kv-grid">
@@ -300,7 +316,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* SNMP */}
                   {h.snmp_info && Object.keys(h.snmp_info).length > 0 && (
                     <AuditSection title="📡 SNMP">
                       <div className="kv-grid">
@@ -309,7 +324,6 @@ export default function Phase3Results() {
                     </AuditSection>
                   )}
 
-                  {/* SMB */}
                   {h.smb_info && Object.keys(h.smb_info).length > 0 && (
                     <AuditSection title="🗂 SMB / NetBIOS">
                       <div className="kv-grid">
@@ -324,23 +338,35 @@ export default function Phase3Results() {
           );
         })}
 
-        {/* Export + footer */}
         {hasScanned && (
           <>
             <ExportPanel results={results} summary={summary} scanId={scanId} target={target} />
-            <div className="phase-footer" style={{ marginTop: 8 }}>
-              <span className="muted" style={{ fontSize: 13 }}>
-                Audit complete — results saved to history.
-              </span>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button className="btn btn--ghost" onClick={() => navigate("/history")}>
-                  View History
-                </button>
-                <button className="btn btn--primary" onClick={() => { resetScan(); navigate("/scan"); }}>
-                  ↺ New Scan
+
+            {/* ── FIX 2: Phase 4 CTA for Advanced Scan ───────────────── */}
+            {canProceedToPhase4 ? (
+              <div className="phase-footer" style={{ marginTop: 8 }}>
+                <p className="muted" style={{ fontSize: 13 }}>
+                  Vulnerability audit complete. Generate the full Risk Report to finish the pipeline.
+                </p>
+                <button className="btn btn--primary" onClick={proceedToPhase4}>
+                  {nextPhase?.label ?? "Risk Report"} →
                 </button>
               </div>
-            </div>
+            ) : (
+              <div className="phase-footer" style={{ marginTop: 8 }}>
+                <span className="muted" style={{ fontSize: 13 }}>
+                  Audit complete — results saved to history.
+                </span>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn btn--ghost" onClick={() => navigate("/history")}>
+                    View History
+                  </button>
+                  <button className="btn btn--primary" onClick={() => { resetScan(); navigate("/scan"); }}>
+                    ↺ New Scan
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 

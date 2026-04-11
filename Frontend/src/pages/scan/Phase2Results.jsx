@@ -1,14 +1,18 @@
 /**
- * src/pages/scan/Phase2Results.jsx
- * Runs POST /scan/phase2 on selected hosts, displays port results.
- * User selects hosts for deep audit → "Vulnerability Audit" → /scan/phase3.
+ * src/pages/scan/Phase2Results.jsx  [FIXED]
+ *
+ * ROOT-CAUSE FIXES:
+ *  1. Render-time navigate() removed → replaced with useEffect guard.
+ *  2. catch block now clears saveStatus after a delay (was permanently
+ *     stuck on "error" — no setTimeout present in original code).
  */
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import AppLayout    from "../../components/layout/AppLayout";
-import ScanStepper  from "../../components/layout/ScanStepper";
-import { useScan }  from "../../context/ScanContext";
-import api          from "../../api/axiosInstance";
+import { useState, useEffect } from "react";
+import { useNavigate }         from "react-router-dom";
+import AppLayout               from "../../components/layout/AppLayout";
+import ScanStepper             from "../../components/layout/ScanStepper";
+import { useScan }             from "../../context/ScanContext";
+import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
+import api                     from "../../api/axiosInstance";
 
 const INTENSITIES = ["light", "normal", "deep"];
 
@@ -27,6 +31,7 @@ export default function Phase2Results() {
     setPhase2Hosts: setHosts,
     setPhase2Summary,
     setPhase3Results: setP3,
+    pipelineMode,
     saveStatus, setSaveStatus,
   } = useScan();
 
@@ -39,10 +44,19 @@ export default function Phase2Results() {
   const [error,      setError]      = useState("");
   const [hasScanned, setHasScanned] = useState(false);
 
-  if (!hosts.length) {
-    navigate("/scan/phase1", { replace: true });
-    return null;
-  }
+  // ── FIX 1: redirect in useEffect, never during render ──────────────────
+  useEffect(() => {
+    if (!hosts.length) {
+      navigate("/scan/host-discovery", { replace: true });
+    }
+  }, [hosts.length, navigate]);
+
+  // Pure render guard
+  if (!hosts.length) return null;
+
+  // ── Pipeline logic ──────────────────────────────────────────────────────
+  const canProceedToPhase3 = isPhaseEnabled(pipelineMode, 3);
+  const nextPhase          = getNextPhase(pipelineMode, 2);
 
   const runScan = async () => {
     setLoading(true);
@@ -51,8 +65,11 @@ export default function Phase2Results() {
     setHasScanned(false);
     setSaveStatus("saving");
     try {
-      const { data } = await api.post("/scan/phase2", {
-        hosts, intensity, scan_id: scanId,
+      const { data } = await api.post("/scan/asset-discovery", {
+        hosts,
+        intensity,
+        scan_id:       scanId,
+        pipeline_mode: pipelineMode,
       });
       if (!data.success) throw new Error(data.error || "Phase 2 failed");
       setResults(data.data);
@@ -64,6 +81,8 @@ export default function Phase2Results() {
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Phase 2 failed");
       setSaveStatus("error");
+      // ── FIX 2: clear error save-status after delay (was missing) ──────
+      setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setLoading(false);
     }
@@ -72,9 +91,10 @@ export default function Phase2Results() {
   const toggle       = ip => { const n = new Set(selected); n.has(ip) ? n.delete(ip) : n.add(ip); setSelected(n); };
   const toggleExpand = ip => { const n = new Set(expanded); n.has(ip) ? n.delete(ip) : n.add(ip); setExpanded(n); };
 
-  const proceed = () => {
+  const proceedToNextPhase = () => {
+    if (!canProceedToPhase3 || !nextPhase) return;
     setP3(results.filter(h => selected.has(h.ip_address)));
-    navigate("/scan/phase3");
+    navigate(nextPhase.route);
   };
 
   const activeResults = results.filter(h => h.is_active);
@@ -85,7 +105,6 @@ export default function Phase2Results() {
 
       <div className="page-inner">
 
-        {/* Page header */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Port Scan</h2>
@@ -95,7 +114,6 @@ export default function Phase2Results() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {/* Intensity */}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Intensity</span>
               <div className="filter-tabs">
@@ -111,14 +129,13 @@ export default function Phase2Results() {
                 ))}
               </div>
             </div>
-            <button className="btn btn--ghost" onClick={() => navigate("/scan/phase1")}>← Back</button>
+            <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
             <button className="btn btn--primary" onClick={runScan} disabled={loading}>
               {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
             </button>
           </div>
         </div>
 
-        {/* Target chips */}
         <div className="host-chip-row">
           {hosts.map(h => (
             <span key={h.ip_address} className="host-chip">
@@ -128,7 +145,6 @@ export default function Phase2Results() {
           ))}
         </div>
 
-        {/* Progress */}
         {loading && (
           <div className="progress-wrap">
             <div className="progress-bar"><div className="progress-fill" /></div>
@@ -140,7 +156,6 @@ export default function Phase2Results() {
 
         {error && <div className="alert alert--error">⚠ {error}</div>}
 
-        {/* Summary bar */}
         {summary && (
           <div className="summary-bar">
             <span className="summary-item"><b>{summary.total_hosts}</b> Hosts</span>
@@ -150,7 +165,12 @@ export default function Phase2Results() {
           </div>
         )}
 
-        {/* Empty state */}
+        {hasScanned && !canProceedToPhase3 && (
+          <div className="alert alert--info" style={{ marginBottom: 16 }}>
+            ℹ Asset Discovery complete. Port Scanning is the final phase for this scan type.
+          </div>
+        )}
+
         {hasScanned && activeResults.length === 0 && (
           <div className="empty-state">
             <span className="empty-state-icon">🔍</span>
@@ -158,7 +178,6 @@ export default function Phase2Results() {
           </div>
         )}
 
-        {/* Host cards */}
         {activeResults.map(h => {
           const portCount  = h.open_ports?.length || 0;
           const critPorts  = h.open_ports?.filter(p => p.risk === "Critical").length || 0;
@@ -170,7 +189,6 @@ export default function Phase2Results() {
               key={h.ip_address}
               className={`host-card ${isSelected ? "host-card--selected" : ""}`}
             >
-              {/* Card header */}
               <div className="host-card-header" onClick={() => toggle(h.ip_address)}>
                 <input
                   type="checkbox"
@@ -214,7 +232,6 @@ export default function Phase2Results() {
                 </button>
               </div>
 
-              {/* Port table */}
               {isExpanded && (
                 <div className="host-card-body">
                   {h.open_ports?.length > 0 ? (
@@ -265,16 +282,15 @@ export default function Phase2Results() {
           );
         })}
 
-        {/* Footer */}
-        {hasScanned && (
+        {hasScanned && canProceedToPhase3 && (
           <div className="phase-footer">
             <p className="muted" style={{ fontSize: 13 }}>
               {selected.size === 0
                 ? "Select hosts above to run a deep vulnerability audit."
                 : `${selected.size} host${selected.size > 1 ? "s" : ""} selected for deep audit.`}
             </p>
-            <button className="btn btn--danger" onClick={proceed} disabled={selected.size === 0}>
-              Deep Vulnerability Audit →
+            <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selected.size === 0}>
+              {nextPhase?.label ?? "Vulnerability Audit"} →
             </button>
           </div>
         )}

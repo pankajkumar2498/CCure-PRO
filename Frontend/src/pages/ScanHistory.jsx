@@ -5,7 +5,7 @@
  *   • View detail modal (phases / credentialed)
  *   • Re-run scan (loops back into wizard)
  *   • Delete scan
- * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/phase1 (re-run)
+ * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/host-discovery (re-run)
  */
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -296,7 +296,7 @@ export default function ScanHistory() {
       const st = scan.scan_type || "adaptive";
       const targets = getStoredTargets(scan);
 
-      const { data } = await api.post("/scan/phase1", {
+      const { data } = await api.post("/scan/host-discovery", {
         targets,
         scan_type: st,
       });
@@ -308,7 +308,7 @@ export default function ScanHistory() {
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
-      navigate("/scan/phase1");
+      navigate("/scan/host-discovery");
     } catch (err) {
       alert("Re-run failed: " + (err.response?.data?.detail || err.message));
     }

@@ -122,9 +122,9 @@ CLI / FastAPI / Code   │       HostDiscoveryAPI        │   api/host_discover
                                       │
                        ┌──────────────▼────────────────┐
                        │       ScanOrchestrator         │   orchestrator/scan_orchestrator.py
-                       │  run_phase1_only()  (NEW)      │
-                       │  run_phase2_only()  (NEW)      │
-                       │  run_phase3_only()  (NEW)      │
+                       │  run_host_discovery_only()  (NEW)      │
+                       │  run_asset_discovery_only()  (NEW)      │
+                       │  run_advanced_scan_only()  (NEW)      │
                        │  run_phases()       (NEW)      │
                        └──┬────────┬──────────┬────────┘
                           │        │           │
@@ -266,29 +266,29 @@ The API now supports **frontend-orchestrated, phase-selective scanning** — the
 ```python
 # These are added to ScanOrchestrator (scan_orchestrator.py)
 
-orchestrator.run_phase1_only(targets, scan_type)          # Discovery only
-orchestrator.run_phase2_only(hosts, intensity)            # Port scan selected hosts
-orchestrator.run_phase3_only(hosts)                       # Vulnerability scan selected hosts
-orchestrator.run_phases(targets, phases, scan_type, intensity)  # Flexible combinations
+orchestrator.run_host_discovery_only(targets, scan_type)          # Discovery only
+orchestrator.run_asset_discovery_only(hosts, intensity)            # Port scan selected hosts
+orchestrator.run_advanced_scan_only(hosts)                         # Vulnerability scan selected hosts
+orchestrator.run_phases(targets, phases, scan_type, intensity)     # Flexible combinations
 ```
 
 ### New API Endpoints
 
 ```
-POST /scan/phase1     →  Discovery only
-POST /scan/phase2     →  Port scan (pass hosts from phase1 output)
-POST /scan/phase3     →  Vulnerability + risk scoring (pass hosts from phase2 output)
-POST /scan/phases     →  Flexible: specify "1", "1+2", or "1+2+3+4"
+POST /scan/host-discovery     →  Discovery only
+POST /scan/asset-discovery    →  Port scan (pass hosts from host-discovery output)
+POST /scan/advanced-scan      →  Vulnerability + risk scoring (pass hosts from asset-discovery output)
+POST /scan/phases             →  Flexible: specify "1", "1+2", or "1+2+3+4"
 ```
 
 ### Typical Frontend Workflow
 
 ```
-1. POST /scan/phase1  →  254 hosts discovered (45 active) in 45s
+1. POST /scan/host-discovery  →  254 hosts discovered (45 active) in 45s
    User selects 5 hosts they care about
-2. POST /scan/phase2  →  Open ports on 5 hosts in 10s
+2. POST /scan/asset-discovery  →  Open ports on 5 hosts in 10s
    User identifies 1 critical host
-3. POST /scan/phase3  →  CVEs + risk score on 1 host in 45s
+3. POST /scan/advanced-scan  →  CVEs + risk score on 1 host in 45s
 ```
 
 ### CORS Configuration

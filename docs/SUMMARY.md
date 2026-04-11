@@ -22,9 +22,9 @@ CCure Audit PRO is a full-stack network vulnerability scanner with:
 ### Scan Pipeline (Network)
 
 ```
-Phase 1 — Discovery     → /scan/phase1  → finds active hosts on subnet
-Phase 2 — Port Scan     → /scan/phase2  → scans selected hosts for open ports
-Phase 3 — Vuln Audit    → /scan/phase3  → CVEs, TLS, SSH, HTTP headers, risk score
+Phase 1 — Discovery     → /scan/host-discovery  → finds active hosts on subnet
+Phase 2 — Port Scan     → /scan/asset-discovery  → scans selected hosts for open ports
+Phase 3 — Vuln Audit    → /scan/advanced-scan  → CVEs, TLS, SSH, HTTP headers, risk score
 ```
 
 ### Credentialed Scan Pipeline (NEW)

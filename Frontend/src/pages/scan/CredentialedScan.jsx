@@ -87,43 +87,15 @@ export default function CredentialedScan() {
 
   return (
     <AppLayout pageTitle="Credentialed Scan">
-      <div className="page-inner">
+      <div className="page-inner cred-page-inner">
 
-        {/* Page header */}
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">🔐 Credentialed Scan</h2>
-            <p className="page-subtitle">
-              SSH into a Linux host for exact OS, package versions, and ~90% accurate CVE matching.
-              Credentials are <strong>never stored</strong> — used only during the scan session.
-            </p>
-          </div>
-          <button className="btn btn--ghost" onClick={() => navigate("/scan")}>
-            ← Network Scan
+        <div className="cred-back-row">
+          <button className="btn btn--ghost cred-back-btn" onClick={() => navigate("/dashboard") }>
+            ← Back
           </button>
         </div>
 
-        {/* Accuracy callout */}
-        <div className="cred-callout">
-          <div className="cred-callout-row">
-            <div className="cred-callout-stat">
-              <span className="cred-stat-num" style={{ color: "var(--warn)" }}>~30%</span>
-              <span className="cred-stat-label">Unauthenticated<br />CVE accuracy</span>
-            </div>
-            <div className="cred-callout-arrow">→</div>
-            <div className="cred-callout-stat">
-              <span className="cred-stat-num" style={{ color: "var(--ok)" }}>~90%</span>
-              <span className="cred-stat-label">Credentialed<br />CVE accuracy</span>
-            </div>
-            <div className="cred-callout-divider" />
-            <div className="cred-callout-detail">
-              <div>✓ Exact kernel version</div>
-              <div>✓ Exact package versions from dpkg/rpm</div>
-              <div>✓ Running processes &amp; services</div>
-              <div>✓ Security audit (SUID, sudo, cron)</div>
-            </div>
-          </div>
-        </div>
+
 
         {/* Form card */}
         <div className="cred-form-card">

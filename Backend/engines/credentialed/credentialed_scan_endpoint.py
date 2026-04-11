@@ -12,7 +12,7 @@ HOW TO INTEGRATE:
    existing request models section.
 
 3. Copy the @app.post("/scan/credentialed") route into main.py
-   (after the existing /scan/phase3 route is a good spot).
+   (after the existing /scan/advanced-scan route is a good spot).
 
 4. Add `paramiko==3.4.0` to requirements.txt.
 
@@ -33,7 +33,7 @@ from engines.credentialed.vuln_matcher  import VulnMatcher
 
 # ============================================================
 # BLOCK 2 — Add this Pydantic model to main.py
-# (after the existing Phase3Request model)
+# (after the existing AdvancedScanRequest model)
 # ============================================================
 
 MODEL_TO_ADD = '''
@@ -74,7 +74,7 @@ class CredentialedScanRequest(BaseModel):
 
 # ============================================================
 # BLOCK 3 — Add this route to main.py
-# (after the existing /scan/phase3 route)
+# (after the existing /scan/advanced-scan route)
 # ============================================================
 
 ROUTE_TO_ADD = '''

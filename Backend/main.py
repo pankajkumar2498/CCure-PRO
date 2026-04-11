@@ -28,7 +28,6 @@ ENDPOINT GROUPS:
    POST  /scan/phases              -> Flexible phase combination
 """
 
-import glob
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -46,7 +45,12 @@ from auth.models import create_tables, User, get_db
 from auth.dependencies import get_current_user
 from scans.router import router as scans_router
 from scans.models import Scan, ensure_scan_schema
-from scans.db_helpers import create_scan, create_completed_scan, update_scan_phase
+from scans.db_helpers import (
+    create_scan,
+    create_completed_scan,
+    mark_scan_failed,
+    update_scan_phase,
+)
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
 from engines.credentialed.linux_collector import LinuxCollector
 from engines.credentialed.vuln_matcher    import VulnMatcher
@@ -81,19 +85,24 @@ app = FastAPI(
 )
 
 # -- CORS Configuration --------------------------------------------------------
-# IMPORTANT: Update these for your frontend URL
+_default_origins = [
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:5173",
+]
+_configured_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
+allow_origins = [
+    origin.strip()
+    for origin in (_configured_origins.split(",") if _configured_origins else _default_origins)
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",      # React dev server
-        "http://localhost:8080",      # Vue dev server
-        "http://localhost:5173",      # Vite dev server
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:5173",
-        # Add your production domain here
-        # "https://yourdomain.com",
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -363,6 +372,7 @@ async def scan_phase1(
         db        = db,
         user_id   = user.id,
         target    = target_str,
+        targets   = req.targets,
         scan_type = req.scan_type,
         phase1_data = {"data": result["data"], "summary": result["summary"]},
     )
@@ -377,23 +387,34 @@ async def scan_phase2(
     user: User    = Depends(get_current_user),
 ):
     """Phase 2: port scan. Updates DB scan record if scan_id provided."""
-    orch   = _get_api()._orch
-    result = orch.run_phase2_only(req.hosts, req.intensity)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+    orch = _get_api()._orch
+    try:
+        result = orch.run_phase2_only(req.hosts, req.intensity)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
 
-    # ── Update DB ──────────────────────────────────────────────────────────
-    if req.scan_id:
-        update_scan_phase(
-            db         = db,
-            scan_id    = req.scan_id,
-            user_id    = user.id,
-            phase      = 2,
-            phase_data = {"data": result["data"], "summary": result["summary"]},
-            is_final   = False,
-        )
-        result["scan_id"] = req.scan_id
-    return result
+        if req.scan_id:
+            updated_scan = update_scan_phase(
+                db=db,
+                scan_id=req.scan_id,
+                user_id=user.id,
+                phase=2,
+                phase_data={"data": result["data"], "summary": result["summary"]},
+                is_final=False,
+            )
+            if not updated_scan:
+                raise HTTPException(status_code=404, detail="Scan not found.")
+            result["scan_id"] = req.scan_id
+        return result
+    except HTTPException:
+        if req.scan_id:
+            mark_scan_failed(db, req.scan_id, user.id, "Phase 2 update failed or scan was not found.")
+        raise
+    except Exception as exc:
+        if req.scan_id:
+            mark_scan_failed(db, req.scan_id, user.id, str(exc))
+        log.exception("Phase 2 scan failed for user_id=%s scan_id=%s", user.id, req.scan_id)
+        raise HTTPException(status_code=500, detail="Phase 2 scan failed.")
 
 
 @app.post("/scan/phase3", tags=["Phase-Selective Scans"])
@@ -403,23 +424,40 @@ async def scan_phase3(
     user: User    = Depends(get_current_user),
 ):
     """Phase 3+4: vulnerability audit. Marks scan complete in DB."""
-    orch   = _get_api()._orch
-    result = orch.run_phase3_only(req.hosts)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
+    orch = _get_api()._orch
+    try:
+        result = orch.run_phase3_only(req.hosts)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Scan failed"))
 
-    # ── Update DB — mark complete ──────────────────────────────────────────
-    if req.scan_id:
-        update_scan_phase(
-            db         = db,
-            scan_id    = req.scan_id,
-            user_id    = user.id,
-            phase      = 3,
-            phase_data = {"data": result["data"], "summary": result["summary"]},
-            is_final   = True,
-        )
-        result["scan_id"] = req.scan_id
-    return result
+        report_paths = orch.generate_phase_report(result, "phase_selective_scan")
+        if req.scan_id:
+            updated_scan = update_scan_phase(
+                db=db,
+                scan_id=req.scan_id,
+                user_id=user.id,
+                phase=3,
+                phase_data={"data": result["data"], "summary": result["summary"]},
+                is_final=True,
+                report_json_path=report_paths.get("json_pdf"),
+                report_xml_path=report_paths.get("xml_pdf"),
+            )
+            if not updated_scan:
+                raise HTTPException(status_code=404, detail="Scan not found.")
+            result["scan_id"] = req.scan_id
+
+        if report_paths:
+            result["reports"] = report_paths
+        return result
+    except HTTPException:
+        if req.scan_id:
+            mark_scan_failed(db, req.scan_id, user.id, "Phase 3 update failed or scan was not found.")
+        raise
+    except Exception as exc:
+        if req.scan_id:
+            mark_scan_failed(db, req.scan_id, user.id, str(exc))
+        log.exception("Phase 3 scan failed for user_id=%s scan_id=%s", user.id, req.scan_id)
+        raise HTTPException(status_code=500, detail="Phase 3 scan failed.")
 
 @app.post("/scan/credentialed", tags=["Credentialed Scans"])
 async def scan_credentialed(
@@ -514,26 +552,37 @@ async def scan_credentialed(
         "scan_duration":           scan_duration,
     }
 
-    scan = create_completed_scan(
-        db            = db,
-        user_id       = user.id,
-        target        = req.ip,
-        scan_type     = "credentialed",
-        phase         = 3,
-        results       = {"credentialed": {"report": stored_report}},
-        summary       = {
-            "scan_type":      "credentialed",
-            "active_hosts":   1,
-            "package_count":  len(packages),
-            "cve_count":      len(cve_list),
+    report_result = {
+        "success": True,
+        "data": {"credentialed": {"report": stored_report}},
+        "summary": {
+            "scan_type": "credentialed",
+            "active_hosts": 1,
+            "package_count": len(packages),
+            "cve_count": len(cve_list),
             "critical_count": severity_counts["Critical"],
-            "high_count":     severity_counts["High"],
-            "medium_count":   severity_counts["Medium"],
-            "low_count":      severity_counts["Low"],
-            "info_count":     severity_counts["Info"],
-            "scan_duration":  scan_duration,
+            "high_count": severity_counts["High"],
+            "medium_count": severity_counts["Medium"],
+            "low_count": severity_counts["Low"],
+            "info_count": severity_counts["Info"],
+            "scan_duration": scan_duration,
         },
-        scan_duration = scan_duration,
+        "metadata": {"target": req.ip, "scan_type": "credentialed"},
+    }
+    report_paths = _get_api()._orch.generate_phase_report(report_result, "credentialed_scan")
+
+    scan = create_completed_scan(
+        db=db,
+        user_id=user.id,
+        target=req.ip,
+        targets=[req.ip],
+        scan_type="credentialed",
+        phase=3,
+        results={"credentialed": {"report": stored_report}},
+        summary=report_result["summary"],
+        scan_duration=scan_duration,
+        report_json_path=report_paths.get("json_pdf"),
+        report_xml_path=report_paths.get("xml_pdf"),
     )
 
     return {
@@ -615,8 +664,8 @@ def download_report(
     - **scan_id**: the scan DB id returned by /scan/phase1 (stored in frontend as `scanId`)
     - **fmt**: `JSON` (default) — tabular report, or `XML` — raw XML data report
 
-    The endpoint verifies that the scan belongs to the requesting user,
-    then serves the most recently generated matching PDF from `reports/`.
+    The endpoint verifies that the scan belongs to the requesting user
+    and serves only the report explicitly attached to that scan record.
     """
     # Ownership check — 404 hides existence from other users
     scan = db.query(Scan).filter(
@@ -630,21 +679,24 @@ def download_report(
     if fmt_upper not in ("JSON", "XML"):
         raise HTTPException(status_code=400, detail="fmt must be 'JSON' or 'XML'.")
 
-    # Find the most recently modified PDF that matches the format suffix
-    pattern = os.path.join(_REPORTS_DIR, f"*_{fmt_upper}.pdf")
-    matches = sorted(
-        glob.glob(pattern),
-        key=os.path.getmtime,
-        reverse=True,
-    )
-
-    if not matches:
+    pdf_path = scan.report_json_path if fmt_upper == "JSON" else scan.report_xml_path
+    if not pdf_path:
         raise HTTPException(
             status_code=404,
-            detail=f"No {fmt_upper} PDF report found yet. Complete a scan first.",
+            detail=f"No {fmt_upper} PDF report is attached to this scan.",
         )
 
-    pdf_path = matches[0]
+    pdf_path = os.path.abspath(pdf_path)
+    if not os.path.isfile(pdf_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"The stored {fmt_upper} report file could not be found on disk.",
+        )
+
+    reports_root = os.path.abspath(_REPORTS_DIR)
+    if os.path.commonpath([reports_root, pdf_path]) != reports_root:
+        raise HTTPException(status_code=400, detail="Stored report path is invalid.")
+
     filename = os.path.basename(pdf_path)
     return FileResponse(
         path=pdf_path,

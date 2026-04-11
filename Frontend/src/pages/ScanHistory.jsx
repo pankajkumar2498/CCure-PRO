@@ -47,6 +47,17 @@ const normCve = cve => {
   };
 };
 
+const getStoredTargets = scan => {
+  if (Array.isArray(scan.targets) && scan.targets.length > 0) {
+    return scan.targets;
+  }
+
+  return String(scan.target || "")
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+};
+
 /* ── sub-components ── */
 function StatusBadge({ status }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.running;
@@ -283,9 +294,10 @@ export default function ScanHistory() {
 
       const t  = scan.target;
       const st = scan.scan_type || "adaptive";
+      const targets = getStoredTargets(scan);
 
       const { data } = await api.post("/scan/phase1", {
-        targets:   t.split(",").map(x => x.trim()).filter(Boolean),
+        targets,
         scan_type: st,
       });
       if (!data.success) throw new Error(data.error || "Re-run failed");

@@ -1,27 +1,35 @@
 /**
  * src/pages/Login.jsx
- * Dark-themed auth page consistent with the CAST Dashboard brand.
- * API: POST /auth/login → { access_token, refresh_token, user }
+ * Dark-themed auth page consistent with the dashboard brand.
+ * API: POST /auth/login -> { access_token, user }
  */
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
-  const { login }   = useAuth();
-  const location    = useLocation();
-  const from        = location.state?.from?.pathname || "/dashboard";
+  const { login, authMessage } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const from = location.state?.from?.pathname || "/dashboard";
 
-  const [email,    setEmail]    = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const noticeMessage = useMemo(() => {
+    return location.state?.message || authMessage || "";
+  }, [location.state, authMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(""); setLoading(true);
+    setError("");
+    setLoading(true);
+
     try {
-      await login(email, password, from);
+      await login({ email, password });
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || "Login failed. Check your credentials.");
     } finally {
@@ -32,9 +40,8 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        {/* Brand */}
         <div className="auth-brand">
-          <span className="auth-brand-gem">◈</span>
+          <span className="auth-brand-gem">*</span>
           <div className="auth-brand-text">
             <span className="auth-brand-name">CCure Audit</span>
             <span className="auth-brand-badge">PRO</span>
@@ -46,7 +53,24 @@ export default function Login() {
 
         {error && (
           <div className="auth-error" role="alert">
-            <span>⚠</span> {error}
+            <span>!</span> {error}
+          </div>
+        )}
+
+        {!error && noticeMessage && (
+          <div
+            role="status"
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              background: "rgba(59, 130, 246, 0.12)",
+              color: "#bfdbfe",
+              fontSize: 14,
+            }}
+          >
+            {noticeMessage}
           </div>
         )}
 
@@ -54,23 +78,31 @@ export default function Login() {
           <div className="field">
             <label htmlFor="email">Email</label>
             <input
-              id="email" type="email" autoComplete="email"
-              value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="operator@ccure.com" required
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="operator@ccure.com"
+              required
             />
           </div>
 
           <div className="field">
             <label htmlFor="password">Password</label>
             <input
-              id="password" type="password" autoComplete="current-password"
-              value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••" required
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="........"
+              required
             />
           </div>
 
           <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? <span className="btn-spinner" /> : "Login →"}
+            {loading ? <span className="btn-spinner" /> : "Login ->"}
           </button>
         </form>
 

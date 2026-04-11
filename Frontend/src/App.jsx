@@ -1,46 +1,43 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider }    from "./context/AuthContext";
-import { ScanProvider }    from "./context/ScanContext";
-import PrivateRoute        from "./components/PrivateRoute";
+import { ScanProvider } from "./context/ScanContext";
+import PrivateRoute from "./components/PrivateRoute";
 
-import Login               from "./pages/Login";
-import Register            from "./pages/Register";
-import Dashboard           from "./pages/Dashboard";
-import NewScan             from "./pages/scan/NewScan";
-import Phase1Results       from "./pages/scan/Phase1Results";
-import Phase2Results       from "./pages/scan/Phase2Results";
-import Phase3Results       from "./pages/scan/Phase3Results";
-import CredentialedScan    from "./pages/scan/CredentialedScan";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import ScanHistory from "./pages/ScanHistory";
+import ArchivedScans from "./pages/ArchivedScans";
+import RecycleBin from "./pages/RecycleBin";
+import NewScan from "./pages/scan/NewScan";
+import Phase1Results from "./pages/scan/Phase1Results";
+import Phase2Results from "./pages/scan/Phase2Results";
+import Phase3Results from "./pages/scan/Phase3Results";
+import CredentialedScan from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
-import ScanHistory         from "./pages/ScanHistory";
-import ArchivedScans       from "./pages/ArchivedScans";
-import RecycleBin          from "./pages/RecycleBin";
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ScanProvider>
-        <Routes>
-          {/* ── Public ── */}
-          <Route path="/login"    element={<Login />} />
-          <Route path="/register" element={<Register />} />
+    <ScanProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-          {/* ── Protected ── */}
-          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/scan"      element={<PrivateRoute><NewScan /></PrivateRoute>} />
-          <Route path="/scan/phase1" element={<PrivateRoute><Phase1Results /></PrivateRoute>} />
-          <Route path="/scan/phase2" element={<PrivateRoute><Phase2Results /></PrivateRoute>} />
-          <Route path="/scan/phase3" element={<PrivateRoute><Phase3Results /></PrivateRoute>} />
-          <Route path="/scan/credentialed"         element={<PrivateRoute><CredentialedScan /></PrivateRoute>} />
-          <Route path="/scan/credentialed/results" element={<PrivateRoute><CredentialedResults /></PrivateRoute>} />
-          <Route path="/history" element={<PrivateRoute><ScanHistory /></PrivateRoute>} />
-          <Route path="/archived-scans" element={<PrivateRoute><ArchivedScans /></PrivateRoute>} />
-          <Route path="/recycle-bin" element={<PrivateRoute><RecycleBin /></PrivateRoute>} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/archived" element={<Navigate to="/archived-scans" replace />} />
 
-          {/* ── Default ── */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </ScanProvider>
-    </AuthProvider>
+        <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/scan" element={<PrivateRoute><NewScan /></PrivateRoute>} />
+        <Route path="/scan/phase1" element={<PrivateRoute><Phase1Results /></PrivateRoute>} />
+        <Route path="/scan/phase2" element={<PrivateRoute><Phase2Results /></PrivateRoute>} />
+        <Route path="/scan/phase3" element={<PrivateRoute><Phase3Results /></PrivateRoute>} />
+        <Route path="/scan/credentialed" element={<PrivateRoute><CredentialedScan /></PrivateRoute>} />
+        <Route path="/scan/credentialed/results" element={<PrivateRoute><CredentialedResults /></PrivateRoute>} />
+        <Route path="/history" element={<PrivateRoute><ScanHistory /></PrivateRoute>} />
+        <Route path="/archived-scans" element={<PrivateRoute><ArchivedScans /></PrivateRoute>} />
+        <Route path="/recycle-bin" element={<PrivateRoute><RecycleBin /></PrivateRoute>} />
+
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </ScanProvider>
   );
 }

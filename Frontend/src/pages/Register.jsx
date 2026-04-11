@@ -4,7 +4,7 @@
  * API: POST /auth/register → { access_token, refresh_token, user }
  */
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function validate(username, email, password, confirm) {
@@ -25,6 +25,7 @@ function strengthOf(pw) {
 
 export default function Register() {
   const { register } = useAuth();
+  const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
   const [email,    setEmail]    = useState("");
@@ -41,7 +42,8 @@ export default function Register() {
     if (ve) { setError(ve); return; }
     setError(""); setLoading(true);
     try {
-      await register(username, email, password);
+      await register({ username, email, password });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || "Registration failed. Please try again.");
     } finally {

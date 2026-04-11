@@ -7,7 +7,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function PrivateRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, authState, authMessage } = useAuth();
   const location          = useLocation();
 
   if (loading) {
@@ -25,7 +25,13 @@ export default function PrivateRoute({ children }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location, reason: authState, message: authMessage }}
+        replace
+      />
+    );
   }
 
   return children;

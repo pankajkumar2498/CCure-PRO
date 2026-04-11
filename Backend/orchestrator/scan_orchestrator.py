@@ -748,10 +748,17 @@ class ScanOrchestrator:
         if not self.silent:
             log.info(msg)
 
+    def generate_phase_report(self, resp: Dict, scan_type: str) -> Dict[str, str]:
+        if not self._pdf:
+            return {}
+
+        try:
+            return self._pdf.generate(resp, scan_type)
+        except Exception as exc:
+            self._log(f"[WARN] PDF generation failed for {scan_type}: {exc}")
+            return {}
+
     def _attach_pdf(self, resp: Dict, scan_type: str):
-        if self._pdf:
-            try:
-                paths = self._pdf.generate(resp, scan_type)
-                resp["reports"] = paths
-            except Exception as e:
-                resp["report_error"] = str(e)
+        paths = self.generate_phase_report(resp, scan_type)
+        if paths:
+            resp["reports"] = paths

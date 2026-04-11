@@ -1,67 +1,133 @@
-/**
- * src/context/AuthContext.jsx
- * Provides: user, loading, login(), register(), logout()
- * Tokens are stored in localStorage; auto-restored on mount.
- */
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { loginUser, registerUser, logoutUser, getCurrentUser } from "../api/auth";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  getCurrentUser,
+  login as loginRequest,
+  logout as logoutRequest,
+  refreshSession,
+  register as registerRequest,
+} from "../api/auth";
+import { authSession } from "../api/axiosInstance";
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const navigate              = useNavigate();
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [authState, setAuthState] = useState("loading");
+  const [authMessage, setAuthMessage] = useState("");
 
-  // Restore session on mount
-  useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (!token) { setLoading(false); return; }
-    getCurrentUser()
-      .then(({ data }) => setUser(data))
-      .catch(() => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-      })
-      .finally(() => setLoading(false));
+  const syncCurrentUser = useCallback(async () => {
+    const hadAccessToken = !!authSession.getAccessToken();
+    let hadRecoverableSession = hadAccessToken;
+
+    setAuthState("loading");
+
+    if (!hadAccessToken) {
+      try {
+        await refreshSession();
+        hadRecoverableSession = true;
+      } catch (error) {
+        setUser(null);
+        setAuthState("anonymous");
+        setAuthMessage("");
+        return null;
+      }
+    }
+
+    try {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+      setAuthState("authenticated");
+      setAuthMessage("");
+      return currentUser;
+    } catch (error) {
+      authSession.clear();
+      setUser(null);
+
+      if (hadRecoverableSession) {
+        setAuthState("expired");
+        setAuthMessage("Your session expired. Please sign in again.");
+      } else {
+        setAuthState("anonymous");
+        setAuthMessage("");
+      }
+
+      return null;
+    }
   }, []);
 
-  const _saveTokens = ({ access_token, refresh_token, user: u }) => {
-    localStorage.setItem("access_token",  access_token);
-    localStorage.setItem("refresh_token", refresh_token);
-    setUser(u);
-  };
+  useEffect(() => {
+    syncCurrentUser();
 
-  const login = useCallback(async (email, password, redirectTo = "/dashboard") => {
-    const { data } = await loginUser(email, password);
-    _saveTokens(data);
-    navigate(redirectTo, { replace: true });
-  }, [navigate]);
+    const handleForcedLogout = (event) => {
+      setUser(null);
 
-  const register = useCallback(async (username, email, password, redirectTo = "/dashboard") => {
-    const { data } = await registerUser(username, email, password);
-    _saveTokens(data);
-    navigate(redirectTo, { replace: true });
-  }, [navigate]);
+      if (event?.detail?.reason === "expired") {
+        setAuthState("expired");
+        setAuthMessage("Your session expired. Please sign in again.");
+        return;
+      }
+
+      setAuthState("anonymous");
+      setAuthMessage("");
+    };
+
+    window.addEventListener("auth:logout", handleForcedLogout);
+
+    return () => {
+      window.removeEventListener("auth:logout", handleForcedLogout);
+    };
+  }, [syncCurrentUser]);
+
+  const login = useCallback(async (credentials) => {
+    const data = await loginRequest(credentials);
+    setUser(data.user || null);
+    setAuthState("authenticated");
+    setAuthMessage("");
+    return data;
+  }, []);
+
+  const register = useCallback(async (payload) => {
+    const data = await registerRequest(payload);
+    setUser(data.user || null);
+    setAuthState("authenticated");
+    setAuthMessage("");
+    return data;
+  }, []);
 
   const logout = useCallback(async () => {
-    try { await logoutUser(); } catch (_) {}
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    setUser(null);
-    navigate("/login");
-  }, [navigate]);
+    try {
+      await logoutRequest();
+    } finally {
+      setUser(null);
+      setAuthState("anonymous");
+      setAuthMessage("");
+    }
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      authState,
+      authMessage,
+      loading: authState === "loading",
+      isAuthenticated: !!user,
+      login,
+      register,
+      logout,
+      refreshUser: syncCurrentUser,
+    }),
+    [user, authState, authMessage, login, register, logout, syncCurrentUser]
   );
-}
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  if (!ctx) {
+    throw new Error("useAuth must be used inside <AuthProvider>");
+  }
   return ctx;
 };
+
+export default AuthContext;

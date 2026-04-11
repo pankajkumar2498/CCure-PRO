@@ -1,21 +1,33 @@
-/**
- * src/api/auth.js
- * Thin wrappers for POST /auth/register, /auth/login, /auth/logout,
- * GET /auth/me, POST /auth/refresh
- */
-import api from "./axiosInstance";
+import axiosInstance, { authSession } from "./axiosInstance";
 
-export const registerUser  = (username, email, password) =>
-  api.post("/auth/register", { username, email, password });
+export const login = async (credentials) => {
+  const response = await axiosInstance.post("/auth/login", credentials);
+  authSession.setTokens(response.data || {});
+  return response.data;
+};
 
-export const loginUser     = (email, password) =>
-  api.post("/auth/login", { email, password });
+export const register = async (userData) => {
+  const response = await axiosInstance.post("/auth/register", userData);
+  authSession.setTokens(response.data || {});
+  return response.data;
+};
 
-export const logoutUser    = () =>
-  api.post("/auth/logout");
+export const getCurrentUser = async () => {
+  const response = await axiosInstance.get("/auth/me");
+  return response.data;
+};
 
-export const getCurrentUser = () =>
-  api.get("/auth/me");
+export const refreshSession = async () => {
+  const response = await axiosInstance.post("/auth/refresh", {});
+  authSession.setTokens(response.data || {});
+  return response.data;
+};
 
-export const refreshToken  = (refresh_token) =>
-  api.post("/auth/refresh", { refresh_token });
+export const logout = async () => {
+  try {
+    await axiosInstance.post("/auth/logout", {});
+  } finally {
+    authSession.clear();
+    window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "logout" } }));
+  }
+};

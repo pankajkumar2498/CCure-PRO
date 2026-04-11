@@ -32,11 +32,24 @@ def _as_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     return f"{dt.isoformat()}Z"
 
 
+def _load_phase_results(scan: Scan) -> dict:
+    if getattr(scan, "phase_results", None):
+        results = {}
+        for phase_row in scan.phase_results:
+            payload = _load_json(phase_row.payload)
+            if payload:
+                results[phase_row.phase_key] = payload
+        if results:
+            return results
+    return _load_json(scan.results)
+
+
 def _scan_to_dict(scan: Scan, include_results: bool = False) -> dict:
     """Serialize a Scan row to a JSON-safe dict."""
     d = {
         "id":            scan.id,
         "target":        scan.target,
+        "targets":       _load_json(scan.targets_json),
         "scan_type":     scan.scan_type,
         "phase":         scan.phase,
         "status":        scan.status,
@@ -50,7 +63,7 @@ def _scan_to_dict(scan: Scan, include_results: bool = False) -> dict:
         "summary":       _load_json(scan.summary),
     }
     if include_results:
-        d["results"] = _load_json(scan.results)
+        d["results"] = _load_phase_results(scan)
     return d
 
 

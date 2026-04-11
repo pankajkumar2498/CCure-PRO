@@ -1,6 +1,6 @@
 # Ccure Audit Pro
 
-> **Nessus-style network security scanner built entirely on Python stdlib.**  
+> **Network security scanner built entirely on Python stdlib.**  
 > Zero mandatory external dependencies. Drop-in plugin architecture. Production-ready.
 
 ---

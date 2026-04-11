@@ -2,15 +2,14 @@
  * src/pages/Dashboard.jsx
  * CAST-themed scan template grid — the main landing page after login.
  *
- * API MAPPINGS:
- *   Basic Network Scan      → POST /scan/phase1          → /scan
- *   Asset Discovery         → POST /scan/phase2+3        → /scan/phase2 (guard)
- *   Advanced Scan           → POST /scan/phases(1+2+3+4) → /scan
- *   Credential Validation   → POST /scan/credentialed    → /scan/credentialed
+ * NAVIGATION MAPPINGS:
+ *   Basic Network Scan    → opens the guided discovery flow at /scan
+ *   Asset Discovery       → opens /scan/phase2 when phase1 hosts already exist, otherwise /scan
+ *   Advanced Scan         → opens /scan for the full guided pipeline from discovery through audit
+ *   Credential Validation → opens /scan/credentialed
  */
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
 import AppLayout from "../components/layout/AppLayout";
 
@@ -41,9 +40,9 @@ const IcoOffline  = ({ c, s=32 }) => <svg width={s} height={s} viewBox="0 0 24 2
 /* ─── Scan template definitions ──────────────────────────────────────────── */
 const TEMPLATES = [
   // Row 1
-  { id:"basic",      title:"Basic Network Scan",         desc:"Quickly identify open ports and services on target systems.",          Icon:IcoWifi,      bg:"#e8fdf0", color:"#22c55e", route:"/scan",              mapped:true,  badge:"Phase 1"         },
-  { id:"asset",      title:"Asset Discovery",            desc:"Scan and discover new data sources across your infrastructure.",       Icon:IcoDatabase,  bg:"#eff6ff", color:"#3b82f6", route:"/scan/phase2",       mapped:true,  badge:"Phase 2 & 3", guard:"phase2" },
-  { id:"advanced",   title:"Advanced Scan",              desc:"Perform in-depth vulnerability assessment check on all phases.",       Icon:IcoLightning, bg:"#fefce8", color:"#eab308", route:"/scan",              mapped:true,  badge:"Full Pipeline"   },
+  { id:"basic",      title:"Basic Network Scan",         desc:"Start with host discovery and build toward deeper analysis as needed.", Icon:IcoWifi,      bg:"#e8fdf0", color:"#22c55e", route:"/scan",              mapped:true,  badge:"Guided Flow"     },
+  { id:"asset",      title:"Asset Discovery",            desc:"Jump into port and audit stages when discovery results are already available.", Icon:IcoDatabase,  bg:"#eff6ff", color:"#3b82f6", route:"/scan/phase2",       mapped:true,  badge:"Phase 2 & 3", guard:"phase2" },
+  { id:"advanced",   title:"Advanced Scan",              desc:"Launch the guided full pipeline from discovery through vulnerability review.", Icon:IcoLightning, bg:"#fefce8", color:"#eab308", route:"/scan",              mapped:true,  badge:"Full Pipeline"   },
   { id:"network",    title:"Network Based Scanning",     desc:"Test API endpoints and validate response data automatically.",         Icon:IcoNetwork,   bg:"#f5f3ff", color:"#8b5cf6", mapped:false },
   // Row 2
   { id:"malware",    title:"Malware Scan",               desc:"Perform rapid connectivity checks and network availability tests.",    Icon:IcoShield,    bg:"#fff1f2", color:"#ef4444", mapped:false },
@@ -84,9 +83,9 @@ function ScanCard({ tpl, onClick }) {
 
 /* ─── Dashboard ──────────────────────────────────────────────────────────── */
 export default function Dashboard() {
-  const navigate                   = useNavigate();
-  const { phase1Hosts }            = useScan();
-  const [search, setSearch]        = useState("");
+  const navigate = useNavigate();
+  const { phase1Hosts, setPhase2Hosts } = useScan();
+  const [search, setSearch] = useState("");
 
   const filtered = TEMPLATES.filter(t =>
     t.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -96,8 +95,13 @@ export default function Dashboard() {
   const handleCard = (tpl) => {
     if (!tpl.mapped) return;
     if (tpl.guard === "phase2") {
-      const hasP1 = phase1Hosts?.filter(h => h.is_active).length > 0;
-      navigate(hasP1 ? "/scan/phase2" : "/scan");
+      const activeHosts = (phase1Hosts || []).filter((host) => host.is_active);
+      if (activeHosts.length > 0) {
+        setPhase2Hosts(activeHosts);
+        navigate("/scan/phase2");
+        return;
+      }
+      navigate("/scan");
       return;
     }
     navigate(tpl.route);

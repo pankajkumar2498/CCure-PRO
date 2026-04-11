@@ -41,7 +41,7 @@ REFRESH_COOKIE_DOMAIN = os.getenv("REFRESH_COOKIE_DOMAIN") or None
 
 # ── Request / Response Schemas ────────────────────────────────────────────────
 
-class RegisterRequest1(BaseModel):
+class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str

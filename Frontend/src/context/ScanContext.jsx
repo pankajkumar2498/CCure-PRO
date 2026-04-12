@@ -1,12 +1,16 @@
 /**
- * src/context/ScanContext.jsx  [FIXED]
+ * src/context/ScanContext.jsx
  *
- * CHANGE: Added `phase3AuditResults` state.
- * This holds the OUTPUT of Phase 3 (audit results returned by the API),
- * separate from `phase3Results` which is the INPUT (selected hosts from Phase 2).
- * Phase 4 reads from `phase3AuditResults` to build the Risk Report.
+ * State management for the CCure Audit PRO scan pipeline.
+ *
+ * PIPELINE STATES:
+ *   IDLE → DISCOVERY → PORT_SCAN → VULN_SCAN → REPORT_READY → COMPLETE
+ *   Any phase can transition to ERROR or CANCELLED.
+ *   PAUSED state allows pause/resume behavior.
+ *
+ * Session storage is used for persistence across page refreshes.
  */
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useRef, useCallback } from "react";
 
 const ScanContext = createContext(null);
 
@@ -15,10 +19,17 @@ const SS_KEYS = [
   "cc_pipelineMode",
   "cc_phase1Hosts", "cc_phase1Summary",
   "cc_phase2Hosts", "cc_phase2Summary",
+  "cc_phase2Results",
   "cc_phase3Results", "cc_phase3Summary",
-  "cc_phase3AuditResults",   // ← NEW: Phase3 API output for Phase4
+  "cc_phase3AuditResults",
   "cc_saveStatus",
+  "cc_pipelineState",
+  "cc_pipelineError",
+  "cc_pipelinePhaseTimings",
+  "cc_intensity",
 ];
+
+/* ── Session storage helpers ─────────────────────────────────────────────── */
 
 function ssGet(key, fallback) {
   try {
@@ -33,6 +44,22 @@ function ssClear() {
   SS_KEYS.forEach((k) => sessionStorage.removeItem(k));
 }
 
+/* ── Pipeline state enum ─────────────────────────────────────────────────── */
+
+export const PIPELINE_STATES = {
+  IDLE:          "IDLE",
+  DISCOVERY:     "DISCOVERY",
+  PORT_SCAN:     "PORT_SCAN",
+  VULN_SCAN:     "VULN_SCAN",
+  REPORT_READY:  "REPORT_READY",
+  COMPLETE:      "COMPLETE",
+  ERROR:         "ERROR",
+  CANCELLED:     "CANCELLED",
+  PAUSED:        "PAUSED",
+};
+
+/* ── Provider ─────────────────────────────────────────────────────────────── */
+
 export function ScanProvider({ children }) {
   const [scanId,              setScanIdRaw]              = useState(() => ssGet("cc_scanId",             null));
   const [target,              setTargetRaw]              = useState(() => ssGet("cc_target",             ""));
@@ -45,8 +72,17 @@ export function ScanProvider({ children }) {
   const [phase2Results,       setPhase2ResultsRaw]       = useState(() => ssGet("cc_phase2Results",      []));
   const [phase3Results,       setPhase3ResultsRaw]       = useState(() => ssGet("cc_phase3Results",      []));
   const [phase3Summary,       setPhase3SummaryRaw]       = useState(() => ssGet("cc_phase3Summary",      null));
-  const [phase3AuditResults,  setPhase3AuditResultsRaw]  = useState(() => ssGet("cc_phase3AuditResults", [])); // ← NEW
+  const [phase3AuditResults,  setPhase3AuditResultsRaw]  = useState(() => ssGet("cc_phase3AuditResults", []));
   const [saveStatus,          setSaveStatusRaw]          = useState(() => ssGet("cc_saveStatus",         ""));
+  const [intensity,           setIntensityRaw]           = useState(() => ssGet("cc_intensity",          "normal"));
+
+  // Pipeline state machine
+  const [pipelineState,       setPipelineStateRaw]       = useState(() => ssGet("cc_pipelineState",      PIPELINE_STATES.IDLE));
+  const [pipelineError,       setPipelineErrorRaw]       = useState(() => ssGet("cc_pipelineError",      null));
+  const [pipelinePhaseTimings, setPipelinePhaseTimingsRaw] = useState(() => ssGet("cc_pipelinePhaseTimings", {}));
+
+  // Abort controller for cancellation
+  const abortRef = useRef(null);
 
   const mk = (key, setter) => (v) => { ssSet(key, v); setter(v); };
 
@@ -61,18 +97,42 @@ export function ScanProvider({ children }) {
   const setPhase2Results      = mk("cc_phase2Results",      setPhase2ResultsRaw);
   const setPhase3Results      = mk("cc_phase3Results",      setPhase3ResultsRaw);
   const setPhase3Summary      = mk("cc_phase3Summary",      setPhase3SummaryRaw);
-  const setPhase3AuditResults = mk("cc_phase3AuditResults", setPhase3AuditResultsRaw); // ← NEW
+  const setPhase3AuditResults = mk("cc_phase3AuditResults", setPhase3AuditResultsRaw);
   const setSaveStatus         = mk("cc_saveStatus",         setSaveStatusRaw);
+  const setIntensity          = mk("cc_intensity",          setIntensityRaw);
+  const setPipelineState      = mk("cc_pipelineState",      setPipelineStateRaw);
+  const setPipelineError      = mk("cc_pipelineError",      setPipelineErrorRaw);
+  const setPipelinePhaseTimings = mk("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw);
+
+  const cancelPipeline = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setPipelineState(PIPELINE_STATES.CANCELLED);
+  }, []);
+
+  const pausePipeline = useCallback(() => {
+    setPipelineState(PIPELINE_STATES.PAUSED);
+  }, []);
 
   const resetScan = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
     ssClear();
     setScanIdRaw(null);         setTargetRaw("");         setScanTypeRaw("adaptive");
     setPipelineModeRaw("basic");
     setPhase1HostsRaw([]);      setPhase1SummaryRaw(null);
     setPhase2HostsRaw([]);      setPhase2SummaryRaw(null);
     setPhase2ResultsRaw([]);    setPhase3ResultsRaw([]);    setPhase3SummaryRaw(null);
-    setPhase3AuditResultsRaw([]);                          // ← NEW
+    setPhase3AuditResultsRaw([]);
     setSaveStatusRaw("");
+    setIntensityRaw("normal");
+    setPipelineStateRaw(PIPELINE_STATES.IDLE);
+    setPipelineErrorRaw(null);
+    setPipelinePhaseTimingsRaw({});
   };
 
   return (
@@ -88,8 +148,15 @@ export function ScanProvider({ children }) {
       phase2Results, setPhase2Results,
       phase3Results, setPhase3Results,
       phase3Summary, setPhase3Summary,
-      phase3AuditResults, setPhase3AuditResults,  // ← NEW
+      phase3AuditResults, setPhase3AuditResults,
       saveStatus, setSaveStatus,
+      intensity, setIntensity,
+      pipelineState, setPipelineState,
+      pipelineError, setPipelineError,
+      pipelinePhaseTimings, setPipelinePhaseTimings,
+      abortRef,
+      cancelPipeline,
+      pausePipeline,
       resetScan,
     }}>
       {children}

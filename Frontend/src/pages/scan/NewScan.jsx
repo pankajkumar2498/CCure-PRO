@@ -14,9 +14,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
-import { useScan } from "../../context/ScanContext";
+import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api         from "../../api/axiosInstance";
+
+const INTENSITIES = [
+  { value: "light",  label: "Light",  desc: "Fast, fewer ports" },
+  { value: "normal", label: "Normal", desc: "Balanced coverage" },
+  { value: "deep",   label: "Deep",   desc: "Full port range" },
+];
 
 const SCAN_TYPES = [
   { value: "adaptive", label: "Adaptive",  desc: "Auto-selects best method per host" },
@@ -34,9 +40,11 @@ export default function NewScan() {
   const {
     target, setTarget,
     scanType, setScanType,
-    pipelineMode,                             // ← read from context (set by Dashboard)
+    pipelineMode,
+    intensity, setIntensity,
     setPhase1Hosts, setPhase1Summary,
     setScanId, setSaveStatus, resetScan,
+    setPipelineState,
   } = useScan();
 
   const [loading, setLoading] = useState(false);
@@ -50,6 +58,7 @@ export default function NewScan() {
     setLoading(true);
     setError("");
     setSaveStatus("saving");
+    setPipelineState(PIPELINE_STATES.DISCOVERY);
 
     // NOTE: resetScan() was already called in Dashboard.handleCard before
     // navigating here, so we only need to restore target + scanType.
@@ -148,6 +157,24 @@ export default function NewScan() {
                 ))}
               </div>
             </div>
+
+            {/* Intensity selector for advanced mode */}
+            {pipelineMode === "advanced" && (
+              <div className="field">
+                <label>Scan Intensity</label>
+                <div className="scan-type-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+                  {INTENSITIES.map(i => (
+                    <button key={i.value}
+                      className={`st-card ${intensity === i.value ? "st-card--active" : ""}`}
+                      onClick={() => setIntensity(i.value)}
+                      disabled={loading}>
+                      <span className="st-name">{i.label}</span>
+                      <span className="st-desc">{i.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {error && <div className="alert alert--error">⚠ {error}</div>}
 

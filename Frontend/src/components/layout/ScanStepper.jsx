@@ -1,46 +1,73 @@
 /**
- * src/components/layout/ScanStepper.jsx  [FIXED]
+ * src/components/layout/ScanStepper.jsx
  *
- * CHANGE: Now reads `pipelineMode` from context to conditionally show
- * Phase 4 (Risk Report) step. The stepper is pipeline-aware:
- *   basic:    steps 1 only (shows 1 step, grayed 2–3)
- *   asset:    steps 1–2
- *   advanced: steps 1–4
- *
- * `current` prop still drives which step is highlighted.
+ * Enhanced stepper with live pipeline status indicators.
+ * Shows: ✓ completed | ● active (pulsing) | ○ pending
+ * Driven by `pipelineState` from context for real-time updates.
  */
-import { useScan } from "../../context/ScanContext";
+import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { getScanPipeline } from "../../config/scanConfig";
 
 const ALL_STEPS = [
-  { n: 1, label: "Discovery",     sub: "Find live hosts"   },
-  { n: 2, label: "Port Scan",     sub: "Map open services" },
-  { n: 3, label: "Vulnerability", sub: "CVE & risk audit"  },
-  { n: 4, label: "Risk Report",   sub: "Full assessment"   },
+  { n: 1, label: "Discovery",     sub: "Find live hosts",   stateKey: "DISCOVERY"   },
+  { n: 2, label: "Port Scan",     sub: "Map open services", stateKey: "PORT_SCAN"   },
+  { n: 3, label: "Vulnerability", sub: "CVE & risk audit",  stateKey: "VULN_SCAN"   },
+  { n: 4, label: "Risk Report",   sub: "Full assessment",   stateKey: "REPORT_READY"},
 ];
 
-export default function ScanStepper({ current }) {
-  const { scanId, pipelineMode } = useScan();
+/** Maps pipeline state → active step number */
+const STATE_TO_STEP = {
+  [PIPELINE_STATES.IDLE]:         0,
+  [PIPELINE_STATES.DISCOVERY]:    1,
+  [PIPELINE_STATES.PORT_SCAN]:    2,
+  [PIPELINE_STATES.VULN_SCAN]:    3,
+  [PIPELINE_STATES.REPORT_READY]: 4,
+  [PIPELINE_STATES.COMPLETE]:     5,
+};
 
-  // Only show steps that belong to the current pipeline
+export default function ScanStepper({ current }) {
+  const { scanId, pipelineMode, pipelineState, pipelineError } = useScan();
+
   const pipeline = getScanPipeline(pipelineMode || "basic");
   const steps    = ALL_STEPS.filter(s => pipeline.phases.includes(s.n));
+
+  // Use pipeline state to derive step status, fall back to `current` prop
+  const activeStep = STATE_TO_STEP[pipelineState] ?? current ?? 0;
+  const isRunning  = [
+    PIPELINE_STATES.DISCOVERY,
+    PIPELINE_STATES.PORT_SCAN,
+    PIPELINE_STATES.VULN_SCAN,
+  ].includes(pipelineState);
 
   return (
     <div className="stepper">
       {steps.map((s, i) => {
-        const done   = current > s.n;
-        const active = current === s.n;
+        const done    = activeStep > s.n;
+        const active  = activeStep === s.n;
+        const isError = pipelineState === PIPELINE_STATES.ERROR && active;
+
+        let stepClass = "stepper-step";
+        if (done)    stepClass += " stepper-step--done";
+        if (active)  stepClass += " stepper-step--active";
+        if (isError) stepClass += " stepper-step--error";
+        if (active && isRunning) stepClass += " stepper-step--running";
+
         return (
           <div key={s.n} style={{ display: "flex", alignItems: "center" }}>
-            <div className={`stepper-step ${active ? "stepper-step--active" : ""} ${done ? "stepper-step--done" : ""}`}>
-              <div className="stepper-num">{done ? "✓" : s.n}</div>
+            <div className={stepClass}>
+              <div className="stepper-num">
+                {done ? "✓" : isError ? "!" : s.n}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
                 <span style={{ fontSize: "0.82rem", fontWeight: active ? 700 : 500 }}>{s.label}</span>
-                <span style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}>{s.sub}</span>
+                <span style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}>
+                  {active && isRunning ? "Scanning…" : isError ? "Failed" : done ? "Complete" : s.sub}
+                </span>
               </div>
             </div>
-            {i < steps.length - 1 && <span className="stepper-arrow">›</span>}
+            {i < steps.length - 1 && (
+              <span className={`stepper-arrow ${done ? "stepper-arrow--done" : ""}`}>›</span>
+            )}
           </div>
         );
       })}

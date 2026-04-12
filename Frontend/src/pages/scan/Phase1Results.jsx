@@ -5,12 +5,12 @@
  * Basic Network Scan export remains unchanged and still appears after Phase 1.
  */
 import { useState, useEffect } from "react";
-import { useNavigate }         from "react-router-dom";
-import AppLayout               from "../../components/layout/AppLayout";
-import ScanStepper             from "../../components/layout/ScanStepper";
-import ExportPanel             from "../../components/scan/ExportPanel";
-import { useScan }             from "../../context/ScanContext";
-import api                     from "../../api/axiosInstance";
+import { useNavigate } from "react-router-dom";
+import AppLayout from "../../components/layout/AppLayout";
+import ScanStepper from "../../components/layout/ScanStepper";
+import ExportPanel from "../../components/scan/ExportPanel";
+import { useScan } from "../../context/ScanContext";
+import api from "../../api/axiosInstance";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
 const INTENSITIES = ["light", "normal", "deep"];
@@ -47,14 +47,14 @@ export default function Phase1Results() {
   if (!phase1Hosts.length) return null;
 
   const isAssetPipeline = pipelineMode === "asset";
-  const activeHosts      = phase1Hosts.filter(h => h.is_active);
-  const displayHosts     = filter === "active" ? activeHosts : phase1Hosts;
-  const assetHosts       = assetFilter === "active" ? activeHosts : phase1Hosts;
-  const selectedHosts    = phase1Hosts.filter(h => assetSelected.has(h.ip_address) && h.is_active);
-  const selectedCount    = selectedHosts.length;
+  const activeHosts = phase1Hosts.filter(h => h.is_active);
+  const displayHosts = filter === "active" ? activeHosts : phase1Hosts;
+  const assetHosts = assetFilter === "active" ? activeHosts : phase1Hosts;
+  const selectedHosts = phase1Hosts.filter(h => assetSelected.has(h.ip_address) && h.is_active);
+  const selectedCount = selectedHosts.length;
 
   const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2);
-  const nextPhase          = getNextPhase(pipelineMode, 1);
+  const nextPhase = getNextPhase(pipelineMode, 1);
 
   useEffect(() => {
     if (isAssetPipeline) {
@@ -94,11 +94,11 @@ export default function Phase1Results() {
 
     try {
       const { data: result } = await api.post("/scan/asset-discovery", {
-        hosts:         payloadHosts,
-        intensity:     assetIntensity,
-        scan_id:       scanId,
+        hosts: payloadHosts,
+        intensity: assetIntensity,
+        scan_id: scanId,
         pipeline_mode: pipelineMode,
-        phases:        [1, 2],
+        phases: [1, 2],
       });
 
       if (!result.success) {
@@ -148,7 +148,7 @@ export default function Phase1Results() {
               {scanId && <span className="muted"> · Scan #{scanId}</span>}
             </p>
           </div>
-          <button className="btn btn--ghost" onClick={() => navigate("/scan")}> 
+          <button className="btn btn--ghost" onClick={() => navigate("/dashboard")}>
             ← New Scan
           </button>
         </div>
@@ -159,27 +159,6 @@ export default function Phase1Results() {
             <span className="summary-item summary-item--active"><b>{phase1Summary.active_hosts}</b> Active</span>
             <span className="summary-item"><b>{phase1Summary.inactive_hosts}</b> Inactive</span>
             <span className="summary-item"><b>{phase1Summary.scan_duration?.toFixed(1)}s</b> Duration</span>
-          </div>
-        )}
-
-        {phase1Summary && !canProceedToPhase2 && (
-          <>
-            <div className="alert alert--success" style={{ marginBottom: 16 }}>
-              ✓ Scan completed. Export report available below.
-            </div>
-            <ExportPanel
-              results={phase1Hosts}
-              summary={phase1Summary}
-              scanId={scanId}
-              target={target}
-              pipelineMode={pipelineMode}
-            />
-          </>
-        )}
-
-        {!canProceedToPhase2 && (
-          <div className="alert alert--info" style={{ marginBottom: 16 }}>
-            ℹ Basic Network Scan complete. Host Discovery is the final phase for this scan type.
           </div>
         )}
 
@@ -300,6 +279,22 @@ export default function Phase1Results() {
           </table>
         </div>
 
+        {/* Basic Network Scan: completion message + export AFTER host table */}
+        {phase1Summary && !canProceedToPhase2 && (
+          <>
+            <div className="alert alert--success" style={{ marginTop: 20, marginBottom: 8 }}>
+              ✓ Scan completed. Export report available below.
+            </div>
+            <ExportPanel
+              results={phase1Hosts}
+              summary={phase1Summary}
+              scanId={scanId}
+              target={target}
+              pipelineMode={pipelineMode}
+            />
+          </>
+        )}
+
         {assetError && <div className="alert alert--error">⚠ {assetError}</div>}
 
         {assetHasScanned && assetSummary && (
@@ -328,8 +323,8 @@ export default function Phase1Results() {
         )}
 
         {assetHasScanned && assetResults.map(host => {
-          const portCount  = host.open_ports?.length || 0;
-          const critPorts  = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
+          const portCount = host.open_ports?.length || 0;
+          const critPorts = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
           const isSelected = assetSelected.has(host.ip_address);
           const isExpanded = assetExpanded.has(host.ip_address);
           return (

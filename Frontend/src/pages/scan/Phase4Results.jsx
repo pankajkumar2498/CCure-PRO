@@ -213,7 +213,9 @@ export default function Phase4Results() {
           target={target}
           pipelineMode="advanced"
           phase1Hosts={phase1Hosts}
+          phase1Summary={phase1Summary}
           phase2Results={phase2Results}
+          phase2Summary={phase2Summary}
         />
 
         {/* ── Footer ──────────────────────────────────────────────────── */}

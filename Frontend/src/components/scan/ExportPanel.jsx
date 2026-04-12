@@ -11,7 +11,17 @@
 import { useState } from "react";
 import api from "../../api/axiosInstance";
 
-export default function ExportPanel({ results, summary, scanId, target }) {
+export default function ExportPanel({
+  results,
+  summary,
+  scanId,
+  target,
+  pipelineMode,
+  phase1Hosts = [],
+  phase1Summary = null,
+  phase2Results = [],
+  phase2Summary = null,
+}) {
   const [copied,     setCopied]     = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError,   setPdfError]   = useState("");
@@ -20,19 +30,81 @@ export default function ExportPanel({ results, summary, scanId, target }) {
   const isPhase3 = results.length > 0 && !!results[0].host_risk_level;
   const isPhase2 = results.length > 0 && !results[0].host_risk_level && !!results[0].open_ports;
   const isPhase1 = results.length > 0 && !isPhase2 && !isPhase3;
+  const isFinalAdvancedExport = pipelineMode === "advanced" && isPhase3 && phase1Hosts.length > 0 && phase2Results.length > 0;
 
   /* ── JSON ─────────────────────────────────────────────────────────── */
   const downloadJSON = () => {
-    const payload = { scan_id: scanId, target, exported_at: new Date().toISOString(), summary, hosts: results };
-    const blob    = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const payload = {
+      scan_id: scanId,
+      target,
+      exported_at: new Date().toISOString(),
+      pipeline_mode: pipelineMode,
+      summary,
+      phase1: {
+        summary: phase1Summary,
+        hosts: phase1Hosts,
+      },
+      phase2: {
+        summary: phase2Summary,
+        hosts: phase2Results,
+      },
+      phase3: {
+        summary,
+        hosts: results,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     trigger(blob, `ccure-scan-${scanId || Date.now()}.json`);
   };
 
   /* ── CSV ──────────────────────────────────────────────────────────── */
   const downloadCSV = () => {
-    let rows;
-    if (isPhase1) {
-      // Phase 1: Discovery results (simpler format)
+    let rows = [];
+
+    if (isFinalAdvancedExport) {
+      rows.push(["Advanced Scan Export"]);
+      rows.push([`Scan ID: ${scanId || "N/A"}`]);
+      rows.push([`Target: ${target || "N/A"}`]);
+      rows.push([`Exported: ${new Date().toLocaleString()}`]);
+      rows.push([]);
+
+      if (phase1Summary) {
+        rows.push(["Phase 1 — Discovery Summary"]);
+        rows.push(["Total hosts", phase1Summary.total_hosts ?? ""]);
+        rows.push(["Active hosts", phase1Summary.active_hosts ?? ""]);
+        rows.push(["Inactive hosts", phase1Summary.inactive_hosts ?? ""]);
+        rows.push(["Duration (s)", phase1Summary.scan_duration?.toFixed(1) ?? ""]);
+        rows.push([]);
+      }
+
+      if (phase2Summary) {
+        rows.push(["Phase 2 — Port Scan Summary"]);
+        rows.push(["Hosts scanned", phase2Summary.total_hosts ?? ""]);
+        rows.push(["Hosts with ports", phase2Summary.hosts_with_ports ?? ""]);
+        rows.push(["Duration (s)", phase2Summary.scan_duration?.toFixed(1) ?? ""]);
+        rows.push([]);
+      }
+
+      rows.push(["Phase 3 — Vulnerability Audit Summary"]);
+      rows.push(["Hosts audited", summary?.total_hosts ?? ""]);
+      rows.push(["Critical hosts", summary?.critical_hosts ?? ""]);
+      rows.push(["High risk hosts", summary?.high_risk_hosts ?? ""]);
+      rows.push(["Duration (s)", summary?.scan_duration?.toFixed(1) ?? ""]);
+      rows.push([]);
+
+      rows.push(["IP", "Hostname", "Risk Level", "Risk Score", "Open Ports", "CVE Count", "OS Guess"]);
+      results.filter(h => h.is_active).forEach(h => {
+        rows.push([
+          h.ip_address,
+          h.hostname || "",
+          h.host_risk_level || "Info",
+          h.host_risk_score || 0,
+          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
+          (h.cves || []).length,
+          h.os_guess || "",
+        ]);
+      });
+    } else if (isPhase1) {
       rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
@@ -44,7 +116,6 @@ export default function ExportPanel({ results, summary, scanId, target }) {
         ]);
       });
     } else if (isPhase2) {
-      // Phase 2: Port scan results
       rows = [["IP", "Hostname", "Open Ports", "Critical Ports", "Vendor"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
@@ -56,7 +127,6 @@ export default function ExportPanel({ results, summary, scanId, target }) {
         ]);
       });
     } else {
-      // Phase 3: Vulnerability audit results (detailed format)
       rows = [["IP", "Hostname", "Risk Level", "Risk Score", "Open Ports", "CVE Count", "OS Guess"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
@@ -70,7 +140,8 @@ export default function ExportPanel({ results, summary, scanId, target }) {
         ]);
       });
     }
-    const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     trigger(new Blob([csv], { type: "text/csv" }), `ccure-scan-${scanId || Date.now()}.csv`);
   };
 

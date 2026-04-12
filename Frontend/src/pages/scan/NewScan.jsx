@@ -79,7 +79,7 @@ export default function NewScan() {
       setScanId(data.scan_id ?? null);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
-      navigate("/scan/host-discovery");
+      navigate(pipelineMode === "advanced" ? "/scan/advanced-scan" : "/scan/host-discovery");
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Scan failed");
       setSaveStatus("error");

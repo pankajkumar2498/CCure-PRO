@@ -167,15 +167,29 @@ export default function Phase3Results() {
         {error && <div className="alert alert--error">⚠ {error}</div>}
 
         {summary && (
-          <div className="summary-bar">
-            <span className="summary-item"><b>{summary.total_hosts}</b> Audited</span>
-            <span className="summary-item summary-item--danger"><b>{summary.critical_hosts}</b> Critical</span>
-            <span className="summary-item summary-item--warn"><b>{summary.high_risk_hosts}</b> High risk</span>
-            <span className="summary-item"><b>{summary.scan_duration?.toFixed(1)}s</b> Duration</span>
-            {scanId && (
-              <span className="summary-item" style={{ color: "var(--ok)" }}>✓ Scan #{scanId} complete</span>
+          <>
+            <div className="summary-bar">
+              <span className="summary-item"><b>{summary.total_hosts}</b> Audited</span>
+              <span className="summary-item summary-item--danger"><b>{summary.critical_hosts}</b> Critical</span>
+              <span className="summary-item summary-item--warn"><b>{summary.high_risk_hosts}</b> High risk</span>
+              <span className="summary-item"><b>{summary.scan_duration?.toFixed(1)}s</b> Duration</span>
+              {scanId && (
+                <span className="summary-item" style={{ color: "var(--ok)" }}>✓ Scan #{scanId} complete</span>
+              )}
+            </div>
+
+            {hasScanned && results.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <ExportPanel
+                  results={results}
+                  summary={summary}
+                  scanId={scanId}
+                  target={target}
+                  pipelineMode={pipelineMode}
+                />
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {activeResults.map(h => {
@@ -340,8 +354,6 @@ export default function Phase3Results() {
 
         {hasScanned && (
           <>
-            <ExportPanel results={results} summary={summary} scanId={scanId} target={target} />
-
             {/* ── FIX 2: Phase 4 CTA for Advanced Scan ───────────────── */}
             {canProceedToPhase4 ? (
               <div className="phase-footer" style={{ marginTop: 8 }}>

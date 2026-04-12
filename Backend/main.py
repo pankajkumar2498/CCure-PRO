@@ -35,10 +35,14 @@ PIPELINE MODES (NEW)
     - Store the mode on the Scan row for use in history / reports.
 """
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict
+import asyncio
+import time
+from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,6 +62,7 @@ from scans.db_helpers import (
     mark_scan_failed,
     update_scan_phase,
 )
+from pdf_generator import ScanReportGenerator
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
 from engines.credentialed.linux_collector import LinuxCollector
 from engines.credentialed.vuln_matcher    import VulnMatcher
@@ -86,6 +91,11 @@ PIPELINE_PHASES: dict[str, list[int]] = {
 
 VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys())
 
+# ─── Real-time progress tracking ───────────────────────────────────────────
+# In-memory store for scan progress (scan_id -> progress dict)
+_scan_progress: dict[int, dict] = {}
+_progress_lock = Lock()
+
 
 def get_terminal_phase(pipeline_mode: str) -> int:
     """Return the last phase number for a given pipeline mode.
@@ -111,6 +121,36 @@ def resolve_pipeline_mode(raw: Optional[str]) -> str:
     if raw:
         log.warning("Unknown pipeline_mode '%s' — defaulting to 'basic'.", raw)
     return "basic"
+
+
+def init_progress(scan_id: int, total_ips: int):
+    """Initialize progress tracking for a scan."""
+    with _progress_lock:
+        _scan_progress[scan_id] = {
+            "total_ips": total_ips,
+            "discovered": 0,
+            "active": 0,
+            "status": "running",
+            "start_time": time.time(),
+        }
+
+
+def update_progress(scan_id: int, discovered: int, active: int = None):
+    """Update progress for a scan."""
+    with _progress_lock:
+        if scan_id in _scan_progress:
+            _scan_progress[scan_id]["discovered"] = discovered
+            if active is not None:
+                _scan_progress[scan_id]["active"] = active
+            _scan_progress[scan_id]["elapsed_time"] = time.time() - _scan_progress[scan_id]["start_time"]
+
+
+def finish_progress(scan_id: int):
+    """Mark a scan as finished."""
+    with _progress_lock:
+        if scan_id in _scan_progress:
+            _scan_progress[scan_id]["status"] = "complete"
+            _scan_progress[scan_id]["elapsed_time"] = time.time() - _scan_progress[scan_id]["start_time"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -269,7 +309,37 @@ async def root():
     return _get_api().get_system_info()
 
 
-# -- TRADITIONAL SCAN ENDPOINTS (Backward Compatible) --------------------------
+@app.get("/scan/progress/{scan_id}", tags=["Progress"])
+async def get_scan_progress(
+    scan_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get real-time progress for an ongoing scan.
+    Returns:
+      - total_ips: total IPs being scanned
+      - discovered: IPs discovered so far
+      - active: active IPs discovered so far
+      - status: "running" or "complete"
+      - elapsed_time: seconds elapsed
+      - percentage: progress percentage (0-100)
+    """
+    with _progress_lock:
+        if scan_id not in _scan_progress:
+            return {"status": "not_found", "message": "Scan not found or completed"}
+
+        progress = _scan_progress[scan_id].copy()
+        total = progress.get("total_ips", 0)
+        discovered = progress.get("discovered", 0)
+
+        # Calculate percentage
+        percentage = (discovered / total * 100) if total > 0 else 0
+        progress["percentage"] = round(percentage, 1)
+
+        return progress
+
+
+
 
 @app.post("/scan/host", tags=["Traditional Scans"])
 async def scan_host(req: SingleHostRequest, current_user: User = Depends(get_current_user)):
@@ -335,19 +405,30 @@ async def scan_host_discovery(
     terminal     = get_terminal_phase(mode)      # 1, 2, or 4 (mapped to 3 in update_scan_phase)
     host_discovery_final = (terminal == 1)               # True only for "basic"
 
+    report_paths = orch.generate_phase_report(result, "host_discovery")
+    report_paths = {
+        k: v for k, v in report_paths.items()
+        if v and os.path.isfile(v)
+    }
+
     scan = create_scan(
-        db            = db,
-        user_id       = user.id,
-        target        = target_str,
-        targets       = req.targets,
-        scan_type     = req.scan_type,
-        pipeline_mode = mode,                    # stored for history display
-        phase1_data   = {"data": result["data"], "summary": result["summary"]},
-        is_final      = host_discovery_final,            # marks complete immediately for "basic"
+        db               = db,
+        user_id          = user.id,
+        target           = target_str,
+        targets          = req.targets,
+        scan_type        = req.scan_type,
+        pipeline_mode    = mode,                    # stored for history display
+        phase1_data      = {"data": result["data"], "summary": result["summary"]},
+        is_final         = host_discovery_final,            # marks complete immediately for "basic"
+        report_json_path = report_paths.get("json_pdf"),
+        report_xml_path  = report_paths.get("xml_pdf"),
     )
 
-    result["scan_id"]       = scan.id
-    result["pipeline_mode"] = mode
+    if report_paths:
+        result["reports"] = report_paths
+
+    result["scan_id"]        = scan.id
+    result["pipeline_mode"]  = mode
     result["terminal_phase"] = terminal
     log.info(
         "Host Discovery complete — scan_id=%s pipeline=%s is_final=%s",
@@ -394,6 +475,13 @@ async def scan_asset_discovery(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Asset Discovery failed"))
 
+        report_paths = orch.generate_phase_report(result, "asset_discovery")
+        report_paths = {
+            k: v for k, v in report_paths.items()
+            if v and os.path.isfile(v)
+        }
+
+        updated = None
         if req.scan_id:
             updated = update_scan_phase(
                 db               = db,
@@ -403,10 +491,15 @@ async def scan_asset_discovery(
                 phase_data       = {"data": result["data"], "summary": result["summary"]},
                 is_final         = is_final,
                 pipeline_mode    = mode,
+                report_json_path = report_paths.get("json_pdf"),
+                report_xml_path  = report_paths.get("xml_pdf"),
             )
             if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
             result["scan_id"] = req.scan_id
+
+        if report_paths:
+            result["reports"] = report_paths
 
         result["pipeline_mode"]  = mode
         result["terminal_phase"] = terminal
@@ -648,6 +741,51 @@ async def scan_phases(req: PhasesRequest, current_user: User = Depends(get_curre
 _REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 
 
+def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
+    """Generate report PDFs from stored scan phase payloads when no file path exists."""
+    if not scan.phase_results:
+        return {}
+
+    payloads = {}
+    for row in scan.phase_results:
+        if not row.payload:
+            continue
+        try:
+            payloads[row.phase_key] = json.loads(row.payload)
+        except Exception:
+            continue
+
+    # Prefer the most complete phase available.
+    for key in ("credentialed", "phase3", "phase2", "phase1"):
+        if key in payloads and isinstance(payloads[key], dict):
+            payload = payloads[key]
+            break
+    else:
+        return {}
+
+    if not payload.get("data"):
+        return {}
+
+    result = {
+        "success": True,
+        "data":    payload.get("data", []),
+        "summary": payload.get("summary", {}),
+        "metadata": {"scan_id": scan.id},
+    }
+
+    report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(result, key)
+    report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}
+    if report_paths:
+        if report_paths.get("json_pdf"):
+            scan.report_json_path = report_paths["json_pdf"]
+        if report_paths.get("xml_pdf"):
+            scan.report_xml_path = report_paths["xml_pdf"]
+        db.commit()
+        db.refresh(scan)
+
+    return report_paths
+
+
 @app.get("/reports/download/{scan_id}", tags=["Reports"])
 def download_report(
     scan_id: int,
@@ -667,13 +805,17 @@ def download_report(
         raise HTTPException(status_code=400, detail="fmt must be 'JSON' or 'XML'.")
 
     pdf_path = scan.report_json_path if fmt_upper == "JSON" else scan.report_xml_path
+    if not pdf_path or not os.path.isfile(os.path.abspath(pdf_path)):
+        report_paths = _load_scan_report_paths(db, scan)
+        pdf_path = report_paths.get("json_pdf" if fmt_upper == "JSON" else "xml_pdf")
+
     if not pdf_path:
         raise HTTPException(
             status_code=404,
             detail=f"No {fmt_upper} PDF report is attached to this scan.",
         )
 
-    pdf_path   = os.path.abspath(pdf_path)
+    pdf_path = os.path.abspath(pdf_path)
     reports_root = os.path.abspath(_REPORTS_DIR)
     if not os.path.isfile(pdf_path):
         raise HTTPException(status_code=404, detail="Report file not found on disk.")

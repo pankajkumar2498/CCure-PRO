@@ -59,14 +59,16 @@ def _upsert_phase_result(
 
 
 def create_scan(
-    db:            Session,
-    user_id:       int,
-    target:        str,
-    targets:       list[str],
-    scan_type:     str,
-    phase1_data:   dict,
-    pipeline_mode: str  = "basic",
-    is_final:      bool = False,
+    db:                Session,
+    user_id:           int,
+    target:            str,
+    targets:           list[str],
+    scan_type:         str,
+    phase1_data:       dict,
+    pipeline_mode:     str  = "basic",
+    is_final:          bool = False,
+    report_json_path:  Optional[str] = None,
+    report_xml_path:   Optional[str] = None,
 ) -> Scan:
     """
     Called right after /scan/host-discovery succeeds.
@@ -88,17 +90,19 @@ def create_scan(
     duration = summary.get("scan_duration", 0.0)
 
     scan = Scan(
-        user_id       = user_id,
-        target        = target,
-        targets_json  = json.dumps(targets),
-        scan_type     = scan_type,
-        pipeline_mode = pipeline_mode,
-        phase         = 1,
-        status        = "complete" if is_final else "running",
-        results       = "{}",
-        summary       = json.dumps(summary),
-        scan_duration = duration,
-        failure_reason= None,
+        user_id          = user_id,
+        target           = target,
+        targets_json     = json.dumps(targets),
+        scan_type        = scan_type,
+        pipeline_mode    = pipeline_mode,
+        phase            = 1,
+        status           = "complete" if is_final else "running",
+        results          = "{}",
+        summary          = json.dumps(summary),
+        report_json_path = report_json_path,
+        report_xml_path  = report_xml_path,
+        scan_duration    = duration,
+        failure_reason   = None,
     )
     db.add(scan)
     db.commit()

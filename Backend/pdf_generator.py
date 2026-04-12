@@ -279,6 +279,18 @@ def _section_header(title: str, styles: dict) -> Paragraph:
     return Paragraph(f"&nbsp; {title}", styles["section"])
 
 
+def _get_scan_type_label(scan_type: str) -> str:
+    """Map technical scan_type names to user-friendly labels."""
+    labels = {
+        "host_discovery": "Basic Network Scan",
+        "asset_discovery": "Asset Discovery",
+        "phase_selective_scan": "Phase Selective Scan",
+        "advanced": "Advanced Vulnerability Scan",
+        "credentialed_scan": "Credentialed Audit",
+    }
+    return labels.get(scan_type, scan_type.replace("_", " ").title())
+
+
 def _build_json_story(result: dict, scan_type: str,
                       timestamp: str, styles: dict) -> list:
     """
@@ -299,11 +311,14 @@ def _build_json_story(result: dict, scan_type: str,
     story.append(_section_header("Scan Information", styles))
     meta    = result.get("metadata", {})
     summary = result.get("summary",  {})
+    
+    phase = summary.get("phase", 1)
+    scan_strategy = meta.get("scan_method") or summary.get("scan_type", "N/A")
 
     scan_info_rows = [
-        ("Scan Type",         scan_type.replace("_", " ").title()),
-        ("Target",            meta.get("target", summary.get("target", "N/A"))),
-        ("Scan Strategy",     summary.get("scan_type", "N/A")),
+        ("Scan Type",         _get_scan_type_label(scan_type)),
+        ("Target",            meta.get("target", "N/A")),
+        ("Scan Strategy",     scan_strategy),
         ("Scan Date",         timestamp[:10]),
         ("Scan Time",         timestamp[11:19]),
         ("Scan Duration",     f"{summary.get('scan_duration', 0):.3f} seconds"),
@@ -384,11 +399,15 @@ def _build_json_story(result: dict, scan_type: str,
                 ("MAC Address",       host.get("mac_address",   "N/A")),
                 ("OS Fingerprint",    host.get("os_guess",      "Unknown")),
                 ("Detection Method",  host.get("scan_method",   "N/A")),
-                ("Open TCP Ports",    ports_display if is_active else "N/A"),
+            ]
+            # Only include port information for non-host-discovery scans (phase > 1)
+            if result.get("summary", {}).get("phase", 1) > 1:
+                detail_rows.append(("Open TCP Ports",    ports_display if is_active else "N/A"))
+            detail_rows.extend([
                 ("Status",            host.get("status",        "Unknown")),
                 ("Response Time",     f"{host.get('response_time_ms') or 0:.2f} ms"),
                 ("Scan Timestamp",    host.get("scan_timestamp", "N/A")),
-            ]
+            ])
 
             card_title = Paragraph(
                 f"Host {idx}  -  {host.get('ip_address', 'N/A')}",
@@ -479,7 +498,7 @@ def _result_to_pretty_xml(result: dict, scan_type: str) -> str:
 
 
 def _xml_to_story(xml_str: str, scan_type: str,
-                  timestamp: str, styles: dict) -> list:
+                  timestamp: str, styles: dict, result: dict = None) -> list:
     """Build the ReportLab story for the XML PDF."""
     story = []
     W     = PAGE_W - 2 * MARGIN
@@ -494,8 +513,14 @@ def _xml_to_story(xml_str: str, scan_type: str,
 
     # Meta strip
     story.append(_section_header("Export Information", styles))
+    meta    = result.get("metadata", {}) if result else {}
+    summary = result.get("summary", {}) if result else {}
+    scan_strategy = meta.get("scan_method") or summary.get("scan_type", "N/A")
+    
     meta_rows = [
-        ("Scan Type",      scan_type.replace("_", " ").title()),
+        ("Scan Type",      _get_scan_type_label(scan_type)),
+        ("Target",         meta.get("target", "N/A")),
+        ("Scan Strategy",  scan_strategy),
         ("Scan Date",      timestamp[:10]),
         ("Scan Time",      timestamp[11:19]),
         ("Export Format",  "XML - Machine-readable"),
@@ -626,7 +651,7 @@ class ScanReportGenerator:
             subject      = f"Host Discovery: {scan_type}",
         )
 
-        story = _xml_to_story(xml_str, scan_type, timestamp, self.styles)
+        story = _xml_to_story(xml_str, scan_type, timestamp, self.styles, result)
         doc.build(story, onFirstPage=_draw_header_footer,
                          onLaterPages=_draw_header_footer)
         return filename

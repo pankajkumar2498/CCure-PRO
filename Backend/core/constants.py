@@ -9,6 +9,8 @@ from typing import Dict, List
 
 # -- Optional scapy (checked once here, re-used everywhere) -------------------
 try:
+    import logging
+    logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
     from scapy.all import (
         srp, sr, send,
         Ether, ARP, IP, ICMP, TCP, UDP, DNS, DNSQR,

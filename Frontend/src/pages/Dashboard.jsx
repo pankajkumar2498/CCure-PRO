@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { useScan } from "../context/ScanContext";
 import { SCAN_PIPELINES, getScanPipeline } from "../config/scanConfig";
 import AppLayout from "../components/layout/AppLayout";
+import Modal from "../components/layout/Modal";
 
 /* ─── SVG Icons ──────────────────────────────────────────────────────────── */
 const Svg = ({ children, size = 16 }) => (
@@ -136,6 +137,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { setPipelineMode, resetScan } = useScan();
   const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
 
   const filtered = TEMPLATES.filter(t =>
     t.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -179,41 +181,58 @@ export default function Dashboard() {
     }
   };
 
+  const onNewScan = () => setModalOpen(true);
+
   return (
-    <AppLayout pageTitle="Scan Templates">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h1 className="page-title">Scan Templates</h1>
-            <p className="page-subtitle">Choose a scan type to begin your network assessment</p>
+    <>
+      <AppLayout pageTitle="Scan Templates" onNewScan={onNewScan}>
+        <div className="page-inner">
+          <div className="page-title-row">
+            <div>
+              <h1 className="page-title">Scan Templates</h1>
+              <p className="page-subtitle">Choose a scan type to begin your network assessment</p>
+            </div>
           </div>
-        </div>
 
-        {/* Search */}
-        <div className="search-wrap">
-          <span className="search-icon"><SvgSearch /></span>
-          <input
-            className="search-input"
-            placeholder="Search templates…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
+          {/* Search */}
+          <div className="search-wrap">
+            <span className="search-icon"><SvgSearch /></span>
+            <input
+              className="search-input"
+              placeholder="Search templates…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
 
-        {/* Template grid */}
-        {filtered.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-state-icon">🔍</span>
-            <p className="empty-state-title">No templates match "{search}"</p>
-          </div>
-        ) : (
-          <div className="scan-grid">
-            {filtered.map(tpl => (
-              <ScanCard key={tpl.id} tpl={tpl} onClick={handleCard} />
-            ))}
-          </div>
-        )}
-      </div>
-    </AppLayout>
+          {/* Template grid */}
+          {filtered.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-state-icon">🔍</span>
+              <p className="empty-state-title">No templates match "{search}"</p>
+            </div>
+          ) : (
+            <div className="scan-grid">
+              {filtered.map(tpl => (
+                <ScanCard key={tpl.id} tpl={tpl} onClick={handleCard} />
+              ))}
+            </div>
+          )}
+        </div>
+      </AppLayout>
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Start New Scan"
+        subtitle="Choose a scan type to begin your next assessment."
+      >
+        <div className="modal-panel-grid">
+          {filtered.map(tpl => (
+            <ScanCard key={tpl.id} tpl={tpl} onClick={(tpl) => { handleCard(tpl); setModalOpen(false); }} />
+          ))}
+        </div>
+      </Modal>
+    </>
   );
 }

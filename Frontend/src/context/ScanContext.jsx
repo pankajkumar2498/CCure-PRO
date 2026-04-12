@@ -42,6 +42,7 @@ export function ScanProvider({ children }) {
   const [phase1Summary,       setPhase1SummaryRaw]       = useState(() => ssGet("cc_phase1Summary",      null));
   const [phase2Hosts,         setPhase2HostsRaw]         = useState(() => ssGet("cc_phase2Hosts",        []));
   const [phase2Summary,       setPhase2SummaryRaw]       = useState(() => ssGet("cc_phase2Summary",      null));
+  const [phase2Results,       setPhase2ResultsRaw]       = useState(() => ssGet("cc_phase2Results",      []));
   const [phase3Results,       setPhase3ResultsRaw]       = useState(() => ssGet("cc_phase3Results",      []));
   const [phase3Summary,       setPhase3SummaryRaw]       = useState(() => ssGet("cc_phase3Summary",      null));
   const [phase3AuditResults,  setPhase3AuditResultsRaw]  = useState(() => ssGet("cc_phase3AuditResults", [])); // ← NEW
@@ -57,6 +58,7 @@ export function ScanProvider({ children }) {
   const setPhase1Summary      = mk("cc_phase1Summary",      setPhase1SummaryRaw);
   const setPhase2Hosts        = mk("cc_phase2Hosts",        setPhase2HostsRaw);
   const setPhase2Summary      = mk("cc_phase2Summary",      setPhase2SummaryRaw);
+  const setPhase2Results      = mk("cc_phase2Results",      setPhase2ResultsRaw);
   const setPhase3Results      = mk("cc_phase3Results",      setPhase3ResultsRaw);
   const setPhase3Summary      = mk("cc_phase3Summary",      setPhase3SummaryRaw);
   const setPhase3AuditResults = mk("cc_phase3AuditResults", setPhase3AuditResultsRaw); // ← NEW
@@ -68,7 +70,7 @@ export function ScanProvider({ children }) {
     setPipelineModeRaw("basic");
     setPhase1HostsRaw([]);      setPhase1SummaryRaw(null);
     setPhase2HostsRaw([]);      setPhase2SummaryRaw(null);
-    setPhase3ResultsRaw([]);    setPhase3SummaryRaw(null);
+    setPhase2ResultsRaw([]);    setPhase3ResultsRaw([]);    setPhase3SummaryRaw(null);
     setPhase3AuditResultsRaw([]);                          // ← NEW
     setSaveStatusRaw("");
   };
@@ -83,6 +85,7 @@ export function ScanProvider({ children }) {
       phase1Summary, setPhase1Summary,
       phase2Hosts, setPhase2Hosts,
       phase2Summary, setPhase2Summary,
+      phase2Results, setPhase2Results,
       phase3Results, setPhase3Results,
       phase3Summary, setPhase3Summary,
       phase3AuditResults, setPhase3AuditResults,  // ← NEW

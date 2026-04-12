@@ -111,6 +111,25 @@ class HostResult:
     def to_dict(self) -> Dict:
         return asdict(self)
 
+    def to_phase1_dict(self) -> Dict:
+        """Returns fields for Phase 1 (Host Discovery) with proper field mapping for frontend."""
+        d = {
+            "ip_address": self.ip_address,
+            "is_active": self.is_active,
+            "status": self.status,
+            "scan_method": self.scan_method,
+            "discovery_method": self.scan_method,  # Frontend alias
+            "scan_timestamp": self.scan_timestamp,
+            "hostname": self.hostname,
+            "mac_address": self.mac_address,
+            "vendor": self.vendor,
+            "response_time_ms": self.response_time_ms,
+            "os_guess": self.os_guess,
+            "os_confidence": self.os_confidence,
+            "confidence": self.confidence,
+        }
+        return d
+
     def to_clean_dict(self) -> Dict:
         """Like to_dict() but drops fields that have no meaningful value."""
         d = asdict(self)
@@ -146,6 +165,10 @@ class HostResult:
                         continue
 
             cleaned[key] = value
+
+        # Add discovery_method as alias for scan_method (Phase 1 frontend compatibility)
+        if "scan_method" in cleaned:
+            cleaned["discovery_method"] = cleaned["scan_method"]
 
         # Clean open_ports — remove per-port fields that are empty
         if "open_ports" in cleaned:

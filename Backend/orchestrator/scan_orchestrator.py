@@ -302,7 +302,7 @@ class ScanOrchestrator:
         formatted_hosts = []
         for ip_data in disc_results:
             ip = ip_data.get("ip")
-            formatted = self._format_host(ip, ip_data).to_clean_dict()
+            formatted = self._format_host(ip, ip_data).to_phase1_dict()
             formatted_hosts.append(formatted)
         
         active = sum(1 for h in formatted_hosts if h["is_active"])
@@ -312,12 +312,14 @@ class ScanOrchestrator:
             "inactive_hosts": len(formatted_hosts) - active,
             "scan_duration": duration,
             "phase": 1,
+            "scan_type": st.value.upper(),
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
+            "metadata": {"target": ",".join(targets), "scan_method": st.value.upper()},
         }
 
     def run_asset_discovery_only(
@@ -406,12 +408,14 @@ class ScanOrchestrator:
             "hosts_with_ports": hosts_with_ports,
             "scan_duration": duration,
             "phase": 2,
+            "scan_type": intensity_enum.value.upper(),
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
+            "metadata": {"scan_intensity": intensity_enum.value.upper()},
         }
 
     def run_advanced_scan_only(
@@ -497,12 +501,14 @@ class ScanOrchestrator:
             "high_risk_hosts": high,
             "scan_duration": duration,
             "phase": 3,
+            "scan_type": "VULN_SCAN",
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
+            "metadata": {"scan_type": "advanced"},
         }
 
     async def run_phases(
@@ -637,6 +643,13 @@ class ScanOrchestrator:
             mac = get_mac_from_arp_cache(ip)
         # ──────────────────────────────────────────────
 
+        # ── OUI / Vendor lookup from MAC address ─────
+        vendor = "N/A"
+        if mac and mac != "N/A":
+            from core.oui_lookup import lookup_vendor
+            vendor = lookup_vendor(mac) or "N/A"
+        # ──────────────────────────────────────────────
+
         confs      = data.get("confirmations", [])
         n          = len(confs)
         confidence = (
@@ -650,6 +663,7 @@ class ScanOrchestrator:
             ip_address       = ip or "",
             hostname         = hostname,
             mac_address      = mac,
+            vendor           = vendor,
             is_active        = is_active,
             status           = "Active" if is_active else "Inactive",
             scan_method      = data.get("method", "N/A"),

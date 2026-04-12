@@ -11,6 +11,7 @@
  *   children      — page content
  *   pageTitle     — shown in header breadcrumb
  *   saveStatus    — "saving" | "saved" | "error" | "" (scan pages)
+ *   onNewScan     — optional function to call instead of navigating to /dashboard
  */
 import { useRef, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -92,7 +93,7 @@ function ProfileDropdown({ user, onClose, onLogout }) {
 }
 
 /* ─── Main AppLayout ────────────────────────────────────────────────────── */
-export default function AppLayout({ children, pageTitle = "", saveStatus = "" }) {
+export default function AppLayout({ children, pageTitle = "", saveStatus = "", onNewScan }) {
   const navigate              = useNavigate();
   const { pathname }          = useLocation();
   const { user, logout }      = useAuth();
@@ -185,7 +186,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "" })
             )}
 
             {/* + New Scan */}
-            <button className="btn-new-scan" onClick={() => navigate("/dashboard")}>
+            <button className="btn-new-scan" onClick={onNewScan || (() => navigate("/dashboard"))}>
               <IcoPlus />
               New Scan
             </button>

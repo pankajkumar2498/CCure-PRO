@@ -13,6 +13,7 @@ import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import AppLayout               from "../../components/layout/AppLayout";
 import ScanStepper             from "../../components/layout/ScanStepper";
+import ExportPanel             from "../../components/scan/ExportPanel";
 import { useScan }             from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
@@ -21,13 +22,11 @@ export default function Phase1Results() {
   const {
     target, scanId,
     phase1Hosts, phase1Summary,
-    setPhase2Hosts,
     pipelineMode,
     saveStatus,
   } = useScan();
 
-  const [selected, setSelected] = useState(new Set());
-  const [filter,   setFilter]   = useState("active");
+  const [filter, setFilter] = useState("active");
 
   // ── FIX 1: redirect in useEffect, never during render ──────────────────
   useEffect(() => {
@@ -46,21 +45,8 @@ export default function Phase1Results() {
   const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2);
   const nextPhase          = getNextPhase(pipelineMode, 1);
 
-  const toggleAll = () =>
-    selected.size === activeHosts.length
-      ? setSelected(new Set())
-      : setSelected(new Set(activeHosts.map(h => h.ip_address)));
-
-  const toggle = (ip) => {
-    const next = new Set(selected);
-    next.has(ip) ? next.delete(ip) : next.add(ip);
-    setSelected(next);
-  };
-
   const proceedToNextPhase = () => {
     if (!canProceedToPhase2) return;
-    const picked = phase1Hosts.filter(h => selected.has(h.ip_address));
-    setPhase2Hosts(picked);
     navigate(nextPhase.route);
   };
 
@@ -89,9 +75,6 @@ export default function Phase1Results() {
             <span className="summary-item summary-item--active"><b>{phase1Summary.active_hosts}</b> Active</span>
             <span className="summary-item"><b>{phase1Summary.inactive_hosts}</b> Inactive</span>
             <span className="summary-item"><b>{phase1Summary.scan_duration?.toFixed(1)}s</b> Duration</span>
-            {selected.size > 0 && (
-              <span className="summary-item summary-item--sel"><b>{selected.size}</b> selected</span>
-            )}
           </div>
         )}
 
@@ -116,19 +99,12 @@ export default function Phase1Results() {
               </button>
             ))}
           </div>
-
-          {canProceedToPhase2 && activeHosts.length > 0 && (
-            <button className="btn btn--ghost btn--sm" onClick={toggleAll}>
-              {selected.size === activeHosts.length ? "Deselect all" : "Select all active"}
-            </button>
-          )}
         </div>
 
         <div className="results-table-wrap">
           <table className="results-table">
             <thead>
               <tr>
-                {canProceedToPhase2 && <th style={{ width: 36 }} />}
                 <th>IP Address</th>
                 <th>Hostname</th>
                 <th>Status</th>
@@ -143,21 +119,7 @@ export default function Phase1Results() {
                 <tr
                   key={h.ip_address}
                   className={h.is_active ? "row--active" : "row--inactive"}
-                  onClick={() => canProceedToPhase2 && h.is_active && toggle(h.ip_address)}
-                  style={{ cursor: canProceedToPhase2 && h.is_active ? "pointer" : "default" }}
                 >
-                  {canProceedToPhase2 && (
-                    <td>
-                      {h.is_active && (
-                        <input
-                          type="checkbox"
-                          checked={selected.has(h.ip_address)}
-                          onChange={() => toggle(h.ip_address)}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      )}
-                    </td>
-                  )}
                   <td><code className="ip-code">{h.ip_address}</code></td>
                   <td>{h.hostname || <span className="muted">—</span>}</td>
                   <td>
@@ -174,17 +136,33 @@ export default function Phase1Results() {
           </table>
         </div>
 
+        {phase1Summary && (
+          <>
+            {!canProceedToPhase2 && (
+              <div className="alert alert--success" style={{ marginBottom: 16 }}>
+                ✓ Scan completed. Export report available below.
+              </div>
+            )}
+            <ExportPanel
+              results={phase1Hosts}
+              summary={phase1Summary}
+              scanId={scanId}
+              target={target}
+              pipelineMode={pipelineMode}
+            />
+          </>
+        )}
+
         {canProceedToPhase2 && (
           <div className="phase-action-bar">
             <p className="muted" style={{ fontSize: "0.85rem" }}>
-              Select active hosts to include in Port Scanning.
+              Continue to Port Scan to choose hosts and intensity on the same page.
             </p>
             <button
               className="btn btn--primary"
               onClick={proceedToNextPhase}
-              disabled={selected.size === 0}
             >
-              {nextPhase?.label ?? "Port Scan"} → ({selected.size} host{selected.size !== 1 ? "s" : ""})
+              Continue to Port Scan
             </button>
           </div>
         )}

@@ -35,6 +35,8 @@ function buildRiskCounts(auditResults = []) {
 export default function Phase4Results() {
   const navigate = useNavigate();
   const {
+    phase1Hosts,
+    phase2Results,
     scanId, target,
     phase1Summary,
     phase2Summary,
@@ -209,6 +211,9 @@ export default function Phase4Results() {
           summary={phase3Summary}
           scanId={scanId}
           target={target}
+          pipelineMode="advanced"
+          phase1Hosts={phase1Hosts}
+          phase2Results={phase2Results}
         />
 
         {/* ── Footer ──────────────────────────────────────────────────── */}

@@ -1,15 +1,15 @@
 /**
- * src/pages/scan/Phase2Results.jsx  [FIXED]
+ * src/pages/scan/Phase2Results.jsx
  *
- * ROOT-CAUSE FIXES:
- *  1. Render-time navigate() removed → replaced with useEffect guard.
- *  2. catch block now clears saveStatus after a delay (was permanently
- *     stuck on "error" — no setTimeout present in original code).
+ * Updated flow: host selection + intensity selection happen on the same Port Scan page.
+ * The page now directly executes Asset Discovery when the user clicks Run Port Scan,
+ * and shows final Phase 2 results in-place after completion.
  */
 import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import AppLayout               from "../../components/layout/AppLayout";
 import ScanStepper             from "../../components/layout/ScanStepper";
+import ExportPanel             from "../../components/scan/ExportPanel";
 import { useScan }             from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api                     from "../../api/axiosInstance";
@@ -27,73 +27,129 @@ const RISK_COLOR = {
 export default function Phase2Results() {
   const navigate = useNavigate();
   const {
-    phase2Hosts: hosts, scanId, target,
-    setPhase2Hosts: setHosts,
-    setPhase2Summary,
-    setPhase3Results: setP3,
+    phase1Hosts,
+    phase2Hosts,
+    phase2Results,
+    phase2Summary,
+    scanId,
+    target,
     pipelineMode,
-    saveStatus, setSaveStatus,
+    saveStatus,
+    setSaveStatus,
+    setPhase2Hosts,
+    setPhase2Summary,
+    setPhase2Results,
+    setPhase3Results,
   } = useScan();
-
+  const [filter,     setFilter]     = useState("active");
   const [intensity,  setIntensity]  = useState("normal");
   const [loading,    setLoading]    = useState(false);
   const [results,    setResults]    = useState([]);
   const [summary,    setSummary]    = useState(null);
-  const [selected,   setSelected]   = useState(new Set());
+  const [selected,   setSelected]   = useState(() => {
+    const initialSelection = phase2Hosts.length ? phase2Hosts : phase1Hosts.filter(h => h.is_active);
+    return new Set(initialSelection.map(h => h.ip_address));
+  });
   const [expanded,   setExpanded]   = useState(new Set());
   const [error,      setError]      = useState("");
   const [hasScanned, setHasScanned] = useState(false);
 
-  // ── FIX 1: redirect in useEffect, never during render ──────────────────
   useEffect(() => {
-    if (!hosts.length) {
+    if (phase2Results.length) {
+      setResults(phase2Results);
+      setHasScanned(true);
+    }
+    if (phase2Summary) {
+      setSummary(phase2Summary);
+    }
+  }, [phase2Results, phase2Summary]);
+
+  useEffect(() => {
+    if (!phase1Hosts.length) {
       navigate("/scan/host-discovery", { replace: true });
     }
-  }, [hosts.length, navigate]);
+  }, [phase1Hosts.length, navigate]);
 
-  // Pure render guard
-  if (!hosts.length) return null;
+  useEffect(() => {
+    if (phase2Hosts.length) {
+      setSelected(new Set(phase2Hosts.map(h => h.ip_address)));
+    }
+  }, [phase2Hosts]);
 
-  // ── Pipeline logic ──────────────────────────────────────────────────────
+  if (!phase1Hosts.length) return null;
+
+  const discoveredHosts = phase1Hosts;
+  const activeHosts     = discoveredHosts.filter(h => h.is_active);
+  const displayHosts    = filter === "active" ? activeHosts : discoveredHosts;
+  const selectedHosts   = discoveredHosts.filter(h => selected.has(h.ip_address) && h.is_active);
+  const selectedCount   = selectedHosts.length;
+
   const canProceedToPhase3 = isPhaseEnabled(pipelineMode, 3);
   const nextPhase          = getNextPhase(pipelineMode, 2);
 
+  const toggleHost = (ip) => {
+    if (!activeHosts.some(h => h.ip_address === ip)) return;
+    const next = new Set(selected);
+    next.has(ip) ? next.delete(ip) : next.add(ip);
+    setSelected(next);
+  };
+
+  const toggleAll = () => {
+    const next = selectedCount === activeHosts.length
+      ? new Set()
+      : new Set(activeHosts.map(h => h.ip_address));
+    setSelected(next);
+  };
+
   const runScan = async () => {
+    if (!selectedCount) return;
+
+    const payloadHosts = discoveredHosts.filter(h => selected.has(h.ip_address));
+    setPhase2Hosts(payloadHosts);
+
     setLoading(true);
-    setError(""); setResults([]); setSummary(null);
-    setSelected(new Set()); setExpanded(new Set());
+    setError("");
+    setResults([]);
+    setSummary(null);
+    setExpanded(new Set());
     setHasScanned(false);
     setSaveStatus("saving");
+
     try {
       const { data } = await api.post("/scan/asset-discovery", {
-        hosts,
+        hosts:         payloadHosts,
         intensity,
         scan_id:       scanId,
         pipeline_mode: pipelineMode,
       });
+
       if (!data.success) throw new Error(data.error || "Phase 2 failed");
+
       setResults(data.data);
       setSummary(data.summary);
       setPhase2Summary(data.summary);
+      setPhase2Results(data.data);
       setHasScanned(true);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Phase 2 failed");
       setSaveStatus("error");
-      // ── FIX 2: clear error save-status after delay (was missing) ──────
       setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setLoading(false);
     }
   };
 
-  const toggle       = ip => { const n = new Set(selected); n.has(ip) ? n.delete(ip) : n.add(ip); setSelected(n); };
-  const toggleExpand = ip => { const n = new Set(expanded); n.has(ip) ? n.delete(ip) : n.add(ip); setExpanded(n); };
+  const toggleExpand = (ip) => {
+    const next = new Set(expanded);
+    next.has(ip) ? next.delete(ip) : next.add(ip);
+    setExpanded(next);
+  };
 
   const proceedToNextPhase = () => {
     if (!canProceedToPhase3 || !nextPhase) return;
-    setP3(results.filter(h => selected.has(h.ip_address)));
+    setPhase3Results(results.filter(h => selected.has(h.ip_address)));
     navigate(nextPhase.route);
   };
 
@@ -109,8 +165,7 @@ export default function Phase2Results() {
           <div>
             <h2 className="page-title">Port Scan</h2>
             <p className="page-subtitle">
-              Scanning <b>{hosts.length}</b> host{hosts.length !== 1 ? "s" : ""} from{" "}
-              <code className="ip-code">{target}</code>
+              Choose hosts and intensity, then run port scanning directly.
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -129,21 +184,95 @@ export default function Phase2Results() {
                 ))}
               </div>
             </div>
+
             <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
-            <button className="btn btn--primary" onClick={runScan} disabled={loading}>
+
+            <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0}>
               {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
             </button>
           </div>
         </div>
 
-        <div className="host-chip-row">
-          {hosts.map(h => (
-            <span key={h.ip_address} className="host-chip">
-              <span className="status-dot dot-active" style={{ width: 6, height: 6 }} />
-              {h.ip_address}
-            </span>
-          ))}
+        <div className="summary-bar" style={{ marginTop: 16 }}>
+          <span className="summary-item"><b>{activeHosts.length}</b> Active hosts available</span>
+          <span className="summary-item"><b>{selectedCount}</b> selected</span>
+          <span className="summary-item"><b>{filter === "active" ? activeHosts.length : discoveredHosts.length}</b> shown</span>
         </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
+          <div className="filter-tabs">
+            {[
+              ["active", `Active (${activeHosts.length})`],
+              ["all",    `All (${discoveredHosts.length})`],
+            ].map(([val, lbl]) => (
+              <button
+                key={val}
+                className={`filter-tab ${filter === val ? "filter-tab--active" : ""}`}
+                onClick={() => setFilter(val)}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn--ghost btn--sm" onClick={toggleAll} disabled={loading || !activeHosts.length}>
+            {selectedCount === activeHosts.length ? "Deselect all" : "Select all active"}
+          </button>
+        </div>
+
+        <div className="results-table-wrap">
+          <table className="results-table">
+            <thead>
+              <tr>
+                <th style={{ width: 36 }} />
+                <th>IP Address</th>
+                <th>Hostname</th>
+                <th>Status</th>
+                <th>Method</th>
+                <th>MAC</th>
+                <th>Vendor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayHosts.map(host => (
+                <tr
+                  key={host.ip_address}
+                  className={host.is_active ? "row--active" : "row--inactive"}
+                  onClick={() => host.is_active && toggleHost(host.ip_address)}
+                  style={{ cursor: host.is_active ? "pointer" : "default" }}
+                >
+                  <td>
+                    {host.is_active && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(host.ip_address)}
+                        onChange={() => toggleHost(host.ip_address)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    )}
+                  </td>
+                  <td><code className="ip-code">{host.ip_address}</code></td>
+                  <td>{host.hostname || <span className="muted">—</span>}</td>
+                  <td>
+                    <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                    {host.is_active ? "Active" : "Inactive"}
+                  </td>
+                  <td>{host.discovery_method || <span className="muted">—</span>}</td>
+                  <td>{host.mac_address || <span className="muted">—</span>}</td>
+                  <td>{host.vendor || <span className="muted">—</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {summary && (
+          <div className="summary-bar" style={{ marginTop: 16 }}>
+            <span className="summary-item"><b>{summary.total_hosts}</b> Hosts scanned</span>
+            <span className="summary-item summary-item--active"><b>{summary.hosts_with_ports}</b> Have open ports</span>
+            <span className="summary-item"><b>{summary.scan_duration?.toFixed(1)}s</b> Duration</span>
+            <span className="summary-item summary-item--sel"><b>{selectedCount}</b> selected</span>
+          </div>
+        )}
 
         {loading && (
           <div className="progress-wrap">
@@ -155,15 +284,6 @@ export default function Phase2Results() {
         )}
 
         {error && <div className="alert alert--error">⚠ {error}</div>}
-
-        {summary && (
-          <div className="summary-bar">
-            <span className="summary-item"><b>{summary.total_hosts}</b> Hosts</span>
-            <span className="summary-item summary-item--active"><b>{summary.hosts_with_ports}</b> Have open ports</span>
-            <span className="summary-item"><b>{summary.scan_duration?.toFixed(1)}s</b> Duration</span>
-            {selected.size > 0 && <span className="summary-item summary-item--sel"><b>{selected.size}</b> Selected</span>}
-          </div>
-        )}
 
         {hasScanned && !canProceedToPhase3 && (
           <div className="alert alert--info" style={{ marginBottom: 16 }}>
@@ -178,29 +298,26 @@ export default function Phase2Results() {
           </div>
         )}
 
-        {activeResults.map(h => {
-          const portCount  = h.open_ports?.length || 0;
-          const critPorts  = h.open_ports?.filter(p => p.risk === "Critical").length || 0;
-          const isExpanded = expanded.has(h.ip_address);
-          const isSelected = selected.has(h.ip_address);
+        {activeResults.map(host => {
+          const portCount  = host.open_ports?.length || 0;
+          const critPorts  = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
+          const isExpanded = expanded.has(host.ip_address);
+          const isSelected = selected.has(host.ip_address);
 
           return (
-            <div
-              key={h.ip_address}
-              className={`host-card ${isSelected ? "host-card--selected" : ""}`}
-            >
-              <div className="host-card-header" onClick={() => toggle(h.ip_address)}>
+            <div key={host.ip_address} className={`host-card ${isSelected ? "host-card--selected" : ""}`}>
+              <div className="host-card-header" onClick={() => toggleHost(host.ip_address)}>
                 <input
                   type="checkbox"
                   checked={isSelected}
-                  onChange={() => toggle(h.ip_address)}
+                  onChange={() => toggleHost(host.ip_address)}
                   onClick={e => e.stopPropagation()}
                 />
 
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{h.ip_address}</code>
-                  {h.hostname && h.hostname !== "Unknown" && (
-                    <span className="muted small">{h.hostname}</span>
+                  <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
+                  {host.hostname && host.hostname !== "Unknown" && (
+                    <span className="muted small">{host.hostname}</span>
                   )}
                 </div>
 
@@ -217,16 +334,16 @@ export default function Phase2Results() {
                     </span>
                   )}
 
-                  {h.os_guess && h.os_guess !== "Unknown" && (
+                  {host.os_guess && host.os_guess !== "Unknown" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
-                      {h.os_guess}
+                      {host.os_guess}
                     </span>
                   )}
                 </div>
 
                 <button
                   className="expand-btn"
-                  onClick={e => { e.stopPropagation(); toggleExpand(h.ip_address); }}
+                  onClick={e => { e.stopPropagation(); toggleExpand(host.ip_address); }}
                 >
                   {isExpanded ? "▲" : "▼"}
                 </button>
@@ -234,7 +351,7 @@ export default function Phase2Results() {
 
               {isExpanded && (
                 <div className="host-card-body">
-                  {h.open_ports?.length > 0 ? (
+                  {host.open_ports?.length > 0 ? (
                     <table className="ports-table">
                       <thead>
                         <tr>
@@ -246,26 +363,26 @@ export default function Phase2Results() {
                         </tr>
                       </thead>
                       <tbody>
-                        {h.open_ports.map((p, i) => (
-                          <tr key={i}>
-                            <td><code className="ip-code">{p.port}/tcp</code></td>
+                        {host.open_ports.map((port, index) => (
+                          <tr key={index}>
+                            <td><code className="ip-code">{port.port}/tcp</code></td>
                             <td>
                               <span style={{ background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
-                                {p.service}
+                                {port.service}
                               </span>
                             </td>
                             <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                              {p.banner || p.version || <span className="muted">—</span>}
+                              {port.banner || port.version || <span className="muted">—</span>}
                             </td>
                             <td>
-                              <span style={{ color: RISK_COLOR[p.risk] || "#60a5fa", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>
-                                {p.risk || "Info"}
+                              <span style={{ color: RISK_COLOR[port.risk] || "#60a5fa", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>
+                                {port.risk || "Info"}
                               </span>
                             </td>
                             <td>
-                              {p.cves?.length > 0
+                              {port.cves?.length > 0
                                 ? <span style={{ color: "#f97316", fontFamily: "var(--mono)", fontSize: 11 }}>
-                                    {p.cves.length} CVE{p.cves.length > 1 ? "s" : ""}
+                                    {port.cves.length} CVE{port.cves.length > 1 ? "s" : ""}
                                   </span>
                                 : <span className="muted">—</span>}
                             </td>
@@ -282,14 +399,18 @@ export default function Phase2Results() {
           );
         })}
 
+        {summary && results.length > 0 && (
+          <ExportPanel results={results} summary={summary} scanId={scanId} target={target} />
+        )}
+
         {hasScanned && canProceedToPhase3 && (
           <div className="phase-footer">
             <p className="muted" style={{ fontSize: 13 }}>
-              {selected.size === 0
+              {selectedCount === 0
                 ? "Select hosts above to run a deep vulnerability audit."
-                : `${selected.size} host${selected.size > 1 ? "s" : ""} selected for deep audit.`}
+                : `${selectedCount} host${selectedCount > 1 ? "s" : ""} selected for deep audit.`}
             </p>
-            <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selected.size === 0}>
+            <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selectedCount === 0}>
               {nextPhase?.label ?? "Vulnerability Audit"} →
             </button>
           </div>

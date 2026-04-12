@@ -121,6 +121,7 @@ export default function Phase2Results() {
         intensity,
         scan_id:       scanId,
         pipeline_mode: pipelineMode,
+        phases:        [1, 2],
       });
 
       if (!data.success) throw new Error(data.error || "Phase 2 failed");
@@ -399,7 +400,7 @@ export default function Phase2Results() {
           );
         })}
 
-        {summary && results.length > 0 && (
+        {summary && results.length > 0 && pipelineMode !== "advanced" && (
           <ExportPanel results={results} summary={summary} scanId={scanId} target={target} />
         )}
 

@@ -13,7 +13,6 @@ import { useNavigate }          from "react-router-dom";
 import AppLayout                from "../../components/layout/AppLayout";
 import ScanStepper              from "../../components/layout/ScanStepper";
 import RiskBadge                from "../../components/scan/RiskBadge";
-import ExportPanel              from "../../components/scan/ExportPanel";
 import { useScan }              from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api                      from "../../api/axiosInstance";
@@ -177,18 +176,6 @@ export default function Phase3Results() {
                 <span className="summary-item" style={{ color: "var(--ok)" }}>✓ Scan #{scanId} complete</span>
               )}
             </div>
-
-            {hasScanned && results.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <ExportPanel
-                  results={results}
-                  summary={summary}
-                  scanId={scanId}
-                  target={target}
-                  pipelineMode={pipelineMode}
-                />
-              </div>
-            )}
           </>
         )}
 

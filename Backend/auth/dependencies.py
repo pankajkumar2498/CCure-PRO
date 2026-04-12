@@ -53,3 +53,47 @@ def get_current_user(
         )
 
     return user
+
+
+def get_current_user_flexible(
+    token: str = None,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    More flexible version of get_current_user that checks:
+      1. 'token' query parameter (for direct file downloads)
+      2. 'Authorization: Bearer <token>' header (standard API calls)
+    """
+    final_token = token or (credentials.credentials if credentials else None)
+    
+    if not final_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token is missing.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = decode_token(final_token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user

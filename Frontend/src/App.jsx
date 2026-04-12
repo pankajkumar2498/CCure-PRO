@@ -14,6 +14,7 @@ import Dashboard         from "./pages/Dashboard";
 import ScanHistory       from "./pages/ScanHistory";
 import ArchivedScans     from "./pages/ArchivedScans";
 import RecycleBin        from "./pages/RecycleBin";
+import SecurityReports    from "./pages/SecurityReports";
 import NewScan           from "./pages/scan/NewScan";
 import Phase1Results     from "./pages/scan/Phase1Results";
 import Phase2Results     from "./pages/scan/Phase2Results";
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/history"       element={<PrivateRoute><ScanHistory /></PrivateRoute>} />
         <Route path="/archived-scans" element={<PrivateRoute><ArchivedScans /></PrivateRoute>} />
         <Route path="/recycle-bin"   element={<PrivateRoute><RecycleBin /></PrivateRoute>} />
+        <Route path="/reports"       element={<PrivateRoute><SecurityReports /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

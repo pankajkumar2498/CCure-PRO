@@ -1,16 +1,17 @@
 /**
  * src/pages/ScanHistory.jsx
- * Lists all user scans with:
- *   • Status + date filters
- *   • View detail modal (phases / credentialed)
- *   • Re-run scan (loops back into wizard)
- *   • Delete scan
+ * Production-grade scan history with:
+ *   • Custom confirm dialogs (Re-run / Archive / Delete) — no browser confirm/alert
+ *   • Toast notifications for success / error feedback
+ *   • Re-run shows scan details + live-network warning before executing
+ *   • Archive confirms with scan context + restore hint
+ *   • Delete shows danger dialog + recycle-bin explanation
  * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/host-discovery (re-run)
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import AppLayout  from "../components/layout/AppLayout";
-import RiskBadge  from "../components/scan/RiskBadge";
+import AppLayout from "../components/layout/AppLayout";
+import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
 import { getScans, getScan, deleteScan, archiveScan } from "../api/scans";
@@ -18,14 +19,14 @@ import api from "../api/axiosInstance";
 
 /* ── constants ── */
 const STATUS_STYLE = {
-  complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)",   border: "rgba(34,197,94,.25)"   },
-  running:  { color: "#f59e0b", bg: "rgba(245,158,11,.1)",  border: "rgba(245,158,11,.25)"  },
-  failed:   { color: "#ef4444", bg: "rgba(239,68,68,.1)",   border: "rgba(239,68,68,.25)"   },
+  complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
+  running: { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
+  failed: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
 };
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
-const DATE_MS      = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
+const DATE_MS = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
 
-const isCred    = scan => scan.scan_type === "credentialed";
+const isCred = scan => scan.scan_type === "credentialed";
 const phaseLabel = scan =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} — ${PHASE_LABELS[scan.phase] || "-"}`;
 
@@ -41,41 +42,147 @@ const fmtDur = sec =>
 const normCve = cve => {
   const cvss = Number(cve.cvss_score ?? cve.cvss ?? 0) || 0;
   return {
-    cve_id:      cve.cve_id || cve.cve || "Unknown",
-    severity:    cve.severity || (cvss >= 9 ? "Critical" : cvss >= 7 ? "High" : cvss >= 4 ? "Medium" : cvss > 0 ? "Low" : "Info"),
+    cve_id: cve.cve_id || cve.cve || "Unknown",
+    severity: cve.severity || (cvss >= 9 ? "Critical" : cvss >= 7 ? "High" : cvss >= 4 ? "Medium" : cvss > 0 ? "Low" : "Info"),
     description: cve.description || cve.desc || "",
   };
 };
 
 const getStoredTargets = scan => {
-  if (Array.isArray(scan.targets) && scan.targets.length > 0) {
-    return scan.targets;
-  }
-
-  return String(scan.target || "")
-    .split(",")
-    .map(x => x.trim())
-    .filter(Boolean);
+  if (Array.isArray(scan.targets) && scan.targets.length > 0) return scan.targets;
+  return String(scan.target || "").split(",").map(x => x.trim()).filter(Boolean);
 };
 
-/* ── sub-components ── */
-function StatusBadge({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
+/* ══════════════════════════════════════════════════════════════════════════
+   TOAST SYSTEM
+   ══════════════════════════════════════════════════════════════════════════ */
+let _toastId = 0;
+function useToasts() {
+  const [toasts, setToasts] = useState([]);
+
+  const push = useCallback((msg, type = "info", duration = 4000) => {
+    const id = ++_toastId;
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 220);
+    }, duration);
+  }, []);
+
+  const dismiss = useCallback(id => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 220);
+  }, []);
+
+  return { toasts, push, dismiss };
+}
+
+const TOAST_ICONS = { success: "✓", error: "✕", info: "ℹ" };
+
+function ToastContainer({ toasts, dismiss }) {
+  if (!toasts.length) return null;
   return (
-    <span style={{
-      display: "inline-block", padding: "2px 9px", borderRadius: 4,
-      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
-      fontSize: 11, fontFamily: "var(--mono)", letterSpacing: ".05em",
-    }}>
-      {status}
-    </span>
+    <div className="toast-container">
+      {toasts.map(t => (
+        <div
+          key={t.id}
+          className={`toast toast--${t.type}${t.exiting ? " toast--exit" : ""}`}
+          onClick={() => dismiss(t.id)}
+          style={{ cursor: "pointer" }}
+        >
+          <span className="toast-icon">{TOAST_ICONS[t.type]}</span>
+          <span className="toast-msg">{t.msg}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CONFIRM DIALOG COMPONENT
+   ══════════════════════════════════════════════════════════════════════════ */
+function ConfirmDialog({ config, onConfirm, onCancel }) {
+  const { type, title, subtitle, meta, warning, confirmLabel, confirmClass, icon, iconClass } = config;
+  const [busy, setBusy] = useState(false);
+  const btnRef = useRef(null);
+
+  // Focus confirm button on mount
+  useEffect(() => { btnRef.current?.focus(); }, []);
+
+  // ESC to cancel
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await onConfirm(); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="confirm-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+        {/* Header */}
+        <div className="confirm-dialog-header">
+          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+            {icon}
+          </div>
+          <div className="confirm-dialog-titles">
+            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-subtitle">{subtitle}</div>
+          </div>
+        </div>
+
+        {/* Scan meta */}
+        {meta && meta.length > 0 && (
+          <div className="confirm-dialog-meta">
+            {meta.map(([label, value]) => (
+              <div className="confirm-meta-row" key={label}>
+                <span className="confirm-meta-label">{label}</span>
+                <span className="confirm-meta-value">{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Warning banner */}
+        {warning && (
+          <div className={`confirm-dialog-warning${type === "delete" ? " confirm-dialog-warning--danger" : ""}`}>
+            <span style={{ flexShrink: 0 }}>{type === "delete" ? "⚠️" : "ℹ️"}</span>
+            <span>{warning}</span>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="confirm-dialog-footer">
+          <button className="confirm-btn confirm-btn--cancel" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            ref={btnRef}
+            className={`confirm-btn confirm-btn--${confirmClass}`}
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            {busy ? <span className="confirm-btn-spinner" /> : null}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DETAIL MODAL (View button)
+   ══════════════════════════════════════════════════════════════════════════ */
 function DetailModal({ scanId, onClose }) {
-  const [detail,  setDetail]  = useState(null);
+  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     getScan(scanId)
@@ -217,21 +324,39 @@ function DetailModal({ scanId, onClose }) {
   );
 }
 
-/* ── Main page ── */
+/* ── sub-components ── */
+function StatusBadge({ status }) {
+  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
+  return (
+    <span style={{
+      display: "inline-block", padding: "2px 9px", borderRadius: 4,
+      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
+      fontSize: 11, fontFamily: "var(--mono)", letterSpacing: ".05em",
+    }}>
+      {status}
+    </span>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MAIN PAGE
+   ══════════════════════════════════════════════════════════════════════════ */
 export default function ScanHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { setTarget, setScanType, setPhase1Hosts, setPhase1Summary, setScanId, resetScan } = useScan();
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const [scans,       setScans]       = useState([]);
-  const [total,       setTotal]       = useState(0);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState("");
-  const [viewId,      setViewId]      = useState(null);
-  const [archivingId, setArchivingId] = useState(null);
-  const [deletingId,  setDeletingId]  = useState(null);
+  const [scans, setScans] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [viewId, setViewId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterDate,   setFilterDate]   = useState("all");
+  const [filterDate, setFilterDate] = useState("all");
+
+  // Confirm dialog state
+  const [dialog, setDialog] = useState(null); // { type, scan, config }
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -256,50 +381,92 @@ export default function ScanHistory() {
     setViewId(scan.id);
   };
 
-  const handleDelete = async id => {
-    if (!confirm(`Move Scan #${id} to Recycle Bin? You can permanently delete it later from Recycle Bin.`)) return;
-    setDeletingId(id);
-    try {
-      await deleteScan(id);
-      setScans(prev => prev.filter(s => s.id !== id));
-      setTotal(prev => Math.max(prev - 1, 0));
-    } catch {
-      alert("Failed to move scan to Recycle Bin.");
-    } finally {
-      setDeletingId(null);
-    }
+  /* ── Dialog openers ── */
+  const openRerunDialog = scan => {
+    setDialog({
+      type: "rerun",
+      scan,
+      config: {
+        type: "rerun",
+        icon: "🔁",
+        iconClass: "info",
+        title: `Re-run Scan #${scan.id}?`,
+        subtitle: "This will start a fresh scan against the same target using the same configuration.",
+        meta: [
+          ["Target", scan.target],
+          ["Type", scan.scan_type],
+          ["Phase", phaseLabel(scan)],
+          ["Last run", fmtDate(getScanDisplayDate(scan))],
+        ],
+        warning: "This action will send live network packets to the target. Only proceed if you have authorisation to scan this host.",
+        confirmLabel: "Re-run Scan",
+        confirmClass: "rerun",
+      },
+    });
   };
 
-  const handleArchive = async id => {
-    if (!confirm(`Archive Scan #${id}? You can restore it later from Archived Scans.`)) return;
-    setArchivingId(id);
-    try {
-      await archiveScan(id);
-      setScans(prev => prev.filter(s => s.id !== id));
-      setTotal(prev => Math.max(prev - 1, 0));
-    } catch {
-      alert("Failed to archive scan.");
-    } finally {
-      setArchivingId(null);
-    }
+  const openArchiveDialog = scan => {
+    setDialog({
+      type: "archive",
+      scan,
+      config: {
+        type: "archive",
+        icon: "🗂️",
+        iconClass: "warn",
+        title: `Archive Scan #${scan.id}?`,
+        subtitle: "The scan will be moved out of your active history. You can restore it any time.",
+        meta: [
+          ["Target", scan.target],
+          ["Phase", phaseLabel(scan)],
+          ["Status", scan.status],
+          ["Date", fmtDate(getScanDisplayDate(scan))],
+        ],
+        warning: "Archived scans are hidden from the main history but are never deleted. Visit Archived Scans to restore or permanently remove them.",
+        confirmLabel: "Archive",
+        confirmClass: "archive",
+      },
+    });
   };
 
-  const handleRerun = async scan => {
+  const openDeleteDialog = scan => {
+    setDialog({
+      type: "delete",
+      scan,
+      config: {
+        type: "delete",
+        icon: "🗑️",
+        iconClass: "danger",
+        title: `Move Scan #${scan.id} to Recycle Bin?`,
+        subtitle: "The scan record will be moved to the Recycle Bin. This won't delete it permanently.",
+        meta: [
+          ["Target", scan.target],
+          ["Phase", phaseLabel(scan)],
+          ["Status", scan.status],
+          ["Date", fmtDate(getScanDisplayDate(scan))],
+        ],
+        warning: "You can permanently delete or restore scans from the Recycle Bin page. Raw scan data will be preserved until you purge it.",
+        confirmLabel: "Move to Recycle Bin",
+        confirmClass: "danger",
+      },
+    });
+  };
+
+  /* ── Dialog confirm handlers ── */
+  const handleConfirmRerun = async () => {
+    const scan = dialog.scan;
     try {
       if (isCred(scan)) {
         resetScan();
+        setDialog(null);
         navigate("/scan/credentialed", { state: { prefill: { ip: scan.target } } });
         return;
       }
 
-      const t  = scan.target;
+      const t = scan.target;
       const st = scan.scan_type || "adaptive";
       const targets = getStoredTargets(scan);
 
-      const { data } = await api.post("/scan/host-discovery", {
-        targets,
-        scan_type: st,
-      });
+      const { data } = await api.post("/scan/host-discovery", { targets, scan_type: st });
       if (!data.success) throw new Error(data.error || "Re-run failed");
 
       resetScan();
@@ -308,16 +475,54 @@ export default function ScanHistory() {
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
+      setDialog(null);
       navigate("/scan/host-discovery");
     } catch (err) {
-      alert("Re-run failed: " + (err.response?.data?.detail || err.message));
+      setDialog(null);
+      pushToast("Re-run failed: " + (err.response?.data?.detail || err.message), "error");
     }
   };
 
-  const now     = Date.now();
+  const handleConfirmArchive = async () => {
+    const { scan } = dialog;
+    try {
+      await archiveScan(scan.id);
+      setScans(prev => prev.filter(s => s.id !== scan.id));
+      setTotal(prev => Math.max(prev - 1, 0));
+      setDialog(null);
+      pushToast(`Scan #${scan.id} archived. You can restore it from Archived Scans.`, "success");
+    } catch {
+      setDialog(null);
+      pushToast("Failed to archive scan. Please try again.", "error");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    const { scan } = dialog;
+    try {
+      await deleteScan(scan.id);
+      setScans(prev => prev.filter(s => s.id !== scan.id));
+      setTotal(prev => Math.max(prev - 1, 0));
+      setDialog(null);
+      pushToast(`Scan #${scan.id} moved to Recycle Bin.`, "info");
+    } catch {
+      setDialog(null);
+      pushToast("Failed to delete scan. Please try again.", "error");
+    }
+  };
+
+  const handleDialogConfirm = () => {
+    if (!dialog) return;
+    if (dialog.type === "rerun") return handleConfirmRerun();
+    if (dialog.type === "archive") return handleConfirmArchive();
+    if (dialog.type === "delete") return handleConfirmDelete();
+  };
+
+  /* ── Filtering ── */
+  const now = Date.now();
   const visible = scans.filter(scan => {
     if (filterStatus !== "all" && scan.status !== filterStatus) return false;
-    if (filterDate   !== "all" && now - new Date(getScanDisplayDate(scan)).getTime() > DATE_MS[filterDate]) return false;
+    if (filterDate !== "all" && now - new Date(getScanDisplayDate(scan)).getTime() > DATE_MS[filterDate]) return false;
     return true;
   });
 
@@ -359,7 +564,7 @@ export default function ScanHistory() {
           <div className="filter-group">
             <label>Time range</label>
             <div className="filter-tabs">
-              {[["all","All time"],["1h","1 hr"],["24h","24 hrs"],["7d","7 days"],["30d","30 days"]].map(([v,l]) => (
+              {[["all", "All time"], ["1h", "1 hr"], ["24h", "24 hrs"], ["7d", "7 days"], ["30d", "30 days"]].map(([v, l]) => (
                 <button
                   key={v}
                   className={`filter-tab ${filterDate === v ? "filter-tab--active" : ""}`}
@@ -411,6 +616,7 @@ export default function ScanHistory() {
               <tbody>
                 {visible.map(scan => {
                   const summary = scan.summary || {};
+                  const isRunning = scan.status === "running";
 
                   return (
                     <tr key={scan.id}>
@@ -442,23 +648,42 @@ export default function ScanHistory() {
                       </td>
                       <td>
                         <div className="action-btns">
-                          <button className="action-btn" onClick={() => handleView(scan)}>View</button>
-                          <button className="action-btn action-btn--rerun" onClick={() => handleRerun(scan)}>
-                            Re-run
-                          </button>
+                          {/* View */}
                           <button
                             className="action-btn"
-                            onClick={() => handleArchive(scan.id)}
-                            disabled={archivingId === scan.id}
+                            onClick={() => handleView(scan)}
+                            title="View scan details"
                           >
-                            {archivingId === scan.id ? "..." : "Archive"}
+                            View
                           </button>
+
+                          {/* Re-run — disabled for running scans */}
+                          <button
+                            className="action-btn action-btn--rerun"
+                            onClick={() => openRerunDialog(scan)}
+                            disabled={isRunning}
+                            title={isRunning ? "Scan is already running" : "Re-run this scan against the same target"}
+                          >
+                            Re-run
+                          </button>
+
+                          {/* Archive — disabled for running scans */}
+                          <button
+                            className="action-btn"
+                            onClick={() => openArchiveDialog(scan)}
+                            disabled={isRunning}
+                            title={isRunning ? "Cannot archive a running scan" : "Move to archived scans"}
+                          >
+                            Archive
+                          </button>
+
+                          {/* Delete */}
                           <button
                             className="action-btn action-btn--danger"
-                            onClick={() => handleDelete(scan.id)}
-                            disabled={deletingId === scan.id}
+                            onClick={() => openDeleteDialog(scan)}
+                            title="Move to Recycle Bin"
                           >
-                            {deletingId === scan.id ? "…" : "Delete"}
+                            Delete
                           </button>
                         </div>
                       </td>
@@ -478,7 +703,21 @@ export default function ScanHistory() {
 
       </div>
 
+      {/* Detail modal */}
       {viewId && <DetailModal scanId={viewId} onClose={() => setViewId(null)} />}
+
+      {/* Confirm dialog */}
+      {dialog && (
+        <ConfirmDialog
+          config={dialog.config}
+          onConfirm={handleDialogConfirm}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
+
     </AppLayout>
   );
 }

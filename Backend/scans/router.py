@@ -60,6 +60,9 @@ def _scan_to_dict(scan: Scan, include_results: bool = False) -> dict:
         "archived_at":   _as_utc_iso(scan.archived_at),
         "is_deleted":    bool(scan.is_deleted),
         "deleted_at":    _as_utc_iso(scan.deleted_at),
+        "pipeline_mode": getattr(scan, "pipeline_mode", "basic"),
+        "has_json_report": bool(getattr(scan, "report_json_path", None)),
+        "has_xml_report":  bool(getattr(scan, "report_xml_path", None)),
         "summary":       _load_json(scan.summary),
     }
     if include_results:

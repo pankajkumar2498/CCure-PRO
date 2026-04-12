@@ -3,13 +3,20 @@
  *
  * Asset Discovery mode is now handled inline on the Phase 1 page.
  * Basic Network Scan export remains unchanged and still appears after Phase 1.
+ *
+ * STATE MACHINE (Asset Discovery only):
+ *   DISCOVERY_DONE  → user configures & clicks "Run Port Scan"
+ *   PORTSCAN_RUNNING → loading shimmer, animated progress bar
+ *   PORTSCAN_DONE   → "Run Port Scan" button REMOVED, results + export shown
+ *
+ * Stepper is driven by pipelineState for live step indicators.
  */
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
-import { useScan } from "../../context/ScanContext";
+import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api from "../../api/axiosInstance";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
@@ -21,21 +28,22 @@ export default function Phase1Results() {
     target, scanId,
     phase1Hosts, phase1Summary,
     pipelineMode,
-    saveStatus,
+    saveStatus, setSaveStatus,
+    setPipelineState,
     setPhase2Hosts,
     setPhase2Summary,
     setPhase2Results,
   } = useScan();
 
-  const [filter, setFilter] = useState("active");
-  const [assetFilter, setAssetFilter] = useState("active");
+  const [filter, setFilter]             = useState("active");
+  const [assetFilter, setAssetFilter]   = useState("active");
   const [assetIntensity, setAssetIntensity] = useState("normal");
-  const [assetSelected, setAssetSelected] = useState(new Set());
-  const [assetLoading, setAssetLoading] = useState(false);
-  const [assetResults, setAssetResults] = useState([]);
-  const [assetSummary, setAssetSummary] = useState(null);
-  const [assetExpanded, setAssetExpanded] = useState(new Set());
-  const [assetError, setAssetError] = useState("");
+  const [assetSelected, setAssetSelected]  = useState(new Set());
+  const [assetLoading, setAssetLoading]    = useState(false);
+  const [assetResults, setAssetResults]    = useState([]);
+  const [assetSummary, setAssetSummary]    = useState(null);
+  const [assetExpanded, setAssetExpanded]  = useState(new Set());
+  const [assetError, setAssetError]        = useState("");
   const [assetHasScanned, setAssetHasScanned] = useState(false);
 
   useEffect(() => {
@@ -46,15 +54,20 @@ export default function Phase1Results() {
 
   if (!phase1Hosts.length) return null;
 
-  const isAssetPipeline = pipelineMode === "asset";
-  const activeHosts = phase1Hosts.filter(h => h.is_active);
-  const displayHosts = filter === "active" ? activeHosts : phase1Hosts;
-  const assetHosts = assetFilter === "active" ? activeHosts : phase1Hosts;
-  const selectedHosts = phase1Hosts.filter(h => assetSelected.has(h.ip_address) && h.is_active);
-  const selectedCount = selectedHosts.length;
+  const isAssetPipeline  = pipelineMode === "asset";
+  const activeHosts      = phase1Hosts.filter(h => h.is_active);
+  const displayHosts     = filter === "active" ? activeHosts : phase1Hosts;
+  const assetHosts       = assetFilter === "active" ? activeHosts : phase1Hosts;
+  const selectedHosts    = phase1Hosts.filter(h => assetSelected.has(h.ip_address) && h.is_active);
+  const selectedCount    = selectedHosts.length;
 
   const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2);
-  const nextPhase = getNextPhase(pipelineMode, 1);
+  const nextPhase          = getNextPhase(pipelineMode, 1);
+  const canShowAssetExport = assetHasScanned && assetSummary && assetResults.length > 0;
+
+  // Derived phase state flags
+  const portScanRunning = assetLoading;
+  const portScanDone    = assetHasScanned;
 
   useEffect(() => {
     if (isAssetPipeline) {
@@ -62,13 +75,29 @@ export default function Phase1Results() {
     }
   }, [isAssetPipeline, activeHosts.length]);
 
+  // ── Sync pipeline state to stepper ──────────────────────────────────────────
+  useEffect(() => {
+    if (isAssetPipeline) {
+      // Asset pipeline: reflect port scan phase in stepper
+      if (portScanRunning) {
+        setPipelineState(PIPELINE_STATES.PORT_SCAN);
+      } else if (portScanDone) {
+        // PORT_SCAN done → step 2 shows ✓ in stepper
+        setPipelineState(PIPELINE_STATES.REPORT_READY);
+      }
+    } else {
+      // Basic Network Scan: discovery is the only phase → mark it ✓ (green)
+      // Any value > DISCOVERY (activeStep > 1) makes step 1 render as done
+      if (phase1Hosts.length > 0) {
+        setPipelineState(PIPELINE_STATES.PORT_SCAN);
+      }
+    }
+  }, [portScanRunning, portScanDone, isAssetPipeline, phase1Hosts.length]);
+
+
   const toggleAssetHost = (ip) => {
     const next = new Set(assetSelected);
-    if (next.has(ip)) {
-      next.delete(ip);
-    } else {
-      next.add(ip);
-    }
+    next.has(ip) ? next.delete(ip) : next.add(ip);
     setAssetSelected(next);
   };
 
@@ -81,7 +110,6 @@ export default function Phase1Results() {
 
   const runAssetDiscovery = async () => {
     if (!selectedCount) return;
-
     const payloadHosts = phase1Hosts.filter(h => assetSelected.has(h.ip_address));
     setPhase2Hosts(payloadHosts);
 
@@ -91,27 +119,30 @@ export default function Phase1Results() {
     setAssetSummary(null);
     setAssetExpanded(new Set());
     setAssetHasScanned(false);
+    setSaveStatus("saving");
 
     try {
       const { data: result } = await api.post("/scan/asset-discovery", {
-        hosts: payloadHosts,
-        intensity: assetIntensity,
-        scan_id: scanId,
+        hosts:         payloadHosts,
+        intensity:     assetIntensity,
+        scan_id:       scanId,
         pipeline_mode: pipelineMode,
-        phases: [1, 2],
+        phases:        [1, 2],
       });
 
-      if (!result.success) {
-        throw new Error(result.error || "Phase 2 failed");
-      }
+      if (!result.success) throw new Error(result.error || "Phase 2 failed");
 
       setAssetResults(result.data);
       setAssetSummary(result.summary);
       setPhase2Summary(result.summary);
       setPhase2Results(result.data);
       setAssetHasScanned(true);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 3000);
     } catch (err) {
       setAssetError(err.response?.data?.detail || err.message || "Phase 2 failed");
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setAssetLoading(false);
     }
@@ -119,27 +150,26 @@ export default function Phase1Results() {
 
   const toggleAssetExpand = (ip) => {
     const next = new Set(assetExpanded);
-    if (next.has(ip)) {
-      next.delete(ip);
-    } else {
-      next.add(ip);
-    }
+    next.has(ip) ? next.delete(ip) : next.add(ip);
     setAssetExpanded(next);
   };
-
-  const canShowAssetExport = assetHasScanned && assetSummary && assetResults.length > 0;
 
   const proceedToNextPhase = () => {
     if (!canProceedToPhase2) return;
     navigate(nextPhase.route);
   };
 
+  // ── Stepper current: drives which step is "active" via prop fallback ─────
+  // pipelineState is set above, so ScanStepper reads it from context directly
+  const stepperCurrent = portScanDone ? 3 : portScanRunning ? 2 : isAssetPipeline ? 1 : 1;
+
   return (
     <AppLayout pageTitle="Discovery Results" saveStatus={saveStatus}>
-      <ScanStepper current={1} />
+      <ScanStepper current={stepperCurrent} />
 
       <div className="page-inner">
 
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Discovery Results</h2>
@@ -153,6 +183,7 @@ export default function Phase1Results() {
           </button>
         </div>
 
+        {/* ── Phase 1 summary bar ─────────────────────────────────────────── */}
         {phase1Summary && (
           <div className="summary-bar">
             <span className="summary-item"><b>{phase1Summary.total_hosts}</b> Total</span>
@@ -162,7 +193,28 @@ export default function Phase1Results() {
           </div>
         )}
 
-        {isAssetPipeline ? (
+        {/* ── Asset pipeline progress bar (50% → 100%) ────────────────────── */}
+        {isAssetPipeline && (
+          <div className="asset-pipeline-progress">
+            <div className="app-progress-track">
+              <div
+                className={`app-progress-fill ${portScanRunning ? "app-progress-fill--animated" : ""}`}
+                style={{ width: portScanDone ? "100%" : portScanRunning ? "65%" : "50%" }}
+              />
+            </div>
+            <div className="app-progress-labels">
+              <span className={`app-progress-label ${!portScanDone ? "app-progress-label--active" : "app-progress-label--done"}`}>
+                {portScanDone || portScanRunning ? "✓ Discovery" : "● Discovery"}
+              </span>
+              <span className={`app-progress-label ${portScanRunning ? "app-progress-label--active" : portScanDone ? "app-progress-label--done" : "app-progress-label--pending"}`}>
+                {portScanDone ? "✓ Port Scan" : portScanRunning ? "● Port Scan" : "○ Port Scan"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Asset: Phase controls — HIDDEN once port scan completes ─────── */}
+        {isAssetPipeline && !portScanDone ? (
           <div className="phase-action-bar" style={{ flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 240 }}>
               <span className="muted" style={{ fontSize: 13 }}>Select active hosts to include in Port Scan.</span>
@@ -204,17 +256,20 @@ export default function Phase1Results() {
               >
                 {selectedCount === activeHosts.length ? "Deselect all" : "Select all active"}
               </button>
+              {/* "Run Port Scan" — shown only before scan, disappears on completion */}
               <button
                 className="btn btn--primary"
                 onClick={runAssetDiscovery}
                 disabled={assetLoading || selectedCount === 0}
                 style={{ minWidth: 170 }}
               >
-                {assetLoading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
+                {assetLoading
+                  ? <><span className="btn-spinner" /> Scanning…</>
+                  : "▶ Run Port Scan"}
               </button>
             </div>
           </div>
-        ) : (
+        ) : !isAssetPipeline ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
             <div className="filter-tabs">
               {[["active", `Active (${activeHosts.length})`], ["all", `All (${phase1Hosts.length})`]].map(([val, lbl]) => (
@@ -228,13 +283,14 @@ export default function Phase1Results() {
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
+        {/* ── Discovery hosts table ────────────────────────────────────────── */}
         <div className="results-table-wrap">
           <table className="results-table">
             <thead>
               <tr>
-                {isAssetPipeline && <th style={{ width: 36 }} />}
+                {isAssetPipeline && !portScanDone && <th style={{ width: 36 }} />}
                 <th>IP Address</th>
                 <th>Hostname</th>
                 <th>Status</th>
@@ -249,9 +305,9 @@ export default function Phase1Results() {
                 <tr
                   key={h.ip_address}
                   className={h.is_active ? "row--active" : "row--inactive"}
-                  style={{ cursor: isAssetPipeline && h.is_active ? "pointer" : "default" }}
+                  style={{ cursor: isAssetPipeline && !portScanDone && h.is_active ? "pointer" : "default" }}
                 >
-                  {isAssetPipeline && (
+                  {isAssetPipeline && !portScanDone && (
                     <td>
                       {h.is_active && (
                         <input
@@ -279,7 +335,7 @@ export default function Phase1Results() {
           </table>
         </div>
 
-        {/* Basic Network Scan: completion message + export AFTER host table */}
+        {/* Basic Network Scan: completion + export below table */}
         {phase1Summary && !canProceedToPhase2 && (
           <>
             <div className="alert alert--success" style={{ marginTop: 20, marginBottom: 8 }}>
@@ -295,144 +351,194 @@ export default function Phase1Results() {
           </>
         )}
 
-        {assetError && <div className="alert alert--error">⚠ {assetError}</div>}
-
-        {assetHasScanned && assetSummary && (
-          <div className="summary-bar" style={{ marginTop: 16 }}>
-            <span className="summary-item"><b>{assetSummary.total_hosts}</b> Hosts scanned</span>
-            <span className="summary-item summary-item--active"><b>{assetSummary.hosts_with_ports}</b> Have open ports</span>
-            <span className="summary-item"><b>{assetSummary.scan_duration?.toFixed(1)}s</b> Duration</span>
-            <span className="summary-item summary-item--sel"><b>{selectedCount}</b> selected</span>
-          </div>
-        )}
-
-        {assetLoading && (
-          <div className="progress-wrap">
-            <div className="progress-bar"><div className="progress-fill" /></div>
-            <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Probing TCP services — takes 5–30 seconds depending on intensity…
-            </p>
-          </div>
-        )}
-
-        {assetHasScanned && assetResults.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-state-icon">🔍</span>
-            <p className="empty-state-title">No active hosts returned open ports</p>
-          </div>
-        )}
-
-        {assetHasScanned && assetResults.map(host => {
-          const portCount = host.open_ports?.length || 0;
-          const critPorts = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
-          const isSelected = assetSelected.has(host.ip_address);
-          const isExpanded = assetExpanded.has(host.ip_address);
-          return (
-            <div key={host.ip_address} className={`host-card ${isSelected ? "host-card--selected" : ""}`}>
-              <div className="host-card-header" onClick={() => toggleAssetHost(host.ip_address)}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleAssetHost(host.ip_address)}
-                  onClick={e => e.stopPropagation()}
-                />
-
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
-                  {host.hostname && host.hostname !== "Unknown" && (
-                    <span className="muted small">{host.hostname}</span>
-                  )}
-                </div>
-
-                <div className="host-card-meta">
-                  {portCount > 0 ? (
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
-                      {portCount} port{portCount !== 1 ? "s" : ""}
-                    </span>
-                  ) : (
-                    <span className="muted small">No open ports</span>
-                  )}
-
-                  {critPorts > 0 && (
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#ff4d4d", background: "rgba(255,77,77,.1)", border: "1px solid rgba(255,77,77,.25)", borderRadius: 3, padding: "2px 7px" }}>
-                      {critPorts} Critical
-                    </span>
-                  )}
-
-                  {host.os_guess && host.os_guess !== "Unknown" && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
-                      {host.os_guess}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  className="expand-btn"
-                  onClick={e => { e.stopPropagation(); toggleAssetExpand(host.ip_address); }}
-                >
-                  {isExpanded ? "▲" : "▼"}
-                </button>
+        {/* ── Port Scan: error ─────────────────────────────────────────────── */}
+        {assetError && (
+          <div className="pipeline-error-card" style={{ marginTop: 16 }}>
+            <div className="pipeline-error-header">
+              <span className="pipeline-error-icon">⚠</span>
+              <div>
+                <strong>Port Scan failed</strong>
+                <p className="pipeline-error-detail">{assetError}</p>
               </div>
+            </div>
+            <div className="pipeline-error-actions">
+              <button className="btn btn--primary" onClick={runAssetDiscovery}>
+                ↻ Retry Port Scan
+              </button>
+            </div>
+          </div>
+        )}
 
-              {isExpanded && (
-                <div className="host-card-body">
-                  {host.open_ports?.length > 0 ? (
-                    <table className="ports-table">
-                      <thead>
-                        <tr>
-                          <th>Port</th>
-                          <th>Service</th>
-                          <th>Banner / Version</th>
-                          <th>Risk</th>
-                          <th>CVEs</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {host.open_ports.map((port, index) => (
-                          <tr key={index}>
-                            <td><code className="ip-code">{port.port}/tcp</code></td>
-                            <td>
-                              <span style={{ background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
-                                {port.service}
-                              </span>
-                            </td>
-                            <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                              {port.banner || port.version || <span className="muted">—</span>}
-                            </td>
-                            <td>
-                              <span style={{ color: port.risk === "Critical" ? "#ff4d4d" : port.risk === "High" ? "#f97316" : port.risk === "Medium" ? "#f59e0b" : port.risk === "Low" ? "#22c55e" : "#60a5fa", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>
-                                {port.risk || "Info"}
-                              </span>
-                            </td>
-                            <td>
-                              {port.cves?.length > 0 ? (
-                                <span style={{ color: "#f97316", fontFamily: "var(--mono)", fontSize: 11 }}>
-                                  {port.cves.length} CVE{port.cves.length > 1 ? "s" : ""}
-                                </span>
-                              ) : (
-                                <span className="muted">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <p className="muted" style={{ fontSize: 13, padding: "12px 0" }}>No open ports detected on this host.</p>
+        {/* ── Port Scan: animated progress while loading ───────────────────── */}
+        {assetLoading && (
+          <div className="pipeline-progress-card" style={{ marginTop: 20 }}>
+            <div className="pipeline-progress-header">
+              <div className="pipeline-pulse" />
+              <div>
+                <h3 className="pipeline-progress-title">Running Port Scan…</h3>
+                <p className="pipeline-progress-desc">
+                  Probing TCP services on {selectedCount} host{selectedCount !== 1 ? "s" : ""} — intensity: <strong>{assetIntensity}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="progress-bar progress-bar--pipeline">
+              <div className="progress-fill progress-fill--animated" />
+            </div>
+            {/* Shimmer skeleton rows */}
+            <div className="shimmer-table">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="shimmer-row">
+                  <div className="shimmer-cell shimmer-cell--short" />
+                  <div className="shimmer-cell shimmer-cell--medium" />
+                  <div className="shimmer-cell shimmer-cell--long" />
+                  <div className="shimmer-cell shimmer-cell--short" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Port Scan: results section (revealed with animation) ─────────── */}
+        {portScanDone && (
+          <>
+            {/* Completion banner */}
+            <div className="pipeline-complete-card" style={{ marginTop: 20, marginBottom: 16 }}>
+              <div className="pipeline-complete-left">
+                <span className="pipeline-complete-icon">✓</span>
+                <div>
+                  <h3 className="pipeline-complete-title">Port Scan Complete</h3>
+                  <p className="pipeline-complete-desc">
+                    {assetSummary?.hosts_with_ports ?? 0} host{(assetSummary?.hosts_with_ports ?? 0) !== 1 ? "s" : ""} with open ports found.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Port scan summary bar */}
+            {assetSummary && (
+              <div className="summary-bar" style={{ marginBottom: 16 }}>
+                <span className="summary-item"><b>{assetSummary.total_hosts}</b> Hosts scanned</span>
+                <span className="summary-item summary-item--active"><b>{assetSummary.hosts_with_ports}</b> Have open ports</span>
+                <span className="summary-item"><b>{assetSummary.scan_duration?.toFixed(1)}s</b> Duration</span>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {assetResults.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-state-icon">🔍</span>
+                <p className="empty-state-title">No active hosts returned open ports</p>
+              </div>
+            )}
+
+            {/* Host result cards */}
+            {assetResults.map(host => {
+              const portCount  = host.open_ports?.length || 0;
+              const critPorts  = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
+              const isExpanded = assetExpanded.has(host.ip_address);
+              return (
+                <div key={host.ip_address} className="host-card pipeline-section--reveal">
+                  <div className="host-card-header" onClick={() => toggleAssetExpand(host.ip_address)}>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
+                      {host.hostname && host.hostname !== "Unknown" && (
+                        <span className="muted small">{host.hostname}</span>
+                      )}
+                    </div>
+
+                    <div className="host-card-meta">
+                      {portCount > 0 ? (
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
+                          {portCount} port{portCount !== 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span className="muted small">No open ports</span>
+                      )}
+                      {critPorts > 0 && (
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#ff4d4d", background: "rgba(255,77,77,.1)", border: "1px solid rgba(255,77,77,.25)", borderRadius: 3, padding: "2px 7px" }}>
+                          {critPorts} Critical
+                        </span>
+                      )}
+                      {host.os_guess && host.os_guess !== "Unknown" && (
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
+                          {host.os_guess}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      className="expand-btn"
+                      onClick={e => { e.stopPropagation(); toggleAssetExpand(host.ip_address); }}
+                    >
+                      {isExpanded ? "▲" : "▼"}
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="host-card-body">
+                      {host.open_ports?.length > 0 ? (
+                        <table className="ports-table">
+                          <thead>
+                            <tr>
+                              <th>Port</th>
+                              <th>Service</th>
+                              <th>Banner / Version</th>
+                              <th>Risk</th>
+                              <th>CVEs</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {host.open_ports.map((port, index) => (
+                              <tr key={index}>
+                                <td><code className="ip-code">{port.port}/tcp</code></td>
+                                <td>
+                                  <span style={{ background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
+                                    {port.service}
+                                  </span>
+                                </td>
+                                <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+                                  {port.banner || port.version || <span className="muted">—</span>}
+                                </td>
+                                <td>
+                                  <span style={{
+                                    color: port.risk === "Critical" ? "#ff4d4d" : port.risk === "High" ? "#f97316" : port.risk === "Medium" ? "#f59e0b" : port.risk === "Low" ? "#22c55e" : "#60a5fa",
+                                    fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700,
+                                  }}>
+                                    {port.risk || "Info"}
+                                  </span>
+                                </td>
+                                <td>
+                                  {port.cves?.length > 0 ? (
+                                    <span style={{ color: "#f97316", fontFamily: "var(--mono)", fontSize: 11 }}>
+                                      {port.cves.length} CVE{port.cves.length > 1 ? "s" : ""}
+                                    </span>
+                                  ) : (
+                                    <span className="muted">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="muted" style={{ fontSize: 13, padding: "12px 0" }}>No open ports detected on this host.</p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
 
-        {canShowAssetExport && (
-          <ExportPanel
-            results={assetResults}
-            summary={assetSummary}
-            scanId={scanId}
-            target={target}
-          />
+            {/* Export panel after results */}
+            {canShowAssetExport && (
+              <ExportPanel
+                results={assetResults}
+                summary={assetSummary}
+                scanId={scanId}
+                target={target}
+              />
+            )}
+          </>
         )}
 
         {canProceedToPhase2 && !isAssetPipeline && (
@@ -440,10 +546,7 @@ export default function Phase1Results() {
             <p className="muted" style={{ fontSize: "0.85rem" }}>
               Continue to Port Scan to choose hosts and intensity on the same page.
             </p>
-            <button
-              className="btn btn--primary"
-              onClick={proceedToNextPhase}
-            >
+            <button className="btn btn--primary" onClick={proceedToNextPhase}>
               Continue to Port Scan
             </button>
           </div>

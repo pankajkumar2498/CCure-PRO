@@ -60,7 +60,7 @@ const NAV_ITEMS = [
   { id: "history",   label: "My Scan Jobs",     Icon: IcoFile,    route: "/history"   },
   { id: "archived",  label: "Archived Scans",   Icon: IcoArchive, route: "/archived-scans" },
   { id: "policies",  label: "Scan Policies",    Icon: IcoShield,  disabled: true      },
-  { id: "reports",   label: "Security Reports", Icon: IcoChart,   disabled: true      },
+  { id: "reports",   label: "Security Reports", Icon: IcoChart,   route: "/reports"   },
   { id: "recycle",   label: "Recycle Bin",      Icon: IcoTrash,   route: "/recycle-bin" },
 ];
 
@@ -104,7 +104,8 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     if (pathname.startsWith("/history"))   return "history";
     if (pathname.startsWith("/archived-scans")) return "archived";
     if (pathname.startsWith("/recycle-bin")) return "recycle";
-    if (pathname.startsWith("/dashboard")) return "dashboard";
+    if (pathname.startsWith("/reports"))     return "reports";
+    if (pathname.startsWith("/dashboard"))   return "dashboard";
     if (pathname.startsWith("/scan"))      return "dashboard";
     return "dashboard";
   })();

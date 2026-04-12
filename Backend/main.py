@@ -53,7 +53,7 @@ from sqlalchemy.orm import Session
 from api.host_discovery_api import HostDiscoveryAPI
 from auth.router import router as auth_router
 from auth.models import create_tables, User, get_db
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, get_current_user_flexible
 from scans.router import router as scans_router
 from scans.models import Scan, ensure_scan_schema
 from scans.db_helpers import (
@@ -789,9 +789,10 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
 @app.get("/reports/download/{scan_id}", tags=["Reports"])
 def download_report(
     scan_id: int,
-    fmt:  str     = "JSON",
-    db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    fmt:     str            = "JSON",
+    token:   Optional[str]  = Query(None),
+    db:      Session        = Depends(get_db),
+    user:    User           = Depends(get_current_user_flexible),
 ):
     scan = db.query(Scan).filter(
         Scan.id == scan_id,

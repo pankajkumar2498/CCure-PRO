@@ -75,6 +75,11 @@ export default function Phase3Results() {
   const [localPortHosts, setLocalPortHosts]     = useState(() => safeArr(phase2Results));
   const [localVulnResults, setLocalVulnResults] = useState(() => safeArr(phase3AuditResults));
   const [expanded, setExpanded] = useState(new Set());
+  
+  // Filter states for each result section (active/all)
+  const [filter1, setFilter1] = useState("active"); // Discovery Results
+  const [filter2, setFilter2] = useState("active"); // Port Scan Results
+  const [filter3, setFilter3] = useState("active"); // Vulnerability Results
 
   const safePhase1Hosts     = safeArr(phase1Hosts);
   const activeDiscoveryHosts = safePhase1Hosts.filter(h => h.is_active);
@@ -277,6 +282,13 @@ export default function Phase3Results() {
   const isCancelled = pipelineState === PIPELINE_STATES.CANCELLED;
   const currentStep = localVulnResults.length ? 3 : localPortHosts.length ? 2 : 1;
   const activeMsg = PHASE_MESSAGES[pipelineState];
+  
+  // Filter display logic for each section
+  const displayDiscoveryHosts = filter1 === "active" ? activeDiscoveryHosts : safePhase1Hosts;
+  const activePortHosts = localPortHosts.filter(h => h.is_active);
+  const displayPortHosts = filter2 === "active" ? activePortHosts : localPortHosts;
+  const activeVulnHosts = localVulnResults.filter(h => h.is_active);
+  const displayVulnHosts = filter3 === "active" ? activeVulnHosts : localVulnResults;
 
   return (
     <AppLayout pageTitle="Advanced Scan" saveStatus={saveStatus}>
@@ -391,6 +403,23 @@ export default function Phase3Results() {
             </div>
           </div>
 
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
+            <div className="filter-tabs">
+              {[
+                ["active", `Active (${activeDiscoveryHosts.length})`],
+                ["all",    `All (${safePhase1Hosts.length})`],
+              ].map(([val, lbl]) => (
+                <button
+                  key={val}
+                  className={`filter-tab ${filter1 === val ? "filter-tab--active" : ""}`}
+                  onClick={() => setFilter1(val)}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="results-table-wrap">
             <table className="results-table">
               <thead>
@@ -404,7 +433,7 @@ export default function Phase3Results() {
                 </tr>
               </thead>
               <tbody>
-                {safePhase1Hosts.map(host => (
+                {displayDiscoveryHosts.map(host => (
                   <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                     <td><code className="ip-code">{host.ip_address}</code></td>
                     <td>{host.hostname || <span className="muted">—</span>}</td>
@@ -445,6 +474,23 @@ export default function Phase3Results() {
               <span className="summary-item"><b>{fmtSec(phase2Summary?.scan_duration)}s</b> Duration</span>
             </div>
 
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
+              <div className="filter-tabs">
+                {[
+                  ["active", `Active (${activePortHosts.length})`],
+                  ["all",    `All (${localPortHosts.length})`],
+                ].map(([val, lbl]) => (
+                  <button
+                    key={val}
+                    className={`filter-tab ${filter2 === val ? "filter-tab--active" : ""}`}
+                    onClick={() => setFilter2(val)}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="results-table-wrap">
               <table className="results-table">
                 <thead>
@@ -457,7 +503,7 @@ export default function Phase3Results() {
                   </tr>
                 </thead>
                 <tbody>
-                  {localPortHosts.map(host => (
+                  {displayPortHosts.map(host => (
                     <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                       <td><code className="ip-code">{host.ip_address}</code></td>
                       <td>{host.hostname || <span className="muted">—</span>}</td>
@@ -494,6 +540,23 @@ export default function Phase3Results() {
               <span className="summary-item"><b>{fmtSec(phase3Summary?.scan_duration)}s</b> Duration</span>
             </div>
 
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
+              <div className="filter-tabs">
+                {[
+                  ["active", `Active (${activeVulnHosts.length})`],
+                  ["all",    `All (${localVulnResults.length})`],
+                ].map(([val, lbl]) => (
+                  <button
+                    key={val}
+                    className={`filter-tab ${filter3 === val ? "filter-tab--active" : ""}`}
+                    onClick={() => setFilter3(val)}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="results-table-wrap">
               <table className="results-table">
                 <thead>
@@ -506,7 +569,7 @@ export default function Phase3Results() {
                   </tr>
                 </thead>
                 <tbody>
-                  {localVulnResults.map(host => (
+                  {displayVulnHosts.map(host => (
                     <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                       <td><code className="ip-code">{host.ip_address}</code></td>
                       <td>

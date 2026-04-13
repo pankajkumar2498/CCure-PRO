@@ -31,6 +31,7 @@ import logging
 import socket
 import time
 import uuid
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -269,7 +270,7 @@ class ScanOrchestrator:
         except ValueError:
             return self._err(f"Invalid scan_type '{scan_type}'.")
         
-        # Expand all targets into flat IP list
+        # Expand all targets into a flat IP list (preserve order, drop duplicates)
         all_ips = []
         for target in targets:
             res = InputValidator.resolve_target(target)
@@ -284,6 +285,7 @@ class ScanOrchestrator:
                 all_ips.extend(InputValidator.expand_ip_range(resolved))
             else:
                 all_ips.append(resolved)
+        all_ips = list(dict.fromkeys(all_ips))
         
         if not all_ips:
             return self._err("No valid targets to scan.")
@@ -313,13 +315,19 @@ class ScanOrchestrator:
             "scan_duration": duration,
             "phase": 1,
             "scan_type": st.value.upper(),
+            "discovery_scan_method": st.value.upper(),
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
-            "metadata": {"target": ",".join(targets), "scan_method": st.value.upper()},
+            "metadata": {
+                "target": ", ".join(targets),
+                "original_targets": targets,
+                "scan_method": st.value.upper(),
+                "discovery_scan_method": st.value.upper(),
+            },
         }
 
     async def run_asset_discovery_only(
@@ -366,9 +374,13 @@ class ScanOrchestrator:
             intensity_enum = ScanIntensity.NORMAL
 
         hosts = [self._normalize_host_record(h) for h in hosts]
+        discovery_scan_method = self._infer_discovery_method(hosts)
+        target_from_hosts = self._hosts_target_string(hosts)
         
         # Filter to active hosts only
         active_hosts = [h for h in hosts if h.get("is_active", False)]
+        active_count = len(active_hosts)
+        inactive_count = len(hosts) - active_count
         
         if not active_hosts:
             formatted_hosts = [
@@ -380,9 +392,19 @@ class ScanOrchestrator:
                 "data": formatted_hosts,
                 "summary": {
                     "total_hosts": len(formatted_hosts),
+                    "active_hosts": active_count,
+                    "inactive_hosts": inactive_count,
                     "hosts_with_ports": 0,
                     "scan_duration": 0,
                     "phase": 2,
+                    "scan_type": intensity_enum.value.upper(),
+                    "discovery_scan_method": discovery_scan_method or "N/A",
+                },
+                "metadata": {
+                    **({"target": target_from_hosts} if target_from_hosts else {}),
+                    "scan_intensity": intensity_enum.value.upper(),
+                    **({"scan_method": discovery_scan_method} if discovery_scan_method else {}),
+                    **({"discovery_scan_method": discovery_scan_method} if discovery_scan_method else {}),
                 },
             }
         
@@ -405,17 +427,25 @@ class ScanOrchestrator:
         
         summary = {
             "total_hosts": len(formatted_hosts),
+            "active_hosts": active_count,
+            "inactive_hosts": inactive_count,
             "hosts_with_ports": hosts_with_ports,
             "scan_duration": duration,
             "phase": 2,
             "scan_type": intensity_enum.value.upper(),
+            "discovery_scan_method": discovery_scan_method or "N/A",
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
-            "metadata": {"scan_intensity": intensity_enum.value.upper()},
+            "metadata": {
+                **({"target": target_from_hosts} if target_from_hosts else {}),
+                "scan_intensity": intensity_enum.value.upper(),
+                **({"scan_method": discovery_scan_method} if discovery_scan_method else {}),
+                **({"discovery_scan_method": discovery_scan_method} if discovery_scan_method else {}),
+            },
         }
 
     def run_advanced_scan_only(
@@ -456,9 +486,13 @@ class ScanOrchestrator:
         self._log(f"run_advanced_scan_only -> {len(hosts)} hosts")
 
         hosts = [self._normalize_host_record(h) for h in hosts]
+        discovery_scan_method = self._infer_discovery_method(hosts)
+        target_from_hosts = self._hosts_target_string(hosts)
         
         # Filter to active hosts
         active_hosts = [h for h in hosts if h.get("is_active", False)]
+        active_count = len(active_hosts)
+        inactive_count = len(hosts) - active_count
         
         if not active_hosts:
             formatted_hosts = [
@@ -470,10 +504,20 @@ class ScanOrchestrator:
                 "data": formatted_hosts,
                 "summary": {
                     "total_hosts": len(formatted_hosts),
+                    "active_hosts": active_count,
+                    "inactive_hosts": inactive_count,
                     "critical_hosts": 0,
                     "high_risk_hosts": 0,
                     "scan_duration": 0,
                     "phase": 3,
+                    "scan_type": "advanced",
+                    "discovery_scan_method": discovery_scan_method or "N/A",
+                },
+                "metadata": {
+                    **({"target": target_from_hosts} if target_from_hosts else {}),
+                    "scan_type": "advanced",
+                    **({"scan_method": discovery_scan_method} if discovery_scan_method else {}),
+                    **({"discovery_scan_method": discovery_scan_method} if discovery_scan_method else {}),
                 },
             }
         
@@ -497,18 +541,26 @@ class ScanOrchestrator:
         
         summary = {
             "total_hosts": len(formatted_hosts),
+            "active_hosts": active_count,
+            "inactive_hosts": inactive_count,
             "critical_hosts": critical,
             "high_risk_hosts": high,
             "scan_duration": duration,
             "phase": 3,
-            "scan_type": "VULN_SCAN",
+            "scan_type": "advanced",
+            "discovery_scan_method": discovery_scan_method or "N/A",
         }
         
         return {
             "success": True,
             "data": formatted_hosts,
             "summary": summary,
-            "metadata": {"scan_type": "advanced"},
+            "metadata": {
+                **({"target": target_from_hosts} if target_from_hosts else {}),
+                "scan_type": "advanced",
+                **({"scan_method": discovery_scan_method} if discovery_scan_method else {}),
+                **({"discovery_scan_method": discovery_scan_method} if discovery_scan_method else {}),
+            },
         }
 
     async def run_phases(
@@ -555,7 +607,7 @@ class ScanOrchestrator:
         
         # Phase 2
         if 2 in phase_set:
-            result = self.run_asset_discovery_only(result["data"], intensity)
+            result = await self.run_asset_discovery_only(result["data"], intensity)
             if not result["success"]:
                 return result
         
@@ -666,8 +718,13 @@ class ScanOrchestrator:
             vendor           = vendor,
             is_active        = is_active,
             status           = "Active" if is_active else "Inactive",
-            scan_method      = data.get("method", "N/A"),
-            response_time_ms = data.get("elapsed_ms"),
+            scan_method      = (
+                data.get("method")
+                or data.get("scan_method")
+                or data.get("discovery_method")
+                or "N/A"
+            ),
+            response_time_ms = data.get("elapsed_ms", data.get("response_time_ms")),
             open_ports       = data.get("open_ports", []),
             os_guess         = data.get("os_guess", "Unknown"),
             os_confidence    = data.get("os_confidence", "Low"),
@@ -693,7 +750,57 @@ class ScanOrchestrator:
         if ip:
             normalized["ip"] = ip
             normalized["ip_address"] = ip
+        if "method" not in normalized:
+            normalized["method"] = (
+                normalized.get("scan_method")
+                or normalized.get("discovery_method")
+                or "N/A"
+            )
+        if "elapsed_ms" not in normalized and "response_time_ms" in normalized:
+            normalized["elapsed_ms"] = normalized.get("response_time_ms")
         return normalized
+
+    @staticmethod
+    def _normalize_scan_method(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        token = str(value).strip().upper()
+        if not token or token in {"N/A", "UNKNOWN", "NONE"}:
+            return None
+        if "ADAPTIVE" in token:
+            return "ADAPTIVE"
+        if "STEALTH" in token:
+            return "STEALTH"
+        if "FULL" in token:
+            return "FULL"
+        if "ARP" in token:
+            return "ARP"
+        if "PING" in token or "ICMP" in token:
+            return "PING"
+        if "TCP" in token:
+            return "TCP"
+        return None
+
+    def _infer_discovery_method(self, hosts: List[Dict]) -> Optional[str]:
+        methods: List[str] = []
+        for host in hosts:
+            raw = host.get("method") or host.get("scan_method") or host.get("discovery_method")
+            normalized = self._normalize_scan_method(raw)
+            if normalized:
+                methods.append(normalized)
+        if not methods:
+            return None
+        return Counter(methods).most_common(1)[0][0]
+
+    def _hosts_target_string(self, hosts: List[Dict]) -> Optional[str]:
+        ips: List[str] = []
+        for host in hosts:
+            ip = self._get_host_ip(host)
+            if ip and ip not in ips:
+                ips.append(ip)
+        if not ips:
+            return None
+        return ", ".join(ips)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -733,6 +840,9 @@ class ScanOrchestrator:
             self._log(f"[WARN] {msg}")
             meta["privilege_warning"] = msg
             st = DiscoveryScanType.TCP
+
+        meta["scan_method"] = st.value.upper()
+        meta["discovery_scan_method"] = st.value.upper()
 
         return {"ip": res["resolved"], "st": st, "meta": meta}
 

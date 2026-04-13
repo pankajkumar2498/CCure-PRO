@@ -145,6 +145,170 @@ def update_progress(scan_id: int, discovered: int, active: int = None):
             _scan_progress[scan_id]["elapsed_time"] = time.time() - _scan_progress[scan_id]["start_time"]
 
 
+def _safe_json_loads(text: Optional[str], default):
+    try:
+        return json.loads(text or "")
+    except Exception:
+        return default
+
+
+def _normalize_scan_method(value: Optional[str]) -> Optional[str]:
+    token = str(value or "").strip().upper()
+    if not token:
+        return None
+    if "ADAPTIVE" in token:
+        return "ADAPTIVE"
+    if "STEALTH" in token:
+        return "STEALTH"
+    if "FULL" in token:
+        return "FULL"
+    if "ARP" in token:
+        return "ARP"
+    if "PING" in token or "ICMP" in token:
+        return "PING"
+    if "TCP" in token:
+        return "TCP"
+    return None
+
+
+def _extract_host_ip(host: dict) -> Optional[str]:
+    return host.get("ip_address") or host.get("ip")
+
+
+def _target_from_hosts(hosts: List[dict]) -> Optional[str]:
+    ips = []
+    for host in hosts or []:
+        ip = _extract_host_ip(host)
+        if ip and ip not in ips:
+            ips.append(ip)
+    if not ips:
+        return None
+    return ", ".join(ips)
+
+
+def _scan_method_from_hosts(hosts: List[dict]) -> Optional[str]:
+    for host in hosts or []:
+        method = (
+            host.get("scan_method")
+            or host.get("discovery_method")
+            or host.get("method")
+        )
+        normalized = _normalize_scan_method(method)
+        if normalized:
+            return normalized
+    return None
+
+
+def _resolve_report_context(
+    db: Session,
+    user_id: int,
+    *,
+    scan_id: Optional[int] = None,
+    hosts: Optional[List[dict]] = None,
+    requested_targets: Optional[List[str]] = None,
+    requested_scan_type: Optional[str] = None,
+) -> dict:
+    """
+    Build report metadata with human-meaningful context:
+      - target (prefer original user input)
+      - scan_method/discovery_scan_method (discovery strategy)
+    """
+    context: dict = {}
+    scan_row: Optional[Scan] = None
+    summary_blob: dict = {}
+
+    if scan_id:
+        scan_row = (
+            db.query(Scan)
+            .filter(Scan.id == scan_id, Scan.user_id == user_id)
+            .first()
+        )
+        if scan_row:
+            summary_blob = _safe_json_loads(scan_row.summary, {})
+
+    # Target priority: request targets > scan row target/original_targets > host list
+    if requested_targets:
+        context["target"] = ", ".join([str(t).strip() for t in requested_targets if str(t).strip()])
+        context["original_targets"] = requested_targets
+    elif scan_row:
+        target = (scan_row.target or "").strip()
+        if target:
+            context["target"] = target
+        original_targets = summary_blob.get("original_targets") or _safe_json_loads(scan_row.targets_json, [])
+        if original_targets:
+            context["original_targets"] = original_targets
+            if "target" not in context:
+                context["target"] = ", ".join([str(t).strip() for t in original_targets if str(t).strip()])
+    elif hosts:
+        host_target = _target_from_hosts(hosts)
+        if host_target:
+            context["target"] = host_target
+
+    # Scan strategy priority: request scan_type > stored scan_type > host-level method
+    scan_method = _normalize_scan_method(requested_scan_type)
+    if not scan_method and scan_row:
+        scan_method = (
+            _normalize_scan_method(scan_row.scan_type)
+            or _normalize_scan_method(summary_blob.get("discovery_scan_method"))
+            or _normalize_scan_method(summary_blob.get("scan_method"))
+            or _normalize_scan_method(summary_blob.get("scan_type"))
+        )
+    if not scan_method and hosts:
+        scan_method = _scan_method_from_hosts(hosts)
+
+    if scan_method:
+        context["scan_method"] = scan_method
+        context["discovery_scan_method"] = scan_method
+
+    return context
+
+
+def _phase1_summary_from_scan(scan_row: Scan) -> dict:
+    for phase_row in getattr(scan_row, "phase_results", []) or []:
+        if getattr(phase_row, "phase_key", "") != "phase1":
+            continue
+        payload = _safe_json_loads(getattr(phase_row, "payload", ""), {})
+        summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
+        if isinstance(summary, dict):
+            return summary
+    return {}
+
+
+def _apply_phase1_summary_hints(
+    result: dict,
+    db: Session,
+    user_id: int,
+    scan_id: Optional[int],
+) -> None:
+    if not scan_id:
+        return
+    scan_row = (
+        db.query(Scan)
+        .filter(Scan.id == scan_id, Scan.user_id == user_id)
+        .first()
+    )
+    if not scan_row:
+        return
+    phase1_summary = _phase1_summary_from_scan(scan_row)
+    if not phase1_summary:
+        return
+
+    summary = result.setdefault("summary", {})
+    for key in ("total_hosts", "active_hosts", "inactive_hosts"):
+        if phase1_summary.get(key) is not None:
+            summary[key] = phase1_summary[key]
+
+    discovery_scan_method = _normalize_scan_method(
+        phase1_summary.get("discovery_scan_method")
+        or phase1_summary.get("scan_type")
+    )
+    if discovery_scan_method:
+        summary["discovery_scan_method"] = discovery_scan_method
+        metadata = result.setdefault("metadata", {})
+        metadata.setdefault("scan_method", discovery_scan_method)
+        metadata.setdefault("discovery_scan_method", discovery_scan_method)
+
+
 def finish_progress(scan_id: int):
     """Mark a scan as finished."""
     with _progress_lock:
@@ -400,6 +564,16 @@ async def scan_host_discovery(
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))
 
+    result.setdefault("metadata", {}).update(
+        _resolve_report_context(
+            db,
+            user.id,
+            requested_targets=req.targets,
+            requested_scan_type=req.scan_type,
+            hosts=result.get("data", []),
+        )
+    )
+
     # ── Persist to DB ──────────────────────────────────────────────────────────
     target_str   = ", ".join(req.targets)
     terminal     = get_terminal_phase(mode)      # 1, 2, or 4 (mapped to 3 in update_scan_phase)
@@ -418,7 +592,11 @@ async def scan_host_discovery(
         targets          = req.targets,
         scan_type        = req.scan_type,
         pipeline_mode    = mode,                    # stored for history display
-        phase1_data      = {"data": result["data"], "summary": result["summary"]},
+        phase1_data      = {
+            "data": result["data"],
+            "summary": result["summary"],
+            "metadata": result.get("metadata", {}),
+        },
         is_final         = host_discovery_final,            # marks complete immediately for "basic"
         report_json_path = report_paths.get("json_pdf"),
         report_xml_path  = report_paths.get("xml_pdf"),
@@ -475,6 +653,16 @@ async def scan_asset_discovery(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Asset Discovery failed"))
 
+        result.setdefault("metadata", {}).update(
+            _resolve_report_context(
+                db,
+                user.id,
+                scan_id=req.scan_id,
+                hosts=req.hosts,
+            )
+        )
+        _apply_phase1_summary_hints(result, db, user.id, req.scan_id)
+
         report_paths = orch.generate_phase_report(result, "asset_discovery")
         report_paths = {
             k: v for k, v in report_paths.items()
@@ -488,7 +676,11 @@ async def scan_asset_discovery(
                 scan_id          = req.scan_id,
                 user_id          = user.id,
                 phase            = 2,
-                phase_data       = {"data": result["data"], "summary": result["summary"]},
+                phase_data       = {
+                    "data": result["data"],
+                    "summary": result["summary"],
+                    "metadata": result.get("metadata", {}),
+                },
                 is_final         = is_final,
                 pipeline_mode    = mode,
                 report_json_path = report_paths.get("json_pdf"),
@@ -553,7 +745,21 @@ async def scan_advanced_scan(
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Advanced Scan failed"))
 
+        result.setdefault("metadata", {}).update(
+            _resolve_report_context(
+                db,
+                user.id,
+                scan_id=req.scan_id,
+                hosts=req.hosts,
+            )
+        )
+        _apply_phase1_summary_hints(result, db, user.id, req.scan_id)
+
         report_paths = orch.generate_phase_report(result, "phase_selective_scan")
+        report_paths = {
+            k: v for k, v in report_paths.items()
+            if v and os.path.isfile(v)
+        }
 
         if req.scan_id:
             updated = update_scan_phase(
@@ -561,7 +767,11 @@ async def scan_advanced_scan(
                 scan_id          = req.scan_id,
                 user_id          = user.id,
                 phase            = 3,
-                phase_data       = {"data": result["data"], "summary": result["summary"]},
+                phase_data       = {
+                    "data": result["data"],
+                    "summary": result["summary"],
+                    "metadata": result.get("metadata", {}),
+                },
                 is_final         = True,          # Advanced Scan always closes the scan
                 pipeline_mode    = mode,
                 report_json_path = report_paths.get("json_pdf"),
@@ -750,10 +960,9 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     for row in scan.phase_results:
         if not row.payload:
             continue
-        try:
-            payloads[row.phase_key] = json.loads(row.payload)
-        except Exception:
-            continue
+        payload = _safe_json_loads(row.payload, {})
+        if isinstance(payload, dict):
+            payloads[row.phase_key] = payload
 
     # Prefer the most complete phase available.
     for key in ("credentialed", "phase3", "phase2", "phase1"):
@@ -766,12 +975,22 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     if not payload.get("data"):
         return {}
 
+    payload_data = payload.get("data", [])
+    payload_meta = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
+    context_meta = _resolve_report_context(
+        db,
+        scan.user_id,
+        scan_id=scan.id,
+        hosts=payload_data if isinstance(payload_data, list) else [],
+    )
+
     result = {
         "success": True,
-        "data":    payload.get("data", []),
+        "data":    payload_data,
         "summary": payload.get("summary", {}),
-        "metadata": {"scan_id": scan.id},
+        "metadata": {"scan_id": scan.id, **payload_meta, **context_meta},
     }
+    _apply_phase1_summary_hints(result, db, scan.user_id, scan.id)
 
     report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(result, key)
     report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}

@@ -283,12 +283,162 @@ def _get_scan_type_label(scan_type: str) -> str:
     """Map technical scan_type names to user-friendly labels."""
     labels = {
         "host_discovery": "Basic Network Scan",
-        "asset_discovery": "Asset Discovery",
-        "phase_selective_scan": "Phase Selective Scan",
+        "asset_discovery": "Asset Discovery Scan",
+        "phase_selective_scan": "Advanced Vulnerability Scan",
         "advanced": "Advanced Vulnerability Scan",
-        "credentialed_scan": "Credentialed Audit",
+        "credentialed_scan": "Credentialed Scan",
+        "credentialed": "Credentialed Scan",
+        "phase1": "Basic Network Scan",
+        "phase2": "Asset Discovery Scan",
+        "phase3": "Advanced Vulnerability Scan",
     }
-    return labels.get(scan_type, scan_type.replace("_", " ").title())
+    token = str(scan_type or "").strip().lower()
+    return labels.get(token, token.replace("_", " ").title() if token else "N/A")
+
+
+_SCAN_STRATEGY_LABELS = {
+    "PING": "ICMP Ping",
+    "ICMP": "ICMP Ping",
+    "ARP": "ARP Scan",
+    "TCP": "TCP SYN Scan",
+    "FULL": "Full Network Sweep",
+    "ADAPTIVE": "Adaptive Scan",
+    "STEALTH": "Stealth Scan",
+}
+
+
+def _normalize_strategy_token(value: Any) -> str:
+    token = str(value or "").strip().upper()
+    if not token:
+        return ""
+    if "ADAPTIVE" in token:
+        return "ADAPTIVE"
+    if "STEALTH" in token:
+        return "STEALTH"
+    if "FULL" in token:
+        return "FULL"
+    if "ARP" in token:
+        return "ARP"
+    if "PING" in token or "ICMP" in token:
+        return "PING"
+    if "TCP" in token:
+        return "TCP"
+    return token
+
+
+def _format_scan_strategy(value: Any) -> str:
+    token = _normalize_strategy_token(value)
+    return _SCAN_STRATEGY_LABELS.get(token, "N/A")
+
+
+def _resolve_scan_strategy(meta: dict, summary: dict) -> str:
+    primary = meta.get("scan_method")
+    if primary:
+        label = _format_scan_strategy(primary)
+        if label != "N/A":
+            return label
+
+    fallback = (
+        meta.get("discovery_scan_method")
+        or meta.get("discovery_method")
+        or summary.get("discovery_scan_method")
+        or summary.get("scan_method")
+        or summary.get("discovery_method")
+    )
+    if fallback:
+        label = _format_scan_strategy(fallback)
+        if label != "N/A":
+            return label
+
+    # Last-safe fallback: only use summary.scan_type when it looks like a discovery method.
+    fallback_scan_type = summary.get("scan_type")
+    label = _format_scan_strategy(fallback_scan_type)
+    return label if label != "N/A" else "N/A"
+
+
+def _normalize_target_value(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        parts = [str(v).strip() for v in value if str(v).strip()]
+        return ", ".join(parts) if parts else None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text
+
+
+def _resolve_target(meta: dict, summary: dict) -> str:
+    for candidate in (
+        meta.get("target"),
+        summary.get("target"),
+        meta.get("original_targets"),
+        summary.get("original_targets"),
+    ):
+        normalized = _normalize_target_value(candidate)
+        if normalized:
+            return normalized
+    return "N/A"
+
+
+def _collect_hosts(result: dict) -> List[dict]:
+    hosts: List[dict] = []
+    data = result.get("data", [])
+    if isinstance(data, dict):
+        hosts = [data]
+    elif isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            if "hosts" in item and isinstance(item.get("hosts"), list):
+                hosts.extend(item["hosts"])
+            elif "ip_address" in item:
+                hosts.append(item)
+    return hosts
+
+
+def _as_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _compute_discovery_summary(summary: dict, hosts: List[dict]) -> tuple[int, int, int, str]:
+    total = _as_int(summary.get("total_hosts"))
+    active = _as_int(summary.get("active_hosts"))
+    inactive = _as_int(summary.get("inactive_hosts"))
+
+    if total is None:
+        total = len(hosts)
+    if active is None:
+        active = sum(1 for h in hosts if h.get("is_active"))
+    if inactive is None:
+        inactive = max(total - active, 0)
+
+    ratio = f"{(active / total * 100):.1f}%" if total else "0%"
+    return total, active, inactive, ratio
+
+
+def _format_response_time_ms(value: Any) -> str:
+    if value in (None, "", "N/A"):
+        return "N/A"
+    try:
+        return f"{float(value):.2f} ms"
+    except Exception:
+        return "N/A"
+
+
+def _resolve_detection_method(host: dict) -> str:
+    raw = host.get("scan_method") or host.get("method") or host.get("discovery_method")
+    token = _normalize_strategy_token(raw)
+    if token in {"PING", "ICMP"}:
+        return "ICMP"
+    if token in {"ARP", "TCP", "FULL", "ADAPTIVE", "STEALTH"}:
+        return token
+    return str(raw).strip() if raw else "N/A"
 
 
 def _build_json_story(result: dict, scan_type: str,
@@ -311,13 +461,15 @@ def _build_json_story(result: dict, scan_type: str,
     story.append(_section_header("Scan Information", styles))
     meta    = result.get("metadata", {})
     summary = result.get("summary",  {})
-    
-    phase = summary.get("phase", 1)
-    scan_strategy = meta.get("scan_method") or summary.get("scan_type", "N/A")
+    data    = result.get("data", [])
+    hosts   = _collect_hosts(result)
+
+    scan_strategy = _resolve_scan_strategy(meta, summary)
+    target_value  = _resolve_target(meta, summary)
 
     scan_info_rows = [
         ("Scan Type",         _get_scan_type_label(scan_type)),
-        ("Target",            meta.get("target", "N/A")),
+        ("Target",            target_value),
         ("Scan Strategy",     scan_strategy),
         ("Scan Date",         timestamp[:10]),
         ("Scan Time",         timestamp[11:19]),
@@ -330,10 +482,7 @@ def _build_json_story(result: dict, scan_type: str,
 
     # -- Discovery Summary ----------------------------------------------------
     story.append(_section_header("Discovery Summary", styles))
-    total    = summary.get("total_hosts",    0)
-    active   = summary.get("active_hosts",   0)
-    inactive = summary.get("inactive_hosts", 0)
-    pct      = f"{(active / total * 100):.1f}%" if total else "0%"
+    total, active, inactive, pct = _compute_discovery_summary(summary, hosts)
 
     summary_rows = [
         ("Total Hosts Scanned",   total),
@@ -345,26 +494,6 @@ def _build_json_story(result: dict, scan_type: str,
     story.append(Spacer(1, 4 * mm))
 
     # -- Host Discovery Results -----------------------------------------------
-    # Collect hosts from various response shapes
-    hosts: List[dict] = []
-    data = result.get("data", [])
-
-    if isinstance(data, dict):
-        # scan_single_host -> data is one host dict
-        hosts = [data]
-    elif isinstance(data, list):
-        # scan_ip_range / scan_subnet -> data is list of host dicts
-        # scan_subnets_of_subnet -> data is list of subnet dicts, each with "hosts"
-        for item in data:
-            if isinstance(item, dict):
-                if "hosts" in item:
-                    hosts.extend(item["hosts"])
-                elif "ip_address" in item:
-                    hosts.append(item)
-
-    # For range/subnet scans, show all hosts but with empty fields for inactive ones
-    # For single host, always show the host
-
     if hosts:
         story.append(_section_header(
             f"Discovered Hosts  ({len(hosts)} total)", styles))
@@ -398,14 +527,14 @@ def _build_json_story(result: dict, scan_type: str,
                 ("Hostname",          host.get("hostname",      "Unknown")),
                 ("MAC Address",       host.get("mac_address",   "N/A")),
                 ("OS Fingerprint",    host.get("os_guess",      "Unknown")),
-                ("Detection Method",  host.get("scan_method",   "N/A")),
+                ("Detection Method",  _resolve_detection_method(host)),
             ]
             # Only include port information for non-host-discovery scans (phase > 1)
             if result.get("summary", {}).get("phase", 1) > 1:
                 detail_rows.append(("Open TCP Ports",    ports_display if is_active else "N/A"))
             detail_rows.extend([
                 ("Status",            host.get("status",        "Unknown")),
-                ("Response Time",     f"{host.get('response_time_ms') or 0:.2f} ms"),
+                ("Response Time",     _format_response_time_ms(host.get("response_time_ms"))),
                 ("Scan Timestamp",    host.get("scan_timestamp", "N/A")),
             ])
 
@@ -515,11 +644,12 @@ def _xml_to_story(xml_str: str, scan_type: str,
     story.append(_section_header("Export Information", styles))
     meta    = result.get("metadata", {}) if result else {}
     summary = result.get("summary", {}) if result else {}
-    scan_strategy = meta.get("scan_method") or summary.get("scan_type", "N/A")
+    scan_strategy = _resolve_scan_strategy(meta, summary)
+    target_value = _resolve_target(meta, summary)
     
     meta_rows = [
         ("Scan Type",      _get_scan_type_label(scan_type)),
-        ("Target",         meta.get("target", "N/A")),
+        ("Target",         target_value),
         ("Scan Strategy",  scan_strategy),
         ("Scan Date",      timestamp[:10]),
         ("Scan Time",      timestamp[11:19]),

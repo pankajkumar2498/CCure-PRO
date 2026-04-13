@@ -204,6 +204,17 @@ def update_scan_phase(
     if original_targets:
         new_summary = {**new_summary, "original_targets": original_targets}
 
+    # Preserve Phase-1 discovery context when later phase summaries omit it.
+    for key in (
+        "total_hosts",
+        "active_hosts",
+        "inactive_hosts",
+        "discovery_scan_method",
+        "scan_method",
+    ):
+        if key not in new_summary and key in existing_summary:
+            new_summary[key] = existing_summary[key]
+
     # Carry pipeline_mode forward in the summary blob
     resolved_mode = pipeline_mode or existing_summary.get("pipeline_mode", scan.pipeline_mode or "basic")
     new_summary["pipeline_mode"] = resolved_mode

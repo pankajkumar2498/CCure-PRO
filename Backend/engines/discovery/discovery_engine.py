@@ -69,6 +69,42 @@ class DiscoveryEngine:
         self.has_privileges = has_privileges
         self.stealth_mode   = stealth_mode
 
+    @staticmethod
+    def _capture_latency_ms(sent_pkt, recv_pkt) -> Optional[float]:
+        """
+        Best-effort latency extraction from Scapy packets.
+        Returns None when timing info is unavailable.
+        """
+        try:
+            send_time = getattr(sent_pkt, "sent_time", None) or getattr(sent_pkt, "time", None)
+            recv_time = getattr(recv_pkt, "time", None)
+            if send_time is None or recv_time is None:
+                return None
+            elapsed = (float(recv_time) - float(send_time)) * 1000.0
+            if elapsed >= 0:
+                return elapsed
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _set_elapsed_if_missing(
+        results: Dict,
+        ip: str,
+        *,
+        sent_pkt=None,
+        recv_pkt=None,
+        fallback_ms: Optional[float] = None,
+    ) -> None:
+        host = results.get(ip)
+        if not host or host.get("elapsed_ms") is not None:
+            return
+        elapsed = DiscoveryEngine._capture_latency_ms(sent_pkt, recv_pkt)
+        if elapsed is None:
+            elapsed = fallback_ms
+        if elapsed is not None:
+            host["elapsed_ms"] = elapsed
+
     # ------------------------------------------------------------------
     # Public entry
     # ------------------------------------------------------------------
@@ -150,8 +186,9 @@ class DiscoveryEngine:
                 Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ips),
                 timeout=0.5, verbose=0,
             )
-            for _, rcv in ans:
+            for snd, rcv in ans:
                 ip = rcv.psrc
+                self._set_elapsed_if_missing(results, ip, sent_pkt=snd, recv_pkt=rcv)
                 if ip in results and not results[ip]["is_active"]:
                     results[ip].update(
                         is_active=True, mac=rcv.hwsrc,
@@ -167,10 +204,11 @@ class DiscoveryEngine:
             if self.stealth_mode:
                 pkts = fragment(pkts)
             ans, _ = sr(pkts, timeout=1, verbose=0, multi=True)
-            for _, rcv in ans:
+            for snd, rcv in ans:
                 if not rcv.haslayer(IP):
                     continue
                 ip = rcv[IP].src
+                self._set_elapsed_if_missing(results, ip, sent_pkt=snd, recv_pkt=rcv)
                 if ip not in results or results[ip]["is_active"]:
                     continue
                 ttl = rcv[IP].ttl
@@ -188,12 +226,13 @@ class DiscoveryEngine:
         try:
             pkts = IP(dst=ips) / ICMP(type="echo-request")
             ans, _ = sr(pkts, timeout=1, verbose=0, multi=True)
-            for _, rcv in ans:
+            for snd, rcv in ans:
                 if not rcv.haslayer(IP):
                     continue
                 ip = rcv[IP].src
                 if ip not in results:
                     continue
+                self._set_elapsed_if_missing(results, ip, sent_pkt=snd, recv_pkt=rcv)
                 ttl = rcv[IP].ttl
                 # Only update OS if not already set by ARP (which doesn't get TTL)
                 if results[ip]["os_guess"] == "Unknown":
@@ -219,12 +258,13 @@ class DiscoveryEngine:
                 if self.stealth_mode:
                     pkts = [fragment(p) for p in pkts]
                 ans, _ = sr(pkts, timeout=1, verbose=0, multi=True)
-                for _, rcv in ans:
+                for snd, rcv in ans:
                     if not rcv.haslayer(IP):
                         continue
                     ip = rcv[IP].src
                     if ip not in results:
                         continue
+                    self._set_elapsed_if_missing(results, ip, sent_pkt=snd, recv_pkt=rcv)
                     ttl  = rcv[IP].ttl
                     win  = rcv[TCP].window if rcv.haslayer(TCP) else None
                     g, c = fingerprint_os(ttl, win)

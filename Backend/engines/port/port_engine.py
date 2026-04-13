@@ -309,6 +309,8 @@ class PortEngine:
             existing_udp = {s.get("port") for s in host.get("udp_services", [])}
             if port not in existing_udp:
                 host.setdefault("udp_services", []).append(udp_result)
+            if host.get("elapsed_ms") is None:
+                host["elapsed_ms"] = elapsed
             
         except Exception:
             pass

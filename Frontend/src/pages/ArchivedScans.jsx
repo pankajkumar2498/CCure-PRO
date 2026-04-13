@@ -94,10 +94,6 @@ export default function ArchivedScans() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm(`Move Scan #${id} to Recycle Bin? You can permanently delete it later from Recycle Bin.`)) {
-      return;
-    }
-
     setDeletingId(id);
     try {
       await deleteScan(id);

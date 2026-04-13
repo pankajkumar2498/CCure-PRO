@@ -15,6 +15,7 @@ import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
 import { getScans, getScan, deleteScan, archiveScan } from "../api/scans";
+import { buildPhasePayload, getScanPipeline } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 
 /* ── constants ── */
@@ -344,7 +345,7 @@ function StatusBadge({ status }) {
 export default function ScanHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { setTarget, setScanType, setPhase1Hosts, setPhase1Summary, setScanId, resetScan } = useScan();
+  const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, resetScan } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const [scans, setScans] = useState([]);
@@ -405,56 +406,13 @@ export default function ScanHistory() {
     });
   };
 
-  const openArchiveDialog = scan => {
-    setDialog({
-      type: "archive",
-      scan,
-      config: {
-        type: "archive",
-        icon: "🗂️",
-        iconClass: "warn",
-        title: `Archive Scan #${scan.id}?`,
-        subtitle: "The scan will be moved out of your active history. You can restore it any time.",
-        meta: [
-          ["Target", scan.target],
-          ["Phase", phaseLabel(scan)],
-          ["Status", scan.status],
-          ["Date", fmtDate(getScanDisplayDate(scan))],
-        ],
-        warning: "Archived scans are hidden from the main history but are never deleted. Visit Archived Scans to restore or permanently remove them.",
-        confirmLabel: "Archive",
-        confirmClass: "archive",
-      },
-    });
-  };
 
-  const openDeleteDialog = scan => {
-    setDialog({
-      type: "delete",
-      scan,
-      config: {
-        type: "delete",
-        icon: "🗑️",
-        iconClass: "danger",
-        title: `Move Scan #${scan.id} to Recycle Bin?`,
-        subtitle: "The scan record will be moved to the Recycle Bin. This won't delete it permanently.",
-        meta: [
-          ["Target", scan.target],
-          ["Phase", phaseLabel(scan)],
-          ["Status", scan.status],
-          ["Date", fmtDate(getScanDisplayDate(scan))],
-        ],
-        warning: "You can permanently delete or restore scans from the Recycle Bin page. Raw scan data will be preserved until you purge it.",
-        confirmLabel: "Move to Recycle Bin",
-        confirmClass: "danger",
-      },
-    });
-  };
 
   /* ── Dialog confirm handlers ── */
   const handleConfirmRerun = async () => {
     const scan = dialog.scan;
     try {
+      // Handle credentialed scans separately
       if (isCred(scan)) {
         resetScan();
         setDialog(null);
@@ -462,29 +420,54 @@ export default function ScanHistory() {
         return;
       }
 
-      const t = scan.target;
-      const st = scan.scan_type || "adaptive";
+      // Extract scan parameters
+      const target = scan.target;
+      const scanType = scan.scan_type || "adaptive";
+      const pipelineMode = scan.pipeline_mode || "basic";
       const targets = getStoredTargets(scan);
 
-      const { data } = await api.post("/scan/host-discovery", { targets, scan_type: st });
+      // Reset context FIRST
+      resetScan();
+
+      // Set up context for the new scan session with the ORIGINAL configuration
+      setTarget(target);
+      setScanType(scanType);
+      setPipelineMode(pipelineMode);
+
+      // Build payload with correct phases based on pipeline mode
+      const payload = buildPhasePayload(pipelineMode, {
+        targets,
+        scan_type: scanType,
+      });
+
+      // Execute the scan with the same pipeline as the original
+      const { data } = await api.post("/scan/host-discovery", payload);
       if (!data.success) throw new Error(data.error || "Re-run failed");
 
-      resetScan();
-      setTarget(t);
-      setScanType(st);
+      // Store results
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
+
       setDialog(null);
-      navigate("/scan/host-discovery");
+
+      // Navigate based on pipeline mode (same as when initially creating the scan)
+      if (pipelineMode === "advanced") {
+        navigate("/scan/advanced-scan");
+      } else {
+        navigate("/scan/host-discovery");
+      }
+
+      pushToast(`Re-running scan with ${pipelineMode} mode (${payload.phases.length} phase${payload.phases.length !== 1 ? "s" : ""})`, "success");
     } catch (err) {
       setDialog(null);
       pushToast("Re-run failed: " + (err.response?.data?.detail || err.message), "error");
     }
   };
 
-  const handleConfirmArchive = async () => {
-    const { scan } = dialog;
+  const handleConfirmArchive = async (dialogObj) => {
+    const scan = dialogObj?.scan || dialog?.scan;
+    if (!scan) return;
     try {
       await archiveScan(scan.id);
       setScans(prev => prev.filter(s => s.id !== scan.id));
@@ -497,8 +480,9 @@ export default function ScanHistory() {
     }
   };
 
-  const handleConfirmDelete = async () => {
-    const { scan } = dialog;
+  const handleConfirmDelete = async (dialogObj) => {
+    const scan = dialogObj?.scan || dialog?.scan;
+    if (!scan) return;
     try {
       await deleteScan(scan.id);
       setScans(prev => prev.filter(s => s.id !== scan.id));
@@ -514,8 +498,6 @@ export default function ScanHistory() {
   const handleDialogConfirm = () => {
     if (!dialog) return;
     if (dialog.type === "rerun") return handleConfirmRerun();
-    if (dialog.type === "archive") return handleConfirmArchive();
-    if (dialog.type === "delete") return handleConfirmDelete();
   };
 
   /* ── Filtering ── */
@@ -670,7 +652,7 @@ export default function ScanHistory() {
                           {/* Archive — disabled for running scans */}
                           <button
                             className="action-btn"
-                            onClick={() => openArchiveDialog(scan)}
+                            onClick={() => handleConfirmArchive({ scan })}
                             disabled={isRunning}
                             title={isRunning ? "Cannot archive a running scan" : "Move to archived scans"}
                           >
@@ -680,7 +662,7 @@ export default function ScanHistory() {
                           {/* Delete */}
                           <button
                             className="action-btn action-btn--danger"
-                            onClick={() => openDeleteDialog(scan)}
+                            onClick={() => handleConfirmDelete({ scan })}
                             title="Move to Recycle Bin"
                           >
                             Delete

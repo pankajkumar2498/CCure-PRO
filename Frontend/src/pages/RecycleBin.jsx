@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
@@ -51,6 +51,72 @@ function StatusBadge({ status }) {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CONFIRMATION DIALOG
+   ══════════════════════════════════════════════════════════════════════════ */
+function ConfirmDialog({ config, onConfirm, onCancel }) {
+  const { title, subtitle, warning, confirmLabel, confirmClass, icon, iconClass } = config;
+  const [busy, setBusy] = useState(false);
+  const btnRef = useRef(null);
+
+  // Focus confirm button on mount
+  useEffect(() => { btnRef.current?.focus(); }, []);
+
+  // ESC to cancel
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await onConfirm(); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="confirm-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+        {/* Header */}
+        <div className="confirm-dialog-header">
+          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+            {icon}
+          </div>
+          <div className="confirm-dialog-titles">
+            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-subtitle">{subtitle}</div>
+          </div>
+        </div>
+
+        {/* Warning banner */}
+        {warning && (
+          <div className={`confirm-dialog-warning confirm-dialog-warning--danger`}>
+            <span style={{ flexShrink: 0 }}>⚠️</span>
+            <span>{warning}</span>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="confirm-dialog-footer">
+          <button className="confirm-btn confirm-btn--cancel" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            ref={btnRef}
+            className={`confirm-btn confirm-btn--${confirmClass}`}
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            {busy ? <span className="confirm-btn-spinner" /> : null}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RecycleBin() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -61,6 +127,7 @@ export default function RecycleBin() {
   const [error, setError] = useState("");
   const [purgingId, setPurgingId] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
+  const [modal, setModal] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,21 +160,36 @@ export default function RecycleBin() {
     }
   };
 
-  const handlePermanentDelete = async (id) => {
-    if (
-      !confirm(
-        `Are you sure you want to delete Scan #${id} permanently?\n\nOnce this action is taken, it can't be undone.`
-      )
-    ) {
-      return;
-    }
+  const handlePermanentDelete = (id) => {
+    const scan = scans.find(s => s.id === id);
+    if (!scan) return;
+    
+    setModal({
+      config: {
+        icon: "🗑️",
+        iconClass: "danger",
+        title: `Permanently Delete Scan #${id}?`,
+        subtitle: "This action cannot be undone. The scan record will be completely removed from the system.",
+        warning: "Once deleted, you cannot recover this scan or its associated data. This is irreversible.",
+        confirmLabel: "Delete Permanently",
+        confirmClass: "danger",
+      },
+      scanId: id,
+    });
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!modal?.scanId) return;
+    
+    const id = modal.scanId;
     setPurgingId(id);
     try {
       await purgeScan(id);
       setScans((prev) => prev.filter((scan) => scan.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
+      setModal(null);
     } catch (err) {
+      setModal(null);
       alert(err.response?.data?.detail || "Failed to delete scan permanently.");
     } finally {
       setPurgingId(null);
@@ -222,6 +304,15 @@ export default function RecycleBin() {
           </div>
         )}
       </div>
+
+      {/* Confirmation modal for permanent deletion */}
+      {modal && (
+        <ConfirmDialog
+          config={modal.config}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setModal(null)}
+        />
+      )}
     </AppLayout>
   );
 }

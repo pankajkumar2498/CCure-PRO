@@ -22,6 +22,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate }          from "react-router-dom";
 import AppLayout                from "../../components/layout/AppLayout";
 import ScanStepper              from "../../components/layout/ScanStepper";
+import Modal                    from "../../components/layout/Modal";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api                      from "../../api/axiosInstance";
 
@@ -80,6 +81,9 @@ export default function Phase3Results() {
   const [filter1, setFilter1] = useState("active"); // Discovery Results
   const [filter2, setFilter2] = useState("active"); // Port Scan Results
   const [filter3, setFilter3] = useState("active"); // Vulnerability Results
+
+  // Modal state for Risk Report
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const safePhase1Hosts     = safeArr(phase1Hosts);
   const activeDiscoveryHosts = safePhase1Hosts.filter(h => h.is_active);
@@ -259,8 +263,8 @@ export default function Phase3Results() {
   };
 
   const proceedToReport = () => {
-    setPipelineState(PIPELINE_STATES.COMPLETE);
-    navigate("/scan/phase4");
+    // Open the report modal instead of navigating
+    setShowReportModal(true);
   };
 
   const toggleExpand = (ip) => {
@@ -599,23 +603,420 @@ export default function Phase3Results() {
         {/* PIPELINE COMPLETE — View Risk Report CTA                          */}
         {/* ══════════════════════════════════════════════════════════════════ */}
         {isDone && localVulnResults.length > 0 && (
-          <div className="pipeline-complete-card">
-            <div className="pipeline-complete-left">
-              <span className="pipeline-complete-icon">✓</span>
-              <div>
-                <h3 className="pipeline-complete-title">Pipeline Complete</h3>
-                <p className="pipeline-complete-desc">
-                  All scan phases finished successfully. View the full Risk Report for detailed analysis and export options.
-                </p>
-              </div>
-            </div>
-            <button className="btn btn--primary btn--lg" onClick={proceedToReport}>
-              View Risk Report →
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 32 }}>
+            <button 
+              className="btn btn--primary btn--lg" 
+              onClick={proceedToReport}
+              style={{
+                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = "scale(1.03)";
+                e.target.style.boxShadow = "0 12px 28px rgba(13, 110, 253, 0.25)";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = "scale(1)";
+                e.target.style.boxShadow = "0 4px 12px rgba(13, 110, 253, 0.15)";
+              }}
+              onMouseDown={(e) => {
+                e.target.style.transform = "scale(0.97)";
+              }}
+              onMouseUp={(e) => {
+                e.target.style.transform = "scale(1.03)";
+              }}
+            >
+              📊 View Risk Report →
             </button>
           </div>
         )}
 
       </div>
+
+      {/* ════════════════════════════════════════════════════════════════════════ */}
+      {/* RISK REPORT MODAL                                                       */}
+      {/* ════════════════════════════════════════════════════════════════════════ */}
+      <Modal 
+        isOpen={showReportModal} 
+        onClose={() => setShowReportModal(false)}
+        title="Risk Report - Full Assessment"
+        subtitle={`Scan #${scanId} • Target: ${target}`}
+      >
+        <div style={{ maxHeight: "80vh", overflowY: "auto" }}>
+          {/* Report Header */}
+          <div style={{ 
+            padding: "16px", 
+            background: "var(--bg-app)", 
+            borderRadius: "8px", 
+            marginBottom: "16px", 
+            border: "1px solid var(--border)" 
+          }}>
+            <h3 style={{ margin: 0, fontWeight: 600, marginBottom: 8 }}>✓ Full Pipeline Complete</h3>
+            <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
+              All scan phases finished successfully. Complete vulnerability analysis and risk assessment below.
+            </p>
+          </div>
+
+          {/* Summary Stats Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div style={{
+              padding: "16px",
+              background: "rgba(34, 197, 94, 0.05)",
+              border: "1px solid rgba(34, 197, 94, 0.2)",
+              borderRadius: "8px"
+            }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Total Hosts Audited</span>
+              <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#22c55e" }}>
+                {phase3Summary?.total_hosts ?? localVulnResults.length}
+              </p>
+            </div>
+            <div style={{
+              padding: "16px",
+              background: "rgba(239, 68, 68, 0.05)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              borderRadius: "8px"
+            }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Total CVEs Found</span>
+              <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#ef4444" }}>
+                {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}
+              </p>
+            </div>
+            <div style={{
+              padding: "16px",
+              background: "rgba(255, 109, 0, 0.05)",
+              border: "1px solid rgba(255, 109, 0, 0.2)",
+              borderRadius: "8px"
+            }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Critical Issues</span>
+              <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#ff6d00" }}>
+                {localVulnResults.filter(h => h.host_risk_level === "Critical").length}
+              </p>
+            </div>
+            <div style={{
+              padding: "16px",
+              background: "rgba(249, 115, 22, 0.05)",
+              border: "1px solid rgba(249, 115, 22, 0.2)",
+              borderRadius: "8px"
+            }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>High Risk Hosts</span>
+              <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#f97316" }}>
+                {localVulnResults.filter(h => h.host_risk_level === "High").length}
+              </p>
+            </div>
+          </div>
+
+          {/* Scan Timing */}
+          <div style={{
+            padding: "16px",
+            background: "var(--bg-app)",
+            borderRadius: "8px",
+            marginBottom: "24px",
+            border: "1px solid var(--border)"
+          }}>
+            <p style={{ margin: "0 0 12px", fontSize: "0.95rem", fontWeight: 600 }}>📊 Scan Timeline</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, fontSize: "0.85rem" }}>
+              <div>
+                <span style={{ color: "var(--text-muted)" }}>Phase 1: Discovery</span>
+                <p style={{ margin: "4px 0", fontWeight: 700, fontSize: "1.1rem" }}>{fmtSec(phase1Summary?.scan_duration)}s</p>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)" }}>Phase 2: Port Scan</span>
+                <p style={{ margin: "4px 0", fontWeight: 700, fontSize: "1.1rem" }}>{pipelinePhaseTimings.portScan ? fmtSec(pipelinePhaseTimings.portScan) : "—"}s</p>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)" }}>Phase 3: Vulnerability Audit</span>
+                <p style={{ margin: "4px 0", fontWeight: 700, fontSize: "1.1rem" }}>{pipelinePhaseTimings.vulnScan ? fmtSec(pipelinePhaseTimings.vulnScan) : "—"}s</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Risk Severity Breakdown */}
+          <div style={{
+            padding: "16px",
+            background: "var(--bg-app)",
+            borderRadius: "8px",
+            marginBottom: "24px",
+            border: "1px solid var(--border)"
+          }}>
+            <p style={{ margin: "0 0 12px", fontSize: "0.95rem", fontWeight: 600 }}>⚠️ Vulnerability Severity Distribution</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, fontSize: "0.85rem" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#ff4d4d" }}>
+                  {(() => {
+                    let count = 0;
+                    localVulnResults.forEach(h => {
+                      (h.cves || []).forEach(cve => {
+                        if ((cve.severity || "Info") === "Critical") count++;
+                      });
+                    });
+                    return count;
+                  })()}
+                </div>
+                <span style={{ color: "var(--text-muted)" }}>Critical</span>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#f97316" }}>
+                  {(() => {
+                    let count = 0;
+                    localVulnResults.forEach(h => {
+                      (h.cves || []).forEach(cve => {
+                        if ((cve.severity || "Info") === "High") count++;
+                      });
+                    });
+                    return count;
+                  })()}
+                </div>
+                <span style={{ color: "var(--text-muted)" }}>High</span>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#f59e0b" }}>
+                  {(() => {
+                    let count = 0;
+                    localVulnResults.forEach(h => {
+                      (h.cves || []).forEach(cve => {
+                        if ((cve.severity || "Info") === "Medium") count++;
+                      });
+                    });
+                    return count;
+                  })()}
+                </div>
+                <span style={{ color: "var(--text-muted)" }}>Medium</span>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#22c55e" }}>
+                  {(() => {
+                    let count = 0;
+                    localVulnResults.forEach(h => {
+                      (h.cves || []).forEach(cve => {
+                        if ((cve.severity || "Info") === "Low") count++;
+                      });
+                    });
+                    return count;
+                  })()}
+                </div>
+                <span style={{ color: "var(--text-muted)" }}>Low</span>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#60a5fa" }}>
+                  {(() => {
+                    let count = 0;
+                    localVulnResults.forEach(h => {
+                      (h.cves || []).forEach(cve => {
+                        if ((cve.severity || "Info") === "Info") count++;
+                      });
+                    });
+                    return count;
+                  })()}
+                </div>
+                <span style={{ color: "var(--text-muted)" }}>Info</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Host Details Table */}
+          <div>
+            <p style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: 12 }}>🖥️ Affected Hosts ({localVulnResults.length} total)</p>
+            <div style={{
+              overflowX: "auto",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              marginBottom: "24px"
+            }}>
+              <table style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem"
+              }}>
+                <thead>
+                  <tr style={{ background: "var(--bg-app)" }}>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>IP Address</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Status</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Risk</th>
+                    <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Vulnerabilities</th>
+                    <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Open Ports</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>OS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {localVulnResults.map((host, idx) => (
+                    <tr key={host.ip_address} style={{ borderBottom: idx < localVulnResults.length - 1 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "12px" }}>
+                        <code style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", fontWeight: 600 }}>{host.ip_address}</code>
+                      </td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{ 
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          background: host.is_active ? "rgba(34, 197, 94, 0.1)" : "rgba(107, 114, 128, 0.1)",
+                          color: host.is_active ? "#22c55e" : "#6b7280"
+                        }}>
+                          {host.is_active ? "✓ Active" : "○ Inactive"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: "0.85rem" }}>
+                          {host.host_risk_level || "Info"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center", fontWeight: 700 }}>
+                        {host.cves?.length ?? 0}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center", fontSize: "0.8rem" }}>
+                        {(host.open_ports || []).length > 0 ? `${(host.open_ports || []).length}` : "—"}
+                      </td>
+                      <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                        {host.os_guess || "Unknown"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Vulnerability Details by Host */}
+          <div>
+            <p style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: 12 }}>🔍 Detailed Vulnerability Analysis</p>
+            {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).map((host) => (
+              <div key={host.ip_address} style={{
+                marginBottom: "16px",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                overflow: "hidden"
+              }}>
+                {/* Host Header */}
+                <div style={{
+                  padding: "12px",
+                  background: "var(--bg-app)",
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}>
+                  <div>
+                    <code style={{ fontFamily: "var(--mono)", fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
+                    <span style={{ marginLeft: "12px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      {host.hostname || "Unknown"}
+                    </span>
+                  </div>
+                  <span style={{ 
+                    color: SEV_COLOR[host.host_risk_level] || "#60a5fa", 
+                    fontWeight: 700,
+                    fontSize: "0.9rem"
+                  }}>
+                    {host.host_risk_level} Risk
+                  </span>
+                </div>
+
+                {/* CVEs List */}
+                <div style={{ padding: "12px" }}>
+                  {(host.cves || []).map((cve, idx) => (
+                    <div key={idx} style={{
+                      marginBottom: idx < (host.cves?.length ?? 0) - 1 ? "12px" : 0,
+                      paddingBottom: idx < (host.cves?.length ?? 0) - 1 ? "12px" : 0,
+                      borderBottom: idx < (host.cves?.length ?? 0) - 1 ? "1px solid var(--border)" : "none"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <code style={{ 
+                          fontFamily: "var(--mono)", 
+                          fontSize: "0.85rem", 
+                          fontWeight: 700,
+                          color: "#2563eb"
+                        }}>
+                          {cve.cve_id || "Unknown CVE"}
+                        </code>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "4px 10px",
+                          borderRadius: "4px",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          color: "#fff",
+                          background: SEV_COLOR[cve.severity || "Info"] || "#60a5fa"
+                        }}>
+                          {cve.severity || "Info"}
+                        </span>
+                      </div>
+                      
+                      {cve.cvss_score && (
+                        <div style={{ marginBottom: 6 }}>
+                          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                            CVSS Score: <strong>{Number(cve.cvss_score || cve.cvss || 0).toFixed(1)}</strong>/10
+                          </span>
+                        </div>
+                      )}
+
+                      {cve.description && (
+                        <p style={{
+                          margin: "6px 0",
+                          fontSize: "0.8rem",
+                          color: "var(--text-mid)",
+                          lineHeight: 1.4
+                        }}>
+                          {cve.description || cve.desc || "No description available"}
+                        </p>
+                      )}
+
+                      {cve.affected_software && (
+                        <div style={{ marginTop: 6 }}>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            <strong>Affected:</strong> {cve.affected_software}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length === 0 && (
+              <div style={{
+                padding: "24px",
+                textAlign: "center",
+                color: "var(--text-muted)"
+              }}>
+                <p>No vulnerabilities found in this scan.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Statistics Summary */}
+          <div style={{
+            marginTop: "24px",
+            padding: "16px",
+            background: "rgba(59, 130, 246, 0.05)",
+            border: "1px solid rgba(59, 130, 246, 0.2)",
+            borderRadius: "8px",
+            fontSize: "0.85rem"
+          }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 600 }}>📈 Report Summary</p>
+            <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-mid)" }}>
+              <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
+              <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
+              <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
+              <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
+              <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
+              <li>Scan completed at: {new Date().toLocaleString()}</li>
+            </ul>
+          </div>
+
+          {/* Export Hint */}
+          <div style={{
+            marginTop: "16px",
+            padding: "12px",
+            background: "rgba(34, 197, 94, 0.05)",
+            border: "1px solid rgba(34, 197, 94, 0.2)",
+            borderRadius: "6px",
+            fontSize: "0.85rem",
+            color: "var(--text-muted)"
+          }}>
+            📄 <strong>Tip:</strong> Close this modal and navigate to Scan History to export full PDF/XML reports with additional formatting and charts.
+          </div>
+        </div>
+      </Modal>
     </AppLayout>
   );
 }

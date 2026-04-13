@@ -4,9 +4,9 @@
  * The "Cabinet": A production-grade repository for all generated security audit reports.
  * Allows users to search, filter, and download historical reports (PDF/XML) for compliance.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../components/layout/AppLayout";
-import { getScans, deleteScan } from "../api/scans";
+import { getScans, purgeScan } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 
@@ -28,8 +28,64 @@ const fmtDate = iso =>
 const fmtDur = sec =>
   !sec ? "—" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
 
-// API Base URL for downloads
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+/* ── CONFIRMATION DIALOG COMPONENT ──────────────────────────────────────── */
+function ConfirmDialog({ config, onConfirm, onCancel }) {
+  const { title, subtitle, warning, confirmLabel, confirmClass, icon, iconClass } = config;
+  const [busy, setBusy] = useState(false);
+  const btnRef = useRef(null);
+
+  useEffect(() => { btnRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await onConfirm(); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="confirm-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+        <div className="confirm-dialog-header">
+          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+            {icon}
+          </div>
+          <div className="confirm-dialog-titles">
+            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-subtitle">{subtitle}</div>
+          </div>
+        </div>
+
+        {warning && (
+          <div className={`confirm-dialog-warning confirm-dialog-warning--danger`}>
+            <span style={{ flexShrink: 0 }}>⚠️</span>
+            <span>{warning}</span>
+          </div>
+        )}
+
+        <div className="confirm-dialog-footer">
+          <button className="confirm-btn confirm-btn--cancel" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            ref={btnRef}
+            className={`confirm-btn confirm-btn--${confirmClass}`}
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            {busy ? <span className="confirm-btn-spinner" /> : null}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ── Main Component ──────────────────────────────────────────────────────── */
 
@@ -40,21 +96,28 @@ export default function SecurityReports() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const [modal, setModal] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      // Fetch active scans — most likely to have reports
-      const response = await getScans(0, 200, "active");
-      const data = response.data;
+      // Fetch scans from all statuses: active, archived, and deleted
+      // This ensures reports remain accessible until permanent deletion
+      const [activeRes, archivedRes, deletedRes] = await Promise.all([
+        getScans(0, 200, "active"),
+        getScans(0, 200, "archived"),
+        getScans(0, 200, "deleted"),
+      ]);
 
-      if (!data || !Array.isArray(data.scans)) {
-        throw new Error("Invalid response format from server");
-      }
+      const allScans = [
+        ...(activeRes.data?.scans || []),
+        ...(archivedRes.data?.scans || []),
+        ...(deletedRes.data?.scans || []),
+      ];
 
       // Filter for scans that actually completed and have reports
-      const reportableScans = data.scans.filter(s => 
+      const reportableScans = allScans.filter(s => 
         (s.status === "complete" || s.has_json_report || s.has_xml_report)
       );
       
@@ -100,13 +163,35 @@ export default function SecurityReports() {
     }
   };
 
-  const handleDelete = async (scanId) => {
-    if (!window.confirm("Are you sure you want to move this report to the Recycle Bin?")) return;
+  const handleDelete = (scanId) => {
+    const scan = scans.find(s => s.id === scanId);
+    if (!scan) return;
+    
+    setModal({
+      config: {
+        icon: "🗑️",
+        iconClass: "danger",
+        title: `Permanently Delete Report #${scanId}?`,
+        subtitle: "This action cannot be undone. The scan record and its report will be completely removed.",
+        warning: "Once deleted, you cannot recover this report or its associated data. This is irreversible.",
+        confirmLabel: "Delete Permanently",
+        confirmClass: "danger",
+      },
+      scanId: scanId,
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!modal?.scanId) return;
+    
+    const scanId = modal.scanId;
     try {
-      await deleteScan(scanId);
+      await purgeScan(scanId);
       setScans(prev => prev.filter(s => s.id !== scanId));
+      setModal(null);
     } catch (err) {
       console.error("Delete failed:", err);
+      setModal(null);
       alert("Failed to delete report.");
     }
   };
@@ -401,6 +486,15 @@ export default function SecurityReports() {
           font-size: 11px;
         }
       `}} />
+
+      {/* Confirmation modal for permanent deletion */}
+      {modal && (
+        <ConfirmDialog
+          config={modal.config}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setModal(null)}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -451,13 +545,6 @@ function ReportCard({ scan, onDownload }) {
           title="Download Technical PDF containing raw audit data"
         >
           <span>📝</span> Technical Data
-        </button>
-        <button 
-          className="download-btn download-btn--delete" 
-          onClick={() => onDelete(scan.id)}
-          title="Move to Recycle Bin"
-        >
-          <span>🗑️</span>
         </button>
       </div>
       

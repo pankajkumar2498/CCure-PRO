@@ -322,7 +322,7 @@ class ScanOrchestrator:
             "metadata": {"target": ",".join(targets), "scan_method": st.value.upper()},
         }
 
-    def run_asset_discovery_only(
+    async def run_asset_discovery_only(
         self,
         hosts: List[Dict],
         intensity: str = "normal",
@@ -390,7 +390,7 @@ class ScanOrchestrator:
         
         # Run Phase 2: Port Scanning
         port_engine = PortEngine(intensity=intensity_enum)
-        port_engine.run(active_hosts)  # mutates in-place
+        await port_engine.run(active_hosts)  # mutates in-place
         self._apply_os_inference(active_hosts)
         
         duration = time.time() - t0
@@ -598,7 +598,7 @@ class ScanOrchestrator:
         # -- Phase 2: Port Scan -------------------------------------------
         active_hosts = [h for h in disc_results if h["is_active"]]
         port_engine  = PortEngine(intensity=self.intensity)
-        port_engine.run(active_hosts)   # mutates active_hosts in-place
+        await port_engine.run(active_hosts)   # mutates active_hosts in-place
         self._apply_os_inference(active_hosts)
 
         if scan_mode == "port":

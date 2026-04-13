@@ -28,8 +28,20 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+# -- CVE Database (SQLite with automatic fallback) ----------------------------
+try:
+    from core.cve_database import get_cve_database
+    CVE_DB = get_cve_database()
+    CVE_DATABASE_AVAILABLE = CVE_DB.db_available
+except ImportError:
+    CVE_DB = None
+    CVE_DATABASE_AVAILABLE = False
+
 # =============================================================================
-# CVE / Vulnerability Intelligence  (pure stdlib - no external DB)
+# CVE / Vulnerability Intelligence  (Fallback hardcoded hints)
+# =============================================================================
+# NOTE: These are used as fallback when SQLite database is unavailable.
+# For production, use Backend/scripts/download_nvd.py to populate cves.db
 # =============================================================================
 
 CVE_HINTS: Dict[str, List[Dict]] = {

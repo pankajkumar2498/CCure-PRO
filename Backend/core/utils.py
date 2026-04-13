@@ -16,7 +16,7 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
-from core.constants import CVE_HINTS, VER_PATTERNS
+from core.constants import CVE_HINTS, VER_PATTERNS, CVE_DB
 
 
 # =============================================================================
@@ -194,12 +194,30 @@ class TokenBucket:
 # =============================================================================
 
 def lookup_cve(banner: str) -> List[Dict]:
-    """Match a banner / service string against the local CVE hint table."""
+    """
+    Match a banner / service string against CVE database.
+    Falls back to hardcoded hints if database is unavailable.
+    """
     banner_lc = banner.lower()
     found: List[Dict] = []
-    for key, hints in CVE_HINTS.items():
-        if key in banner_lc:
-            found.extend(hints)
+    
+    # Try database first if available
+    if CVE_DB and CVE_DB.db_available:
+        # Extract service name from banner (e.g., "OpenSSH 7.4" -> "openssh")
+        for service_hint in ["openssh", "nginx", "apache", "ftp", "smb", "rdp", "redis", "mongodb", 
+                             "mysql", "postgresql", "tomcat", "php", "openssl", "telnet", "dropbear"]:
+            if service_hint in banner_lc:
+                db_results = CVE_DB.search_cves_for_service(banner, "")
+                if db_results:
+                    found.extend(db_results)
+                    break
+    
+    # Fallback to hardcoded hints if no database results
+    if not found:
+        for key, hints in CVE_HINTS.items():
+            if key in banner_lc:
+                found.extend(hints)
+    
     return found
 
 

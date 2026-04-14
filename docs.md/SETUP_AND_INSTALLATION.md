@@ -1,6 +1,6 @@
 # CCure Audit PRO — Setup and Installation
 
-**Version:** 2.2.0  
+**Version:** 1.0.0  
 **Supported Platforms:** Linux (recommended), Windows 10/11 with Npcap
 
 ---

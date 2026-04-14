@@ -1,6 +1,6 @@
 # CCure Audit PRO — Architecture Overview
 
-**Version:** 2.2.0  
+**Version:** 1.0.0  
 **Classification:** Internal Technical Reference  
 **Scope:** Full-stack network vulnerability scanning platform
 

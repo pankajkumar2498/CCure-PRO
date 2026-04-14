@@ -332,9 +332,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title       = "Ccure Audit - Pro Edition (Phase-Selective)",
-    description = "CDAC-style network scanner with pipeline-mode scanning for frontend orchestration.",
-    version     = "2.2.0",
+    title       = "Ccure Audit - Pro Edition",
+    description = "CDAC-style network scanner.",
+    version     = "1.0.0",
     lifespan    = lifespan,
 )
 

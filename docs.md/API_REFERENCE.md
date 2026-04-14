@@ -1,6 +1,6 @@
 # CCure Audit PRO — API Reference
 
-**Version:** 2.2.0  
+**Version:** 1.0.0  
 **Base URL:** `http://localhost:8000`  
 **Auth:** All endpoints (except `/auth/register` and `/auth/login`) require `Authorization: Bearer <access_token>`
 

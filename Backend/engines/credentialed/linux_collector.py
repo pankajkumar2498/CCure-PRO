@@ -40,8 +40,8 @@ COMMANDS: Dict[str, str] = {
     "users":           "cat /etc/passwd 2>/dev/null",
     "sudo_rules":      "sudo -ln 2>/dev/null || sudo -l 2>/dev/null",
     "cron_jobs":       "crontab -l 2>/dev/null; ls /etc/cron* 2>/dev/null",
-    "suid_files":      "find / -perm -4000 -type f 2>/dev/null",
-    "world_writable":  "find / -perm -0002 -type d -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null",
+    "suid_files":      "timeout 25 find / -perm -4000 -type f 2>/dev/null | head -100",
+    "world_writable":  "timeout 25 find / -perm -0002 -type d -not -path '/proc/*' -not -path '/sys/*' -not -path '/dev/*' 2>/dev/null | head -50",
     "cpu":             "lscpu 2>/dev/null",
     "memory":          "free -h 2>/dev/null",
     "disk":            "df -h 2>/dev/null",
@@ -282,7 +282,9 @@ class LinuxCollector:
         if not cmd:
             return ""
         result = self._ssh.run(cmd, timeout=30)
-        return result.stdout if result.success else (result.stdout or "")
+        if not result.success and result.stderr:
+            log.debug("Command '%s' stderr on %s: %s", command_key, self._ssh.ip, result.stderr[:200])
+        return result.stdout or ""
 
 
 # ---------------------------------------------------------------------------

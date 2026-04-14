@@ -9,14 +9,14 @@ import AppLayout from "../../components/layout/AppLayout";
 import { runCredentialedScan } from "../../api/credentialedScan";
 
 const SECTIONS = [
-  { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel, CPU, RAM, disk"             },
-  { key: "packages",    label: "Packages",           icon: "📦",  desc: "Full dpkg/rpm package list"             },
-  { key: "services",    label: "Running Services",   icon: "⚙️",  desc: "Active systemd units"                   },
-  { key: "ports",       label: "Open Ports",         icon: "🔌",  desc: "Live socket table via ss"               },
-  { key: "users",       label: "Users",              icon: "👤",  desc: "/etc/passwd analysis"                   },
-  { key: "security",    label: "Security Audit",     icon: "🔒",  desc: "SUID, sudo rules, cron, world-writable" },
+  { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel/build, CPU, RAM, disk"       },
+  { key: "packages",    label: "Packages",           icon: "📦",  desc: "Installed software (dpkg/rpm/registry)"  },
+  { key: "services",    label: "Running Services",   icon: "⚙️",  desc: "Active services / systemd units"         },
+  { key: "ports",       label: "Open Ports",         icon: "🔌",  desc: "Live socket table (ss / netstat)"        },
+  { key: "users",       label: "Users",              icon: "👤",  desc: "User accounts & admin analysis"         },
+  { key: "security",    label: "Security Audit",     icon: "🔒",  desc: "Firewall, shares, SUID, sudo, RDP"      },
   { key: "network",     label: "Network",            icon: "🌐",  desc: "Interfaces, ARP, env vars"              },
-  { key: "history",     label: "Login History",      icon: "📋",  desc: "last/lastb — recent logins & failures"  },
+  { key: "history",     label: "Login History",      icon: "📋",  desc: "Recent logins & failures"               },
 ];
 
 export default function CredentialedScan() {
@@ -30,6 +30,7 @@ export default function CredentialedScan() {
   const [keyPath,    setKeyPath]    = useState("");
   const [port,       setPort]       = useState("22");
   const [authMethod, setAuthMethod] = useState("password");
+  const [osType,     setOsType]     = useState("auto");
   const [showPass,   setShowPass]   = useState(false);
   const [sections,   setSections]   = useState(new Set(SECTIONS.map(s => s.key)));
   const [loading,    setLoading]    = useState(false);
@@ -67,6 +68,7 @@ export default function CredentialedScan() {
         port:       parseInt(port, 10) || 22,
         authMethod,
         sections:   allSelected ? null : Array.from(sections),
+        osType,
       });
 
       if (!data.success) throw new Error(data.error || "Scan failed");
@@ -118,6 +120,15 @@ export default function CredentialedScan() {
                   value={port} onChange={e => setPort(e.target.value)}
                   disabled={loading}
                 />
+              </div>
+              <div className="cred-field cred-field--narrow">
+                <label className="field-label">Target OS</label>
+                <select className="field-input" value={osType}
+                  onChange={e => setOsType(e.target.value)} disabled={loading}>
+                  <option value="auto">Auto-detect</option>
+                  <option value="linux">Linux</option>
+                  <option value="windows">Windows</option>
+                </select>
               </div>
             </div>
           </div>

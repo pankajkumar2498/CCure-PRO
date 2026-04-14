@@ -168,8 +168,15 @@ class SSHScanner:
                 command, timeout=_timeout, get_pty=False
             )
             stdout_fh.channel.settimeout(_timeout)
+            stderr_fh.channel.settimeout(_timeout)
 
-            stdout_data = stdout_fh.read().decode("utf-8", errors="replace").strip()
+            chunks = []
+            while True:
+                chunk = stdout_fh.channel.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            stdout_data = b"".join(chunks).decode("utf-8", errors="replace").strip()
             stderr_data = stderr_fh.read().decode("utf-8", errors="replace").strip()
             exit_code   = stdout_fh.channel.recv_exit_status()
 

@@ -17,283 +17,15 @@ Usage::
 """
 
 import logging
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
+from pathlib import Path
 
 log = logging.getLogger("ccure.vuln_matcher")
-
-
-# ---------------------------------------------------------------------------
-# CVE Knowledge Base
-# ---------------------------------------------------------------------------
-# Format:
-#   package_name (lowercase) → list of {
-#       cve_id, min_ver (inclusive, None = any), max_ver (exclusive, None = any),
-#       fixed_version, severity, cvss, description, references
-#   }
-#
-# Version comparison uses _version_lt() — a best-effort semver comparator.
-# ---------------------------------------------------------------------------
-
-CVE_DATABASE: Dict[str, List[Dict[str, Any]]] = {
-    "openssl": [
-        {
-            "cve_id":      "CVE-2022-0778",
-            "max_ver":     "1.1.1o",
-            "fixed_ver":   "1.1.1o",
-            "severity":    "High",
-            "cvss":        7.5,
-            "description": "Infinite loop in BN_mod_sqrt() allows denial of service via crafted certificate.",
-        },
-        {
-            "cve_id":      "CVE-2022-2068",
-            "max_ver":     "1.1.1q",
-            "fixed_ver":   "1.1.1q",
-            "severity":    "Critical",
-            "cvss":        9.8,
-            "description": "c_rehash script command injection via special characters in certificate subject.",
-        },
-        {
-            "cve_id":      "CVE-2023-0286",
-            "max_ver":     "3.0.8",
-            "fixed_ver":   "3.0.8",
-            "severity":    "High",
-            "cvss":        7.4,
-            "description": "X.400 address type confusion in X.509 GeneralName, may lead to read/crash.",
-        },
-        {
-            "cve_id":      "CVE-2014-0160",
-            "max_ver":     "1.0.1g",
-            "min_ver":     "1.0.1",
-            "fixed_ver":   "1.0.1g",
-            "severity":    "Critical",
-            "cvss":        7.5,
-            "description": "Heartbleed — out-of-bounds read in heartbeat extension leaks server memory.",
-        },
-    ],
-    "openssh": [
-        {
-            "cve_id":      "CVE-2023-38408",
-            "max_ver":     "9.3p2",
-            "fixed_ver":   "9.3p2",
-            "severity":    "Critical",
-            "cvss":        9.8,
-            "description": "Remote code execution via ssh-agent forwarding with a crafted PKCS#11 library.",
-        },
-        {
-            "cve_id":      "CVE-2018-15473",
-            "max_ver":     "7.9",
-            "fixed_ver":   "7.9",
-            "severity":    "Medium",
-            "cvss":        5.3,
-            "description": "Username enumeration via differing responses to valid vs invalid usernames.",
-        },
-        {
-            "cve_id":      "CVE-2016-20012",
-            "max_ver":     "8.9",
-            "fixed_ver":   "8.9",
-            "severity":    "Medium",
-            "cvss":        5.3,
-            "description": "Observable timing difference in public key authentication allows username enumeration.",
-        },
-    ],
-    "apache2": [
-        {
-            "cve_id":      "CVE-2021-41773",
-            "min_ver":     "2.4.49",
-            "max_ver":     "2.4.50",
-            "fixed_ver":   "2.4.51",
-            "severity":    "Critical",
-            "cvss":        9.8,
-            "description": "Path traversal and RCE via URL-encoded path segments on certain configurations.",
-        },
-        {
-            "cve_id":      "CVE-2021-42013",
-            "min_ver":     "2.4.49",
-            "max_ver":     "2.4.51",
-            "fixed_ver":   "2.4.51",
-            "severity":    "Critical",
-            "cvss":        9.8,
-            "description": "Incomplete fix for CVE-2021-41773 — path traversal still possible in 2.4.50.",
-        },
-        {
-            "cve_id":      "CVE-2022-22720",
-            "max_ver":     "2.4.53",
-            "fixed_ver":   "2.4.53",
-            "severity":    "High",
-            "cvss":        9.8,
-            "description": "HTTP request smuggling via improper handling of Transfer-Encoding header.",
-        },
-    ],
-    "httpd": [
-        # Red Hat/CentOS package name for Apache
-        {
-            "cve_id":      "CVE-2021-41773",
-            "min_ver":     "2.4.49",
-            "max_ver":     "2.4.50",
-            "fixed_ver":   "2.4.51",
-            "severity":    "Critical",
-            "cvss":        9.8,
-            "description": "Path traversal and RCE via URL-encoded path segments on certain configurations.",
-        },
-    ],
-    "nginx": [
-        {
-            "cve_id":      "CVE-2021-23017",
-            "max_ver":     "1.20.1",
-            "fixed_ver":   "1.20.1",
-            "severity":    "High",
-            "cvss":        7.7,
-            "description": "1-byte memory overwrite via DNS resolver in nginx — potential RCE.",
-        },
-        {
-            "cve_id":      "CVE-2022-41741",
-            "max_ver":     "1.23.2",
-            "fixed_ver":   "1.23.2",
-            "severity":    "High",
-            "cvss":        7.1,
-            "description": "Memory corruption in mp4 module via crafted mp4 file.",
-        },
-    ],
-    "curl": [
-        {
-            "cve_id":      "CVE-2023-38545",
-            "max_ver":     "8.4.0",
-            "fixed_ver":   "8.4.0",
-            "severity":    "High",
-            "cvss":        9.8,
-            "description": "SOCKS5 heap buffer overflow — most severe curl vulnerability in years.",
-        },
-        {
-            "cve_id":      "CVE-2023-23914",
-            "max_ver":     "7.88.0",
-            "fixed_ver":   "7.88.0",
-            "severity":    "Critical",
-            "cvss":        9.1,
-            "description": "HSTS with a long hostname causes out-of-bounds memory access.",
-        },
-    ],
-    "sudo": [
-        {
-            "cve_id":      "CVE-2021-3156",
-            "max_ver":     "1.9.5p2",
-            "fixed_ver":   "1.9.5p2",
-            "severity":    "Critical",
-            "cvss":        7.8,
-            "description": "Heap-based buffer overflow in sudo (Baron Samedit) — local privilege escalation to root.",
-        },
-        {
-            "cve_id":      "CVE-2023-22809",
-            "max_ver":     "1.9.12p2",
-            "fixed_ver":   "1.9.12p2",
-            "severity":    "High",
-            "cvss":        7.8,
-            "description": "sudoedit can be exploited to edit arbitrary files when extra arguments are allowed.",
-        },
-    ],
-    "bash": [
-        {
-            "cve_id":      "CVE-2014-6271",
-            "max_ver":     "4.3.25",
-            "fixed_ver":   "4.3.25",
-            "severity":    "Critical",
-            "cvss":        10.0,
-            "description": "Shellshock — arbitrary code execution via crafted environment variable value.",
-        },
-    ],
-    "linux-image": [
-        {
-            "cve_id":      "CVE-2022-0847",
-            "min_ver":     "5.8",
-            "max_ver":     "5.16.11",
-            "fixed_ver":   "5.16.11",
-            "severity":    "High",
-            "cvss":        7.8,
-            "description": "Dirty Pipe — local privilege escalation via pipe_write() in Linux kernel.",
-        },
-        {
-            "cve_id":      "CVE-2021-22555",
-            "max_ver":     "5.12.13",
-            "fixed_ver":   "5.12.13",
-            "severity":    "High",
-            "cvss":        7.8,
-            "description": "Heap out-of-bounds write in Netfilter — local privilege escalation.",
-        },
-    ],
-    "libc6": [
-        {
-            "cve_id":      "CVE-2023-4911",
-            "max_ver":     "2.35-0ubuntu3.4",
-            "fixed_ver":   "2.35-0ubuntu3.4",
-            "severity":    "High",
-            "cvss":        7.8,
-            "description": "Looney Tunables — glibc buffer overflow in dynamic linker, local privilege escalation.",
-        },
-    ],
-    "glibc": [
-        {
-            "cve_id":      "CVE-2023-4911",
-            "max_ver":     "2.38",
-            "fixed_ver":   "2.38",
-            "severity":    "High",
-            "cvss":        7.8,
-            "description": "Looney Tunables — glibc buffer overflow in dynamic linker, local privilege escalation.",
-        },
-    ],
-    "polkit": [
-        {
-            "cve_id":      "CVE-2021-4034",
-            "max_ver":     "0.121",
-            "fixed_ver":   "0.121",
-            "severity":    "Critical",
-            "cvss":        7.8,
-            "description": "PwnKit — memory corruption in pkexec allows local privilege escalation to root.",
-        },
-    ],
-    "samba": [
-        {
-            "cve_id":      "CVE-2021-44142",
-            "max_ver":     "4.15.2",
-            "fixed_ver":   "4.15.2",
-            "severity":    "Critical",
-            "cvss":        9.9,
-            "description": "Out-of-bounds heap read/write via VFS module — unauthenticated RCE.",
-        },
-    ],
-    "log4j": [
-        {
-            "cve_id":      "CVE-2021-44228",
-            "min_ver":     "2.0",
-            "max_ver":     "2.15.0",
-            "fixed_ver":   "2.15.0",
-            "severity":    "Critical",
-            "cvss":        10.0,
-            "description": "Log4Shell — JNDI injection via logged strings enables unauthenticated RCE.",
-        },
-    ],
-    "python3": [
-        {
-            "cve_id":      "CVE-2023-24329",
-            "max_ver":     "3.11.2",
-            "fixed_ver":   "3.11.2",
-            "severity":    "High",
-            "cvss":        7.5,
-            "description": "urllib.parse bypasses blocklist via blank scheme prefix in URLs.",
-        },
-    ],
-    "pip": [
-        {
-            "cve_id":      "CVE-2023-5752",
-            "max_ver":     "23.3",
-            "fixed_ver":   "23.3",
-            "severity":    "Medium",
-            "cvss":        4.7,
-            "description": "Mercurial VCS URL parsing allows injection of arbitrary configuration.",
-        },
-    ],
-}
-
 
 @dataclass
 class CredentialedCVE:
@@ -307,54 +39,107 @@ class CredentialedCVE:
     fixed_ver:       str = ""
     source:          str = "package_version_match"
 
+def _extract_nvd_constraints(affected_raw: str, pkg_name: str) -> List[Dict[str, Any]]:
+    constraints = []
+    if not affected_raw:
+        return constraints
+    try:
+        affected = json.loads(affected_raw)
+    except Exception:
+        return constraints
+        
+    for conf in affected:
+        for node in conf.get("nodes", []):
+            for match in node.get("cpeMatch", []):
+                if not match.get("vulnerable"):
+                    continue
+                cpe = match.get("criteria", "").lower()
+                parts = cpe.split(":")
+                product = parts[4] if len(parts) > 4 else ""
+                
+                if pkg_name not in product and product not in pkg_name:
+                    continue
+                    
+                exact_ver = parts[5] if len(parts) > 5 and parts[5] not in ("*", "-") else None
+                min_v = match.get("versionStartIncluding") or match.get("versionStartExcluding")
+                max_v = match.get("versionEndIncluding") or match.get("versionEndExcluding")
+                
+                if exact_ver or min_v or max_v:
+                    constraints.append({
+                        "min_ver": min_v,
+                        "max_ver": max_v,
+                        "exact_ver": exact_ver
+                    })
+    return constraints
 
 class VulnMatcher:
     """
-    Matches a list of installed packages against CVE_DATABASE.
-
-    Accuracy is ~90% (vs ~30% for banner-based matching) because we have
-    exact package names and versions from the package manager.
+    Matches a list of installed packages against a local CVE database via SQLAlchemy.
     """
+
+    def __init__(self):
+        db_path = Path(__file__).parent.parent.parent / "cves.db"
+        self.engine = create_engine(f"sqlite:///{db_path}")
 
     def match_packages(
         self,
         packages: List[Dict[str, str]],
     ) -> List[CredentialedCVE]:
-        """
-        Parameters
-        ----------
-        packages : List of {name, version} dicts from linux_collector.
-
-        Returns
-        -------
-        List of CredentialedCVE findings, sorted by CVSS score descending.
-        """
         findings: List[CredentialedCVE] = []
-        seen_cves: set = set()  # deduplicate by CVE ID
+        seen_cves: set = set()
 
-        for pkg in packages:
-            name    = pkg.get("name", "").lower().strip()
-            version = pkg.get("version", "").strip()
+        try:
+            with self.engine.connect() as conn:
+                for pkg in packages:
+                    name    = pkg.get("name", "").lower().strip()
+                    version = pkg.get("version", "").strip()
 
-            if not name or not version:
-                continue
+                    if not name or not version:
+                        continue
 
-            # Direct lookup
-            if name in CVE_DATABASE:
-                for cve in CVE_DATABASE[name]:
-                    finding = self._check_match(name, version, cve)
-                    if finding and finding.cve_id not in seen_cves:
-                        findings.append(finding)
-                        seen_cves.add(finding.cve_id)
+                    query = text("""
+                        SELECT cve_id, description, cvss_score, severity, affected_software
+                        FROM cves
+                        WHERE affected_software LIKE :name OR description LIKE :name
+                        LIMIT 50
+                    """)
+                    results = conn.execute(query, {"name": f"%{name}%"}).fetchall()
 
-            # Prefix matching (e.g. "linux-image-5.15.0-91-generic" → "linux-image")
-            for db_name in CVE_DATABASE:
-                if db_name != name and name.startswith(db_name):
-                    for cve in CVE_DATABASE[db_name]:
-                        finding = self._check_match(name, version, cve)
-                        if finding and finding.cve_id not in seen_cves:
-                            findings.append(finding)
-                            seen_cves.add(finding.cve_id)
+                    for row in results:
+                        cve_id, desc, cvss, severity, affected_raw = row
+                        
+                        if cve_id in seen_cves:
+                            continue
+
+                        constraints = _extract_nvd_constraints(affected_raw, name)
+                        
+                        if not constraints:
+                            continue
+
+                        for c in constraints:
+                            cve_dict = {
+                                "cve_id": cve_id,
+                                "severity": severity,
+                                "cvss": cvss,
+                                "description": desc,
+                                "min_ver": c["min_ver"],
+                                "max_ver": c["max_ver"],
+                                "fixed_ver": c["max_ver"] or "",
+                            }
+                            finding = None
+                            if c["exact_ver"]:
+                                if _version_gte(version, c["exact_ver"]) and _version_lt(version, c["exact_ver"] + ".99"):
+                                    finding = self._check_match(name, version, cve_dict)
+                            else:
+                                finding = self._check_match(name, version, cve_dict)
+                                
+                            if finding:
+                                findings.append(finding)
+                                seen_cves.add(cve_id)
+                                break
+
+        except OperationalError as e:
+            log.warning(f"CVE database query failed: {e}. Ensure you ran download_nvd.py.")
 
         findings.sort(key=lambda c: c.cvss_score, reverse=True)
         return findings
@@ -369,11 +154,9 @@ class VulnMatcher:
         min_ver  = cve.get("min_ver")
         max_ver  = cve.get("max_ver")
 
-        # Check lower bound (inclusive)
         if min_ver and not _version_gte(installed, min_ver):
             return None
 
-        # Check upper bound (exclusive — fixed version is safe)
         if max_ver and not _version_lt(installed, max_ver):
             return None
 
@@ -388,7 +171,6 @@ class VulnMatcher:
         )
 
     def to_report_format(self, findings: List[CredentialedCVE]) -> List[Dict[str, Any]]:
-        """Convert CredentialedCVE list to the same schema used by Phase 3 CVEs."""
         return [
             {
                 "cve_id":       f.cve_id,
@@ -402,6 +184,7 @@ class VulnMatcher:
             }
             for f in findings
         ]
+
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +202,12 @@ def _parse_version(ver: str) -> Tuple[int, ...]:
     "2.4.51"       → (2, 4, 51)
     "2.35-0ubuntu" → (2, 35)
     """
+    # Strip Debian epoch prefix (e.g. "1:7.6p1" → "7.6p1")
+    if ":" in ver:
+        ver = ver.split(":", 1)[1]
+    # Strip distro suffix noise (ubuntu, debian, el9, etc.)
+    ver = re.sub(r"(ubuntu|debian|el\d|deb\d|~).*$", "", ver, flags=re.IGNORECASE)
+
     # Normalise: split on non-numeric separators
     parts = re.split(r"[.\-~+]", ver)
     nums: List[int] = []

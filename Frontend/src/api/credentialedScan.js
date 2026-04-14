@@ -13,6 +13,7 @@ export const runCredentialedScan = ({
   port = 22,
   authMethod = "password",
   sections = null,
+  osType = "auto",
 }) =>
   api.post("/scan/credentialed", {
     ip,
@@ -22,4 +23,5 @@ export const runCredentialedScan = ({
     port,
     auth_method: authMethod,
     sections,
+    os_type:     osType,
   });

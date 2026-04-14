@@ -64,8 +64,9 @@ from scans.db_helpers import (
 )
 from pdf_generator import ScanReportGenerator
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
-from engines.credentialed.linux_collector import LinuxCollector
-from engines.credentialed.vuln_matcher    import VulnMatcher
+from engines.credentialed.linux_collector   import LinuxCollector
+from engines.credentialed.windows_collector import WindowsCollector
+from engines.credentialed.vuln_matcher      import VulnMatcher
 
 # -- Logging -------------------------------------------------------------------
 logging.basicConfig(
@@ -455,6 +456,7 @@ class CredentialedScanRequest(BaseModel):
     port:        int            = Field(22, ge=1, le=65535)
     auth_method: str            = Field("password")
     sections:    Optional[List[str]] = Field(None)
+    os_type:     str            = Field("auto", description="'linux' | 'windows' | 'auto'")
 
 
 class PhasesRequest(BaseModel):
@@ -838,8 +840,24 @@ async def scan_credentialed(
             port      = req.port,
             timeout   = 15,
         ) as ssh:
-            collector   = LinuxCollector(ssh)
+            # Auto-detect OS if not specified
+            os_type = req.os_type.lower() if req.os_type else "auto"
+            if os_type == "auto":
+                probe = ssh.run("uname -s", timeout=5)
+                if probe.success and probe.stdout.strip():
+                    os_type = "linux"
+                else:
+                    # Windows: uname fails or returns empty
+                    win_probe = ssh.run("cmd /c ver", timeout=5)
+                    os_type = "windows" if win_probe.success else "linux"
+
+            if os_type == "windows":
+                collector = WindowsCollector(ssh)
+            else:
+                collector = LinuxCollector(ssh)
+
             system_data = collector.collect_all(sections=req.sections)
+            system_data["detected_os"] = os_type
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

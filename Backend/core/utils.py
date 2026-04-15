@@ -253,10 +253,57 @@ def get_local_ips() -> set:
 
 
 def get_local_mac() -> str:
+    """
+    Return the primary network interface MAC address for this machine.
+
+    Strategy:
+    1. psutil.net_if_addrs()  — resolve the gateway-facing interface and get its MAC
+    2. uuid.getnode()         — cross-platform fallback (48-bit int, MSB first)
+    """
+    # Attempt 1: psutil — accurate, works on multi-NIC Windows/Linux/macOS
+    try:
+        import socket
+        import psutil
+
+        AF_LINK = psutil.AF_LINK  # = 17 on Linux, 18 on macOS, -1000 on Windows (still works)
+
+        # Find which interface carries the default route
+        gw_iface = None
+        gateways = psutil.net_if_stats()
+        # Use the first UP, non-loopback interface that has a gateway
+        # by trying to open a UDP socket to 8.8.8.8 to find the source IP
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+        except Exception:
+            local_ip = None
+
+        if local_ip:
+            for iface, addrs in psutil.net_if_addrs().items():
+                for addr in addrs:
+                    if addr.family == socket.AF_INET and addr.address == local_ip:
+                        gw_iface = iface
+                        break
+                if gw_iface:
+                    break
+
+        if gw_iface:
+            for addr in psutil.net_if_addrs().get(gw_iface, []):
+                if addr.family == AF_LINK and addr.address:
+                    mac = addr.address.upper().replace("-", ":")
+                    if mac and mac != "00:00:00:00:00:00":
+                        return mac
+    except Exception:
+        pass
+
+    # Attempt 2: uuid.getnode() — reliable cross-platform fallback
     try:
         n = uuid.getnode()
         if (n >> 40) & 1:
+            # Multicast bit set = locally administered / random address
             return "N/A"
+        # getnode() returns a 48-bit big-endian integer — extract MSB first
         return ":".join(f"{(n >> (8 * i)) & 0xFF:02X}" for i in reversed(range(6)))
     except Exception:
         return "N/A"

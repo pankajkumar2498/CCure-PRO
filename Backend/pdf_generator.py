@@ -572,19 +572,100 @@ def _build_json_story(result: dict, scan_type: str,
                 detail_rows.append(("CVEs Found", str(len(cves))))
                 
             active_findings = []
-            if host.get("heartbleed_info", {}).get("vulnerable"): active_findings.append("Heartbleed")
-            if host.get("smb_ms17010_info", {}).get("ms17010_likely"): active_findings.append("MS17-010")
-            if host.get("ldap_info", {}).get("anonymous_bind", {}).get("allowed"): active_findings.append("LDAP-anon")
-            if host.get("dns_info", {}).get("zone_transfer", {}).get("vulnerable"): active_findings.append("DNS-AXFR")
-            if host.get("default_creds_info"): active_findings.append("Default-Creds")
+            if host.get("heartbleed_info", {}).get("vulnerable"):          active_findings.append("Heartbleed (CVE-2014-0160)")
+            if host.get("smb_ms17010_info", {}).get("ms17010_likely"):     active_findings.append("EternalBlue MS17-010")
+            if host.get("ldap_info", {}).get("anonymous_bind", {}).get("allowed"): active_findings.append("LDAP Anonymous Bind")
+            if host.get("dns_info", {}).get("zone_transfer", {}).get("vulnerable"): active_findings.append("DNS Zone Transfer (AXFR)")
+            if host.get("default_creds_info"):                             active_findings.append("Default Credentials")
+            # FTP deep-probe findings
+            ftp = host.get("ftp_info", {})
+            if ftp.get("anonymous_login"):                                 active_findings.append("FTP Anonymous Login")
+            if ftp.get("write_access"):                                    active_findings.append("FTP Anonymous Write Access")
+            if ftp.get("weak_credentials"):                                active_findings.append(f"FTP Weak Credentials ({len(ftp['weak_credentials'])} pair(s))")
+            # HTTP deep-probe findings
+            http = host.get("http_audit", {})
+            if http.get("exposed_paths"):                                  active_findings.append(f"HTTP Exposed Paths ({len(http['exposed_paths'])} found)")
+            if http.get("admin_panels"):                                   active_findings.append(f"HTTP Admin Panels ({len(http['admin_panels'])} detected)")
+            if http.get("dangerous_methods"):                              active_findings.append(f"HTTP Dangerous Methods ({len(http['dangerous_methods'])} enabled)")
             if active_findings:
-                detail_rows.append(("Active Findings", ", ".join(active_findings)))
+                detail_rows.append(("Active Findings", " | ".join(active_findings)))
+
+            # ── FTP Deep Probe Section ────────────────────────────────────────
+            if ftp.get("open"):
+                detail_rows.append(("FTP Version", ftp.get("banner", "N/A")[:80]))
+                detail_rows.append(("FTP Anonymous Login", "YES — Unauthenticated access allowed" if ftp.get("anonymous_login") else "No"))
+                if ftp.get("write_access"):
+                    detail_rows.append(("FTP Write Access", "CRITICAL — Anonymous session can upload files"))
+                if ftp.get("weak_credentials"):
+                    cred_list = ", ".join(
+                        f"{c['user']}/{c['password']}" for c in ftp["weak_credentials"][:5]
+                    )
+                    detail_rows.append(("FTP Weak Credentials", cred_list))
+                ftp_issues = ftp.get("issues", [])
+                if ftp_issues:
+                    detail_rows.append(("FTP Issues", " | ".join(ftp_issues[:4])))
+
+            # ── HTTP Deep Probe Section ───────────────────────────────────────
+            if http:
+                if http.get("server_header"):
+                    detail_rows.append(("HTTP Server", http["server_header"][:80]))
+                http_issues = http.get("issues", [])
+                if http_issues:
+                    # First 4 issues inline; rest summarised as count
+                    preview = " | ".join(http_issues[:4])
+                    if len(http_issues) > 4:
+                        preview += f" (+{len(http_issues) - 4} more)"
+                    detail_rows.append(("HTTP Security Issues", preview))
+                # Exposed paths
+                exposed = http.get("exposed_paths", [])
+                if exposed:
+                    paths_str = ", ".join(
+                        f"{p['path']} [{p['status']}]" for p in exposed[:6]
+                    )
+                    if len(exposed) > 6:
+                        paths_str += f" (+{len(exposed) - 6} more)"
+                    detail_rows.append(("HTTP Exposed Paths", paths_str))
+                # Admin panels
+                panels = http.get("admin_panels", [])
+                if panels:
+                    panels_str = ", ".join(
+                        f"{p['product']} @ {p['path']}" for p in panels[:4]
+                    )
+                    detail_rows.append(("HTTP Admin Panels", panels_str))
+                # Dangerous methods
+                methods = http.get("dangerous_methods", [])
+                if methods:
+                    detail_rows.append(("HTTP Dangerous Methods", " | ".join(methods[:4])))
+
+            # ── SSH Info ──────────────────────────────────────────────────────
+            ssh = host.get("ssh_info", {})
+            if ssh.get("banner"):
+                detail_rows.append(("SSH Banner", ssh["banner"][:80]))
+            if ssh.get("auth_methods"):
+                detail_rows.append(("SSH Auth Methods", ", ".join(ssh.get("auth_methods", []))))
+
+            # ── SMB Info ─────────────────────────────────────────────────────
+            smb = host.get("smb_info", {})
+            if smb.get("open"):
+                detail_rows.append(("SMB Version", smb.get("version", "Unknown")))
+                if smb.get("null_session"):
+                    detail_rows.append(("SMB Null Session", "YES — Unauthenticated SMB connection allowed"))
+
+            # ── TLS/SSL Info ─────────────────────────────────────────────────
+            tls = host.get("tls_info", {})
+            if tls:
+                detail_rows.append(("TLS Protocol", tls.get("protocol", "N/A")))
+                if tls.get("cert_cn"):
+                    detail_rows.append(("TLS Certificate CN", tls.get("cert_cn", "N/A")))
+                if tls.get("cert_expired"):
+                    detail_rows.append(("TLS Certificate", "EXPIRED — Certificate has passed its expiry date"))
 
             detail_rows.extend([
                 ("Status",            host.get("status",        "Unknown")),
                 ("Response Time",     _format_response_time_ms(host.get("response_time_ms"))),
                 ("Scan Timestamp",    host.get("scan_timestamp", "N/A")),
             ])
+
 
             card_title = Paragraph(
                 f"Host {idx}  -  {host.get('ip_address', 'N/A')}",

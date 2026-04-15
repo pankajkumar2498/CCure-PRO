@@ -84,6 +84,120 @@ _SNMP_DEVICE_OIDS = {
 
 
 # =============================================================================
+# Routing-aware LAN detection  (replaces the flawed is_private check)
+# =============================================================================
+
+def _get_local_subnets() -> List[ipaddress.IPv4Network]:
+    """
+    Return the list of IPv4 subnets directly attached to this machine's
+    network interfaces by reading the OS routing table via psutil.
+
+    This is the correct way to decide whether ARP will work:
+      - ARP works  → target is in one of these subnets (same broadcast domain)
+      - ARP fails  → target must be reached through a router (ICMP/TCP SYN)
+
+    Unlike ipaddress.is_private(), this correctly handles VPN tunnels:
+    a 10.x.x.x address routed through a VPN adapter is NOT on the local LAN
+    even though it is technically a 'private' IP.
+    """
+    subnets: List[ipaddress.IPv4Network] = []
+    try:
+        import psutil
+        for iface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family != 2:          # AF_INET = 2 on all platforms
+                    continue
+                if not addr.netmask:
+                    continue
+                try:
+                    net = ipaddress.IPv4Network(
+                        f"{addr.address}/{addr.netmask}", strict=False
+                    )
+                    subnets.append(net)
+                except ValueError:
+                    pass
+    except Exception as exc:
+        log.debug("_get_local_subnets psutil error: %s", exc)
+    return subnets
+
+
+def _is_local_lan(ip: str, local_subnets: Optional[List[ipaddress.IPv4Network]] = None) -> bool:
+    """
+    Return True only if `ip` is within a directly-attached interface subnet.
+    Falls back to ipaddress.is_private() when psutil is unavailable.
+    """
+    if local_subnets is None:
+        local_subnets = _get_local_subnets()
+    if local_subnets:
+        addr = ipaddress.ip_address(ip)
+        return any(addr in net for net in local_subnets)
+    # Fallback: use is_private (less accurate but always available)
+    return ipaddress.ip_address(ip).is_private
+
+
+def _is_public_internet(ip: str) -> bool:
+    """
+    Return True if `ip` is a globally-routable address — i.e. not RFC-1918,
+    loopback, link-local, multicast, or otherwise reserved.
+
+    Used to distinguish a corporate VPN host (10.x private routed) from a
+    real public Internet target (203.x.x.x) so each can receive an
+    appropriate probe strategy:
+      - Corporate/routed private  → ICMP ping first, then TCP SYN on enterprise ports
+      - Public Internet           → TCP SYN on 80/443 first (mimic web traffic)
+
+    Note: ipaddress.is_global is the authoritative check; is_private is its
+    complement but also handles some edge cases differently across Python
+    versions.  Explicit flag checks here are unambiguous.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+        return (
+            not addr.is_private
+            and not addr.is_loopback
+            and not addr.is_link_local
+            and not addr.is_multicast
+            and not addr.is_reserved
+            and not addr.is_unspecified
+        )
+    except ValueError:
+        return False
+
+
+# =============================================================================
+# Dynamic batch sizing  (replaces hardcoded BATCH = 50)
+# =============================================================================
+
+def _dynamic_batch_size(total_ips: int) -> int:
+    """
+    Choose an optimal ARP/ICMP batch size based on the scan volume.
+
+    Nmap-style sliding windows: small subnets can use tight batches for
+    higher accuracy; large subnets need big batches for throughput.
+
+    | Subnet Size    | IPs       | Batch |
+    |----------------|-----------|-------|
+    | Single / small | 1  -  20  |   all |
+    | /25            | 21 - 100  |    50 |
+    | /24            | 101 - 254 |   128 |
+    | /23 or bigger  | 255 - 510 |   256 |
+    | /22 or bigger  | 511 - 1k  |   512 |
+    | /16 and above  | 1k+       |  1024 |
+    """
+    if total_ips <= 20:
+        return total_ips       # no batching overhead for tiny scans
+    if total_ips <= 100:
+        return 50
+    if total_ips <= 254:
+        return 128
+    if total_ips <= 510:
+        return 256
+    if total_ips <= 1024:
+        return 512
+    return 1024                # /16+ — maximum throughput mode
+
+
+# =============================================================================
 # Internal helpers
 # =============================================================================
 
@@ -211,10 +325,77 @@ class DiscoveryEngine:
     ) -> List[Dict]:
         results: Dict[str, Dict] = {ip: _blank_result(ip) for ip in ip_list}
 
-        BATCH = 50
-        for i in range(0, len(ip_list), BATCH):
-            batch = ip_list[i:i + BATCH]
+        # ── Pre-flight: compute routing-aware local subnets ONCE ──────────
+        # Used by _run_adaptive to decide ARP vs ICMP/TCP per target IP.
+        # Done here so psutil is only called once regardless of batch count.
+        self._local_subnets: List[ipaddress.IPv4Network] = _get_local_subnets()
+        local_targets_exist = any(
+            _is_local_lan(ip, self._local_subnets) for ip in ip_list
+        )
+
+        # ── L2 sniff runs ONCE before any batch scanning ──────────────────
+        # Only schedule if at least one target is on a directly-attached subnet.
+        # Skipping this for VPN/routed/WAN targets saves 3-5 s unconditionally.
+        l2_devices: List[Dict] = []
+        if (self.has_privileges and SCAPY_AVAILABLE
+                and scan_type == DiscoveryScanType.ADAPTIVE
+                and local_targets_exist):
+            loop = asyncio.get_event_loop()
+            try:
+                l2_devices = await asyncio.wait_for(
+                    loop.run_in_executor(None, sniff_l2_infrastructure, 3.0),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                log.warning("L2 sniff executor timed out — continuing without L2 data.")
+                l2_devices = []
+
+        # ── Dynamic batching: scale batch size with subnet volume ─────────
+        BATCH = _dynamic_batch_size(len(ip_list))
+        log.info("Scan batch size: %d (for %d total IPs)", BATCH, len(ip_list))
+
+        # ── Evasion: randomize scan order for Stealth mode ──────────────
+        # IPS/IDS systems flag sequential IP sweeps (.1, .2, .3 …) instantly.
+        # Randomizing the full target list defeats port-scan correlation rules.
+        # Adaptive mode already shuffles at the Scapy packet level; Stealth
+        # mode needs randomization at the host level for maximum evasion.
+        import random as _random
+        scan_ip_list = list(ip_list)  # copy so caller's list is not mutated
+        if scan_type == DiscoveryScanType.STEALTH:
+            _random.shuffle(scan_ip_list)
+            log.debug("Stealth mode: target IP order randomized (%d IPs)", len(scan_ip_list))
+
+        for batch_idx, i in enumerate(range(0, len(scan_ip_list), BATCH)):
+            batch = scan_ip_list[i:i + BATCH]
             await self._phase1(batch, scan_type, results)
+
+            # ── Hostile-environment auto-escalation (after first batch) ──
+            # After the first batch completes, check whether the network is
+            # actively sinkholing our probes (IDS/NGFW/honeypot behaviour).
+            # If so, silently escalate timing to T1-Sneaky and enable stealth
+            # packet techniques for all remaining batches so the scanner's
+            # IP is not blacklisted before the scan finishes.
+            if (
+                batch_idx == 0
+                and scan_type == DiscoveryScanType.ADAPTIVE
+                and not self.stealth_mode
+                and self._detect_hostile_environment(results)
+            ):
+                log.warning(
+                    "Hostile network environment detected after first batch "
+                    "(%d IPs probed). Auto-escalating to Sneaky (T1) stealth "
+                    "mode for remaining %d batches.",
+                    len(batch),
+                    len(scan_ip_list) - len(batch),
+                )
+                self.stealth_mode    = True
+                self.randomize_ports = True
+                self.timing          = TIMING_TEMPLATES[1]   # T1 Sneaky
+                self.scan_technique  = ScanTechnique.FIN     # FIN beats NGFW stateful tables
+
+        # Apply L2 enrichment once across all results after all batches finish
+        if l2_devices:
+            self._apply_l2_enrichment(l2_devices, results)
 
         # Priority 2: enrich every active host concurrently
         if self.has_privileges and SCAPY_AVAILABLE:
@@ -223,6 +404,56 @@ class DiscoveryEngine:
                 await asyncio.gather(*[self._enrich_host(ip, results[ip]) for ip in active])
 
         return list(results.values())
+
+    # ------------------------------------------------------------------
+    # Hostile network detection
+    # ------------------------------------------------------------------
+    def _detect_hostile_environment(self, results: Dict) -> bool:
+        """
+        Heuristic: decide whether we are scanning through a network that is
+        actively filtering / sinkholing our probes (IDS/IPS/NGFW).
+
+        Conditions (ALL must hold):
+          1. At least MIN_PROBED IPs were probed in this batch (small batches
+             produce unreliable statistics).
+          2. At least one host replied (confirms the network is reachable and
+             Scapy is working — rules out a local config/privilege issue).
+          3. The silent-drop rate exceeds HOSTILE_THRESHOLD:
+             silent drop = not active AND no port_states recorded at all
+             (an RST or ICMP-unreachable IS a reply; we only flag true silence)
+
+        Why FIN escalation makes sense under IDS:
+          - Stateful firewalls (Cisco ASA, Palo Alto) must track state for SYN
+            to send RST; they typically pass FIN without logging.
+          - Nmap's RFC-793 FIN scan returns "closed" on any host that responds
+            with RST, and "open|filtered" on silence — enough to confirm liveness.
+        """
+        MIN_PROBED       = 5      # need at least 5 IPs to make a statistical claim
+        HOSTILE_THRESHOLD = 0.85  # 85 %+ complete silence → hostile environment
+
+        total = len(results)
+        if total < MIN_PROBED:
+            return False
+
+        any_replied  = any(r["is_active"] for r in results.values())
+        if not any_replied:
+            # No replies at all — could be a config/privilege problem, not IDS.
+            return False
+
+        # A host is "silently dropped" if it's not active AND has no port_states
+        # at all (i.e. we received zero packets back — no RST, no ICMP-unreach).
+        silent_drops = sum(
+            1 for r in results.values()
+            if not r["is_active"] and not r.get("port_states")
+        )
+        drop_rate = silent_drops / total
+        if drop_rate >= HOSTILE_THRESHOLD:
+            log.debug(
+                "_detect_hostile_environment: %.0f%% silent drop rate (%d/%d) — IDS likely",
+                drop_rate * 100, silent_drops, total,
+            )
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Phase 1 dispatch
@@ -256,30 +487,120 @@ class DiscoveryEngine:
                 )
 
     async def _run_adaptive(self, batch: List[str], results: Dict):
-        lan = [ip for ip in batch if ipaddress.ip_address(ip).is_private]
-        wan = [ip for ip in batch if not ipaddress.ip_address(ip).is_private]
+        """
+        Adaptive scan: routing-table-aware per-host probe selection.
+
+        Three network zones are treated differently:
+
+        🔴 LAN (same broadcast domain)
+          Primary:  ARP  (Layer-2, bypasses all host firewalls)
+          +probe:   ICMP (TTL-based OS fingerprint)
+          +sweep:   UDP  (DHCP/DNS/SNMP/mDNS/IKE — LAN services)
+
+        🟡 Corporate / Routed private (RFC-1918 reached via router / VPN)
+          Primary:  ICMP ping  (fast; many internal firewall policies allow it)
+          Fallback: TCP SYN on enterprise management ports
+                    (22=SSH, 135=MSRPC, 139/445=SMB, 3389=RDP, 8080=proxy)
+          Rationale: ICMP is tried first so that we get TTL for OS
+          fingerprinting in a single round-trip.  TCP SYN covers hosts
+          behind Windows Defender that silently drops ICMP.
+
+        🟢 Public Internet (globally-routable IPs)
+          Primary:  TCP SYN on [80, 443, 22]  — web ports first to mimic
+                    legitimate browser traffic (rarely dropped by edge FW).
+          ICMP is skipped: ISP routers routinely rate-limit/drop ICMP.
+          Rationale: IDS/NGFW correlation on port 80/443 is essentially zero.
+
+        PREVIOUS BUG (now fixed):
+          The old code used a single `wan` bucket for ALL non-LAN targets,
+          sending TCP SYN with port list [22, 80, 443] to both a VPN
+          corporate host and a public Internet server identically.  A VPN
+          10.x.x.x host would never see an ICMP probe, losing OS-fingerprint
+          data.  A public 203.x.x.x host received port 22 first instead of
+          80/443, increasing the IDS signature risk.
+        """
+        # Use pre-computed local subnets from run() if available, else compute now.
+        local_subnets = getattr(self, "_local_subnets", None) or _get_local_subnets()
+
+        # ── Zone classification ───────────────────────────────────────────
+        lan        = [ip for ip in batch if     _is_local_lan(ip, local_subnets)]
+        routed     = [ip for ip in batch if not _is_local_lan(ip, local_subnets)]
+        corporate  = [ip for ip in routed if not _is_public_internet(ip)]
+        internet   = [ip for ip in routed if     _is_public_internet(ip)]
 
         if not self.has_privileges or not SCAPY_AVAILABLE:
-            await self._async_tcp(batch, [22, 80, 443], results)
+            # No raw-socket access: fall back to plain TCP connect for all zones.
+            await self._async_tcp(batch, [80, 443, 22, 445, 3389], results)
         else:
+            # ── Zone 1 · LAN ─────────────────────────────────────────────
+            # Decision tree (matches flowchart exactly):
+            #   ARP (all lan)
+            #     ├─ Reply  → Mark Active + Save MAC
+            #     │           └─ ICMP (TTL-only, for OS fingerprint enrichment)
+            #     └─ No reply → ICMP fallback  (catches ARP-proxy, odd NICs)
+            #                    └─ Still down → UDP broadcast fallback
+            #                                    (DHCP/DNS/SNMP/mDNS/IKE)
             if lan:
+                # Step 1: ARP — fastest possible L2 probe, bypasses all host FW.
                 self._scapy_arp(lan, results)
-                # Parse CDP/LLDP/STP for enhanced switch detection
-                self._enrich_via_l2_sniffer(results)
-                # ICMP for LAN OS fingerprinting (gets TTL)
-                self._scapy_icmp_probe(lan, results)
-                # Priority 1-B: UDP scan for common LAN services
-                self._scapy_udp(lan, [53, 67, 123, 161, 500, 1900], results)
-            if wan:
-                # Priority 1-A: SYN scan with RST/filtered detection
-                self._scapy_syn(wan, [22, 80, 443], results)
 
-        # Retry unreachable hosts with wider port list
+                # Step 2a: ICMP fallback for ARP failures.
+                # Catches hosts with ARP proxy, broken ARP tables, or unusual NICs.
+                lan_arp_failed = [ip for ip in lan if not results[ip]["is_active"]]
+                if lan_arp_failed:
+                    self._scapy_icmp_probe(lan_arp_failed, results)
+
+                # Step 2b: ICMP TTL-probe for ARP-confirmed hosts.
+                # ARP gives MAC but NOT TTL; we need one ICMP reply to get the TTL
+                # for OS fingerprinting.  Only probe hosts whose os_guess is still
+                # unknown — avoids redundant packets when a prior scan already ran.
+                lan_needs_ttl = [
+                    ip for ip in lan
+                    if results[ip]["is_active"]
+                    and results[ip].get("os_guess", "Unknown") == "Unknown"
+                ]
+                if lan_needs_ttl:
+                    self._scapy_icmp_probe(lan_needs_ttl, results)
+
+                # Step 3: UDP sweep — only for hosts still unreachable after
+                # both ARP and ICMP.  Per the flowchart this is the last fallback
+                # on the "No ARP reply" branch before giving up and marking inactive.
+                lan_still_down = [ip for ip in lan if not results[ip]["is_active"]]
+                if lan_still_down:
+                    self._scapy_udp(lan_still_down, [53, 67, 123, 161, 500, 1900], results)
+
+            # ── Zone 2 · Corporate / Routed private ──────────────────────
+            if corporate:
+                # Step 1: ICMP ping — fast single-packet liveness + TTL for OS guess.
+                # Many internal policies allow ICMP even when TCP management
+                # ports are filtered.  Gives OS fingerprint data "for free".
+                self._scapy_icmp_probe(corporate, results)
+                # Step 2: TCP SYN on enterprise management ports for hosts that
+                # silently drop ICMP (e.g. Windows Defender default policy).
+                corp_still_down = [ip for ip in corporate if not results[ip]["is_active"]]
+                if corp_still_down:
+                    self._scapy_syn(
+                        corp_still_down,
+                        [22, 135, 139, 445, 3389, 8080, 5985],
+                        results,
+                    )
+
+            # ── Zone 3 · Public Internet ──────────────────────────────────
+            if internet:
+                # TCP SYN only — ports 80/443 first to mimic legitimate web
+                # traffic.  ICMP is skipped: ISP edge routers routinely
+                # rate-limit or drop ICMP echo to prevent ping sweeps.
+                self._scapy_syn(internet, [80, 443, 22, 8080, 8443], results)
+
+        # ── Final fallback: TCP connect for anything still inactive ───────
+        # Covers all zones: ICMP-blocked hosts, NGFW-filtered SYN, etc.
         blocked = [ip for ip in batch if not results[ip]["is_active"]]
         if blocked:
+            # Port ordering: web-traffic ports first (lower IDS signature),
+            # then enterprise management ports.
             await self._async_tcp(
                 blocked,
-                [21, 23, 53, 111, 135, 139, 443, 445, 3389, 8080, 8443],
+                [80, 443, 22, 8080, 8443, 135, 139, 445, 3389, 21, 111],
                 results,
                 is_retry=True,
             )
@@ -291,48 +612,96 @@ class DiscoveryEngine:
         try:
             ans, _ = srp(
                 Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ips),
-                timeout=0.5, verbose=0,
+                timeout=2.0,   # increased: 0.5s was too short for local /24 scans
+                verbose=0,
             )
             for snd, rcv in ans:
                 ip = rcv.psrc
                 self._set_elapsed_if_missing(results, ip, sent_pkt=snd, recv_pkt=rcv)
-                if ip in results and not results[ip]["is_active"]:
-                    mac = rcv.hwsrc
+                if ip not in results:
+                    continue
+                mac = rcv.hwsrc
+                # Always update MAC — even if the host was already marked active
+                # by a prior ICMP/TCP probe, ARP gives us the real MAC.
+                results[ip]["mac"] = mac
+                if not results[ip]["is_active"]:
                     # Priority 1-C: classify device type from OUI
                     device_cat = classify_mac(mac)
                     results[ip].update(
                         is_active=True,
-                        mac=mac,
                         method="ARP",
                         device_category=device_cat,
                     )
                     results[ip]["confirmations"].append("ARP")
+                else:
+                    # Host already active (ICMP/TCP hit first) — update OUI category
+                    # only if we don't already have a meaningful classification.
+                    current_cat = results[ip].get("device_category", "unknown")
+                    if current_cat in ("unknown", ""):
+                        results[ip]["device_category"] = classify_mac(mac)
+                    if "ARP" not in results[ip]["confirmations"]:
+                        results[ip]["confirmations"].append("ARP")
         except Exception as exc:
             log.debug("_scapy_arp error: %s", exc)
 
-    def _enrich_via_l2_sniffer(self, results: Dict):
-        """Passively sniffs for CDP, LLDP, STP and updates matching MACs."""
-        try:
-            # Only wait 3 seconds max to not stall the primary discovery pipeline
-            l2_devices = sniff_l2_infrastructure(timeout=3.0)
-            
-            # Map discovered properties back to any IP sharing that MAC
-            for l2_dev in l2_devices:
-                mac_target = l2_dev["mac"].lower()
-                for ip, host in results.items():
-                    if host.get("mac", "").lower() == mac_target:
-                        cat = l2_dev.get("device_category")
-                        if cat and cat != "unknown":
-                            host["device_category"] = cat
-                        if l2_dev.get("hostname"):
-                            host["hostname"] = l2_dev["hostname"]
-                        
-                        # Store extracted protocols in confirmations or a new field
-                        if l2_dev.get("protocols"):
-                            for proto in l2_dev["protocols"]:
-                                host["confirmations"].append(f"L2:{proto}")
-        except Exception as exc:
-            log.debug("_enrich_via_l2_sniffer error: %s", exc)
+    # Endpoint device categories that must NOT be overridden by L2/STP labels.
+    # STP frames can come from the switch port a laptop is plugged into,
+    # making it look like the laptop IS the switch. We protect these categories.
+    _ENDPOINT_CATEGORIES = {
+        "workstation", "laptop", "server", "printer",
+        "mobile", "iot_device", "printer_or_server",
+        "wireless_access_point",
+    }
+
+    def _apply_l2_enrichment(self, l2_devices: List[Dict], results: Dict) -> None:
+        """
+        Apply pre-collected L2 sniff data (CDP/LLDP/STP) to the results dict.
+        Called once after all batch scanning completes.
+
+        Safety: L2 sniffer captures the SOURCE MAC of infrastructure frames.
+        On a network where the scanner is directly plugged into a switch, the
+        switch's uplink MAC can appear on packets received by npcap on Windows.
+        We avoid overwriting endpoint device categories to prevent false positives.
+        Only apply L2 labels when the category was already unknown or is being
+        confirmed by a specific protocol (CDP/LLDP) rather than just STP.
+        """
+        for l2_dev in l2_devices:
+            mac_target = l2_dev.get("mac", "").lower()
+            if not mac_target:
+                continue
+            protocols = l2_dev.get("protocols", [])
+            cat = l2_dev.get("device_category", "unknown")
+
+            for ip, host in results.items():
+                if host.get("mac", "").lower() != mac_target:
+                    continue
+
+                current_cat = host.get("device_category", "unknown")
+
+                # Only apply infrastructure category if:
+                # 1. Device was already unknown, AND
+                # 2. We have a stronger signal than just STP (STP alone is unreliable)
+                strong_signal = any(p in ("CDP", "LLDP") for p in protocols)
+                stp_only = protocols == ["STP"] or protocols == ["STP", "PVST"]
+
+                if cat and cat != "unknown" and current_cat in ("unknown", ""):
+                    if not stp_only or strong_signal:
+                        host["device_category"] = cat
+                    # STP-only: only apply if current category is still unknown
+                    elif stp_only and current_cat == "unknown":
+                        # Don't blindly call it a switch — tag as "network_device"
+                        host["device_category"] = "network_device"
+
+                # Never downgrade an endpoint to a switch/network label
+                if host.get("device_category") in self._ENDPOINT_CATEGORIES:
+                    pass  # protect — do not overwrite
+
+                if l2_dev.get("hostname") and not host.get("hostname"):
+                    host["hostname"] = l2_dev["hostname"]
+                for proto in protocols:
+                    conf_tag = f"L2:{proto}"
+                    if conf_tag not in host["confirmations"]:
+                        host["confirmations"].append(conf_tag)
 
     def _scapy_syn(self, ips: List[str], ports: List[int], results: Dict):
         """
@@ -730,7 +1099,34 @@ class DiscoveryEngine:
         loop = asyncio.get_event_loop()
 
         # D: Full TCP options fingerprint — refines OS guess
+        # Gate strictly behind confirmed-open ports.
+        #
+        # Rationale: _os_probe_full() sends a SYN to port 80 (or any port).
+        # If the host has NO confirmed-open ports (all filtered/closed), every
+        # probe hits a firewall drop and incurs the full 2-second sr() timeout.
+        # This is a flat per-host penalty with ZERO benefit.
+        #
+        # Correct logic:
+        #   - open ports exist AND confidence < High → run probe (refine guess)
+        #   - open ports exist AND confidence == High → skip (already accurate)
+        #   - NO open ports                           → ALWAYS skip (firewall = timeout)
         def _do_os_probe():
+            open_ports = [
+                p for p, state in result.get("port_states", {}).items()
+                if state == "open"
+            ]
+            # Hard gate: zero open ports = firewalled host = guaranteed timeout.
+            # Do not send any probe regardless of current confidence level.
+            if not open_ports:
+                log.debug(
+                    "_do_os_probe(%s): skipped — no confirmed-open ports "
+                    "(all filtered/closed); probe would timeout unconditionally.",
+                    ip,
+                )
+                return
+            # Soft gate: already have a high-confidence fingerprint → skip.
+            if result.get("os_confidence") == "High":
+                return
             tcp_fp = self._os_probe_full(ip)
             if tcp_fp and result.get("os_confidence", "Low") != "High":
                 ttl  = tcp_fp.get("ttl") or 64

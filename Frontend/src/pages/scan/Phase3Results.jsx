@@ -52,9 +52,10 @@ const DEVICE_CAT_META = {
   unknown:           { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
 };
 
-// GAP-06: count active exploit conditions on a host
+// GAP-06 + Deep Probes: count all active exploit / misconfiguration conditions on a host
 const countActiveFindings = (host) => {
   let n = 0;
+  // Original checks
   if (host.heartbleed_info?.vulnerable)               n++;
   if (host.smb_ms17010_info?.ms17010_likely)          n++;
   if (host.ldap_info?.anonymous_bind?.allowed)        n++;
@@ -64,6 +65,14 @@ const countActiveFindings = (host) => {
   if (host.default_creds_info?.mongo_noauth?.vulnerable) n++;
   if (host.default_creds_info?.mqtt_noauth?.vulnerable)  n++;
   if (host.default_creds_info?.http_default_creds?.found) n++;
+  // FTP deep-probe findings
+  if (host.ftp_info?.anonymous_login)                 n++;
+  if (host.ftp_info?.write_access)                    n++;
+  if (host.ftp_info?.weak_credentials?.length)        n += host.ftp_info.weak_credentials.length;
+  // HTTP deep-probe findings
+  if (host.http_audit?.exposed_paths?.length)         n += host.http_audit.exposed_paths.length;
+  if (host.http_audit?.admin_panels?.length)          n += host.http_audit.admin_panels.length;
+  if (host.http_audit?.dangerous_methods?.length)     n++;
   return n;
 };
 
@@ -1025,6 +1034,126 @@ export default function Phase3Results() {
 
                 {/* CVEs List */}
                 <div style={{ padding: "12px" }}>
+                  {/* ── Service Findings (FTP / HTTP / SMB deep probes) ──────── */}
+                  {(() => {
+                    const badges = [];
+                    const ftp  = host.ftp_info  || {};
+                    const http = host.http_audit || {};
+                    const smb  = host.smb_info   || {};
+                    const tls  = host.tls_info   || {};
+                    const ssh  = host.ssh_info   || {};
+
+                    if (host.heartbleed_info?.vulnerable)
+                      badges.push({ label: "Heartbleed",        color: "#ff4d4d", icon: "💉" });
+                    if (host.smb_ms17010_info?.ms17010_likely)
+                      badges.push({ label: "EternalBlue",       color: "#ff4d4d", icon: "💣" });
+                    if (host.ldap_info?.anonymous_bind?.allowed)
+                      badges.push({ label: "LDAP Anon Bind",    color: "#f97316", icon: "🔓" });
+                    if (host.dns_info?.zone_transfer?.vulnerable)
+                      badges.push({ label: "DNS Zone Transfer", color: "#f97316", icon: "📡" });
+                    if (ftp.anonymous_login)
+                      badges.push({ label: "FTP Anon Login",    color: "#f97316", icon: "📂" });
+                    if (ftp.write_access)
+                      badges.push({ label: "FTP Write Access",  color: "#ff4d4d", icon: "✍️" });
+                    if (ftp.weak_credentials?.length)
+                      badges.push({ label: `FTP Weak Creds (${ftp.weak_credentials.length})`, color: "#f59e0b", icon: "🔑" });
+                    if (http.exposed_paths?.length)
+                      badges.push({ label: `Exposed Paths (${http.exposed_paths.length})`,  color: "#f59e0b", icon: "📁" });
+                    if (http.admin_panels?.length)
+                      badges.push({ label: `Admin Panels (${http.admin_panels.length})`,    color: "#f97316", icon: "⚙️" });
+                    if (http.dangerous_methods?.length)
+                      badges.push({ label: "Dangerous HTTP Methods", color: "#f59e0b", icon: "🔧" });
+                    if (smb.open && smb.null_session)
+                      badges.push({ label: "SMB Null Session",  color: "#f97316", icon: "🗂" });
+                    if (tls.cert_expired)
+                      badges.push({ label: "TLS Cert Expired",  color: "#f59e0b", icon: "🔒" });
+
+                    if (!badges.length) return null;
+                    return (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          ⚡ Active Misconfiguration Findings
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {badges.map((b, i) => (
+                            <span key={i} style={{
+                              fontSize: 11, padding: "3px 8px", borderRadius: 4, fontWeight: 600,
+                              background: `${b.color}18`, border: `1px solid ${b.color}55`, color: b.color,
+                            }}>
+                              {b.icon} {b.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── FTP Deep Findings ────────────────────────────────────── */}
+                  {host.ftp_info?.open && (
+                    <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(249,115,22,0.06)", borderLeft: "3px solid #f97316", borderRadius: 4 }}>
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: 6, color: "#f97316" }}>📂 FTP Service</div>
+                      {host.ftp_info.banner && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 4 }}>Banner: <code>{host.ftp_info.banner}</code></div>}
+                      {(host.ftp_info.issues || []).map((issue, i) => (
+                        <div key={i} style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginBottom: 2 }}>• {issue}</div>
+                      ))}
+                      {(host.ftp_info.weak_credentials || []).length > 0 && (
+                        <div style={{ fontSize: "0.78rem", marginTop: 6 }}>
+                          <strong style={{ color: "#f59e0b" }}>Weak credentials accepted:</strong>{" "}
+                          {host.ftp_info.weak_credentials.map((c, i) => (
+                            <code key={i} style={{ marginRight: 6, background: "rgba(0,0,0,0.15)", padding: "1px 4px", borderRadius: 3 }}>{c.user}/{c.password}</code>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── HTTP Deep Findings ───────────────────────────────────── */}
+                  {host.http_audit && (host.http_audit.exposed_paths?.length || host.http_audit.admin_panels?.length || host.http_audit.dangerous_methods?.length || host.http_audit.issues?.length) && (
+                    <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(245,158,11,0.06)", borderLeft: "3px solid #f59e0b", borderRadius: 4 }}>
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: 6, color: "#f59e0b" }}>🌐 HTTP Service</div>
+                      {host.http_audit.server_header && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 6 }}>Server: <code>{host.http_audit.server_header}</code></div>}
+                      {/* Security header issues */}
+                      {(host.http_audit.issues || []).slice(0, 4).map((issue, i) => (
+                        <div key={i} style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginBottom: 2 }}>• {issue}</div>
+                      ))}
+                      {/* Exposed paths */}
+                      {(host.http_audit.exposed_paths || []).length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <strong style={{ fontSize: "0.78rem", color: "#f97316" }}>Exposed Paths:</strong>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                            {host.http_audit.exposed_paths.map((p, i) => (
+                              <code key={i} style={{ fontSize: 11, background: "rgba(249,115,22,0.1)", padding: "1px 6px", borderRadius: 3 }}>
+                                {p.path} [{p.status}]{p.note?.includes("directory") ? " 📂" : ""}
+                              </code>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {/* Admin panels */}
+                      {(host.http_audit.admin_panels || []).length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <strong style={{ fontSize: "0.78rem", color: "#f97316" }}>Admin Panels Detected:</strong>
+                          {host.http_audit.admin_panels.map((p, i) => (
+                            <div key={i} style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginTop: 2 }}>
+                              ⚙️ <strong>{p.product}</strong> @ <code>{p.path}</code> (HTTP {p.status})
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Dangerous HTTP methods */}
+                      {(host.http_audit.dangerous_methods || []).length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <strong style={{ fontSize: "0.78rem", color: "#f59e0b" }}>Dangerous Methods:</strong>
+                          <div style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginTop: 2 }}>{host.http_audit.dangerous_methods.join(" | ")}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── CVEs List ────────────────────────────────────────────── */}
+                  {(host.cves || []).length > 0 && (
+                    <div style={{ fontWeight: 600, fontSize: "0.8rem", marginBottom: 8, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>CVEs</div>
+                  )}
                   {(host.cves || []).map((cve, idx) => (
                     <div key={idx} style={{
                       marginBottom: idx < (host.cves?.length ?? 0) - 1 ? "12px" : 0,
@@ -1032,27 +1161,17 @@ export default function Phase3Results() {
                       borderBottom: idx < (host.cves?.length ?? 0) - 1 ? "1px solid var(--border)" : "none"
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                        <code style={{ 
-                          fontFamily: "var(--mono)", 
-                          fontSize: "0.85rem", 
-                          fontWeight: 700,
-                          color: "#2563eb"
-                        }}>
+                        <code style={{ fontFamily: "var(--mono)", fontSize: "0.85rem", fontWeight: 700, color: "#2563eb" }}>
                           {cve.cve_id || "Unknown CVE"}
                         </code>
                         <span style={{
-                          display: "inline-block",
-                          padding: "4px 10px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                          color: "#fff",
+                          display: "inline-block", padding: "4px 10px", borderRadius: "4px",
+                          fontSize: "0.75rem", fontWeight: 600, color: "#fff",
                           background: SEV_COLOR[cve.severity || "Info"] || "#60a5fa"
                         }}>
                           {cve.severity || "Info"}
                         </span>
                       </div>
-                      
                       {cve.cvss_score && (
                         <div style={{ marginBottom: 6 }}>
                           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
@@ -1060,18 +1179,11 @@ export default function Phase3Results() {
                           </span>
                         </div>
                       )}
-
                       {cve.description && (
-                        <p style={{
-                          margin: "6px 0",
-                          fontSize: "0.8rem",
-                          color: "var(--text-mid)",
-                          lineHeight: 1.4
-                        }}>
+                        <p style={{ margin: "6px 0", fontSize: "0.8rem", color: "var(--text-mid)", lineHeight: 1.4 }}>
                           {cve.description || cve.desc || "No description available"}
                         </p>
                       )}
-
                       {cve.affected_software && (
                         <div style={{ marginTop: 6 }}>
                           <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -1096,25 +1208,29 @@ export default function Phase3Results() {
             )}
           </div>
 
-          {/* Statistics Summary */}
-          <div style={{
-            marginTop: "24px",
-            padding: "16px",
-            background: "rgba(59, 130, 246, 0.05)",
-            border: "1px solid rgba(59, 130, 246, 0.2)",
-            borderRadius: "8px",
-            fontSize: "0.85rem"
-          }}>
-            <p style={{ margin: "0 0 8px", fontWeight: 600 }}>📈 Report Summary</p>
-            <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-mid)" }}>
-              <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
-              <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
-              <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
-              <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
-              <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
-              <li>Scan completed at: {new Date().toLocaleString()}</li>
-            </ul>
-          </div>
+            <div style={{
+              marginTop: "24px",
+              padding: "16px",
+              background: "rgba(59, 130, 246, 0.05)",
+              border: "1px solid rgba(59, 130, 246, 0.2)",
+              borderRadius: "8px",
+              fontSize: "0.85rem"
+            }}>
+              <p style={{ margin: "0 0 8px", fontWeight: 600 }}>📈 Report Summary</p>
+              <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-mid)" }}>
+                <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
+                <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
+                <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
+                <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
+                <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
+                <li>FTP misconfigurations: {localVulnResults.filter(h => h.ftp_info?.anonymous_login || h.ftp_info?.write_access || h.ftp_info?.weak_credentials?.length).length} host(s)</li>
+                <li>HTTP exposed paths: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0), 0)}</li>
+                <li>HTTP admin panels found: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0), 0)}</li>
+                <li>Active misconfiguration findings: {localVulnResults.reduce((sum, h) => sum + countActiveFindings(h), 0)}</li>
+                <li>Scan completed at: {new Date().toLocaleString()}</li>
+              </ul>
+            </div>
+
 
           {/* Export Hint */}
           <div style={{

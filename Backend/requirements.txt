@@ -28,10 +28,13 @@ python-multipart==0.0.9            # form body parsing (FastAPI dep)
 # Raw packet scans (ARP / ICMP / SYN / stealth)
 scapy>=2.5.1
 
+# Network interface enumeration (MAC address resolution, process info)
+psutil>=5.9.0
+
 # Dev / test only
-requests==2.32.2
-urllib3==2.2.0
-charset-normalizer==3.3.2
+requests==2.33.1
+urllib3==2.6.3
+charset-normalizer==3.4.7
 
 
 # Test Suite Requirements
@@ -41,4 +44,4 @@ pytest-cov==4.1.0
 
 
 
-paramiko==3.4.0
+paramiko==4.0.0

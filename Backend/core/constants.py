@@ -302,15 +302,52 @@ OS_TTL_MAP = [
 ]
 
 TCP_WINDOW_OS = {
+    # Windows
     65535: "Windows (classic stack)",
     64240: "Windows 10/11 (modern stack)",
+    65392: "Windows 10/11",
     8192:  "Windows XP",
+    16384: "Windows Vista/7",
+    32768: "Windows Vista/7",
+    # Linux
     5840:  "Linux 2.4 kernel",
     5720:  "Linux 2.6 kernel",
+    14600: "Linux 3.x kernel",
     29200: "Linux 4.x+",
+    43690: "Linux 5.x / Android",
+    65160: "Linux (RACK/BBR)",
+    # BSD/macOS
     65228: "FreeBSD",
+    65535: "macOS / FreeBSD",
+    # Network appliances
     4096:  "Cisco IOS",
+    8760:  "Cisco IOS (alt)",
 }
+
+# Priority 2-D: TCP option combo fingerprints.
+# Checked bottom-up after TTL+window narrowing — first match wins.
+# Columns: (mss_lo, mss_hi, wscale, sack_ok, refined_label, confidence)
+#   wscale=None means "any value" (present or absent).
+TCP_OPTIONS_FINGERPRINT = [
+    # Windows — never sends Timestamps in SYN-ACK
+    (1440, 1460,  8, True,  "Windows 10/11",          "High"),
+    (1440, 1460,  8, False, "Windows Server 2016+",   "High"),
+    (1440, 1460,  2, False, "Windows 7 / Server 2012","High"),
+    (   1, 9999,  0, False, "Windows XP / 2003",      "High"),
+    # Linux — always sends SAckOK; wscale >= 6 on modern kernels
+    (1380, 1460,  8, True,  "Linux 5.x (modern)",     "High"),
+    (1380, 1460,  7, True,  "Linux 4.x / 5.x",        "High"),
+    (1380, 1460,  6, True,  "Linux 4.x",              "High"),
+    (1380, 1460,  2, True,  "Linux 2.6",              "Medium"),
+    # macOS / iOS — wscale=5, always SAckOK, TS present
+    (1380, 1460,  5, True,  "macOS / iOS",            "High"),
+    # FreeBSD
+    (1380, 1460,  6, False, "FreeBSD",                "Medium"),
+    # Cisco / network appliances — small MSS, no wscale
+    (   1,  536, None, False, "Cisco IOS / Appliance", "Medium"),
+    # Generic fallback
+    (   1, 9999, None, True,  "Linux / Unix",          "Low"),
+]
 
 # =============================================================================
 # Risk Scoring Constants

@@ -36,6 +36,37 @@ const SEV_COLOR = {
   Info:     "#60a5fa",
 };
 
+// GAP-07: device category → { icon, color, label } for richly-rendered badge
+const DEVICE_CAT_META = {
+  router:            { icon: "🔀", color: "#60a5fa",  label: "Router"          },
+  switch:            { icon: "🔗", color: "#818cf8",  label: "Switch"          },
+  firewall:          { icon: "🛡",  color: "#f97316",  label: "Firewall"        },
+  wireless_ap:       { icon: "📡", color: "#22d3ee",  label: "Wireless AP"     },
+  printer:           { icon: "🖨", color: "#a78bfa",  label: "Printer"         },
+  iot:               { icon: "⚙",  color: "#fb923c",  label: "IoT/ICS"         },
+  server:            { icon: "🖥",  color: "#34d399",  label: "Server"          },
+  endpoint:          { icon: "💻", color: "#94a3b8",  label: "Endpoint"        },
+  voip:              { icon: "📞", color: "#f472b6",  label: "VoIP"            },
+  storage:           { icon: "💾", color: "#fbbf24",  label: "Storage"         },
+  network_appliance: { icon: "🔌", color: "#64748b",  label: "Net Appliance"   },
+  unknown:           { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
+};
+
+// GAP-06: count active exploit conditions on a host
+const countActiveFindings = (host) => {
+  let n = 0;
+  if (host.heartbleed_info?.vulnerable)               n++;
+  if (host.smb_ms17010_info?.ms17010_likely)          n++;
+  if (host.ldap_info?.anonymous_bind?.allowed)        n++;
+  if (host.dns_info?.zone_transfer?.vulnerable)        n++;
+  if (host.default_creds_info?.ftp_anon?.allowed)     n++;
+  if (host.default_creds_info?.redis_noauth?.vulnerable) n++;
+  if (host.default_creds_info?.mongo_noauth?.vulnerable) n++;
+  if (host.default_creds_info?.mqtt_noauth?.vulnerable)  n++;
+  if (host.default_creds_info?.http_default_creds?.found) n++;
+  return n;
+};
+
 const fmtSec = (v) => {
   if (typeof v === "number") return v.toFixed(1);
   const n = Number(v);
@@ -430,6 +461,7 @@ export default function Phase3Results() {
                 <tr>
                   <th>IP Address</th>
                   <th>Hostname</th>
+                  <th>Device</th>
                   <th>Status</th>
                   <th>Method</th>
                   <th>MAC</th>
@@ -437,19 +469,35 @@ export default function Phase3Results() {
                 </tr>
               </thead>
               <tbody>
-                {displayDiscoveryHosts.map(host => (
-                  <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
-                    <td><code className="ip-code">{host.ip_address}</code></td>
-                    <td>{host.hostname || <span className="muted">—</span>}</td>
-                    <td>
-                      <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
-                      {host.is_active ? "Active" : "Inactive"}
-                    </td>
-                    <td>{host.discovery_method || <span className="muted">—</span>}</td>
-                    <td>{host.mac_address || <span className="muted">—</span>}</td>
-                    <td>{host.vendor || <span className="muted">—</span>}</td>
-                  </tr>
-                ))}
+                {displayDiscoveryHosts.map(host => {
+                  let displayHost = host.hostname;
+                  if (!displayHost || displayHost === "Unknown") {
+                      if (host.mdns_name) displayHost = host.mdns_name;
+                      else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                  }
+                  const devCat = host.snmp_device_type || host.device_category || "unknown";
+
+                  return (
+                    <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
+                      <td><code className="ip-code">{host.ip_address}</code></td>
+                      <td>{displayHost || <span className="muted">—</span>}</td>
+                      <td>
+                        {devCat !== "unknown" ? (
+                          <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
+                            {devCat}
+                          </span>
+                        ) : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                        {host.is_active ? "Active" : "Inactive"}
+                      </td>
+                      <td>{host.discovery_method || <span className="muted">—</span>}</td>
+                      <td>{host.mac_address || <span className="muted">—</span>}</td>
+                      <td>{host.vendor || <span className="muted">—</span>}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -501,21 +549,38 @@ export default function Phase3Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Hostname</th>
+                    <th>Device</th>
                     <th>Open Ports</th>
                     <th>Vendor</th>
                     <th>OS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayPortHosts.map(host => (
-                    <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
-                      <td><code className="ip-code">{host.ip_address}</code></td>
-                      <td>{host.hostname || <span className="muted">—</span>}</td>
-                      <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
-                      <td>{host.vendor || <span className="muted">—</span>}</td>
-                      <td>{host.os_guess || <span className="muted">—</span>}</td>
-                    </tr>
-                  ))}
+                  {displayPortHosts.map(host => {
+                    let displayHost = host.hostname;
+                    if (!displayHost || displayHost === "Unknown") {
+                        if (host.mdns_name) displayHost = host.mdns_name;
+                        else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                    }
+                    const devCat = host.snmp_device_type || host.device_category || "unknown";
+
+                    return (
+                      <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
+                        <td><code className="ip-code">{host.ip_address}</code></td>
+                        <td>{displayHost || <span className="muted">—</span>}</td>
+                        <td>
+                          {devCat !== "unknown" ? (
+                            <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
+                              {devCat}
+                            </span>
+                          ) : <span className="muted">—</span>}
+                        </td>
+                        <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
+                        <td>{host.vendor || <span className="muted">—</span>}</td>
+                        <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -566,33 +631,81 @@ export default function Phase3Results() {
                 <thead>
                   <tr>
                     <th>IP Address</th>
+                    <th>Device</th>
                     <th>Risk</th>
                     <th>Open Ports</th>
-                    <th>CVEs</th>
+                    <th>CVEs / Active</th>
                     <th>OS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayVulnHosts.map(host => (
-                    <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
-                      <td><code className="ip-code">{host.ip_address}</code></td>
-                      <td>
-                        <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: 12 }}>
-                          {host.host_risk_level || "Info"}
-                        </span>
-                      </td>
-                      <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
-                      <td>
-                        <span style={{
-                          color: (host.cves?.length ?? 0) > 0 ? SEV_COLOR.High : "var(--text-faint)",
-                          fontFamily: "var(--mono)", fontSize: 12
-                        }}>
-                          {(host.cves || []).length}
-                        </span>
-                      </td>
-                      <td>{host.os_guess || <span className="muted">—</span>}</td>
-                    </tr>
-                  ))}
+                  {displayVulnHosts.map(host => {
+                    const devCat  = host.snmp_device_type || host.device_category || "unknown";
+                    const catMeta = DEVICE_CAT_META[devCat] || DEVICE_CAT_META.unknown;
+                    const activeFindings = countActiveFindings(host);
+                    return (
+                      <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
+                        <td>
+                          <code className="ip-code">{host.ip_address}</code>
+                          {(() => {
+                            let hName = host.hostname;
+                            if (!hName || hName === "Unknown") {
+                              if (host.mdns_name) hName = host.mdns_name;
+                              else if (host.netbios_names && host.netbios_names.length) hName = host.netbios_names[0].name;
+                            }
+                            return hName && hName !== "Unknown" ? <div className="muted small" style={{marginTop: 4}}>{hName}</div> : null;
+                          })()}
+                        </td>
+                        <td>
+                          {/* GAP-07: rich device category badge with icon + color */}
+                          {devCat !== "unknown" ? (
+                            <span title={`Classified via: ${host.device_category_signal || "unknown"}`} style={{
+                              fontSize: 11,
+                              background: `${catMeta.color}18`,
+                              border: `1px solid ${catMeta.color}55`,
+                              color: catMeta.color,
+                              padding: "2px 7px",
+                              borderRadius: 4,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {catMeta.icon} {catMeta.label}
+                            </span>
+                          ) : <span className="muted">—</span>}
+                        </td>
+                        <td>
+                          <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: 12 }}>
+                            {host.host_risk_level || "Info"}
+                          </span>
+                        </td>
+                        <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
+                        <td>
+                          {/* GAP-06: CVE count + active exploit findings badge */}
+                          <span style={{
+                            color: (host.cves?.length ?? 0) > 0 ? SEV_COLOR.High : "var(--text-faint)",
+                            fontFamily: "var(--mono)", fontSize: 12
+                          }}>
+                            {(host.cves || []).length}
+                          </span>
+                          {activeFindings > 0 && (
+                            <span title="Active exploit conditions detected (Heartbleed, EternalBlue, LDAP anon, default creds, etc.)" style={{
+                              marginLeft: 6,
+                              fontSize: 10,
+                              background: "rgba(255,77,77,0.15)",
+                              color: "#ff4d4d",
+                              border: "1px solid rgba(255,77,77,0.35)",
+                              borderRadius: 3,
+                              padding: "1px 5px",
+                              fontWeight: 700,
+                            }}>
+                              ⚡{activeFindings} active
+                            </span>
+                          )}
+                        </td>
+                        <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

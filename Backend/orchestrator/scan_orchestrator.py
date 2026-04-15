@@ -729,6 +729,13 @@ class ScanOrchestrator:
             os_guess         = data.get("os_guess", "Unknown"),
             os_confidence    = data.get("os_confidence", "Low"),
             confidence       = confidence,
+            device_category  = data.get("device_category", "unknown"),
+            snmp_device_type = data.get("snmp_device_type"),
+            mdns_name        = data.get("mdns_name"),
+            netbios_names    = data.get("netbios_names", []),
+            os_fingerprint_full = data.get("os_fingerprint_full", {}),
+            tcp_fingerprint  = data.get("tcp_fingerprint", {}),
+            port_states      = data.get("port_states", {}),
             tls_info         = data.get("tls_info", {}),
             http_audit       = data.get("http_audit", {}),
             snmp_info        = data.get("snmp_info", {}),
@@ -808,10 +815,12 @@ class ScanOrchestrator:
 
     @staticmethod
     def _apply_os_inference(hosts: List[Dict]):
+        from core.device_classifier import classify_device
         for host in hosts:
             guess, conf = infer_os_from_host(host)
             host["os_guess"] = guess
             host["os_confidence"] = conf
+            classify_device(host)
 
     def _resolve(self, target: str, scan_type: str) -> Dict:
         try:

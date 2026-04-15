@@ -532,6 +532,54 @@ def _build_json_story(result: dict, scan_type: str,
             # Only include port information for non-host-discovery scans (phase > 1)
             if result.get("summary", {}).get("phase", 1) > 1:
                 detail_rows.append(("Open TCP Ports",    ports_display if is_active else "N/A"))
+            
+            # --- GAP 06-10 Fields ---
+            dev_cat = host.get("device_category") or host.get("snmp_device_type")
+            if dev_cat and dev_cat != "unknown":
+                detail_rows.append(("Device Category", str(dev_cat).capitalize()))
+                
+            if host.get("snmp_info", {}).get("vendor"):
+                detail_rows.append(("SNMP Vendor", host["snmp_info"]["vendor"]))
+                
+            if host.get("snmp_info", {}).get("sys_location"):
+                detail_rows.append(("SNMP Location", host["snmp_info"]["sys_location"]))
+                
+            if host.get("firewall_likely"):
+                detail_rows.append(("Firewall Detected", f"Yes (confidence: {host.get('firewall_confidence', 'Low')})"))
+                
+            if host.get("netbios_workgroup"):
+                detail_rows.append(("Domain/Workgroup", host["netbios_workgroup"]))
+                
+            mdns_svcs = host.get("mdns_services", [])
+            if mdns_svcs:
+                detail_rows.append(("mDNS Services", ", ".join(mdns_svcs[:6])))
+                
+            ifaces = host.get("snmp_info", {}).get("interfaces", [])
+            if ifaces:
+                iface_str = " | ".join(
+                    f"{i.get('description', 'Unknown')} ({i.get('type', 'Unknown')}, {'Up' if i.get('oper_up') else 'Down'})"
+                    for i in ifaces[:3]
+                )
+                if len(ifaces) > 3:
+                    iface_str += f" (+{len(ifaces)-3} more)"
+                detail_rows.append(("SNMP Interfaces", iface_str))
+                
+            if host.get("host_risk_level"):
+                detail_rows.append(("Risk Level", f"{host['host_risk_level']} (score: {host.get('host_risk_score', 0)})"))
+                
+            cves = host.get("cves", [])
+            if cves:
+                detail_rows.append(("CVEs Found", str(len(cves))))
+                
+            active_findings = []
+            if host.get("heartbleed_info", {}).get("vulnerable"): active_findings.append("Heartbleed")
+            if host.get("smb_ms17010_info", {}).get("ms17010_likely"): active_findings.append("MS17-010")
+            if host.get("ldap_info", {}).get("anonymous_bind", {}).get("allowed"): active_findings.append("LDAP-anon")
+            if host.get("dns_info", {}).get("zone_transfer", {}).get("vulnerable"): active_findings.append("DNS-AXFR")
+            if host.get("default_creds_info"): active_findings.append("Default-Creds")
+            if active_findings:
+                detail_rows.append(("Active Findings", ", ".join(active_findings)))
+
             detail_rows.extend([
                 ("Status",            host.get("status",        "Unknown")),
                 ("Response Time",     _format_response_time_ms(host.get("response_time_ms"))),

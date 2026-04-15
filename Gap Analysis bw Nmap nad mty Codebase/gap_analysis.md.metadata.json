@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "A deep engineering-level gap analysis comparing the CCure-Audit-PRO Scapy-based network scanner against Nmap. Covers: what is implemented (ARP, ICMP, TCP SYN, TCP Connect, UDP, banner grabbing, TTL/window OS fingerprinting, OUI lookup, CVE lookup), what is missing vs Nmap (deep OS fingerprinting, full UDP scanning, NSE-equivalent scripting, firewall evasion techniques, service version probing depth, device classification, protocol-aware probing for SNMP/LDAP/mDNS/RPC), why each gap exists, impact analysis on accuracy/usability, an improvement roadmap with concrete Scapy-based implementation strategies, and a final verdict rating the scanner as Intermediate.",
+  "updatedAt": "2026-04-15T05:54:23.270287500Z"
+}

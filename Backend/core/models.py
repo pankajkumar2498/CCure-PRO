@@ -97,6 +97,16 @@ class HostResult:
     os_confidence:    str            = "Low"
     confidence:       str            = "Low"
     scan_timestamp:   str            = field(default_factory=lambda: datetime.now().isoformat())
+    
+    # Priority-1 & 2 & 3 Additions
+    device_category:     str            = "unknown"
+    snmp_device_type:    Optional[str]  = None
+    mdns_name:           Optional[str]  = None
+    netbios_names:       list           = field(default_factory=list)
+    os_fingerprint_full: dict           = field(default_factory=dict)
+    tcp_fingerprint:     dict           = field(default_factory=dict)
+    port_states:         dict           = field(default_factory=dict)
+
     # v2 enrichment
     tls_info:         dict           = field(default_factory=dict)
     http_audit:       dict           = field(default_factory=dict)
@@ -127,6 +137,13 @@ class HostResult:
             "os_guess": self.os_guess,
             "os_confidence": self.os_confidence,
             "confidence": self.confidence,
+            "device_category": self.device_category,
+            "snmp_device_type": self.snmp_device_type,
+            "mdns_name": self.mdns_name,
+            "netbios_names": self.netbios_names,
+            "os_fingerprint_full": self.os_fingerprint_full,
+            "tcp_fingerprint": self.tcp_fingerprint,
+            "port_states": self.port_states,
         }
         return d
 
@@ -144,6 +161,8 @@ class HostResult:
             "response_time_ms", "tls_info", "http_audit", "snmp_info",
             "smb_info", "ssh_info", "udp_services", "cves",
             "host_risk_score", "host_risk_level",
+            "device_category", "snmp_device_type", "mdns_name", "netbios_names",
+            "os_fingerprint_full", "tcp_fingerprint", "port_states",
         }
 
         cleaned = {}

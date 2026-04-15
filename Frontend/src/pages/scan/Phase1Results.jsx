@@ -11,7 +11,7 @@
  *
  * Stepper is driven by pipelineState for live step indicators.
  */
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
@@ -45,6 +45,7 @@ export default function Phase1Results() {
   const [assetExpanded, setAssetExpanded]  = useState(new Set());
   const [assetError, setAssetError]        = useState("");
   const [assetHasScanned, setAssetHasScanned] = useState(false);
+  const [phase1Expanded, setPhase1Expanded] = useState(new Set());
 
   useEffect(() => {
     if (!phase1Hosts.length) {
@@ -152,6 +153,12 @@ export default function Phase1Results() {
     const next = new Set(assetExpanded);
     next.has(ip) ? next.delete(ip) : next.add(ip);
     setAssetExpanded(next);
+  };
+  
+  const togglePhase1Expand = (ip) => {
+    const next = new Set(phase1Expanded);
+    next.has(ip) ? next.delete(ip) : next.add(ip);
+    setPhase1Expanded(next);
   };
 
   const proceedToNextPhase = () => {
@@ -291,8 +298,10 @@ export default function Phase1Results() {
             <thead>
               <tr>
                 {isAssetPipeline && !portScanDone && <th style={{ width: 36 }} />}
+                <th style={{ width: 36 }}></th>
                 <th>IP Address</th>
                 <th>Hostname</th>
+                <th>Device</th>
                 <th>Status</th>
                 <th>Method</th>
                 <th>Response</th>
@@ -301,36 +310,199 @@ export default function Phase1Results() {
               </tr>
             </thead>
             <tbody>
-              {(isAssetPipeline ? assetHosts : displayHosts).map(h => (
-                <tr
-                  key={h.ip_address}
-                  className={h.is_active ? "row--active" : "row--inactive"}
-                  style={{ cursor: isAssetPipeline && !portScanDone && h.is_active ? "pointer" : "default" }}
-                >
-                  {isAssetPipeline && !portScanDone && (
-                    <td>
-                      {h.is_active && (
-                        <input
-                          type="checkbox"
-                          checked={assetSelected.has(h.ip_address)}
-                          onChange={() => toggleAssetHost(h.ip_address)}
-                          onClick={e => e.stopPropagation()}
-                        />
+              {(isAssetPipeline ? assetHosts : displayHosts).map(h => {
+                const isExpanded = phase1Expanded.has(h.ip_address);
+                
+                // Determine best hostname
+                let displayHost = h.hostname;
+                if (!displayHost || displayHost === "Unknown") {
+                    if (h.mdns_name) displayHost = h.mdns_name;
+                    else if (h.netbios_names && h.netbios_names.length) displayHost = h.netbios_names[0].name;
+                }
+                
+                // Determine device category
+                const devCat = h.snmp_device_type || h.device_category || "unknown";
+
+                return (
+                  <React.Fragment key={h.ip_address}>
+                    <tr
+                      className={h.is_active ? (isExpanded ? "row--active row--expanded" : "row--active") : "row--inactive"}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => togglePhase1Expand(h.ip_address)}
+                    >
+                      {isAssetPipeline && !portScanDone && (
+                        <td>
+                          {h.is_active && (
+                            <input
+                              type="checkbox"
+                              checked={assetSelected.has(h.ip_address)}
+                              onChange={() => toggleAssetHost(h.ip_address)}
+                              onClick={e => e.stopPropagation()}
+                            />
+                          )}
+                        </td>
                       )}
-                    </td>
-                  )}
-                  <td><code className="ip-code">{h.ip_address}</code></td>
-                  <td>{h.hostname || <span className="muted">—</span>}</td>
-                  <td>
-                    <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} />
-                    {h.is_active ? "Active" : "Inactive"}
-                  </td>
-                  <td>{h.discovery_method || <span className="muted">—</span>}</td>
-                  <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
-                  <td>{h.mac_address || <span className="muted">—</span>}</td>
-                  <td>{h.vendor || <span className="muted">—</span>}</td>
-                </tr>
-              ))}
+                      <td>
+                        <button className="expand-btn" onClick={e => { e.stopPropagation(); togglePhase1Expand(h.ip_address); }}>
+                          {isExpanded ? "▲" : "▼"}
+                        </button>
+                      </td>
+                      <td><code className="ip-code">{h.ip_address}</code></td>
+                      <td>{displayHost || <span className="muted">—</span>}</td>
+                      <td>
+                        {devCat !== "unknown" ? (
+                          <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
+                            {devCat}
+                          </span>
+                        ) : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                        {h.is_active ? "Active" : "Inactive"}
+                      </td>
+                      <td>{h.discovery_method || <span className="muted">—</span>}</td>
+                      <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                      <td>{h.mac_address || <span className="muted">—</span>}</td>
+                      <td>{h.vendor || <span className="muted">—</span>}</td>
+                    </tr>
+                    
+                    {isExpanded && (
+                      <tr className="expanded-details-row">
+                        <td colSpan={isAssetPipeline && !portScanDone ? 10 : 9} style={{ padding: 0 }}>
+                          <div style={{ padding: "16px 24px", background: "var(--bg-app)", borderBottom: "1px solid var(--border)", display: "flex", gap: "24px", flexWrap: "wrap" }}>
+                            
+                            {/* Detailed OS Fingerprint */}
+                            <div style={{ flex: "1 1 300px" }}>
+                              <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Target OS Fingerprint</h4>
+                              {h.os_fingerprint_full && h.os_fingerprint_full.os ? (
+                                <div style={{ background: "var(--bg)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                    <span className="muted">OS Guess:</span>
+                                    <strong>{h.os_fingerprint_full.os}</strong>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                    <span className="muted">Confidence:</span>
+                                    <span style={{
+                                      color: h.os_fingerprint_full.confidence === "High" ? "#22c55e" : h.os_fingerprint_full.confidence === "Medium" ? "#f59e0b" : "var(--text-muted)",
+                                      fontWeight: 600,
+                                    }}>
+                                      {h.os_fingerprint_full.confidence}
+                                      <span style={{ fontWeight: 400, color: "var(--text-muted)", marginLeft: 4, fontSize: "0.8em" }}>
+                                        ({h.os_fingerprint_full.match_score ?? 0} pts)
+                                      </span>
+                                    </span>
+                                  </div>
+                                  {h.os_fingerprint_full.details && (
+                                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)" }}>
+                                      <span className="muted">Options: </span>
+                                      <code>{(h.os_fingerprint_full.details.t1_opts || []).join(",") || "None"}</code>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ background: "var(--bg)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                    <span className="muted">OS Guess:</span>
+                                    <strong>{h.os_guess !== "Unknown" ? h.os_guess : "Unknown"}</strong>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                                    <span className="muted">Confidence:</span>
+                                    <span>{h.os_confidence}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Network Names & Tags */}
+                            <div style={{ flex: "1 1 250px" }}>
+                              <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Network Identity</h4>
+                              <div style={{ background: "var(--bg)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                  <span className="muted">mDNS:</span>
+                                  <span>{h.mdns_name || "—"}</span>
+                                </div>
+                                {/* GAP-09: mDNS service chips */}
+                                {h.mdns_services && h.mdns_services.length > 0 && (
+                                  <div style={{ marginBottom: 6 }}>
+                                    <span className="muted" style={{ fontSize: 11 }}>mDNS Services: </span>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
+                                      {h.mdns_services.slice(0, 5).map(svc => (
+                                        <span key={svc} style={{
+                                          fontSize: 10, padding: "1px 5px",
+                                          background: "rgba(34,211,238,0.1)",
+                                          border: "1px solid rgba(34,211,238,0.3)",
+                                          color: "#22d3ee", borderRadius: 3,
+                                        }}>{svc.replace("._tcp.local","").replace("._udp.local","")}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                  <span className="muted">NetBIOS:</span>
+                                  <span style={{ textAlign: "right" }}>
+                                    {h.netbios_names && h.netbios_names.length 
+                                      ? h.netbios_names.map(n => n.name).join(", ") 
+                                      : "—"}
+                                  </span>
+                                </div>
+                                {/* GAP-09: NetBIOS workgroup */}
+                                {h.netbios_workgroup && (
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                    <span className="muted">Workgroup/Domain:</span>
+                                    <span style={{ fontWeight: 600, color: "#818cf8" }}>{h.netbios_workgroup}</span>
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                  <span className="muted">Device Type:</span>
+                                  <span>{h.snmp_device_type || h.device_category || "—"}</span>
+                                </div>
+                                {/* GAP-10: Firewall detection result */}
+                                {h.firewall_likely && (
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+                                    <span className="muted">Firewall:</span>
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 700,
+                                      color: "#f97316",
+                                      background: "rgba(249,115,22,0.12)",
+                                      border: "1px solid rgba(249,115,22,0.3)",
+                                      borderRadius: 4, padding: "1px 6px",
+                                    }}>🛡 Detected ({h.firewall_confidence})</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Discovery Ports Metadata */}
+                            {h.port_states && Object.keys(h.port_states).length > 0 && (
+                              <div style={{ flex: "1 1 200px" }}>
+                                <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Discovery Port States</h4>
+                                <div style={{ background: "var(--bg)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem", maxHeight: 90, overflowY: "auto" }}>
+                                  {Object.entries(h.port_states).map(([p, state]) => (
+                                    <div key={p} style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                                      <code>{p}/tcp</code>
+                                      <span style={{
+                                          color:
+                                            state === "open"          ? "#22c55e" :
+                                            state === "closed"        ? "#ef4444" :
+                                            state === "unfiltered"    ? "#60a5fa" :
+                                            state === "filtered"      ? "#f59e0b" :
+                                            state === "open|filtered" ? "#f59e0b" :
+                                            "var(--text-muted)",
+                                          fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600,
+                                        }}>{state}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

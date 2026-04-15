@@ -252,3 +252,59 @@ def lookup_vendor(mac_address: str) -> Optional[str]:
     if not mac_address:
         return None
     return get_oui_db().lookup(mac_address)
+
+
+# =============================================================================
+# OUI -> Device Category mapping (Priority 1 - C)
+# =============================================================================
+
+#: Maps a substring of a vendor name (lowercase) to a device category string.
+VENDOR_DEVICE_MAP: Dict[str, str] = {
+    "cisco":       "network_switch_router",
+    "juniper":     "network_router_firewall",
+    "ubiquiti":    "wireless_access_point",
+    "mikrotik":    "network_router",
+    "fortinet":    "firewall",
+    "palo alto":   "firewall",
+    "aruba":       "wireless_access_point",
+    "brother":     "printer",
+    "canon":       "printer",
+    "epson":       "printer",
+    "hp":          "printer_or_server",
+    "raspberry":   "iot_device",
+    "espressif":   "iot_device",
+}
+
+
+def classify_from_oui(vendor: str) -> str:
+    """
+    Classify a device category from an OUI vendor name string.
+
+    Args:
+        vendor: Vendor name returned by ``lookup_vendor()`` or similar.
+
+    Returns:
+        A snake_case device category string (e.g. ``"network_switch_router"``)
+        or ``"unknown"`` when no keyword matches.
+    """
+    if not vendor:
+        return "unknown"
+    v = vendor.lower()
+    for keyword, category in VENDOR_DEVICE_MAP.items():
+        if keyword in v:
+            return category
+    return "unknown"
+
+
+def classify_mac(mac_address: str) -> str:
+    """
+    Convenience wrapper: lookup vendor then classify device category.
+
+    Args:
+        mac_address: MAC address in any common format.
+
+    Returns:
+        Device category string or ``"unknown"``.
+    """
+    vendor = lookup_vendor(mac_address)
+    return classify_from_oui(vendor or "")

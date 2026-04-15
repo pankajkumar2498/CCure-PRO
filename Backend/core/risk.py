@@ -7,24 +7,42 @@ Pure logic - no I/O, no imports from engines.
 
 from typing import Dict, List, Optional, Tuple
 
-from core.constants import OS_TTL_MAP, TCP_WINDOW_OS, RISK_WEIGHTS, RISK_LEVELS
+from core.constants import OS_TTL_MAP, TCP_WINDOW_OS, TCP_OPTIONS_FINGERPRINT, RISK_WEIGHTS, RISK_LEVELS
 
 
 # =============================================================================
 # OS Fingerprinting
 # =============================================================================
 
-def fingerprint_os(ttl: int, window: Optional[int] = None) -> Tuple[str, str]:
+def fingerprint_os(
+    ttl:      int,
+    window:   Optional[int]  = None,
+    tcp_opts: Optional[Dict] = None,
+) -> Tuple[str, str]:
     """
-    Returns (os_guess, confidence) based on TTL and optional TCP window size.
+    Returns (os_guess, confidence) from TTL, TCP window, and optional
+    TCP option fingerprint data.
+
+    Priority 2-D: when *tcp_opts* is supplied (from a crafted SYN probe),
+    MSS + WScale + SAckOK are used as additional discriminators that can
+    elevate confidence from Low/Medium to High even when TTL is ambiguous.
+
+    tcp_opts keys (all optional):
+        mss      (int)  – Maximum Segment Size
+        wscale   (int)  – Window Scale shift count (0 = explicitly 0; None = absent)
+        sack_ok  (bool) – SAckOK option present in SYN-ACK
+        df_bit   (bool) – Don't Fragment IP flag
+
     Confidence: Low / Medium / High
     """
+    # Step 1: TTL narrowing
     guess = "Unknown"
     for threshold, label in OS_TTL_MAP:
         if ttl <= threshold:
             guess = label
             break
 
+    # Step 2: TCP window refinement
     conf = "Low"
     if window and window in TCP_WINDOW_OS:
         win_os = TCP_WINDOW_OS[window]
@@ -38,6 +56,20 @@ def fingerprint_os(ttl: int, window: Optional[int] = None) -> Tuple[str, str]:
             conf = "Medium"
     elif window:
         conf = "Medium"
+
+    # Step 3: TCP options fingerprint (Priority 2-D)
+    if tcp_opts:
+        mss     = tcp_opts.get("mss")
+        wscale  = tcp_opts.get("wscale")   # may be 0 (explicit) or None (absent)
+        sack_ok = bool(tcp_opts.get("sack_ok", False))
+        for (mss_lo, mss_hi, ws, sack, label, opt_conf) in TCP_OPTIONS_FINGERPRINT:
+            mss_ok  = (mss is None) or (mss_lo <= mss <= mss_hi)
+            ws_ok   = (ws is None) or (wscale == ws)
+            sack_ok_match = (sack_ok == sack)
+            if mss_ok and ws_ok and sack_ok_match:
+                guess = label
+                conf  = opt_conf
+                break
 
     return guess, conf
 

@@ -227,6 +227,7 @@ export default function Phase2Results() {
                 <th style={{ width: 36 }} />
                 <th>IP Address</th>
                 <th>Hostname</th>
+                <th>Device</th>
                 <th>Status</th>
                 <th>Method</th>
                 <th>MAC</th>
@@ -234,34 +235,50 @@ export default function Phase2Results() {
               </tr>
             </thead>
             <tbody>
-              {displayHosts.map(host => (
-                <tr
-                  key={host.ip_address}
-                  className={host.is_active ? "row--active" : "row--inactive"}
-                  onClick={() => host.is_active && toggleHost(host.ip_address)}
-                  style={{ cursor: host.is_active ? "pointer" : "default" }}
-                >
-                  <td>
-                    {host.is_active && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(host.ip_address)}
-                        onChange={() => toggleHost(host.ip_address)}
-                        onClick={e => e.stopPropagation()}
-                      />
-                    )}
-                  </td>
-                  <td><code className="ip-code">{host.ip_address}</code></td>
-                  <td>{host.hostname || <span className="muted">—</span>}</td>
-                  <td>
-                    <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
-                    {host.is_active ? "Active" : "Inactive"}
-                  </td>
-                  <td>{host.discovery_method || <span className="muted">—</span>}</td>
-                  <td>{host.mac_address || <span className="muted">—</span>}</td>
-                  <td>{host.vendor || <span className="muted">—</span>}</td>
-                </tr>
-              ))}
+              {displayHosts.map(host => {
+                let displayHost = host.hostname;
+                if (!displayHost || displayHost === "Unknown") {
+                    if (host.mdns_name) displayHost = host.mdns_name;
+                    else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                }
+                const devCat = host.snmp_device_type || host.device_category || "unknown";
+
+                return (
+                  <tr
+                    key={host.ip_address}
+                    className={host.is_active ? "row--active" : "row--inactive"}
+                    onClick={() => host.is_active && toggleHost(host.ip_address)}
+                    style={{ cursor: host.is_active ? "pointer" : "default" }}
+                  >
+                    <td>
+                      {host.is_active && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(host.ip_address)}
+                          onChange={() => toggleHost(host.ip_address)}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      )}
+                    </td>
+                    <td><code className="ip-code">{host.ip_address}</code></td>
+                    <td>{displayHost || <span className="muted">—</span>}</td>
+                    <td>
+                      {devCat !== "unknown" ? (
+                        <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
+                          {devCat}
+                        </span>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td>
+                      <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                      {host.is_active ? "Active" : "Inactive"}
+                    </td>
+                    <td>{host.discovery_method || <span className="muted">—</span>}</td>
+                    <td>{host.mac_address || <span className="muted">—</span>}</td>
+                    <td>{host.vendor || <span className="muted">—</span>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -317,9 +334,14 @@ export default function Phase2Results() {
 
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
-                  {host.hostname && host.hostname !== "Unknown" && (
-                    <span className="muted small">{host.hostname}</span>
-                  )}
+                  {(() => {
+                    let hName = host.hostname;
+                    if (!hName || hName === "Unknown") {
+                      if (host.mdns_name) hName = host.mdns_name;
+                      else if (host.netbios_names && host.netbios_names.length) hName = host.netbios_names[0].name;
+                    }
+                    return hName && hName !== "Unknown" ? <span className="muted small">{hName}</span> : null;
+                  })()}
                 </div>
 
                 <div className="host-card-meta">
@@ -335,6 +357,14 @@ export default function Phase2Results() {
                     </span>
                   )}
 
+                  {/* GAP-04: closed/filtered port counts from port engine */}
+                  {(host.closed_ports_count > 0 || host.filtered_ports_count > 0) && (
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 3, padding: "2px 7px" }}>
+                      {host.closed_ports_count > 0 && <span style={{ color: "#ef4444" }}>{host.closed_ports_count} closed</span>}
+                      {host.closed_ports_count > 0 && host.filtered_ports_count > 0 && <span style={{ margin: "0 4px", color: "var(--text-muted)" }}>·</span>}
+                      {host.filtered_ports_count > 0 && <span style={{ color: "#f59e0b" }}>{host.filtered_ports_count} filtered</span>}
+                    </span>
+                  )}
                   {host.os_guess && host.os_guess !== "Unknown" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
                       {host.os_guess}
@@ -352,6 +382,191 @@ export default function Phase2Results() {
 
               {isExpanded && (
                 <div className="host-card-body">
+                  <div style={{ padding: "0 0 16px 0", display: "flex", gap: "24px", flexWrap: "wrap" }}>
+                    {/* Detailed OS Fingerprint */}
+                    {(host.os_fingerprint_full?.os || host.os_guess !== "Unknown") && (
+                      <div style={{ flex: "1 1 250px" }}>
+                        <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Target OS Fingerprint</h4>
+                        <div style={{ background: "var(--bg-highlight)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                          {host.os_fingerprint_full?.os ? (
+                            <>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                <span className="muted">OS Guess:</span>
+                                <strong>{host.os_fingerprint_full.os}</strong>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                <span className="muted">Confidence:</span>
+                                <span style={{
+                                  color: host.os_fingerprint_full.confidence === "High" ? "#22c55e" : host.os_fingerprint_full.confidence === "Medium" ? "#f59e0b" : "var(--text-muted)",
+                                  fontWeight: 600,
+                                }}>
+                                  {host.os_fingerprint_full.confidence}
+                                  <span style={{ fontWeight: 400, color: "var(--text-muted)", marginLeft: 4, fontSize: "0.8em" }}>
+                                    ({host.os_fingerprint_full.match_score ?? 0} pts)
+                                  </span>
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span className="muted">OS Guess:</span>
+                                <strong>{host.os_guess}</strong>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                                <span className="muted">Confidence:</span>
+                                <span>{host.os_confidence}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Network Identity */}
+                    {(host.mdns_name || host.mdns_services?.length || (host.netbios_names && host.netbios_names.length > 0) || host.snmp_device_type || host.device_category || host.firewall_likely || host.snmp_info) && (
+                      <div style={{ flex: "1 1 250px" }}>
+                        <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Network Identity</h4>
+                        <div style={{ background: "var(--bg-highlight)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span className="muted">mDNS:</span>
+                            <span>{host.mdns_name || "—"}</span>
+                          </div>
+                          {/* GAP-09: mDNS service chips */}
+                          {host.mdns_services && host.mdns_services.length > 0 && (
+                            <div style={{ marginBottom: 6 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
+                                {host.mdns_services.slice(0, 6).map(svc => (
+                                  <span key={svc} style={{
+                                    fontSize: 10, padding: "1px 5px",
+                                    background: "rgba(34,211,238,0.1)",
+                                    border: "1px solid rgba(34,211,238,0.3)",
+                                    color: "#22d3ee", borderRadius: 3,
+                                  }}>{svc.replace("._tcp.local","").replace("._udp.local","")}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span className="muted">NetBIOS:</span>
+                            <span style={{ textAlign: "right" }}>
+                              {host.netbios_names && host.netbios_names.length 
+                                ? host.netbios_names.map(n => n.name).join(", ") 
+                                : "—"}
+                            </span>
+                          </div>
+                          {/* GAP-09: NetBIOS workgroup/domain */}
+                          {host.netbios_workgroup && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span className="muted">Domain:</span>
+                              <span style={{ fontWeight: 600, color: "#818cf8" }}>{host.netbios_workgroup}</span>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span className="muted">Device Type:</span>
+                            <span>{host.snmp_device_type || host.device_category || "—"}</span>
+                          </div>
+                          {/* GAP-08: SNMP system info (sysName, sysLocation, vendor) */}
+                          {host.snmp_info?.sys_name && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span className="muted">SNMP Name:</span>
+                              <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{host.snmp_info.sys_name}</span>
+                            </div>
+                          )}
+                          {host.snmp_info?.sys_location && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span className="muted">Location:</span>
+                              <span style={{ textAlign: "right", maxWidth: 160, wordBreak: "break-word" }}>{host.snmp_info.sys_location}</span>
+                            </div>
+                          )}
+                          {host.snmp_info?.vendor && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span className="muted">SNMP Vendor:</span>
+                              <span style={{ fontWeight: 600 }}>{host.snmp_info.vendor}</span>
+                            </div>
+                          )}
+                          {/* GAP-10: Firewall detection */}
+                          {host.firewall_likely && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+                              <span className="muted">Firewall:</span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, color: "#f97316",
+                                background: "rgba(249,115,22,0.12)",
+                                border: "1px solid rgba(249,115,22,0.3)",
+                                borderRadius: 4, padding: "1px 6px",
+                              }}>🛡 Detected ({host.firewall_confidence})</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* GAP-08: SNMP Interface Table — shows multi-interface routers/switches */}
+                  {host.snmp_info?.interfaces && host.snmp_info.interfaces.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                        SNMP Interfaces ({host.snmp_info.interfaces.length})
+                        {host.snmp_info.ip_addresses?.length > 0 && (
+                          <span style={{ marginLeft: 8, color: "#60a5fa", textTransform: "none", fontSize: 11 }}>
+                            · {host.snmp_info.ip_addresses.length} IP{host.snmp_info.ip_addresses.length !== 1 ? "s" : ""} bound
+                          </span>
+                        )}
+                      </h4>
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="ports-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Interface</th>
+                              <th>Type</th>
+                              <th>MAC</th>
+                              <th>Admin</th>
+                              <th>Oper</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {host.snmp_info.interfaces.map(iface => (
+                              <tr key={iface.index}>
+                                <td><code className="ip-code">{iface.index}</code></td>
+                                <td>{iface.description || "—"}</td>
+                                <td><span style={{ fontSize: 11, color: "var(--text-muted)" }}>{iface.type}</span></td>
+                                <td><code style={{ fontSize: 11 }}>{iface.mac || "—"}</code></td>
+                                <td>
+                                  <span style={{ color: iface.admin_up ? "#22c55e" : "#ef4444", fontSize: 11 }}>
+                                    {iface.admin_up ? "Up" : "Down"}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span style={{ color: iface.oper_up ? "#22c55e" : "#94a3b8", fontSize: 11 }}>
+                                    {iface.oper_up ? "Up" : "Down"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* IP address table */}
+                      {host.snmp_info.ip_addresses?.length > 0 && (
+                        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {host.snmp_info.ip_addresses.map(a => (
+                            <span key={a.address} style={{
+                              fontSize: 11, fontFamily: "var(--mono)",
+                              padding: "2px 7px",
+                              background: "rgba(96,165,250,0.1)",
+                              border: "1px solid rgba(96,165,250,0.25)",
+                              color: "#60a5fa", borderRadius: 4,
+                            }} title={`Netmask: ${a.netmask}`}>
+                              {a.address}/{a.netmask}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Discovered Services</h4>
                   {host.open_ports?.length > 0 ? (
                     <table className="ports-table">
                       <thead>
@@ -368,7 +583,7 @@ export default function Phase2Results() {
                           <tr key={index}>
                             <td><code className="ip-code">{port.port}/tcp</code></td>
                             <td>
-                              <span style={{ background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
+                              <span style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
                                 {port.service}
                               </span>
                             </td>
@@ -393,6 +608,54 @@ export default function Phase2Results() {
                     </table>
                   ) : (
                     <p className="muted" style={{ fontSize: 13, padding: "12px 0" }}>No open ports detected on this host.</p>
+                  )}
+
+                  {/* UDP Services — added by port engine patch */}
+                  {host.udp_services && host.udp_services.length > 0 && (
+                    <>
+                      <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", margin: "16px 0 8px" }}>
+                        UDP Services ({host.udp_services.length})
+                      </h4>
+                      <table className="ports-table">
+                        <thead>
+                          <tr>
+                            <th>Port</th>
+                            <th>Service</th>
+                            <th>State</th>
+                            <th>Risk</th>
+                            <th>Banner</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {host.udp_services.map((svc, i) => (
+                            <tr key={i}>
+                              <td><code className="ip-code">{svc.port}/udp</code></td>
+                              <td>
+                                <span style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
+                                  {svc.service}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{
+                                  color: svc.state === "open" ? "#22c55e" : svc.state === "open|filtered" ? "#f59e0b" : "var(--text-muted)",
+                                  fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700,
+                                }}>
+                                  {svc.state}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ color: RISK_COLOR[svc.risk] || "#60a5fa", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>
+                                  {svc.risk || "Info"}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+                                {svc.banner || <span className="muted">—</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
                   )}
                 </div>
               )}

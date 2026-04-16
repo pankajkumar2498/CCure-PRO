@@ -170,23 +170,30 @@ class InputValidator:
 # Token-Bucket Rate Limiter  (prevents IDS triggers)
 # =============================================================================
 
+import threading
+
 class TokenBucket:
     def __init__(self, rate: float = 100.0, capacity: float = 200.0):
         self.rate     = rate        # tokens per second
         self.capacity = capacity
         self.tokens   = capacity
         self._last    = time.monotonic()
+        self._lock    = threading.Lock()
 
     def consume(self, n: float = 1.0):
-        now          = time.monotonic()
-        self.tokens  = min(self.capacity, self.tokens + (now - self._last) * self.rate)
-        self._last   = now
-        if self.tokens >= n:
-            self.tokens -= n
-        else:
-            sleep_time  = (n - self.tokens) / self.rate
+        with self._lock:
+            now          = time.monotonic()
+            self.tokens  = min(self.capacity, self.tokens + (now - self._last) * self.rate)
+            self._last   = now
+            if self.tokens >= n:
+                self.tokens -= n
+                sleep_time = 0
+            else:
+                sleep_time  = (n - self.tokens) / self.rate
+                self.tokens = 0
+        
+        if sleep_time > 0:
             time.sleep(sleep_time)
-            self.tokens = 0
 
 
 # =============================================================================

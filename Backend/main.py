@@ -743,7 +743,8 @@ async def scan_advanced_scan(
     orch = _get_api()._orch
 
     try:
-        result = orch.run_advanced_scan_only(req.hosts)
+        import asyncio
+        result = await asyncio.to_thread(orch.run_advanced_scan_only, req.hosts)
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Advanced Scan failed"))
 
@@ -805,6 +806,63 @@ async def scan_advanced_scan(
         raise HTTPException(status_code=500, detail="Advanced Scan failed.")
 
 
+def _detect_os(ssh) -> str:
+    """
+    Robust OS auto-detection via SSH.
+
+    Runs up to 5 lightweight probes in priority order — each designed for a
+    different SSH default shell (cmd.exe, PowerShell, bash/sh).  Stops as
+    soon as a confident match is found.
+
+    Returns 'windows' or 'linux'.
+    """
+
+    # ── Probe 1: cmd.exe native — ver always prints "Microsoft Windows" ──────
+    # Works even when cmd.exe is the SSH default shell.
+    r = ssh.run("ver", timeout=4)
+    out = r.stdout.strip()
+    log.debug("[OS-detect] ver → %s", out[:80])
+    if r.success and "microsoft windows" in out.lower():
+        return "windows"
+
+    # ── Probe 2: cmd /c ver — same as above but explicit cmd ─────────────────
+    r = ssh.run("cmd /c ver", timeout=4)
+    out = r.stdout.strip()
+    log.debug("[OS-detect] cmd /c ver → %s", out[:80])
+    if r.success and "microsoft windows" in out.lower():
+        return "windows"
+
+    # ── Probe 3: PowerShell $env:OS — Windows_NT on all Windows machines ─────
+    # Works when PowerShell is the default shell.
+    r = ssh.run("$env:OS", timeout=4)
+    out = r.stdout.strip()
+    log.debug("[OS-detect] $env:OS → %s", out[:80])
+    if r.success and "windows" in out.lower():
+        return "windows"
+
+    # ── Probe 4: uname exact match — only real Linux/macOS returns this ───────
+    r = ssh.run("uname -s", timeout=4)
+    out = r.stdout.strip().upper()
+    log.debug("[OS-detect] uname -s → %s", out[:80])
+    if r.success and out in {"LINUX", "DARWIN", "FREEBSD", "OPENBSD", "NETBSD"}:
+        return "linux"
+    # Git Bash on Windows returns MINGW64_NT-10.0-... / MSYS_NT-... (contains "NT")
+    # If we got something with "NT" it's likely Windows under Git Bash
+    if r.success and "NT" in out and "LINUX" not in out:
+        return "windows"
+
+    # ── Probe 5: PowerShell [Environment]::OSVersion — works on PS 5+ ────────
+    r = ssh.run("[Environment]::OSVersion.Platform", timeout=4)
+    out = r.stdout.strip()
+    log.debug("[OS-detect] OSVersion.Platform → %s", out[:80])
+    if r.success and "win" in out.lower():
+        return "windows"
+
+    # ── Safe fallback ─────────────────────────────────────────────────────────
+    log.warning("[OS-detect] All probes inconclusive — defaulting to 'linux'")
+    return "linux"
+
+
 @app.post("/scan/credentialed", tags=["Credentialed Scans"])
 async def scan_credentialed(
     req:  CredentialedScanRequest,
@@ -838,18 +896,13 @@ async def scan_credentialed(
             password  = req.password if req.auth_method == "password" else None,
             key_path  = req.key_path  if req.auth_method == "key"      else None,
             port      = req.port,
-            timeout   = 15,
+            timeout   = 20,
         ) as ssh:
-            # Auto-detect OS if not specified
-            os_type = req.os_type.lower() if req.os_type else "auto"
+            # ── OS Auto-detection ───────────────────────────────────────────
+            os_type = (req.os_type or "auto").strip().lower()
             if os_type == "auto":
-                probe = ssh.run("uname -s", timeout=5)
-                if probe.success and probe.stdout.strip():
-                    os_type = "linux"
-                else:
-                    # Windows: uname fails or returns empty
-                    win_probe = ssh.run("cmd /c ver", timeout=5)
-                    os_type = "windows" if win_probe.success else "linux"
+                os_type = _detect_os(ssh)
+            log.info("Credentialed scan OS detected as '%s' for %s", os_type, req.ip)
 
             if os_type == "windows":
                 collector = WindowsCollector(ssh)
@@ -879,6 +932,7 @@ async def scan_credentialed(
     stored_report = {
         "scan_type":              "credentialed",
         "target":                 req.ip,
+        "detected_os":            system_data.get("detected_os", "linux"),
         "system_info": {
             "os_name":        system_data.get("os_name", ""),
             "os_version_id":  system_data.get("os_version_id", ""),

@@ -25,7 +25,7 @@ import os
 import json
 import xml.dom.minidom
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 from reportlab.lib                       import colors
 from reportlab.lib.pagesizes             import A4
@@ -385,14 +385,30 @@ def _collect_hosts(result: dict) -> List[dict]:
     hosts: List[dict] = []
     data = result.get("data", [])
     if isinstance(data, dict):
-        hosts = [data]
+        if "credentialed" in data and "report" in data["credentialed"]:
+            rep = data["credentialed"]["report"]
+            rep["is_active"] = True
+            rep["ip_address"] = rep.get("target", "N/A")
+            rep["status"] = "Active"
+            hosts = [rep]
+        else:
+            hosts = [data]
     elif isinstance(data, list):
         for item in data:
             if not isinstance(item, dict):
                 continue
             if "hosts" in item and isinstance(item.get("hosts"), list):
                 hosts.extend(item["hosts"])
+            elif "credentialed" in item and "report" in item["credentialed"]:
+                rep = item["credentialed"]["report"]
+                rep["is_active"] = True
+                rep["ip_address"] = rep.get("target", "N/A")
+                rep["status"] = "Active"
+                hosts.append(rep)
             elif "ip_address" in item:
+                hosts.append(item)
+            elif "cves" in item or "system_info" in item:
+                item["is_active"] = item.get("is_active", True)
                 hosts.append(item)
     return hosts
 
@@ -406,7 +422,7 @@ def _as_int(value: Any) -> Optional[int]:
         return None
 
 
-def _compute_discovery_summary(summary: dict, hosts: List[dict]) -> tuple[int, int, int, str]:
+def _compute_discovery_summary(summary: dict, hosts: List[dict]) -> Tuple[int, int, int, str]:
     total = _as_int(summary.get("total_hosts"))
     active = _as_int(summary.get("active_hosts"))
     inactive = _as_int(summary.get("inactive_hosts"))
@@ -439,6 +455,117 @@ def _resolve_detection_method(host: dict) -> str:
     if token in {"ARP", "TCP", "FULL", "ADAPTIVE", "STEALTH"}:
         return token
     return str(raw).strip() if raw else "N/A"
+
+
+def _build_advanced_insights(host: dict, styles: dict) -> list:
+    story = []
+    W = PAGE_W - 2 * MARGIN
+
+    def mk_header(title):
+        return Paragraph(f"<b>{title}</b>", ParagraphStyle("s", parent=styles["normal"], fontSize=10, textColor=CDAC_BLUE, spaceBefore=6, spaceAfter=4))
+    
+    def mk_table(headers, rows, widths=None):
+        header_row = [Paragraph(h, ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, textColor=WHITE)) for h in headers]
+        data = [header_row]
+        for r in rows:
+            data.append([Paragraph(str(c), styles["value"]) if not isinstance(c, Paragraph) else c for c in r])
+        if not widths:
+            widths = [W / len(headers)] * len(headers)
+        tbl = Table(data, colWidths=widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+            *[("BACKGROUND", (0, i), (-1, i), CDAC_ACCENT if i % 2 == 0 else WHITE) for i in range(1, len(data))],
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return tbl
+
+    sys_info = host.get("system_info")
+    if sys_info and isinstance(sys_info, dict) and sys_info.get("os_name"):
+        story.append(mk_header("System Information (Credentialed)"))
+        rows = [
+            ("OS", sys_info.get("os_name", "N/A")),
+            ("Version", sys_info.get("os_version_id", "N/A")),
+            ("Kernel / Build", sys_info.get("kernel_version", sys_info.get("os_build", "N/A"))),
+            ("Hostname", sys_info.get("hostname", "N/A")),
+            ("CPU", sys_info.get("cpu_model", "N/A")),
+            ("Arch", sys_info.get("cpu_arch", "N/A")),
+        ]
+        story.append(mk_table(["Property", "Value"], rows, [50*mm, W - 50*mm]))
+        story.append(Spacer(1, 4 * mm))
+
+    users = host.get("users", [])
+    if users:
+        story.append(mk_header(f"System Users ({len(users)})"))
+        u_rows = []
+        for u in users[:20]:
+            if u.get("is_root") or not u.get("is_system"):
+                u_type = "Root/Admin" if u.get("is_root") else "User"
+                u_rows.append([u.get("username", "N/A"), str(u.get("uid", "")), u.get("shell", "N/A"), u_type])
+        if u_rows:
+            story.append(mk_table(["Username", "UID", "Shell", "Type"], u_rows, [50*mm, 20*mm, 70*mm, 30*mm]))
+            story.append(Spacer(1, 4 * mm))
+
+    svcs = host.get("running_services", [])
+    if svcs:
+        story.append(mk_header(f"Running Services ({len(svcs)})"))
+        s_rows = []
+        for s in svcs[:20]:
+            s_rows.append([s.get("name", "N/A"), s.get("sub_state", "running"), s.get("description", "")[:60]])
+        story.append(mk_table(["Service", "Status", "Description"], s_rows, [50*mm, 25*mm, W - 75*mm]))
+        if len(svcs) > 20:
+             story.append(Paragraph(f"... and {len(svcs)-20} more services", styles["small"]))
+        story.append(Spacer(1, 4 * mm))
+
+    pkgs = host.get("packages", [])
+    if pkgs:
+        story.append(mk_header(f"Installed Packages ({len(pkgs)})"))
+        pkg_rows = []
+        cve_pkgs = {c.get("package", "").lower() for c in host.get("cves", []) if c.get("package")}
+        for p in pkgs[:30]:
+            is_vuln = p.get("name", "").lower() in cve_pkgs
+            v_str = "YES" if is_vuln else "No"
+            pkg_rows.append([p.get("name", "N/A"), p.get("version", "N/A"), v_str])
+        story.append(mk_table(["Package", "Version", "Has CVE"], pkg_rows, [70*mm, 70*mm, 30*mm]))
+        if len(pkgs) > 30:
+             story.append(Paragraph(f"... and {len(pkgs)-30} more packages", styles["small"]))
+        story.append(Spacer(1, 4 * mm))
+
+    cves = host.get("cves", [])
+    if cves:
+        story.append(mk_header(f"Vulnerabilities / CVEs ({len(cves)})"))
+        cve_rows = []
+        for c in cves:
+            cve_id = c.get("cve_id", "N/A")
+            sev = c.get("severity", "Info")
+            pkg = c.get("package", "N/A")
+            desc = c.get("description", "")[:80] + ("..." if len(c.get("description", "")) > 80 else "")
+            
+            cve_rows.append([cve_id, sev, pkg, desc])
+        story.append(mk_table(["CVE ID", "Severity", "Package", "Description"], cve_rows, [35*mm, 20*mm, 30*mm, W - 85*mm]))
+        story.append(Spacer(1, 4 * mm))
+
+    sec_issues = host.get("security_issues", [])
+    suid = host.get("suid_binaries", [])
+    if sec_issues or host.get("sudo_nopasswd") or host.get("failed_login_count"):
+        story.append(mk_header("Security Audit Findings"))
+        iss_rows = []
+        if host.get("sudo_nopasswd"):
+             iss_rows.append(["NOPASSWD Sudo", "Enabled (High Risk)"])
+        for iss in sec_issues:
+             iss_rows.append(["Misconfiguration", iss])
+        if suid:
+             iss_rows.append(["SUID Binaries", f"{len(suid)} found"])
+        if host.get("failed_login_count"):
+             iss_rows.append(["Failed Logins", f"{host.get('failed_login_count')} attempts"])
+        story.append(mk_table(["Finding Type", "Detail"], iss_rows, [50*mm, W - 50*mm]))
+        story.append(Spacer(1, 4 * mm))
+
+    return story
 
 
 def _build_json_story(result: dict, scan_type: str,
@@ -688,6 +815,12 @@ def _build_json_story(result: dict, scan_type: str,
 
             story.append(KeepTogether([card_title, outer, Spacer(1, 3 * mm)]))
 
+            # --- Append Credentials/Advanced insights ---
+            advanced_flowables = _build_advanced_insights(host, styles)
+            if advanced_flowables:
+                story.extend(advanced_flowables)
+
+
     # -- Subnets breakdown (scan_subnets only) --------------------------------
     if isinstance(data, list) and data and "subnet" in data[0]:
         story.append(_section_header("Per-Subnet Breakdown", styles))
@@ -877,7 +1010,7 @@ class ScanReportGenerator:
             rightMargin  = MARGIN,
             topMargin    = 28 * mm,   # space for header
             bottomMargin = 18 * mm,   # space for footer
-            title        = "CDAC Host Discovery Report - JSON Format",
+            title        = "CDAC Host Discovery Report",
             author       = "CDAC Bangalore RTSG Team ",
             subject      = f"Host Discovery: {scan_type}",
         )

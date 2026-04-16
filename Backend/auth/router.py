@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from auth.dependencies import get_current_user
 from auth.jwt_handler import (
@@ -67,11 +68,11 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str | None = None
+    refresh_token: Optional[str] = None
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str | None = None
+    refresh_token: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -85,14 +86,14 @@ class UserOut(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str | None = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserOut
 
 
 class RefreshResponse(BaseModel):
     access_token: str
-    refresh_token: str | None = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
 
 
@@ -121,7 +122,7 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
-def _resolve_refresh_token(request: Request, token_from_body: str | None) -> str | None:
+def _resolve_refresh_token(request: Request, token_from_body: Optional[str]) -> Optional[str]:
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -218,7 +219,7 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
 def logout(
     request: Request,
     response: Response,
-    req: LogoutRequest | None = None,
+    req: Optional[LogoutRequest] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -260,7 +261,7 @@ def me(current_user: User = Depends(get_current_user)):
 def refresh(
     request: Request,
     response: Response,
-    req: RefreshRequest | None = None,
+    req: Optional[RefreshRequest] = None,
     db: Session = Depends(get_db),
 ):
     """

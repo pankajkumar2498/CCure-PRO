@@ -166,6 +166,8 @@ export default function CredentialedResults() {
 
   const {
     target, username, scan_id, scan_duration,
+    detected_os = "linux",
+    os_type_was_auto = false,
     system_info = {},
     packages = [], package_count = 0,
     running_services = [],
@@ -180,6 +182,10 @@ export default function CredentialedResults() {
     env_vars_flagged = [],
     cves = [], cve_count = 0, severity_summary = {},
   } = result;
+
+  const osLabel    = detected_os === "windows" ? "Windows" : "Linux";
+  const osIcon     = detected_os === "windows" ? "🪟" : "🐧";
+  const osBadgeClr = detected_os === "windows" ? "#0078d4" : "#f97316";
 
   const overallRisk = (() => {
     if (severity_summary.Critical > 0) return "Critical";
@@ -205,6 +211,15 @@ export default function CredentialedResults() {
               {username && <span className="muted"> · user: {username}</span>}
               {scan_duration && <span className="muted"> · {scan_duration}s</span>}
               {scan_id && <span className="muted"> · Scan #{scan_id}</span>}
+              {os_type_was_auto && (
+                <span style={{
+                  marginLeft: 8, padding: "2px 8px", borderRadius: 4, fontSize: 11,
+                  background: osBadgeClr + "22", color: osBadgeClr,
+                  border: `1px solid ${osBadgeClr}44`, fontWeight: 600,
+                }}>
+                  {osIcon} {osLabel} (auto-detected)
+                </span>
+              )}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -216,8 +231,12 @@ export default function CredentialedResults() {
         {/* Summary bar */}
         <div className="summary-bar" style={{ flexWrap: "wrap" }}>
           <span className="summary-item"><RiskBadge level={overallRisk} /></span>
-          <span className="summary-item"><b>{system_info.os_name || "Linux"}</b></span>
-          <span className="summary-item muted">Kernel <b>{system_info.kernel_version || "—"}</b></span>
+          <span className="summary-item"><b>{system_info.os_name || osLabel}</b></span>
+          <span className="summary-item muted">
+            {detected_os === "windows"
+              ? <>Build <b>{system_info.os_build || system_info.os_version_id || "—"}</b></>
+              : <>Kernel <b>{system_info.kernel_version || "—"}</b></>}
+          </span>
           <span className="summary-item"><b>{package_count}</b> packages</span>
           <span className="summary-item" style={{ color: cve_count > 0 ? "#f97316" : "var(--ok)" }}>
             <b>{cve_count}</b> CVE{cve_count !== 1 ? "s" : ""}

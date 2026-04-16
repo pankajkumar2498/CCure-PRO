@@ -55,6 +55,7 @@ export default function Phase1Results() {
 
   if (!phase1Hosts.length) return null;
 
+  const isBasicScan      = pipelineMode === "basic";
   const isAssetPipeline  = pipelineMode === "asset";
   const activeHosts      = phase1Hosts.filter(h => h.is_active);
   const displayHosts     = filter === "active" ? activeHosts : phase1Hosts;
@@ -298,13 +299,13 @@ export default function Phase1Results() {
             <thead>
               <tr>
                 {isAssetPipeline && !portScanDone && <th style={{ width: 36 }} />}
-                <th style={{ width: 36 }}></th>
+                {!isBasicScan && <th style={{ width: 36 }}></th>}
                 <th>IP Address</th>
                 <th>Hostname</th>
-                <th>Device</th>
+                {!isBasicScan && <th>Device</th>}
                 <th>Status</th>
                 <th>Method</th>
-                <th>Response</th>
+                {!isBasicScan && <th>Response</th>}
                 <th>MAC</th>
                 <th>Vendor</th>
               </tr>
@@ -326,9 +327,9 @@ export default function Phase1Results() {
                 return (
                   <React.Fragment key={h.ip_address}>
                     <tr
-                      className={h.is_active ? (isExpanded ? "row--active row--expanded" : "row--active") : "row--inactive"}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => togglePhase1Expand(h.ip_address)}
+                      className={h.is_active ? (isExpanded && !isBasicScan ? "row--active row--expanded" : "row--active") : "row--inactive"}
+                      style={{ cursor: isBasicScan ? "default" : "pointer" }}
+                      onClick={() => { if (!isBasicScan) togglePhase1Expand(h.ip_address); }}
                     >
                       {isAssetPipeline && !portScanDone && (
                         <td>
@@ -342,33 +343,47 @@ export default function Phase1Results() {
                           )}
                         </td>
                       )}
-                      <td>
-                        <button className="expand-btn" onClick={e => { e.stopPropagation(); togglePhase1Expand(h.ip_address); }}>
-                          {isExpanded ? "▲" : "▼"}
-                        </button>
-                      </td>
+                      {!isBasicScan && (
+                        <td>
+                          <button className="expand-btn" onClick={e => { e.stopPropagation(); togglePhase1Expand(h.ip_address); }}>
+                            {isExpanded ? "▲" : "▼"}
+                          </button>
+                        </td>
+                      )}
                       <td><code className="ip-code">{h.ip_address}</code></td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
+                      {!isBasicScan && (
+                        <td>
+                          {devCat !== "unknown" ? (
+                            <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
+                              {devCat}
+                            </span>
+                          ) : <span className="muted">—</span>}
+                        </td>
+                      )}
                       <td>
-                        {devCat !== "unknown" ? (
-                          <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
-                            {devCat}
-                          </span>
-                        ) : <span className="muted">—</span>}
-                      </td>
-                      <td>
-                        <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} />
-                        {h.is_active ? "Active" : "Inactive"}
+                        <span style={{ 
+                          display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, 
+                          padding: h.is_active ? "2px 8px" : "2px 6px", 
+                          background: h.is_active ? "rgba(34,197,94,0.1)" : "transparent", 
+                          color: h.is_active ? "#15803d" : "inherit", 
+                          borderRadius: 12 
+                        }}>
+                          <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} style={{ margin: 0 }} />
+                          {h.is_active ? "Active" : "Inactive"}
+                        </span>
                       </td>
                       <td>{h.discovery_method || <span className="muted">—</span>}</td>
-                      <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                      {!isBasicScan && (
+                        <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                      )}
                       <td>{h.mac_address || <span className="muted">—</span>}</td>
                       <td>{h.vendor || <span className="muted">—</span>}</td>
                     </tr>
                     
-                    {isExpanded && (
+                    {isExpanded && !isBasicScan && (
                       <tr className="expanded-details-row">
-                        <td colSpan={isAssetPipeline && !portScanDone ? 10 : 9} style={{ padding: 0 }}>
+                        <td colSpan={isAssetPipeline && !portScanDone ? 10 : isBasicScan ? 7 : 9} style={{ padding: 0 }}>
                           <div style={{ padding: "16px 24px", background: "var(--bg-app)", borderBottom: "1px solid var(--border)", display: "flex", gap: "24px", flexWrap: "wrap" }}>
                             
                             {/* Detailed OS Fingerprint */}

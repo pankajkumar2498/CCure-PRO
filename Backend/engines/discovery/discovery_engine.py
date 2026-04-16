@@ -249,7 +249,9 @@ class DiscoveryEngine:
         source_port:     Optional[int] = None,
         fragment_mtu:    Optional[int] = None,
         randomize_ports: bool = False,
+        enable_l2_sniffer: bool = False,
     ):
+        self.enable_l2_sniffer = enable_l2_sniffer
         self.has_privileges  = has_privileges
         self.stealth_mode    = stealth_mode
         self.randomize_ports = randomize_ports or stealth_mode  # stealth implies randomize
@@ -338,6 +340,7 @@ class DiscoveryEngine:
         # Skipping this for VPN/routed/WAN targets saves 3-5 s unconditionally.
         l2_devices: List[Dict] = []
         if (self.has_privileges and SCAPY_AVAILABLE
+                and self.enable_l2_sniffer
                 and scan_type == DiscoveryScanType.ADAPTIVE
                 and local_targets_exist):
             loop = asyncio.get_event_loop()
@@ -465,7 +468,7 @@ class DiscoveryEngine:
 
         can_raw = self.has_privileges and SCAPY_AVAILABLE
         if can_raw and st != DiscoveryScanType.TCP:
-            self._scapy_layered(batch, st, results)
+            await asyncio.to_thread(self._scapy_layered, batch, st, results)
 
         if st in (DiscoveryScanType.TCP, DiscoveryScanType.FULL):
             await self._async_tcp(batch, [22, 80, 443], results)
@@ -542,13 +545,13 @@ class DiscoveryEngine:
             #                                    (DHCP/DNS/SNMP/mDNS/IKE)
             if lan:
                 # Step 1: ARP — fastest possible L2 probe, bypasses all host FW.
-                self._scapy_arp(lan, results)
+                await asyncio.to_thread(self._scapy_arp, lan, results)
 
                 # Step 2a: ICMP fallback for ARP failures.
                 # Catches hosts with ARP proxy, broken ARP tables, or unusual NICs.
                 lan_arp_failed = [ip for ip in lan if not results[ip]["is_active"]]
                 if lan_arp_failed:
-                    self._scapy_icmp_probe(lan_arp_failed, results)
+                    await asyncio.to_thread(self._scapy_icmp_probe, lan_arp_failed, results)
 
                 # Step 2b: ICMP TTL-probe for ARP-confirmed hosts.
                 # ARP gives MAC but NOT TTL; we need one ICMP reply to get the TTL
@@ -560,26 +563,27 @@ class DiscoveryEngine:
                     and results[ip].get("os_guess", "Unknown") == "Unknown"
                 ]
                 if lan_needs_ttl:
-                    self._scapy_icmp_probe(lan_needs_ttl, results)
+                    await asyncio.to_thread(self._scapy_icmp_probe, lan_needs_ttl, results)
 
                 # Step 3: UDP sweep — only for hosts still unreachable after
                 # both ARP and ICMP.  Per the flowchart this is the last fallback
                 # on the "No ARP reply" branch before giving up and marking inactive.
                 lan_still_down = [ip for ip in lan if not results[ip]["is_active"]]
                 if lan_still_down:
-                    self._scapy_udp(lan_still_down, [53, 67, 123, 161, 500, 1900], results)
+                    await asyncio.to_thread(self._scapy_udp, lan_still_down, [53, 67, 123, 161, 500, 1900], results)
 
             # ── Zone 2 · Corporate / Routed private ──────────────────────
             if corporate:
                 # Step 1: ICMP ping — fast single-packet liveness + TTL for OS guess.
                 # Many internal policies allow ICMP even when TCP management
                 # ports are filtered.  Gives OS fingerprint data "for free".
-                self._scapy_icmp_probe(corporate, results)
+                await asyncio.to_thread(self._scapy_icmp_probe, corporate, results)
                 # Step 2: TCP SYN on enterprise management ports for hosts that
                 # silently drop ICMP (e.g. Windows Defender default policy).
                 corp_still_down = [ip for ip in corporate if not results[ip]["is_active"]]
                 if corp_still_down:
-                    self._scapy_syn(
+                    await asyncio.to_thread(
+                        self._scapy_syn,
                         corp_still_down,
                         [22, 135, 139, 445, 3389, 8080, 5985],
                         results,
@@ -590,7 +594,7 @@ class DiscoveryEngine:
                 # TCP SYN only — ports 80/443 first to mimic legitimate web
                 # traffic.  ICMP is skipped: ISP edge routers routinely
                 # rate-limit or drop ICMP echo to prevent ping sweeps.
-                self._scapy_syn(internet, [80, 443, 22, 8080, 8443], results)
+                await asyncio.to_thread(self._scapy_syn, internet, [80, 443, 22, 8080, 8443], results)
 
         # ── Final fallback: TCP connect for anything still inactive ───────
         # Covers all zones: ICMP-blocked hosts, NGFW-filtered SYN, etc.

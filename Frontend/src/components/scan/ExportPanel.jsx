@@ -116,19 +116,32 @@ export default function ExportPanel({
         ]);
       });
     } else if (isPhase1) {
-      rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor", "Device Category", "Domain/Workgroup", "Firewall"]];
-      results.filter(h => h.is_active).forEach(h => {
-        rows.push([
-          h.ip_address,
-          h.hostname || "",
-          h.is_active ? "Active" : "Inactive",
-          h.mac_address || "",
-          h.vendor || "",
-          h.device_category || h.snmp_device_type || "",
-          h.netbios_workgroup || "",
-          h.firewall_likely ? `Detected (${h.firewall_confidence})` : ""
-        ]);
-      });
+      if (pipelineMode === "basic") {
+        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor"]];
+        results.filter(h => h.is_active).forEach(h => {
+          rows.push([
+            h.ip_address,
+            h.hostname || "",
+            h.is_active ? "Active" : "Inactive",
+            h.mac_address || "",
+            h.vendor || ""
+          ]);
+        });
+      } else {
+        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor", "Device Category", "Domain/Workgroup", "Firewall"]];
+        results.filter(h => h.is_active).forEach(h => {
+          rows.push([
+            h.ip_address,
+            h.hostname || "",
+            h.is_active ? "Active" : "Inactive",
+            h.mac_address || "",
+            h.vendor || "",
+            h.device_category || h.snmp_device_type || "",
+            h.netbios_workgroup || "",
+            h.firewall_likely ? `Detected (${h.firewall_confidence})` : ""
+          ]);
+        });
+      }
     } else if (isPhase2) {
       rows = [["IP", "Hostname", "Open Ports", "Critical Ports", "Vendor", "Device Category", "Domain/Workgroup", "Firewall", "SNMP Vendor"]];
       results.filter(h => h.is_active).forEach(h => {
@@ -218,9 +231,12 @@ export default function ExportPanel({
         `Duration:       ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
         "",
         "── Active Hosts ──────────────────────",
-        ...results.filter(h => h.is_active).map(h =>
-          `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)} Type: ${(h.device_category || h.snmp_device_type || "—").padEnd(10)} Domain: ${h.netbios_workgroup || "—"}`
-        ),
+        ...results.filter(h => h.is_active).map(h => {
+          if (pipelineMode === "basic") {
+            return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)}`;
+          }
+          return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)} Type: ${(h.device_category || h.snmp_device_type || "—").padEnd(10)} Domain: ${h.netbios_workgroup || "—"}`;
+        }),
       ];
     } else if (isPhase2) {
       lines = [

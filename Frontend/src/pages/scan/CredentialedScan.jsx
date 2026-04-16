@@ -34,6 +34,7 @@ export default function CredentialedScan() {
   const [showPass,   setShowPass]   = useState(false);
   const [sections,   setSections]   = useState(new Set(SECTIONS.map(s => s.key)));
   const [loading,    setLoading]    = useState(false);
+  const [loadPhase,  setLoadPhase]  = useState("");  // "detecting" | "collecting"
   const [error,      setError]      = useState("");
 
   useEffect(() => {
@@ -59,7 +60,11 @@ export default function CredentialedScan() {
     if (noneSelected) return setError("Select at least one data category to collect.");
 
     setLoading(true);
+    setLoadPhase(osType === "auto" ? "detecting" : "collecting");
     try {
+      // Give the UI a tick to render the loading state before the blocking request
+      await new Promise(r => setTimeout(r, 50));
+      if (osType === "auto") setLoadPhase("collecting"); // detection happens first server-side
       const { data } = await runCredentialedScan({
         ip: ip.trim(),
         username: username.trim(),
@@ -78,7 +83,7 @@ export default function CredentialedScan() {
       setKeyPath("");
 
       navigate(`/scan/credentialed/results?scan_id=${data.scan_id}`, {
-        state: { result: data },
+        state: { result: { ...data, os_type_was_auto: osType === "auto" } },
       });
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Scan failed");
@@ -219,16 +224,18 @@ export default function CredentialedScan() {
             </div>
           </div>
 
-          {/* Error */}
+          {/* Status / Error */}
+          {loading && (
+            <p className="muted" style={{ fontSize: 13, marginBottom: 4 }}>
+              {loadPhase === "detecting"
+                ? <>⏳ Connecting and detecting OS&hellip; (may take ~5s)</>
+                : <>⏳ Collecting system data via SSH&hellip; this takes 15&ndash;60s.</>}
+            </p>
+          )}
           {error && <div className="alert alert--error">⚠ {error}</div>}
 
           {/* Submit */}
           <div className="cred-submit-row">
-            {loading && (
-              <p className="muted" style={{ fontSize: 13 }}>
-                SSHing in and collecting data… this takes 15–60 seconds.
-              </p>
-            )}
             <button
               className="btn btn--danger cred-submit-btn"
               onClick={handleSubmit}

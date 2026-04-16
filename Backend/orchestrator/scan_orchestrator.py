@@ -657,8 +657,9 @@ class ScanOrchestrator:
             return host_map
 
         # -- Phase 3+4: Vulnerability + Risk Scoring -------------------
+        import asyncio
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-        vuln_engine.run(active_hosts)   # mutates in-place
+        await asyncio.to_thread(vuln_engine.run, active_hosts)   # mutates in-place
         self._apply_os_inference(active_hosts)
 
         return host_map
@@ -880,6 +881,7 @@ class ScanOrchestrator:
     def _log(self, msg: str):
         if not self.silent:
             log.info(msg)
+            print(msg, flush=True)
 
     def generate_phase_report(self, resp: Dict, scan_type: str) -> Dict[str, str]:
         if not self._pdf:

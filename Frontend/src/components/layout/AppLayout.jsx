@@ -53,6 +53,16 @@ const IcoHelp = () => (
     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
   </svg>
 );
+const IcoChevronLeft = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+const IcoChevronRight = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
 
 /* ─── Sidebar navigation config ────────────────────────────────────────── */
 const NAV_ITEMS = [
@@ -98,6 +108,13 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const { pathname }          = useLocation();
   const { user, logout }      = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem("sidebarCollapsed") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", isCollapsed);
+  }, [isCollapsed]);
 
   // Derive active sidebar item from current route
   const activeId = (() => {
@@ -114,7 +131,17 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     <div className="app-layout">
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isCollapsed ? "sidebar--collapsed" : ""}`}>
+        
+        {/* Toggle Button */}
+        <button 
+          className="sidebar-toggle"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          {isCollapsed ? <IcoChevronRight /> : <IcoChevronLeft />}
+        </button>
+
         {/* Nav */}
         <nav className="sidebar-nav">
           <span className="sidebar-section-label">Navigation</span>
@@ -122,7 +149,10 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
             <button
               key={id}
               className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""} ${disabled ? "sidebar-item--disabled" : ""}`}
-              onClick={() => { if (!disabled && route) navigate(route); }}
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                if (!disabled && route) navigate(route);
+              }}
               title={disabled ? "Coming soon" : label}
             >
               <span className="sidebar-item-icon">
@@ -144,7 +174,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#334155", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <IcoUser />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div className="pd-info" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
               <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {user?.username || "User"}
               </span>

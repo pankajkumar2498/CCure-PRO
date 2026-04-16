@@ -338,7 +338,7 @@ class PortEngine:
         return SCAN_PORTS_FULL
 
     def _concurrency(self) -> int:
-        return 30 if self.intensity == ScanIntensity.DEEP else 100
+        return 50 if self.intensity == ScanIntensity.DEEP else 500
 
     def _timeout(self) -> float:
         return 2.0 if self.intensity == ScanIntensity.DEEP else 0.8
@@ -348,8 +348,8 @@ class PortEngine:
     # ------------------------------------------------------------------
     async def _scan_all(self, hosts: List[Dict]) -> None:
         ports = self._port_list()
-        sem   = asyncio.Semaphore(self._concurrency())
-        tout  = self._timeout()
+        concurrency = self._concurrency()
+        tout = self._timeout()
 
         # ── Build IP → host-dict lookup (handles both key names) ────────
         hosts_map: Dict[str, Dict] = {}
@@ -368,13 +368,28 @@ class PortEngine:
             if ip:
                 hosts_map[ip] = h
 
-        # ── TCP port scan (async, concurrent) ────────────────────────────
-        async def bounded_tcp(ip: str, port: int) -> None:
-            async with sem:
-                await self._probe_tcp(ip, port, hosts_map, tout)
+        # ── TCP port scan (async, concurrent worker pool) ────────────────
+        tcp_queue = asyncio.Queue()
+        for ip in hosts_map:
+            for p in ports:
+                tcp_queue.put_nowait((ip, p))
 
-        tcp_tasks = [bounded_tcp(ip, p) for ip in hosts_map for p in ports]
-        await asyncio.gather(*tcp_tasks)
+        async def tcp_worker():
+            while True:
+                try:
+                    ip, port = tcp_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                
+                try:
+                    await self._probe_tcp(ip, port, hosts_map, tout)
+                except Exception as e:
+                    pass
+                finally:
+                    tcp_queue.task_done()
+
+        workers = [asyncio.create_task(tcp_worker()) for _ in range(concurrency)]
+        await asyncio.gather(*workers)
 
         # ── UDP service scan ──────────────────────────────────────────────
         if SCAPY_AVAILABLE:
@@ -383,18 +398,28 @@ class PortEngine:
             # so blocking Scapy calls don't stall the event loop.
             await self._scan_udp_scapy(list(hosts_map.keys()), hosts_map)
         else:
-            # Fallback: async socket per port.  Cannot detect ICMP unreachable
-            # so "open|filtered" is recorded honestly on timeout.
-            async def bounded_udp(ip: str, port: int) -> None:
-                async with sem:
-                    await self._probe_udp_socket(ip, port, hosts_map, tout)
+            # Fallback: async socket per port. Uses a similar worker pool.
+            udp_queue = asyncio.Queue()
+            for ip in hosts_map:
+                for p in _UDP_SERVICES:
+                    udp_queue.put_nowait((ip, p))
 
-            udp_tasks = [
-                bounded_udp(ip, p)
-                for ip in hosts_map
-                for p in _UDP_SERVICES
-            ]
-            await asyncio.gather(*udp_tasks)
+            async def udp_worker():
+                while True:
+                    try:
+                        ip, port = udp_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    
+                    try:
+                        await self._probe_udp_socket(ip, port, hosts_map, tout)
+                    except Exception:
+                        pass
+                    finally:
+                        udp_queue.task_done()
+
+            udp_workers = [asyncio.create_task(udp_worker()) for _ in range(min(50, concurrency))]
+            await asyncio.gather(*udp_workers)
 
     # ------------------------------------------------------------------
     # TCP probe

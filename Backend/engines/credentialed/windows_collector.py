@@ -11,6 +11,7 @@ Set shell:        New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" `
                     -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 """
 
+import base64
 import json
 import logging
 import re
@@ -19,6 +20,19 @@ from typing import Any, Dict, List, Optional
 from engines.credentialed.ssh_scanner import SSHScanner
 
 log = logging.getLogger("ccure.windows_collector")
+
+# Regex to strip ANSI/VT100 escape codes from terminal output
+_ANSI_ESCAPE = re.compile(r'\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[^\[\]])')
+
+def _clean_output(raw: str) -> str:
+    """Strip BOM, ANSI escape sequences, and leading non-printable garbage."""
+    # Remove UTF-8 BOM
+    raw = raw.lstrip('\ufeff')
+    # Strip ANSI colour/cursor codes
+    raw = _ANSI_ESCAPE.sub('', raw)
+    # Strip Windows \r
+    raw = raw.replace('\r', '')
+    return raw.strip()
 
 # PowerShell commands — output as plain text or JSON
 COMMANDS: Dict[str, str] = {
@@ -54,7 +68,16 @@ COMMANDS: Dict[str, str] = {
     "firewall":      "(Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | ConvertTo-Json)",
     "shares":        "(Get-SmbShare | Select-Object Name, Path, Description | ConvertTo-Json)",
     "audit_policy":  "auditpol /get /category:* 2>&1",
-    "rdp_status":    "(Get-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -ErrorAction SilentlyContinue | ConvertTo-Json)",
+    # NOTE: Get-ItemProperty | ConvertTo-Json serialises the full RegistryKey
+    # PSObject (including .NET provider metadata). Use Get-ItemPropertyValue to
+    # get just the DWORD, then build a clean PSCustomObject.
+    "rdp_status":    (
+        "$_fDeny = Get-ItemPropertyValue "
+        "'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' "
+        "-Name fDenyTSConnections -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ fDenyTSConnections = if ($_fDeny -ne $null) { [int]$_fDeny } else { 1 } } "
+        "| ConvertTo-Json -Compress"
+    ),
 
     # Scheduled tasks (suspicious ones — not system-signed)
     "scheduled_tasks": "(Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled' -and $_.Author -notmatch 'Microsoft'} | Select-Object TaskName, TaskPath, State | ConvertTo-Json)",
@@ -68,7 +91,11 @@ class WindowsCollector:
     """
     Runs PowerShell commands over an open SSHScanner connection and parses
     the output into structured dicts ready for JSON serialisation.
+    Works regardless of whether the SSH default shell is PowerShell or cmd.
     """
+
+    # Path to PowerShell executable — used when the default shell is cmd.exe
+    _PS_EXE = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
     def __init__(self, ssh: SSHScanner):
         self._ssh = ssh
@@ -76,14 +103,36 @@ class WindowsCollector:
         if self.shell_type == "cmd":
             log.warning(
                 "Windows target default SSH shell is 'cmd'. "
-                "PowerShell is required for JSON commands to work. "
-                "Please run: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' -PropertyType String -Force"
+                "Commands will be wrapped in explicit powershell.exe calls. "
+                "To avoid this overhead, set the default shell: "
+                "New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell "
+                "-Value 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' -PropertyType String -Force"
             )
+        else:
+            log.info("Windows SSH shell detected as PowerShell.")
 
     def _detect_shell(self) -> str:
         """Returns 'powershell' or 'cmd'."""
-        result = self._ssh.run("$PSVersionTable.PSVersion.Major", timeout=5)
-        return "powershell" if result.success and result.stdout.strip().isdigit() else "cmd"
+        result = self._ssh.run("$PSVersionTable.PSVersion.Major", timeout=8)
+        cleaned = _clean_output(result.stdout)
+        return "powershell" if (result.success and cleaned.isdigit()) else "cmd"
+
+    def _wrap_ps(self, cmd: str) -> str:
+        """
+        When the default shell is cmd.exe, encode the PowerShell command as
+        UTF-16-LE base64 and pass it via -EncodedCommand.
+
+        This avoids ALL quoting/escaping ambiguities that arise when cmd.exe
+        passes the command string to powershell.exe — the only safe method
+        for complex commands with braces, dollar signs, and inner quotes.
+        """
+        if self.shell_type == "powershell":
+            return cmd
+        encoded = base64.b64encode(cmd.encode("utf-16-le")).decode("ascii")
+        return (
+            f'{self._PS_EXE} -NoProfile -NonInteractive -ExecutionPolicy Bypass'
+            f' -EncodedCommand {encoded}'
+        )
 
     def collect_all(self, sections: Optional[List[str]] = None) -> Dict[str, Any]:
         run_all = sections is None
@@ -293,19 +342,48 @@ class WindowsCollector:
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 
-    def _run(self, key: str) -> str:
+    def _run(self, key: str, timeout: int = 45) -> str:
+        """Execute a named command and return cleaned stdout."""
         cmd = COMMANDS.get(key, "")
         if not cmd:
             return ""
-        result = self._ssh.run(cmd, timeout=30)
-        return result.stdout or ""
+        final_cmd = self._wrap_ps(cmd)
+        result = self._ssh.run(final_cmd, timeout=timeout)
+        if result.stderr:
+            log.debug("stderr for '%s': %s", key, result.stderr[:200])
+        return _clean_output(result.stdout) if result.stdout else ""
 
     def _run_json(self, key: str) -> Any:
+        """
+        Run a named command and parse its output as JSON.
+
+        Uses JSONDecoder.raw_decode() which:
+          - Skips any leading noise/banner text before the first '[' or '{'
+          - Stops parsing at the end of the first complete JSON value
+          - Ignores any trailing garbage (e.g. provider metadata, blank lines)
+        """
         raw = self._run(key)
         if not raw:
             return {}
+
+        # Fast-path: direct parse
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            log.debug("Failed to parse JSON for command '%s': %s", key, raw[:100])
-            return {}
+            pass
+
+        # Slow-path: scan for the first '[' or '{' and use raw_decode so that
+        # trailing non-JSON content is ignored.
+        decoder = json.JSONDecoder()
+        for i, ch in enumerate(raw):
+            if ch in "[{":
+                try:
+                    obj, _ = decoder.raw_decode(raw, i)
+                    return obj
+                except json.JSONDecodeError:
+                    continue  # try next occurrence
+
+        log.warning(
+            "Failed to parse JSON for command '%s' | raw=%.300s", key, raw
+        )
+        return {}

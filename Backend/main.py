@@ -1,7 +1,7 @@
 """
 main.py
 ─────────────────────────────────────────────────────────────────────────────
-FastAPI entry point for Ccure Audit Pro Edition v2.
+FastAPI entry point for Ccure Audit Pro Edition v1.
 
 ENDPOINT GROUPS:
 
@@ -562,7 +562,7 @@ async def scan_host_discovery(
     mode = resolve_pipeline_mode(req.pipeline_mode)
     orch = _get_api()._orch
 
-    result = await orch.run_host_discovery_only(req.targets, req.scan_type)
+    result = await orch.run_host_discovery_only(req.targets, req.scan_type, mode)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))
 

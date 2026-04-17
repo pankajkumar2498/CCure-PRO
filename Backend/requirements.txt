@@ -1,47 +1,61 @@
-# Ccure Audit | Requirements
+# CCure Audit PRO — Python Requirements
 #
 # Usage:
 #   pip install -r requirements.txt
 #
+# System prerequisites (not pip packages):
+#   nmap binary: apt install nmap  /  brew install nmap  /  https://nmap.org/download.html
+#   Npcap (Windows only): https://npcap.com/ — required for Scapy on Windows
+#
 # Notes:
-# - This file is ASCII-only so pip can parse it reliably on Windows consoles.
-# - Scapy is included because this setup targets full Windows support with Npcap.
+#   - This file is ASCII-only so pip can parse it on Windows consoles.
+#   - Run the backend as root/Administrator for raw-socket scans (ARP/ICMP/SYN).
+#   - python-nmap requires the `nmap` binary to be in PATH.
 
-# PDF report generation
+# ── PDF report generation ─────────────────────────────────────────────────────
 reportlab==4.4.0
 
-# Web API server
+# ── Web API server ────────────────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 pydantic==2.7.1
 pydantic[email]
 
-# Authentication
-python-jose[cryptography]==3.3.0   # JWT
-passlib[bcrypt]==1.7.4             # password hashing
-bcrypt==4.0.1                      # passlib 1.7.4 compatibility
-argon2-cffi==23.1.0                # argon2 password hashing (fallback)
-cryptography>=41.0.0,<48           # Avoid TripleDES deprecation in v48+
-sqlalchemy==2.0.30                 # ORM
-python-multipart==0.0.9            # form body parsing (FastAPI dep)
+# ── Authentication ────────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0   # JWT signing/verification
+passlib[bcrypt]==1.7.4             # password hashing (bcrypt)
+bcrypt==4.0.1                      # passlib 1.7.4 compatibility pin
+argon2-cffi==23.1.0                # argon2 fallback hasher
+cryptography>=41.0.0,<48           # avoid TripleDES deprecation in v48+
+sqlalchemy==2.0.30                 # ORM (scan history, user DB)
+python-multipart==0.0.9            # form body parsing
 
-# Raw packet scans (ARP / ICMP / SYN / stealth)
+# ── Network scanning ──────────────────────────────────────────────────────────
+# Scapy: used ONLY for Phase 1 host discovery
+# (ARP, ICMP, TCP SYN, UDP probes, stealth scans)
+# NOT used for port scanning — that is Nmap's job.
 scapy>=2.5.1
 
-# Network interface enumeration (MAC address resolution, process info)
+# Nmap integration: Phase 2 port scanning + Phase 3 service detection
+# Requires: nmap binary installed on the system (see header above)
+python-nmap>=0.7.1
+
+# Network interface enumeration (local subnet detection, MAC lookup)
 psutil>=5.9.0
 
-# Dev / test only
+# ── Credentialed scanning ─────────────────────────────────────────────────────
+paramiko==4.0.0    # SSH credentialed scan (Linux targets)
+# pywinrm            # Optional: Windows WinRM credentialed scan (uncomment if needed)
+
+# ── Dev / test ────────────────────────────────────────────────────────────────
 requests==2.33.1
 urllib3==2.6.3
 charset-normalizer==3.4.7
 
-
-# Test Suite Requirements
-# Add these to your development environment for running the test suite
 pytest==7.4.4
 pytest-cov==4.1.0
 
-
-
-paramiko==4.0.0
+# ── Optional enhancements ─────────────────────────────────────────────────────
+# pyOpenSSL          # deeper TLS inspection in tls_scanner plugin
+# python-ldap3       # direct LDAP queries in ldap_probe plugin
+# impacket           # SMB deep inspection (EternalBlue probes) — install separately

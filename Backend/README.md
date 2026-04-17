@@ -187,7 +187,12 @@ python cli.py
 ### Full install (all scan modes)
 
 ```bash
+python -m venv .venv
+.venv\Scripts\activate   
 pip install -r requirements.txt
+
+python -m pip install --no-cache-dir -r requirements.txt
+
 # On Linux/macOS: run as root for ARP/ICMP/SYN modes
 sudo python cli.py
 ```

@@ -156,8 +156,9 @@ class HostResult:
         HIDE_IF_EMPTY   = {None, False, 0}
 
         # Keys that are always safe to drop when empty/falsy
+        # NOTE: "vendor" is now ALWAYS included if it has any value
         OPTIONAL_KEYS = {
-            "vendor", "mac_address", "os_guess", "os_confidence",
+            "mac_address", "os_guess", "os_confidence",
             "response_time_ms", "tls_info", "http_audit", "snmp_info",
             "smb_info", "ssh_info", "udp_services", "cves",
             "host_risk_score", "host_risk_level",
@@ -167,6 +168,12 @@ class HostResult:
 
         cleaned = {}
         for key, value in d.items():
+            # SPECIAL CASE: Always include vendor if it's not N/A or Unknown
+            if key == "vendor":
+                if value not in HIDE_IF_NA:
+                    cleaned[key] = value
+                continue
+            
             if key in OPTIONAL_KEYS:
                 # Handle unhashable types (dict, list) first
                 if isinstance(value, (list, dict)):

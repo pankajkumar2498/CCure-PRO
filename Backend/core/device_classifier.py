@@ -122,9 +122,10 @@ _VENDOR_DEVICE_MAP: Dict[str, str] = {
     "konica":          "printer",
     "sharp":           "printer",
     "oki data":        "printer",
-    # HP is ambiguous: could be printer or server
-    "hewlett":         "printer",
-    "hp ":             "printer",
+    # HP / Hewlett Packard - AMBIGUOUS (makes printers AND servers/desktops)
+    # Now skipped - let Port Profile distinguish between HP printers vs HP servers
+    # Old: "hewlett":         "printer",
+    # Old: "hp ":             "printer",
     # Servers / workstations
     "dell":            "server",
     "lenovo":          "server",
@@ -313,20 +314,37 @@ def classify_device(host: Dict) -> str:
     don't need to handle the return value separately.
 
     Decision priority (highest first):
-        1. SNMP OID result
-        2. OUI vendor
-        3. Port profile
-        4. Banner keywords
+        1. SNMP OID result (most reliable)
+        2. Port profile (more reliable than vendor alone)
+        3. Banner keywords (service detection)
+        4. OUI vendor (ambiguous for multi-product vendors like HP)
         5. TTL
         6. Fallback → "unknown"
     """
-    # Signal 1: SNMP
+    # Signal 1: SNMP (highest confidence - active device interrogation)
     category = _classify_from_snmp(host.get("snmp_info", {}))
     if category:
         _write(host, category, "snmp")
         return category
 
-    # Signal 2: OUI vendor
+    # Signal 2: Port profile (high confidence - ports reveal device type)
+    # Moved BEFORE vendor because ports are more reliable than OUI
+    # (e.g., HP makes both printers and servers, but ports distinguish them)
+    open_ports = [p["port"] for p in host.get("open_ports", [])]
+    category = _classify_from_ports(open_ports)
+    if category:
+        _write(host, category, "port_profile")
+        return category
+
+    # Signal 3: Banner keywords (medium confidence - service/OS detection)
+    category = _classify_from_banners(host)
+    if category:
+        _write(host, category, "banner")
+        return category
+
+    # Signal 4: OUI vendor (medium confidence - ambiguous for multi-product vendors)
+    # Moved AFTER ports because vendor-only classification is unreliable
+    # (HP Inc. could be printer OR desktop/server)
     vendor = host.get("vendor") or host.get("mac_vendor")
     if not vendor:
         from core.oui_lookup import lookup_vendor
@@ -336,20 +354,7 @@ def classify_device(host: Dict) -> str:
         _write(host, category, "oui")
         return category
 
-    # Signal 3: Port profile
-    open_ports = [p["port"] for p in host.get("open_ports", [])]
-    category = _classify_from_ports(open_ports)
-    if category:
-        _write(host, category, "port_profile")
-        return category
-
-    # Signal 4: Banner keywords
-    category = _classify_from_banners(host)
-    if category:
-        _write(host, category, "banner")
-        return category
-
-    # Signal 5: TTL
+    # Signal 5: TTL (low confidence - OS family hint only)
     ttl = host.get("tcp_fingerprint", {}).get("ttl") or _extract_ttl(host)
     category = _classify_from_ttl(ttl)
     if category:

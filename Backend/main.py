@@ -651,7 +651,7 @@ async def scan_asset_discovery(
     is_final = (terminal == 2)                   # True for "asset", False for "advanced"
 
     try:
-        result = await orch.run_asset_discovery_only(req.hosts, req.intensity)
+        result = await orch.run_asset_discovery_only(req.hosts, req.intensity, pipeline_mode=mode)
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Asset Discovery failed"))
 

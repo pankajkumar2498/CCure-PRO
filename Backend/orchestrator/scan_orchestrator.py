@@ -31,6 +31,7 @@ from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_loca
 from core.risk import infer_os_from_host
 from core.constants import PDF_AVAILABLE
 from core.oui_lookup import lookup_vendor
+from core.asset_correlation import AssetCorrelationEngine
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine
@@ -69,6 +70,9 @@ class ScanOrchestrator:
         self.stealth_mode = stealth_mode
         self.platform     = PrivilegeManager.get_platform()
         self.has_priv     = PrivilegeManager.is_admin()
+        
+        # ── NEW: Unified asset correlation engine for data consistency ────────
+        self.asset_engine = AssetCorrelationEngine()
 
         try:
             self.intensity = ScanIntensity(intensity.lower())
@@ -137,6 +141,14 @@ class ScanOrchestrator:
             for r in disc_results
         ]
 
+        # ── Register in unified asset correlation engine (ONLY for Advanced Scan) ───────────────────
+        if pipeline_mode == "advanced":
+            self.asset_engine.register_discovery_results(
+                formatted,
+                discovery_method=scan_type,
+                discovery_profile=profile.name,
+            )
+
         active = sum(1 for h in formatted if h["is_active"])
         summary = {
             "total_hosts":         len(formatted),
@@ -168,6 +180,7 @@ class ScanOrchestrator:
         self,
         hosts: List[Dict],
         intensity: str = "normal",
+        pipeline_mode: str = "asset",
     ) -> Dict:
         """
         Phase 2 — Port Scanning.
@@ -200,10 +213,38 @@ class ScanOrchestrator:
 
         t0 = time.time()
 
+        # ── SAVE vendor/mac data BEFORE PortEngine modifies hosts ──────────────
+        vendor_backup = {}
+        for host in active_hosts:
+            ip = self._get_host_ip(host)
+            if ip:
+                vendor_backup[ip] = {
+                    "vendor": host.get("vendor", "N/A"),
+                    "mac_address": host.get("mac_address", "N/A"),
+                }
+
         # ── PortEngine now uses NmapScanner internally ────────────────────
         port_engine = PortEngine(intensity=intensity_enum)
         await port_engine.run(active_hosts)   # mutates in-place
         self._apply_os_inference(active_hosts)
+        
+        # ── RESTORE vendor/mac data from backup ────────────────────────────────
+        # This ensures vendor is NEVER lost, regardless of PortEngine behavior
+        for host in active_hosts:
+            ip = self._get_host_ip(host)
+            if ip and ip in vendor_backup:
+                backup = vendor_backup[ip]
+                # Always restore vendor/mac if they were present in Phase 1
+                if backup["vendor"] != "N/A":
+                    host["vendor"] = backup["vendor"]
+                if backup["mac_address"] != "N/A":
+                    host["mac_address"] = backup["mac_address"]
+        
+        # ── Also try to get vendor from asset registry (ONLY for Advanced Scan) ────
+        # ONLY for Advanced Scan pipeline (phases 1+2+3)
+        if pipeline_mode == "advanced":
+            self._preserve_vendor_from_registry(active_hosts)
+            self.asset_engine.enrich_port_scan_results(active_hosts)
 
         duration = time.time() - t0
 
@@ -273,6 +314,9 @@ class ScanOrchestrator:
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
         vuln_engine.run(active_hosts)
         self._apply_os_inference(active_hosts)
+        
+        # ── Enrich asset registry with vulnerability findings ───────────────
+        self.asset_engine.enrich_vulnerability_findings(active_hosts)
 
         duration = time.time() - t0
 
@@ -350,6 +394,30 @@ class ScanOrchestrator:
                     host["os_confidence"] = "High" if best_os.accuracy >= 90 else "Medium"
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
+
+    # ── Preserve vendor from unified asset registry ─────────────────────────
+
+    def _preserve_vendor_from_registry(self, hosts: List[Dict]) -> None:
+        """
+        Retrieve vendor information from the asset registry (Phase 1 data)
+        and apply it to Phase 2 results.
+        
+        This ensures vendor data is NOT lost when PortEngine overwrites the host dict.
+        """
+        for host in hosts:
+            ip = host.get("ip_address") or host.get("ip")
+            if not ip:
+                continue
+            
+            # Get unified asset from registry
+            asset = self.asset_engine.get_asset(ip)
+            if not asset:
+                continue
+            
+            # Restore vendor info from Phase 1
+            if asset.vendor and asset.vendor.name != "Unknown":
+                host["vendor"] = asset.vendor.name
+                host["mac_address"] = asset.vendor.mac_address
 
     # ── Target expansion ──────────────────────────────────────────────────────
 

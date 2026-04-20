@@ -470,11 +470,11 @@ export default function Phase3Results() {
                 <tr>
                   <th>IP Address</th>
                   <th>Hostname</th>
-                  <th>Device</th>
-                  <th>Status</th>
-                  <th>Method</th>
                   <th>MAC</th>
                   <th>Vendor</th>
+                  <th>Method</th>
+                  <th>Device</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -490,6 +490,9 @@ export default function Phase3Results() {
                     <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                       <td><code className="ip-code">{host.ip_address}</code></td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
+                      <td>{host.mac_address || <span className="muted">—</span>}</td>
+                      <td>{host.vendor || <span className="muted">—</span>}</td>
+                      <td>{host.discovery_method || <span className="muted">—</span>}</td>
                       <td>
                         {devCat !== "unknown" ? (
                           <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
@@ -501,9 +504,6 @@ export default function Phase3Results() {
                         <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
                         {host.is_active ? "Active" : "Inactive"}
                       </td>
-                      <td>{host.discovery_method || <span className="muted">—</span>}</td>
-                      <td>{host.mac_address || <span className="muted">—</span>}</td>
-                      <td>{host.vendor || <span className="muted">—</span>}</td>
                     </tr>
                   )
                 })}
@@ -558,10 +558,12 @@ export default function Phase3Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Hostname</th>
+                    <th>MAC</th>
+                    <th>Vendor</th>
                     <th>Device</th>
                     <th>Open Ports</th>
-                    <th>Vendor</th>
                     <th>OS</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -577,6 +579,8 @@ export default function Phase3Results() {
                       <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                         <td><code className="ip-code">{host.ip_address}</code></td>
                         <td>{displayHost || <span className="muted">—</span>}</td>
+                        <td>{host.mac_address || <span className="muted">—</span>}</td>
+                        <td>{host.vendor || <span className="muted">—</span>}</td>
                         <td>
                           {devCat !== "unknown" ? (
                             <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
@@ -585,8 +589,11 @@ export default function Phase3Results() {
                           ) : <span className="muted">—</span>}
                         </td>
                         <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
-                        <td>{host.vendor || <span className="muted">—</span>}</td>
                         <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
+                        <td>
+                          <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
+                          {host.is_active ? "Active" : "Inactive"}
+                        </td>
                       </tr>
                     )
                   })}
@@ -641,10 +648,10 @@ export default function Phase3Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Device</th>
-                    <th>Risk</th>
                     <th>Open Ports</th>
-                    <th>CVEs / Active</th>
                     <th>OS</th>
+                    <th>CVEs / Active</th>
+                    <th>Risk</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -682,12 +689,8 @@ export default function Phase3Results() {
                             </span>
                           ) : <span className="muted">—</span>}
                         </td>
-                        <td>
-                          <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: 12 }}>
-                            {host.host_risk_level || "Info"}
-                          </span>
-                        </td>
                         <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
+                        <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
                         <td>
                           {/* GAP-06: CVE count + active exploit findings badge */}
                           <span style={{
@@ -711,7 +714,11 @@ export default function Phase3Results() {
                             </span>
                           )}
                         </td>
-                        <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
+                        <td>
+                          <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: 12 }}>
+                            {host.host_risk_level || "Info"}
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -951,11 +958,12 @@ export default function Phase3Results() {
                 <thead>
                   <tr style={{ background: "var(--bg-app)" }}>
                     <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>IP Address</th>
-                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Status</th>
-                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Risk</th>
-                    <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Vulnerabilities</th>
-                    <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Open Ports</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Hostname</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Open Ports</th>
                     <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>OS</th>
+                    <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Vulnerabilities</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Risk</th>
+                    <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--border)" }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -963,6 +971,23 @@ export default function Phase3Results() {
                     <tr key={host.ip_address} style={{ borderBottom: idx < localVulnResults.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <td style={{ padding: "12px" }}>
                         <code style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", fontWeight: 600 }}>{host.ip_address}</code>
+                      </td>
+                      <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                        {host.hostname || "Unknown"}
+                      </td>
+                      <td style={{ padding: "12px", fontSize: "0.8rem" }}>
+                        {(host.open_ports || []).length > 0 ? `${(host.open_ports || []).length}` : "—"}
+                      </td>
+                      <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                        {host.os_guess || "Unknown"}
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center", fontWeight: 700 }}>
+                        {host.cves?.length ?? 0}
+                      </td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: "0.85rem" }}>
+                          {host.host_risk_level || "Info"}
+                        </span>
                       </td>
                       <td style={{ padding: "12px" }}>
                         <span style={{ 
@@ -976,20 +1001,6 @@ export default function Phase3Results() {
                         }}>
                           {host.is_active ? "✓ Active" : "○ Inactive"}
                         </span>
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: "0.85rem" }}>
-                          {host.host_risk_level || "Info"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px", textAlign: "center", fontWeight: 700 }}>
-                        {host.cves?.length ?? 0}
-                      </td>
-                      <td style={{ padding: "12px", textAlign: "center", fontSize: "0.8rem" }}>
-                        {(host.open_ports || []).length > 0 ? `${(host.open_ports || []).length}` : "—"}
-                      </td>
-                      <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                        {host.os_guess || "Unknown"}
                       </td>
                     </tr>
                   ))}

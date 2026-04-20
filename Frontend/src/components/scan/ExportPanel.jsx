@@ -92,88 +92,76 @@ export default function ExportPanel({
       rows.push(["Duration (s)", summary?.scan_duration?.toFixed(1) ?? ""]);
       rows.push([]);
 
-      rows.push(["IP", "Hostname", "Risk Level", "Risk Score", "Open Ports", "CVE Count", "OS Guess", "Device Category", "Domain/Workgroup", "Firewall", "Active Exploit Findings", "SNMP Vendor"]);
+      rows.push(["IP", "Hostname", "MAC Address", "Vendor", "Open Ports", "OS", "CVE Count", "Device Category", "Risk Level", "Risk Score", "Status"]);
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
           h.ip_address,
           h.hostname || "",
+          h.mac_address || "",
+          h.vendor || "",
+          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
+          h.os_guess || "",
+          (h.cves || []).length,
+          h.device_category || h.snmp_device_type || "",
           h.host_risk_level || "Info",
           h.host_risk_score || 0,
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          (h.cves || []).length,
-          h.os_guess || "",
-          h.device_category || h.snmp_device_type || "",
-          h.netbios_workgroup || "",
-          h.firewall_likely ? `Detected (${h.firewall_confidence})` : "",
-          [
-            h.heartbleed_info?.vulnerable ? "Heartbleed" : "",
-            h.smb_ms17010_info?.ms17010_likely ? "MS17-010" : "",
-            h.ldap_info?.anonymous_bind?.allowed ? "LDAP Anon" : "",
-            h.dns_info?.zone_transfer?.vulnerable ? "DNS AXFR" : "",
-            h.default_creds_info?.http_default_creds ? "HTTP Creds" : ""
-          ].filter(Boolean).join("; "),
-          h.snmp_info?.vendor || ""
+          h.is_active ? "Active" : "Inactive"
         ]);
       });
     } else if (isPhase1) {
       if (pipelineMode === "basic") {
-        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor"]];
+        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Status"]];
         results.filter(h => h.is_active).forEach(h => {
           rows.push([
             h.ip_address,
             h.hostname || "",
-            h.is_active ? "Active" : "Inactive",
             h.mac_address || "",
-            h.vendor || ""
+            h.vendor || "",
+            h.is_active ? "Active" : "Inactive"
           ]);
         });
       } else {
-        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor", "Device Category"]];
+        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Device Category", "Status"]];
         results.filter(h => h.is_active).forEach(h => {
           rows.push([
             h.ip_address,
             h.hostname || "",
-            h.is_active ? "Active" : "Inactive",
             h.mac_address || "",
             h.vendor || "",
             h.device_category || h.snmp_device_type || "",
+            h.is_active ? "Active" : "Inactive"
           ]);
         });
       }
     } else if (isPhase2) {
-      rows = [["IP", "Hostname", "Open Ports", "Critical Ports", "Vendor", "Device Category"]];
+      rows = [["IP", "Hostname", "MAC Address", "Vendor", "Device Category", "Open Ports", "Critical Ports", "Status"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
           h.ip_address,
           h.hostname || "",
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          (h.open_ports || []).filter(p => p.risk === "Critical").length,
+          h.mac_address || "",
           h.vendor || "",
           h.device_category || h.snmp_device_type || "",
+          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
+          (h.open_ports || []).filter(p => p.risk === "Critical").length,
+          h.is_active ? "Active" : "Inactive"
         ]);
       });
     } else {
-      rows = [["IP", "Hostname", "Risk Level", "Risk Score", "Open Ports", "CVE Count", "OS Guess", "Device Category", "Domain/Workgroup", "Firewall", "Active Exploit Findings", "SNMP Vendor"]];
+      rows = [["IP", "Hostname", "MAC Address", "Vendor", "Open Ports", "OS", "CVE Count", "Device Category", "Risk Level", "Risk Score", "Status"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
           h.ip_address,
           h.hostname || "",
+          h.mac_address || "",
+          h.vendor || "",
+          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
+          h.os_guess || "",
+          (h.cves || []).length,
+          h.device_category || h.snmp_device_type || "",
           h.host_risk_level || "Info",
           h.host_risk_score || 0,
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          (h.cves || []).length,
-          h.os_guess || "",
-          h.device_category || h.snmp_device_type || "",
-          h.netbios_workgroup || "",
-          h.firewall_likely ? `Detected (${h.firewall_confidence})` : "",
-          [
-            h.heartbleed_info?.vulnerable ? "Heartbleed" : "",
-            h.smb_ms17010_info?.ms17010_likely ? "MS17-010" : "",
-            h.ldap_info?.anonymous_bind?.allowed ? "LDAP Anon" : "",
-            h.dns_info?.zone_transfer?.vulnerable ? "DNS AXFR" : "",
-            h.default_creds_info?.http_default_creds ? "HTTP Creds" : ""
-          ].filter(Boolean).join("; "),
-          h.snmp_info?.vendor || ""
+          h.is_active ? "Active" : "Inactive"
         ]);
       });
     }

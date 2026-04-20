@@ -162,11 +162,13 @@ export default function Phase4Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Hostname</th>
-                    <th>Risk Level</th>
-                    <th>Risk Score</th>
+                    <th>MAC</th>
+                    <th>Vendor</th>
                     <th>Open Ports</th>
                     <th>CVEs</th>
                     <th>OS</th>
+                    <th>Risk Level</th>
+                    <th>Risk Score</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -177,6 +179,15 @@ export default function Phase4Results() {
                       <tr key={h.ip_address}>
                         <td><code className="ip-code">{h.ip_address}</code></td>
                         <td>{h.hostname || <span className="muted">—</span>}</td>
+                        <td>{h.mac_address || <span className="muted">—</span>}</td>
+                        <td>{h.vendor || <span className="muted">—</span>}</td>
+                        <td>{h.open_ports?.length ?? 0}</td>
+                        <td>
+                          <span style={{ color: (h.cves?.length ?? 0) > 0 ? SEV_COLOR.High : "var(--text-faint)", fontFamily: "var(--mono)", fontSize: 12 }}>
+                            {h.cves?.length ?? 0}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{h.os_guess || "—"}</td>
                         <td>
                           <span style={{
                             color: SEV_COLOR[h.host_risk_level] || "#60a5fa",
@@ -190,13 +201,6 @@ export default function Phase4Results() {
                             {h.host_risk_score ?? 0}/100
                           </span>
                         </td>
-                        <td>{h.open_ports?.length ?? 0}</td>
-                        <td>
-                          <span style={{ color: (h.cves?.length ?? 0) > 0 ? SEV_COLOR.High : "var(--text-faint)", fontFamily: "var(--mono)", fontSize: 12 }}>
-                            {h.cves?.length ?? 0}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{h.os_guess || "—"}</td>
                       </tr>
                     ))}
                 </tbody>

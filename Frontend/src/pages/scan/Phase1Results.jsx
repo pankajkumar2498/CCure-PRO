@@ -302,11 +302,11 @@ export default function Phase1Results() {
                 {!isBasicScan && <th style={{ width: 36 }}></th>}
                 <th>IP Address</th>
                 <th>Hostname</th>
-                <th>Status</th>
-                <th>Method</th>
-                {!isBasicScan && <th>Response</th>}
                 <th>MAC</th>
                 <th>Vendor</th>
+                <th>Method</th>
+                {!isBasicScan && <th>Response</th>}
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -348,6 +348,12 @@ export default function Phase1Results() {
                       )}
                       <td><code className="ip-code">{h.ip_address}</code></td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
+                      <td>{h.mac_address || <span className="muted">—</span>}</td>
+                      <td>{h.vendor || <span className="muted">—</span>}</td>
+                      <td>{h.discovery_method || <span className="muted">—</span>}</td>
+                      {!isBasicScan && (
+                        <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                      )}
                       <td>
                         <span style={{ 
                           display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, 
@@ -360,12 +366,6 @@ export default function Phase1Results() {
                           {h.is_active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td>{h.discovery_method || <span className="muted">—</span>}</td>
-                      {!isBasicScan && (
-                        <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
-                      )}
-                      <td>{h.mac_address || <span className="muted">—</span>}</td>
-                      <td>{h.vendor || <span className="muted">—</span>}</td>
                     </tr>
                     
                     {isExpanded && !isBasicScan && (

@@ -147,6 +147,21 @@ class HostResult:
         }
         return d
 
+    def to_basic_dict(self) -> Dict:
+        """Returns essential fields for Basic Network Scan (FAST profile) - excludes redundant and enrichment fields."""
+        return {
+            "ip_address": self.ip_address,
+            "is_active": self.is_active,
+            "scan_method": self.scan_method,
+            "discovery_method": self.scan_method,
+            "scan_timestamp": self.scan_timestamp,
+            "hostname": self.hostname,
+            "mac_address": self.mac_address,
+            "vendor": self.vendor,
+            "response_time_ms": self.response_time_ms,
+            "confidence": self.confidence,
+        }
+
     def to_clean_dict(self) -> Dict:
         """Like to_dict() but drops fields that have no meaningful value."""
         d = asdict(self)

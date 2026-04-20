@@ -302,7 +302,6 @@ export default function Phase1Results() {
                 {!isBasicScan && <th style={{ width: 36 }}></th>}
                 <th>IP Address</th>
                 <th>Hostname</th>
-                {!isBasicScan && <th>Device</th>}
                 <th>Status</th>
                 <th>Method</th>
                 {!isBasicScan && <th>Response</th>}
@@ -320,9 +319,6 @@ export default function Phase1Results() {
                     if (h.mdns_name) displayHost = h.mdns_name;
                     else if (h.netbios_names && h.netbios_names.length) displayHost = h.netbios_names[0].name;
                 }
-                
-                // Determine device category
-                const devCat = h.snmp_device_type || h.device_category || "unknown";
 
                 return (
                   <React.Fragment key={h.ip_address}>
@@ -352,15 +348,6 @@ export default function Phase1Results() {
                       )}
                       <td><code className="ip-code">{h.ip_address}</code></td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
-                      {!isBasicScan && (
-                        <td>
-                          {devCat !== "unknown" ? (
-                            <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
-                              {devCat}
-                            </span>
-                          ) : <span className="muted">—</span>}
-                        </td>
-                      )}
                       <td>
                         <span style={{ 
                           display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, 

@@ -128,7 +128,7 @@ export default function ExportPanel({
           ]);
         });
       } else {
-        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor", "Device Category", "Domain/Workgroup", "Firewall"]];
+        rows = [["IP", "Hostname", "Status", "MAC Address", "Vendor", "Device Category"]];
         results.filter(h => h.is_active).forEach(h => {
           rows.push([
             h.ip_address,
@@ -137,13 +137,11 @@ export default function ExportPanel({
             h.mac_address || "",
             h.vendor || "",
             h.device_category || h.snmp_device_type || "",
-            h.netbios_workgroup || "",
-            h.firewall_likely ? `Detected (${h.firewall_confidence})` : ""
           ]);
         });
       }
     } else if (isPhase2) {
-      rows = [["IP", "Hostname", "Open Ports", "Critical Ports", "Vendor", "Device Category", "Domain/Workgroup", "Firewall", "SNMP Vendor"]];
+      rows = [["IP", "Hostname", "Open Ports", "Critical Ports", "Vendor", "Device Category"]];
       results.filter(h => h.is_active).forEach(h => {
         rows.push([
           h.ip_address,
@@ -152,9 +150,6 @@ export default function ExportPanel({
           (h.open_ports || []).filter(p => p.risk === "Critical").length,
           h.vendor || "",
           h.device_category || h.snmp_device_type || "",
-          h.netbios_workgroup || "",
-          h.firewall_likely ? `Detected (${h.firewall_confidence})` : "",
-          h.snmp_info?.vendor || ""
         ]);
       });
     } else {

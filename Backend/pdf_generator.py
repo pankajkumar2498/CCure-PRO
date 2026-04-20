@@ -244,8 +244,9 @@ def _host_table(hosts: List[dict], styles: dict) -> Table:
     rows = [header_row]
     for idx, host in enumerate(hosts, start=1):
         is_active = host.get("is_active", False)
+        status_text = host.get("status") or ("Active" if is_active else "Inactive")
         status_p  = Paragraph(
-            host.get("status", "Unknown"),
+            status_text,
             styles["active"] if is_active else styles["inactive"]
         )
         rows.append([
@@ -273,6 +274,49 @@ def _host_table(hosts: List[dict], styles: dict) -> Table:
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [CDAC_ACCENT, WHITE]),
     ]))
     return tbl
+
+
+def _resolve_pdf_cve_id(cve: dict) -> str:
+    return cve.get("cve_id") or cve.get("cve") or "N/A"
+
+
+def _resolve_pdf_cve_severity(cve: dict) -> str:
+    severity = cve.get("severity")
+    if severity:
+        return str(severity)
+
+    cvss = cve.get("cvss_score", cve.get("cvss"))
+    try:
+        cvss = float(cvss)
+    except Exception:
+        cvss = None
+
+    if cvss is None:
+        return "Info"
+    if cvss >= 9.0:
+        return "Critical"
+    if cvss >= 7.0:
+        return "High"
+    if cvss >= 4.0:
+        return "Medium"
+    if cvss > 0:
+        return "Low"
+    return "Info"
+
+
+def _resolve_pdf_cve_package(cve: dict) -> str:
+    pkg = cve.get("package") or cve.get("package_name") or cve.get("affected_software")
+    if not pkg:
+        affected = cve.get("affected")
+        if isinstance(affected, (list, tuple)) and affected:
+            return ", ".join(str(a) for a in affected[:3])
+        if isinstance(affected, str) and affected:
+            return affected
+    return str(pkg) if pkg else "N/A"
+
+
+def _resolve_pdf_cve_description(cve: dict) -> str:
+    return cve.get("description") or cve.get("desc") or ""
 
 
 def _section_header(title: str, styles: dict) -> Paragraph:
@@ -410,6 +454,15 @@ def _collect_hosts(result: dict) -> List[dict]:
             elif "cves" in item or "system_info" in item:
                 item["is_active"] = item.get("is_active", True)
                 hosts.append(item)
+
+    for host in hosts:
+        if host.get("is_active") is None:
+            host["is_active"] = bool(str(host.get("status", "")).strip().lower() == "active")
+
+        status_text = str(host.get("status", "")).strip()
+        if not status_text or status_text.lower() == "unknown":
+            host["status"] = "Active" if host.get("is_active") else "Inactive"
+
     return hosts
 
 
@@ -525,7 +578,11 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
     if pkgs:
         story.append(mk_header(f"Installed Packages ({len(pkgs)})"))
         pkg_rows = []
-        cve_pkgs = {c.get("package", "").lower() for c in host.get("cves", []) if c.get("package")}
+        cve_pkgs = {
+            _resolve_pdf_cve_package(c).lower()
+            for c in host.get("cves", [])
+            if _resolve_pdf_cve_package(c) != "N/A"
+        }
         for p in pkgs[:30]:
             is_vuln = p.get("name", "").lower() in cve_pkgs
             v_str = "YES" if is_vuln else "No"
@@ -540,11 +597,12 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
         story.append(mk_header(f"Vulnerabilities / CVEs ({len(cves)})"))
         cve_rows = []
         for c in cves:
-            cve_id = c.get("cve_id", "N/A")
-            sev = c.get("severity", "Info")
-            pkg = c.get("package", "N/A")
-            desc = c.get("description", "")[:80] + ("..." if len(c.get("description", "")) > 80 else "")
-            
+            cve_id = _resolve_pdf_cve_id(c)
+            sev = _resolve_pdf_cve_severity(c)
+            pkg = _resolve_pdf_cve_package(c)
+            desc = _resolve_pdf_cve_description(c)
+            desc = desc[:80] + ("..." if len(desc) > 80 else "")
+
             cve_rows.append([cve_id, sev, pkg, desc])
         story.append(mk_table(["CVE ID", "Severity", "Package", "Description"], cve_rows, [35*mm, 20*mm, 30*mm, W - 85*mm]))
         story.append(Spacer(1, 4 * mm))
@@ -653,7 +711,6 @@ def _build_json_story(result: dict, scan_type: str,
                 ("IP Address",        host.get("ip_address",    "N/A")),
                 ("Hostname",          host.get("hostname",      "Unknown")),
                 ("MAC Address",       host.get("mac_address",   "N/A")),
-                ("OS Fingerprint",    host.get("os_guess",      "Unknown")),
                 ("Detection Method",  _resolve_detection_method(host)),
             ]
             # Only include port information for non-host-discovery scans (phase > 1)
@@ -787,8 +844,9 @@ def _build_json_story(result: dict, scan_type: str,
                 if tls.get("cert_expired"):
                     detail_rows.append(("TLS Certificate", "EXPIRED — Certificate has passed its expiry date"))
 
+            status_value = host.get("status") or ("Active" if host.get("is_active") else "Inactive")
             detail_rows.extend([
-                ("Status",            host.get("status",        "Unknown")),
+                ("Status",            status_value),
                 ("Response Time",     _format_response_time_ms(host.get("response_time_ms"))),
                 ("Scan Timestamp",    host.get("scan_timestamp", "N/A")),
             ])
@@ -843,10 +901,21 @@ def _build_json_story(result: dict, scan_type: str,
 
     # -- Additional Metadata --------------------------------------------------
     if meta:
-        story.append(_section_header("Scan Metadata", styles))
-        meta_rows = [(k.replace("_", " ").title(), str(v))
-                     for k, v in meta.items()]
-        story.append(_kv_table(meta_rows, styles))
+        redundant_keys = {
+            "target",
+            "original_targets",
+            "scan_type",
+            "scan_method",
+            "discovery_scan_method",
+        }
+        meta_rows = [
+            (k.replace("_", " ").title(), str(v))
+            for k, v in meta.items()
+            if k not in redundant_keys
+        ]
+        if meta_rows:
+            story.append(_section_header("Scan Metadata", styles))
+            story.append(_kv_table(meta_rows, styles))
 
     return story
 

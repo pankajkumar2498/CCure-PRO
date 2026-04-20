@@ -136,10 +136,16 @@ class ScanOrchestrator:
         duration = time.time() - t0
 
         # Format results (hostname, MAC, vendor enrichment)
-        formatted = [
-            self._format_host(r.get("ip"), r).to_phase1_dict()
-            for r in disc_results
-        ]
+        if pipeline_mode in ("basic", "asset"):
+            formatted = [
+                self._format_host(r.get("ip"), r).to_basic_dict()
+                for r in disc_results
+            ]
+        else:
+            formatted = [
+                self._format_host(r.get("ip"), r).to_phase1_dict()
+                for r in disc_results
+            ]
 
         # ── Register in unified asset correlation engine (ONLY for Advanced Scan) ───────────────────
         if pipeline_mode == "advanced":
@@ -150,31 +156,50 @@ class ScanOrchestrator:
             )
 
         active = sum(1 for h in formatted if h["is_active"])
-        summary = {
-            "total_hosts":         len(formatted),
-            "active_hosts":        active,
-            "inactive_hosts":      len(formatted) - active,
-            "scan_duration":       duration,
-            "phase":               1,
-            "scan_type":           scan_type.upper(),
-            "discovery_scan_method": scan_type.upper(),
-            "discovery_profile":   profile.name,
-        }
-
-        return {
-            "success":  True,
-            "data":     formatted,
-            "summary":  summary,
-            "metadata": {
+        
+        if pipeline_mode == "advanced":
+            # Full summary for Advanced Scan (enrichment fields populated)
+            summary = {
+                "total_hosts":         len(formatted),
+                "active_hosts":        active,
+                "inactive_hosts":      len(formatted) - active,
+                "scan_duration":       duration,
+                "phase":               1,
+                "scan_type":           scan_type.upper(),
+                "discovery_scan_method": scan_type.upper(),
+                "discovery_profile":   profile.name,
+            }
+            metadata = {
                 "target":                 ", ".join(targets),
                 "original_targets":       targets,
                 "scan_method":            scan_type.upper(),
                 "discovery_scan_method":  scan_type.upper(),
                 "discovery_profile":      profile.name,
-            },
-        }
+            }
+        else:
+            # Simplified summary for Basic/Asset scans (enrichment fields empty)
+            summary = {
+                "total_hosts":    len(formatted),
+                "active_hosts":   active,
+                "inactive_hosts": len(formatted) - active,
+                "scan_duration":  duration,
+                "phase":          1,
+                "scan_type":      scan_type.upper(),
+                "discovery_profile": profile.name,
+            }
+            metadata = {
+                "target":           ", ".join(targets),
+                "original_targets": targets,
+                "scan_type":        scan_type.upper(),
+                "discovery_profile": profile.name,
+            }
 
-    # ── PHASE 2: Asset Discovery / Port Scanning ──────────────────────────────
+        return {
+            "success":  True,
+            "data":     formatted,
+            "summary":  summary,
+            "metadata": metadata,
+        }
 
     async def run_asset_discovery_only(
         self,
@@ -239,6 +264,7 @@ class ScanOrchestrator:
                     host["vendor"] = backup["vendor"]
                 if backup["mac_address"] != "N/A":
                     host["mac_address"] = backup["mac_address"]
+                    host["mac"] = backup["mac_address"]
         
         # ── Also try to get vendor from asset registry (ONLY for Advanced Scan) ────
         # ONLY for Advanced Scan pipeline (phases 1+2+3)
@@ -418,6 +444,7 @@ class ScanOrchestrator:
             if asset.vendor and asset.vendor.name != "Unknown":
                 host["vendor"] = asset.vendor.name
                 host["mac_address"] = asset.vendor.mac_address
+                host["mac"] = asset.vendor.mac_address
 
     # ── Target expansion ──────────────────────────────────────────────────────
 
@@ -454,7 +481,9 @@ class ScanOrchestrator:
         else:
             hostname = input_hostname or "Unknown"
 
-        mac = data.get("mac", "N/A")
+        mac = data.get("mac")
+        if not mac or mac == "N/A":
+            mac = data.get("mac_address", "N/A")
         if ip and ip in get_local_ips():
             if hostname == "Unknown":
                 hostname = socket.gethostname()
@@ -514,6 +543,10 @@ class ScanOrchestrator:
         if ip:
             norm["ip"] = ip
             norm["ip_address"] = ip
+        if "mac" not in norm and "mac_address" in norm:
+            norm["mac"] = norm["mac_address"]
+        if "mac_address" not in norm and "mac" in norm:
+            norm["mac_address"] = norm["mac"]
         if "method" not in norm:
             norm["method"] = (
                 norm.get("scan_method") or norm.get("discovery_method") or "N/A"

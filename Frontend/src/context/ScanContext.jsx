@@ -27,6 +27,7 @@ const SS_KEYS = [
   "cc_pipelineError",
   "cc_pipelinePhaseTimings",
   "cc_intensity",
+  "cc_discoveryIntensity",
 ];
 
 /* ── Session storage helpers ─────────────────────────────────────────────── */
@@ -75,6 +76,8 @@ export function ScanProvider({ children }) {
   const [phase3AuditResults,  setPhase3AuditResultsRaw]  = useState(() => ssGet("cc_phase3AuditResults", []));
   const [saveStatus,          setSaveStatusRaw]          = useState(() => ssGet("cc_saveStatus",         ""));
   const [intensity,           setIntensityRaw]           = useState(() => ssGet("cc_intensity",          "normal"));
+  // Asset Discovery Phase 1 intensity (light | normal | deep) — separate from port-scan intensity
+  const [discoveryIntensity,  setDiscoveryIntensityRaw]  = useState(() => ssGet("cc_discoveryIntensity",  "normal"));
 
   // Pipeline state machine
   const [pipelineState,       setPipelineStateRaw]       = useState(() => ssGet("cc_pipelineState",      PIPELINE_STATES.IDLE));
@@ -100,6 +103,7 @@ export function ScanProvider({ children }) {
   const setPhase3AuditResults = mk("cc_phase3AuditResults", setPhase3AuditResultsRaw);
   const setSaveStatus         = mk("cc_saveStatus",         setSaveStatusRaw);
   const setIntensity          = mk("cc_intensity",          setIntensityRaw);
+  const setDiscoveryIntensity = mk("cc_discoveryIntensity", setDiscoveryIntensityRaw);
   const setPipelineState      = mk("cc_pipelineState",      setPipelineStateRaw);
   const setPipelineError      = mk("cc_pipelineError",      setPipelineErrorRaw);
   const setPipelinePhaseTimings = mk("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw);
@@ -130,6 +134,7 @@ export function ScanProvider({ children }) {
     setPhase3AuditResultsRaw([]);
     setSaveStatusRaw("");
     setIntensityRaw("normal");
+    setDiscoveryIntensityRaw("normal");
     setPipelineStateRaw(PIPELINE_STATES.IDLE);
     setPipelineErrorRaw(null);
     setPipelinePhaseTimingsRaw({});
@@ -151,6 +156,7 @@ export function ScanProvider({ children }) {
       phase3AuditResults, setPhase3AuditResults,
       saveStatus, setSaveStatus,
       intensity, setIntensity,
+      discoveryIntensity, setDiscoveryIntensity,
       pipelineState, setPipelineState,
       pipelineError, setPipelineError,
       pipelinePhaseTimings, setPipelinePhaseTimings,

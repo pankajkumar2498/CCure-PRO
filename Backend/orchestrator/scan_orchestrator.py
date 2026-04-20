@@ -94,105 +94,244 @@ class ScanOrchestrator:
         targets: List[str],
         scan_type: str = "adaptive",
         pipeline_mode: str = "basic",
+        discovery_intensity: str = "normal",
     ) -> Dict:
         """
         Phase 1 — Host Discovery.
 
-        REFACTORED:
-          Previously called DiscoveryScanType enum to pick a scan type.
-          Now maps pipeline_mode → DiscoveryProfile for explicit technique control.
+        pipeline_mode → Profile mapping (unchanged):
+          "basic"    → FAST       (ARP + TCP connect only — no fallback chains)
+          "advanced" → AGGRESSIVE (all techniques + enrichment)
 
-          pipeline_mode → Profile mapping:
-            "basic"    → FAST       (ARP + TCP connect only — no fallback chains)
-            "asset"    → BALANCED   (ARP + ICMP + TCP SYN + UDP)
-            "advanced" → AGGRESSIVE (all techniques + enrichment)
+        Asset Discovery (pipeline_mode="asset") is now intensity-aware:
+          "light"  → FAST only
+          "normal" → FAST first, then BALANCED only for IPs still inactive/unresolved
+          "deep"   → BALANCED (original Asset Discovery behaviour)
 
-          scan_type is still accepted for backward compatibility with the
-          traditional scan endpoints (/scan/host, /scan/subnet, etc.).
+        Basic and Advanced scan behaviour is COMPLETELY UNCHANGED.
+        scan_type is still accepted for backward-compat with traditional endpoints.
         """
-        self._log(f"run_host_discovery_only → targets={targets}, mode={pipeline_mode}")
+        self._log(
+            f"run_host_discovery_only → targets={targets}, "
+            f"mode={pipeline_mode}, intensity={discovery_intensity}"
+        )
 
-        # Map pipeline_mode to a discovery profile
-        # scan_type="fast" (Light Mode) always forces FAST profile
-        if scan_type == "fast":
-            profile = FAST
-        else:
-            profile = profile_for_pipeline(pipeline_mode)
+        # ── Non-asset pipelines: preserve existing behaviour exactly ──────────
+        if pipeline_mode != "asset":
+            # scan_type="fast" (Light Mode toggle on Basic Scan) → always FAST
+            if scan_type == "fast":
+                profile = FAST
+            else:
+                profile = profile_for_pipeline(pipeline_mode)
 
-        # Expand all targets into a flat de-duplicated IP list
+            all_ips = self._expand_targets(targets)
+            if not all_ips:
+                return self._err("No valid targets to scan.")
+
+            t0 = time.time()
+            discovery = DiscoveryEngine(
+                profile=profile,
+                has_privileges=self.has_priv,
+                stealth_mode=self.stealth_mode,
+            )
+            disc_results: List[Dict] = await discovery.run(all_ips)
+            duration = time.time() - t0
+
+            if pipeline_mode == "basic":
+                formatted = [
+                    self._format_host(r.get("ip"), r).to_basic_dict()
+                    for r in disc_results
+                ]
+            else:  # advanced
+                formatted = [
+                    self._format_host(r.get("ip"), r).to_phase1_dict()
+                    for r in disc_results
+                ]
+
+            if pipeline_mode == "advanced":
+                self.asset_engine.register_discovery_results(
+                    formatted,
+                    discovery_method=scan_type,
+                    discovery_profile=profile.name,
+                )
+
+            active = sum(1 for h in formatted if h["is_active"])
+
+            if pipeline_mode == "advanced":
+                summary = {
+                    "total_hosts":           len(formatted),
+                    "active_hosts":          active,
+                    "inactive_hosts":        len(formatted) - active,
+                    "scan_duration":         duration,
+                    "phase":                 1,
+                    "scan_type":             scan_type.upper(),
+                    "discovery_scan_method": scan_type.upper(),
+                    "discovery_profile":     profile.name,
+                }
+                metadata = {
+                    "target":                ", ".join(targets),
+                    "original_targets":      targets,
+                    "scan_method":           scan_type.upper(),
+                    "discovery_scan_method": scan_type.upper(),
+                    "discovery_profile":     profile.name,
+                }
+            else:  # basic
+                summary = {
+                    "total_hosts":       len(formatted),
+                    "active_hosts":      active,
+                    "inactive_hosts":    len(formatted) - active,
+                    "scan_duration":     duration,
+                    "phase":             1,
+                    "scan_type":         scan_type.upper(),
+                    "discovery_profile": profile.name,
+                }
+                metadata = {
+                    "target":            ", ".join(targets),
+                    "original_targets":  targets,
+                    "scan_type":         scan_type.upper(),
+                    "discovery_profile": profile.name,
+                }
+
+            return {
+                "success":  True,
+                "data":     formatted,
+                "summary":  summary,
+                "metadata": metadata,
+            }
+
+        # ── Asset Discovery — intensity-aware orchestration ───────────────────
         all_ips = self._expand_targets(targets)
         if not all_ips:
             return self._err("No valid targets to scan.")
 
-        t0 = time.time()
-
-        # ── Run Phase 1 with profile-driven engine ────────────────────────
-        discovery = DiscoveryEngine(
-            profile=profile,
-            has_privileges=self.has_priv,
-            stealth_mode=self.stealth_mode,
+        return await self._run_asset_phase1(
+            all_ips=all_ips,
+            targets=targets,
+            scan_type=scan_type,
+            discovery_intensity=discovery_intensity,
         )
-        disc_results: List[Dict] = await discovery.run(all_ips)
+
+    # ── Asset Discovery — Phase 1 orchestrator ───────────────────────────────
+
+    async def _run_asset_phase1(
+        self,
+        all_ips: List[str],
+        targets: List[str],
+        scan_type: str,
+        discovery_intensity: str,
+    ) -> Dict:
+        """
+        Asset-specific Phase 1 orchestration.
+
+        Implements the three discovery intensities:
+
+          light  — Run FAST only.  Fastest, may miss firewalled hosts.
+          normal — Run FAST first; run BALANCED only on IPs still inactive.
+                   Merges results preserving original IP order.
+          deep   — Run full BALANCED (original Asset Discovery behaviour).
+        """
+        intensity = (discovery_intensity or "normal").strip().lower()
+        if intensity not in ("light", "normal", "deep"):
+            log.warning(
+                "Unknown discovery_intensity '%s' — defaulting to 'normal'.",
+                discovery_intensity,
+            )
+            intensity = "normal"
+
+        self._log(f"_run_asset_phase1 → {len(all_ips)} IPs, intensity={intensity}")
+
+        t0 = time.time()
+        fallback_targets_count = 0
+        fallback_active_hosts = 0
+
+        if intensity == "light":
+            # ── LIGHT: FAST only ─────────────────────────────────────────────
+            engine = DiscoveryEngine(
+                profile=FAST,
+                has_privileges=self.has_priv,
+                stealth_mode=self.stealth_mode,
+            )
+            raw_results: List[Dict] = await engine.run(all_ips)
+            discovery_profile_label = "FAST"
+
+        elif intensity == "normal":
+            # ── NORMAL: FAST first, BALANCED fallback for inactive ────────────
+            fast_engine = DiscoveryEngine(
+                profile=FAST,
+                has_privileges=self.has_priv,
+                stealth_mode=self.stealth_mode,
+            )
+            fast_raw: List[Dict] = await fast_engine.run(all_ips)
+
+            # Determine which IPs are still inactive after FAST pass
+            fast_by_ip: Dict[str, Dict] = {r["ip"]: r for r in fast_raw}
+            unresolved_ips = [
+                ip for ip in all_ips
+                if not fast_by_ip.get(ip, {}).get("is_active", False)
+            ]
+            fallback_targets_count = len(unresolved_ips)
+
+            if unresolved_ips:
+                balanced_engine = DiscoveryEngine(
+                    profile=BALANCED,
+                    has_privileges=self.has_priv,
+                    stealth_mode=self.stealth_mode,
+                )
+                balanced_raw: List[Dict] = await balanced_engine.run(unresolved_ips)
+                balanced_by_ip: Dict[str, Dict] = {r["ip"]: r for r in balanced_raw}
+                fallback_active_hosts = sum(
+                    1 for r in balanced_raw if r.get("is_active", False)
+                )
+            else:
+                balanced_by_ip = {}
+
+            # Merge: preserve original IP order
+            raw_results = self._merge_fast_balanced_results(
+                all_ips, fast_by_ip, balanced_by_ip
+            )
+            discovery_profile_label = "FAST+BALANCED_FALLBACK"
+
+        else:  # deep
+            # ── DEEP: full BALANCED (original behaviour) ──────────────────────
+            engine = DiscoveryEngine(
+                profile=BALANCED,
+                has_privileges=self.has_priv,
+                stealth_mode=self.stealth_mode,
+            )
+            raw_results = await engine.run(all_ips)
+            discovery_profile_label = "BALANCED"
+
         duration = time.time() - t0
 
-        # Format results (hostname, MAC, vendor enrichment)
-        if pipeline_mode in ("basic", "asset"):
-            formatted = [
-                self._format_host(r.get("ip"), r).to_basic_dict()
-                for r in disc_results
-            ]
-        else:
-            formatted = [
-                self._format_host(r.get("ip"), r).to_phase1_dict()
-                for r in disc_results
-            ]
-
-        # ── Register in unified asset correlation engine (ONLY for Advanced Scan) ───────────────────
-        if pipeline_mode == "advanced":
-            self.asset_engine.register_discovery_results(
-                formatted,
-                discovery_method=scan_type,
-                discovery_profile=profile.name,
-            )
+        # Format using the same to_basic_dict() path as the original asset flow
+        formatted = [
+            self._format_host(r.get("ip"), r).to_basic_dict()
+            for r in raw_results
+        ]
 
         active = sum(1 for h in formatted if h["is_active"])
-        
-        if pipeline_mode == "advanced":
-            # Full summary for Advanced Scan (enrichment fields populated)
-            summary = {
-                "total_hosts":         len(formatted),
-                "active_hosts":        active,
-                "inactive_hosts":      len(formatted) - active,
-                "scan_duration":       duration,
-                "phase":               1,
-                "scan_type":           scan_type.upper(),
-                "discovery_scan_method": scan_type.upper(),
-                "discovery_profile":   profile.name,
-            }
-            metadata = {
-                "target":                 ", ".join(targets),
-                "original_targets":       targets,
-                "scan_method":            scan_type.upper(),
-                "discovery_scan_method":  scan_type.upper(),
-                "discovery_profile":      profile.name,
-            }
-        else:
-            # Simplified summary for Basic/Asset scans (enrichment fields empty)
-            summary = {
-                "total_hosts":    len(formatted),
-                "active_hosts":   active,
-                "inactive_hosts": len(formatted) - active,
-                "scan_duration":  duration,
-                "phase":          1,
-                "scan_type":      scan_type.upper(),
-                "discovery_profile": profile.name,
-            }
-            metadata = {
-                "target":           ", ".join(targets),
-                "original_targets": targets,
-                "scan_type":        scan_type.upper(),
-                "discovery_profile": profile.name,
-            }
+
+        summary = {
+            "total_hosts":          len(formatted),
+            "active_hosts":         active,
+            "inactive_hosts":       len(formatted) - active,
+            "scan_duration":        duration,
+            "phase":                1,
+            "scan_type":            scan_type.upper(),
+            "discovery_profile":    discovery_profile_label,
+            "discovery_intensity":  intensity,
+        }
+        if intensity == "normal":
+            summary["fallback_targets_count"] = fallback_targets_count
+            summary["fallback_active_hosts"]  = fallback_active_hosts
+
+        metadata = {
+            "target":               ", ".join(targets),
+            "original_targets":     targets,
+            "scan_type":            scan_type.upper(),
+            "discovery_profile":    discovery_profile_label,
+            "discovery_intensity":  intensity,
+        }
 
         return {
             "success":  True,
@@ -200,6 +339,63 @@ class ScanOrchestrator:
             "summary":  summary,
             "metadata": metadata,
         }
+
+    @staticmethod
+    def _merge_fast_balanced_results(
+        ordered_ips:    List[str],
+        fast_by_ip:     Dict[str, Dict],
+        balanced_by_ip: Dict[str, Dict],
+    ) -> List[Dict]:
+        """
+        Merge FAST and BALANCED discovery results for Normal intensity.
+
+        Rules (in priority order):
+          1. If FAST found the host active → keep FAST result (no wasted bandwidth).
+          2. If FAST did not find it but BALANCED did → use BALANCED result.
+          3. If both are inactive → prefer the result with more populated fields;
+             always preserve any MAC/vendor data that's available.
+        """
+        merged: List[Dict] = []
+        for ip in ordered_ips:
+            fast_r     = fast_by_ip.get(ip, {"ip": ip, "ip_address": ip,
+                                              "is_active": False, "method": "N/A",
+                                              "confirmations": [], "mac": "N/A"})
+            balanced_r = balanced_by_ip.get(ip)
+
+            if fast_r.get("is_active"):
+                # Rule 1: FAST success → keep FAST result
+                merged.append(fast_r)
+            elif balanced_r and balanced_r.get("is_active"):
+                # Rule 2: BALANCED found it → use BALANCED, stitch in any MAC from FAST
+                result = dict(balanced_r)
+                if fast_r.get("mac") and fast_r["mac"] != "N/A":
+                    # Override only if balanced result has no useful MAC
+                    if result.get("mac", "N/A") in ("N/A", None, ""):
+                        result["mac"] = fast_r["mac"]
+                if fast_r.get("mac_address") and fast_r["mac_address"] != "N/A":
+                    if result.get("mac_address", "N/A") in ("N/A", None, ""):
+                        result["mac_address"] = fast_r["mac_address"]
+                merged.append(result)
+            else:
+                # Rule 3: both inactive → pick whichever has more populated fields
+                if balanced_r:
+                    fast_pop     = sum(1 for v in fast_r.values()     if v and v != "N/A")
+                    balanced_pop = sum(1 for v in balanced_r.values()  if v and v != "N/A")
+                    base = balanced_r if balanced_pop >= fast_pop else fast_r
+                    result = dict(base)
+                    # Preserve MAC from either side
+                    for src in (fast_r, balanced_r):
+                        if result.get("mac", "N/A") in ("N/A", None, ""):
+                            if src.get("mac") and src["mac"] != "N/A":
+                                result["mac"] = src["mac"]
+                        if result.get("mac_address", "N/A") in ("N/A", None, ""):
+                            if src.get("mac_address") and src["mac_address"] != "N/A":
+                                result["mac_address"] = src["mac_address"]
+                    merged.append(result)
+                else:
+                    merged.append(fast_r)
+
+        return merged
 
     async def run_asset_discovery_only(
         self,

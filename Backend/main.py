@@ -407,15 +407,24 @@ class HostDiscoveryRequest(BaseModel):
       "advanced" → Full pipeline; scan stays 'running' until advanced scan.
 
     `phases` is the authoritative list from the frontend (informational / audit).
+
+    `discovery_intensity` controls Asset Discovery Phase 1 strategy (asset pipeline only):
+      "light"  → FAST profile only — fastest, may miss firewalled/restricted hosts.
+      "normal" → FAST first, BALANCED fallback only for still-inactive IPs (default).
+      "deep"   → Full BALANCED — maximum coverage, slower.
+    Ignored for basic and advanced pipelines.
     """
-    targets:       List[str]      = Field(..., example=["192.168.1.0/24"])
-    scan_type:     str            = Field("adaptive", example="adaptive")
-    pipeline_mode: Optional[str]  = Field("basic",
-                                          example="basic",
-                                          description="basic | asset | advanced")
-    phases:        Optional[List[int]] = Field(None,
-                                               example=[1, 2],
-                                               description="Phase list from frontend (informational)")
+    targets:             List[str]      = Field(..., example=["192.168.1.0/24"])
+    scan_type:           str            = Field("adaptive", example="adaptive")
+    pipeline_mode:       Optional[str]  = Field("basic",
+                                                example="basic",
+                                                description="basic | asset | advanced")
+    phases:              Optional[List[int]] = Field(None,
+                                                     example=[1, 2],
+                                                     description="Phase list from frontend (informational)")
+    discovery_intensity: Optional[str]  = Field("normal",
+                                                example="normal",
+                                                description="light | normal | deep (asset pipeline only)")
 
 
 class AssetDiscoveryRequest(BaseModel):
@@ -562,7 +571,14 @@ async def scan_host_discovery(
     mode = resolve_pipeline_mode(req.pipeline_mode)
     orch = _get_api()._orch
 
-    result = await orch.run_host_discovery_only(req.targets, req.scan_type, mode)
+    # Resolve and validate discovery_intensity (asset pipeline only)
+    raw_intensity = (req.discovery_intensity or "normal").strip().lower()
+    discovery_intensity = raw_intensity if raw_intensity in ("light", "normal", "deep") else "normal"
+
+    result = await orch.run_host_discovery_only(
+        req.targets, req.scan_type, mode,
+        discovery_intensity=discovery_intensity,
+    )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))
 
@@ -607,12 +623,14 @@ async def scan_host_discovery(
     if report_paths:
         result["reports"] = report_paths
 
-    result["scan_id"]        = scan.id
-    result["pipeline_mode"]  = mode
-    result["terminal_phase"] = terminal
+    result["scan_id"]              = scan.id
+    result["pipeline_mode"]        = mode
+    result["terminal_phase"]       = terminal
+    if mode == "asset":
+        result["discovery_intensity"] = discovery_intensity
     log.info(
-        "Host Discovery complete — scan_id=%s pipeline=%s is_final=%s",
-        scan.id, mode, host_discovery_final,
+        "Host Discovery complete — scan_id=%s pipeline=%s intensity=%s is_final=%s",
+        scan.id, mode, discovery_intensity if mode == "asset" else "n/a", host_discovery_final,
     )
     return result
 

@@ -1,0 +1,557 @@
+/* ============================================================================
+   NewScan.css — Scan Setup Page Design System
+   Applies to: Basic Network Scan · Asset Discovery · Advanced Scan
+   ============================================================================ */
+
+/* ── Page wrapper ─────────────────────────────────────────────────────────── */
+.ns-page {
+  min-height: calc(100vh - 52px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px 80px;
+  background: var(--bg-app);
+}
+
+/* ── Hero section ─────────────────────────────────────────────────────────── */
+.ns-hero {
+  width: 100%;
+  max-width: 680px;
+  margin-bottom: 28px;
+  text-align: center;
+  position: relative;
+}
+
+.ns-back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 13px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ns-back:hover {
+  background: var(--bg-white);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Pipeline badge pill above title */
+.ns-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 12px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+}
+
+.ns-badge--basic {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0ea5e9;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+.ns-badge--asset {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.ns-badge--advanced {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.ns-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 8px;
+}
+
+.ns-sub {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* ── Main card ────────────────────────────────────────────────────────────── */
+.ns-card {
+  width: 100%;
+  max-width: 680px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.06);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── Section block ─────────────────────────────────────────────────────────── */
+.ns-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ns-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-mid);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ns-label-hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+/* ── Target input ─────────────────────────────────────────────────────────── */
+.ns-input-wrap {
+  position: relative;
+}
+
+.ns-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  font-size: 0.95rem;
+  pointer-events: none;
+  transition: color 0.15s;
+}
+
+.ns-input {
+  width: 100%;
+  padding: 13px 44px 13px 42px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-white);
+  font-size: 0.92rem;
+  font-family: var(--mono);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.ns-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+}
+
+.ns-input:focus + .ns-input-icon,
+.ns-input-wrap:focus-within .ns-input-icon {
+  color: var(--accent);
+}
+
+.ns-input::placeholder {
+  color: var(--text-faint);
+  font-family: var(--font);
+}
+
+.ns-input:disabled {
+  background: var(--bg-app);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Scanning pulse overlay on the right side of input */
+.ns-input-scanning {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ns-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: nsPulse 1.1s ease-in-out infinite;
+}
+
+.ns-pulse-dot:nth-child(2) { animation-delay: 0.18s; }
+.ns-pulse-dot:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes nsPulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50%       { opacity: 1;    transform: scale(1.15); }
+}
+
+/* ── Quick target chips ───────────────────────────────────────────────────── */
+.ns-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ns-chips-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.ns-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-app);
+  font-size: 0.77rem;
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s, color 0.13s, transform 0.1s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ns-chip:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.07);
+  border-color: rgba(14, 165, 233, 0.35);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.ns-chip:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ns-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Intensity grid ───────────────────────────────────────────────────────── */
+.ns-intensity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .ns-intensity-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ns-int-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 14px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-white);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font);
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    box-shadow 0.16s,
+    transform 0.12s;
+}
+
+.ns-int-card:hover:not(:disabled):not(.ns-int-card--active) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.07);
+}
+
+.ns-int-card:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ns-int-card--active {
+  border-color: var(--accent);
+  background: rgba(14, 165, 233, 0.04);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+/* Per-intensity active accent colors */
+.ns-int-card--active.ns-int--light {
+  border-color: #22d3ee;
+  background: rgba(34, 211, 238, 0.04);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+}
+
+.ns-int-card--active.ns-int--normal {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.04);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.ns-int-card--active.ns-int--deep {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.04);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.ns-int-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Active check mark in top-right corner */
+.ns-int-card--active::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--accent);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ns-int-card--active.ns-int--light::after  { color: #22d3ee; }
+.ns-int-card--active.ns-int--normal::after { color: #22c55e; }
+.ns-int-card--active.ns-int--deep::after   { color: #f59e0b; }
+
+.ns-int-card--active::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ns-int-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.ns-int-name {
+  font-size: 0.87rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.ns-int-card--active .ns-int-name {
+  color: var(--text);
+}
+
+.ns-int-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.ns-int-badge {
+  position: absolute;
+  top: 8px;
+  right: 28px;              /* leave room for check mark */
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* ── Divider ──────────────────────────────────────────────────────────────── */
+.ns-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 -32px;          /* bleed to card edges */
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────────── */
+.ns-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+  font-size: 0.84rem;
+  color: #dc2626;
+  line-height: 1.45;
+}
+
+.ns-error-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Start button ─────────────────────────────────────────────────────────── */
+.ns-start-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s,
+    transform 0.12s;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle shimmer on hover */
+.ns-start-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ns-start-btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.ns-start-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  box-shadow: 0 6px 24px rgba(14, 165, 233, 0.2);
+  transform: translateY(-1px);
+}
+
+.ns-start-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.ns-start-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ns-start-btn--scanning {
+  background: linear-gradient(135deg, #0c4a6e 0%, #0ea5e9 100%);
+}
+
+.ns-start-btn--scanning:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0c4a6e 0%, #0ea5e9 100%);
+}
+
+/* Spinner inside button */
+.ns-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: nsSpin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes nsSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Arrow icon in button */
+.ns-btn-arrow {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  transition: transform 0.15s;
+}
+
+.ns-start-btn:hover:not(:disabled) .ns-btn-arrow {
+  transform: translateX(3px);
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .ns-page {
+    padding: 28px 16px 60px;
+  }
+
+  .ns-card {
+    padding: 24px 20px;
+    gap: 22px;
+    border-radius: 12px;
+  }
+
+  .ns-title {
+    font-size: 1.55rem;
+    padding-top: 40px;      /* room for the back button */
+  }
+
+  .ns-back {
+    position: static;
+    display: inline-flex;
+    margin-bottom: 12px;
+  }
+
+  .ns-hero {
+    text-align: left;
+  }
+
+  .ns-divider {
+    margin: 0 -20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .ns-input {
+    font-size: 0.84rem;
+    padding: 12px 40px 12px 38px;
+  }
+
+  .ns-start-btn {
+    font-size: 0.88rem;
+    padding: 13px 16px;
+  }
+}

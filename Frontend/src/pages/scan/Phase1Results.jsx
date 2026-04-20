@@ -198,6 +198,32 @@ export default function Phase1Results() {
             <span className="summary-item summary-item--active"><b>{phase1Summary.active_hosts}</b> Active</span>
             <span className="summary-item"><b>{phase1Summary.inactive_hosts}</b> Inactive</span>
             <span className="summary-item"><b>{phase1Summary.scan_duration?.toFixed(1)}s</b> Duration</span>
+            {/* Asset Discovery: show discovery profile and intensity */}
+            {isAssetPipeline && phase1Summary.discovery_profile && (
+              <span className="summary-item" style={{ gap: 6 }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                  background: phase1Summary.discovery_profile === "FAST" ? "rgba(34,211,238,0.12)"
+                    : phase1Summary.discovery_profile === "BALANCED" ? "rgba(245,158,11,0.12)"
+                    : "rgba(34,197,94,0.12)",
+                  color: phase1Summary.discovery_profile === "FAST" ? "#22d3ee"
+                    : phase1Summary.discovery_profile === "BALANCED" ? "#f59e0b"
+                    : "#22c55e",
+                  border: phase1Summary.discovery_profile === "FAST" ? "1px solid rgba(34,211,238,0.3)"
+                    : phase1Summary.discovery_profile === "BALANCED" ? "1px solid rgba(245,158,11,0.3)"
+                    : "1px solid rgba(34,197,94,0.3)",
+                }}>
+                  {phase1Summary.discovery_profile}
+                </span>
+              </span>
+            )}
+            {/* Normal intensity: show fallback stats */}
+            {isAssetPipeline && phase1Summary.discovery_intensity === "normal"
+              && phase1Summary.fallback_targets_count != null && (
+              <span className="summary-item" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Fallback: <b>{phase1Summary.fallback_active_hosts}</b>/{phase1Summary.fallback_targets_count} resolved
+              </span>
+            )}
           </div>
         )}
 

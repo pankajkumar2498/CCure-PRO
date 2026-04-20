@@ -1,57 +1,95 @@
 /**
  * src/pages/scan/NewScan.jsx
  * ─────────────────────────────────────────────────────────────────────────────
- * Target input + scan method selector + Start button.
+ * Scan setup page — Target input + intensity selectors + Start button.
  *
  * API: POST /scan/host-discovery → { success, data, summary, scan_id }
  *
- * CHANGE: Now reads `pipelineMode` from ScanContext and includes
- * `phases` + `pipeline_mode` in the API payload so the backend knows
- * exactly which phases to queue for this scan session.
+ * scan_type is always "adaptive" (backend default); pipeline behaviour is
+ * fully determined by pipeline_mode (basic | asset | advanced).
  *
- * On success → saves Host Discovery data to ScanContext → navigates to /scan/host-discovery
+ * On success → saves Phase 1 data to ScanContext → navigates to results page.
  */
+import "./NewScan.css";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
-import api         from "../../api/axiosInstance";
+import api from "../../api/axiosInstance";
 
-const INTENSITIES = [
-  { value: "light",  label: "Light",  desc: "Fast, fewer ports" },
-  { value: "normal", label: "Normal", desc: "Balanced coverage" },
-  { value: "deep",   label: "Deep",   desc: "Full port range" },
+/* ── Constants ─────────────────────────────────────────────────────────────── */
+
+const DISCOVERY_INTENSITIES = [
+  {
+    value:      "light",
+    label:      "Light",
+    icon:       "⚡",
+    desc:       "Fastest — may miss firewalled hosts",
+    badge:      "Fastest",
+    badgeStyle: { background: "rgba(34,211,238,0.12)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.3)" },
+  },
+  {
+    value:      "normal",
+    label:      "Normal",
+    icon:       "⚖",
+    desc:       "Fast-first with coverage fallback",
+    badge:      "Recommended",
+    badgeStyle: { background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" },
+  },
+  {
+    value:      "deep",
+    label:      "Deep",
+    icon:       "🔬",
+    desc:       "Max coverage — best for firewalled nets",
+    badge:      "Thorough",
+    badgeStyle: { background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.3)" },
+  },
 ];
 
-const SCAN_TYPES = [
-  { value: "adaptive", label: "Adaptive",  desc: "Auto-selects best method per host" },
-  { value: "ping",     label: "Ping",      desc: "ICMP echo — fast, may be blocked"  },
-  { value: "arp",      label: "ARP",       desc: "Layer 2 — LAN only, very accurate" },
-  { value: "tcp",      label: "TCP",       desc: "Port-connect — works without root" },
-  { value: "full",     label: "Full",      desc: "All methods combined"               },
-  { value: "stealth",  label: "Stealth",   desc: "Fragmented packets — evasion mode" },
+const SCAN_INTENSITIES = [
+  { value: "light",  label: "Light",  icon: "🏃", desc: "Fast scan, fewer ports" },
+  { value: "normal", label: "Normal", icon: "⚖",  desc: "Balanced port coverage" },
+  { value: "deep",   label: "Deep",   icon: "🔭", desc: "Full port range scan"   },
 ];
 
 const QUICK_TARGETS = ["192.168.1.0/24", "10.0.0.0/24", "172.16.0.0/24", "192.168.1.1"];
+
+/* Map pipeline → badge styling */
+const PIPELINE_BADGE = {
+  basic:    { label: "Basic Scan",   cls: "ns-badge--basic"    },
+  asset:    { label: "Asset Discovery", cls: "ns-badge--asset" },
+  advanced: { label: "Advanced Scan",   cls: "ns-badge--advanced" },
+};
+
+/* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function NewScan() {
   const navigate = useNavigate();
   const {
     target, setTarget,
-    scanType, setScanType,
     pipelineMode,
     intensity, setIntensity,
+    discoveryIntensity, setDiscoveryIntensity,
     setPhase1Hosts, setPhase1Summary,
-    setScanId, setSaveStatus, resetScan,
+    setScanId, setSaveStatus,
     setPipelineState,
   } = useScan();
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
-  // Derive display info from the current pipeline
-  const pipeline = getScanPipeline(pipelineMode || "basic");
+  const pipeline  = getScanPipeline(pipelineMode || "basic");
+  const badgeMeta = PIPELINE_BADGE[pipelineMode] || PIPELINE_BADGE.basic;
+
+  /* Derived start-button label */
+  const btnLabel = (() => {
+    if (pipelineMode === "asset") {
+      const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+      return `Start Discovery · ${cap(discoveryIntensity || "normal")}`;
+    }
+    return "Start Scan";
+  })();
 
   const handleScan = async () => {
     if (!target.trim()) return;
@@ -59,25 +97,13 @@ export default function NewScan() {
     setError("");
     setSaveStatus("saving");
     setPipelineState(PIPELINE_STATES.DISCOVERY);
-
-    // NOTE: resetScan() was already called in Dashboard.handleCard before
-    // navigating here, so we only need to restore target + scanType.
     setTarget(target.trim());
-    setScanType(scanType);
 
     try {
-      /**
-       * Build the payload with phases array so the backend knows the full
-       * pipeline for this scan session.
-       *
-       * Example payloads:
-       *   basic:    { phases: [1],       pipeline_mode: "basic",    targets: [...], scan_type: "..." }
-       *   asset:    { phases: [1, 2],    pipeline_mode: "asset",    targets: [...], scan_type: "..." }
-       *   advanced: { phases: [1, 2, 3, 4], pipeline_mode: "advanced", targets: [...], scan_type: "..." }
-       */
       const payload = buildPhasePayload(pipelineMode || "basic", {
         targets:   target.split(",").map(t => t.trim()).filter(Boolean),
-        scan_type: scanType,
+        scan_type: "adaptive",
+        ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}),
       });
 
       const { data } = await api.post("/scan/host-discovery", payload);
@@ -100,117 +126,173 @@ export default function NewScan() {
 
   return (
     <AppLayout pageTitle="New Scan">
-      <div className="page-inner">
-        <div className="new-scan-page">
+      <div className="ns-page">
 
-          {/* Hero */}
-          <div className="ns-hero">
-            <button className="ns-back-btn" onClick={() => navigate("/dashboard")}>← Back</button>
-            <h1 className="ns-title">{pipeline.label}</h1>
-            <p className="ns-sub">
-              {pipeline.description}
-            </p>
+        {/* ── Hero ──────────────────────────────────────────────────────── */}
+        <div className="ns-hero">
+          <button className="ns-back" onClick={() => navigate("/dashboard")}>
+            ← Back
+          </button>
+          <div className={`ns-badge ${badgeMeta.cls}`}>
+            {badgeMeta.label}
           </div>
-
-          {/* Scan card */}
-          <div className="ns-card">
-
-            {/* Target input */}
-            <div className="field">
-              <label>Target</label>
-              <div className="target-input-wrap">
-                <input
-                  value={target}
-                  onChange={e => setTarget(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleScan()}
-                  placeholder="192.168.1.0/24   or   10.0.0.1-50   or   192.168.1.10"
-                  disabled={loading}
-                  autoFocus
-                />
-                {loading && <div className="input-loader" />}
-              </div>
-
-              {/* Quick targets */}
-              <div className="quick-targets">
-                <span className="qt-label">Quick:</span>
-                {QUICK_TARGETS.map(t => (
-                  <button key={t} className="qt-chip"
-                    onClick={() => setTarget(t)} disabled={loading}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Scan type */}
-            <div className="field">
-              <label>Scan Method</label>
-              <div className="scan-type-grid">
-                {SCAN_TYPES.map(st => (
-                  <button key={st.value}
-                    className={`st-card ${scanType === st.value ? "st-card--active" : ""}`}
-                    onClick={() => setScanType(st.value)}
-                    disabled={loading}>
-                    <span className="st-name">{st.label}</span>
-                    <span className="st-desc">{st.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Intensity selector for advanced mode */}
-            {pipelineMode === "advanced" && (
-              <div className="field">
-                <label>Scan Intensity</label>
-                <div className="scan-type-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-                  {INTENSITIES.map(i => (
-                    <button key={i.value}
-                      className={`st-card ${intensity === i.value ? "st-card--active" : ""}`}
-                      onClick={() => setIntensity(i.value)}
-                      disabled={loading}>
-                      <span className="st-name">{i.label}</span>
-                      <span className="st-desc">{i.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && <div className="alert alert--error">⚠ {error}</div>}
-
-            <button
-              className="btn btn--dark"
-              style={{ width: "100%", justifyContent: "center", padding: "12px", fontSize: "0.95rem" }}
-              onClick={handleScan}
-              disabled={loading || !target.trim()}
-            >
-              {loading
-                ? <><span className="btn-spinner" /> Discovering hosts…</>
-                : "▶ Start Discovery Scan"}
-            </button>
-          </div>
-
-          {/* Info cards — dynamically show only active phases for this pipeline */}
-          <div className="ns-info-grid">
-            {[
-              { phase: 1, icon: "①", title: "Discovery",     desc: "Finds all live hosts using ARP, ICMP, or TCP probes."           },
-              { phase: 2, icon: "②", title: "Port Scan",     desc: "Maps open TCP services and grabs banners from selected hosts."   },
-              { phase: 3, icon: "③", title: "Vulnerability", desc: "Checks TLS, SSH, HTTP headers, CVE database, and risk scoring."  },
-              { phase: 4, icon: "④", title: "Risk Report",   desc: "Aggregates findings into a scored, exportable risk report."      },
-            ]
-              .filter(c => pipeline.phases.includes(c.phase))
-              .map(c => (
-                <div key={c.title} className="ns-info-card">
-                  <span className="nic-icon">{c.icon}</span>
-                  <h3 className="nic-title">{c.title}</h3>
-                  <p className="nic-desc">{c.desc}</p>
-                </div>
-              ))
-            }
-          </div>
-
+          <h1 className="ns-title">{pipeline.label}</h1>
+          <p className="ns-sub">{pipeline.description}</p>
         </div>
-      </div>
+
+        {/* ── Card ──────────────────────────────────────────────────────── */}
+        <div className="ns-card">
+
+          {/* Target input */}
+          <div className="ns-section">
+            <div className="ns-label">
+              Target
+              <span className="ns-label-hint">IP, CIDR, or range</span>
+            </div>
+            <div className="ns-input-wrap">
+              <span className="ns-input-icon" aria-hidden="true">🎯</span>
+              <input
+                id="ns-target-input"
+                className="ns-input"
+                value={target}
+                onChange={e => setTarget(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleScan()}
+                placeholder="192.168.1.0/24   ·   10.0.0.1-50   ·   192.168.1.10"
+                disabled={loading}
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {loading && (
+                <div className="ns-input-scanning" aria-label="Scanning">
+                  <span className="ns-pulse-dot" />
+                  <span className="ns-pulse-dot" />
+                  <span className="ns-pulse-dot" />
+                </div>
+              )}
+            </div>
+
+            {/* Quick targets */}
+            <div className="ns-chips">
+              <span className="ns-chips-label">Quick:</span>
+              {QUICK_TARGETS.map(t => (
+                <button
+                  key={t}
+                  className="ns-chip"
+                  onClick={() => setTarget(t)}
+                  disabled={loading}
+                  title={`Use ${t}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Discovery Intensity — Asset Discovery only ─────────────── */}
+          {pipelineMode === "asset" && (
+            <>
+              <div className="ns-divider" />
+              <div className="ns-section">
+                <div className="ns-label">
+                  Discovery Intensity
+                  <span className="ns-label-hint">Controls Phase 1 speed vs. coverage</span>
+                </div>
+                <div className="ns-intensity-grid">
+                  {DISCOVERY_INTENSITIES.map(di => {
+                    const isActive = discoveryIntensity === di.value;
+                    return (
+                      <button
+                        key={di.value}
+                        id={`discovery-intensity-${di.value}`}
+                        className={[
+                          "ns-int-card",
+                          `ns-int--${di.value}`,
+                          isActive ? "ns-int-card--active" : "",
+                        ].join(" ")}
+                        onClick={() => setDiscoveryIntensity(di.value)}
+                        disabled={loading}
+                      >
+                        <span className="ns-int-icon">{di.icon}</span>
+                        <span className="ns-int-name">{di.label}</span>
+                        <span className="ns-int-desc">{di.desc}</span>
+                        {isActive && (
+                          <span className="ns-int-badge" style={di.badgeStyle}>
+                            {di.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Scan Intensity — Advanced Scan only ────────────────────── */}
+          {pipelineMode === "advanced" && (
+            <>
+              <div className="ns-divider" />
+              <div className="ns-section">
+                <div className="ns-label">Scan Intensity</div>
+                <div className="ns-intensity-grid">
+                  {SCAN_INTENSITIES.map(si => {
+                    const isActive = intensity === si.value;
+                    return (
+                      <button
+                        key={si.value}
+                        id={`scan-intensity-${si.value}`}
+                        className={[
+                          "ns-int-card",
+                          `ns-int--${si.value}`,
+                          isActive ? "ns-int-card--active" : "",
+                        ].join(" ")}
+                        onClick={() => setIntensity(si.value)}
+                        disabled={loading}
+                      >
+                        <span className="ns-int-icon">{si.icon}</span>
+                        <span className="ns-int-name">{si.label}</span>
+                        <span className="ns-int-desc">{si.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Error banner */}
+          {error && (
+            <div className="ns-error" role="alert">
+              <span className="ns-error-icon">⚠</span>
+              {error}
+            </div>
+          )}
+
+          <div className="ns-divider" />
+
+          {/* Start button */}
+          <button
+            id="ns-start-btn"
+            className={`ns-start-btn${loading ? " ns-start-btn--scanning" : ""}`}
+            onClick={handleScan}
+            disabled={loading || !target.trim()}
+          >
+            {loading ? (
+              <>
+                <span className="ns-spinner" />
+                Discovering hosts…
+              </>
+            ) : (
+              <>
+                {btnLabel}
+                <span className="ns-btn-arrow">→</span>
+              </>
+            )}
+          </button>
+
+        </div>{/* /ns-card */}
+      </div>{/* /ns-page */}
     </AppLayout>
   );
 }

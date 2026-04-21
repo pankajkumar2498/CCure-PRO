@@ -65,7 +65,7 @@ class PortEngine:
         # Use injected scanner (testable) or default singleton
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows" and nmap_scanner is None
-        self._nmap = nmap_scanner or NmapScanner(sudo=use_sudo)
+        self._nmap = nmap_scanner or NmapScanner(sudo=use_sudo, timeout_sec=600)
 
     # ── Public entry ──────────────────────────────────────────────────────────
 

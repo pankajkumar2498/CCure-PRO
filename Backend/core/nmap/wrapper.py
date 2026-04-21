@@ -183,8 +183,8 @@ class NmapScanner:
     _INTENSITY_ARGS = {
         # Phase 2 / Asset Discovery — speed over depth
         "basic":    "-sS -F --open -T4",
-        # Phase 2 / Asset Discovery — standard named ports
-        "normal":   "-sS -p- --open -T4",
+        # Phase 2 / Asset Discovery — standard named ports (top-1000)
+        "normal":   "-sS --top-ports 1000 --open -T4",
         # Phase 2 / Asset Discovery — all 65535 ports
         "deep":     "-sS -p- --open -T3",
         # Phase 3 / Advanced Scan — service + version detection

@@ -678,19 +678,20 @@ def _build_json_story(result: dict, scan_type: str,
     story.append(_kv_table(summary_rows, styles))
     story.append(Spacer(1, 4 * mm))
 
-    # -- Host Discovery Results -----------------------------------------------
-    if hosts:
+    # -- Host Discovery Results (Active hosts only) ---------------------------
+    # Filter to only active hosts for PDF export; inactive hosts are excluded.
+    active_hosts = [h for h in hosts if h.get("is_active", False)]
+
+    if active_hosts:
         story.append(_section_header(
-            f"Discovered Hosts  ({len(hosts)} total)", styles))
-        story.append(_host_table(hosts, styles))
+            f"Discovered Hosts  ({len(active_hosts)} active)", styles))
+        story.append(_host_table(active_hosts, styles))
         story.append(Spacer(1, 4 * mm))
 
         # -- Per-host Detail Cards --------------------------------------------
         story.append(_section_header("Individual Host Details", styles))
-        for idx, host in enumerate(hosts, start=1):
+        for idx, host in enumerate(active_hosts, start=1):
             is_active = host.get("is_active", False)
-            if not is_active:
-                continue  # Skip inactive hosts in detailed cards
             
             card_colour = colors.HexColor("#EAF7EE") if is_active \
                      else colors.HexColor("#FDF2F2")

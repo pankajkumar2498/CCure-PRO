@@ -6,22 +6,22 @@
  * and shows final Phase 2 results in-place after completion.
  */
 import { useState, useEffect } from "react";
-import { useNavigate }         from "react-router-dom";
-import AppLayout               from "../../components/layout/AppLayout";
-import ScanStepper             from "../../components/layout/ScanStepper";
-import ExportPanel             from "../../components/scan/ExportPanel";
-import { useScan }             from "../../context/ScanContext";
+import { useNavigate } from "react-router-dom";
+import AppLayout from "../../components/layout/AppLayout";
+import ScanStepper from "../../components/layout/ScanStepper";
+import ExportPanel from "../../components/scan/ExportPanel";
+import { useScan } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
-import api                     from "../../api/axiosInstance";
+import api from "../../api/axiosInstance";
 
 const INTENSITIES = ["light", "normal", "deep"];
 
 const RISK_COLOR = {
   Critical: "#ff4d4d",
-  High:     "#f97316",
-  Medium:   "#f59e0b",
-  Low:      "#22c55e",
-  Info:     "#60a5fa",
+  High: "#f97316",
+  Medium: "#f59e0b",
+  Low: "#22c55e",
+  Info: "#60a5fa",
 };
 
 export default function Phase2Results() {
@@ -41,17 +41,17 @@ export default function Phase2Results() {
     setPhase2Results,
     setPhase3Results,
   } = useScan();
-  const [filter,     setFilter]     = useState("active");
-  const [intensity,  setIntensity]  = useState("normal");
-  const [loading,    setLoading]    = useState(false);
-  const [results,    setResults]    = useState([]);
-  const [summary,    setSummary]    = useState(null);
-  const [selected,   setSelected]   = useState(() => {
+  const [filter, setFilter] = useState("active");
+  const [intensity, setIntensity] = useState("normal");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [selected, setSelected] = useState(() => {
     const initialSelection = phase2Hosts.length ? phase2Hosts : phase1Hosts.filter(h => h.is_active);
     return new Set(initialSelection.map(h => h.ip_address));
   });
-  const [expanded,   setExpanded]   = useState(new Set());
-  const [error,      setError]      = useState("");
+  const [expanded, setExpanded] = useState(new Set());
+  const [error, setError] = useState("");
   const [hasScanned, setHasScanned] = useState(false);
 
   useEffect(() => {
@@ -79,13 +79,13 @@ export default function Phase2Results() {
   if (!phase1Hosts.length) return null;
 
   const discoveredHosts = phase1Hosts;
-  const activeHosts     = discoveredHosts.filter(h => h.is_active);
-  const displayHosts    = filter === "active" ? activeHosts : discoveredHosts;
-  const selectedHosts   = discoveredHosts.filter(h => selected.has(h.ip_address) && h.is_active);
-  const selectedCount   = selectedHosts.length;
+  const activeHosts = discoveredHosts.filter(h => h.is_active);
+  const displayHosts = filter === "active" ? activeHosts : discoveredHosts;
+  const selectedHosts = discoveredHosts.filter(h => selected.has(h.ip_address) && h.is_active);
+  const selectedCount = selectedHosts.length;
 
   const canProceedToPhase3 = isPhaseEnabled(pipelineMode, 3);
-  const nextPhase          = getNextPhase(pipelineMode, 2);
+  const nextPhase = getNextPhase(pipelineMode, 2);
 
   const toggleHost = (ip) => {
     if (!activeHosts.some(h => h.ip_address === ip)) return;
@@ -111,17 +111,17 @@ export default function Phase2Results() {
     setError("");
     setResults([]);
     setSummary(null);
-    setExpanded(new Set());
     setHasScanned(false);
+    setExpanded(new Set());
     setSaveStatus("saving");
 
     try {
       const { data } = await api.post("/scan/asset-discovery", {
-        hosts:         payloadHosts,
+        hosts: payloadHosts,
         intensity,
-        scan_id:       scanId,
+        scan_id: scanId,
         pipeline_mode: pipelineMode,
-        phases:        [1, 2],
+        phases: [1, 2],
       });
 
       if (!data.success) throw new Error(data.error || "Phase 2 failed");
@@ -204,7 +204,7 @@ export default function Phase2Results() {
           <div className="filter-tabs">
             {[
               ["active", `Active (${activeHosts.length})`],
-              ["all",    `All (${discoveredHosts.length})`],
+              ["all", `All (${discoveredHosts.length})`],
             ].map(([val, lbl]) => (
               <button
                 key={val}
@@ -238,8 +238,8 @@ export default function Phase2Results() {
               {displayHosts.map(host => {
                 let displayHost = host.hostname;
                 if (!displayHost || displayHost === "Unknown") {
-                    if (host.mdns_name) displayHost = host.mdns_name;
-                    else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                  if (host.mdns_name) displayHost = host.mdns_name;
+                  else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
                 }
                 const devCat = host.snmp_device_type || host.device_category || "unknown";
 
@@ -317,8 +317,8 @@ export default function Phase2Results() {
         )}
 
         {activeResults.map(host => {
-          const portCount  = host.open_ports?.length || 0;
-          const critPorts  = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
+          const portCount = host.open_ports?.length || 0;
+          const critPorts = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
           const isExpanded = expanded.has(host.ip_address);
           const isSelected = selected.has(host.ip_address);
 
@@ -347,8 +347,8 @@ export default function Phase2Results() {
                 <div className="host-card-meta">
                   {portCount > 0
                     ? <span style={{ fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
-                        {portCount} port{portCount !== 1 ? "s" : ""}
-                      </span>
+                      {portCount} port{portCount !== 1 ? "s" : ""}
+                    </span>
                     : <span className="muted small">No open ports</span>}
 
                   {critPorts > 0 && (
@@ -357,7 +357,6 @@ export default function Phase2Results() {
                     </span>
                   )}
 
-                  {/* GAP-04: closed/filtered port counts from port engine */}
                   {(host.closed_ports_count > 0 || host.filtered_ports_count > 0) && (
                     <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 3, padding: "2px 7px" }}>
                       {host.closed_ports_count > 0 && <span style={{ color: "#ef4444" }}>{host.closed_ports_count} closed</span>}
@@ -432,7 +431,6 @@ export default function Phase2Results() {
                             <span className="muted">mDNS:</span>
                             <span>{host.mdns_name || "—"}</span>
                           </div>
-                          {/* GAP-09: mDNS service chips */}
                           {host.mdns_services && host.mdns_services.length > 0 && (
                             <div style={{ marginBottom: 6 }}>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
@@ -442,7 +440,7 @@ export default function Phase2Results() {
                                     background: "rgba(34,211,238,0.1)",
                                     border: "1px solid rgba(34,211,238,0.3)",
                                     color: "#22d3ee", borderRadius: 3,
-                                  }}>{svc.replace("._tcp.local","").replace("._udp.local","")}</span>
+                                  }}>{svc.replace("._tcp.local", "").replace("._udp.local", "")}</span>
                                 ))}
                               </div>
                             </div>
@@ -450,12 +448,11 @@ export default function Phase2Results() {
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                             <span className="muted">NetBIOS:</span>
                             <span style={{ textAlign: "right" }}>
-                              {host.netbios_names && host.netbios_names.length 
-                                ? host.netbios_names.map(n => n.name).join(", ") 
+                              {host.netbios_names && host.netbios_names.length
+                                ? host.netbios_names.map(n => n.name).join(", ")
                                 : "—"}
                             </span>
                           </div>
-                          {/* GAP-09: NetBIOS workgroup/domain */}
                           {host.netbios_workgroup && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">Domain:</span>
@@ -466,7 +463,6 @@ export default function Phase2Results() {
                             <span className="muted">Device Type:</span>
                             <span>{host.snmp_device_type || host.device_category || "—"}</span>
                           </div>
-                          {/* GAP-08: SNMP system info (sysName, sysLocation, vendor) */}
                           {host.snmp_info?.sys_name && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">SNMP Name:</span>
@@ -485,7 +481,6 @@ export default function Phase2Results() {
                               <span style={{ fontWeight: 600 }}>{host.snmp_info.vendor}</span>
                             </div>
                           )}
-                          {/* GAP-10: Firewall detection */}
                           {host.firewall_likely && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
                               <span className="muted">Firewall:</span>
@@ -502,7 +497,7 @@ export default function Phase2Results() {
                     )}
                   </div>
 
-                  {/* GAP-08: SNMP Interface Table — shows multi-interface routers/switches */}
+                  {/* SNMP Interface Table */}
                   {host.snmp_info?.interfaces && host.snmp_info.interfaces.length > 0 && (
                     <div style={{ marginBottom: 20 }}>
                       <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
@@ -532,22 +527,13 @@ export default function Phase2Results() {
                                 <td>{iface.description || "—"}</td>
                                 <td><span style={{ fontSize: 11, color: "var(--text-muted)" }}>{iface.type}</span></td>
                                 <td><code style={{ fontSize: 11 }}>{iface.mac || "—"}</code></td>
-                                <td>
-                                  <span style={{ color: iface.admin_up ? "#22c55e" : "#ef4444", fontSize: 11 }}>
-                                    {iface.admin_up ? "Up" : "Down"}
-                                  </span>
-                                </td>
-                                <td>
-                                  <span style={{ color: iface.oper_up ? "#22c55e" : "#94a3b8", fontSize: 11 }}>
-                                    {iface.oper_up ? "Up" : "Down"}
-                                  </span>
-                                </td>
+                                <td><span style={{ color: iface.admin_up ? "#22c55e" : "#ef4444", fontSize: 11 }}>{iface.admin_up ? "Up" : "Down"}</span></td>
+                                <td><span style={{ color: iface.oper_up ? "#22c55e" : "#94a3b8", fontSize: 11 }}>{iface.oper_up ? "Up" : "Down"}</span></td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                      {/* IP address table */}
                       {host.snmp_info.ip_addresses?.length > 0 && (
                         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {host.snmp_info.ip_addresses.map(a => (
@@ -598,8 +584,8 @@ export default function Phase2Results() {
                             <td>
                               {port.cves?.length > 0
                                 ? <span style={{ color: "#f97316", fontFamily: "var(--mono)", fontSize: 11 }}>
-                                    {port.cves.length} CVE{port.cves.length > 1 ? "s" : ""}
-                                  </span>
+                                  {port.cves.length} CVE{port.cves.length > 1 ? "s" : ""}
+                                </span>
                                 : <span className="muted">—</span>}
                             </td>
                           </tr>

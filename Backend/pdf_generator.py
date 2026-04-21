@@ -592,20 +592,8 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
              story.append(Paragraph(f"... and {len(pkgs)-30} more packages", styles["small"]))
         story.append(Spacer(1, 4 * mm))
 
-    cves = host.get("cves", [])
-    if cves:
-        story.append(mk_header(f"Vulnerabilities / CVEs ({len(cves)})"))
-        cve_rows = []
-        for c in cves:
-            cve_id = _resolve_pdf_cve_id(c)
-            sev = _resolve_pdf_cve_severity(c)
-            pkg = _resolve_pdf_cve_package(c)
-            desc = _resolve_pdf_cve_description(c)
-            desc = desc[:80] + ("..." if len(desc) > 80 else "")
-
-            cve_rows.append([cve_id, sev, pkg, desc])
-        story.append(mk_table(["CVE ID", "Severity", "Package", "Description"], cve_rows, [35*mm, 20*mm, 30*mm, W - 85*mm]))
-        story.append(Spacer(1, 4 * mm))
+    # CVE table is rendered once at the end of the report (after all host cards).
+    # Do not render it here per-host.
 
     sec_issues = host.get("security_issues", [])
     suid = host.get("suid_binaries", [])
@@ -690,6 +678,7 @@ def _build_json_story(result: dict, scan_type: str,
 
         # -- Per-host Detail Cards --------------------------------------------
         story.append(_section_header("Individual Host Details", styles))
+        all_cve_rows: List[tuple] = []  # (ip, cve_id, severity, package, description)
         for idx, host in enumerate(active_hosts, start=1):
             is_active = host.get("is_active", False)
             
@@ -874,10 +863,21 @@ def _build_json_story(result: dict, scan_type: str,
 
             story.append(KeepTogether([card_title, outer, Spacer(1, 3 * mm)]))
 
-            # --- Append Credentials/Advanced insights ---
+            # --- Append Credentials/Advanced insights (CVEs excluded here) ---
             advanced_flowables = _build_advanced_insights(host, styles)
             if advanced_flowables:
                 story.extend(advanced_flowables)
+
+            # Accumulate CVEs for the consolidated end-of-report section
+            for cve in host.get("cves", []):
+                all_cve_rows.append((
+                    host.get("ip_address", "N/A"),
+                    _resolve_pdf_cve_id(cve),
+                    _resolve_pdf_cve_severity(cve),
+                    _resolve_pdf_cve_package(cve),
+                    (_resolve_pdf_cve_description(cve)[:80] +
+                     ("..." if len(_resolve_pdf_cve_description(cve)) > 80 else "")),
+                ))
 
 
     # -- Subnets breakdown (scan_subnets only) --------------------------------
@@ -917,6 +917,59 @@ def _build_json_story(result: dict, scan_type: str,
         if meta_rows:
             story.append(_section_header("Scan Metadata", styles))
             story.append(_kv_table(meta_rows, styles))
+
+    # -- Consolidated CVE Section (once, at end of report) --------------------
+    # all_cve_rows is populated only when active_hosts exist (guarded above).
+    if active_hosts and all_cve_rows:
+        story.append(PageBreak())
+        story.append(_section_header(
+            f"Vulnerabilities / CVEs  ({len(all_cve_rows)} total)", styles))
+
+        cve_header_style = ParagraphStyle(
+            "CVETh", fontName="Helvetica-Bold", fontSize=8,
+            textColor=WHITE, alignment=TA_CENTER)
+        cve_headers = ["Host IP", "CVE ID", "Severity", "Package", "Description"]
+        cve_col_w   = [28*mm, 32*mm, 18*mm, 28*mm, W - 106*mm]
+
+        cve_table_data = [[Paragraph(h, cve_header_style) for h in cve_headers]]
+        for ip, cve_id, sev, pkg, desc in all_cve_rows:
+            # Colour-code severity
+            sev_upper = str(sev).upper()
+            if sev_upper == "CRITICAL":
+                sev_color = colors.HexColor("#7B241C")
+            elif sev_upper == "HIGH":
+                sev_color = colors.HexColor("#C0392B")
+            elif sev_upper == "MEDIUM":
+                sev_color = colors.HexColor("#D35400")
+            elif sev_upper == "LOW":
+                sev_color = colors.HexColor("#1A7A3F")
+            else:
+                sev_color = colors.HexColor("#555555")
+            sev_p = Paragraph(sev, ParagraphStyle(
+                "SevCell", fontName="Helvetica-Bold", fontSize=8, textColor=sev_color))
+            cve_table_data.append([
+                Paragraph(str(ip),    styles["value"]),
+                Paragraph(str(cve_id), styles["value"]),
+                sev_p,
+                Paragraph(str(pkg),   styles["value"]),
+                Paragraph(str(desc),  styles["value"]),
+            ])
+
+        cve_tbl = Table(cve_table_data, colWidths=cve_col_w, repeatRows=1)
+        cve_tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0),  TABLE_HEADER_BG),
+            ("ALIGN",         (0, 0), (-1, 0),  "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("GRID",          (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+            *[("BACKGROUND",  (0, i), (-1, i),  CDAC_ACCENT if i % 2 == 0 else WHITE)
+              for i in range(1, len(cve_table_data))],
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(cve_tbl)
+        story.append(Spacer(1, 4 * mm))
 
     return story
 

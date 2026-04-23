@@ -1,8 +1,8 @@
 /**
- * src/App.jsx  [FIXED]
+ * src/App.jsx
  *
- * CHANGE: Added /scan/phase4 route for Phase4Results (Risk Report).
- * This completes the Advanced Scan pipeline: Host Discovery → Asset Discovery → Advanced Scan → Risk Report.
+ * Advanced Scan pipeline: Host Discovery → Asset Discovery → Vulnerability & Risk Audit (3 phases).
+ * Phase 4 (Risk Report) is embedded inside Phase 3 on the backend — no separate frontend phase needed.
  */
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ScanProvider }            from "./context/ScanContext";
@@ -19,7 +19,6 @@ import NewScan           from "./pages/scan/NewScan";
 import Phase1Results     from "./pages/scan/Phase1Results";
 import Phase2Results     from "./pages/scan/Phase2Results";
 import Phase3Results     from "./pages/scan/Phase3Results";
-import Phase4Results     from "./pages/scan/Phase4Results";   // ← NEW
 import CredentialedScan  from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
 
@@ -38,7 +37,6 @@ export default function App() {
         <Route path="/scan/host-discovery"   element={<PrivateRoute><Phase1Results /></PrivateRoute>} />
         <Route path="/scan/asset-discovery"   element={<PrivateRoute><Phase2Results /></PrivateRoute>} />
         <Route path="/scan/advanced-scan"   element={<PrivateRoute><Phase3Results /></PrivateRoute>} />
-        <Route path="/scan/phase4"   element={<PrivateRoute><Phase4Results /></PrivateRoute>} />  {/* ← NEW */}
         <Route path="/scan/credentialed"         element={<PrivateRoute><CredentialedScan /></PrivateRoute>} />
         <Route path="/scan/credentialed/results" element={<PrivateRoute><CredentialedResults /></PrivateRoute>} />
         <Route path="/history"       element={<PrivateRoute><ScanHistory /></PrivateRoute>} />

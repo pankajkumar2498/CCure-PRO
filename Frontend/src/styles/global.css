@@ -2343,6 +2343,135 @@ body {
 /* ────────────────────────────────────────────────────────────────────────────
    CONFIRM DIALOG (custom modal replacing browser confirm/alert)
    ────────────────────────────────────────────────────────────────────────── */
+.history-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-white);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.history-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
+}
+
+.history-live--connected .history-live-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+  animation: historyLivePulse 1.7s ease-in-out infinite;
+}
+
+.history-live--reconnecting .history-live-dot,
+.history-live--connecting .history-live-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+}
+
+.history-live--polling .history-live-dot {
+  background: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14);
+}
+
+@keyframes historyLivePulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.24);
+  }
+}
+
+.history-status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 128px;
+}
+
+.history-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: min(144px, 100%);
+}
+
+.history-progress-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 76px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.history-progress-fill {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  background: #0ea5e9;
+  transition: width 0.45s ease, background 0.2s ease;
+}
+
+.history-progress-fill--complete {
+  background: #22c55e;
+}
+
+.history-progress-fill--failed {
+  background: #ef4444;
+}
+
+.history-progress-fill--cancelled {
+  background: #64748b;
+}
+
+.history-progress-fill--running::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(255, 255, 255, 0.45) 45%,
+    transparent 90%
+  );
+  animation: historyProgressSweep 1.35s linear infinite;
+}
+
+@keyframes historyProgressSweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.history-progress-text {
+  min-width: 32px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 .confirm-overlay {
   position: fixed;
   inset: 0;

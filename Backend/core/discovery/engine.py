@@ -162,10 +162,12 @@ class DiscoveryEngine:
         profile:        DiscoveryProfile = BALANCED,
         has_privileges: bool = False,
         stealth_mode:   bool = False,
+        rate_limit:     Optional[int] = None,
     ):
         self.profile       = profile
         self.has_priv      = has_privileges
         self.stealth_mode  = stealth_mode
+        self.rate_limit    = rate_limit
         self._local_nets   = []   # populated in run()
 
         can_raw = has_privileges and SCAPY_AVAILABLE
@@ -331,7 +333,7 @@ class DiscoveryEngine:
                 await tcp_conn.probe(
                     inactive, ports, results,
                     timeout=timeout,
-                    concurrency=self.profile.concurrency,
+                    concurrency=self.rate_limit or self.profile.concurrency,
                     retries=self.profile.retries,
                 )
 

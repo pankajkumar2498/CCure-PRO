@@ -262,7 +262,7 @@ class NmapScanner:
             return self._unavailable_result(target)
 
         port_arg = self._port_arg(ports, "normal")
-        args = f"-sS -sV --version-intensity 7 {port_arg} -T4"
+        args = f"-sS -sV --version-light {port_arg} -T4"
         return self._run(target, args)
 
     def full_scan(

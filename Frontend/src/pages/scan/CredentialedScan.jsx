@@ -132,10 +132,22 @@ export default function CredentialedScan() {
                   onChange={e => setOsType(e.target.value)} disabled={loading}>
                   <option value="auto">Auto-detect</option>
                   <option value="linux">Linux</option>
-                  <option value="windows">Windows</option>
+                  <option value="windows">Windows ⚠ Beta</option>
                 </select>
               </div>
             </div>
+
+            {/* Windows Beta Warning */}
+            {osType === "windows" && (
+              <div className="alert alert--warn" style={{ marginTop: 10, fontSize: 13, lineHeight: 1.55 }}>
+                <strong>⚠ Windows Support — Beta</strong><br />
+                Windows credentialed scanning requires <strong>OpenSSH Server</strong> to be enabled on the target
+                and PowerShell set as the default shell. WMI/registry-based commands work over SSH,
+                but some queries (e.g. large package lists, event log) may time out on heavily patched systems.
+                <br /><strong>Test on your environment before deploying to production.</strong>
+              </div>
+            )}
+
           </div>
 
           {/* Authentication */}

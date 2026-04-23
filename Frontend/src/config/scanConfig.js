@@ -36,7 +36,7 @@ export const PHASES = {
   3: {
     id:       3,
     key:      "phase3",
-    label:    "Vulnerability Audit",
+    label:    "Vulnerability & Risk Audit",
     endpoint: "/scan/advanced-scan",
     route:    "/scan/advanced-scan",
   },
@@ -90,7 +90,7 @@ export const SCAN_PIPELINES = {
     id:          "advanced",
     label:       "Advanced Scan",
     description: "Full Network Scan with Detailed Information.",
-    phases:      [1, 2, 3, 4],
+    phases:      [1, 2, 3],
     entryRoute:  "/scan",
     badge:       "Full Pipeline",
   },

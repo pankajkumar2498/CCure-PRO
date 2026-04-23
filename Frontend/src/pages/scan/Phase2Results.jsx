@@ -383,7 +383,7 @@ export default function Phase2Results() {
                 <div className="host-card-body">
                   <div style={{ padding: "0 0 16px 0", display: "flex", gap: "24px", flexWrap: "wrap" }}>
                     {/* Detailed OS Fingerprint */}
-                    {(host.os_fingerprint_full?.os || host.os_guess !== "Unknown") && (
+                    {(host.os_fingerprint_full?.os || (host.os_guess && host.os_guess !== "Unknown")) && (
                       <div style={{ flex: "1 1 250px" }}>
                         <h4 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>Target OS Fingerprint</h4>
                         <div style={{ background: "var(--bg-highlight)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>

@@ -95,6 +95,7 @@ class ScanOrchestrator:
         scan_type: str = "adaptive",
         pipeline_mode: str = "basic",
         discovery_intensity: str = "normal",
+        rate_limit: Optional[int] = None,
     ) -> Dict:
         """
         Phase 1 — Host Discovery.
@@ -133,6 +134,7 @@ class ScanOrchestrator:
                 profile=profile,
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
+                rate_limit=rate_limit,
             )
             disc_results: List[Dict] = await discovery.run(all_ips)
             duration = time.time() - t0
@@ -209,6 +211,7 @@ class ScanOrchestrator:
             targets=targets,
             scan_type=scan_type,
             discovery_intensity=discovery_intensity,
+            rate_limit=rate_limit,
         )
 
     # ── Asset Discovery — Phase 1 orchestrator ───────────────────────────────
@@ -219,6 +222,7 @@ class ScanOrchestrator:
         targets: List[str],
         scan_type: str,
         discovery_intensity: str,
+        rate_limit: Optional[int] = None,
     ) -> Dict:
         """
         Asset-specific Phase 1 orchestration.
@@ -250,6 +254,7 @@ class ScanOrchestrator:
                 profile=FAST,
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
+                rate_limit=rate_limit,
             )
             raw_results: List[Dict] = await engine.run(all_ips)
             discovery_profile_label = "FAST"
@@ -260,6 +265,7 @@ class ScanOrchestrator:
                 profile=FAST,
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
+                rate_limit=rate_limit,
             )
             fast_raw: List[Dict] = await fast_engine.run(all_ips)
 
@@ -276,6 +282,7 @@ class ScanOrchestrator:
                     profile=BALANCED,
                     has_privileges=self.has_priv,
                     stealth_mode=self.stealth_mode,
+                    rate_limit=rate_limit,
                 )
                 balanced_raw: List[Dict] = await balanced_engine.run(unresolved_ips)
                 balanced_by_ip: Dict[str, Dict] = {r["ip"]: r for r in balanced_raw}
@@ -297,6 +304,7 @@ class ScanOrchestrator:
                 profile=BALANCED,
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
+                rate_limit=rate_limit,
             )
             raw_results = await engine.run(all_ips)
             discovery_profile_label = "BALANCED"
@@ -589,16 +597,15 @@ class ScanOrchestrator:
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows"
         scanner = NmapScanner(sudo=use_sudo)
-        for host in hosts:
+        def _enrich_one_host(host: Dict) -> None:
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
-                continue
+                return
             open_port_nums = [p["port"] for p in host.get("open_ports", [])]
             if not open_port_nums:
-                continue
+                return
             try:
                 result = scanner.full_scan(ip, ports=open_port_nums)
-                # Upgrade service versions with Nmap's more accurate data
                 for nmap_port in result.open_ports:
                     for existing in host.get("open_ports", []):
                         if existing["port"] == nmap_port.port:
@@ -606,16 +613,25 @@ class ScanOrchestrator:
                                 existing["version"] = nmap_port.full_version[:200]
                             if nmap_port.product and not existing.get("service"):
                                 existing["service"] = nmap_port.product
-                            # Copy NSE script output into banner if empty
                             if nmap_port.scripts and not existing.get("banner"):
                                 existing["banner"] = nmap_port.scripts.get("banner", "")
-                # Upgrade OS if Nmap got a better match
                 best_os = result.best_os
                 if best_os and best_os.accuracy >= 75:
                     host["os_guess"]      = best_os.name
                     host["os_confidence"] = "High" if best_os.accuracy >= 90 else "Medium"
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
+
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # We cap workers to avoid memory or network exhaustion
+        with ThreadPoolExecutor(max_workers=min(len(hosts), 20)) as pool:
+            futures = [pool.submit(_enrich_one_host, h) for h in hosts]
+            for f in futures:
+                try:
+                    f.result()
+                except Exception as exc:
+                    log.debug("_nmap_pre_enrich error: %s", exc)
 
     # ── Preserve vendor from unified asset registry ─────────────────────────
 
@@ -686,8 +702,8 @@ class ScanOrchestrator:
             if mac == "N/A":
                 mac = get_local_mac()
 
-        vendor = "N/A"
-        if mac and mac != "N/A":
+        vendor = data.get("vendor", "N/A")
+        if vendor in ("", "Unknown", "N/A", None) and mac and mac != "N/A":
             vendor = lookup_vendor(mac) or "N/A"
 
         confs = data.get("confirmations", [])

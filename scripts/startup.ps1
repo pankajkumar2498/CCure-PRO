@@ -359,7 +359,29 @@ Write-Section "To stop the servers:"
 Write-Info "Close the PowerShell windows or press Ctrl+C in each window"
 
 Write-Section "Database info:"
-Write-Info "SQLite database: Backend/ccure_users.db"
-Write-Info "PostgreSQL: set `$env:DATABASE_URL='postgresql://user:password@localhost:5432/ccure_db'"
+$backendEnvFile = Join-Path $backendDir ".env"
+$configuredDatabaseUrl = $env:DATABASE_URL
+
+if (-not $configuredDatabaseUrl -and (Test-Path $backendEnvFile)) {
+    $dbLine = Get-Content $backendEnvFile |
+        Where-Object { $_ -match '^\s*DATABASE_URL\s*=' } |
+        Select-Object -First 1
+
+    if ($dbLine) {
+        $configuredDatabaseUrl = ($dbLine -split '=', 2)[1].Trim()
+    }
+}
+
+if ($configuredDatabaseUrl -like "postgresql://*") {
+    Write-Info "Configured database: PostgreSQL (from Backend/.env or current shell)"
+} elseif ($configuredDatabaseUrl -like "sqlite:///*") {
+    Write-Info "Configured database: SQLite"
+    Write-Info "SQLite file: Backend/ccure_users.db"
+} else {
+    Write-Info "Configured database: fallback to SQLite"
+    Write-Info "Set DATABASE_URL in Backend/.env to switch between SQLite and PostgreSQL"
+}
+
+Write-Info "Backend/.env controls the app database unless DATABASE_URL is already set in the current shell"
 
 Write-Section "=================================="

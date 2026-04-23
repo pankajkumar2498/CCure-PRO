@@ -66,7 +66,7 @@ class LinuxCollector:
 
     def collect_all(self, sections: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Run all collectors and return a merged dict.
+        Run all collectors concurrently and return a merged dict.
 
         Parameters
         ----------
@@ -74,36 +74,58 @@ class LinuxCollector:
                    If None, all sections are collected.
                    Valid names: system_info, packages, services, ports,
                                 users, security, network, history.
+
+        All section collectors are independent — they run concurrently via
+        a ThreadPoolExecutor to reduce wall-clock time. If one fails the
+        others are unaffected.
         """
         run_all = sections is None
 
+        # Build list of (section_name, callable) pairs to run
+        tasks: List[tuple] = []
+        if run_all or "system_info" in sections:
+            tasks.append(("system_info", self._collect_system_info))
+        if run_all or "packages" in sections:
+            tasks.append(("packages", self._collect_packages))
+        if run_all or "services" in sections:
+            tasks.append(("services", self._collect_services))
+        if run_all or "ports" in sections:
+            tasks.append(("ports", self._collect_open_ports))
+        if run_all or "users" in sections:
+            tasks.append(("users", self._collect_users))
+        if run_all or "security" in sections:
+            tasks.append(("security", self._collect_security_audit))
+        if run_all or "network" in sections:
+            tasks.append(("network", self._collect_network))
+        if run_all or "history" in sections:
+            tasks.append(("history", self._collect_login_history))
+
         result: Dict[str, Any] = {}
 
-        if run_all or "system_info" in sections:
-            result.update(self._collect_system_info())
-
-        if run_all or "packages" in sections:
-            result["packages"] = self._collect_packages()
-
-        if run_all or "services" in sections:
-            result["running_services"] = self._collect_services()
-
-        if run_all or "ports" in sections:
-            result["open_ports_credentialed"] = self._collect_open_ports()
-
-        if run_all or "users" in sections:
-            result["users"] = self._collect_users()
-
-        if run_all or "security" in sections:
-            result.update(self._collect_security_audit())
-
-        if run_all or "network" in sections:
-            result.update(self._collect_network())
-
-        if run_all or "history" in sections:
-            result.update(self._collect_login_history())
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(tasks) or 1) as pool:
+            future_map = {pool.submit(fn): name for name, fn in tasks}
+            from concurrent.futures import as_completed
+            for future in as_completed(future_map):
+                name = future_map[future]
+                try:
+                    data = future.result()
+                    # system_info and security return flat dicts; merge them
+                    if name in ("system_info", "security", "network", "history"):
+                        result.update(data)
+                    elif name == "packages":
+                        result["packages"] = data
+                    elif name == "services":
+                        result["running_services"] = data
+                    elif name == "ports":
+                        result["open_ports_credentialed"] = data
+                    elif name == "users":
+                        result["users"] = data
+                except Exception as exc:
+                    log.warning("Section '%s' collection failed: %s", name, exc)
 
         return result
+
 
     # ── System info ────────────────────────────────────────────────────────
 

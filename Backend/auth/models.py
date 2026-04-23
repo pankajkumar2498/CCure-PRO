@@ -12,16 +12,13 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
-# ── Database Configuration ────────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./ccure_users.db"
-)
+from config import AppConfig
 
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(DATABASE_URL)
+# ── Database Configuration ────────────────────────────────────────────────────
+engine = create_engine(
+    AppConfig.DATABASE_URL,
+    **AppConfig.DATABASE_ENGINE_KWARGS
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -67,12 +64,15 @@ def ensure_auth_schema():
     existing_columns = {column["name"] for column in inspector.get_columns("refresh_token_sessions")}
     statements = []
 
+    # Determine correct datetime type based on database
+    dt_type = "TIMESTAMP" if AppConfig.is_postgresql() else "DATETIME"
+
     if "issued_at" not in existing_columns:
-        statements.append("ALTER TABLE refresh_token_sessions ADD COLUMN issued_at DATETIME")
+        statements.append(f"ALTER TABLE refresh_token_sessions ADD COLUMN issued_at {dt_type}")
     if "expires_at" not in existing_columns:
-        statements.append("ALTER TABLE refresh_token_sessions ADD COLUMN expires_at DATETIME")
+        statements.append(f"ALTER TABLE refresh_token_sessions ADD COLUMN expires_at {dt_type}")
     if "revoked_at" not in existing_columns:
-        statements.append("ALTER TABLE refresh_token_sessions ADD COLUMN revoked_at DATETIME")
+        statements.append(f"ALTER TABLE refresh_token_sessions ADD COLUMN revoked_at {dt_type}")
     if "replaced_by" not in existing_columns:
         statements.append("ALTER TABLE refresh_token_sessions ADD COLUMN replaced_by VARCHAR")
 

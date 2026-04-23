@@ -170,13 +170,16 @@ class PortEngine:
             svc_result = self._nmap.detect_services(ip, ports=open_port_nums)
             self._apply_nmap_ports(host, svc_result, service_detection=True)
 
-        with ThreadPoolExecutor(max_workers=min(len(hosts), 20)) as pool:
-            futures = [pool.submit(_enrich_one, host) for host in hosts]
-            for f in futures:
-                try:
-                    f.result()
-                except Exception as exc:
-                    log.debug("Service enrichment error: %s", exc)
+        # Limit concurrency to prevent Npcap driver thrashing on Windows
+        with ThreadPoolExecutor(max_workers=max(1, min(len(hosts), 4))) as pool:
+            tasks = [
+                loop.run_in_executor(pool, _enrich_one, host)
+                for host in hosts
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    log.debug("Service enrichment error: %s", res)
 
     def _apply_nmap_ports(
         self,

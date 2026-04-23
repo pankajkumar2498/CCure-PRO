@@ -78,6 +78,7 @@ export default function NewScan() {
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+  const [rateLimit, setRateLimit] = useState("");
 
   const pipeline  = getScanPipeline(pipelineMode || "basic");
   const badgeMeta = PIPELINE_BADGE[pipelineMode] || PIPELINE_BADGE.basic;
@@ -104,6 +105,7 @@ export default function NewScan() {
         targets:   target.split(",").map(t => t.trim()).filter(Boolean),
         scan_type: "adaptive",
         ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}),
+        ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}),
       });
 
       const { data } = await api.post("/scan/host-discovery", payload);
@@ -261,6 +263,40 @@ export default function NewScan() {
             </>
           )}
 
+
+          {/* Rate Limiting */}
+          <div className="ns-divider" />
+          <div className="ns-section">
+            <div className="ns-label">
+              Rate Limit (PPS)
+              <span className="ns-label-hint">Leave blank for profile default (e.g., fast is 256)</span>
+            </div>
+            <div className="ns-input-wrap">
+              <span className="ns-input-icon" aria-hidden="true">⏱</span>
+              <input
+                type="number"
+                className="ns-input"
+                value={rateLimit}
+                onChange={e => setRateLimit(e.target.value)}
+                placeholder="e.g. 500"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          {/* ── Basic Scan Notice ────────────────────────────────────── */}
+          {pipelineMode === "basic" && (
+            <>
+              <div className="ns-divider" />
+              <div className="ns-info-notice">
+                <span className="ns-info-icon">💡</span>
+                <p>
+                  <strong>Basic Scan Mechanics:</strong> Uses ultra-fast <code>ARP</code> on local subnets. 
+                  For routed remote subnets, it falls back to a full TCP handshake on ports 80/443/22 to bypass firewalls, which may be significantly slower.
+                </p>
+              </div>
+            </>
+          )}
           {/* Error banner */}
           {error && (
             <div className="ns-error" role="alert">

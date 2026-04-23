@@ -425,6 +425,8 @@ class HostDiscoveryRequest(BaseModel):
     discovery_intensity: Optional[str]  = Field("normal",
                                                 example="normal",
                                                 description="light | normal | deep (asset pipeline only)")
+    rate_limit:          Optional[int]  = Field(None, description="Optional rate limit for probes per second (PPS).")
+
 
 
 class AssetDiscoveryRequest(BaseModel):
@@ -578,6 +580,7 @@ async def scan_host_discovery(
     result = await orch.run_host_discovery_only(
         req.targets, req.scan_type, mode,
         discovery_intensity=discovery_intensity,
+        rate_limit=req.rate_limit,
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))

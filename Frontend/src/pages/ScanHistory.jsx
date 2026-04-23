@@ -14,18 +14,43 @@ import AppLayout from "../components/layout/AppLayout";
 import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
-import { getScans, getScan, deleteScan, archiveScan } from "../api/scans";
-import { buildPhasePayload, getScanPipeline } from "../config/scanConfig";
+import { getScans, getScan, deleteScan, archiveScan, streamScanEvents } from "../api/scans";
+import { buildPhasePayload } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 
 /* ── constants ── */
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
+  completed: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
   running: { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
   failed: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  cancelled: { color: "#64748b", bg: "rgba(100,116,139,.1)", border: "rgba(100,116,139,.25)" },
+  canceled: { color: "#64748b", bg: "rgba(100,116,139,.1)", border: "rgba(100,116,139,.25)" },
 };
+const STATUS_LABELS = {
+  complete: "Completed",
+  completed: "Completed",
+  running: "Running",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  canceled: "Cancelled",
+};
+const TERMINAL_PHASES = { basic: 1, asset: 2, advanced: 3 };
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
 const DATE_MS = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
+const LIVE_LABELS = {
+  connecting: "Live sync connecting",
+  connected: "Live sync active",
+  reconnecting: "Live sync reconnecting",
+  polling: "Live sync polling",
+};
+
+const normalizeStatus = status => {
+  const raw = String(status || "running").toLowerCase();
+  if (raw === "completed") return "complete";
+  if (raw === "canceled") return "cancelled";
+  return raw;
+};
 
 const isCred = scan => scan.scan_type === "credentialed";
 const phaseLabel = scan =>
@@ -35,7 +60,7 @@ const fmtDate = iso =>
   iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 
 const getScanDisplayDate = scan =>
-  scan.status === "complete" || scan.status === "failed" ? scan.updated_at || scan.created_at : scan.created_at;
+  ["complete", "failed", "cancelled"].includes(normalizeStatus(scan.status)) ? scan.updated_at || scan.created_at : scan.created_at;
 
 const fmtDur = sec =>
   !sec ? "—" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
@@ -52,6 +77,38 @@ const normCve = cve => {
 const getStoredTargets = scan => {
   if (Array.isArray(scan.targets) && scan.targets.length > 0) return scan.targets;
   return String(scan.target || "").split(",").map(x => x.trim()).filter(Boolean);
+};
+
+const getScanProgress = scan => {
+  const fromApi = Number(scan.progress_percentage);
+  if (Number.isFinite(fromApi)) return Math.max(0, Math.min(100, fromApi));
+
+  const status = normalizeStatus(scan.status);
+  if (status === "complete") return 100;
+
+  const terminal = TERMINAL_PHASES[scan.pipeline_mode || "basic"] || 1;
+  const phase = Math.max(0, Math.min(Number(scan.phase || 0), terminal));
+  const percent = Math.round((phase / terminal) * 100);
+  return status === "running" ? Math.max(8, Math.min(96, percent)) : Math.max(8, percent);
+};
+
+const isSameScan = (a, b) =>
+  a &&
+  b &&
+  a.id === b.id &&
+  a.status === b.status &&
+  a.phase === b.phase &&
+  a.updated_at === b.updated_at &&
+  a.scan_duration === b.scan_duration &&
+  a.progress_percentage === b.progress_percentage &&
+  JSON.stringify(a.summary || {}) === JSON.stringify(b.summary || {});
+
+const mergeScanSnapshot = (current, incoming) => {
+  const byId = new Map(current.map(scan => [scan.id, scan]));
+  return incoming.map(scan => {
+    const previous = byId.get(scan.id);
+    return isSameScan(previous, scan) ? previous : { ...previous, ...scan };
+  });
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -327,15 +384,33 @@ function DetailModal({ scanId, onClose }) {
 
 /* ── sub-components ── */
 function StatusBadge({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
+  const normalized = normalizeStatus(status);
+  const s = STATUS_STYLE[normalized] || STATUS_STYLE.running;
   return (
     <span style={{
       display: "inline-block", padding: "2px 9px", borderRadius: 4,
       background: s.bg, border: `1px solid ${s.border}`, color: s.color,
       fontSize: 11, fontFamily: "var(--mono)", letterSpacing: ".05em",
     }}>
-      {status}
+      {STATUS_LABELS[normalized] || status}
     </span>
+  );
+}
+
+function ScanProgress({ scan }) {
+  const progress = getScanProgress(scan);
+  const status = normalizeStatus(scan.status);
+
+  return (
+    <div className="history-progress" aria-label={`Scan progress ${Math.round(progress)}%`}>
+      <div className="history-progress-track">
+        <div
+          className={`history-progress-fill history-progress-fill--${status}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="history-progress-text">{Math.round(progress)}%</span>
+    </div>
   );
 }
 
@@ -351,6 +426,9 @@ export default function ScanHistory() {
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [liveState, setLiveState] = useState("connecting");
+  const [lastLiveAt, setLastLiveAt] = useState(null);
   const [error, setError] = useState("");
   const [viewId, setViewId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
@@ -359,20 +437,87 @@ export default function ScanHistory() {
   // Confirm dialog state
   const [dialog, setDialog] = useState(null); // { type, scan, config }
 
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
-    try {
-      const { data } = await getScans(0, 200, "active");
-      setScans(data.scans);
-      setTotal(data.total);
-    } catch {
-      setError("Failed to load scan history.");
-    } finally {
-      setLoading(false);
-    }
+  const applySnapshot = useCallback((data) => {
+    if (!Array.isArray(data?.scans)) return;
+    setScans(prev => mergeScanSnapshot(prev, data.scans));
+    setTotal(Number.isFinite(Number(data.total)) ? Number(data.total) : data.scans.length);
+    setLastLiveAt(new Date());
+    setError("");
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(async ({ initial = false, quiet = false } = {}) => {
+    if (initial) setLoading(true);
+    if (!quiet) {
+      setRefreshing(!initial);
+      setError("");
+    }
+    try {
+      const { data } = await getScans(0, 200, "active");
+      applySnapshot(data);
+    } catch {
+      if (!quiet) setError("Failed to load scan history.");
+    } finally {
+      if (initial) setLoading(false);
+      if (!quiet) setRefreshing(false);
+    }
+  }, [applySnapshot]);
+
+  useEffect(() => { load({ initial: true }); }, [load]);
+
+  useEffect(() => {
+    let stopped = false;
+    const controller = new AbortController();
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    const runPollingFallback = async () => {
+      setLiveState("polling");
+      while (!stopped) {
+        await load({ quiet: true });
+        await wait(5000);
+      }
+    };
+
+    const connect = async () => {
+      let failures = 0;
+      while (!stopped) {
+        try {
+          setLiveState(failures ? "reconnecting" : "connecting");
+          await streamScanEvents({
+            scope: "active",
+            limit: 200,
+            interval: 2,
+            signal: controller.signal,
+            onEvent: ({ event, data }) => {
+              if (stopped) return;
+              if (event === "connected") setLiveState("connected");
+              if (event === "heartbeat") setLastLiveAt(new Date());
+              if (event === "scans") {
+                applySnapshot(data);
+                setLiveState("connected");
+              }
+            },
+          });
+
+          if (!stopped) throw new Error("Scan history stream closed.");
+        } catch {
+          if (stopped || controller.signal.aborted) return;
+          failures += 1;
+          setLiveState("reconnecting");
+          if (failures >= 2) {
+            await runPollingFallback();
+            return;
+          }
+          await wait(2500);
+        }
+      }
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      controller.abort();
+    };
+  }, [applySnapshot, load]);
 
   const handleView = scan => {
     if (isCred(scan)) {
@@ -503,7 +648,7 @@ export default function ScanHistory() {
   /* ── Filtering ── */
   const now = Date.now();
   const visible = scans.filter(scan => {
-    if (filterStatus !== "all" && scan.status !== filterStatus) return false;
+    if (filterStatus !== "all" && normalizeStatus(scan.status) !== filterStatus) return false;
     if (filterDate !== "all" && now - new Date(getScanDisplayDate(scan)).getTime() > DATE_MS[filterDate]) return false;
     return true;
   });
@@ -520,9 +665,13 @@ export default function ScanHistory() {
               {total} scan{total !== 1 ? "s" : ""} · {user?.username}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn--ghost" onClick={load} disabled={loading}>
-              {loading ? <span className="btn-spinner btn-spinner--dark" /> : "Refresh"}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div className={`history-live history-live--${liveState}`} title={lastLiveAt ? `Last update ${lastLiveAt.toLocaleTimeString()}` : ""}>
+              <span className="history-live-dot" />
+              <span>{LIVE_LABELS[liveState]}</span>
+            </div>
+            <button className="btn btn--ghost" onClick={() => load()} disabled={refreshing}>
+              {refreshing ? <span className="btn-spinner btn-spinner--dark" /> : "Sync now"}
             </button>
           </div>
         </div>
@@ -532,13 +681,13 @@ export default function ScanHistory() {
           <div className="filter-group">
             <label>Status</label>
             <div className="filter-tabs">
-              {["all", "complete", "running", "failed"].map(s => (
+              {["all", "complete", "running", "failed", "cancelled"].map(s => (
                 <button
                   key={s}
                   className={`filter-tab ${filterStatus === s ? "filter-tab--active" : ""}`}
                   onClick={() => setFilterStatus(s)}
                 >
-                  {s}
+                  {s === "all" ? "All" : STATUS_LABELS[s]}
                 </button>
               ))}
             </div>
@@ -598,7 +747,7 @@ export default function ScanHistory() {
               <tbody>
                 {visible.map(scan => {
                   const summary = scan.summary || {};
-                  const isRunning = scan.status === "running";
+                  const isRunning = normalizeStatus(scan.status) === "running";
 
                   return (
                     <tr key={scan.id}>
@@ -614,7 +763,12 @@ export default function ScanHistory() {
                       <td>
                         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{phaseLabel(scan)}</span>
                       </td>
-                      <td><StatusBadge status={scan.status} /></td>
+                      <td>
+                        <div className="history-status-cell">
+                          <StatusBadge status={scan.status} />
+                          <ScanProgress scan={scan} />
+                        </div>
+                      </td>
                       <td>
                         {summary.active_hosts !== undefined
                           ? <span style={{ color: "var(--ok)", fontFamily: "var(--mono)", fontWeight: 700 }}>{summary.active_hosts}</span>

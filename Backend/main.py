@@ -44,10 +44,11 @@ import asyncio
 import time
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pathlib import Path
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from api.host_discovery_api import HostDiscoveryAPI
@@ -358,9 +359,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 def _get_api() -> HostDiscoveryAPI:
     if _api_instance is None:
@@ -425,7 +434,8 @@ class HostDiscoveryRequest(BaseModel):
     discovery_intensity: Optional[str]  = Field("normal",
                                                 example="normal",
                                                 description="light | normal | deep (asset pipeline only)")
-    rate_limit:          Optional[int]  = Field(None, description="Optional rate limit for probes per second (PPS).")
+    rate_limit:          Optional[float] = Field(None, description="Optional rate limit for probes per second (PPS).")
+    max_concurrency:     Optional[int]   = Field(None, description="Max concurrent threads (e.g. TCP connect probes).")
 
 
 
@@ -468,6 +478,28 @@ class CredentialedScanRequest(BaseModel):
     auth_method: str            = Field("password")
     sections:    Optional[List[str]] = Field(None)
     os_type:     str            = Field("auto", description="'linux' | 'windows' | 'auto'")
+
+    @field_validator("key_path")
+    @classmethod
+    def validate_key_path(cls, v):
+        if v is None:
+            return v
+        p = Path(v).resolve()
+        
+        # Only allow paths within a designated key directory
+        # Defaults to the system user's home directory if SCAN_KEY_DIR is not set.
+        allowed_str = os.getenv("SCAN_KEY_DIR")
+        allowed_base = Path(allowed_str).resolve() if allowed_str else Path.home().resolve()
+        
+        if not str(p).startswith(str(allowed_base)):
+            raise ValueError(f"key_path must be within the allowed directory ({allowed_base})")
+            
+        if not p.exists():
+            raise ValueError("key_path does not exist")
+        if not p.is_file():
+            raise ValueError("key_path must be a file, not a directory")
+            
+        return str(p)
 
 
 class PhasesRequest(BaseModel):
@@ -555,7 +587,9 @@ async def scan_subnets(req: SubnetsRequest, current_user: User = Depends(get_cur
 # -- PHASE-SELECTIVE ENDPOINTS -------------------------------------------------
 
 @app.post("/scan/host-discovery", tags=["Phase-Selective Scans"])
+@limiter.limit("5/minute")
 async def scan_host_discovery(
+    request: Request,
     req:  HostDiscoveryRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
@@ -581,6 +615,7 @@ async def scan_host_discovery(
         req.targets, req.scan_type, mode,
         discovery_intensity=discovery_intensity,
         rate_limit=req.rate_limit,
+        max_concurrency=req.max_concurrency,
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Host Discovery failed"))
@@ -600,11 +635,13 @@ async def scan_host_discovery(
     terminal     = get_terminal_phase(mode)      # 1, 2, or 4 (mapped to 3 in update_scan_phase)
     host_discovery_final = (terminal == 1)               # True only for "basic"
 
-    report_paths = orch.generate_phase_report(result, "host_discovery")
-    report_paths = {
-        k: v for k, v in report_paths.items()
-        if v and os.path.isfile(v)
-    }
+    report_paths = {}
+    if host_discovery_final:
+        raw_paths = orch.generate_phase_report(result, "host_discovery")
+        report_paths = {
+            k: v for k, v in raw_paths.items()
+            if v and os.path.isfile(v)
+        }
 
     scan = create_scan(
         db               = db,
@@ -639,7 +676,9 @@ async def scan_host_discovery(
 
 
 @app.post("/scan/asset-discovery", tags=["Phase-Selective Scans"])
+@limiter.limit("5/minute")
 async def scan_asset_discovery(
+    request: Request,
     req:  AssetDiscoveryRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
@@ -686,11 +725,13 @@ async def scan_asset_discovery(
         )
         _apply_phase1_summary_hints(result, db, user.id, req.scan_id)
 
-        report_paths = orch.generate_phase_report(result, "asset_discovery")
-        report_paths = {
-            k: v for k, v in report_paths.items()
-            if v and os.path.isfile(v)
-        }
+        report_paths = {}
+        if is_final:
+            raw_paths = orch.generate_phase_report(result, "asset_discovery")
+            report_paths = {
+                k: v for k, v in raw_paths.items()
+                if v and os.path.isfile(v)
+            }
 
         updated = None
         if req.scan_id:
@@ -736,7 +777,9 @@ async def scan_asset_discovery(
 
 
 @app.post("/scan/advanced-scan", tags=["Phase-Selective Scans"])
+@limiter.limit("5/minute")
 async def scan_advanced_scan(
+    request: Request,
     req:  AdvancedScanRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
@@ -885,7 +928,9 @@ def _detect_os(ssh) -> str:
 
 
 @app.post("/scan/credentialed", tags=["Credentialed Scans"])
+@limiter.limit("5/minute")
 async def scan_credentialed(
+    request: Request,
     req:  CredentialedScanRequest,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
@@ -1030,7 +1075,8 @@ async def scan_credentialed(
 
 
 @app.post("/scan/phases", tags=["Phase-Selective Scans"])
-async def scan_phases(req: PhasesRequest, current_user: User = Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def scan_phases(request: Request, req: PhasesRequest, current_user: User = Depends(get_current_user)):
     """Convenience endpoint — run any combination of phases in one call."""
     orch   = _get_api()._orch
     result = await orch.run_phases(req.targets, req.phases, req.scan_type, req.intensity)

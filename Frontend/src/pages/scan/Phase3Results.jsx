@@ -19,60 +19,60 @@
  *   • Failure handling with phase-specific retry
  */
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate }          from "react-router-dom";
-import AppLayout                from "../../components/layout/AppLayout";
-import ScanStepper              from "../../components/layout/ScanStepper";
-import Modal                    from "../../components/layout/Modal";
+import { useNavigate } from "react-router-dom";
+import AppLayout from "../../components/layout/AppLayout";
+import ScanStepper from "../../components/layout/ScanStepper";
+import Modal from "../../components/layout/Modal";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
-import api                      from "../../api/axiosInstance";
+import api from "../../api/axiosInstance";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 const SEV_COLOR = {
   Critical: "#ff4d4d",
-  High:     "#f97316",
-  Medium:   "#f59e0b",
-  Low:      "#22c55e",
-  Info:     "#60a5fa",
+  High: "#f97316",
+  Medium: "#f59e0b",
+  Low: "#22c55e",
+  Info: "#60a5fa",
 };
 
 // GAP-07: device category → { icon, color, label } for richly-rendered badge
 const DEVICE_CAT_META = {
-  router:            { icon: "🔀", color: "#60a5fa",  label: "Router"          },
-  switch:            { icon: "🔗", color: "#818cf8",  label: "Switch"          },
-  firewall:          { icon: "🛡",  color: "#f97316",  label: "Firewall"        },
-  wireless_ap:       { icon: "📡", color: "#22d3ee",  label: "Wireless AP"     },
-  printer:           { icon: "🖨", color: "#a78bfa",  label: "Printer"         },
-  iot:               { icon: "⚙",  color: "#fb923c",  label: "IoT/ICS"         },
-  server:            { icon: "🖥",  color: "#34d399",  label: "Server"          },
-  endpoint:          { icon: "💻", color: "#94a3b8",  label: "Endpoint"        },
-  voip:              { icon: "📞", color: "#f472b6",  label: "VoIP"            },
-  storage:           { icon: "💾", color: "#fbbf24",  label: "Storage"         },
-  network_appliance: { icon: "🔌", color: "#64748b",  label: "Net Appliance"   },
-  unknown:           { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
+  router: { icon: "🔀", color: "#60a5fa", label: "Router" },
+  switch: { icon: "🔗", color: "#818cf8", label: "Switch" },
+  firewall: { icon: "🛡", color: "#f97316", label: "Firewall" },
+  wireless_ap: { icon: "📡", color: "#22d3ee", label: "Wireless AP" },
+  printer: { icon: "🖨", color: "#a78bfa", label: "Printer" },
+  iot: { icon: "⚙", color: "#fb923c", label: "IoT/ICS" },
+  server: { icon: "🖥", color: "#34d399", label: "Server" },
+  endpoint: { icon: "💻", color: "#94a3b8", label: "Endpoint" },
+  voip: { icon: "📞", color: "#f472b6", label: "VoIP" },
+  storage: { icon: "💾", color: "#fbbf24", label: "Storage" },
+  network_appliance: { icon: "🔌", color: "#64748b", label: "Net Appliance" },
+  unknown: { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
 };
 
 // GAP-06 + Deep Probes: count all active exploit / misconfiguration conditions on a host
 const countActiveFindings = (host) => {
   let n = 0;
   // Original checks
-  if (host.heartbleed_info?.vulnerable)               n++;
-  if (host.smb_ms17010_info?.ms17010_likely)          n++;
-  if (host.ldap_info?.anonymous_bind?.allowed)        n++;
-  if (host.dns_info?.zone_transfer?.vulnerable)        n++;
-  if (host.default_creds_info?.ftp_anon?.allowed)     n++;
+  if (host.heartbleed_info?.vulnerable) n++;
+  if (host.smb_ms17010_info?.ms17010_likely) n++;
+  if (host.ldap_info?.anonymous_bind?.allowed) n++;
+  if (host.dns_info?.zone_transfer?.vulnerable) n++;
+  if (host.default_creds_info?.ftp_anon?.allowed) n++;
   if (host.default_creds_info?.redis_noauth?.vulnerable) n++;
   if (host.default_creds_info?.mongo_noauth?.vulnerable) n++;
-  if (host.default_creds_info?.mqtt_noauth?.vulnerable)  n++;
+  if (host.default_creds_info?.mqtt_noauth?.vulnerable) n++;
   if (host.default_creds_info?.http_default_creds?.found) n++;
   // FTP deep-probe findings
-  if (host.ftp_info?.anonymous_login)                 n++;
-  if (host.ftp_info?.write_access)                    n++;
-  if (host.ftp_info?.weak_credentials?.length)        n += host.ftp_info.weak_credentials.length;
+  if (host.ftp_info?.anonymous_login) n++;
+  if (host.ftp_info?.write_access) n++;
+  if (host.ftp_info?.weak_credentials?.length) n += host.ftp_info.weak_credentials.length;
   // HTTP deep-probe findings
-  if (host.http_audit?.exposed_paths?.length)         n += host.http_audit.exposed_paths.length;
-  if (host.http_audit?.admin_panels?.length)          n += host.http_audit.admin_panels.length;
-  if (host.http_audit?.dangerous_methods?.length)     n++;
+  if (host.http_audit?.exposed_paths?.length) n += host.http_audit.exposed_paths.length;
+  if (host.http_audit?.admin_panels?.length) n += host.http_audit.admin_panels.length;
+  if (host.http_audit?.dangerous_methods?.length) n++;
   return n;
 };
 
@@ -86,9 +86,9 @@ const safeArr = (v) => (Array.isArray(v) ? v : []);
 
 /* ── Phase progress messages ──────────────────────────────────────────────── */
 const PHASE_MESSAGES = {
-  [PIPELINE_STATES.DISCOVERY]:  { title: "Running Discovery…",           desc: "Probing the network for live hosts." },
-  [PIPELINE_STATES.PORT_SCAN]:  { title: "Running Port Scan…",           desc: "Mapping open TCP services and grabbing banners." },
-  [PIPELINE_STATES.VULN_SCAN]:  { title: "Running Vulnerability Audit…", desc: "Analyzing services for CVEs and security risks." },
+  [PIPELINE_STATES.DISCOVERY]: { title: "Running Discovery…", desc: "Probing the network for live hosts." },
+  [PIPELINE_STATES.PORT_SCAN]: { title: "Running Port Scan…", desc: "Mapping open TCP services and grabbing banners." },
+  [PIPELINE_STATES.VULN_SCAN]: { title: "Running Vulnerability Audit…", desc: "Analyzing services for CVEs and security risks." },
 };
 
 /* ── Main Component ───────────────────────────────────────────────────────── */
@@ -113,10 +113,10 @@ export default function Phase3Results() {
 
   // Track whether the auto-pipeline has been triggered
   const pipelineStarted = useRef(false);
-  const [localPortHosts, setLocalPortHosts]     = useState(() => safeArr(phase2Results));
+  const [localPortHosts, setLocalPortHosts] = useState(() => safeArr(phase2Results));
   const [localVulnResults, setLocalVulnResults] = useState(() => safeArr(phase3AuditResults));
   const [expanded, setExpanded] = useState(new Set());
-  
+
   // Filter states for each result section (active/all)
   const [filter1, setFilter1] = useState("active"); // Discovery Results
   const [filter2, setFilter2] = useState("active"); // Port Scan Results
@@ -125,7 +125,7 @@ export default function Phase3Results() {
   // Modal state for Risk Report
   const [showReportModal, setShowReportModal] = useState(false);
 
-  const safePhase1Hosts     = safeArr(phase1Hosts);
+  const safePhase1Hosts = safeArr(phase1Hosts);
   const activeDiscoveryHosts = safePhase1Hosts.filter(h => h.is_active);
 
   // Redirect if no hosts exist
@@ -185,11 +185,11 @@ export default function Phase3Results() {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
         const { data: assetData } = await api.post("/scan/asset-discovery", {
-          hosts:         activeDiscoveryHosts,
+          hosts: activeDiscoveryHosts,
           intensity,
-          scan_id:       scanId,
+          scan_id: scanId,
           pipeline_mode: pipelineMode,
-          phases:        [1, 2],
+          phases: [1, 2],
         }, { signal });
 
         if (!assetData.success) throw new Error(assetData.error || "Port scan failed");
@@ -230,10 +230,10 @@ export default function Phase3Results() {
       const hostsForAudit = portHosts.length ? portHosts : safeArr(phase2Results);
 
       const { data: auditData } = await api.post("/scan/advanced-scan", {
-        hosts:         hostsForAudit,
-        scan_id:       scanId,
+        hosts: hostsForAudit,
+        scan_id: scanId,
         pipeline_mode: pipelineMode,
-        phases:        [1, 2, 3, 4],
+        phases: [1, 2, 3],
       }, { signal });
 
       if (!auditData.success) throw new Error(auditData.error || "Vulnerability audit failed");
@@ -326,7 +326,7 @@ export default function Phase3Results() {
   const isCancelled = pipelineState === PIPELINE_STATES.CANCELLED;
   const currentStep = localVulnResults.length ? 3 : localPortHosts.length ? 2 : 1;
   const activeMsg = PHASE_MESSAGES[pipelineState];
-  
+
   // Filter display logic for each section
   const displayDiscoveryHosts = filter1 === "active" ? activeDiscoveryHosts : safePhase1Hosts;
   const activePortHosts = localPortHosts.filter(h => h.is_active);
@@ -451,7 +451,7 @@ export default function Phase3Results() {
             <div className="filter-tabs">
               {[
                 ["active", `Active (${activeDiscoveryHosts.length})`],
-                ["all",    `All (${safePhase1Hosts.length})`],
+                ["all", `All (${safePhase1Hosts.length})`],
               ].map(([val, lbl]) => (
                 <button
                   key={val}
@@ -481,8 +481,8 @@ export default function Phase3Results() {
                 {displayDiscoveryHosts.map(host => {
                   let displayHost = host.hostname;
                   if (!displayHost || displayHost === "Unknown") {
-                      if (host.mdns_name) displayHost = host.mdns_name;
-                      else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                    if (host.mdns_name) displayHost = host.mdns_name;
+                    else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
                   }
                   const devCat = host.snmp_device_type || host.device_category || "unknown";
 
@@ -539,7 +539,7 @@ export default function Phase3Results() {
               <div className="filter-tabs">
                 {[
                   ["active", `Active (${activePortHosts.length})`],
-                  ["all",    `All (${localPortHosts.length})`],
+                  ["all", `All (${localPortHosts.length})`],
                 ].map(([val, lbl]) => (
                   <button
                     key={val}
@@ -558,20 +558,16 @@ export default function Phase3Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Hostname</th>
-                    <th>MAC</th>
-                    <th>Vendor</th>
-                    <th>Device</th>
                     <th>Open Ports</th>
-                    <th>OS</th>
-                    <th>Status</th>
+                    <th>OS Guess</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayPortHosts.map(host => {
                     let displayHost = host.hostname;
                     if (!displayHost || displayHost === "Unknown") {
-                        if (host.mdns_name) displayHost = host.mdns_name;
-                        else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                      if (host.mdns_name) displayHost = host.mdns_name;
+                      else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
                     }
                     const devCat = host.snmp_device_type || host.device_category || "unknown";
 
@@ -579,21 +575,8 @@ export default function Phase3Results() {
                       <tr key={host.ip_address} className={host.is_active ? "row--active" : "row--inactive"}>
                         <td><code className="ip-code">{host.ip_address}</code></td>
                         <td>{displayHost || <span className="muted">—</span>}</td>
-                        <td>{host.mac_address || <span className="muted">—</span>}</td>
-                        <td>{host.vendor || <span className="muted">—</span>}</td>
-                        <td>
-                          {devCat !== "unknown" ? (
-                            <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
-                              {devCat}
-                            </span>
-                          ) : <span className="muted">—</span>}
-                        </td>
                         <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
                         <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
-                        <td>
-                          <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
-                          {host.is_active ? "Active" : "Inactive"}
-                        </td>
                       </tr>
                     )
                   })}
@@ -611,7 +594,7 @@ export default function Phase3Results() {
             <div className="pipeline-section-header">
               <div>
                 <h3 className="section-title"><span className="section-badge section-badge--done">✓</span> 3. Vulnerability Results</h3>
-                <p className="muted">Phase 3 completed — vulnerability findings below.</p>
+                <p className="muted">vulnerability findings below.</p>
               </div>
               {pipelinePhaseTimings.vulnScan && (
                 <span className="pipeline-timing">{pipelinePhaseTimings.vulnScan}s</span>
@@ -629,7 +612,7 @@ export default function Phase3Results() {
               <div className="filter-tabs">
                 {[
                   ["active", `Active (${activeVulnHosts.length})`],
-                  ["all",    `All (${localVulnResults.length})`],
+                  ["all", `All (${localVulnResults.length})`],
                 ].map(([val, lbl]) => (
                   <button
                     key={val}
@@ -656,7 +639,7 @@ export default function Phase3Results() {
                 </thead>
                 <tbody>
                   {displayVulnHosts.map(host => {
-                    const devCat  = host.snmp_device_type || host.device_category || "unknown";
+                    const devCat = host.snmp_device_type || host.device_category || "unknown";
                     const catMeta = DEVICE_CAT_META[devCat] || DEVICE_CAT_META.unknown;
                     const activeFindings = countActiveFindings(host);
                     return (
@@ -669,7 +652,7 @@ export default function Phase3Results() {
                               if (host.mdns_name) hName = host.mdns_name;
                               else if (host.netbios_names && host.netbios_names.length) hName = host.netbios_names[0].name;
                             }
-                            return hName && hName !== "Unknown" ? <div className="muted small" style={{marginTop: 4}}>{hName}</div> : null;
+                            return hName && hName !== "Unknown" ? <div className="muted small" style={{ marginTop: 4 }}>{hName}</div> : null;
                           })()}
                         </td>
                         <td>
@@ -733,8 +716,8 @@ export default function Phase3Results() {
         {/* ══════════════════════════════════════════════════════════════════ */}
         {isDone && localVulnResults.length > 0 && (
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 32 }}>
-            <button 
-              className="btn btn--primary btn--lg" 
+            <button
+              className="btn btn--primary btn--lg"
               onClick={proceedToReport}
               style={{
                 transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -764,20 +747,20 @@ export default function Phase3Results() {
       {/* ════════════════════════════════════════════════════════════════════════ */}
       {/* RISK REPORT MODAL                                                       */}
       {/* ════════════════════════════════════════════════════════════════════════ */}
-      <Modal 
-        isOpen={showReportModal} 
+      <Modal
+        isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         title="Risk Report - Full Assessment"
         subtitle={`Scan #${scanId} • Target: ${target}`}
       >
         <div style={{ maxHeight: "80vh", overflowY: "auto" }}>
           {/* Report Header */}
-          <div style={{ 
-            padding: "16px", 
-            background: "var(--bg-app)", 
-            borderRadius: "8px", 
-            marginBottom: "16px", 
-            border: "1px solid var(--border)" 
+          <div style={{
+            padding: "16px",
+            background: "var(--bg-app)",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            border: "1px solid var(--border)"
           }}>
             <h3 style={{ margin: 0, fontWeight: 600, marginBottom: 8 }}>✓ Full Pipeline Complete</h3>
             <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
@@ -990,7 +973,7 @@ export default function Phase3Results() {
                         </span>
                       </td>
                       <td style={{ padding: "12px" }}>
-                        <span style={{ 
+                        <span style={{
                           display: "inline-block",
                           padding: "2px 8px",
                           borderRadius: "4px",
@@ -1034,8 +1017,8 @@ export default function Phase3Results() {
                       {host.hostname || "Unknown"}
                     </span>
                   </div>
-                  <span style={{ 
-                    color: SEV_COLOR[host.host_risk_level] || "#60a5fa", 
+                  <span style={{
+                    color: SEV_COLOR[host.host_risk_level] || "#60a5fa",
                     fontWeight: 700,
                     fontSize: "0.9rem"
                   }}>
@@ -1048,36 +1031,36 @@ export default function Phase3Results() {
                   {/* ── Service Findings (FTP / HTTP / SMB deep probes) ──────── */}
                   {(() => {
                     const badges = [];
-                    const ftp  = host.ftp_info  || {};
+                    const ftp = host.ftp_info || {};
                     const http = host.http_audit || {};
-                    const smb  = host.smb_info   || {};
-                    const tls  = host.tls_info   || {};
-                    const ssh  = host.ssh_info   || {};
+                    const smb = host.smb_info || {};
+                    const tls = host.tls_info || {};
+                    const ssh = host.ssh_info || {};
 
                     if (host.heartbleed_info?.vulnerable)
-                      badges.push({ label: "Heartbleed",        color: "#ff4d4d", icon: "💉" });
+                      badges.push({ label: "Heartbleed", color: "#ff4d4d", icon: "💉" });
                     if (host.smb_ms17010_info?.ms17010_likely)
-                      badges.push({ label: "EternalBlue",       color: "#ff4d4d", icon: "💣" });
+                      badges.push({ label: "EternalBlue", color: "#ff4d4d", icon: "💣" });
                     if (host.ldap_info?.anonymous_bind?.allowed)
-                      badges.push({ label: "LDAP Anon Bind",    color: "#f97316", icon: "🔓" });
+                      badges.push({ label: "LDAP Anon Bind", color: "#f97316", icon: "🔓" });
                     if (host.dns_info?.zone_transfer?.vulnerable)
                       badges.push({ label: "DNS Zone Transfer", color: "#f97316", icon: "📡" });
                     if (ftp.anonymous_login)
-                      badges.push({ label: "FTP Anon Login",    color: "#f97316", icon: "📂" });
+                      badges.push({ label: "FTP Anon Login", color: "#f97316", icon: "📂" });
                     if (ftp.write_access)
-                      badges.push({ label: "FTP Write Access",  color: "#ff4d4d", icon: "✍️" });
+                      badges.push({ label: "FTP Write Access", color: "#ff4d4d", icon: "✍️" });
                     if (ftp.weak_credentials?.length)
                       badges.push({ label: `FTP Weak Creds (${ftp.weak_credentials.length})`, color: "#f59e0b", icon: "🔑" });
                     if (http.exposed_paths?.length)
-                      badges.push({ label: `Exposed Paths (${http.exposed_paths.length})`,  color: "#f59e0b", icon: "📁" });
+                      badges.push({ label: `Exposed Paths (${http.exposed_paths.length})`, color: "#f59e0b", icon: "📁" });
                     if (http.admin_panels?.length)
-                      badges.push({ label: `Admin Panels (${http.admin_panels.length})`,    color: "#f97316", icon: "⚙️" });
+                      badges.push({ label: `Admin Panels (${http.admin_panels.length})`, color: "#f97316", icon: "⚙️" });
                     if (http.dangerous_methods?.length)
                       badges.push({ label: "Dangerous HTTP Methods", color: "#f59e0b", icon: "🔧" });
                     if (smb.open && smb.null_session)
-                      badges.push({ label: "SMB Null Session",  color: "#f97316", icon: "🗂" });
+                      badges.push({ label: "SMB Null Session", color: "#f97316", icon: "🗂" });
                     if (tls.cert_expired)
-                      badges.push({ label: "TLS Cert Expired",  color: "#f59e0b", icon: "🔒" });
+                      badges.push({ label: "TLS Cert Expired", color: "#f59e0b", icon: "🔒" });
 
                     if (!badges.length) return null;
                     return (
@@ -1219,28 +1202,28 @@ export default function Phase3Results() {
             )}
           </div>
 
-            <div style={{
-              marginTop: "24px",
-              padding: "16px",
-              background: "rgba(59, 130, 246, 0.05)",
-              border: "1px solid rgba(59, 130, 246, 0.2)",
-              borderRadius: "8px",
-              fontSize: "0.85rem"
-            }}>
-              <p style={{ margin: "0 0 8px", fontWeight: 600 }}>📈 Report Summary</p>
-              <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-mid)" }}>
-                <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
-                <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
-                <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
-                <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
-                <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
-                <li>FTP misconfigurations: {localVulnResults.filter(h => h.ftp_info?.anonymous_login || h.ftp_info?.write_access || h.ftp_info?.weak_credentials?.length).length} host(s)</li>
-                <li>HTTP exposed paths: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0), 0)}</li>
-                <li>HTTP admin panels found: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0), 0)}</li>
-                <li>Active misconfiguration findings: {localVulnResults.reduce((sum, h) => sum + countActiveFindings(h), 0)}</li>
-                <li>Scan completed at: {new Date().toLocaleString()}</li>
-              </ul>
-            </div>
+          <div style={{
+            marginTop: "24px",
+            padding: "16px",
+            background: "rgba(59, 130, 246, 0.05)",
+            border: "1px solid rgba(59, 130, 246, 0.2)",
+            borderRadius: "8px",
+            fontSize: "0.85rem"
+          }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 600 }}>📈 Report Summary</p>
+            <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-mid)" }}>
+              <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
+              <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
+              <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
+              <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
+              <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
+              <li>FTP misconfigurations: {localVulnResults.filter(h => h.ftp_info?.anonymous_login || h.ftp_info?.write_access || h.ftp_info?.weak_credentials?.length).length} host(s)</li>
+              <li>HTTP exposed paths: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0), 0)}</li>
+              <li>HTTP admin panels found: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0), 0)}</li>
+              <li>Active misconfiguration findings: {localVulnResults.reduce((sum, h) => sum + countActiveFindings(h), 0)}</li>
+              <li>Scan completed at: {new Date().toLocaleString()}</li>
+            </ul>
+          </div>
 
 
           {/* Export Hint */}

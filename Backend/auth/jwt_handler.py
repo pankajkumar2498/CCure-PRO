@@ -24,20 +24,20 @@ logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ENVIRONMENT = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
-SECRET_KEY = os.getenv("JWT_SECRET")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = timedelta(hours=1)
 REFRESH_TOKEN_EXPIRE = timedelta(days=7)
 
 if not SECRET_KEY:
     if ENVIRONMENT == "production":
-        raise RuntimeError("JWT_SECRET must be set to a strong non-default value before starting the application.")
+        raise RuntimeError("JWT_SECRET_KEY must be set to a strong non-default value before starting the application.")
     SECRET_KEY = "ccure-dev-only-secret-change-me"
-    logger.warning("JWT_SECRET is not set; using a development-only fallback secret.")
+    logger.warning("JWT_SECRET_KEY is not set; using a development-only fallback secret.")
 elif SECRET_KEY == "ccure-super-secret-change-in-production":
     if ENVIRONMENT == "production":
-        raise RuntimeError("JWT_SECRET must not use the old default value in production.")
-    logger.warning("JWT_SECRET is using the legacy default secret outside production. Change it before deployment.")
+        raise RuntimeError("JWT_SECRET_KEY must not use the old default value in production.")
+    logger.warning("JWT_SECRET_KEY is using the legacy default secret outside production. Change it before deployment.")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 argon2_hasher = PasswordHasher()

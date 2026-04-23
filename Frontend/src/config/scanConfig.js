@@ -7,7 +7,7 @@
  * ──────────
  *  basic     → Phase 1 only  (Host Discovery)
  *  asset     → Phase 1 → Phase 2  (always re-runs Phase 1, no stored results)
- *  advanced  → Phase 1 → Phase 2 → Phase 3 → Phase 4 (full pipeline)
+ *  advanced  → Phase 1 → Phase 2 → Phase 3 (full pipeline)
  *
  * HOW TO USE
  * ──────────
@@ -39,13 +39,6 @@ export const PHASES = {
     label:    "Vulnerability & Risk Audit",
     endpoint: "/scan/advanced-scan",
     route:    "/scan/advanced-scan",
-  },
-  4: {
-    id:       4,
-    key:      "phase4",
-    label:    "Risk Report",
-    endpoint: "/scan/phase4",
-    route:    "/scan/phase4",
   },
 };
 
@@ -83,8 +76,8 @@ export const SCAN_PIPELINES = {
 
   /**
    * Advanced Scan
-   * Full pipeline: Phase 1 → 2 → 3 → 4
-   * Backend receives: { phases: [1, 2, 3, 4] }
+   * Full pipeline: Phase 1 → 2 → 3
+   * Backend receives: { phases: [1, 2, 3] }
    */
   advanced: {
     id:          "advanced",

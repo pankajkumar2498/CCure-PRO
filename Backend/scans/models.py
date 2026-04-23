@@ -134,35 +134,7 @@ def ensure_scan_schema():
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scans_is_deleted ON scans (is_deleted)"))
         
         # Create scan_phase_results table using SQLAlchemy to handle dialect differences
-        if "scan_phase_results" not in inspector.get_table_names():
-            conn.execute(text(
-                "CREATE TABLE scan_phase_results ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                "scan_id INTEGER NOT NULL, "
-                "phase_key VARCHAR NOT NULL, "
-                "phase_order INTEGER NOT NULL DEFAULT 0, "
-                "payload TEXT DEFAULT '{}', "
-                "created_at TIMESTAMP, "
-                "updated_at TIMESTAMP, "
-                "FOREIGN KEY(scan_id) REFERENCES scans (id)"
-                ")" if not is_pg else
-                "CREATE TABLE scan_phase_results ("
-                "id SERIAL PRIMARY KEY, "
-                "scan_id INTEGER NOT NULL, "
-                "phase_key VARCHAR NOT NULL, "
-                "phase_order INTEGER NOT NULL DEFAULT 0, "
-                "payload TEXT DEFAULT '{}', "
-                "created_at TIMESTAMP, "
-                "updated_at TIMESTAMP, "
-                "FOREIGN KEY(scan_id) REFERENCES scans (id)"
-                ")"
-            ))
+        pass
         
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_phase_results_scan_phase_key "
-            "ON scan_phase_results (scan_id, phase_key)"
-        ))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS ix_scan_phase_results_scan_id "
-            "ON scan_phase_results (scan_id)"
-        ))
+    # Ensure all new tables (like scan_phase_results) and indices are created securely via SQLAlchemy
+    Base.metadata.create_all(engine)

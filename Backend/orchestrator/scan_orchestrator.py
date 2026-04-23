@@ -95,7 +95,8 @@ class ScanOrchestrator:
         scan_type: str = "adaptive",
         pipeline_mode: str = "basic",
         discovery_intensity: str = "normal",
-        rate_limit: Optional[int] = None,
+        rate_limit: Optional[float] = None,
+        max_concurrency: Optional[int] = None,
     ) -> Dict:
         """
         Phase 1 — Host Discovery.
@@ -135,6 +136,7 @@ class ScanOrchestrator:
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
+                concurrency_override=max_concurrency,
             )
             disc_results: List[Dict] = await discovery.run(all_ips)
             duration = time.time() - t0
@@ -212,6 +214,7 @@ class ScanOrchestrator:
             scan_type=scan_type,
             discovery_intensity=discovery_intensity,
             rate_limit=rate_limit,
+            max_concurrency=max_concurrency,
         )
 
     # ── Asset Discovery — Phase 1 orchestrator ───────────────────────────────
@@ -222,7 +225,8 @@ class ScanOrchestrator:
         targets: List[str],
         scan_type: str,
         discovery_intensity: str,
-        rate_limit: Optional[int] = None,
+        rate_limit: Optional[float] = None,
+        max_concurrency: Optional[int] = None,
     ) -> Dict:
         """
         Asset-specific Phase 1 orchestration.
@@ -255,6 +259,7 @@ class ScanOrchestrator:
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
+                concurrency_override=max_concurrency,
             )
             raw_results: List[Dict] = await engine.run(all_ips)
             discovery_profile_label = "FAST"
@@ -266,6 +271,7 @@ class ScanOrchestrator:
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
+                concurrency_override=max_concurrency,
             )
             fast_raw: List[Dict] = await fast_engine.run(all_ips)
 
@@ -305,6 +311,7 @@ class ScanOrchestrator:
                 has_privileges=self.has_priv,
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
+                concurrency_override=max_concurrency,
             )
             raw_results = await engine.run(all_ips)
             discovery_profile_label = "BALANCED"

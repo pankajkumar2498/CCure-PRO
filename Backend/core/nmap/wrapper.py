@@ -430,7 +430,8 @@ class NmapScanner:
         import subprocess, tempfile, os
 
         t0 = time.time()
-        xml_out = tempfile.mktemp(suffix=".xml")
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
+            xml_out = tmp.name
         cmd = ["nmap", "-oX", xml_out] + args.split() + [target]
         if self.sudo:
             cmd = ["sudo"] + cmd

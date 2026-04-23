@@ -473,7 +473,6 @@ export default function Phase3Results() {
                   <th>MAC</th>
                   <th>Vendor</th>
                   <th>Method</th>
-                  <th>Device</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -493,13 +492,6 @@ export default function Phase3Results() {
                       <td>{host.mac_address || <span className="muted">—</span>}</td>
                       <td>{host.vendor || <span className="muted">—</span>}</td>
                       <td>{host.discovery_method || <span className="muted">—</span>}</td>
-                      <td>
-                        {devCat !== "unknown" ? (
-                          <span style={{ fontSize: 11, background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4, textTransform: "capitalize" }}>
-                            {devCat}
-                          </span>
-                        ) : <span className="muted">—</span>}
-                      </td>
                       <td>
                         <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
                         {host.is_active ? "Active" : "Inactive"}

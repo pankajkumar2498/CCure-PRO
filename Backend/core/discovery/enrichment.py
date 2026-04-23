@@ -60,7 +60,7 @@ def enrich_host(ip: str, result: Dict) -> None:
         ip:     Target IP address string.
         result: Host result dict from DiscoveryEngine — mutated in place.
     """
-    for fn in (_ptr_lookup, _mdns_query, _netbios_query, _snmp_classify, _os_probe_full):
+    for fn in (_ptr_lookup, _mdns_query, _netbios_query, _os_probe_full):
         try:
             fn(ip, result)
         except Exception as exc:
@@ -174,36 +174,7 @@ def _netbios_query(ip: str, result: Dict) -> None:
                 result["mac"] = mac_str
 
 
-def _snmp_classify(ip: str, result: Dict) -> None:
-    """
-    Query SNMP OIDs via Scapy to classify device as 'router', 'switch', or None.
-    Skips gracefully when Scapy SNMP is unavailable.
-    """
-    if not _SNMP_AVAILABLE:
-        return
-    try:
-        from scapy.all import sr1, IP, UDP
-        for name, oid in _SNMP_OIDS.items():
-            pkt = IP(dst=ip) / UDP(dport=161) / SNMP(
-                community=b"public",
-                PDU=SNMPget(varbindlist=[SNMPvarbind(oid=ASN1_OID(oid))]),
-            )
-            resp = sr1(pkt, timeout=2, verbose=0)
-            if resp is None or not resp.haslayer(SNMP):
-                continue
-            val = str(resp[SNMP].PDU.varbindlist[0].value)
-            if name == "ip_forwarding" and val.strip() == "1":
-                result["snmp_device_type"] = "router"
-                if result.get("device_category", "unknown") == "unknown":
-                    result["device_category"] = "router"
-                return
-            if name == "bridge_mib":
-                result["snmp_device_type"] = "switch"
-                if result.get("device_category", "unknown") == "unknown":
-                    result["device_category"] = "switch"
-                return
-    except Exception as exc:
-        log.debug("_snmp_classify(%s) error: %s", ip, exc)
+
 
 
 def _os_probe_full(ip: str, result: Dict) -> None:

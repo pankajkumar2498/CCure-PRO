@@ -99,18 +99,19 @@ class PortEngine:
 
         return hosts
 
-    # ── Nmap path (primary) ───────────────────────────────────────────────────
 
     async def _scan_with_nmap(self, hosts: List[Dict]) -> None:
         """
         Use NmapScanner for port scanning.
 
-        Strategy:
-          1. Batch SYN scan for port states (fast: -sS --top-ports N)
-          2. Service/version detection on open ports only (-sV, limited ports)
+        LIGHT / NORMAL — single combined pass (fastest):
+          nmap -sS -sV --version-light <ports> --open -T4 --min-parallelism 64
+          All hosts scanned in one Nmap invocation; service data already
+          attached — no second per-host pass needed.
 
-        Both steps run concurrently across hosts using a thread pool
-        (Nmap itself handles per-host parallelism internally).
+        DEEP — two-pass:
+          Pass 1: full port discovery (-p- all 65 535 ports)
+          Pass 2: service detect on open ports only (8 concurrent workers)
         """
         intensity_map = {
             ScanIntensity.LIGHT:  "basic",
@@ -118,30 +119,52 @@ class PortEngine:
             ScanIntensity.DEEP:   "deep",
         }
         nmap_intensity = intensity_map.get(self.intensity, "normal")
-
         ips = [self._ip(h) for h in hosts if self._ip(h)]
 
-        # Step 1: Fast batch port scan
+        loop = asyncio.get_event_loop()
         log.info("Nmap port scan: %d hosts, intensity=%s", len(ips), nmap_intensity)
         t0 = time.time()
 
-        loop = asyncio.get_event_loop()
-        nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
-            None,
-            lambda: self._nmap.scan_hosts(ips, intensity=nmap_intensity),
-        )
-        log.info("Nmap port scan done in %.1fs", time.time() - t0)
-
-        # Step 2: Service detection on open ports (batch by host)
-        if self.intensity != ScanIntensity.LIGHT:
-            await self._enrich_services(hosts, nmap_results, loop)
-        else:
-            # LIGHT: use port states from step 1, no service detection
+        if self.intensity != ScanIntensity.DEEP:
+            # ──────────────────────────────────────────────────────────
+            # LIGHT / NORMAL: single batch call — port states + service info
+            # in one Nmap invocation.  Saves the entire _enrich_services() loop
+            # (≈65 separate Nmap processes at 4 workers = the ~400 s bottleneck).
+            # ──────────────────────────────────────────────────────────
+            include_svc = (self.intensity == ScanIntensity.NORMAL)
+            nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
+                None,
+                lambda: self._nmap.scan_hosts(
+                    ips,
+                    intensity=nmap_intensity,
+                    with_services=include_svc,
+                ),
+            )
+            log.info(
+                "Nmap port scan done in %.1fs (combined pass, services=%s)",
+                time.time() - t0, include_svc,
+            )
+            # Apply results directly — service info already present
             for host in hosts:
                 ip = self._ip(host)
                 if not ip or ip not in nmap_results:
                     continue
-                self._apply_nmap_ports(host, nmap_results[ip], service_detection=False)
+                self._apply_nmap_ports(
+                    host, nmap_results[ip], service_detection=include_svc
+                )
+        else:
+            # ──────────────────────────────────────────────────────────
+            # DEEP: two-pass — full port sweep then targeted service detect
+            # ──────────────────────────────────────────────────────────
+            nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
+                None,
+                lambda: self._nmap.scan_hosts(ips, intensity="deep"),
+            )
+            log.info(
+                "Nmap DEEP port scan done in %.1fs (pass 1/2)",
+                time.time() - t0,
+            )
+            await self._enrich_services(hosts, nmap_results, loop)
 
     async def _enrich_services(
         self,
@@ -150,9 +173,17 @@ class PortEngine:
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         """
-        Run service/version detection on each host's open ports.
-        Uses a thread pool so multiple hosts are enriched concurrently.
+        Run targeted service/version detection per host on its open ports.
+        Only called for DEEP intensity; LIGHT/NORMAL use the combined single
+        pass instead.
+
+        Max workers raised to 8 (was 4) — service probes on a small known-open
+        port list per host are lightweight; 8 concurrent Nmap processes are
+        safe on all supported Windows Npcap versions as of 1.79.
         """
+        t0 = time.time()
+        n_workers = max(1, min(len(hosts), 8))  # was 4
+
         def _enrich_one(host: Dict) -> None:
             ip = self._ip(host)
             if not ip:
@@ -162,16 +193,13 @@ class PortEngine:
                 [p.port for p in initial.open_ports] if initial else None
             )
             if not open_port_nums:
-                # No open ports found in step 1 — apply empty result
                 if initial:
                     self._apply_nmap_ports(host, initial, service_detection=False)
                 return
-            # Run targeted service detection on just the open ports
             svc_result = self._nmap.detect_services(ip, ports=open_port_nums)
             self._apply_nmap_ports(host, svc_result, service_detection=True)
 
-        # Limit concurrency to prevent Npcap driver thrashing on Windows
-        with ThreadPoolExecutor(max_workers=max(1, min(len(hosts), 4))) as pool:
+        with ThreadPoolExecutor(max_workers=n_workers, thread_name_prefix="svc-enrich") as pool:
             tasks = [
                 loop.run_in_executor(pool, _enrich_one, host)
                 for host in hosts
@@ -180,6 +208,8 @@ class PortEngine:
             for res in results:
                 if isinstance(res, Exception):
                     log.debug("Service enrichment error: %s", res)
+
+        log.info("DEEP service enrichment done in %.1fs (pass 2/2)", time.time() - t0)
 
     def _apply_nmap_ports(
         self,

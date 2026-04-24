@@ -199,6 +199,11 @@ class NmapScanner:
         "deep":   "-p-",             # all 65535
     }
 
+    # ── Parallelism hints appended when scanning multiple hosts ───────────────
+    # Tells Nmap to keep ≥N probes in-flight at once and send ≥M packets/sec,
+    # dramatically reducing wall-clock time on local LAN subnets.
+    _MULTI_PERF_ARGS = "--min-parallelism 64 --min-rate 500"
+
     def __init__(self, sudo: bool = True, timeout_sec: int = 300):
         """
         Args:
@@ -267,6 +272,7 @@ class NmapScanner:
         self,
         targets: List[str],
         intensity: str = "basic",
+        with_services: bool = False,
     ) -> Dict[str, NmapScanResult]:
         """
         Batch port scan for multiple hosts.
@@ -275,21 +281,32 @@ class NmapScanner:
         Nmap handles internal parallelism; no need for per-host threading here.
 
         Args:
-            targets:   List of IPs.
-            intensity: "basic" | "normal" | "deep"
+            targets:       List of IPs.
+            intensity:     "basic" | "normal" | "deep"
+            with_services: When True, merges ``-sV --version-light`` into this
+                           single batch call so callers can skip the expensive
+                           per-host service-enrichment pass entirely.
+                           Not used for "deep" (handled separately).
 
         Returns:
-            Dict mapping IP → NmapScanResult.
+            Dict mapping IP → NmapScanResult (ports include service/version
+            when with_services=True).
         """
         if not NMAP_AVAILABLE or not targets:
             return {ip: self._unavailable_result(ip) for ip in targets}
 
         port_arg = self._TOP_PORTS.get(intensity, "-F")
-        args = f"-sS {port_arg} --open -T4"
 
-        # _run_multi handles multi-host scanning and result demuxing correctly.
-        # Do NOT call self._run(target_str, ...) here — it fires a separate single-string
-        # Nmap invocation whose result is never used (was a dead variable before cleanup).
+        # Merge service detection into the batch call when requested.
+        # --version-light uses Nmap probe intensity 2 (vs. default 7) — fast
+        # enough for a batch scan while still identifying common services.
+        svc_arg = "-sV --version-light" if with_services and intensity != "deep" else ""
+
+        args = " ".join(filter(None, [
+            "-sS", svc_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS
+        ]))
+
+        log.debug("scan_hosts args: %s", args)
         return self._run_multi(targets, args)
 
     # ── Internal execution engine ─────────────────────────────────────────────

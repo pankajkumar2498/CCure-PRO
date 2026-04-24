@@ -272,8 +272,7 @@ class DiscoveryEngine:
             if lan:
                 lan_icmp_targets = [
                     ip for ip in lan
-                    if not results[ip]["is_active"]
-                    or results[ip].get("os_guess", "Unknown") == "Unknown"
+                    if results[ip]["is_active"]
                 ]
                 if lan_icmp_targets:
                     await asyncio.to_thread(
@@ -308,9 +307,10 @@ class DiscoveryEngine:
 
         # ── UDP probes — LAN multicast services ────────────────────────────
         if Technique.UDP_PROBE in techniques and can_raw:
-            # LAN: hosts still inactive after ARP + ICMP
             if lan:
-                lan_udp_targets = [ip for ip in lan if not results[ip]["is_active"]]
+                # Probing inactive LAN hosts with Layer-3 sr() causes severe ARP timeout cascades.
+                # Restrict to active LAN hosts to discover open UDP services.
+                lan_udp_targets = [ip for ip in lan if results[ip]["is_active"]]
                 if lan_udp_targets:
                     await asyncio.to_thread(
                         udp_probe.probe,

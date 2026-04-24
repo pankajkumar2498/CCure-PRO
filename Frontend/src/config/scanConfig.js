@@ -17,31 +17,6 @@
  *  const payload  = buildPhasePayload("basic", { targets, scan_type });
  */
 
-// ─── Phase descriptors ───────────────────────────────────────────────────────
-export const PHASES = {
-  1: {
-    id:       1,
-    key:      "phase1",
-    label:    "Host Discovery",
-    endpoint: "/scan/host-discovery",
-    route:    "/scan/host-discovery",
-  },
-  2: {
-    id:       2,
-    key:      "phase2",
-    label:    "Port Scanning",
-    endpoint: "/scan/asset-discovery",
-    route:    "/scan/asset-discovery",
-  },
-  3: {
-    id:       3,
-    key:      "phase3",
-    label:    "Vulnerability & Risk Audit",
-    endpoint: "/scan/advanced-scan",
-    route:    "/scan/advanced-scan",
-  },
-};
-
 // ─── Pipeline definitions ────────────────────────────────────────────────────
 export const SCAN_PIPELINES = {
   /**
@@ -50,12 +25,12 @@ export const SCAN_PIPELINES = {
    * Backend receives: { phases: [1] }
    */
   basic: {
-    id:          "basic",
-    label:       "Basic Network Scan",
+    id: "basic",
+    label: "Basic Network Scan",
     description: "Identifies only the live hosts on the network.",
-    phases:      [1],
-    entryRoute:  "/scan",
-    badge:       "Phase 1 Only",
+    phases: [1],
+    entryRoute: "/scan",
+    badge: "Phase 1 Only",
   },
 
   /**
@@ -65,12 +40,12 @@ export const SCAN_PIPELINES = {
    * Backend receives: { phases: [1, 2] }
    */
   asset: {
-    id:          "asset",
-    label:       "Asset Discovery",
+    id: "asset",
+    label: "Asset Discovery",
     description: "Identifies Assets in the Network with Basic Information.",
-    phases:      [1, 2],
-    entryRoute:  "/scan",           // always starts at /scan, not /scan/asset-discovery
-    badge:       "Phase 1 → 2",
+    phases: [1, 2],
+    entryRoute: "/scan",           // always starts at /scan, not /scan/asset-discovery
+    badge: "Phase 1 → 2",
     alwaysRestart: true,            // signals: never jump to asset-discovery using cached host-discovery data
   },
 
@@ -80,12 +55,12 @@ export const SCAN_PIPELINES = {
    * Backend receives: { phases: [1, 2, 3] }
    */
   advanced: {
-    id:          "advanced",
-    label:       "Advanced Scan",
+    id: "advanced",
+    label: "Advanced Scan",
     description: "Full Network Scan with Detailed Information.",
-    phases:      [1, 2, 3],
-    entryRoute:  "/scan",
-    badge:       "Full Pipeline",
+    phases: [1, 2, 3],
+    entryRoute: "/scan",
+    badge: "Full Pipeline",
   },
 };
 
@@ -139,7 +114,7 @@ export function getNextPhase(mode, currentPhase) {
 export function buildPhasePayload(mode, extra = {}) {
   const pipeline = getScanPipeline(mode);
   return {
-    phases:        pipeline.phases,
+    phases: pipeline.phases,
     pipeline_mode: mode,
     ...extra,
   };

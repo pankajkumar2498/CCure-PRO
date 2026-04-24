@@ -87,6 +87,120 @@ class ScanOrchestrator:
             f"priv={self.has_priv}, intensity={self.intensity.value}"
         )
 
+    # ── TRADITIONAL SCAN METHODS (backward-compat with /scan/host, /scan/range, etc.) ─────
+    #
+    # These methods are called by main.py traditional endpoints (POST /scan/host,
+    # /scan/range, /scan/subnet, /scan/subnets, /scan/phases) via HostDiscoveryAPI.
+    # They delegate to run_host_discovery_only() which drives the new Scapy pipeline.
+    # The "advanced" pipeline_mode is used so all discovery techniques are active.
+
+    async def scan_single_host(self, target: str, scan_type: str = "adaptive") -> Dict:
+        """Backward-compat: scan a single host using the full discovery pipeline."""
+        return await self.run_host_discovery_only(
+            targets=[target],
+            scan_type=scan_type,
+            pipeline_mode="advanced",
+        )
+
+    async def scan_ip_range(self, target: str, scan_type: str = "adaptive") -> Dict:
+        """Backward-compat: scan an IP range (e.g. '192.168.1.1-50')."""
+        return await self.run_host_discovery_only(
+            targets=[target],
+            scan_type=scan_type,
+            pipeline_mode="advanced",
+        )
+
+    async def scan_subnet(self, target: str, scan_type: str = "adaptive") -> Dict:
+        """Backward-compat: scan a CIDR subnet (e.g. '192.168.1.0/24')."""
+        return await self.run_host_discovery_only(
+            targets=[target],
+            scan_type=scan_type,
+            pipeline_mode="advanced",
+        )
+
+    async def scan_subnets_of_subnet(
+        self,
+        target: str,
+        subnet_prefix: int = 24,
+        scan_type: str = "adaptive",
+    ) -> Dict:
+        """Backward-compat: scan all sub-subnets of a parent CIDR."""
+        import ipaddress
+        results: List[Dict] = []
+        try:
+            parent = ipaddress.ip_network(target, strict=False)
+            subnets = [str(s) for s in parent.subnets(new_prefix=subnet_prefix)]
+        except ValueError as exc:
+            return self._err(f"Invalid target '{target}': {exc}")
+
+        for subnet in subnets:
+            r = await self.run_host_discovery_only(
+                targets=[subnet],
+                scan_type=scan_type,
+                pipeline_mode="advanced",
+            )
+            results.extend(r.get("data", []))
+
+        active = sum(1 for h in results if h.get("is_active"))
+        return {
+            "success": True,
+            "data": results,
+            "summary": {
+                "total_subnets": len(subnets),
+                "total_hosts": len(results),
+                "active_hosts": active,
+                "inactive_hosts": len(results) - active,
+                "scan_type": scan_type.upper(),
+            },
+        }
+
+    async def run_phases(
+        self,
+        targets: List[str],
+        phases: str,
+        scan_type: str = "adaptive",
+        intensity: str = "normal",
+    ) -> Dict:
+        """
+        Backward-compat: run any combination of phases in one call.
+        phases: '1' | '1+2' | '1+2+3+4'
+        """
+        phase_nums = {int(p) for p in phases.split("+") if p.strip().isdigit()}
+
+        if 3 in phase_nums or 4 in phase_nums:
+            pipeline_mode = "advanced"
+        elif 2 in phase_nums:
+            pipeline_mode = "asset"
+        else:
+            pipeline_mode = "basic"
+
+        # Phase 1: Host Discovery
+        result = await self.run_host_discovery_only(
+            targets=targets,
+            scan_type=scan_type,
+            pipeline_mode=pipeline_mode,
+        )
+        if not result.get("success") or pipeline_mode == "basic":
+            return result
+
+        # Phase 2: Port Scan
+        hosts = result.get("data", [])
+        result = await self.run_asset_discovery_only(
+            hosts=hosts,
+            intensity=intensity,
+            pipeline_mode=pipeline_mode,
+        )
+        if not result.get("success") or pipeline_mode == "asset":
+            return result
+
+        # Phase 3: Vulnerability
+        hosts = result.get("data", [])
+        return self.run_advanced_scan_only(hosts=hosts)
+
+    @staticmethod
+    def _err(msg: str) -> Dict:
+        return {"success": False, "error": msg}
+
     # ── PHASE 1: Host Discovery ───────────────────────────────────────────────
 
     async def run_host_discovery_only(

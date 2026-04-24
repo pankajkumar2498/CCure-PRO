@@ -1,14 +1,13 @@
 """
-core/discovery/techniques — Individual Scapy probe modules.
+engines/discovery — Backward-compatibility shim package.
 
-Each module exposes a single probe() function. Import individually:
+Primary entry point for callers that still use the old import path:
+    from engines.discovery.discovery_engine import DiscoveryEngine
 
-    from core.discovery.techniques import arp, icmp, tcp_syn, tcp_conn, udp_probe, nbns
-
-Or import the specific function:
-
-    from core.discovery.techniques.arp import probe as arp_probe
+New code should import directly from core:
+    from core.discovery.engine import DiscoveryEngine
+    from core.discovery.profiles import FAST, BALANCED, AGGRESSIVE
 """
-from core.discovery.techniques import arp, icmp, tcp_syn, tcp_conn, udp_probe, nbns
+from engines.discovery.discovery_engine import DiscoveryEngine
 
-__all__ = ["arp", "icmp", "tcp_syn", "tcp_conn", "udp_probe", "nbns"]
+__all__ = ["DiscoveryEngine"]

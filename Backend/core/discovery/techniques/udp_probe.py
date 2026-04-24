@@ -53,7 +53,7 @@ def probe(
             from scapy.all import ICMP
             if rcv.haslayer(ICMP) and rcv[ICMP].type == 3:
                 code = rcv[ICMP].code
-                state = "closed" if code == 3 else ("filtered" if code in _FILTERED_CODES else "filtered")
+                state = "closed" if code == 3 else (("filtered" if code in _FILTERED_CODES else "filtered"))
                 results[ip]["port_states"][port] = state
                 # RST from ICMP still confirms host existence
                 if code == 3 and not results[ip]["is_active"]:

@@ -20,11 +20,8 @@ WHY NMAP (not pure Scapy) FOR PORT SCANNING:
   - Banner grabbing (-sC / NSE scripts) is battle-tested and NSE-scriptable.
 
 MODES:
-  scan_ports(target, ports, intensity)   → port states only (fast)
   detect_services(target, ports)         → service + version + banner
   full_scan(target)                      → service + OS + NSE scripts
-  os_fingerprint(target)                 → OS only (needs root)
-  vuln_scan(target, ports)               → NSE vuln scripts
 
 AVAILABILITY:
   nmap must be installed: apt install nmap  /  brew install nmap
@@ -165,14 +162,14 @@ class NmapScanner:
 
         scanner = NmapScanner()
 
-        # Asset Discovery — fast port states only
-        result = scanner.scan_ports("192.168.1.10", intensity="basic")
+        # Asset Discovery — batch port states (returns dict of IP → NmapScanResult)
+        results = scanner.scan_hosts(["192.168.1.10", "192.168.1.11"], intensity="basic")
 
-        # Advanced Scan — full service + version + OS
+        # Asset Discovery — service/version on known open ports
+        result = scanner.detect_services("192.168.1.10", ports=[22, 80, 443])
+
+        # Advanced Scan — full service + OS fingerprint + NSE scripts
         result = scanner.full_scan("192.168.1.10")
-
-        # Vulnerability scan — NSE vuln scripts
-        result = scanner.vuln_scan("192.168.1.10", ports=[80, 443, 22])
 
     Thread Safety:
         Each call creates its own python-nmap PortScanner instance.
@@ -212,33 +209,6 @@ class NmapScanner:
         self.timeout_sec = timeout_sec
 
     # ── Public API ────────────────────────────────────────────────────────────
-
-    def scan_ports(
-        self,
-        target: str,
-        ports: Optional[List[int]] = None,
-        intensity: str = "basic",
-    ) -> NmapScanResult:
-        """
-        Port scanning only — fast, no service/version detection.
-
-        Used by: Asset Discovery (Phase 2)
-
-        Args:
-            target:    Single IP or CIDR (e.g. "192.168.1.10" or "192.168.1.0/24").
-                       For multiple hosts, call scan_hosts() instead.
-            ports:     Explicit port list. If None, uses intensity-based top-ports.
-            intensity: "basic" (top-100) | "normal" (top-1000) | "deep" (all 65535)
-
-        Returns:
-            NmapScanResult for the target host.
-        """
-        if not NMAP_AVAILABLE:
-            return self._unavailable_result(target)
-
-        port_arg = self._port_arg(ports, intensity)
-        args = f"-sS {port_arg} --open -T4"
-        return self._run(target, args)
 
     def detect_services(
         self,
@@ -293,48 +263,6 @@ class NmapScanner:
         args = f"-sS -sV -O --version-intensity 7 {port_arg} -T4"
         return self._run(target, args)
 
-    def os_fingerprint(self, target: str) -> NmapScanResult:
-        """
-        OS fingerprinting only. Requires root + at least one open and one
-        closed/filtered port.
-
-        Args:
-            target: Single IP.
-
-        Returns:
-            NmapScanResult with os_matches populated.
-        """
-        if not NMAP_AVAILABLE:
-            return self._unavailable_result(target)
-
-        args = "-O -p 80,443,22,445,3389 -T4"
-        return self._run(target, args)
-
-    def vuln_scan(
-        self,
-        target: str,
-        ports: Optional[List[int]] = None,
-    ) -> NmapScanResult:
-        """
-        NSE vulnerability script scan. Runs scripts from the 'vuln' and 'safe'
-        categories which detect common CVEs without exploiting them.
-
-        Used by: Advanced Scan (Phase 3) for authenticated vulnerability checks.
-
-        Args:
-            target: Single IP.
-            ports:  Limit NSE scripts to these ports.
-
-        Returns:
-            NmapScanResult with script outputs in NmapPortResult.scripts.
-        """
-        if not NMAP_AVAILABLE:
-            return self._unavailable_result(target)
-
-        port_arg = self._port_arg(ports, "normal")
-        args = f"-sS -sV --script=vuln,safe {port_arg} -T4"
-        return self._run(target, args)
-
     def scan_hosts(
         self,
         targets: List[str],
@@ -356,14 +284,12 @@ class NmapScanner:
         if not NMAP_AVAILABLE or not targets:
             return {ip: self._unavailable_result(ip) for ip in targets}
 
-        target_str = " ".join(targets)
         port_arg = self._TOP_PORTS.get(intensity, "-F")
         args = f"-sS {port_arg} --open -T4"
 
-        multi = self._run(target_str, args)
-        # python-nmap returns one result per host — we need to demux
-        # by running individual scans here
-        # (python-nmap's all_hosts() handles multi-host correctly)
+        # _run_multi handles multi-host scanning and result demuxing correctly.
+        # Do NOT call self._run(target_str, ...) here — it fires a separate single-string
+        # Nmap invocation whose result is never used (was a dead variable before cleanup).
         return self._run_multi(targets, args)
 
     # ── Internal execution engine ─────────────────────────────────────────────

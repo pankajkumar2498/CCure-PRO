@@ -29,7 +29,8 @@ from auth.jwt_handler import (
     revoke_refresh_token,
     verify_password,
 )
-from auth.models import User, get_db
+from db.base import get_db
+from db.models import User, Organization, Role
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class LogoutRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: int
+    id: str | int  # Support both legacy integer IDs and new UUIDs (as string)
     username: str
     email: str
     created_at: str
@@ -137,10 +138,19 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     if db.query(User).filter(User.username == req.username.strip()).first():
         raise HTTPException(status_code=409, detail="Username already taken")
 
+    # For production auto-registration, place new users in the Default Organization with the 'analyst' role.
+    default_org = db.query(Organization).filter(Organization.slug == "default").first()
+    default_role = db.query(Role).filter(Role.name == "analyst").first()
+    
+    if not default_org or not default_role:
+        raise HTTPException(status_code=500, detail="RBAC or Organization not seeded in production DB.")
+
     user = User(
         username=req.username.strip(),
         email=req.email,
         password_hash=hash_password(req.password),
+        org_id=default_org.id,
+        role_id=default_role.id
     )
     db.add(user)
     try:
@@ -159,9 +169,9 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     _set_refresh_cookie(response, refresh_token)
 
     return {
-        "access_token": create_access_token(user.id, user.username),
+        "access_token": create_access_token(str(user.id), user.username),
         "user": {
-            "id": user.id,
+            "id": str(user.id),
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
@@ -205,9 +215,9 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     _set_refresh_cookie(response, refresh_token)
 
     return {
-        "access_token": create_access_token(user.id, user.username),
+        "access_token": create_access_token(str(user.id), user.username),
         "user": {
-            "id": user.id,
+            "id": str(user.id),
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
@@ -250,7 +260,7 @@ def me(current_user: User = Depends(get_current_user)):
     Requires: Authorization: Bearer <access_token>
     """
     return {
-        "id": current_user.id,
+        "id": str(current_user.id),
         "username": current_user.username,
         "email": current_user.email,
         "created_at": current_user.created_at.isoformat(),

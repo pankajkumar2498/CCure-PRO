@@ -95,7 +95,7 @@ VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys())
 
 # ─── Real-time progress tracking ───────────────────────────────────────────
 # In-memory store for scan progress (scan_id -> progress dict)
-_scan_progress: dict[int, dict] = {}
+_scan_progress: dict[str, dict] = {}
 _progress_lock = Lock()
 
 
@@ -125,7 +125,7 @@ def resolve_pipeline_mode(raw: Optional[str]) -> str:
     return "basic"
 
 
-def init_progress(scan_id: int, total_ips: int):
+def init_progress(scan_id: str, total_ips: int):
     """Initialize progress tracking for a scan."""
     with _progress_lock:
         _scan_progress[scan_id] = {
@@ -137,7 +137,7 @@ def init_progress(scan_id: int, total_ips: int):
         }
 
 
-def update_progress(scan_id: int, discovered: int, active: int = None):
+def update_progress(scan_id: str, discovered: int, active: int = None):
     """Update progress for a scan."""
     with _progress_lock:
         if scan_id in _scan_progress:
@@ -203,9 +203,9 @@ def _scan_method_from_hosts(hosts: List[dict]) -> Optional[str]:
 
 def _resolve_report_context(
     db: Session,
-    user_id: int,
+    user_id: str,
     *,
-    scan_id: Optional[int] = None,
+    scan_id: Optional[str] = None,
     hosts: Optional[List[dict]] = None,
     requested_targets: Optional[List[str]] = None,
     requested_scan_type: Optional[str] = None,
@@ -279,8 +279,8 @@ def _phase1_summary_from_scan(scan_row: Scan) -> dict:
 def _apply_phase1_summary_hints(
     result: dict,
     db: Session,
-    user_id: int,
-    scan_id: Optional[int],
+    user_id: str,
+    scan_id: Optional[str],
 ) -> None:
     if not scan_id:
         return
@@ -311,7 +311,7 @@ def _apply_phase1_summary_hints(
         metadata.setdefault("discovery_scan_method", discovery_scan_method)
 
 
-def finish_progress(scan_id: int):
+def finish_progress(scan_id: str):
     """Mark a scan as finished."""
     with _progress_lock:
         if scan_id in _scan_progress:
@@ -325,7 +325,7 @@ def finish_progress(scan_id: int):
 async def lifespan(app: FastAPI):
     global _api_instance
     create_tables()
-    ensure_scan_schema()
+    # ensure_scan_schema()
     _api_instance = HostDiscoveryAPI(silent=False)
     log.info("HostDiscoveryAPI initialised")
     yield
@@ -381,7 +381,7 @@ def _get_api() -> HostDiscoveryAPI:
 app.include_router(auth_router)
 
 # -- Scan history routes -------------------------------------------------------
-app.include_router(scans_router)
+# app.include_router(scans_router)
 
 
 # -- Request models for TRADITIONAL scans (unchanged) --------------------------
@@ -448,7 +448,7 @@ class AssetDiscoveryRequest(BaseModel):
     """
     hosts:         List[dict]     = Field(..., description="Host dicts from Host Discovery")
     intensity:     str            = Field("normal", example="normal")
-    scan_id:       Optional[int]  = Field(None)
+    scan_id:       Optional[str]  = Field(None)
     pipeline_mode: Optional[str]  = Field("asset",
                                           example="asset",
                                           description="basic | asset | advanced")
@@ -462,7 +462,7 @@ class AdvancedScanRequest(BaseModel):
     Only reached when pipeline_mode is "advanced". Always marks the scan complete.
     """
     hosts:         List[dict]     = Field(..., description="Host dicts from Asset Discovery")
-    scan_id:       Optional[int]  = Field(None)
+    scan_id:       Optional[str]  = Field(None)
     pipeline_mode: Optional[str]  = Field("advanced",
                                           example="advanced",
                                           description="basic | asset | advanced")
@@ -520,7 +520,7 @@ async def root():
 
 @app.get("/scan/progress/{scan_id}", tags=["Progress"])
 async def get_scan_progress(
-    scan_id: int,
+    scan_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -623,7 +623,7 @@ async def scan_host_discovery(
     result.setdefault("metadata", {}).update(
         _resolve_report_context(
             db,
-            user.id,
+            str(user.id),
             requested_targets=req.targets,
             requested_scan_type=req.scan_type,
             hosts=result.get("data", []),
@@ -645,7 +645,7 @@ async def scan_host_discovery(
 
     scan = create_scan(
         db               = db,
-        user_id          = user.id,
+        user_id          = str(user.id),
         target           = target_str,
         targets          = req.targets,
         scan_type        = req.scan_type,
@@ -663,7 +663,7 @@ async def scan_host_discovery(
     if report_paths:
         result["reports"] = report_paths
 
-    result["scan_id"]              = scan.id
+    result["scan_id"]              = str(scan.id)
     result["pipeline_mode"]        = mode
     result["terminal_phase"]       = terminal
     if mode == "asset":
@@ -718,12 +718,12 @@ async def scan_asset_discovery(
         result.setdefault("metadata", {}).update(
             _resolve_report_context(
                 db,
-                user.id,
+                str(user.id),
                 scan_id=req.scan_id,
                 hosts=req.hosts,
             )
         )
-        _apply_phase1_summary_hints(result, db, user.id, req.scan_id)
+        _apply_phase1_summary_hints(result, db, str(user.id), req.scan_id)
 
         report_paths = {}
         if is_final:
@@ -738,7 +738,7 @@ async def scan_asset_discovery(
             updated = update_scan_phase(
                 db               = db,
                 scan_id          = req.scan_id,
-                user_id          = user.id,
+                user_id          = str(user.id),
                 phase            = 2,
                 phase_data       = {
                     "data": result["data"],
@@ -752,7 +752,7 @@ async def scan_asset_discovery(
             )
             if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
-            result["scan_id"] = req.scan_id
+            result["scan_id"] = str(req.scan_id)
 
         if report_paths:
             result["reports"] = report_paths
@@ -767,11 +767,11 @@ async def scan_asset_discovery(
 
     except HTTPException:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, "Asset Discovery failed.")
+            mark_scan_failed(db, req.scan_id, str(user.id), "Asset Discovery failed.")
         raise
     except Exception as exc:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, str(exc))
+            mark_scan_failed(db, req.scan_id, str(user.id), str(exc))
         log.exception("Asset Discovery error — user=%s scan_id=%s", user.id, req.scan_id)
         raise HTTPException(status_code=500, detail="Asset Discovery scan failed.")
 
@@ -815,12 +815,12 @@ async def scan_advanced_scan(
         result.setdefault("metadata", {}).update(
             _resolve_report_context(
                 db,
-                user.id,
+                str(user.id),
                 scan_id=req.scan_id,
                 hosts=req.hosts,
             )
         )
-        _apply_phase1_summary_hints(result, db, user.id, req.scan_id)
+        _apply_phase1_summary_hints(result, db, str(user.id), req.scan_id)
 
         report_paths = orch.generate_phase_report(result, "phase_selective_scan")
         report_paths = {
@@ -832,7 +832,7 @@ async def scan_advanced_scan(
             updated = update_scan_phase(
                 db               = db,
                 scan_id          = req.scan_id,
-                user_id          = user.id,
+                user_id          = str(user.id),
                 phase            = 3,
                 phase_data       = {
                     "data": result["data"],
@@ -861,11 +861,11 @@ async def scan_advanced_scan(
 
     except HTTPException:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, "Advanced Scan failed.")
+            mark_scan_failed(db, req.scan_id, str(user.id), "Advanced Scan failed.")
         raise
     except Exception as exc:
         if req.scan_id:
-            mark_scan_failed(db, req.scan_id, user.id, str(exc))
+            mark_scan_failed(db, req.scan_id, str(user.id), str(exc))
         log.exception("Advanced Scan error — user=%s scan_id=%s", user.id, req.scan_id)
         raise HTTPException(status_code=500, detail="Advanced Scan failed.")
 

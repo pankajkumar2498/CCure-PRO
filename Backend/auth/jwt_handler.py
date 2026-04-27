@@ -95,11 +95,14 @@ def create_access_token(user_id: int, username: str) -> str:
     )
 
 
-def create_refresh_token(user_id: int, db: Optional[Session] = None) -> str:
+def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("User not found")
         jti = secrets.token_urlsafe(32)
         expires_at = _utcnow() + REFRESH_TOKEN_EXPIRE
         token = _create_token(
@@ -108,6 +111,7 @@ def create_refresh_token(user_id: int, db: Optional[Session] = None) -> str:
         )
         session_row = RefreshTokenSession(
             user_id=user_id,
+            org_id=user.org_id,
             token_jti=jti,
             token_hash=_hash_token(token),
             expires_at=expires_at,
@@ -210,6 +214,7 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Op
         )
         replacement = RefreshTokenSession(
             user_id=user.id,
+            org_id=user.org_id,
             token_jti=new_jti,
             token_hash=_hash_token(new_refresh_token),
             expires_at=_utcnow() + REFRESH_TOKEN_EXPIRE,

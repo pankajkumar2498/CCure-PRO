@@ -17,10 +17,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from auth.models import SessionLocal, get_db
 from auth.dependencies import get_current_user, get_current_user_flexible
-from auth.models import User
-from scans.models import Scan
+from auth.models import get_db, User
+from db.base import SessionLocal
+from db.models.scans import Scan
+from scans.legacy_json_builder import build_legacy_scan_results
 
 router = APIRouter(prefix="/scans", tags=["Scan History"])
 
@@ -42,29 +43,21 @@ def _as_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     return f"{dt.isoformat()}Z"
 
 
-def _load_phase_results(scan: Scan) -> dict:
-    if getattr(scan, "phase_results", None):
-        results = {}
-        for phase_row in scan.phase_results:
-            payload = _load_json(phase_row.payload)
-            if payload:
-                results[phase_row.phase_key] = payload
-        if results:
-            return results
-    return _load_json(scan.results)
+def _load_phase_results(db: Session, scan: Scan) -> dict:
+    return build_legacy_scan_results(db, str(scan.id))
 
 
-def _scan_to_dict(scan: Scan, include_results: bool = False) -> dict:
+def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: bool = False) -> dict:
     """Serialize a Scan row to a JSON-safe dict."""
     pipeline_mode = getattr(scan, "pipeline_mode", "basic") or "basic"
     d = {
-        "id":            scan.id,
-        "target":        scan.target,
-        "targets":       _load_json(scan.targets_json),
+        "id":            str(scan.id),
+        "target":        scan.target_str,
+        "targets":       scan.target_hosts or [],
         "scan_type":     scan.scan_type,
-        "phase":         scan.phase,
+        "phase":         scan.phases[-1].phase_order if scan.phases else 1,
         "status":        scan.status,
-        "scan_duration": scan.scan_duration,
+        "scan_duration": scan.duration_seconds,
         "created_at":    _as_utc_iso(scan.created_at),
         "updated_at":    _as_utc_iso(scan.updated_at),
         "is_archived":   bool(scan.is_archived),
@@ -77,8 +70,8 @@ def _scan_to_dict(scan: Scan, include_results: bool = False) -> dict:
         "summary":       _load_json(scan.summary),
     }
     d["progress_percentage"] = _scan_progress_percentage(scan, pipeline_mode)
-    if include_results:
-        d["results"] = _load_phase_results(scan)
+    if include_results and db:
+        d["results"] = _load_phase_results(db, scan)
     return d
 
 
@@ -89,8 +82,8 @@ def _load_json(text: str) -> dict:
         return {}
 
 
-def _get_scan_or_404(scan_id: int, user_id: int, db: Session) -> Scan:
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.user_id == user_id).first()
+def _get_scan_or_404(scan_id: str, user_id: str, db: Session) -> Scan:
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
@@ -103,7 +96,9 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
         return 100
 
     terminal_phase = TERMINAL_PHASE_BY_MODE.get(pipeline_mode, 1)
-    phase = max(0, min(int(scan.phase or 0), terminal_phase))
+    # Using phases to calculate phase
+    current_phase = scan.phases[-1].phase_order if scan.phases else 0
+    phase = max(0, min(current_phase, terminal_phase))
     percentage = int(round((phase / terminal_phase) * 100)) if terminal_phase else 0
 
     if status == "running":
@@ -113,8 +108,8 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, user_id: int, scope: str):
-    query = db.query(Scan).filter(Scan.user_id == user_id)
+def _build_scans_query(db: Session, user_id: str, scope: str):
+    query = db.query(Scan).filter(Scan.created_by == user_id)
 
     if scope == "active":
         query = query.filter(Scan.is_deleted.is_(False), Scan.is_archived.is_(False))
@@ -134,7 +129,7 @@ def _build_scans_query(db: Session, user_id: int, scope: str):
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, user_id: int, scope: str, skip: int, limit: int) -> dict:
+def _scan_history_snapshot(db: Session, user_id: str, scope: str, skip: int, limit: int) -> dict:
     query, order_by = _build_scans_query(db, user_id, scope)
     scans = (
         query
@@ -235,23 +230,23 @@ async def stream_scan_history(
 
 @router.get("/{scan_id}")
 def get_scan(
-    scan_id: int,
+    scan_id: str,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
     """Return full detail of one scan including all phase results."""
-    scan = _get_scan_or_404(scan_id, user.id, db)
-    return _scan_to_dict(scan, include_results=True)
+    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    return _scan_to_dict(scan, db=db, include_results=True)
 
 
 @router.post("/{scan_id}/archive")
 def archive_scan(
-    scan_id: int,
+    scan_id: str,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, user.id, db)
+    scan = _get_scan_or_404(scan_id, str(user.id), db)
     if scan.is_deleted:
         raise HTTPException(status_code=400, detail="Cannot archive a scan from the recycle bin.")
     if scan.is_archived:
@@ -273,12 +268,12 @@ def archive_scan(
 
 @router.post("/{scan_id}/restore")
 def restore_scan(
-    scan_id: int,
+    scan_id: str,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
     """Restore an archived scan back to My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, user.id, db)
+    scan = _get_scan_or_404(scan_id, str(user.id), db)
     if scan.is_deleted:
         scan.is_deleted = False
         scan.deleted_at = None
@@ -313,12 +308,12 @@ def restore_scan(
 
 @router.delete("/{scan_id}")
 def delete_scan(
-    scan_id: int,
+    scan_id: str,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
-    scan = _get_scan_or_404(scan_id, user.id, db)
+    scan = _get_scan_or_404(scan_id, str(user.id), db)
     if scan.is_deleted:
         return {
             "detail": f"Scan {scan_id} is already in the recycle bin",
@@ -338,12 +333,12 @@ def delete_scan(
 
 @router.delete("/{scan_id}/purge")
 def purge_scan(
-    scan_id: int,
+    scan_id: str,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
-    scan = _get_scan_or_404(scan_id, user.id, db)
+    scan = _get_scan_or_404(scan_id, str(user.id), db)
     if not scan.is_deleted:
         raise HTTPException(
             status_code=400,

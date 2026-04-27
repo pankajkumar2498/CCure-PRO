@@ -10,7 +10,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from auth.jwt_handler import decode_token
-from auth.models import User, get_db
+from db.base import get_db
+from db.models import User
 
 bearer_scheme = HTTPBearer()
 
@@ -37,7 +38,7 @@ def get_current_user(
         )
 
     try:
-        user_id = int(payload["sub"])
+        user_id = str(payload["sub"])
     except (KeyError, TypeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -82,7 +83,7 @@ def get_current_user_flexible(
         )
 
     try:
-        user_id = int(payload["sub"])
+        user_id = str(payload["sub"])
     except (KeyError, TypeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

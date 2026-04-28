@@ -90,7 +90,7 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
                     "ip": asset.ip_address,
                     "mac": asset.mac_address,
                     "hostname": asset.hostname,
-                    "vendor": asset.operating_system or "Unknown",
+                    "vendor": asset.vendor or "Unknown",
                     "state": "up" if asset.is_active else "down"
                 })
             
@@ -112,7 +112,7 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
                         phase_dict["data"].append({
                             "ip": asset.ip_address,
                             "mac": asset.mac_address,
-                            "os_guess": asset.operating_system,
+                            "os_guess": asset.os_name,
                             "ports": ports_list
                         })
 

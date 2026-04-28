@@ -17,6 +17,7 @@ import { useScan } from "../context/ScanContext";
 import { getScans, getScan, deleteScan, archiveScan, streamScanEvents } from "../api/scans";
 import { buildPhasePayload } from "../config/scanConfig";
 import api from "../api/axiosInstance";
+import { dateTimeMs, formatDateTime } from "../utils/date";
 
 /* ── constants ── */
 const STATUS_STYLE = {
@@ -57,7 +58,7 @@ const phaseLabel = scan =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} — ${PHASE_LABELS[scan.phase] || "-"}`;
 
 const fmtDate = iso =>
-  iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  formatDateTime(iso, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 const getScanDisplayDate = scan =>
   ["complete", "failed", "cancelled"].includes(normalizeStatus(scan.status)) ? scan.updated_at || scan.created_at : scan.created_at;
@@ -649,7 +650,7 @@ export default function ScanHistory() {
   const now = Date.now();
   const visible = scans.filter(scan => {
     if (filterStatus !== "all" && normalizeStatus(scan.status) !== filterStatus) return false;
-    if (filterDate !== "all" && now - new Date(getScanDisplayDate(scan)).getTime() > DATE_MS[filterDate]) return false;
+    if (filterDate !== "all" && now - dateTimeMs(getScanDisplayDate(scan)) > DATE_MS[filterDate]) return false;
     return true;
   });
 

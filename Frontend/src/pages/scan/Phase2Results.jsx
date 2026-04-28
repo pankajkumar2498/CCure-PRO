@@ -24,6 +24,19 @@ const RISK_COLOR = {
   Info: "#60a5fa",
 };
 
+const textValue = (value, fallback = "—") => {
+  if (value == null || value === "" || value === "Unknown" || value === "N/A") return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(v => textValue(v, "")).filter(Boolean).join(", ") || fallback;
+  if (typeof value === "object") return value.name || value.vendor || value.address || value.value || fallback;
+  return fallback;
+};
+
+const fmtNumber = (value, digits = 1, fallback = "—") => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toFixed(digits) : fallback;
+};
+
 export default function Phase2Results() {
   const navigate = useNavigate();
   const {
@@ -238,9 +251,8 @@ export default function Phase2Results() {
                 let displayHost = host.hostname;
                 if (!displayHost || displayHost === "Unknown") {
                   if (host.mdns_name) displayHost = host.mdns_name;
-                  else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0].name;
+                  else if (host.netbios_names && host.netbios_names.length) displayHost = host.netbios_names[0]?.name;
                 }
-                const devCat = host.snmp_device_type || host.device_category || "unknown";
 
                 return (
                   <tr
@@ -260,10 +272,10 @@ export default function Phase2Results() {
                       )}
                     </td>
                     <td><code className="ip-code">{host.ip_address}</code></td>
-                    <td>{displayHost || <span className="muted">—</span>}</td>
-                    <td>{host.mac_address || <span className="muted">—</span>}</td>
-                    <td>{host.vendor || <span className="muted">—</span>}</td>
-                    <td>{host.discovery_method || <span className="muted">—</span>}</td>
+                    <td>{textValue(displayHost, <span className="muted">—</span>)}</td>
+                    <td>{textValue(host.mac_address, <span className="muted">—</span>)}</td>
+                    <td>{textValue(host.vendor, <span className="muted">—</span>)}</td>
+                    <td>{textValue(host.discovery_method, <span className="muted">—</span>)}</td>
                     <td>
                       <span className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`} />
                       {host.is_active ? "Active" : "Inactive"}
@@ -279,7 +291,7 @@ export default function Phase2Results() {
           <div className="summary-bar" style={{ marginTop: 16 }}>
             <span className="summary-item"><b>{summary.total_hosts}</b> Hosts scanned</span>
             <span className="summary-item summary-item--active"><b>{summary.hosts_with_ports}</b> Have open ports</span>
-            <span className="summary-item"><b>{summary.scan_duration?.toFixed(1)}s</b> Duration</span>
+            <span className="summary-item"><b>{fmtNumber(summary.scan_duration)}s</b> Duration</span>
             <span className="summary-item summary-item--sel"><b>{selectedCount}</b> selected</span>
           </div>
         )}
@@ -330,9 +342,10 @@ export default function Phase2Results() {
                     let hName = host.hostname;
                     if (!hName || hName === "Unknown") {
                       if (host.mdns_name) hName = host.mdns_name;
-                      else if (host.netbios_names && host.netbios_names.length) hName = host.netbios_names[0].name;
+                      else if (host.netbios_names && host.netbios_names.length) hName = host.netbios_names[0]?.name;
                     }
-                    return hName && hName !== "Unknown" ? <span className="muted small">{hName}</span> : null;
+                    const safeName = textValue(hName, "");
+                    return safeName ? <span className="muted small">{safeName}</span> : null;
                   })()}
                 </div>
 
@@ -358,7 +371,7 @@ export default function Phase2Results() {
                   )}
                   {host.os_guess && host.os_guess !== "Unknown" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
-                      {host.os_guess}
+                      {textValue(host.os_guess)}
                     </span>
                   )}
                 </div>
@@ -383,7 +396,7 @@ export default function Phase2Results() {
                             <>
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                                 <span className="muted">OS Guess:</span>
-                                <strong>{host.os_fingerprint_full.os}</strong>
+                                <strong>{textValue(host.os_fingerprint_full.os)}</strong>
                               </div>
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                                 <span className="muted">Confidence:</span>
@@ -402,11 +415,11 @@ export default function Phase2Results() {
                             <>
                               <div style={{ display: "flex", justifyContent: "space-between" }}>
                                 <span className="muted">OS Guess:</span>
-                                <strong>{host.os_guess}</strong>
+                                <strong>{textValue(host.os_guess)}</strong>
                               </div>
                               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
                                 <span className="muted">Confidence:</span>
-                                <span>{host.os_confidence}</span>
+                                <span>{textValue(host.os_confidence)}</span>
                               </div>
                             </>
                           )}
@@ -421,7 +434,7 @@ export default function Phase2Results() {
                         <div style={{ background: "var(--bg-highlight)", padding: 12, borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.85rem" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                             <span className="muted">mDNS:</span>
-                            <span>{host.mdns_name || "—"}</span>
+                            <span>{textValue(host.mdns_name)}</span>
                           </div>
                           {host.mdns_services && host.mdns_services.length > 0 && (
                             <div style={{ marginBottom: 6 }}>
@@ -432,7 +445,7 @@ export default function Phase2Results() {
                                     background: "rgba(34,211,238,0.1)",
                                     border: "1px solid rgba(34,211,238,0.3)",
                                     color: "#22d3ee", borderRadius: 3,
-                                  }}>{svc.replace("._tcp.local", "").replace("._udp.local", "")}</span>
+                                  }}>{textValue(svc, "").replace("._tcp.local", "").replace("._udp.local", "")}</span>
                                 ))}
                               </div>
                             </div>
@@ -441,36 +454,36 @@ export default function Phase2Results() {
                             <span className="muted">NetBIOS:</span>
                             <span style={{ textAlign: "right" }}>
                               {host.netbios_names && host.netbios_names.length
-                                ? host.netbios_names.map(n => n.name).join(", ")
+                                ? host.netbios_names.map(n => textValue(n?.name, "")).filter(Boolean).join(", ")
                                 : "—"}
                             </span>
                           </div>
                           {host.netbios_workgroup && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">Domain:</span>
-                              <span style={{ fontWeight: 600, color: "#818cf8" }}>{host.netbios_workgroup}</span>
+                              <span style={{ fontWeight: 600, color: "#818cf8" }}>{textValue(host.netbios_workgroup)}</span>
                             </div>
                           )}
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                             <span className="muted">Device Type:</span>
-                            <span>{host.snmp_device_type || host.device_category || "—"}</span>
+                            <span>{textValue(host.snmp_device_type || host.device_category)}</span>
                           </div>
                           {host.snmp_info?.sys_name && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">SNMP Name:</span>
-                              <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{host.snmp_info.sys_name}</span>
+                              <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{textValue(host.snmp_info.sys_name)}</span>
                             </div>
                           )}
                           {host.snmp_info?.sys_location && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">Location:</span>
-                              <span style={{ textAlign: "right", maxWidth: 160, wordBreak: "break-word" }}>{host.snmp_info.sys_location}</span>
+                              <span style={{ textAlign: "right", maxWidth: 160, wordBreak: "break-word" }}>{textValue(host.snmp_info.sys_location)}</span>
                             </div>
                           )}
                           {host.snmp_info?.vendor && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                               <span className="muted">SNMP Vendor:</span>
-                              <span style={{ fontWeight: 600 }}>{host.snmp_info.vendor}</span>
+                              <span style={{ fontWeight: 600 }}>{textValue(host.snmp_info.vendor)}</span>
                             </div>
                           )}
                           {host.firewall_likely && (
@@ -516,9 +529,9 @@ export default function Phase2Results() {
                             {host.snmp_info.interfaces.map(iface => (
                               <tr key={iface.index}>
                                 <td><code className="ip-code">{iface.index}</code></td>
-                                <td>{iface.description || "—"}</td>
-                                <td><span style={{ fontSize: 11, color: "var(--text-muted)" }}>{iface.type}</span></td>
-                                <td><code style={{ fontSize: 11 }}>{iface.mac || "—"}</code></td>
+                                <td>{textValue(iface.description)}</td>
+                                <td><span style={{ fontSize: 11, color: "var(--text-muted)" }}>{textValue(iface.type)}</span></td>
+                                <td><code style={{ fontSize: 11 }}>{textValue(iface.mac)}</code></td>
                                 <td><span style={{ color: iface.admin_up ? "#22c55e" : "#ef4444", fontSize: 11 }}>{iface.admin_up ? "Up" : "Down"}</span></td>
                                 <td><span style={{ color: iface.oper_up ? "#22c55e" : "#94a3b8", fontSize: 11 }}>{iface.oper_up ? "Up" : "Down"}</span></td>
                               </tr>
@@ -536,7 +549,7 @@ export default function Phase2Results() {
                               border: "1px solid rgba(96,165,250,0.25)",
                               color: "#60a5fa", borderRadius: 4,
                             }} title={`Netmask: ${a.netmask}`}>
-                              {a.address}/{a.netmask}
+                              {textValue(a.address)}/{textValue(a.netmask)}
                             </span>
                           ))}
                         </div>
@@ -562,11 +575,11 @@ export default function Phase2Results() {
                             <td><code className="ip-code">{port.port}/tcp</code></td>
                             <td>
                               <span style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
-                                {port.service}
+                                {textValue(port.service)}
                               </span>
                             </td>
                             <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                              {port.banner || port.version || <span className="muted">—</span>}
+                              {textValue(port.banner || port.version, <span className="muted">—</span>)}
                             </td>
                             <td>
                               <span style={{ color: RISK_COLOR[port.risk] || "#60a5fa", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>
@@ -610,7 +623,7 @@ export default function Phase2Results() {
                               <td><code className="ip-code">{svc.port}/udp</code></td>
                               <td>
                                 <span style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
-                                  {svc.service}
+                                  {textValue(svc.service)}
                                 </span>
                               </td>
                               <td>
@@ -618,7 +631,7 @@ export default function Phase2Results() {
                                   color: svc.state === "open" ? "#22c55e" : svc.state === "open|filtered" ? "#f59e0b" : "var(--text-muted)",
                                   fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700,
                                 }}>
-                                  {svc.state}
+                                  {textValue(svc.state)}
                                 </span>
                               </td>
                               <td>
@@ -627,7 +640,7 @@ export default function Phase2Results() {
                                 </span>
                               </td>
                               <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                                {svc.banner || <span className="muted">—</span>}
+                                {textValue(svc.banner, <span className="muted">—</span>)}
                               </td>
                             </tr>
                           ))}

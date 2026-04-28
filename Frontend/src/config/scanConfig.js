@@ -71,6 +71,24 @@ export const SCAN_PIPELINES = {
  * @param {"basic" | "asset" | "advanced"} mode
  * @returns {object} pipeline config
  */
+export const PHASES = {
+  1: {
+    id: 1,
+    label: "Host Discovery",
+    route: "/scan/host-discovery",
+  },
+  2: {
+    id: 2,
+    label: "Port Scan",
+    route: "/scan/asset-discovery",
+  },
+  3: {
+    id: 3,
+    label: "Vulnerability Audit",
+    route: "/scan/advanced-scan",
+  },
+};
+
 export function getScanPipeline(mode) {
   const pipeline = SCAN_PIPELINES[mode];
   if (!pipeline) throw new Error(`Unknown scan mode: "${mode}"`);

@@ -57,7 +57,7 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             if hostname:
                 asset.hostname = hostname
             if vendor and vendor != "Unknown":
-                asset.operating_system = vendor # Store vendor as basic OS guess for now
+                asset.vendor = vendor
             
             asset.last_seen_at = utcnow()
             asset.last_scan_id = scan_id
@@ -70,7 +70,7 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
                 ip_address=ip if ip != "0.0.0.0" else None,
                 mac_address=mac if mac != "00:00:00:00:00:00" else None,
                 hostname=hostname,
-                operating_system=vendor if vendor != "Unknown" else None,
+                vendor=vendor if vendor != "Unknown" else None,
                 is_active=host.get("state") == "up",
                 last_scan_id=scan_id
             )
@@ -141,7 +141,7 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
         # Update Asset OS fingerprint if we received a deep NMAP scan result
         os_match = host.get("os_match") or host.get("os_guess")
         if os_match:
-            asset.operating_system = os_match
+            asset.os_name = os_match
 
     db.commit()
 

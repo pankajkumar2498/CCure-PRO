@@ -63,6 +63,7 @@ from scans.db_helpers import (
     mark_scan_failed,
     update_scan_phase,
 )
+from scans.legacy_json_builder import build_legacy_scan_results
 from pdf_generator import ScanReportGenerator
 from engines.credentialed.ssh_scanner     import SSHScanner, PARAMIKO_AVAILABLE
 from engines.credentialed.linux_collector   import LinuxCollector
@@ -222,21 +223,21 @@ def _resolve_report_context(
     if scan_id:
         scan_row = (
             db.query(Scan)
-            .filter(Scan.id == scan_id, Scan.user_id == user_id)
+            .filter(Scan.id == scan_id, Scan.created_by == user_id)
             .first()
         )
         if scan_row:
-            summary_blob = _safe_json_loads(scan_row.summary, {})
+            summary_blob = _phase1_summary_from_scan(scan_row)
 
     # Target priority: request targets > scan row target/original_targets > host list
     if requested_targets:
         context["target"] = ", ".join([str(t).strip() for t in requested_targets if str(t).strip()])
         context["original_targets"] = requested_targets
     elif scan_row:
-        target = (scan_row.target or "").strip()
+        target = (scan_row.target_str or "").strip()
         if target:
             context["target"] = target
-        original_targets = summary_blob.get("original_targets") or _safe_json_loads(scan_row.targets_json, [])
+        original_targets = summary_blob.get("original_targets") or (scan_row.target_hosts or [])
         if original_targets:
             context["original_targets"] = original_targets
             if "target" not in context:
@@ -266,11 +267,10 @@ def _resolve_report_context(
 
 
 def _phase1_summary_from_scan(scan_row: Scan) -> dict:
-    for phase_row in getattr(scan_row, "phase_results", []) or []:
-        if getattr(phase_row, "phase_key", "") != "phase1":
+    for phase_row in getattr(scan_row, "phases", []) or []:
+        if getattr(phase_row, "phase_key", "") not in ("host_discovery", "phase1"):
             continue
-        payload = _safe_json_loads(getattr(phase_row, "payload", ""), {})
-        summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
+        summary = getattr(phase_row, "summary", {}) or {}
         if isinstance(summary, dict):
             return summary
     return {}
@@ -286,7 +286,7 @@ def _apply_phase1_summary_hints(
         return
     scan_row = (
         db.query(Scan)
-        .filter(Scan.id == scan_id, Scan.user_id == user_id)
+        .filter(Scan.id == scan_id, Scan.created_by == user_id)
         .first()
     )
     if not scan_row:
@@ -381,7 +381,7 @@ def _get_api() -> HostDiscoveryAPI:
 app.include_router(auth_router)
 
 # -- Scan history routes -------------------------------------------------------
-# app.include_router(scans_router)
+app.include_router(scans_router)
 
 
 # -- Request models for TRADITIONAL scans (unchanged) --------------------------
@@ -1092,16 +1092,10 @@ _REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports
 
 def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     """Generate report PDFs from stored scan phase payloads when no file path exists."""
-    if not scan.phase_results:
+    if not scan.phases:
         return {}
 
-    payloads = {}
-    for row in scan.phase_results:
-        if not row.payload:
-            continue
-        payload = _safe_json_loads(row.payload, {})
-        if isinstance(payload, dict):
-            payloads[row.phase_key] = payload
+    payloads = build_legacy_scan_results(db, str(scan.id))
 
     # Prefer the most complete phase available.
     for key in ("credentialed", "phase3", "phase2", "phase1"):
@@ -1118,7 +1112,7 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     payload_meta = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
     context_meta = _resolve_report_context(
         db,
-        scan.user_id,
+        str(scan.created_by),
         scan_id=scan.id,
         hosts=payload_data if isinstance(payload_data, list) else [],
     )
@@ -1129,7 +1123,7 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
         "summary": payload.get("summary", {}),
         "metadata": {"scan_id": scan.id, **payload_meta, **context_meta},
     }
-    _apply_phase1_summary_hints(result, db, scan.user_id, scan.id)
+    _apply_phase1_summary_hints(result, db, str(scan.created_by), scan.id)
 
     report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(result, key)
     report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}
@@ -1146,7 +1140,7 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
 
 @app.get("/reports/download/{scan_id}", tags=["Reports"])
 def download_report(
-    scan_id: int,
+    scan_id: str,
     fmt:     str            = "JSON",
     token:   Optional[str]  = Query(None),
     db:      Session        = Depends(get_db),
@@ -1154,7 +1148,7 @@ def download_report(
 ):
     scan = db.query(Scan).filter(
         Scan.id == scan_id,
-        Scan.user_id == user.id,
+        Scan.created_by == user.id,
     ).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found.")

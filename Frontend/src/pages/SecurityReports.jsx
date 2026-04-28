@@ -9,6 +9,7 @@ import AppLayout from "../components/layout/AppLayout";
 import { getScans, purgeScan } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axiosInstance";
+import { dateTimeMs, formatDateTime } from "../utils/date";
 
 /* ── Constants & Helpers ─────────────────────────────────────────────────── */
 
@@ -222,7 +223,7 @@ export default function SecurityReports() {
             </div>
             <div className="rh-stat-item">
               <span className="rh-stat-val">
-                {scans.filter(s => new Date(s.created_at) > new Date(Date.now() - 8.64e7)).length}
+                {scans.filter(s => dateTimeMs(s.created_at) > Date.now() - 8.64e7).length}
               </span>
               <span className="rh-stat-lab">New Today</span>
             </div>
@@ -513,7 +514,7 @@ function ReportCard({ scan, onDownload }) {
       <div className="rc-body">
         <div className="rc-target">{scan.target}</div>
         <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
-          {fmtDate(scan.created_at)}
+          {formatDateTime(scan.created_at, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
         </div>
       </div>
 

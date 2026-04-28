@@ -22,6 +22,19 @@ import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
 const INTENSITIES = ["light", "normal", "deep"];
 
+const textValue = (value, fallback = "—") => {
+  if (value == null || value === "" || value === "Unknown" || value === "N/A") return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(v => textValue(v, "")).filter(Boolean).join(", ") || fallback;
+  if (typeof value === "object") return value.name || value.vendor || value.address || value.value || fallback;
+  return fallback;
+};
+
+const fmtNumber = (value, digits = 1, fallback = "—") => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toFixed(digits) : fallback;
+};
+
 export default function Phase1Results() {
   const navigate = useNavigate();
   const {
@@ -51,8 +64,6 @@ export default function Phase1Results() {
       navigate("/scan", { replace: true });
     }
   }, [phase1Hosts.length, navigate]);
-
-  if (!phase1Hosts.length) return null;
 
   const isBasicScan      = pipelineMode === "basic";
   const isAssetPipeline  = pipelineMode === "asset";
@@ -95,6 +106,7 @@ export default function Phase1Results() {
     }
   }, [portScanRunning, portScanDone, isAssetPipeline, phase1Hosts.length]);
 
+  if (!phase1Hosts.length) return null;
 
   const toggleAssetHost = (ip) => {
     const next = new Set(assetSelected);
@@ -191,7 +203,7 @@ export default function Phase1Results() {
             <span className="summary-item"><b>{phase1Summary.total_hosts}</b> Total</span>
             <span className="summary-item summary-item--active"><b>{phase1Summary.active_hosts}</b> Active</span>
             <span className="summary-item"><b>{phase1Summary.inactive_hosts}</b> Inactive</span>
-            <span className="summary-item"><b>{phase1Summary.scan_duration?.toFixed(1)}s</b> Duration</span>
+            <span className="summary-item"><b>{fmtNumber(phase1Summary.scan_duration)}s</b> Duration</span>
             {/* Asset Discovery: show discovery profile and intensity */}
             {isAssetPipeline && phase1Summary.discovery_profile && (
               <span className="summary-item" style={{ gap: 6 }}>
@@ -334,8 +346,9 @@ export default function Phase1Results() {
                 let displayHost = h.hostname;
                 if (!displayHost || displayHost === "Unknown") {
                     if (h.mdns_name) displayHost = h.mdns_name;
-                    else if (h.netbios_names && h.netbios_names.length) displayHost = h.netbios_names[0].name;
+                    else if (h.netbios_names && h.netbios_names.length) displayHost = h.netbios_names[0]?.name;
                 }
+                displayHost = textValue(displayHost, "");
 
                 return (
                   <React.Fragment key={h.ip_address}>
@@ -358,11 +371,11 @@ export default function Phase1Results() {
                       )}
                       <td><code className="ip-code">{h.ip_address}</code></td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
-                      <td>{h.mac_address || <span className="muted">—</span>}</td>
-                      <td>{h.vendor || <span className="muted">—</span>}</td>
-                      <td>{h.discovery_method || <span className="muted">—</span>}</td>
+                      <td>{textValue(h.mac_address, <span className="muted">—</span>)}</td>
+                      <td>{textValue(h.vendor, <span className="muted">—</span>)}</td>
+                      <td>{textValue(h.discovery_method, <span className="muted">—</span>)}</td>
                       {!isBasicScan && (
-                        <td>{h.response_time_ms != null ? `${h.response_time_ms.toFixed(1)} ms` : <span className="muted">—</span>}</td>
+                        <td>{h.response_time_ms != null ? `${fmtNumber(h.response_time_ms)} ms` : <span className="muted">—</span>}</td>
                       )}
                       <td>
                         <span style={{ 
@@ -468,7 +481,7 @@ export default function Phase1Results() {
               <div className="summary-bar" style={{ marginBottom: 16 }}>
                 <span className="summary-item"><b>{assetSummary.total_hosts}</b> Hosts scanned</span>
                 <span className="summary-item summary-item--active"><b>{assetSummary.hosts_with_ports}</b> Have open ports</span>
-                <span className="summary-item"><b>{assetSummary.scan_duration?.toFixed(1)}s</b> Duration</span>
+                <span className="summary-item"><b>{fmtNumber(assetSummary.scan_duration)}s</b> Duration</span>
               </div>
             )}
 
@@ -490,8 +503,8 @@ export default function Phase1Results() {
                   <div className="host-card-header" onClick={() => toggleAssetExpand(host.ip_address)}>
                     <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
-                      {host.hostname && host.hostname !== "Unknown" && (
-                        <span className="muted small">{host.hostname}</span>
+                      {textValue(host.hostname, "") && (
+                        <span className="muted small">{textValue(host.hostname, "")}</span>
                       )}
                     </div>
                     <div className="host-card-meta">
@@ -535,11 +548,11 @@ export default function Phase1Results() {
                                 <td><code className="ip-code">{port.port}/tcp</code></td>
                                 <td>
                                   <span style={{ background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 3, fontSize: 12, fontWeight: 600 }}>
-                                    {port.service}
+                                    {textValue(port.service)}
                                   </span>
                                 </td>
                                 <td style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                                  {port.banner || port.version || <span className="muted">—</span>}
+                                  {textValue(port.banner || port.version, <span className="muted">—</span>)}
                                 </td>
                                 <td>
                                   <span style={{

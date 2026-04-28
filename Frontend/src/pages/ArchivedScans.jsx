@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { getScans, restoreScan, deleteScan } from "../api/scans";
+import { formatDateTime } from "../utils/date";
 
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
@@ -18,14 +19,12 @@ const phaseLabel = (scan) =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
 
 const fmtDate = (iso) =>
-  iso
-    ? new Date(iso).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "-";
+  formatDateTime(iso, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 const fmtDur = (sec) =>
   !sec ? "-" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;

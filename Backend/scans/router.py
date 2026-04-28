@@ -10,7 +10,7 @@ REST endpoints for scan history.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -40,11 +40,25 @@ def _as_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     """Return a UTC ISO-8601 timestamp with trailing Z for correct client parsing."""
     if not dt:
         return None
-    return f"{dt.isoformat()}Z"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def _load_phase_results(db: Session, scan: Scan) -> dict:
     return build_legacy_scan_results(db, str(scan.id))
+
+
+def _scan_summary(scan: Scan) -> dict:
+    if not scan.phases:
+        return {}
+    summary: dict = {}
+    for phase in sorted(scan.phases, key=lambda p: p.phase_order or 0):
+        if isinstance(phase.summary, dict):
+            summary.update(phase.summary)
+    return summary
 
 
 def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: bool = False) -> dict:
@@ -67,19 +81,12 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
         "pipeline_mode": pipeline_mode,
         "has_json_report": bool(getattr(scan, "report_json_path", None)),
         "has_xml_report":  bool(getattr(scan, "report_xml_path", None)),
-        "summary":       _load_json(scan.summary),
+        "summary":       _scan_summary(scan),
     }
     d["progress_percentage"] = _scan_progress_percentage(scan, pipeline_mode)
     if include_results and db:
         d["results"] = _load_phase_results(db, scan)
     return d
-
-
-def _load_json(text: str) -> dict:
-    try:
-        return json.loads(text or "{}")
-    except Exception:
-        return {}
 
 
 def _get_scan_or_404(scan_id: str, user_id: str, db: Session) -> Scan:

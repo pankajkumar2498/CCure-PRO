@@ -240,26 +240,44 @@ def create_completed_scan(
         report_json_path=report_json_path,
         report_xml_path=report_xml_path,
     )
+
+    credentialed_report = (results or {}).get("credentialed", {}).get("report")
+    if credentialed_report:
+        scan.options = {
+            **(scan.options or {}),
+            "credentialed_report": credentialed_report,
+        }
+
     db.add(scan)
     db.flush()
 
     for phase_key, payload in (results or {}).items():
         phase_order = 3 if phase_key == "credentialed" else int(phase_key.replace("phase", "") or 0)
+        phase_summary = payload.get("summary", {})
+        hosts_data = payload.get("data", [])
+        if phase_key == "credentialed" and payload.get("report"):
+            phase_summary = {
+                **summary,
+                **phase_summary,
+            }
+            hosts_data = hosts_data or [{"ip_address": target}]
+
         phase_row = ScanPhase(
             scan_id=scan.id,
             phase_key=phase_key,
             phase_order=phase_order,
             status="complete",
-            duration_seconds=payload.get("summary", {}).get("scan_duration", 0.0),
-            hosts_processed=len(payload.get("data", [])),
-            summary=payload.get("summary", {}),
+            duration_seconds=phase_summary.get("scan_duration", 0.0),
+            hosts_processed=len(hosts_data),
+            summary=phase_summary,
             started_at=utcnow(),
             completed_at=utcnow()
         )
         db.add(phase_row)
+        if phase_key == "credentialed":
+            continue
         
         # Apply sync manually
-        hosts_data = payload.get("data", [])
         if phase_order == 1:
             sync_host_discovery(db, str(scan.id), org_id, user_id, hosts_data)
         elif phase_order == 2:

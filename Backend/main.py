@@ -1066,7 +1066,7 @@ async def scan_credentialed(
         targets          = [req.ip],
         scan_type        = "credentialed",
         phase            = 3,
-        results          = {"credentialed": {"report": stored_report}},
+        results          = {"credentialed": {"report": stored_report, "summary": report_result["summary"]}},
         summary          = report_result["summary"],
         scan_duration    = scan_duration,
         report_json_path = report_paths.get("json_pdf"),

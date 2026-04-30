@@ -231,14 +231,36 @@ def build_sql_or_clauses(
     column_expressions: Sequence[str],
     values: Sequence[str],
     param_prefix: str,
+    use_exact: bool = False,
 ) -> Tuple[str, Dict[str, str]]:
+    """
+    Build SQL OR clauses for searching multiple values across columns.
+    
+    Parameters
+    ----------
+    column_expressions : Column expressions to search (e.g., "LOWER(p.product)")
+    values : Values to search for
+    param_prefix : Prefix for parameter names
+    use_exact : If True, use exact match (=) instead of LIKE wildcards (%)
+               Use this when indexes exist on the columns for better performance
+    
+    Returns
+    -------
+    Tuple of (WHERE clause string, parameter dict)
+    """
     clauses: List[str] = []
     params: Dict[str, str] = {}
     idx = 0
     for value in values:
         for expr in column_expressions:
             param_name = f"{param_prefix}_{idx}"
-            clauses.append(f"{expr} LIKE :{param_name}")
-            params[param_name] = f"%{value}%"
+            if use_exact:
+                # Exact match - uses indexes efficiently
+                clauses.append(f"{expr} = :{param_name}")
+                params[param_name] = value
+            else:
+                # LIKE match - slower but more flexible (handles partial matches)
+                clauses.append(f"{expr} LIKE :{param_name}")
+                params[param_name] = f"%{value}%"
             idx += 1
     return (" OR ".join(clauses)) or "FALSE", params

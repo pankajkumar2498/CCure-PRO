@@ -27,6 +27,10 @@ log = logging.getLogger("ccure.linux_collector")
 # ---------------------------------------------------------------------------
 # All commands executed on the remote host
 # ---------------------------------------------------------------------------
+# Performance optimization: reduced timeouts for slow commands
+# - SUID/world-writable scans reduced from 25s to 10s timeout
+# - Head limits reduced to prevent large output transfers
+# ---------------------------------------------------------------------------
 COMMANDS: Dict[str, str] = {
     "os_release":      "cat /etc/os-release 2>/dev/null",
     "kernel":          "uname -r 2>/dev/null",
@@ -40,8 +44,10 @@ COMMANDS: Dict[str, str] = {
     "users":           "cat /etc/passwd 2>/dev/null",
     "sudo_rules":      "sudo -ln 2>/dev/null || sudo -l 2>/dev/null",
     "cron_jobs":       "crontab -l 2>/dev/null; ls /etc/cron* 2>/dev/null",
-    "suid_files":      "timeout 25 find / -perm -4000 -type f 2>/dev/null | head -100",
-    "world_writable":  "timeout 25 find / -perm -0002 -type d -not -path '/proc/*' -not -path '/sys/*' -not -path '/dev/*' 2>/dev/null | head -50",
+    # Optimized: reduced timeout from 25s to 10s, reduced head from 100 to 50
+    "suid_files":      "timeout 10 find / -perm -4000 -type f 2>/dev/null | head -50",
+    # Optimized: reduced timeout from 25s to 10s, reduced head from 50 to 25
+    "world_writable":  "timeout 10 find / -perm -0002 -type d -not -path '/proc/*' -not -path '/sys/*' -not -path '/dev/*' 2>/dev/null | head -25",
     "cpu":             "lscpu 2>/dev/null",
     "memory":          "free -h 2>/dev/null",
     "disk":            "df -h 2>/dev/null",

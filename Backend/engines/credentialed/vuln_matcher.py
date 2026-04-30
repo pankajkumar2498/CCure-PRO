@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +22,11 @@ from core.vuln_intel import (
 )
 
 log = logging.getLogger("ccure.vuln_matcher")
+
+# Performance tuning constants
+BATCH_QUERY_THRESHOLD = 50  # Use batch query when packages >= this
+PARALLEL_WORKERS = 4        # Parallel threads for package matching
+QUERY_TIMEOUT = 30           # Query timeout in seconds
 
 BEST_CVSS_LATERAL = """
 LEFT JOIN LATERAL (
@@ -71,29 +78,333 @@ class CredentialedCVE:
 class VulnMatcher:
     """
     Matches installed packages against the normalized vuln-intel database.
+    
+    Optimizations applied:
+    1. Batch queries - single query for all packages instead of N queries
+    2. Parallel processing - concurrent package matching with ThreadPoolExecutor
+    3. Query optimization - reduced JOIN overhead via batch operations
     """
 
     def __init__(self):
         self.engine = get_vuln_engine()
 
     def match_packages(self, packages: List[Dict[str, str]]) -> List[CredentialedCVE]:
+        """
+        Match installed packages against vulnerability database.
+        
+        Uses batch query optimization when package count exceeds threshold,
+        otherwise falls back to parallel processing for smaller sets.
+        """
+        if not packages:
+            return []
+
+        # Extract unique package names
+        package_data = {}
+        for pkg in packages:
+            name = (pkg.get("name") or "").strip()
+            version = (pkg.get("version") or "").strip()
+            if name and name not in package_data:
+                package_data[name] = version
+
+        if not package_data:
+            return []
+
+        log.info(f"Matching {len(package_data)} unique packages against vuln database")
+        start_time = time.time()
+
+        # Use batch query for large package sets
+        if len(package_data) >= BATCH_QUERY_THRESHOLD:
+            findings = self._match_packages_batch(package_data)
+        else:
+            findings = self._match_packages_parallel(package_data)
+
+        elapsed = time.time() - start_time
+        log.info(f"Package matching completed in {elapsed:.2f}s - found {len(findings)} CVEs")
+
+        return findings
+
+    def _match_packages_batch(self, package_data: Dict[str, str]) -> List[CredentialedCVE]:
+        """
+        Batch query optimization - single query for all packages.
+        
+        Fetches all potential matches in one query, then filters in Python.
+        This reduces N database round-trips to 1-2 queries.
+        """
         findings: List[CredentialedCVE] = []
         best_by_cve: Dict[str, CredentialedCVE] = {}
 
         try:
             with self.engine.connect() as conn:
-                for pkg in packages:
-                    name = (pkg.get("name") or "").strip()
-                    version = (pkg.get("version") or "").strip()
-                    if not name:
-                        continue
+                # Get all unique package names for batch query
+                package_names = list(package_data.keys())
+                
+                # Build batch query for CPE records
+                cpe_findings = self._batch_query_cpe(conn, package_names, package_data)
+                
+                # Build batch query for OSV records
+                osv_findings = self._batch_query_osv(conn, package_names, package_data)
+                
+                # Merge findings, keeping highest priority per CVE
+                all_findings = cpe_findings + osv_findings
+                for finding in all_findings:
+                    current = best_by_cve.get(finding.cve_id)
+                    if current is None or finding.priority_score > current.priority_score:
+                        best_by_cve[finding.cve_id] = finding
 
-                    for finding in self._match_package(conn, name, version):
-                        current = best_by_cve.get(finding.cve_id)
-                        if current is None or finding.priority_score > current.priority_score:
-                            best_by_cve[finding.cve_id] = finding
         except SQLAlchemyError as exc:
-            log.warning("Vulnerability-intel query failed: %s", exc)
+            log.warning("Batch vulnerability query failed: %s", exc)
+
+        findings = list(best_by_cve.values())
+        findings.sort(key=lambda item: (item.priority_score, item.cvss_score), reverse=True)
+        return findings
+
+    def _batch_query_cpe(self, conn, package_names: List[str], package_data: Dict[str, str]) -> List[CredentialedCVE]:
+        """Execute batch query for CPE records."""
+        findings: List[CredentialedCVE] = []
+        
+        # Build IN clause with normalized names
+        normalized_names = set()
+        for pkg_name in package_names:
+            normalized_names.update(normalize_package_names(pkg_name))
+        
+        # Use exact match where possible for better index usage
+        name_params = {f"pkg_{i}": name.lower() for i, name in enumerate(normalized_names)}
+        name_placeholders = ", ".join([f":pkg_{i}" for i in range(len(name_params))])
+        
+        if not name_params:
+            return findings
+
+        query = text(f"""
+            SELECT
+                c.cve_id,
+                c.description,
+                best_cvss.version AS cvss_version,
+                best_cvss.base_score AS cvss_score,
+                best_cvss.severity AS cvss_severity,
+                best_cvss.vector AS cvss_vector,
+                epss.epss_score,
+                epss.percentile AS epss_percentile,
+                (kev.cve_id IS NOT NULL) AS in_kev,
+                kev.due_date AS kev_due_date,
+                COALESCE(exploits.has_exploit, FALSE) AS has_exploit,
+                exploits.exploit_sources,
+                p.cpe_uri,
+                p.vendor,
+                p.product,
+                p.version_start_including,
+                p.version_start_excluding,
+                p.version_end_including,
+                p.version_end_excluding
+            FROM cpe p
+            JOIN cve c ON c.cve_id = p.cve_id
+            {BEST_CVSS_LATERAL}
+            LEFT JOIN epss ON epss.cve_id = c.cve_id
+            LEFT JOIN kev ON kev.cve_id = c.cve_id
+            LEFT JOIN exploits ON exploits.cve_id = c.cve_id
+            WHERE LOWER(p.product) IN ({name_placeholders})
+               OR LOWER(p.vendor) IN ({name_placeholders})
+            ORDER BY
+                (kev.cve_id IS NOT NULL) DESC,
+                COALESCE(epss.epss_score, 0) DESC,
+                COALESCE(best_cvss.base_score, 0) DESC
+            LIMIT 5000
+        """)
+        
+        try:
+            rows = conn.execute(query, name_params).mappings().all()
+            
+            # Filter results in Python - match against installed versions
+            for row in rows:
+                product = str(row.get("product") or "").lower()
+                vendor = str(row.get("vendor") or "").lower()
+                
+                # Find matching installed package
+                for pkg_name, installed_ver in package_data.items():
+                    candidates = normalize_package_names(pkg_name)
+                    if any(cand in product or cand in vendor for cand in candidates if cand):
+                        # Version check
+                        if installed_ver and not self._installed_version_matches(installed_ver, row):
+                            continue
+                        
+                        record = merge_alias_fields({
+                            "cve_id": row.get("cve_id"),
+                            "description": row.get("description"),
+                            "cvss_score": row.get("cvss_score") or 0.0,
+                            "severity": row.get("cvss_severity"),
+                            "epss_score": row.get("epss_score") or 0.0,
+                            "epss_percentile": row.get("epss_percentile") or 0.0,
+                            "in_kev": bool(row.get("in_kev")),
+                            "kev_due_date": row.get("kev_due_date"),
+                            "has_exploit": bool(row.get("has_exploit")),
+                            "exploit_sources": list(row.get("exploit_sources") or []),
+                            "cvss_version": row.get("cvss_version"),
+                            "cvss_vector": row.get("cvss_vector"),
+                        })
+                        
+                        findings.append(CredentialedCVE(
+                            cve_id=record["cve_id"],
+                            severity=record["severity"],
+                            cvss_score=record["cvss_score"],
+                            description=record["description"],
+                            package_name=pkg_name,
+                            installed_ver=installed_ver,
+                            fixed_ver=self._row_fixed_version(row),
+                            source="cpe_match",
+                            epss_score=float(record.get("epss_score", 0.0) or 0.0),
+                            epss_percentile=float(record.get("epss_percentile", 0.0) or 0.0),
+                            in_kev=bool(record.get("in_kev")),
+                            kev_due_date=str(record.get("kev_due_date") or ""),
+                            has_exploit=bool(record.get("has_exploit")),
+                            exploit_sources=list(record.get("exploit_sources") or []),
+                            priority_score=float(record.get("priority_score", 0.0) or 0.0),
+                            priority_level=record.get("priority_level", "P4"),
+                            matched_by="cpe",
+                            cpe_uri=row.get("cpe_uri") or "",
+                            cvss_version=str(record.get("cvss_version") or ""),
+                            cvss_vector=str(record.get("cvss_vector") or ""),
+                        ))
+                        break  # Only match first compatible package
+                        
+        except SQLAlchemyError as exc:
+            log.warning("Batch CPE query failed: %s", exc)
+            
+        return findings
+
+    def _batch_query_osv(self, conn, package_names: List[str], package_data: Dict[str, str]) -> List[CredentialedCVE]:
+        """Execute batch query for OSV records."""
+        findings: List[CredentialedCVE] = []
+        
+        normalized_names = set()
+        for pkg_name in package_names:
+            normalized_names.update(normalize_package_names(pkg_name))
+        
+        name_params = {f"osv_{i}": name.lower() for i, name in enumerate(normalized_names)}
+        name_placeholders = ", ".join([f":osv_{i}" for i in range(len(name_params))])
+        
+        if not name_params:
+            return findings
+
+        query = text(f"""
+            SELECT
+                oa.cve_id,
+                c.description,
+                best_cvss.version AS cvss_version,
+                best_cvss.base_score AS cvss_score,
+                best_cvss.severity AS cvss_severity,
+                best_cvss.vector AS cvss_vector,
+                epss.epss_score,
+                epss.percentile AS epss_percentile,
+                (kev.cve_id IS NOT NULL) AS in_kev,
+                kev.due_date AS kev_due_date,
+                COALESCE(exploits.has_exploit, FALSE) AS has_exploit,
+                exploits.exploit_sources,
+                aff.ecosystem,
+                aff.package_name,
+                ranges.introduced,
+                ranges.fixed
+            FROM osv_affected aff
+            JOIN osv_aliases oa ON oa.osv_id = aff.osv_id AND oa.cve_id IS NOT NULL
+            JOIN cve c ON c.cve_id = oa.cve_id
+            {BEST_CVSS_LATERAL}
+            LEFT JOIN epss ON epss.cve_id = c.cve_id
+            LEFT JOIN kev ON kev.cve_id = c.cve_id
+            LEFT JOIN exploits ON exploits.cve_id = c.cve_id
+            LEFT JOIN osv_ranges ranges ON ranges.osv_id = aff.osv_id
+            WHERE LOWER(aff.package_name) IN ({name_placeholders})
+            ORDER BY
+                (kev.cve_id IS NOT NULL) DESC,
+                COALESCE(epss.epss_score, 0) DESC,
+                COALESCE(best_cvss.base_score, 0) DESC
+            LIMIT 5000
+        """)
+        
+        try:
+            rows = conn.execute(query, name_params).mappings().all()
+            
+            for row in rows:
+                osv_pkg_name = str(row.get("package_name") or "").lower()
+                
+                for pkg_name, installed_ver in package_data.items():
+                    candidates = normalize_package_names(pkg_name)
+                    if any(cand == osv_pkg_name for cand in candidates if cand):
+                        if installed_ver and not self._installed_version_matches_osv(installed_ver, row):
+                            continue
+                        
+                        record = merge_alias_fields({
+                            "cve_id": row.get("cve_id"),
+                            "description": row.get("description"),
+                            "cvss_score": row.get("cvss_score") or 0.0,
+                            "severity": row.get("cvss_severity"),
+                            "epss_score": row.get("epss_score") or 0.0,
+                            "epss_percentile": row.get("epss_percentile") or 0.0,
+                            "in_kev": bool(row.get("in_kev")),
+                            "kev_due_date": row.get("kev_due_date"),
+                            "has_exploit": bool(row.get("has_exploit")),
+                            "exploit_sources": list(row.get("exploit_sources") or []),
+                            "cvss_version": row.get("cvss_version"),
+                            "cvss_vector": row.get("cvss_vector"),
+                        })
+                        
+                        findings.append(CredentialedCVE(
+                            cve_id=record["cve_id"],
+                            severity=record["severity"],
+                            cvss_score=record["cvss_score"],
+                            description=record["description"],
+                            package_name=pkg_name,
+                            installed_ver=installed_ver,
+                            fixed_ver=str(row.get("fixed") or ""),
+                            source="osv_match",
+                            epss_score=float(record.get("epss_score", 0.0) or 0.0),
+                            epss_percentile=float(record.get("epss_percentile", 0.0) or 0.0),
+                            in_kev=bool(record.get("in_kev")),
+                            kev_due_date=str(record.get("kev_due_date") or ""),
+                            has_exploit=bool(record.get("has_exploit")),
+                            exploit_sources=list(record.get("exploit_sources") or []),
+                            priority_score=float(record.get("priority_score", 0.0) or 0.0),
+                            priority_level=record.get("priority_level", "P4"),
+                            matched_by=f"osv:{row.get('ecosystem') or 'unknown'}",
+                            cvss_version=str(record.get("cvss_version") or ""),
+                            cvss_vector=str(record.get("cvss_vector") or ""),
+                        ))
+                        break
+                        
+        except SQLAlchemyError as exc:
+            log.warning("Batch OSV query failed: %s", exc)
+            
+        return findings
+
+    def _match_packages_parallel(self, package_data: Dict[str, str]) -> List[CredentialedCVE]:
+        """
+        Parallel processing for smaller package sets.
+        
+        Uses ThreadPoolExecutor to query multiple packages concurrently.
+        """
+        findings: List[CredentialedCVE] = []
+        best_by_cve: Dict[str, CredentialedCVE] = {}
+
+        try:
+            with self.engine.connect() as conn:
+                # Split into chunks for parallel processing
+                items = list(package_data.items())
+                
+                with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as pool:
+                    future_to_pkg = {
+                        pool.submit(self._match_package, conn, name, ver): (name, ver)
+                        for name, ver in items
+                    }
+                    
+                    for future in as_completed(future_to_pkg):
+                        try:
+                            for finding in future.result():
+                                current = best_by_cve.get(finding.cve_id)
+                                if current is None or finding.priority_score > current.priority_score:
+                                    best_by_cve[finding.cve_id] = finding
+                        except Exception as exc:
+                            pkg_name = future_to_pkg[future][0]
+                            log.warning(f"Package '{pkg_name}' matching failed: {exc}")
+
+        except SQLAlchemyError as exc:
+            log.warning("Parallel vulnerability query failed: %s", exc)
 
         findings = list(best_by_cve.values())
         findings.sort(key=lambda item: (item.priority_score, item.cvss_score), reverse=True)

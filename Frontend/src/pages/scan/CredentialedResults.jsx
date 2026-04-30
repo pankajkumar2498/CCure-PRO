@@ -91,7 +91,7 @@ function CredTable({ head, rows }) {
 
 function hydrateFromHistory(detail) {
   const report = detail?.results?.credentialed?.report;
-  return report ? { scan_id: detail.id, ...report } : null;
+  return report ? { scan_id: detail.id, scan_no: detail.scan_no ?? detail.display_id, ...report } : null;
 }
 
 export default function CredentialedResults() {
@@ -165,7 +165,7 @@ export default function CredentialedResults() {
   if (!result) return null;
 
   const {
-    target, username, scan_id, scan_duration,
+    target, username, scan_id, scan_no, display_id, scan_duration,
     detected_os = "linux",
     os_type_was_auto = false,
     system_info = {},
@@ -210,7 +210,7 @@ export default function CredentialedResults() {
               <code className="ip-code">{target}</code>
               {username && <span className="muted"> · user: {username}</span>}
               {scan_duration && <span className="muted"> · {scan_duration}s</span>}
-              {scan_id && <span className="muted"> · Scan #{scan_id}</span>}
+              {scan_id && <span className="muted"> · Scan No. {scan_no ?? display_id ?? "-"}</span>}
               {os_type_was_auto && (
                 <span style={{
                   marginLeft: 8, padding: "2px 8px", borderRadius: 4, fontSize: 11,

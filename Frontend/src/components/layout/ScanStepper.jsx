@@ -26,7 +26,7 @@ const STATE_TO_STEP = {
 };
 
 export default function ScanStepper({ current }) {
-  const { scanId, pipelineMode, pipelineState, pipelineError } = useScan();
+  const { scanId, scanNo, pipelineMode, pipelineState, pipelineError } = useScan();
 
   const pipeline = getScanPipeline(pipelineMode || "basic");
   const steps    = ALL_STEPS.filter(s => pipeline.phases.includes(s.n));
@@ -80,7 +80,7 @@ export default function ScanStepper({ current }) {
           padding: "2px 10px", borderRadius: 4,
           flexShrink: 0,
         }}>
-          Scan #{scanId}
+          Scan No. {scanNo ?? "-"}
         </span>
       )}
     </div>

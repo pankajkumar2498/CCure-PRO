@@ -14,6 +14,7 @@ const STATUS_STYLE = {
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
 
 const isCred = (scan) => scan.scan_type === "credentialed";
+const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
 const phaseLabel = (scan) =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
@@ -148,7 +149,7 @@ export default function ArchivedScans() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th>Scan No.</th>
                   <th>Target</th>
                   <th>Type</th>
                   <th>Phase</th>
@@ -163,7 +164,7 @@ export default function ArchivedScans() {
                 {scans.map((scan) => (
                   <tr key={scan.id}>
                     <td>
-                      <code className="ip-code" style={{ fontSize: 12 }}>#{scan.id}</code>
+                      <code className="ip-code" style={{ fontSize: 12 }}>{scanNo(scan)}</code>
                     </td>
                     <td>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>

@@ -226,8 +226,9 @@ def _resolve_report_context(
             .filter(Scan.id == scan_id, Scan.created_by == user_id)
             .first()
         )
-        if scan_row:
-            summary_blob = _phase1_summary_from_scan(scan_row)
+    if scan_row:
+        context["scan_no"] = scan_row.scan_no
+        summary_blob = _phase1_summary_from_scan(scan_row)
 
     # Target priority: request targets > scan row target/original_targets > host list
     if requested_targets:
@@ -325,7 +326,7 @@ def finish_progress(scan_id: str):
 async def lifespan(app: FastAPI):
     global _api_instance
     create_tables()
-    # ensure_scan_schema()
+    ensure_scan_schema()
     _api_instance = HostDiscoveryAPI(silent=False)
     log.info("HostDiscoveryAPI initialised")
     yield
@@ -664,6 +665,8 @@ async def scan_host_discovery(
         result["reports"] = report_paths
 
     result["scan_id"]              = str(scan.id)
+    result["scan_no"]              = scan.scan_no
+    result["display_id"]           = scan.scan_no
     result["pipeline_mode"]        = mode
     result["terminal_phase"]       = terminal
     if mode == "asset":
@@ -753,6 +756,8 @@ async def scan_asset_discovery(
             if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
             result["scan_id"] = str(req.scan_id)
+            result["scan_no"] = updated.scan_no
+            result["display_id"] = updated.scan_no
 
         if report_paths:
             result["reports"] = report_paths
@@ -847,6 +852,8 @@ async def scan_advanced_scan(
             if not updated:
                 raise HTTPException(status_code=404, detail="Scan not found.")
             result["scan_id"] = req.scan_id
+            result["scan_no"] = updated.scan_no
+            result["display_id"] = updated.scan_no
 
         if report_paths:
             result["reports"] = report_paths
@@ -1068,7 +1075,9 @@ async def scan_credentialed(
 
     return {
         "success":  True,
-        "scan_id":  scan.id,
+        "scan_id":  str(scan.id),
+        "scan_no":  scan.scan_no,
+        "display_id": scan.scan_no,
         "username": req.username,
         **stored_report,
     }
@@ -1121,7 +1130,7 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
         "success": True,
         "data":    payload_data,
         "summary": payload.get("summary", {}),
-        "metadata": {"scan_id": scan.id, **payload_meta, **context_meta},
+        "metadata": {"scan_no": scan.scan_no, **payload_meta, **context_meta},
     }
     _apply_phase1_summary_hints(result, db, str(scan.created_by), scan.id)
 

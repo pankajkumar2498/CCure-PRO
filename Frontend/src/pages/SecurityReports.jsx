@@ -20,6 +20,8 @@ const REPORT_TYPE_LABELS = {
   credentialed: "SSH Credentialed Audit"
 };
 
+const scanNo = scan => scan.scan_no ?? scan.display_id ?? "-";
+
 const fmtDate = iso => 
   iso ? new Date(iso).toLocaleString(undefined, { 
     month: "short", day: "numeric", year: "numeric", 
@@ -172,7 +174,7 @@ export default function SecurityReports() {
       config: {
         icon: "🗑️",
         iconClass: "danger",
-        title: `Permanently Delete Report #${scanId}?`,
+        title: `Permanently Delete Report for Scan No. ${scanNo(scan)}?`,
         subtitle: "This action cannot be undone. The scan record and its report will be completely removed.",
         warning: "Once deleted, you cannot recover this report or its associated data. This is irreversible.",
         confirmLabel: "Delete Permanently",
@@ -198,8 +200,9 @@ export default function SecurityReports() {
   };
 
   const filtered = scans.filter(s => {
-    const matchesSearch = s.target.toLowerCase().includes(search.toLowerCase()) || 
-                          s.id.toString().includes(search);
+    const searchText = search.toLowerCase();
+    const matchesSearch = s.target.toLowerCase().includes(searchText) ||
+                          String(s.scan_no ?? s.display_id ?? "").includes(searchText);
     const matchesType = filterType === "all" || s.pipeline_mode === filterType || (filterType === "credentialed" && s.scan_type === "credentialed");
     return matchesSearch && matchesType;
   });
@@ -236,7 +239,7 @@ export default function SecurityReports() {
             <span className="search-icon">🔍</span>
             <input 
               type="text" 
-              placeholder="Search by target IP or Scan ID..." 
+              placeholder="Search by target IP or Scan No..." 
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="search-input"
@@ -508,7 +511,7 @@ function ReportCard({ scan, onDownload }) {
     <div className="report-card">
       <div className="rc-top">
         <span className="rc-type-tag">{typeLabel}</span>
-        <span className="rc-id">#{scan.id}</span>
+        <span className="rc-id">Scan No. {scanNo(scan)}</span>
       </div>
 
       <div className="rc-body">

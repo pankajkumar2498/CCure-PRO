@@ -62,9 +62,11 @@ class Scan(Base):
     """
     __tablename__ = "scans"
     __table_args__ = (
+        UniqueConstraint("org_id", "created_by", "scan_no", name="uq_scans_org_user_scan_no"),
         Index("ix_scans_org_status",    "org_id", "status"),
         Index("ix_scans_org_created",   "org_id", "created_at"),
         Index("ix_scans_org_pipeline",  "org_id", "pipeline_mode"),
+        Index("ix_scans_org_scan_no",   "org_id", "scan_no"),
         Index("ix_scans_is_deleted",    "is_deleted"),
     )
 
@@ -73,6 +75,7 @@ class Scan(Base):
                              nullable=False, index=True)
     created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
                              nullable=True, index=True)
+    scan_no         = Column(BigInteger, nullable=True)
 
     # ── Target Definition ────────────────────────────────────────────────────
     scan_name       = Column(String(255), nullable=True)           # Optional human label

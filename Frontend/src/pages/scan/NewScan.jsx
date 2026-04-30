@@ -72,7 +72,7 @@ export default function NewScan() {
     intensity, setIntensity,
     discoveryIntensity, setDiscoveryIntensity,
     setPhase1Hosts, setPhase1Summary,
-    setScanId, setSaveStatus,
+    setScanId, setScanNo, setSaveStatus,
     setPipelineState,
   } = useScan();
 
@@ -114,6 +114,7 @@ export default function NewScan() {
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
+      setScanNo(data.scan_no ?? data.display_id ?? null);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
       navigate(pipelineMode === "advanced" ? "/scan/advanced-scan" : "/scan/host-discovery");

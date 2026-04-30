@@ -38,7 +38,7 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
 export default function Phase1Results() {
   const navigate = useNavigate();
   const {
-    target, scanId,
+    target, scanId, scanNo,
     phase1Hosts, phase1Summary,
     pipelineMode,
     saveStatus, setSaveStatus,
@@ -189,7 +189,7 @@ export default function Phase1Results() {
             <h2 className="page-title">Discovery Results</h2>
             <p className="page-subtitle">
               Target: <code className="ip-code">{target}</code>
-              {scanId && <span className="muted"> · Scan #{scanId}</span>}
+              {scanId && <span className="muted"> · Scan No. {scanNo ?? "-"}</span>}
             </p>
           </div>
           <button className="btn btn--ghost" onClick={() => navigate("/dashboard")}>
@@ -407,6 +407,7 @@ export default function Phase1Results() {
               results={phase1Hosts}
               summary={phase1Summary}
               scanId={scanId}
+              scanNo={scanNo}
               target={target}
               pipelineMode={pipelineMode}
             />
@@ -590,6 +591,7 @@ export default function Phase1Results() {
                 results={assetResults}
                 summary={assetSummary}
                 scanId={scanId}
+                scanNo={scanNo}
                 target={target}
               />
             )}

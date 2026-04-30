@@ -15,7 +15,7 @@ import { createContext, useContext, useState, useRef, useCallback } from "react"
 const ScanContext = createContext(null);
 
 const SS_KEYS = [
-  "cc_scanId", "cc_target", "cc_scanType",
+  "cc_scanId", "cc_scanNo", "cc_target", "cc_scanType",
   "cc_pipelineMode",
   "cc_phase1Hosts", "cc_phase1Summary",
   "cc_phase2Hosts", "cc_phase2Summary",
@@ -63,6 +63,7 @@ export const PIPELINE_STATES = {
 
 export function ScanProvider({ children }) {
   const [scanId,              setScanIdRaw]              = useState(() => ssGet("cc_scanId",             null));
+  const [scanNo,              setScanNoRaw]              = useState(() => ssGet("cc_scanNo",             null));
   const [target,              setTargetRaw]              = useState(() => ssGet("cc_target",             ""));
   const [scanType,            setScanTypeRaw]            = useState(() => ssGet("cc_scanType",           "adaptive"));
   const [pipelineMode,        setPipelineModeRaw]        = useState(() => ssGet("cc_pipelineMode",       "basic"));
@@ -90,6 +91,7 @@ export function ScanProvider({ children }) {
   const mk = (key, setter) => (v) => { ssSet(key, v); setter(v); };
 
   const setScanId             = mk("cc_scanId",             setScanIdRaw);
+  const setScanNo             = mk("cc_scanNo",             setScanNoRaw);
   const setTarget             = mk("cc_target",             setTargetRaw);
   const setScanType           = mk("cc_scanType",           setScanTypeRaw);
   const setPipelineMode       = mk("cc_pipelineMode",       setPipelineModeRaw);
@@ -126,7 +128,7 @@ export function ScanProvider({ children }) {
       abortRef.current = null;
     }
     ssClear();
-    setScanIdRaw(null);         setTargetRaw("");         setScanTypeRaw("adaptive");
+    setScanIdRaw(null);         setScanNoRaw(null);       setTargetRaw("");         setScanTypeRaw("adaptive");
     setPipelineModeRaw("basic");
     setPhase1HostsRaw([]);      setPhase1SummaryRaw(null);
     setPhase2HostsRaw([]);      setPhase2SummaryRaw(null);
@@ -143,6 +145,7 @@ export function ScanProvider({ children }) {
   return (
     <ScanContext.Provider value={{
       scanId, setScanId,
+      scanNo, setScanNo,
       target, setTarget,
       scanType, setScanType,
       pipelineMode, setPipelineMode,

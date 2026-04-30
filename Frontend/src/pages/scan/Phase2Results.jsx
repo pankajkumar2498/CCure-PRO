@@ -45,6 +45,7 @@ export default function Phase2Results() {
     phase2Results,
     phase2Summary,
     scanId,
+    scanNo,
     target,
     pipelineMode,
     saveStatus,
@@ -655,7 +656,7 @@ export default function Phase2Results() {
         })}
 
         {summary && results.length > 0 && pipelineMode !== "advanced" && (
-          <ExportPanel results={results} summary={summary} scanId={scanId} target={target} />
+          <ExportPanel results={results} summary={summary} scanId={scanId} scanNo={scanNo} target={target} />
         )}
 
         {hasScanned && canProceedToPhase3 && (

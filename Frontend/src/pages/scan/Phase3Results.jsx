@@ -99,7 +99,7 @@ export default function Phase3Results() {
     phase1Hosts, phase1Summary,
     phase2Results, phase2Summary,
     phase3AuditResults, phase3Summary,
-    scanId, target, intensity,
+    scanId, scanNo, target, intensity,
     setPhase2Results, setPhase2Summary,
     setPhase3Summary, setPhase3AuditResults,
     pipelineMode,
@@ -743,7 +743,7 @@ export default function Phase3Results() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         title="Risk Report - Full Assessment"
-        subtitle={`Scan #${scanId} • Target: ${target}`}
+        subtitle={`Scan No. ${scanNo ?? "-"} - Target: ${target}`}
       >
         <div style={{ maxHeight: "80vh", overflowY: "auto" }}>
           {/* Report Header */}

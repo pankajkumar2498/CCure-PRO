@@ -66,6 +66,8 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
     pipeline_mode = getattr(scan, "pipeline_mode", "basic") or "basic"
     d = {
         "id":            str(scan.id),
+        "scan_no":       scan.scan_no,
+        "display_id":    scan.scan_no,
         "target":        scan.target_str,
         "targets":       scan.target_hosts or [],
         "scan_type":     scan.scan_type,
@@ -150,7 +152,7 @@ def _scan_history_snapshot(db: Session, user_id: str, scope: str, skip: int, lim
     version_parts = [
         str(total),
         *[
-            f"{row['id']}:{row.get('status')}:{row.get('phase')}:{row.get('updated_at')}:{row.get('progress_percentage')}"
+            f"{row['id']}:{row.get('scan_no')}:{row.get('status')}:{row.get('phase')}:{row.get('updated_at')}:{row.get('progress_percentage')}"
             for row in rows
         ],
     ]

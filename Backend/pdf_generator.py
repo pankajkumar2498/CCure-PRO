@@ -641,6 +641,7 @@ def _build_json_story(result: dict, scan_type: str,
     target_value  = _resolve_target(meta, summary)
 
     scan_info_rows = [
+        ("Scan No.",          meta.get("scan_no", "N/A")),
         ("Scan Type",         _get_scan_type_label(scan_type)),
         ("Target",            target_value),
         ("Scan Strategy",     scan_strategy),
@@ -1033,6 +1034,7 @@ def _xml_to_story(xml_str: str, scan_type: str,
     target_value = _resolve_target(meta, summary)
     
     meta_rows = [
+        ("Scan No.",       meta.get("scan_no", "N/A")),
         ("Scan Type",      _get_scan_type_label(scan_type)),
         ("Target",         target_value),
         ("Scan Strategy",  scan_strategy),

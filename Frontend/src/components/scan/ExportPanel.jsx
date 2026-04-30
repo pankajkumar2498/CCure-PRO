@@ -15,6 +15,7 @@ export default function ExportPanel({
   results,
   summary,
   scanId,
+  scanNo,
   target,
   pipelineMode,
   phase1Hosts = [],
@@ -25,6 +26,8 @@ export default function ExportPanel({
   const [copied,     setCopied]     = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError,   setPdfError]   = useState("");
+  const displayNo = scanNo ?? "N/A";
+  const fileNo = scanNo ?? Date.now();
 
   // Detect if this is Phase 1 (discovery), Phase 2 (port scan), or Phase 3 (vulnerability) data
   const isPhase3 = results.length > 0 && !!results[0].host_risk_level;
@@ -35,7 +38,7 @@ export default function ExportPanel({
   /* ── JSON ─────────────────────────────────────────────────────────── */
   const downloadJSON = () => {
     const payload = {
-      scan_id: scanId,
+      scan_no: scanNo ?? null,
       target,
       exported_at: new Date().toISOString(),
       pipeline_mode: pipelineMode,
@@ -54,7 +57,7 @@ export default function ExportPanel({
       },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    trigger(blob, `ccure-scan-${scanId || Date.now()}.json`);
+    trigger(blob, `ccure-scan-${fileNo}.json`);
   };
 
   /* ── CSV ──────────────────────────────────────────────────────────── */
@@ -63,7 +66,7 @@ export default function ExportPanel({
 
     if (isFinalAdvancedExport) {
       rows.push(["Advanced Scan Export"]);
-      rows.push([`Scan ID: ${scanId || "N/A"}`]);
+      rows.push([`Scan No: ${displayNo}`]);
       rows.push([`Target: ${target || "N/A"}`]);
       rows.push([`Exported: ${new Date().toLocaleString()}`]);
       rows.push([]);
@@ -167,7 +170,7 @@ export default function ExportPanel({
     }
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    trigger(new Blob([csv], { type: "text/csv" }), `ccure-scan-${scanId || Date.now()}.csv`);
+    trigger(new Blob([csv], { type: "text/csv" }), `ccure-scan-${fileNo}.csv`);
   };
 
   /* ── PDF (backend) ────────────────────────────────────────────────── */
@@ -183,7 +186,7 @@ export default function ExportPanel({
       const res      = await api.get(`/reports/download/${scanId}`, { params: { fmt }, responseType: "blob" });
       const disp     = res.headers["content-disposition"] || "";
       const match    = disp.match(/filename="?([^";\n]+)"?/i);
-      const filename = match ? match[1] : `ccure-report-${scanId}-${fmt}.pdf`;
+      const filename = match ? match[1] : `ccure-report-${fileNo}-${fmt}.pdf`;
       trigger(new Blob([res.data], { type: "application/pdf" }), filename);
     } catch (err) {
       const detail = err?.response?.data instanceof Blob
@@ -204,7 +207,7 @@ export default function ExportPanel({
       lines = [
         "CCure Audit PRO — Network Discovery Report",
         `Target:   ${target}`,
-        `Scan ID:  ${scanId || "N/A"}`,
+        `Scan No:  ${displayNo}`,
         `Date:     ${new Date().toLocaleString()}`,
         "",
         "── Summary ──────────────────────────",
@@ -225,7 +228,7 @@ export default function ExportPanel({
       lines = [
         "CCure Audit PRO — Port Scan Results",
         `Target:   ${target}`,
-        `Scan ID:  ${scanId || "N/A"}`,
+        `Scan No:  ${displayNo}`,
         `Date:     ${new Date().toLocaleString()}`,
         "",
         "── Summary ──────────────────────────",
@@ -243,7 +246,7 @@ export default function ExportPanel({
       lines = [
         "CCure Audit PRO — Vulnerability Audit Report",
         `Target:   ${target}`,
-        `Scan ID:  ${scanId || "N/A"}`,
+        `Scan No:  ${displayNo}`,
         `Date:     ${new Date().toLocaleString()}`,
         "",
         "── Summary ──────────────────────────",

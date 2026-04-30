@@ -9,6 +9,7 @@ Automatically runs Identity Resolution (AssetSyncer) internally.
 
 from datetime import datetime
 from typing import Optional
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from db.models.users import User
@@ -22,6 +23,27 @@ def _get_org_id(db: Session, user_id: str) -> str:
     if not user:
         raise ValueError(f"User {user_id} not found in DB")
     return str(user.org_id)
+
+
+def _next_scan_no(db: Session, org_id: str, user_id: str) -> int:
+    """
+    Return the next human-facing scan number for this user inside the org.
+
+    UUID remains the real object identity; scan_no is only for display,
+    support, reports, and database lookups by humans.
+    """
+    if db.bind and db.bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"scan_no:{org_id}:{user_id}"},
+        )
+
+    current = (
+        db.query(func.max(Scan.scan_no))
+        .filter(Scan.org_id == org_id, Scan.created_by == user_id)
+        .scalar()
+    )
+    return int(current or 0) + 1
 
 
 def create_scan(
@@ -47,6 +69,7 @@ def create_scan(
     scan = Scan(
         org_id=org_id,
         created_by=user_id,
+        scan_no=_next_scan_no(db, org_id, user_id),
         target_str=target,
         target_hosts=targets,
         scan_type=scan_type,
@@ -203,6 +226,7 @@ def create_completed_scan(
     scan = Scan(
         org_id=org_id,
         created_by=user_id,
+        scan_no=_next_scan_no(db, org_id, user_id),
         target_str=target,
         target_hosts=base_targets,
         scan_type=scan_type,

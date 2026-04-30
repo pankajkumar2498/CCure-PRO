@@ -54,6 +54,7 @@ const normalizeStatus = status => {
 };
 
 const isCred = scan => scan.scan_type === "credentialed";
+const scanLabel = scan => `Scan No. ${scan?.scan_no ?? scan?.display_id ?? "-"}`;
 const phaseLabel = scan =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} — ${PHASE_LABELS[scan.phase] || "-"}`;
 
@@ -97,6 +98,7 @@ const isSameScan = (a, b) =>
   a &&
   b &&
   a.id === b.id &&
+  a.scan_no === b.scan_no &&
   a.status === b.status &&
   a.phase === b.phase &&
   a.updated_at === b.updated_at &&
@@ -254,7 +256,7 @@ function DetailModal({ scanId, onClose }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Scan #{scanId}</h2>
+          <h2 className="modal-title">{detail ? scanLabel(detail) : "Scan Details"}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
@@ -421,7 +423,7 @@ function ScanProgress({ scan }) {
 export default function ScanHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, resetScan } = useScan();
+  const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, setScanNo, resetScan } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const [scans, setScans] = useState([]);
@@ -537,7 +539,7 @@ export default function ScanHistory() {
         type: "rerun",
         icon: "🔁",
         iconClass: "info",
-        title: `Re-run Scan #${scan.id}?`,
+        title: `Re-run ${scanLabel(scan)}?`,
         subtitle: "This will start a fresh scan against the same target using the same configuration.",
         meta: [
           ["Target", scan.target],
@@ -594,6 +596,7 @@ export default function ScanHistory() {
       setPhase1Hosts(data.data);
       setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
+      setScanNo(data.scan_no ?? data.display_id ?? null);
 
       setDialog(null);
 
@@ -619,7 +622,7 @@ export default function ScanHistory() {
       setScans(prev => prev.filter(s => s.id !== scan.id));
       setTotal(prev => Math.max(prev - 1, 0));
       setDialog(null);
-      pushToast(`Scan #${scan.id} archived. You can restore it from Archived Scans.`, "success");
+      pushToast(`${scanLabel(scan)} archived. You can restore it from Archived Scans.`, "success");
     } catch {
       setDialog(null);
       pushToast("Failed to archive scan. Please try again.", "error");
@@ -634,7 +637,7 @@ export default function ScanHistory() {
       setScans(prev => prev.filter(s => s.id !== scan.id));
       setTotal(prev => Math.max(prev - 1, 0));
       setDialog(null);
-      pushToast(`Scan #${scan.id} moved to Recycle Bin.`, "info");
+      pushToast(`${scanLabel(scan)} moved to Recycle Bin.`, "info");
     } catch {
       setDialog(null);
       pushToast("Failed to delete scan. Please try again.", "error");
@@ -734,7 +737,7 @@ export default function ScanHistory() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th>Scan No.</th>
                   <th>Target</th>
                   <th>Type</th>
                   <th>Phase</th>
@@ -753,7 +756,7 @@ export default function ScanHistory() {
                   return (
                     <tr key={scan.id}>
                       <td>
-                        <code className="ip-code" style={{ fontSize: 12 }}>#{scan.id}</code>
+                        <code className="ip-code" style={{ fontSize: 12 }}>{scan.scan_no ?? scan.display_id ?? "-"}</code>
                       </td>
                       <td>
                         <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>

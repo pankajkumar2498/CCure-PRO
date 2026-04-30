@@ -210,14 +210,9 @@ def lookup_cve(banner: str) -> List[Dict]:
     
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
-        # Extract service name from banner (e.g., "OpenSSH 7.4" -> "openssh")
-        for service_hint in ["openssh", "nginx", "apache", "ftp", "smb", "rdp", "redis", "mongodb", 
-                             "mysql", "postgresql", "tomcat", "php", "openssl", "telnet", "dropbear"]:
-            if service_hint in banner_lc:
-                db_results = CVE_DB.search_cves_for_service(banner, "")
-                if db_results:
-                    found.extend(db_results)
-                    break
+        db_results = CVE_DB.search_cves_for_service(banner, "")
+        if db_results:
+            found.extend(db_results)
     
     # Fallback to hardcoded hints if no database results
     if not found:

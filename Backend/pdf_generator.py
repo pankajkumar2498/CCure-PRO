@@ -316,7 +316,24 @@ def _resolve_pdf_cve_package(cve: dict) -> str:
 
 
 def _resolve_pdf_cve_description(cve: dict) -> str:
-    return cve.get("description") or cve.get("desc") or ""
+    desc = cve.get("description") or cve.get("desc") or ""
+    tags = []
+    if cve.get("priority_level"):
+        tags.append(str(cve.get("priority_level")))
+    if cve.get("in_kev"):
+        tags.append("KEV")
+    if cve.get("has_exploit"):
+        tags.append("Exploit")
+    epss = cve.get("epss_score")
+    try:
+        epss_value = float(epss) if epss is not None else 0.0
+    except Exception:
+        epss_value = 0.0
+    if epss_value > 0:
+        tags.append(f"EPSS {epss_value:.2f}")
+    if tags:
+        return f"[{' | '.join(tags)}] {desc}"
+    return desc
 
 
 def _section_header(title: str, styles: dict) -> Paragraph:

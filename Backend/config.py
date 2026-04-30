@@ -77,6 +77,23 @@ class ScanConfig:
     NMAP_THREADS: int = int(os.getenv("NMAP_THREADS", "4"))
 
 
+class VulnIntelConfig:
+    """Separate vulnerability-intelligence database configuration."""
+
+    HOST: str = os.getenv("VULN_DB_HOST", os.getenv("PGHOST", "localhost"))
+    PORT: int = int(os.getenv("VULN_DB_PORT", os.getenv("PGPORT", "5432")))
+    DATABASE: str = os.getenv("VULN_DB_NAME", os.getenv("PGDATABASE", "vuln_intel"))
+    USER: str = os.getenv("VULN_DB_USER", os.getenv("PGUSER", "admin"))
+    PASSWORD: str = os.getenv("VULN_DB_PASSWORD", os.getenv("PGPASSWORD", "root"))
+
+    @staticmethod
+    def database_url() -> str:
+        return (
+            f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
+            f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}/{VulnIntelConfig.DATABASE}"
+        )
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -94,6 +111,14 @@ class AppConfig:
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT
     NMAP_THREADS = ScanConfig.NMAP_THREADS
+
+    # Vulnerability intelligence
+    VULN_DB_HOST = VulnIntelConfig.HOST
+    VULN_DB_PORT = VulnIntelConfig.PORT
+    VULN_DB_NAME = VulnIntelConfig.DATABASE
+    VULN_DB_USER = VulnIntelConfig.USER
+    VULN_DB_PASSWORD = VulnIntelConfig.PASSWORD
+    VULN_DB_URL = VulnIntelConfig.database_url()
 
     @staticmethod
     def is_sqlite() -> bool:

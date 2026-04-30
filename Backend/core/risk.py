@@ -8,6 +8,7 @@ Pure logic - no I/O, no imports from engines.
 from typing import Dict, List, Optional, Tuple
 
 from core.constants import OS_TTL_MAP, TCP_WINDOW_OS, TCP_OPTIONS_FINGERPRINT, RISK_WEIGHTS, RISK_LEVELS
+from core.vuln_intel import compute_priority, merge_alias_fields
 
 
 # =============================================================================
@@ -245,47 +246,50 @@ def calculate_risk(
 
 def normalize_cve(cve: Dict) -> Dict:
     """Normalize CVE entries to the frontend-facing response contract."""
-    cvss = cve.get("cvss_score", cve.get("cvss", 0) or 0)
-    try:
-        cvss = float(cvss)
-    except (TypeError, ValueError):
-        cvss = 0.0
-
-    severity = cve.get("severity")
-    if not severity:
-        if cvss >= 9.0:
-            severity = "Critical"
-        elif cvss >= 7.0:
-            severity = "High"
-        elif cvss >= 4.0:
-            severity = "Medium"
-        elif cvss > 0:
-            severity = "Low"
-        else:
-            severity = "Info"
-
-    cve_id = cve.get("cve_id") or cve.get("cve") or "Unknown"
-    description = cve.get("description") or cve.get("desc") or ""
-
-    return {
-        "cve_id": cve_id,
-        "severity": severity,
-        "cvss_score": cvss,
-        "description": description,
-        # Legacy aliases preserved so older code paths still work.
-        "cve": cve_id,
-        "cvss": cvss,
-        "desc": description,
-    }
+    return merge_alias_fields(cve)
 
 
 def deduplicate_cves(cves: List[Dict]) -> List[Dict]:
     """Remove duplicate CVE entries (same CVE ID)."""
-    seen, unique = set(), []
+    best_by_id: Dict[str, Dict] = {}
     for c in cves:
         normalized = normalize_cve(c)
         key = normalized.get("cve_id", "")
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(normalized)
-    return unique
+        if not key:
+            continue
+
+        current = best_by_id.get(key)
+        if current is None:
+            best_by_id[key] = normalized
+            continue
+
+        current_priority = compute_priority(
+            cvss_score=current.get("cvss_score"),
+            epss_score=current.get("epss_score"),
+            in_kev=bool(current.get("in_kev")),
+            has_exploit=bool(current.get("has_exploit")),
+        )[0]
+        new_priority = compute_priority(
+            cvss_score=normalized.get("cvss_score"),
+            epss_score=normalized.get("epss_score"),
+            in_kev=bool(normalized.get("in_kev")),
+            has_exploit=bool(normalized.get("has_exploit")),
+        )[0]
+
+        if new_priority > current_priority:
+            merged = dict(current)
+            merged.update(normalized)
+            best_by_id[key] = merged
+        else:
+            merged = dict(normalized)
+            merged.update(current)
+            best_by_id[key] = merged
+
+    return sorted(
+        best_by_id.values(),
+        key=lambda item: (
+            item.get("priority_score", 0.0),
+            item.get("cvss_score", 0.0),
+        ),
+        reverse=True,
+    )

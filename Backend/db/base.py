@@ -28,13 +28,7 @@ from config import AppConfig
 
 engine = create_engine(
     AppConfig.DATABASE_URL,
-    # Pool settings tuned for production
-    pool_pre_ping=True,        # Drop stale connections before use
-    pool_size=10,              # Persistent connections kept open
-    max_overflow=20,           # Burst connections allowed above pool_size
-    pool_recycle=3600,         # Recycle connections every hour
-    pool_timeout=30,           # Wait max 30s for a connection
-    echo=False,                # Set True to log SQL (dev only)
+    **AppConfig.DATABASE_ENGINE_KWARGS
 )
 
 # ─── Enable pg_trgm extension for fast text search ───────────────────────────

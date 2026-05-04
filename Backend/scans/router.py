@@ -10,19 +10,21 @@ REST endpoints for scan history.
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user, get_current_user_flexible
-from auth.models import get_db, User
-from db.base import SessionLocal
+from db.base import get_db, SessionLocal, utcnow
+from db.models import User
 from db.models.scans import Scan
 from scans.legacy_json_builder import build_legacy_scan_results
 
+log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
 
 TERMINAL_PHASE_BY_MODE = {
@@ -162,7 +164,7 @@ def _scan_history_snapshot(db: Session, user_id: str, scope: str, skip: int, lim
         "total": total,
         "scans": rows,
         "version": "|".join(version_parts),
-        "emitted_at": _as_utc_iso(datetime.utcnow()),
+        "emitted_at": _as_utc_iso(utcnow()),
     }
 
 
@@ -198,9 +200,7 @@ async def stream_scan_history(
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
-
-    The generator opens a fresh DB session on each tick so completion/failure
-    commits from scan endpoints are visible without a browser refresh.
+    Uses adaptive polling based on active running scans.
     """
     if scope not in {"active", "archived", "deleted", "all"}:
         raise HTTPException(status_code=400, detail="Invalid scope. Use active, archived, deleted, or all.")
@@ -214,17 +214,20 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = _scan_history_snapshot(db, user_id, scope, skip, limit)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user_id, scope, skip, limit)
             finally:
                 db.close()
+
+            has_running_scans = any(s.get("status") == "running" for s in snapshot.get("scans", []))
+            current_interval = 0.5 if has_running_scans else 2.0
 
             if snapshot["version"] != last_version:
                 last_version = snapshot["version"]
                 yield _format_sse("scans", snapshot)
             else:
-                yield _format_sse("heartbeat", {"emitted_at": _as_utc_iso(datetime.utcnow())})
+                yield _format_sse("heartbeat", {"emitted_at": _as_utc_iso(utcnow())})
 
-            await asyncio.sleep(interval)
+            await asyncio.sleep(current_interval)
 
     return StreamingResponse(
         event_generator(),
@@ -235,6 +238,58 @@ async def stream_scan_history(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.websocket("/{scan_id}/progress")
+async def scan_progress_ws(websocket: WebSocket, scan_id: str):
+    """
+    Real-time progress WebSocket endpoint using Redis PubSub.
+    Sends current state immediately on connect to avoid race conditions.
+    """
+    await websocket.accept()
+
+    # 1. Send current status from DB immediately
+    db = SessionLocal()
+    try:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if scan and scan.phases:
+            # Send status of the most recent phase
+            latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
+            await websocket.send_json({
+                "scan_id": scan_id,
+                "phase": latest_phase.phase_order,
+                "progress": {
+                    "status": latest_phase.status,
+                    "summary": latest_phase.summary,
+                    # Include enough data to satisfy frontend checks
+                    "discovered": latest_phase.hosts_processed,
+                    "total_ips": (latest_phase.summary or {}).get("total_hosts", 0)
+                }
+            })
+    finally:
+        db.close()
+
+    from core.redis_client import redis_client
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe(f"scan_progress:{scan_id}")
+    
+    log.info("[TRACE][WS][%s] WS Subscribed to Redis for scan %s", datetime.now().isoformat(), scan_id)
+    try:
+        while True:
+            # Reduce timeout and sleep for higher responsiveness
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+            if message:
+                data = json.loads(message["data"])
+                log.info("[TRACE][WS][%s] WS Relaying message for scan %s, phase %d, status %s", 
+                         datetime.now().isoformat(), scan_id, data.get("phase"), data.get("progress", {}).get("status"))
+                await websocket.send_json(data)
+            else:
+                await asyncio.sleep(0.01)
+    except WebSocketDisconnect:
+        await pubsub.unsubscribe(f"scan_progress:{scan_id}")
+    except Exception as e:
+        log.error("WebSocket progress error: %s", e)
+        await websocket.close(code=1011)
 
 
 @router.get("/{scan_id}")
@@ -265,8 +320,8 @@ def archive_scan(
         }
 
     scan.is_archived = True
-    scan.archived_at = datetime.utcnow()
-    scan.updated_at = datetime.utcnow()
+    scan.archived_at = utcnow()
+    scan.updated_at = utcnow()
     db.add(scan)
     db.commit()
     return {
@@ -286,7 +341,7 @@ def restore_scan(
     if scan.is_deleted:
         scan.is_deleted = False
         scan.deleted_at = None
-        scan.updated_at = datetime.utcnow()
+        scan.updated_at = utcnow()
         db.add(scan)
         db.commit()
         destination = "Archived Scans" if scan.is_archived else "My Scan Jobs"
@@ -305,7 +360,7 @@ def restore_scan(
 
     scan.is_archived = False
     scan.archived_at = None
-    scan.updated_at = datetime.utcnow()
+    scan.updated_at = utcnow()
     db.add(scan)
     db.commit()
     return {
@@ -330,8 +385,8 @@ def delete_scan(
         }
 
     scan.is_deleted = True
-    scan.deleted_at = datetime.utcnow()
-    scan.updated_at = datetime.utcnow()
+    scan.deleted_at = utcnow()
+    scan.updated_at = utcnow()
     db.add(scan)
     db.commit()
     return {

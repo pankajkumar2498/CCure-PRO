@@ -30,26 +30,28 @@ def probe(
 ) -> None:
     """
     Query NetBIOS node status (UDP 137) for each active IP.
-
-    Side effects:
-        results[ip]["netbios_names"] → list of {name, flags} dicts
-        results[ip]["mac"]           → real MAC if ARP didn't capture it
+    Extracts computer name AND MAC address from the payload.
     """
     for ip in ips:
         if ip not in results:
             continue
-        names = _query(ip, timeout)
+        
+        names, mac = _query(ip, timeout)
         if names:
             results[ip]["netbios_names"] = names
-            # Extract computer name (flag bit 12 = 0 → workstation/server name)
             for entry in names:
-                if not (entry["flags"] & 0x8000):  # not a group name
+                if not (entry["flags"] & 0x8000):  # workstation/server name
                     results[ip].setdefault("netbios_computer", entry["name"])
+                    if not results[ip].get("hostname") or results[ip]["hostname"] == "Unknown":
+                        results[ip]["hostname"] = entry["name"]
                     break
+        
+        if mac and (results[ip].get("mac", "N/A") == "N/A"):
+            results[ip]["mac"] = mac
 
 
-def _query(ip: str, timeout: float) -> List[Dict]:
-    """Send NBSTAT and return parsed name table, or [] on failure."""
+def _query(ip: str, timeout: float) -> tuple[List[Dict], str | None]:
+    """Send NBSTAT and return (parsed names, mac_string)."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
@@ -57,10 +59,10 @@ def _query(ip: str, timeout: float) -> List[Dict]:
         data, _ = sock.recvfrom(1024)
         sock.close()
     except Exception:
-        return []
+        return [], None
 
     if len(data) < 57:
-        return []
+        return [], None
 
     num_names = data[56]
     names: List[Dict] = []
@@ -73,4 +75,13 @@ def _query(ip: str, timeout: float) -> List[Dict]:
         name  = raw.decode("ascii", errors="ignore").strip()
         if name:
             names.append({"name": name, "flags": flags})
-    return names
+
+    # Extract MAC (last 6 bytes after the name table)
+    mac = None
+    mac_offset = 57 + num_names * 18
+    if mac_offset + 6 <= len(data):
+        mac_bytes = data[mac_offset:mac_offset + 6]
+        if any(b != 0 for b in mac_bytes):
+            mac = ":".join(f"{b:02x}" for b in mac_bytes)
+
+    return names, mac

@@ -1,0 +1,88 @@
+services:
+  # ── Task Broker ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ccure-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── API Server ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: ccure-api
+    restart: always
+    environment:
+      # host.docker.internal allows the container to reach the PostgreSQL on your local Windows machine
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ccure_user}:${POSTGRES_PASSWORD:-ccure_admin_2026}@host.docker.internal:5432/${POSTGRES_DB:-ccure_db}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VULN_DB_HOST=${VULN_DB_HOST:-host.docker.internal}
+      - VULN_DB_PORT=${VULN_DB_PORT:-5432}
+      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
+      - VULN_DB_USER=${VULN_DB_USER:-admin}
+      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - APP_ENV=production
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Backend/reports:/app/reports
+
+  # ── Background Worker ────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: ccure-worker
+    restart: always
+    profiles: ["container-scanner"]
+    # The worker MUST run as root to perform raw-socket scans (Scapy/Nmap)
+    user: root
+    command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner"]
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ccure_user}:${POSTGRES_PASSWORD:-ccure_admin_2026}@host.docker.internal:5432/${POSTGRES_DB:-ccure_db}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VULN_DB_HOST=${VULN_DB_HOST:-host.docker.internal}
+      - VULN_DB_PORT=${VULN_DB_PORT:-5432}
+      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
+      - VULN_DB_USER=${VULN_DB_USER:-admin}
+      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - APP_ENV=production
+      - SCANNER_RUNTIME=container
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Backend/reports:/app/reports
+
+  # ── Frontend ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: ccure-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - api

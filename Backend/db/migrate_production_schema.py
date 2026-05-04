@@ -204,6 +204,30 @@ def enable_extensions(conn):
 # Step 2 — Tables
 # ─────────────────────────────────────────────────────────────────────────────
 
+def sync_missing_columns(conn):
+    """Additive migration for the 'assets' table: ensuring newly added columns exist."""
+    print(f"\n  Checking for missing columns...")
+    
+    # List of (table, column, type)
+    columns_to_ensure = [
+        ("assets", "discovery_method", "VARCHAR(50)"),
+        ("assets", "response_time_ms", "INTEGER"),
+    ]
+    
+    for table, col, col_type in columns_to_ensure:
+        # Check if column exists
+        res = conn.execute(text(f"""
+            SELECT count(*) 
+            FROM information_schema.columns 
+            WHERE table_name = '{table}' AND column_name = '{col}'
+        """)).scalar()
+        
+        if res == 0:
+            print(f"    + Adding column {col} to {table}...")
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+        else:
+            print(f"    ✓ Column {col} exists in {table}")
+
 def create_all_tables():
     _print_header("Step 2: Creating Production Schema Tables")
     Base.metadata.create_all(bind=engine, checkfirst=True)
@@ -222,6 +246,9 @@ def create_all_tables():
             exists = _table_exists(conn, table)
             status = "✓ exists" if exists else "✗ MISSING"
             print(f"  {status:12s} {table}")
+        
+    with engine.begin() as conn:
+        sync_missing_columns(conn)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

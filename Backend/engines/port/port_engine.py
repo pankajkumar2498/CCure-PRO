@@ -69,13 +69,14 @@ class PortEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, hosts: List[Dict]) -> List[Dict]:
+    async def run(self, hosts: List[Dict], scan_id: Optional[str] = None) -> List[Dict]:
         """
         Scan all active hosts for open ports and services.
 
         Args:
             hosts: List of host dicts from Phase 1 (DiscoveryEngine).
                    Only hosts with is_active=True are scanned.
+            scan_id: Optional UUID to publish real-time progress.
 
         Returns:
             Same list, each active host enriched with:
@@ -89,18 +90,18 @@ class PortEngine:
             return hosts
 
         if NMAP_AVAILABLE:
-            await self._scan_with_nmap(active)
+            await self._scan_with_nmap(active, scan_id=scan_id)
         else:
             log.warning(
                 "nmap not available — falling back to async TCP connect. "
                 "Install nmap for faster, more accurate port scanning."
             )
-            await self._scan_fallback(active)
+            await self._scan_fallback(active, scan_id=scan_id)
 
         return hosts
 
 
-    async def _scan_with_nmap(self, hosts: List[Dict]) -> None:
+    async def _scan_with_nmap(self, hosts: List[Dict], scan_id: Optional[str] = None) -> None:
         """
         Use NmapScanner for port scanning.
 
@@ -125,6 +126,8 @@ class PortEngine:
         log.info("Nmap port scan: %d hosts, intensity=%s", len(ips), nmap_intensity)
         t0 = time.time()
 
+        from core.redis_client import publish_progress
+
         if self.intensity != ScanIntensity.DEEP:
             # ──────────────────────────────────────────────────────────
             # LIGHT / NORMAL: single batch call — port states + service info
@@ -132,6 +135,12 @@ class PortEngine:
             # (≈65 separate Nmap processes at 4 workers = the ~400 s bottleneck).
             # ──────────────────────────────────────────────────────────
             include_svc = (self.intensity == ScanIntensity.NORMAL)
+            if scan_id:
+                await publish_progress(scan_id, 2, {
+                    "total_hosts": len(ips),
+                    "status": "running"
+                })
+
             nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
                 lambda: self._nmap.scan_hosts(
@@ -152,10 +161,24 @@ class PortEngine:
                 self._apply_nmap_ports(
                     host, nmap_results[ip], service_detection=include_svc
                 )
+            
+            if scan_id:
+                await publish_progress(scan_id, 2, {
+                    "scanned_hosts": len(ips),
+                    "total_hosts": len(ips),
+                    "status": "running"
+                })
         else:
             # ──────────────────────────────────────────────────────────
             # DEEP: two-pass — full port sweep then targeted service detect
             # ──────────────────────────────────────────────────────────
+            if scan_id:
+                await publish_progress(scan_id, 2, {
+                    "phase_detail": "port_sweep",
+                    "total_hosts": len(ips),
+                    "status": "running"
+                })
+
             nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
                 lambda: self._nmap.scan_hosts(ips, intensity="deep"),
@@ -164,13 +187,14 @@ class PortEngine:
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",
                 time.time() - t0,
             )
-            await self._enrich_services(hosts, nmap_results, loop)
+            await self._enrich_services(hosts, nmap_results, loop, scan_id=scan_id)
 
     async def _enrich_services(
         self,
         hosts: List[Dict],
         initial_results: Dict[str, NmapScanResult],
         loop: asyncio.AbstractEventLoop,
+        scan_id: Optional[str] = None
     ) -> None:
         """
         Run targeted service/version detection per host on its open ports.
@@ -183,8 +207,19 @@ class PortEngine:
         """
         t0 = time.time()
         n_workers = max(1, min(len(hosts), 8))  # was 4
+        from core.redis_client import publish_progress
 
+        if scan_id:
+            asyncio.create_task(publish_progress(scan_id, 2, {
+                "phase_detail": "service_detection",
+                "scanned_hosts": 0,
+                "total_hosts": len(hosts),
+                "status": "running"
+            }))
+
+        completed = 0
         def _enrich_one(host: Dict) -> None:
+            nonlocal completed
             ip = self._ip(host)
             if not ip:
                 return
@@ -198,6 +233,14 @@ class PortEngine:
                 return
             svc_result = self._nmap.detect_services(ip, ports=open_port_nums)
             self._apply_nmap_ports(host, svc_result, service_detection=True)
+            completed += 1
+            if scan_id:
+                asyncio.run_coroutine_threadsafe(publish_progress(scan_id, 2, {
+                    "phase_detail": "service_detection",
+                    "scanned_hosts": completed,
+                    "total_hosts": len(hosts),
+                    "status": "running"
+                }), loop)
 
         with ThreadPoolExecutor(max_workers=n_workers, thread_name_prefix="svc-enrich") as pool:
             tasks = [
@@ -208,6 +251,14 @@ class PortEngine:
             for res in results:
                 if isinstance(res, Exception):
                     log.debug("Service enrichment error: %s", res)
+
+        if scan_id:
+            asyncio.create_task(publish_progress(scan_id, 2, {
+                "phase_detail": "service_detection",
+                "scanned_hosts": len(hosts),
+                "total_hosts": len(hosts),
+                "status": "complete"
+            }))
 
         log.info("DEEP service enrichment done in %.1fs (pass 2/2)", time.time() - t0)
 
@@ -220,11 +271,13 @@ class PortEngine:
         """
         Convert NmapScanResult ports into the standard PortResult dict format
         and merge into the host dict.
-
-        This is the ONLY place where NmapPortResult → PortResult conversion
-        happens. Keeps the translation logic centralized.
         """
         if nmap_result.state in ("nmap_unavailable", "error", "timeout"):
+            ip = self._ip(host)
+            log.warning(
+                "Nmap scan %s for %s: %s",
+                nmap_result.state, ip, nmap_result.error_message or "Unknown error"
+            )
             return
 
         ip = self._ip(host)

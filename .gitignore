@@ -76,3 +76,6 @@ test_User_DB*
 # Type checking caches
 .pytype/
 .mypy_cache/
+
+# .md files
+.agent/

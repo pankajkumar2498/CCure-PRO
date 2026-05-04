@@ -100,6 +100,7 @@ def _latency_ms(sent, received) -> Optional[float]:
             elapsed = (float(t_recv) - float(t_send)) * 1000
             if elapsed >= 0:
                 return elapsed
-    except Exception:
+    except Exception as exc:
+        log.debug("Failed to calculate ARP latency: %s", exc)
         pass
     return None

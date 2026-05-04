@@ -82,11 +82,11 @@ FAST = DiscoveryProfile(
         "LAN: ARP broadcast. Non-LAN: TCP connect on ports 80/443/22. "
         "Ideal for quick /24 sweeps. May miss hosts behind strict firewalls."
     ),
-    techniques  = [Technique.ARP, Technique.TCP_CONN],
+    techniques  = [Technique.ARP, Technique.NBNS, Technique.TCP_CONN],
     timeout     = 0.8,
     retries     = 0,     # no retries — speed first
     concurrency = 256,   # high for async TCP connect
-    enrichment  = False, # skip SNMP/mDNS/NetBIOS — speed priority
+    enrichment  = True,  # Allow NetBIOS/mDNS hostname resolution
     stealth_auto = False,
     separate_lan_wan = True,
 )

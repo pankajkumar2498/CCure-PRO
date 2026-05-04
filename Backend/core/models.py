@@ -162,6 +162,13 @@ class HostResult:
             "confidence": self.confidence,
         }
 
+    def to_phase3_dict(self) -> Dict:
+        """Returns fields for Phase 3 (Vulnerability Scan) - excludes open_ports (shown in Phase 2)."""
+        d = self.to_clean_dict()
+        # Remove open_ports from Phase 3 to avoid redundancy with Phase 2 port scan results
+        d.pop("open_ports", None)
+        return d
+
     def to_clean_dict(self) -> Dict:
         """Like to_dict() but drops fields that have no meaningful value."""
         d = asdict(self)

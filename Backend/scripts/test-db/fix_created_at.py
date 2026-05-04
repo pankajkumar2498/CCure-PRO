@@ -4,7 +4,7 @@ Fix the created_at field in the user record
 
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 def fix_user_created_at():
     """Fix the created_at field."""
@@ -15,7 +15,7 @@ def fix_user_created_at():
     
     try:
         # Update user with current timestamp
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         cursor.execute("""
             UPDATE users SET created_at = ?, updated_at = ? WHERE email = ?
         """, (now, now, "test@ccure.com"))

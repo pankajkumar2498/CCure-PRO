@@ -76,6 +76,7 @@ def _latency_ms(sent, received) -> Optional[float]:
         if t_s and t_r:
             e = (float(t_r) - float(t_s)) * 1000
             return e if e >= 0 else None
-    except Exception:
+    except Exception as exc:
+        log.debug("Failed to calculate ICMP latency: %s", exc)
         pass
     return None

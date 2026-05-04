@@ -113,7 +113,8 @@ class NmapScanResult:
     """
     ip:          str
     hostname:    str              = ""
-    state:       str              = "up"          # up / down
+    state:       str              = "up"          # up / down / error / timeout / nmap_unavailable
+    error_message: Optional[str]  = None
     ports:       List[NmapPortResult] = field(default_factory=list)
     os_matches:  List[NmapOSMatch]    = field(default_factory=list)
     scan_duration: float          = 0.0
@@ -136,6 +137,7 @@ class NmapScanResult:
             "ip":            self.ip,
             "hostname":      self.hostname,
             "state":         self.state,
+            "error_message": self.error_message,
             "ports":         [p.to_dict() for p in self.ports],
             "open_ports":    [p.to_dict() for p in self.open_ports],
             "os_matches":    [o.to_dict() for o in self.os_matches],
@@ -333,9 +335,13 @@ class NmapScanner:
             return self._parse_python_nmap(nm, ip, duration)
 
         except Exception as exc:
-            log.warning("NmapScanner._run(%s) error: %s", target, exc)
+            error_msg = str(exc)
+            log.warning("NmapScanner._run(%s) error: %s", target, error_msg)
             ip = target.split()[0] if target else "0.0.0.0"
-            return NmapScanResult(ip=ip, state="error", scan_duration=time.time() - t0)
+            return NmapScanResult(
+                ip=ip, state="error", error_message=error_msg,
+                scan_duration=time.time() - t0
+            )
 
     def _run_multi(self, targets: List[str], args: str) -> Dict[str, NmapScanResult]:
         """Execute nmap for multiple targets, return per-IP results."""
@@ -362,8 +368,12 @@ class NmapScanner:
             return results
 
         except Exception as exc:
-            log.warning("NmapScanner._run_multi error: %s", exc)
-            return {ip: self._unavailable_result(ip) for ip in targets}
+            error_msg = str(exc)
+            log.warning("NmapScanner._run_multi error: %s", error_msg)
+            return {
+                ip: NmapScanResult(ip=ip, state="error", error_message=error_msg, scan_duration=time.time() - t0)
+                for ip in targets
+            }
 
     def _run_subprocess(self, target: str, args: str) -> NmapScanResult:
         """

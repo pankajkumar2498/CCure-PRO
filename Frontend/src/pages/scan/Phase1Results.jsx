@@ -121,6 +121,34 @@ export default function Phase1Results() {
     setAssetSelected(next);
   };
 
+  const [scanProgress, setScanProgress] = useState(null);
+  const baseURL = api.defaults.baseURL || "";
+  const wsPrefix = baseURL.replace(/^http/, "ws");
+
+  const waitForPhase = (scanId, phase) => {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.phase === phase) {
+          setScanProgress(data.progress);
+          if (data.progress?.status === "complete" || data.progress?.status === "failed") {
+            ws.close();
+            resolve(data.progress);
+          }
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+        reject(new Error(`Phase ${phase} WebSocket failed`));
+      };
+      setTimeout(() => {
+        ws.close();
+        reject(new Error(`Phase ${phase} timed out`));
+      }, 600000); // 10 mins
+    });
+  };
+
   const runAssetDiscovery = async () => {
     if (!selectedCount) return;
     const payloadHosts = phase1Hosts.filter(h => assetSelected.has(h.ip_address));
@@ -144,12 +172,21 @@ export default function Phase1Results() {
         phases:        [1, 2],
       });
 
-      if (!result.success) throw new Error(result.error || "Phase 2 failed");
+      if (!result.success) throw new Error(result.error || "Phase 2 trigger failed");
 
-      setAssetResults(result.data);
-      setAssetSummary(result.summary);
-      setPhase2Summary(result.summary);
-      setPhase2Results(result.data);
+      // Wait for Phase 2 via WebSocket
+      const pResult = await waitForPhase(scanId, 2);
+      if (pResult?.status === "failed") {
+         throw new Error("Phase 2 background task failed.");
+      }
+
+      // Fetch the actual populated scan
+      const { data: fullScan } = await api.get(`/scans/${scanId}`);
+
+      setAssetResults(fullScan?.results?.phase2?.data || []);
+      setAssetSummary(fullScan?.results?.phase2?.summary || {});
+      setPhase2Summary(fullScan?.results?.phase2?.summary || {});
+      setPhase2Results(fullScan?.results?.phase2?.data || []);
       setAssetHasScanned(true);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
@@ -159,6 +196,7 @@ export default function Phase1Results() {
       setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setAssetLoading(false);
+      setScanProgress(null);
     }
   };
 

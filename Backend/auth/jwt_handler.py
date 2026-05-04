@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from argon2 import PasswordHasher
@@ -17,7 +17,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from auth.models import RefreshTokenSession, SessionLocal, User
+from db.base import SessionLocal
+from db.models.users import RefreshTokenSession, User
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -34,10 +35,10 @@ if not SECRET_KEY:
         raise RuntimeError("JWT_SECRET_KEY must be set to a strong non-default value before starting the application.")
     SECRET_KEY = "ccure-dev-only-secret-change-me"
     logger.warning("JWT_SECRET_KEY is not set; using a development-only fallback secret.")
-elif SECRET_KEY == "ccure-super-secret-change-in-production":
+elif SECRET_KEY in ("ccure-super-secret-change-in-production", "your-super-secret-jwt-key-change-in-production"):
     if ENVIRONMENT == "production":
-        raise RuntimeError("JWT_SECRET_KEY must not use the old default value in production.")
-    logger.warning("JWT_SECRET_KEY is using the legacy default secret outside production. Change it before deployment.")
+        raise RuntimeError("JWT_SECRET_KEY must not use a known default value in production.")
+    logger.warning("JWT_SECRET_KEY is using a legacy default secret outside production. Change it before deployment.")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 argon2_hasher = PasswordHasher()
@@ -73,7 +74,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _create_token(data: dict, expires_delta: timedelta) -> str:

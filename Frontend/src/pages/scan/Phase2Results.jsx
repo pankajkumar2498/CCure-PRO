@@ -115,6 +115,34 @@ export default function Phase2Results() {
     setSelected(next);
   };
 
+  const [scanProgress, setScanProgress] = useState(null);
+  const baseURL = api.defaults.baseURL || "";
+  const wsPrefix = baseURL.replace(/^http/, "ws");
+
+  const waitForPhase = (scanId, phase) => {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.phase === phase) {
+          setScanProgress(data.progress);
+          if (data.progress?.status === "complete" || data.progress?.status === "failed") {
+            ws.close();
+            resolve(data.progress);
+          }
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+        reject(new Error(`Phase ${phase} WebSocket failed`));
+      };
+      setTimeout(() => {
+        ws.close();
+        reject(new Error(`Phase ${phase} timed out`));
+      }, 600000); // 10 mins
+    });
+  };
+
   const runScan = async () => {
     if (!selectedCount) return;
 
@@ -138,12 +166,19 @@ export default function Phase2Results() {
         phases: [1, 2],
       });
 
-      if (!data.success) throw new Error(data.error || "Phase 2 failed");
+      if (!data.success) throw new Error(data.error || "Phase 2 trigger failed");
 
-      setResults(data.data);
-      setSummary(data.summary);
-      setPhase2Summary(data.summary);
-      setPhase2Results(data.data);
+      const pResult = await waitForPhase(scanId, 2);
+      if (pResult?.status === "failed") {
+         throw new Error("Phase 2 background task failed.");
+      }
+
+      const { data: fullScan } = await api.get(`/scans/${scanId}`);
+      
+      setResults(fullScan?.results?.phase2?.data || []);
+      setSummary(fullScan?.results?.phase2?.summary || {});
+      setPhase2Summary(fullScan?.results?.phase2?.summary || {});
+      setPhase2Results(fullScan?.results?.phase2?.data || []);
       setHasScanned(true);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
@@ -153,6 +188,7 @@ export default function Phase2Results() {
       setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setLoading(false);
+      setScanProgress(null);
     }
   };
 

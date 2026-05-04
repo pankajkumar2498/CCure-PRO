@@ -25,6 +25,9 @@ def _normalize_database_url(database_url: str) -> str:
         return database_url
 
     raw_path = database_url.replace("sqlite:///", "", 1)
+    if raw_path == ":memory:":
+        return database_url
+        
     sqlite_path = Path(raw_path)
 
     if not sqlite_path.is_absolute():
@@ -77,6 +80,13 @@ class ScanConfig:
     NMAP_THREADS: int = int(os.getenv("NMAP_THREADS", "4"))
 
 
+class CeleryConfig:
+    """Celery task queue configuration."""
+
+    BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+
+
 class VulnIntelConfig:
     """Separate vulnerability-intelligence database configuration."""
 
@@ -111,6 +121,10 @@ class AppConfig:
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT
     NMAP_THREADS = ScanConfig.NMAP_THREADS
+
+    # Celery
+    CELERY_BROKER_URL = CeleryConfig.BROKER_URL
+    CELERY_RESULT_BACKEND = CeleryConfig.RESULT_BACKEND
 
     # Vulnerability intelligence
     VULN_DB_HOST = VulnIntelConfig.HOST

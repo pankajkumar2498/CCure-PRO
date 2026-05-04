@@ -14,7 +14,10 @@ import re
 import socket
 import time
 import uuid
+import logging
 from typing import Dict, List, Optional
+
+log = logging.getLogger("ccure.utils")
 
 from core.constants import CVE_HINTS, VER_PATTERNS, CVE_DB
 
@@ -35,7 +38,8 @@ class PrivilegeManager:
             if PrivilegeManager.get_platform() == "windows":
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
             return os.geteuid() == 0
-        except Exception:
+        except Exception as exc:
+            log.debug("Privilege check failed: %s", exc)
             return False
 
     @staticmethod
@@ -149,7 +153,8 @@ class InputValidator:
             if int(end) < int(start):
                 return []
             return [str(ipaddress.ip_address(i)) for i in range(int(start), int(end) + 1)]
-        except Exception:
+        except Exception as exc:
+            log.debug("Failed to expand IP range '%s': %s", target, exc)
             return []
 
     @staticmethod
@@ -249,7 +254,8 @@ def get_local_ips() -> set:
                 local.add(addr)
             except ValueError:
                 pass
-    except Exception:
+    except Exception as exc:
+        log.debug("Failed to get local IPs: %s", exc)
         pass
     return local
 
@@ -278,7 +284,8 @@ def get_local_mac() -> str:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
                 local_ip = s.getsockname()[0]
-        except Exception:
+        except Exception as exc:
+            log.debug("UDP socket connection to find local IP failed: %s", exc)
             local_ip = None
 
         if local_ip:
@@ -296,7 +303,8 @@ def get_local_mac() -> str:
                     mac = addr.address.upper().replace("-", ":")
                     if mac and mac != "00:00:00:00:00:00":
                         return mac
-    except Exception:
+    except Exception as exc:
+        log.debug("psutil MAC address resolution failed: %s", exc)
         pass
 
     # Attempt 2: uuid.getnode() — reliable cross-platform fallback
@@ -307,7 +315,8 @@ def get_local_mac() -> str:
             return "N/A"
         # getnode() returns a 48-bit big-endian integer — extract MSB first
         return ":".join(f"{(n >> (8 * i)) & 0xFF:02X}" for i in reversed(range(6)))
-    except Exception:
+    except Exception as exc:
+        log.debug("uuid.getnode MAC resolution failed: %s", exc)
         return "N/A"
 
 
@@ -352,7 +361,8 @@ def get_mac_from_arp_cache(ip: str) -> str:
             mac = re.sub(r'[^a-fA-F0-9]', '', raw_mac)
             return ':'.join(mac[i:i+2].upper() for i in range(0, 12, 2))
 
-    except Exception:
+    except Exception as exc:
+        log.debug("Failed to read MAC from ARP cache for %s: %s", ip, exc)
         pass
 
     return "N/A"

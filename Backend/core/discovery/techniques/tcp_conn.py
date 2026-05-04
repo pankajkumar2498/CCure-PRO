@@ -53,8 +53,8 @@ async def probe(
                     writer.close()
                     try:
                         await writer.wait_closed()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.debug("Failed to cleanly close TCP writer for %s:%d - %s", ip, port, exc)
                     elapsed = (time.time() - t0) * 1000
                     if not results[ip]["is_active"]:
                         results[ip].update(
@@ -66,7 +66,8 @@ async def probe(
                     return   # success — don't retry
                 except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
                     pass
-                except Exception:
+                except Exception as exc:
+                    log.debug("Unexpected error in TCP connect to %s:%d - %s", ip, port, exc)
                     return
 
     tasks = [

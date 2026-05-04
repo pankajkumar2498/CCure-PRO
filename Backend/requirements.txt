@@ -50,6 +50,10 @@ psutil>=5.9.0
 paramiko==4.0.0    # SSH credentialed scan (Linux targets)
 # pywinrm            # Optional: Windows WinRM credentialed scan (uncomment if needed)
 
+# ── Task Queue (Celery) ────────────────────────────────────────────────────────
+celery[redis]>=5.4.0
+redis>=5.0.0
+
 # ── Dev / test ────────────────────────────────────────────────────────────────
 requests==2.33.1
 urllib3==2.6.3

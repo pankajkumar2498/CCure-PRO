@@ -34,6 +34,17 @@ const SEV_COLOR = {
   Medium: "#f59e0b",
   Low: "#22c55e",
   Info: "#60a5fa",
+  critical: "#ff4d4d",
+  high: "#f97316",
+  medium: "#f59e0b",
+  low: "#22c55e",
+  info: "#60a5fa",
+};
+
+const getSevColor = (sev) => {
+  if (!sev) return SEV_COLOR.Info;
+  // Try exact match, then title case, then lowercase
+  return SEV_COLOR[sev] || SEV_COLOR[sev.charAt(0).upper() + sev.slice(1).lower()] || SEV_COLOR[sev.toLowerCase()] || SEV_COLOR.Info;
 };
 
 // GAP-07: device category → { icon, color, label } for richly-rendered badge
@@ -162,6 +173,48 @@ export default function Phase3Results() {
     runFullPipeline();
   }, [safePhase1Hosts.length, activeDiscoveryHosts.length]);
 
+  const baseURL = api.defaults.baseURL || "";
+  const wsPrefix = baseURL.replace(/^http/, "ws");
+
+  const waitForPhase = (scanId, phase, signal) => {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      
+      const handleAbort = () => {
+        ws.close();
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal) {
+        if (signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+        }
+        signal.addEventListener('abort', handleAbort);
+      }
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.phase === phase) {
+          if (data.progress?.status === "complete" || data.progress?.status === "failed") {
+            ws.close();
+            if (signal) signal.removeEventListener('abort', handleAbort);
+            resolve(data.progress);
+          }
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+        if (signal) signal.removeEventListener('abort', handleAbort);
+        reject(new Error(`Phase ${phase} WebSocket failed`));
+      };
+      setTimeout(() => {
+        ws.close();
+        if (signal) signal.removeEventListener('abort', handleAbort);
+        reject(new Error(`Phase ${phase} timed out`));
+      }, 1200000); // 20 mins
+    });
+  };
+
   /* ── The automated pipeline executor ────────────────────────────────────── */
   const runFullPipeline = useCallback(async (retryFromPhase = null) => {
     const controller = new AbortController();
@@ -184,7 +237,7 @@ export default function Phase3Results() {
       try {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
-        const { data: assetData } = await api.post("/scan/asset-discovery", {
+        const { data: assetDataTrigger } = await api.post("/scan/asset-discovery", {
           hosts: activeDiscoveryHosts,
           intensity,
           scan_id: scanId,
@@ -192,7 +245,15 @@ export default function Phase3Results() {
           phases: [1, 2],
         }, { signal });
 
-        if (!assetData.success) throw new Error(assetData.error || "Port scan failed");
+        if (!assetDataTrigger.success) throw new Error(assetDataTrigger.error || "Port scan trigger failed");
+
+        const p2Result = await waitForPhase(scanId, 2, signal);
+        if (p2Result?.status === "failed") {
+           throw new Error("Port scan background task failed.");
+        }
+
+        const { data: fullScan } = await api.get(`/scans/${scanId}`, { signal });
+        const assetData = { data: fullScan?.results?.phase2?.data || [], summary: fullScan?.results?.phase2?.summary || {} };
 
         portHosts = safeArr(assetData.data);
         if (!portHosts.length) {
@@ -229,14 +290,26 @@ export default function Phase3Results() {
 
       const hostsForAudit = portHosts.length ? portHosts : safeArr(phase2Results);
 
-      const { data: auditData } = await api.post("/scan/advanced-scan", {
+      const { data: auditDataTrigger } = await api.post("/scan/advanced-scan", {
         hosts: hostsForAudit,
         scan_id: scanId,
         pipeline_mode: pipelineMode,
         phases: [1, 2, 3],
       }, { signal });
 
-      if (!auditData.success) throw new Error(auditData.error || "Vulnerability audit failed");
+      if (!auditDataTrigger.success) throw new Error(auditDataTrigger.error || "Vulnerability audit trigger failed");
+
+      const p3Result = await waitForPhase(scanId, 3, signal);
+      if (p3Result?.status === "failed") {
+         throw new Error("Vulnerability audit background task failed.");
+      }
+
+      const { data: fullScan } = await api.get(`/scans/${scanId}`, { signal });
+      const auditData = { 
+        data: fullScan?.results?.phase3?.data || [], 
+        summary: fullScan?.results?.phase3?.summary || {},
+        reports: { json_pdf: fullScan?.report_json_path, xml_pdf: fullScan?.report_xml_path }
+      };
 
       const auditHosts = safeArr(auditData.data);
       if (!auditHosts.length) {
@@ -551,7 +624,7 @@ export default function Phase3Results() {
                     <th>IP Address</th>
                     <th>Hostname</th>
                     <th>Open Ports</th>
-                    <th>OS Guess</th>
+                    <th>OS (Guess)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -623,8 +696,7 @@ export default function Phase3Results() {
                   <tr>
                     <th>IP Address</th>
                     <th>Device</th>
-                    <th>Open Ports</th>
-                    <th>OS</th>
+                    <th>Operating System</th>
                     <th>CVEs / Active</th>
                     <th>Risk</th>
                   </tr>
@@ -664,7 +736,6 @@ export default function Phase3Results() {
                             </span>
                           ) : <span className="muted">—</span>}
                         </td>
-                        <td>{(host.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ") || <span className="muted">—</span>}</td>
                         <td>{host.os_fingerprint_full?.os || host.os_guess || <span className="muted">—</span>}</td>
                         <td>
                           {/* GAP-06: CVE count + active exploit findings badge */}
@@ -690,7 +761,7 @@ export default function Phase3Results() {
                           )}
                         </td>
                         <td>
-                          <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: 12 }}>
+                          <span style={{ color: getSevColor(host.host_risk_level), fontWeight: 700, fontSize: 12 }}>
                             {host.host_risk_level || "Info"}
                           </span>
                         </td>
@@ -792,7 +863,7 @@ export default function Phase3Results() {
             }}>
               <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Critical Issues</span>
               <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#ff6d00" }}>
-                {localVulnResults.filter(h => h.host_risk_level === "Critical").length}
+                {localVulnResults.filter(h => (h.host_risk_level || "").toLowerCase() === "critical").length}
               </p>
             </div>
             <div style={{
@@ -803,7 +874,7 @@ export default function Phase3Results() {
             }}>
               <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>High Risk Hosts</span>
               <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#f97316" }}>
-                {localVulnResults.filter(h => h.host_risk_level === "High").length}
+                {localVulnResults.filter(h => (h.host_risk_level || "").toLowerCase() === "high").length}
               </p>
             </div>
           </div>
@@ -849,7 +920,8 @@ export default function Phase3Results() {
                     let count = 0;
                     localVulnResults.forEach(h => {
                       (h.cves || []).forEach(cve => {
-                        if ((cve.severity || "Info") === "Critical") count++;
+                        const sev = (cve.severity || "Info").toLowerCase();
+                        if (sev === "critical") count++;
                       });
                     });
                     return count;
@@ -863,7 +935,8 @@ export default function Phase3Results() {
                     let count = 0;
                     localVulnResults.forEach(h => {
                       (h.cves || []).forEach(cve => {
-                        if ((cve.severity || "Info") === "High") count++;
+                        const sev = (cve.severity || "Info").toLowerCase();
+                        if (sev === "high") count++;
                       });
                     });
                     return count;
@@ -877,7 +950,8 @@ export default function Phase3Results() {
                     let count = 0;
                     localVulnResults.forEach(h => {
                       (h.cves || []).forEach(cve => {
-                        if ((cve.severity || "Info") === "Medium") count++;
+                        const sev = (cve.severity || "Info").toLowerCase();
+                        if (sev === "medium") count++;
                       });
                     });
                     return count;
@@ -891,7 +965,8 @@ export default function Phase3Results() {
                     let count = 0;
                     localVulnResults.forEach(h => {
                       (h.cves || []).forEach(cve => {
-                        if ((cve.severity || "Info") === "Low") count++;
+                        const sev = (cve.severity || "Info").toLowerCase();
+                        if (sev === "low") count++;
                       });
                     });
                     return count;
@@ -905,7 +980,8 @@ export default function Phase3Results() {
                     let count = 0;
                     localVulnResults.forEach(h => {
                       (h.cves || []).forEach(cve => {
-                        if ((cve.severity || "Info") === "Info") count++;
+                        const sev = (cve.severity || "Info").toLowerCase();
+                        if (sev === "info") count++;
                       });
                     });
                     return count;
@@ -960,7 +1036,7 @@ export default function Phase3Results() {
                         {host.cves?.length ?? 0}
                       </td>
                       <td style={{ padding: "12px" }}>
-                        <span style={{ color: SEV_COLOR[host.host_risk_level] || "#60a5fa", fontWeight: 700, fontSize: "0.85rem" }}>
+                        <span style={{ color: getSevColor(host.host_risk_level), fontWeight: 700, fontSize: "0.85rem" }}>
                           {host.host_risk_level || "Info"}
                         </span>
                       </td>
@@ -1010,7 +1086,7 @@ export default function Phase3Results() {
                     </span>
                   </div>
                   <span style={{
-                    color: SEV_COLOR[host.host_risk_level] || "#60a5fa",
+                    color: getSevColor(host.host_risk_level),
                     fontWeight: 700,
                     fontSize: "0.9rem"
                   }}>
@@ -1153,7 +1229,7 @@ export default function Phase3Results() {
                         <span style={{
                           display: "inline-block", padding: "4px 10px", borderRadius: "4px",
                           fontSize: "0.75rem", fontWeight: 600, color: "#fff",
-                          background: SEV_COLOR[cve.severity || "Info"] || "#60a5fa"
+                          background: getSevColor(cve.severity)
                         }}>
                           {cve.severity || "Info"}
                         </span>
@@ -1207,8 +1283,8 @@ export default function Phase3Results() {
               <li>Total hosts scanned: {phase3Summary?.total_hosts ?? localVulnResults.length}</li>
               <li>Hosts with vulnerabilities: {localVulnResults.filter(h => (h.cves?.length ?? 0) > 0).length}</li>
               <li>Total CVEs identified: {localVulnResults.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0)}</li>
-              <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "Critical") c++; }); }); return c; })()}</li>
-              <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info") === "High") c++; }); }); return c; })()}</li>
+              <li>Critical severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info").toLowerCase() === "critical") c++; }); }); return c; })()}</li>
+              <li>High severity: {(() => { let c = 0; localVulnResults.forEach(h => { (h.cves || []).forEach(cv => { if ((cv.severity || "Info").toLowerCase() === "high") c++; }); }); return c; })()}</li>
               <li>FTP misconfigurations: {localVulnResults.filter(h => h.ftp_info?.anonymous_login || h.ftp_info?.write_access || h.ftp_info?.weak_credentials?.length).length} host(s)</li>
               <li>HTTP exposed paths: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0), 0)}</li>
               <li>HTTP admin panels found: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0), 0)}</li>

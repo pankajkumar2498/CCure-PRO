@@ -160,6 +160,7 @@ class ScanOrchestrator:
         phases: str,
         scan_type: str = "adaptive",
         intensity: str = "normal",
+        scan_id: Optional[str] = None,
     ) -> Dict:
         """
         Backward-compat: run any combination of phases in one call.
@@ -179,6 +180,7 @@ class ScanOrchestrator:
             targets=targets,
             scan_type=scan_type,
             pipeline_mode=pipeline_mode,
+            scan_id=scan_id,
         )
         if not result.get("success") or pipeline_mode == "basic":
             return result
@@ -189,13 +191,14 @@ class ScanOrchestrator:
             hosts=hosts,
             intensity=intensity,
             pipeline_mode=pipeline_mode,
+            scan_id=scan_id,
         )
         if not result.get("success") or pipeline_mode == "asset":
             return result
 
         # Phase 3: Vulnerability
         hosts = result.get("data", [])
-        return self.run_advanced_scan_only(hosts=hosts)
+        return await asyncio.to_thread(self.run_advanced_scan_only, hosts=hosts, scan_id=scan_id)
 
     @staticmethod
     def _err(msg: str) -> Dict:
@@ -209,6 +212,7 @@ class ScanOrchestrator:
         scan_type: str = "adaptive",
         pipeline_mode: str = "basic",
         discovery_intensity: str = "normal",
+        scan_id: Optional[str] = None,
         rate_limit: Optional[float] = None,
         max_concurrency: Optional[int] = None,
     ) -> Dict:
@@ -252,7 +256,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            disc_results: List[Dict] = await discovery.run(all_ips)
+            disc_results: List[Dict] = await discovery.run(all_ips, scan_id=scan_id)
             duration = time.time() - t0
 
             if pipeline_mode == "basic":
@@ -327,6 +331,7 @@ class ScanOrchestrator:
             targets=targets,
             scan_type=scan_type,
             discovery_intensity=discovery_intensity,
+            scan_id=scan_id,
             rate_limit=rate_limit,
             max_concurrency=max_concurrency,
         )
@@ -339,6 +344,7 @@ class ScanOrchestrator:
         targets: List[str],
         scan_type: str,
         discovery_intensity: str,
+        scan_id: Optional[str] = None,
         rate_limit: Optional[float] = None,
         max_concurrency: Optional[int] = None,
     ) -> Dict:
@@ -375,7 +381,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            raw_results: List[Dict] = await engine.run(all_ips)
+            raw_results: List[Dict] = await engine.run(all_ips, scan_id=scan_id)
             discovery_profile_label = "FAST"
 
         elif intensity == "normal":
@@ -387,7 +393,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            fast_raw: List[Dict] = await fast_engine.run(all_ips)
+            fast_raw: List[Dict] = await fast_engine.run(all_ips, scan_id=scan_id)
 
             # Determine which IPs are still inactive after FAST pass
             fast_by_ip: Dict[str, Dict] = {r["ip"]: r for r in fast_raw}
@@ -404,7 +410,7 @@ class ScanOrchestrator:
                     stealth_mode=self.stealth_mode,
                     rate_limit=rate_limit,
                 )
-                balanced_raw: List[Dict] = await balanced_engine.run(unresolved_ips)
+                balanced_raw: List[Dict] = await balanced_engine.run(unresolved_ips, scan_id=scan_id)
                 balanced_by_ip: Dict[str, Dict] = {r["ip"]: r for r in balanced_raw}
                 fallback_active_hosts = sum(
                     1 for r in balanced_raw if r.get("is_active", False)
@@ -427,7 +433,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            raw_results = await engine.run(all_ips)
+            raw_results = await engine.run(all_ips, scan_id=scan_id)
             discovery_profile_label = "BALANCED"
 
         duration = time.time() - t0
@@ -530,6 +536,7 @@ class ScanOrchestrator:
         self,
         hosts: List[Dict],
         intensity: str = "normal",
+        scan_id: Optional[str] = None,
         pipeline_mode: str = "asset",
     ) -> Dict:
         """
@@ -575,7 +582,7 @@ class ScanOrchestrator:
 
         # ── PortEngine now uses NmapScanner internally ────────────────────
         port_engine = PortEngine(intensity=intensity_enum)
-        await port_engine.run(active_hosts)   # mutates in-place
+        await port_engine.run(active_hosts, scan_id=scan_id)   # mutates in-place
         self._apply_os_inference(active_hosts)
         
         # ── RESTORE vendor/mac data from backup ────────────────────────────────
@@ -626,7 +633,7 @@ class ScanOrchestrator:
 
     # ── PHASE 3: Advanced Scan / Vulnerability + Risk ─────────────────────────
 
-    def run_advanced_scan_only(self, hosts: List[Dict]) -> Dict:
+    def run_advanced_scan_only(self, hosts: List[Dict], scan_id: Optional[str] = None) -> Dict:
         """
         Phase 3+4 — Vulnerability Scanning + Risk Scoring.
 
@@ -663,7 +670,7 @@ class ScanOrchestrator:
 
         # ── VulnerabilityEngine (UNCHANGED) ───────────────────────────────
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-        vuln_engine.run(active_hosts)
+        vuln_engine.run(active_hosts, scan_id=scan_id)
         self._apply_os_inference(active_hosts)
         
         # ── Enrich asset registry with vulnerability findings ───────────────
@@ -672,7 +679,7 @@ class ScanOrchestrator:
         duration = time.time() - t0
 
         formatted = [
-            self._format_host(self._get_host_ip(h), h).to_clean_dict()
+            self._format_host(self._get_host_ip(h), h).to_phase3_dict()
             for h in hosts
         ]
         critical = sum(1 for h in formatted if h.get("host_risk_level") == "Critical")

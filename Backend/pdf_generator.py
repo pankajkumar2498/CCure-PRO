@@ -162,6 +162,9 @@ def _draw_header_footer(canvas, doc):
     """Called by ReportLab on every page to paint header and footer."""
     canvas.saveState()
 
+    # Retrieve the original scan timestamp passed into the doc
+    report_ts = getattr(doc, "scan_timestamp", datetime.now().strftime("%d %b %Y  %H:%M:%S"))
+
     # -- Header bar ----------------------------------------------------------
     canvas.setFillColor(HEADER_BG)
     canvas.rect(0, PAGE_H - 22 * mm, PAGE_W, 22 * mm, fill=1, stroke=0)
@@ -175,7 +178,7 @@ def _draw_header_footer(canvas, doc):
     canvas.setFillColor(colors.HexColor("#AACCEE"))
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10 * mm, "Host Discovery Report")
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm,
-                           f"Generated: {datetime.now().strftime('%d %b %Y  %H:%M:%S')}")
+                           f"Generated: {report_ts}")
 
     # Thin accent line below header
     canvas.setStrokeColor(CDAC_LIGHT_BLUE)
@@ -305,14 +308,24 @@ def _resolve_pdf_cve_severity(cve: dict) -> str:
 
 
 def _resolve_pdf_cve_package(cve: dict) -> str:
-    pkg = cve.get("package") or cve.get("package_name") or cve.get("affected_software")
-    if not pkg:
-        affected = cve.get("affected")
-        if isinstance(affected, (list, tuple)) and affected:
-            return ", ".join(str(a) for a in affected[:3])
+    # Try direct package fields first
+    pkg = cve.get("package") or cve.get("package_name")
+    if pkg:
+        return str(pkg)
+        
+    # Check affected_software (often a list of CPEs or strings)
+    affected = cve.get("affected_software") or cve.get("affected")
+    if affected:
+        if isinstance(affected, (list, tuple)) and len(affected) > 0:
+            # If it's a list of dicts (CPEs), try to get the product name
+            first = affected[0]
+            if isinstance(first, dict):
+                return first.get("product") or first.get("cpe_uri") or str(first)
+            return str(first)
         if isinstance(affected, str) and affected:
             return affected
-    return str(pkg) if pkg else "N/A"
+            
+    return "N/A"
 
 
 def _resolve_pdf_cve_description(cve: dict) -> str:
@@ -943,11 +956,15 @@ def _build_json_story(result: dict, scan_type: str,
         story.append(_section_header(
             f"Vulnerabilities / CVEs  ({len(all_cve_rows)} total)", styles))
 
+        # Production Grade: Dynamic header labeling
+        is_cred = any(h.get("system_info") for h in active_hosts)
+        pkg_header = "Package" if is_cred else "Component / Product"
+
         cve_header_style = ParagraphStyle(
             "CVETh", fontName="Helvetica-Bold", fontSize=8,
             textColor=WHITE, alignment=TA_CENTER)
-        cve_headers = ["Host IP", "CVE ID", "Severity", "Package", "Description"]
-        cve_col_w   = [28*mm, 32*mm, 18*mm, 28*mm, W - 106*mm]
+        cve_headers = ["Host IP", "CVE ID", "Severity", pkg_header, "Description"]
+        cve_col_w   = [28*mm, 32*mm, 18*mm, 32*mm, W - 110*mm]
 
         cve_table_data = [[Paragraph(h, cve_header_style) for h in cve_headers]]
         for ip, cve_id, sev, pkg, desc in all_cve_rows:
@@ -1157,6 +1174,13 @@ class ScanReportGenerator:
             subject      = f"Host Discovery: {scan_type}",
         )
 
+        # Attach timestamp to doc so _draw_header_footer can access it
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            doc.scan_timestamp = dt.strftime("%d %b %Y  %H:%M:%S")
+        except Exception:
+            doc.scan_timestamp = timestamp
+
         story = _build_json_story(result, scan_type, timestamp, self.styles)
         doc.build(story, onFirstPage=_draw_header_footer,
                          onLaterPages=_draw_header_footer)
@@ -1185,6 +1209,13 @@ class ScanReportGenerator:
             subject      = f"Host Discovery: {scan_type}",
         )
 
+        # Attach timestamp to doc so _draw_header_footer can access it
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            doc.scan_timestamp = dt.strftime("%d %b %Y  %H:%M:%S")
+        except Exception:
+            doc.scan_timestamp = timestamp
+
         story = _xml_to_story(xml_str, scan_type, timestamp, self.styles, result)
         doc.build(story, onFirstPage=_draw_header_footer,
                          onLaterPages=_draw_header_footer)
@@ -1206,7 +1237,18 @@ class ScanReportGenerator:
               "xml_pdf":  "/path/to/scan_host_2026-03-27_14-30-05_XML.pdf",
             }
         """
-        timestamp = datetime.now().isoformat()
+        # Extract the actual scan timestamp from the result if available
+        meta = result.get("metadata", {})
+        summary = result.get("summary", {})
+        
+        timestamp = (
+            meta.get("timestamp") or 
+            meta.get("completed_at") or 
+            summary.get("completed_at") or 
+            summary.get("timestamp") or 
+            summary.get("started_at") or 
+            datetime.now().isoformat()
+        )
 
         try:
             json_path = self._generate_json_pdf(result, scan_type, timestamp)

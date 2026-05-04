@@ -6,7 +6,7 @@ into their respective normalized PostgreSQL rows (assets, services, findings).
 """
 
 import logging
-from typing import Optional, Any
+from typing import Optional, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
@@ -24,15 +24,33 @@ def _resolve_mac(host_data: dict) -> str:
     return mac if mac and str(mac).upper() != "N/A" and str(mac).upper() != "UNKNOWN" else "00:00:00:00:00:00"
 
 
-def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: list[dict]):
+def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 1 (Host Discovery).
-    Upserts IPs and MAC addresses into the Asset registry.
+    Upserts IPs and MAC addresses into the Asset registry using batch queries.
     """
     if not hosts:
         return
 
     logger.info(f"Syncing {len(hosts)} discovered hosts to Asset Registry for scan: {scan_id}")
+
+    macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h) != "00:00:00:00:00:00"]
+    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+
+    # Pre-fetch existing assets in one go
+    existing_assets = []
+    if macs or ips:
+        from sqlalchemy import or_
+        filters = []
+        if macs: filters.append(Asset.mac_address.in_(macs))
+        if ips: filters.append(Asset.ip_address.in_(ips))
+        if filters:
+            existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
+
+    asset_map_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
+    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+
+    new_assets = []
 
     for host in hosts:
         ip = _resolve_ip(host)
@@ -40,20 +58,25 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
         hostname = host.get("hostname") or host.get("hostnames", [None])[0] if isinstance(host.get("hostnames"), list) else host.get("hostname")
         vendor = host.get("vendor", "Unknown")
 
-        # Identity Resolution: Look up primarily by MAC (if we have it), fallback to IP
+        # Identity Resolution
         asset = None
         if mac and mac != "00:00:00:00:00:00":
-            asset = db.query(Asset).filter(Asset.org_id == org_id, Asset.mac_address == mac).first()
-        
+            asset = asset_map_by_mac.get(mac)
         if not asset and ip and ip != "0.0.0.0":
-            asset = db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
+            asset = asset_map_by_ip.get(ip)
+
+        is_active = host.get("is_active") or host.get("state") == "up"
+        discovery_method = host.get("discovery_method") or host.get("method")
+        response_time_ms = host.get("response_time_ms") or host.get("elapsed_ms")
 
         if asset:
             # Update existing asset
             if mac and mac != "00:00:00:00:00:00":
                 asset.mac_address = mac
+                asset_map_by_mac[mac] = asset
             if ip and ip != "0.0.0.0":
                 asset.ip_address = ip
+                asset_map_by_ip[ip] = asset
             if hostname:
                 asset.hostname = hostname
             if vendor and vendor != "Unknown":
@@ -61,49 +84,84 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             
             asset.last_seen_at = utcnow()
             asset.last_scan_id = scan_id
-            asset.is_active = host.get("state") == "up"
-
+            asset.is_active = is_active
+            asset.discovery_method = discovery_method
+            asset.response_time_ms = response_time_ms
         else:
-            # Insert new asset
-            asset = Asset(
+            # Prepare new asset for bulk insert
+            new_asset = Asset(
                 org_id=org_id,
                 ip_address=ip if ip != "0.0.0.0" else None,
                 mac_address=mac if mac != "00:00:00:00:00:00" else None,
                 hostname=hostname,
                 vendor=vendor if vendor != "Unknown" else None,
-                is_active=host.get("state") == "up",
+                is_active=is_active,
+                discovery_method=discovery_method,
+                response_time_ms=response_time_ms,
                 last_scan_id=scan_id
             )
-            db.add(asset)
+            new_assets.append(new_asset)
+            if mac and mac != "00:00:00:00:00:00":
+                asset_map_by_mac[mac] = new_asset
+            if ip and ip != "0.0.0.0":
+                asset_map_by_ip[ip] = new_asset
+
+    if new_assets:
+        db.add_all(new_assets)
             
     db.commit()
 
 
-def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: list[dict]):
+def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 2 (Asset Discovery / Port Scan).
-    Upserts open ports mapping to the newly registered assets.
+    Upserts open ports mapping to the newly registered assets using batch operations.
     """
     if not hosts:
         return
 
     logger.info(f"Syncing Phase 2 asset features (ports/services) for scan: {scan_id}")
 
+    macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h) != "00:00:00:00:00:00"]
+    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+
+    # Pre-fetch existing assets
+    existing_assets = []
+    if macs or ips:
+        from sqlalchemy import or_
+        filters = []
+        if macs: filters.append(Asset.mac_address.in_(macs))
+        if ips: filters.append(Asset.ip_address.in_(ips))
+        if filters:
+            existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
+
+    asset_map_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
+    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+
+    # Pre-fetch services for these assets
+    asset_ids = [a.id for a in existing_assets]
+    existing_services = []
+    if asset_ids:
+        existing_services = db.query(Service).filter(Service.asset_id.in_(asset_ids)).all()
+
+    service_map = {(s.asset_id, s.port, s.protocol): s for s in existing_services}
+    new_services = []
+
     for host in hosts:
         ip = _resolve_ip(host)
         mac = _resolve_mac(host)
 
-        # Resolve asset again
+        # Resolve asset
         asset = None
         if mac and mac != "00:00:00:00:00:00":
-            asset = db.query(Asset).filter(Asset.org_id == org_id, Asset.mac_address == mac).first()
+            asset = asset_map_by_mac.get(mac)
         if not asset and ip and ip != "0.0.0.0":
-            asset = db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
+            asset = asset_map_by_ip.get(ip)
 
         if not asset:
-            continue # If no asset found, we can't tie ports to it.
+            continue
 
-        ports = host.get("ports", [])
+        ports = host.get("open_ports") or host.get("ports") or []
         for p in ports:
             port_num = p.get("port")
             if not port_num:
@@ -111,83 +169,141 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
             
             proto = p.get("protocol", "tcp").lower()
             service_name = p.get("service") or p.get("name", "unknown")
-            version = p.get("version") or p.get("product") or ""
+            product = p.get("product") or ""
+            version = p.get("version") or ""
+            extra = p.get("extrainfo") or p.get("extra") or ""
+            banner = p.get("banner") or ""
+            state = p.get("state") or "open"
 
             # Check if this precise service runs on this asset
-            svc = db.query(Service).filter(
-                Service.asset_id == asset.id,
-                Service.port == int(port_num),
-                Service.protocol == proto
-            ).first()
+            svc = service_map.get((asset.id, int(port_num), proto))
 
             if svc:
                 svc.service_name = service_name
-                svc.version_info = version
-                svc.is_open = True
+                svc.service_product = product or None
+                svc.service_version = version or None
+                svc.service_extra = extra or None
+                svc.banner = banner or None
+                svc.state = state
                 svc.scan_id = scan_id
-                svc.updated_at = utcnow()
             else:
                 svc = Service(
                     asset_id=asset.id,
                     scan_id=scan_id,
                     port=int(port_num),
                     protocol=proto,
+                    state=state,
                     service_name=service_name,
-                    version_info=version,
-                    is_open=True
+                    service_product=product or None,
+                    service_version=version or None,
+                    service_extra=extra or None,
+                    banner=banner or None,
                 )
-                db.add(svc)
+                new_services.append(svc)
+                service_map[(asset.id, int(port_num), proto)] = svc
 
-        # Update Asset OS fingerprint if we received a deep NMAP scan result
+        # Update Asset OS fingerprint
         os_match = host.get("os_match") or host.get("os_guess")
         if os_match:
             asset.os_name = os_match
 
+    if new_services:
+        db.add_all(new_services)
+
     db.commit()
 
 
-def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: list[dict]):
+def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 3 (Advanced Scan / Vulnerability Assessment).
-    Upserts CVEs and binds them to Assets.
+    Upserts CVEs and binds them to Assets using batch operations.
     """
     if not hosts:
         return
 
     logger.info(f"Syncing Phase 3 vulnerabilities for scan: {scan_id}")
 
+    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+
+    # Pre-fetch existing assets
+    existing_assets = []
+    if ips:
+        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address.in_(ips)).all()
+    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+
+    # Collect all unique CVE IDs from payload
+    all_cve_ids = set()
+    for host in hosts:
+        vulns = host.get("vulnerabilities") or host.get("cves") or []
+        for v in vulns:
+            cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
+            if cve_id:
+                all_cve_ids.add(cve_id)
+
+    # Pre-fetch existing CVE definitions
+    existing_cves = []
+    if all_cve_ids:
+        existing_cves = db.query(VulnerabilityDefinition).filter(VulnerabilityDefinition.cve_id.in_(list(all_cve_ids))).all()
+    cve_def_map = {c.cve_id: c for c in existing_cves}
+
+    # Collect asset IDs for findings
+    asset_ids = [a.id for a in existing_assets]
+    existing_findings = []
+    if asset_ids:
+        existing_findings = db.query(AssetVulnerability).filter(AssetVulnerability.asset_id.in_(asset_ids)).all()
+    finding_map = {(f.asset_id, f.vuln_id): f for f in existing_findings}
+
+    new_cve_defs = []
+    new_findings = []
+
     for host in hosts:
         ip = _resolve_ip(host)
-        asset = db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
+        asset = asset_map_by_ip.get(ip)
 
         if not asset:
             continue
 
-        vulns = host.get("vulnerabilities", [])
+        vulns = host.get("vulnerabilities") or host.get("cves") or []
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id:
                 continue
 
             # Upsert into CVE Catalog (VulnerabilityDefinition)
-            cve_def = db.query(VulnerabilityDefinition).filter(VulnerabilityDefinition.cve_id == cve_id).first()
+            cve_def = cve_def_map.get(cve_id)
             if not cve_def:
                 cve_def = VulnerabilityDefinition(
+                    id=cve_id,
                     cve_id=cve_id,
                     title=v.get("title", f"Vulnerability {cve_id}"),
                     description=v.get("description", ""),
-                    severity=v.get("severity", "medium").lower(),
-                    base_score=float(v.get("cvss", v.get("cvss_score", 0.0))),
-                    remediation=v.get("remediation") or v.get("solution") or ""
+                    severity=str(v.get("severity", "Medium")).title(),
+                    cvss_v3_score=float(v.get("cvss", v.get("cvss_score", 0.0)) or 0.0),
+                    references=[],
+                    affected_software=[],
                 )
-                db.add(cve_def)
-                db.flush()
+                new_cve_defs.append(cve_def)
+                cve_def_map[cve_id] = cve_def
+
+    if new_cve_defs:
+        db.add_all(new_cve_defs)
+        db.flush() # Ensure we have IDs for new definitions
+
+    for host in hosts:
+        ip = _resolve_ip(host)
+        asset = asset_map_by_ip.get(ip)
+        if not asset: continue
+
+        vulns = host.get("vulnerabilities") or host.get("cves") or []
+        for v in vulns:
+            cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
+            if not cve_id: continue
+            
+            cve_def = cve_def_map.get(cve_id)
+            if not cve_def: continue
 
             # Link vulnerability to asset in AssetVulnerability
-            finding = db.query(AssetVulnerability).filter(
-                AssetVulnerability.asset_id == asset.id,
-                AssetVulnerability.vuln_id == cve_def.id
-            ).first()
+            finding = finding_map.get((asset.id, cve_def.id))
 
             if finding:
                 finding.last_seen_at = utcnow()
@@ -197,10 +313,23 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
                     scan_id=scan_id,
                     asset_id=asset.id,
                     vuln_id=cve_def.id,
+                    severity=str(v.get("severity", cve_def.severity or "Medium")).title(),
+                    cvss_score=float(v.get("cvss", v.get("cvss_score", 0.0)) or 0.0),
                     status="open",
-                    discovered_at=utcnow(),
-                    last_seen_at=utcnow()
+                    proof=v.get("proof") or v.get("evidence"),
+                    plugin_output=v.get("plugin_output") or v.get("description"),
+                    first_found_at=utcnow(),
+                    last_found_at=utcnow()
                 )
-                db.add(finding)
+                new_findings.append(finding)
+                finding_map[(asset.id, cve_def.id)] = finding
+
+        asset.risk_score = int(float(host.get("host_risk_score", 0.0) or 0.0))
+        asset.risk_level = str(host.get("host_risk_level", "Info") or "Info").title()
+        asset.device_category = host.get("device_category") or asset.device_category
+        asset.os_name = host.get("os_guess") or asset.os_name
+
+    if new_findings:
+        db.add_all(new_findings)
 
     db.commit()

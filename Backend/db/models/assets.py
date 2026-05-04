@@ -93,6 +93,8 @@ class Asset(Base):
     dns_name    = Column(String(512), nullable=True)
     fqdn        = Column(String(512), nullable=True)
     netbios_name= Column(String(255), nullable=True)
+    discovery_method = Column(String(50), nullable=True)
+    response_time_ms = Column(Integer, nullable=True)
 
     # ── Classification ────────────────────────────────────────────────────────
     # device_category: server | workstation | router | switch | firewall |

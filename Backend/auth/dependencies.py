@@ -7,7 +7,7 @@ Authorization header and returns the current User (or raises 401).
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from auth.jwt_handler import decode_token
 from db.base import get_db
@@ -26,6 +26,9 @@ def get_current_user(
         @app.get("/protected")
         def protected(user: User = Depends(get_current_user)):
             ...
+
+    The user's Role is eagerly loaded so RBAC guards can access
+    ``user.role.name`` without triggering lazy-load issues.
     """
     token = credentials.credentials
     payload = decode_token(token)
@@ -46,7 +49,12 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.role))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,6 +73,8 @@ def get_current_user_flexible(
     More flexible version of get_current_user that checks:
       1. 'token' query parameter (for direct file downloads)
       2. 'Authorization: Bearer <token>' header (standard API calls)
+
+    The user's Role is eagerly loaded for RBAC enforcement.
     """
     final_token = token or (credentials.credentials if credentials else None)
     
@@ -90,7 +100,12 @@ def get_current_user_flexible(
             detail="Invalid token payload",
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.role))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

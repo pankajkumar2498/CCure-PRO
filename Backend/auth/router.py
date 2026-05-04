@@ -58,8 +58,14 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Password must be at least 6 characters")
+        if len(v) < 12:
+            raise ValueError("Password must be at least 12 characters")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        if not any(not c.isalnum() for c in v):
+            raise ValueError("Password must contain at least one special character")
         return v
 
 
@@ -76,8 +82,10 @@ class LogoutRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
+from typing import Optional, Union
+
 class UserOut(BaseModel):
-    id: str | int  # Support both legacy integer IDs and new UUIDs (as string)
+    id: Union[str, int]  # Support both legacy integer IDs and new UUIDs (as string)
     username: str
     email: str
     created_at: str

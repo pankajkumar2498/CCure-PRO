@@ -47,7 +47,7 @@ from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
 from core.discovery.profiles import DiscoveryProfile, BALANCED, Technique
-from core.discovery.techniques import arp, icmp, tcp_syn, tcp_conn, udp_probe, nbns
+from core.discovery.techniques import arp, icmp, tcp_syn, tcp_conn, udp_probe, nbns, arp_cache
 
 log = logging.getLogger("ccure.discovery.engine")
 
@@ -111,8 +111,8 @@ def _local_subnets() -> List[ipaddress.IPv4Network]:
                     ))
                 except ValueError:
                     pass
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("Failed to get local subnets: %s", exc)
     return subnets
 
 
@@ -186,12 +186,13 @@ class DiscoveryEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, ip_list: List[str]) -> List[Dict]:
+    async def run(self, ip_list: List[str], scan_id: Optional[str] = None) -> List[Dict]:
         """
         Discover all IPs in ip_list using the configured profile.
 
         Args:
             ip_list: Flat list of IP address strings to probe.
+            scan_id: Optional UUID to publish real-time progress via Redis.
 
         Returns:
             List[dict] — one entry per IP, enriched with discovery data.
@@ -216,10 +217,24 @@ class DiscoveryEngine:
             self.profile.name, len(scan_order), batch_sz, self.has_priv,
         )
 
+        from core.redis_client import publish_progress
+        total_ips = len(scan_order)
+        discovered = 0
+
         # ── Process in batches ─────────────────────────────────────────────
         for i in range(0, len(scan_order), batch_sz):
             batch = scan_order[i:i + batch_sz]
             await self._probe_batch(batch, results)
+            
+            discovered += len(batch)
+            active_so_far = sum(1 for r in results.values() if r["is_active"])
+            if scan_id:
+                await publish_progress(scan_id, 1, {
+                    "discovered": discovered,
+                    "active": active_so_far,
+                    "total_ips": total_ips,
+                    "status": "running"
+                })
 
             # ── Hostile-env auto-escalation ───────────────────────────────
             if (
@@ -320,11 +335,11 @@ class DiscoveryEngine:
                         timeout=max(timeout, 2.0),
                     )
 
-        # ── NetBIOS — LAN Microsoft hosts ─────────────────────────────────
-        if Technique.NBNS in techniques and lan:
-            lan_netbios = [ip for ip in lan if results[ip]["is_active"]]
-            if lan_netbios:
-                await asyncio.to_thread(nbns.probe, lan_netbios, results)
+        # ── NetBIOS — Any active host (useful for Windows computer names/MACs) ───
+        if Technique.NBNS in techniques:
+            active_nbns = [ip for ip in batch if results[ip]["is_active"]]
+            if active_nbns:
+                await asyncio.to_thread(nbns.probe, active_nbns, results)
 
         # ── TCP connect — final fallback for everything still inactive ─────
         if Technique.TCP_CONN in techniques:
@@ -338,6 +353,11 @@ class DiscoveryEngine:
                     concurrency=self.concurrency_override or self.rate_limit or self.profile.concurrency,
                     retries=self.profile.retries,
                 )
+
+        # ── ARP Cache Fallback — Best effort for MACs without root ─────────
+        active_ips = [ip for ip in batch if results[ip]["is_active"]]
+        if active_ips:
+            await asyncio.to_thread(arp_cache.probe, active_ips, results)
 
     # ── Post-scan enrichment (AGGRESSIVE profile) ─────────────────────────────
 

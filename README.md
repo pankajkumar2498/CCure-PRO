@@ -1,6 +1,13 @@
 # CCure-Audit-PRO
 Network Scanning Tool
 
+Inside /Backend Folder:
+
+python -m venv .venv
+
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
 
 
 
@@ -11,7 +18,7 @@ python scripts/download_nvd.py --limit 1000 --offset 3300
 python scripts/download_nvd.py --limit 1000 --offset 4300
 
 # Then next batch (offset shown in output)
-python scripts/download_nvd.py --limit 1000 --offset 5300
+python scripts/download_nvd.py --limit 1000 --offset 12500
 # And so on...
 
 python test_cve_db.py    # Quick test

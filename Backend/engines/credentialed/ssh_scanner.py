@@ -18,6 +18,7 @@ Usage::
 
 import logging
 import socket
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -82,6 +83,7 @@ class SSHScanner:
         self.port     = port
         self.timeout  = timeout
         self._client: Optional["paramiko.SSHClient"] = None
+        self._lock = threading.Lock()
 
     # ── Context manager ────────────────────────────────────────────────────
 
@@ -162,37 +164,38 @@ class SSHScanner:
         if self._client is None:
             return CommandResult(stderr="Not connected", exit_code=-1, success=False)
 
-        try:
-            _timeout = timeout or self.timeout
-            _, stdout_fh, stderr_fh = self._client.exec_command(
-                command, timeout=_timeout, get_pty=False
-            )
-            stdout_fh.channel.settimeout(_timeout)
-            stderr_fh.channel.settimeout(_timeout)
+        with self._lock:
+            try:
+                _timeout = timeout or self.timeout
+                _, stdout_fh, stderr_fh = self._client.exec_command(
+                    command, timeout=_timeout, get_pty=False
+                )
+                stdout_fh.channel.settimeout(_timeout)
+                stderr_fh.channel.settimeout(_timeout)
 
-            chunks = []
-            while True:
-                chunk = stdout_fh.channel.recv(4096)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-            stdout_data = b"".join(chunks).decode("utf-8", errors="replace").strip()
-            stderr_data = stderr_fh.read().decode("utf-8", errors="replace").strip()
-            exit_code   = stdout_fh.channel.recv_exit_status()
+                chunks = []
+                while True:
+                    chunk = stdout_fh.channel.recv(4096)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                stdout_data = b"".join(chunks).decode("utf-8", errors="replace").strip()
+                stderr_data = stderr_fh.read().decode("utf-8", errors="replace").strip()
+                exit_code   = stdout_fh.channel.recv_exit_status()
 
-            return CommandResult(
-                stdout    = stdout_data,
-                stderr    = stderr_data,
-                exit_code = exit_code,
-                success   = (exit_code == 0),
-            )
-        except Exception as exc:
-            log.debug("Command '%s' failed on %s: %s", command, self.ip, exc)
-            return CommandResult(
-                stderr    = str(exc),
-                exit_code = -1,
-                success   = False,
-            )
+                return CommandResult(
+                    stdout    = stdout_data,
+                    stderr    = stderr_data,
+                    exit_code = exit_code,
+                    success   = (exit_code == 0),
+                )
+            except Exception as exc:
+                log.debug("Command '%s' failed on %s: %s", command, self.ip, exc)
+                return CommandResult(
+                    stderr    = str(exc),
+                    exit_code = -1,
+                    success   = False,
+                )
 
     def is_connected(self) -> bool:
         """Return True if the SSH transport is alive."""

@@ -9,6 +9,7 @@ require zero changes.  All heavy lifting lives in ScanOrchestrator.
 
 import json
 import logging
+import os
 import socket
 
 from core.constants import SCAPY_AVAILABLE, PDF_AVAILABLE
@@ -39,7 +40,7 @@ class HostDiscoveryAPI:
         stealth_mode: bool  = False,
     ):
         if not SCAPY_AVAILABLE:
-            print("WARNING: Scapy not found. Raw-socket scans disabled. TCP-only mode.")
+            log.warning("Scapy not found. Raw-socket scans disabled. TCP-only mode.")
 
         self._orch = ScanOrchestrator(
             silent       = silent,
@@ -62,6 +63,7 @@ class HostDiscoveryAPI:
         return {
             "platform":    self.platform,
             "privileges":  PrivilegeManager.info(),
+            "scanner_runtime": os.getenv("SCANNER_RUNTIME", "unknown"),
             "scapy":       {"installed": SCAPY_AVAILABLE},
             "pdf":         {"installed": PDF_AVAILABLE},
             "scan_types":  [s.value for s in DiscoveryScanType],

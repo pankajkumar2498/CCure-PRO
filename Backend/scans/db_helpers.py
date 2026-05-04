@@ -8,7 +8,7 @@ Automatically runs Identity Resolution (AssetSyncer) internally.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,44 @@ from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_a
 from db.base import utcnow
 
 
+def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
+    """
+    Load a scan and all its phase results into a single dictionary.
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    if not scan:
+        return {}
+
+    # Map phases to friendly keys for the frontend
+    phases_data = {}
+    for phase in scan.phases:
+        key = "phase1" if phase.phase_order == 1 else \
+              "phase2" if phase.phase_order == 2 else \
+              "phase3" if phase.phase_order == 3 else f"phase{phase.phase_order}"
+        
+        # Identity resolve phase data (this recreates the 'data' field from Assets)
+        # For performance, in production we'd use the legacy_json_builder
+        phases_data[key] = {
+            "status": phase.status,
+            "summary": phase.summary,
+            # 'data' is usually populated via legacy_json_builder or asset_syncer
+        }
+
+    # Use the existing legacy builder to get the 'data' (hosts list) correctly
+    from scans.legacy_json_builder import build_legacy_scan_results
+    full_results = build_legacy_scan_results(db, scan_id)
+
+    return {
+        "id":               str(scan.id),
+        "scan_no":          scan.scan_no,
+        "status":           scan.status,
+        "pipeline_mode":    scan.pipeline_mode,
+        "report_json_path": scan.report_json_path,
+        "report_xml_path":  scan.report_xml_path,
+        "phase1":           {**phases_data.get("phase1", {}), "data": full_results.get("phase1", {}).get("data", [])},
+        "phase2":           {**phases_data.get("phase2", {}), "data": full_results.get("phase2", {}).get("data", [])},
+        "phase3":           {**phases_data.get("phase3", {}), "data": full_results.get("phase3", {}).get("data", [])},
+    }
 def _get_org_id(db: Session, user_id: str) -> str:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -47,25 +85,15 @@ def _next_scan_no(db: Session, org_id: str, user_id: str) -> int:
 
 
 def create_scan(
-    db:                Session,
-    user_id:           str,
-    target:            str,
-    targets:           list[str],
-    scan_type:         str,
-    phase1_data:       dict,
-    pipeline_mode:     str  = "basic",
-    is_final:          bool = False,
-    report_json_path:  Optional[str] = None,
-    report_xml_path:   Optional[str] = None,
+    db: Session,
+    user_id: str,
+    target: str,
+    targets: List[str],
+    scan_type: str,
+    pipeline_mode: str = "basic",
 ) -> Scan:
-    """
-    Called right after /scan/host-discovery succeeds.
-    """
+    """Create an empty running scan before Phase 1 starts."""
     org_id = _get_org_id(db, user_id)
-    summary = phase1_data.get("summary", {})
-    duration = summary.get("scan_duration", 0.0)
-    hosts_data = phase1_data.get("data", [])
-
     scan = Scan(
         org_id=org_id,
         created_by=user_id,
@@ -74,17 +102,47 @@ def create_scan(
         target_hosts=targets,
         scan_type=scan_type,
         pipeline_mode=pipeline_mode,
-        status="complete" if is_final else "running",
+        status="running",
         started_at=utcnow(),
-        completed_at=utcnow() if is_final else None,
-        duration_seconds=duration,
-        total_hosts=summary.get("total_hosts", 0),
-        active_hosts=summary.get("active_hosts", 0),
-        report_json_path=report_json_path,
-        report_xml_path=report_xml_path,
     )
     db.add(scan)
-    db.flush()
+    db.commit()
+    db.refresh(scan)
+    return scan
+
+
+def update_scan_phase1(
+    db:                Session,
+    scan_id:           str,
+    user_id:           str,
+    phase1_data:       dict,
+    is_final:          bool = False,
+    report_json_path:  Optional[str] = None,
+    report_xml_path:   Optional[str] = None,
+) -> Optional[Scan]:
+    """
+    Called right after /scan/host-discovery succeeds. Updates the existing scan.
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    if not scan:
+        return None
+
+    org_id = _get_org_id(db, user_id)
+    summary = phase1_data.get("summary", {})
+    duration = summary.get("scan_duration", 0.0)
+    hosts_data = phase1_data.get("data", [])
+
+    scan.status = "complete" if is_final else "running"
+    if is_final:
+        scan.completed_at = utcnow()
+    scan.duration_seconds = duration
+    scan.total_hosts = summary.get("total_hosts", 0)
+    scan.active_hosts = summary.get("active_hosts", 0)
+    if report_json_path: scan.report_json_path = report_json_path
+    if report_xml_path: scan.report_xml_path = report_xml_path
+
+    # Full payload embedded in summary
+    full_summary = {**summary, "_phase_data": hosts_data}
 
     phase_row = ScanPhase(
         scan_id=scan.id,
@@ -93,18 +151,20 @@ def create_scan(
         status="complete",
         duration_seconds=duration,
         hosts_processed=len(hosts_data),
-        summary=summary,
+        summary=full_summary,
         started_at=utcnow(),
         completed_at=utcnow()
     )
     db.add(phase_row)
     db.flush()
 
-    # Asset Sync: Identity Resolution
-    sync_host_discovery(db, str(scan.id), org_id, user_id, hosts_data)
-
     db.commit()
     db.refresh(scan)
+
+    # Asset Sync in background (AFTER commit to avoid FK race condition)
+    from core.tasks import sync_host_discovery_task
+    sync_host_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+
     return scan
 
 
@@ -149,31 +209,50 @@ def update_scan_phase(
     phase_key_map = {2: "asset_discovery", 3: "vulnerability_assessment", 4: "credentialed"}
     phase_key = phase_key_map.get(phase, f"phase{phase}")
 
-    phase_row = ScanPhase(
-        scan_id=scan.id,
-        phase_key=phase_key,
-        phase_order=phase,
-        status="complete",
-        duration_seconds=duration,
-        hosts_processed=len(hosts_data),
-        summary=summary,
-        started_at=utcnow(),
-        completed_at=utcnow()
+    # Embed raw data into summary to ensure 100% historical fidelity without schema changes
+    full_summary_payload = {**summary, "_phase_data": hosts_data}
+
+    phase_row = (
+        db.query(ScanPhase)
+        .filter(ScanPhase.scan_id == scan.id, ScanPhase.phase_key == phase_key)
+        .first()
     )
-    db.add(phase_row)
-    db.flush()
+    now = utcnow()
+    if phase_row:
+        phase_row.phase_order = phase
+        phase_row.status = "complete"
+        phase_row.duration_seconds = duration
+        phase_row.hosts_processed = len(hosts_data)
+        phase_row.summary = full_summary_payload
+        phase_row.completed_at = now
+        phase_row.updated_at = now
+        if not phase_row.started_at:
+            phase_row.started_at = now
+    else:
+        phase_row = ScanPhase(
+            scan_id=scan.id,
+            phase_key=phase_key,
+            phase_order=phase,
+            status="complete",
+            duration_seconds=duration,
+            hosts_processed=len(hosts_data),
+            summary=full_summary_payload,
+            started_at=now,
+            completed_at=now
+        )
+        db.add(phase_row)
+        db.flush()
 
-    # Synchronization
-    if phase == 2:
-        sync_asset_discovery(db, str(scan.id), org_id, user_id, hosts_data)
-    elif phase >= 3:
-        sync_advanced_scan(db, str(scan.id), org_id, user_id, hosts_data)
-
+    if phase >= 3:
         # Update denormalized vuln counts on Scan row for dashboard performance
-        critical_count = sum(1 for h in hosts_data for v in h.get("vulnerabilities", []) if v.get("severity", "").lower() == "critical")
-        high_count = sum(1 for h in hosts_data for v in h.get("vulnerabilities", []) if v.get("severity", "").lower() == "high")
-        medium_count = sum(1 for h in hosts_data for v in h.get("vulnerabilities", []) if v.get("severity", "").lower() == "medium")
-        low_count = sum(1 for h in hosts_data for v in h.get("vulnerabilities", []) if v.get("severity", "").lower() == "low")
+        all_vulns = []
+        for h in hosts_data:
+            all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+
+        critical_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical")
+        high_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "high")
+        medium_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium")
+        low_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "low")
         
         scan.critical_count = critical_count
         scan.high_count = high_count
@@ -183,6 +262,15 @@ def update_scan_phase(
 
     db.commit()
     db.refresh(scan)
+
+    # Synchronization (AFTER commit to avoid FK race condition)
+    if phase == 2:
+        from core.tasks import sync_asset_discovery_task
+        sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+    elif phase >= 3:
+        from core.tasks import sync_advanced_scan_task
+        sync_advanced_scan_task.delay(str(scan.id), org_id, user_id, hosts_data)
+
     return scan
 
 
@@ -209,7 +297,7 @@ def create_completed_scan(
     db:               Session,
     user_id:          str,
     target:           str,
-    targets:          Optional[list[str]],
+    targets:          Optional[List[str]],
     scan_type:        str,
     phase:            int,
     results:          dict,
@@ -269,7 +357,7 @@ def create_completed_scan(
             status="complete",
             duration_seconds=phase_summary.get("scan_duration", 0.0),
             hosts_processed=len(hosts_data),
-            summary=phase_summary,
+            summary={**phase_summary, "_phase_data": hosts_data},
             started_at=utcnow(),
             completed_at=utcnow()
         )

@@ -92,6 +92,44 @@ export default function NewScan() {
     return "Start Scan";
   })();
 
+  const [scanProgress, setScanProgress] = useState(null);
+  const baseURL = api.defaults.baseURL || "";
+  const wsPrefix = baseURL.replace(/^http/, "ws");
+
+  const waitForPhase1 = (scanId) => {
+    console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] waitForPhase1 started for scan ${scanId}`);
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] WS Message: phase=${data.phase}, status=${data.progress?.status}`);
+          
+          const isP1Done = (data.phase === 1 && (data.progress?.status === "complete" || data.progress?.status === "failed"));
+          const isLaterPhase = (data.phase > 1);
+
+          if (isP1Done || isLaterPhase) {
+            console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] Resolving waitForPhase1: isP1Done=${isP1Done}, isLaterPhase=${isLaterPhase}`);
+            ws.close();
+            resolve(data.progress || { status: "complete" });
+          } else if (data.phase === 1) {
+            setScanProgress(data.progress);
+          }
+        } catch (e) {
+          console.error("WS parse error", e);
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+        reject(new Error("Progress WebSocket failed"));
+      };
+      setTimeout(() => {
+        ws.close();
+        reject(new Error("Phase 1 timed out"));
+      }, 180000);
+    });
+  };
+
   const handleScan = async () => {
     if (!target.trim()) return;
     setLoading(true);
@@ -111,10 +149,20 @@ export default function NewScan() {
       const { data } = await api.post("/scan/host-discovery", payload);
       if (!data.success) throw new Error(data.error || "Scan failed");
 
-      setPhase1Hosts(data.data);
-      setPhase1Summary(data.summary);
       setScanId(data.scan_id ?? null);
       setScanNo(data.scan_no ?? data.display_id ?? null);
+
+      // Wait for Phase 1 via WebSocket
+      const p1Result = await waitForPhase1(data.scan_id);
+      if (p1Result?.status === "failed") {
+         throw new Error("Phase 1 background task failed.");
+      }
+
+      // Fetch the actual populated scan
+      const { data: fullScan } = await api.get(`/scans/${data.scan_id}`);
+
+      setPhase1Hosts(fullScan?.results?.phase1?.data || []);
+      setPhase1Summary(fullScan?.results?.phase1?.summary || {});
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
       navigate(pipelineMode === "advanced" ? "/scan/advanced-scan" : "/scan/host-discovery");
@@ -124,6 +172,7 @@ export default function NewScan() {
       setTimeout(() => setSaveStatus(""), 4000);
     } finally {
       setLoading(false);
+      setScanProgress(null);
     }
   };
 

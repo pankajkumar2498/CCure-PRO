@@ -129,7 +129,8 @@ def _netbios_query(ip: str, result: Dict) -> None:
         sock.sendto(_NBSTAT, (ip, 137))
         data, _ = sock.recvfrom(1024)
         sock.close()
-    except Exception:
+    except Exception as exc:
+        log.debug("_netbios_query(%s) socket error: %s", ip, exc)
         return
 
     if len(data) < 57:

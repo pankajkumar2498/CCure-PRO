@@ -223,6 +223,8 @@ def sync_missing_columns(conn):
     columns_to_ensure = [
         ("assets", "discovery_method", "VARCHAR(50)"),
         ("assets", "response_time_ms", "INTEGER"),
+        ("users", "is_deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("users", "deleted_at", "TIMESTAMPTZ"),
     ]
     
     for table, col, col_type in columns_to_ensure:

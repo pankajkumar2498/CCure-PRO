@@ -17,7 +17,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
-import api from "../../api/axiosInstance";
+import api, { authSession } from "../../api/axiosInstance";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 
 const INTENSITIES = ["light", "normal", "deep"];
@@ -124,10 +124,15 @@ export default function Phase1Results() {
   const [scanProgress, setScanProgress] = useState(null);
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
+  const buildScanProgressUrl = (scanId) => {
+    const token = authSession.getAccessToken();
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${wsPrefix}/scans/${scanId}/progress${query}`;
+  };
 
   const waitForPhase = (scanId, phase) => {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      const ws = new WebSocket(buildScanProgressUrl(scanId));
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.phase === phase) {

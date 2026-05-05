@@ -10,6 +10,7 @@ import { getScans, purgeScan } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
+import { useToasts, ToastContainer } from "../components/common/Toast";
 
 /* ── Constants & Helpers ─────────────────────────────────────────────────── */
 
@@ -100,6 +101,7 @@ export default function SecurityReports() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [modal, setModal] = useState(null);
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,7 +164,7 @@ export default function SecurityReports() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed:", err);
-      alert("Failed to download report. The session may have expired.");
+      pushToast("Failed to download report. The session may have expired.", "error");
     }
   };
 
@@ -195,7 +197,7 @@ export default function SecurityReports() {
     } catch (err) {
       console.error("Delete failed:", err);
       setModal(null);
-      alert("Failed to delete report.");
+      pushToast("Failed to delete report.", "error");
     }
   };
 
@@ -499,6 +501,7 @@ export default function SecurityReports() {
           onCancel={() => setModal(null)}
         />
       )}
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );
 }

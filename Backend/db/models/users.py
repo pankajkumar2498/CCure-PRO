@@ -22,7 +22,7 @@ Production improvements over v1
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, ForeignKey, Integer,
-    SmallInteger, String, Text,
+    SmallInteger, String, Text, inspect, text,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -68,10 +68,12 @@ class User(Base):
 
     # ── Account State ─────────────────────────────────────────────────────────
     is_active        = Column(Boolean, nullable=False, default=True)
+    is_deleted       = Column(Boolean, nullable=False, default=False)
     is_verified      = Column(Boolean, nullable=False, default=False)
     last_login_at    = Column(TIMESTAMPTZ, nullable=True)
     failed_login_count = Column(Integer, nullable=False, default=0)
     locked_until     = Column(TIMESTAMPTZ, nullable=True)   # null = not locked
+    deleted_at       = Column(TIMESTAMPTZ, nullable=True)
 
     # ── Profile ───────────────────────────────────────────────────────────────
     avatar_url      = Column(String(512), nullable=True)
@@ -86,11 +88,10 @@ class User(Base):
     role            = relationship("Role",         back_populates="users")
     refresh_tokens  = relationship("RefreshTokenSession", back_populates="user",
                                    cascade="all, delete-orphan")
-    audit_logs      = relationship("AuditLog", back_populates="user",
-                                   cascade="all, delete-orphan")
-    scans           = relationship("Scan",    back_populates="created_by_user")
-    asset_notes     = relationship("AssetNote", back_populates="user")
-    asset_tags      = relationship("AssetTag",  back_populates="created_by_user")
+    audit_logs      = relationship("AuditLog", back_populates="user", passive_deletes=True)
+    scans           = relationship("Scan",    back_populates="created_by_user", passive_deletes=True)
+    asset_notes     = relationship("AssetNote", back_populates="user", passive_deletes=True)
+    asset_tags      = relationship("AssetTag",  back_populates="created_by_user", passive_deletes=True)
 
     def __repr__(self):
         return f"<User {self.username!r}>"
@@ -187,3 +188,35 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog action={self.action!r} user={self.user_id}>"
+
+
+def ensure_user_schema():
+    """
+    Additive migration for the users table so existing databases gain the
+    deleted-user lifecycle columns without destructive schema changes.
+    """
+    from db.base import engine
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    dialect = engine.dialect.name
+
+    with engine.begin() as conn:
+        if "is_deleted" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_is_deleted ON users (is_deleted)"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_is_deleted ON users (is_deleted)"))
+
+        if "deleted_at" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN deleted_at TIMESTAMPTZ"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN deleted_at DATETIME"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)"))

@@ -1,12 +1,25 @@
 import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "../../context/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
-import { listOrganizations, createOrganization, updateOrganization } from "../../api/admin";
+import {
+  listOrganizations,
+  createOrganization,
+  updateOrganization,
+  changeOrganizationStatus,
+  deleteOrganization,
+} from "../../api/admin";
 import Modal from "../../components/layout/Modal";
 import { formatDateTime } from "../../utils/date";
+import Button from "../../components/common/Button";
+import { useToasts, ToastContainer } from "../../components/common/Toast";
+import OrganizationForm from "../../components/admin/OrganizationForm";
+import ConfirmDialog from "../../components/common/ConfirmDialog";
 
 export default function OrganizationManagement() {
+  const { user: currentUser } = useAuth();
   const [orgs, setOrgs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -14,7 +27,21 @@ export default function OrganizationManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState(null);
+  const [confirmConfig, setConfirmConfig] = useState(null);
   const [formData, setFormData] = useState({ name: "", slug: "", plan: "community", max_assets: 500, max_users: 10 });
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const roleName = currentUser?.role?.name?.toLowerCase() || "";
+  const isSuperadmin = roleName === "superadmin";
+  const canCreateOrganizations = currentUser?.role?.permissions?.some(
+    (permission) => permission.resource === "organizations" && permission.action === "create"
+  );
+  const canUpdateOrganizations = currentUser?.role?.permissions?.some(
+    (permission) => permission.resource === "organizations" && permission.action === "update"
+  );
+
+  const canManageOrg = (org) => (
+    isSuperadmin || (canUpdateOrganizations && String(org.id) === String(currentUser?.org_id))
+  );
 
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -34,27 +61,95 @@ export default function OrganizationManagement() {
     loadData();
   }, [loadData]);
 
-  const handleCreateOrg = async (e) => {
-    e.preventDefault();
+  const handleCreateOrg = async (data) => {
+    setBusy(true);
     try {
-      await createOrganization(formData);
+      await createOrganization(data);
+      pushToast("Organization created successfully.", "success");
       setIsCreateModalOpen(false);
       setFormData({ name: "", slug: "", plan: "community", max_assets: 500, max_users: 10 });
       loadData(true);
     } catch (err) {
-      alert(err.response?.data?.detail || "Failed to create organization");
+      pushToast(err.response?.data?.detail || "Failed to create organization.", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleUpdateOrg = async (e) => {
-    e.preventDefault();
+  const handleUpdateOrg = async (data) => {
+    if (!selectedOrg) return;
+    setBusy(true);
     try {
-      await updateOrganization(selectedOrg.id, formData);
+      await updateOrganization(selectedOrg.id, {
+        name: data.name,
+        slug: data.slug,
+        plan: data.plan,
+        max_assets: data.max_assets,
+        max_users: data.max_users,
+      });
+      pushToast("Organization updated successfully.", "success");
       setIsEditModalOpen(false);
       loadData(true);
     } catch (err) {
-      alert(err.response?.data?.detail || "Failed to update organization");
+      pushToast(err.response?.data?.detail || "Failed to update organization.", "error");
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const handleToggleStatus = (org) => {
+    const action = org.is_active ? "Deactivate" : "Activate";
+    setConfirmConfig({
+      title: `${action} organization`,
+      subtitle: `This will ${action.toLowerCase()} ${org.name}.`,
+      warning: org.is_active
+        ? "Users in this organization may lose access while the tenant is inactive."
+        : "Users in this organization will be able to access the tenant again.",
+      confirmLabel: action,
+      confirmType: "info",
+      icon: org.is_active ? "⏻" : "▶",
+      iconClass: "info",
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await changeOrganizationStatus(org.id, { is_active: !org.is_active });
+          pushToast(`Organization ${org.name} ${org.is_active ? "deactivated" : "activated"}.`, "success");
+          await loadData(true);
+        } catch (err) {
+          pushToast(err.response?.data?.detail || "Unable to update organization status.", "error");
+        } finally {
+          setBusy(false);
+          setConfirmConfig(null);
+        }
+      },
+      onCancel: () => setConfirmConfig(null),
+    });
+  };
+
+  const handleDeleteOrg = (org) => {
+    setConfirmConfig({
+      title: `Delete ${org.name}`,
+      subtitle: "Are you sure you want to delete this organization?",
+      warning: "This is a destructive tenant-level action. Users, assets, scans, and related organization data may be removed.",
+      confirmLabel: "Delete organization",
+      confirmType: "danger",
+      icon: "🗑️",
+      iconClass: "danger",
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await deleteOrganization(org.id);
+          pushToast("Organization deleted successfully.", "success");
+          await loadData(true);
+        } catch (err) {
+          pushToast(err.response?.data?.detail || "Unable to delete organization.", "error");
+        } finally {
+          setBusy(false);
+          setConfirmConfig(null);
+        }
+      },
+      onCancel: () => setConfirmConfig(null),
+    });
   };
 
   const openEditModal = (org) => {
@@ -88,13 +183,15 @@ export default function OrganizationManagement() {
             <h2 className="page-title">Organizations</h2>
             <p className="page-subtitle">Manage multi-tenant organizations and their subscription plans</p>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-             <button className="btn btn--ghost" onClick={() => loadData(true)} disabled={refreshing}>
-               {refreshing ? "Refreshing..." : "Refresh"}
-             </button>
-             <button className="btn btn--primary" onClick={() => setIsCreateModalOpen(true)}>
-               + New Organization
-             </button>
+          <div className="page-actions-row">
+            <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing || busy}>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+            {canCreateOrganizations && (
+              <Button type="button" variant="primary" size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={busy}>
+                + New Organization
+              </Button>
+            )}
           </div>
         </div>
 
@@ -119,26 +216,66 @@ export default function OrganizationManagement() {
                 <tr key={o.id}>
                   <td><strong>{o.name}</strong></td>
                   <td><code className="ip-code">{o.slug}</code></td>
-                  <td><span className="method-chip" style={{ background: '#e0f2fe', color: '#0369a1' }}>{o.plan}</span></td>
-                  <td style={{ fontFamily: "var(--mono)" }}>{o.max_assets}</td>
-                  <td style={{ fontFamily: "var(--mono)" }}>{o.max_users}</td>
+                  <td><span className="chip chip--info">{o.plan}</span></td>
+                  <td><code className="ip-code">{o.max_assets}</code></td>
+                  <td><code className="ip-code">{o.max_users}</code></td>
                   <td>
-                    {o.is_active ? (
-                      <span style={{ color: "var(--ok)", fontSize: 12 }}>● Active</span>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>○ Inactive</span>
-                    )}
+                    <span className={`chip ${o.is_active ? "chip--active" : "chip--inactive"}`}>
+                      {o.is_active ? "Active" : "Inactive"}
+                    </span>
                   </td>
-                  <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  <td className="text-muted" style={{ fontSize: 12 }}>
                     {formatDateTime(o.created_at)}
                   </td>
                   <td>
-                    <div className="action-btns" style={{ justifyContent: "flex-end" }}>
-                      <button className="action-btn" onClick={() => openEditModal(o)}>Configure</button>
-                    </div>
+                    {canManageOrg(o) ? (
+                      <div className="action-btns table-action-cell">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          title="Edit organization"
+                          onClick={() => openEditModal(o)}
+                          disabled={busy}
+                        >
+                          ✏️ Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          title={o.is_active ? "Deactivate organization" : "Activate organization"}
+                          onClick={() => handleToggleStatus(o)}
+                          disabled={busy}
+                        >
+                          {o.is_active ? "⏻ Deactivate" : "▶ Activate"}
+                        </Button>
+                        {isSuperadmin && (
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            title="Delete organization"
+                            onClick={() => handleDeleteOrg(o)}
+                            disabled={busy}
+                          >
+                            🗑️ Delete
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
+              {orgs.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="table-empty-cell">
+                    No organizations are available yet. Create one to get started.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -151,63 +288,13 @@ export default function OrganizationManagement() {
           title="Provision New Organization" 
           onClose={() => setIsCreateModalOpen(false)}
         >
-          <form onSubmit={handleCreateOrg} className="auth-form" style={{ padding: 0, boxShadow: 'none', background: 'transparent' }}>
-            <div className="form-group">
-              <label>Organization Name</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                required 
-                placeholder="e.g. Acme Corp"
-                value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
-              />
-            </div>
-            <div className="form-group">
-              <label>Slug (URL Identifier)</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                required 
-                placeholder="e.g. acme-corp"
-                value={formData.slug}
-                onChange={e => setFormData({...formData, slug: e.target.value})}
-              />
-            </div>
-            <div className="form-group">
-              <label>Subscription Plan</label>
-              <select 
-                className="form-input" 
-                value={formData.plan}
-                onChange={e => setFormData({...formData, plan: e.target.value})}
-              >
-                <option value="community">Community</option>
-                <option value="professional">Professional</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div className="form-group">
-                <label>Max Assets</label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={formData.max_assets}
-                  onChange={e => setFormData({...formData, max_assets: parseInt(e.target.value)})}
-                />
-              </div>
-              <div className="form-group">
-                <label>Max Users</label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={formData.max_users}
-                  onChange={e => setFormData({...formData, max_users: parseInt(e.target.value)})}
-                />
-              </div>
-            </div>
-            <button type="submit" className="btn btn--primary" style={{ width: "100%", marginTop: 20 }}>Provision Organization</button>
-          </form>
+          <OrganizationForm
+            mode="create"
+            organization={formData}
+            onSubmit={handleCreateOrg}
+            onCancel={() => setIsCreateModalOpen(false)}
+            busy={busy}
+          />
         </Modal>
       )}
 
@@ -215,64 +302,31 @@ export default function OrganizationManagement() {
       {isEditModalOpen && (
         <Modal 
           isOpen={isEditModalOpen} 
-          title={`Configure: ${selectedOrg.name}`} 
+          title={selectedOrg ? `Edit ${selectedOrg.name}` : "Edit organization"}
           onClose={() => setIsEditModalOpen(false)}
         >
-          <form onSubmit={handleUpdateOrg} className="auth-form" style={{ padding: 0, boxShadow: 'none', background: 'transparent' }}>
-            <div className="form-group">
-              <label>Organization Name</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                required 
-                value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
-              />
-            </div>
-            <div className="form-group">
-              <label>Subscription Plan</label>
-              <select 
-                className="form-input" 
-                value={formData.plan}
-                onChange={e => setFormData({...formData, plan: e.target.value})}
-              >
-                <option value="community">Community</option>
-                <option value="professional">Professional</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div className="form-group">
-                <label>Max Assets</label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={formData.max_assets}
-                  onChange={e => setFormData({...formData, max_assets: parseInt(e.target.value)})}
-                />
-              </div>
-              <div className="form-group">
-                <label>Max Users</label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={formData.max_users}
-                  onChange={e => setFormData({...formData, max_users: parseInt(e.target.value)})}
-                />
-              </div>
-            </div>
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-               <input 
-                 type="checkbox" 
-                 checked={formData.is_active} 
-                 onChange={e => setFormData({...formData, is_active: e.target.checked})}
-               />
-               <label style={{ marginBottom: 0 }}>Organization Active</label>
-            </div>
-            <button type="submit" className="btn btn--primary" style={{ width: "100%", marginTop: 20 }}>Save Configuration</button>
-          </form>
+          <OrganizationForm
+            mode="edit"
+            organization={selectedOrg}
+            onSubmit={handleUpdateOrg}
+            onCancel={() => setIsEditModalOpen(false)}
+            busy={busy}
+          />
         </Modal>
       )}
+      <ConfirmDialog
+        open={Boolean(confirmConfig)}
+        title={confirmConfig?.title}
+        subtitle={confirmConfig?.subtitle}
+        warning={confirmConfig?.warning}
+        confirmLabel={confirmConfig?.confirmLabel}
+        confirmType={confirmConfig?.confirmType}
+        icon={confirmConfig?.icon}
+        iconClass={confirmConfig?.iconClass}
+        onConfirm={confirmConfig?.onConfirm}
+        onCancel={confirmConfig?.onCancel}
+      />
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );
 }

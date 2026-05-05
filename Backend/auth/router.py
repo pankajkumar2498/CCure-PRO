@@ -90,12 +90,21 @@ class RoleOut(BaseModel):
     name: str
     permissions: List[PermissionOut]
 
+class OrganizationOut(BaseModel):
+    id: Union[str, int]
+    name: str
+    slug: str
+
+    model_config = {"from_attributes": True}
+
 class UserOut(BaseModel):
     id: Union[str, int]
+    org_id: Optional[Union[str, int]] = None
     username: str
     email: str
     created_at: str
     role: Optional[RoleOut] = None
+    organization: Optional[OrganizationOut] = None
 
     model_config = {"from_attributes": True}
 
@@ -153,18 +162,34 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     if db.query(User).filter(User.username == req.username.strip()).first():
         raise HTTPException(status_code=409, detail="Username already taken")
 
-    # For production auto-registration, place new users in the Default Organization with the 'analyst' role.
-    default_org = db.query(Organization).filter(Organization.slug == "default").first()
+    # For production auto-registration, place new users in the Self-Service Organization with the 'analyst' role.
+    # This organization can be managed by superadmins and org_admins
+    self_service_org = db.query(Organization).filter(Organization.slug == "self-service").first()
+    
+    # Create self-service org if it doesn't exist
+    if not self_service_org:
+        self_service_org = Organization(
+            name="Self-Service Users",
+            slug="self-service",
+            plan="community",
+            max_assets=100,
+            max_users=50,
+            is_active=True,
+            settings={"description": "Organization for self-registered users"}
+        )
+        db.add(self_service_org)
+        db.flush()
+    
     default_role = db.query(Role).filter(Role.name == "analyst").first()
     
-    if not default_org or not default_role:
-        raise HTTPException(status_code=500, detail="RBAC or Organization not seeded in production DB.")
+    if not default_role:
+        raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
 
     user = User(
         username=req.username.strip(),
         email=req.email,
         password_hash=hash_password(req.password),
-        org_id=default_org.id,
+        org_id=self_service_org.id,
         role_id=default_role.id
     )
     db.add(user)
@@ -184,9 +209,15 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     _set_refresh_cookie(response, refresh_token)
 
     return {
-        "access_token": create_access_token(str(user.id), user.username),
+        "access_token": create_access_token(
+            str(user.id),
+            user.username,
+            role=getattr(user.role, "name", None),
+            org_id=user.org_id,
+        ),
         "user": {
             "id": str(user.id),
+            "org_id": str(user.org_id),
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
@@ -216,6 +247,14 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
+        )
+
+    if getattr(user, "is_deleted", False):
+        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account deleted"})
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account deleted",
         )
 
     if not user.is_active:
@@ -268,9 +307,15 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     _set_refresh_cookie(response, refresh_token)
 
     return {
-        "access_token": create_access_token(str(user.id), user.username),
+        "access_token": create_access_token(
+            str(user.id),
+            user.username,
+            role=getattr(user.role, "name", None),
+            org_id=user.org_id,
+        ),
         "user": {
             "id": str(user.id),
+            "org_id": str(user.org_id),
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
@@ -321,6 +366,7 @@ def me(current_user: User = Depends(get_current_user)):
     """
     return {
         "id": str(current_user.id),
+        "org_id": str(current_user.org_id),
         "username": current_user.username,
         "email": current_user.email,
         "created_at": current_user.created_at.isoformat(),
@@ -330,7 +376,12 @@ def me(current_user: User = Depends(get_current_user)):
                 {"resource": rp.permission.resource, "action": rp.permission.action}
                 for rp in current_user.role.permissions
             ]
-        } if current_user.role else None
+        } if current_user.role else None,
+        "organization": {
+            "id": str(current_user.organization.id),
+            "name": current_user.organization.name,
+            "slug": current_user.organization.slug,
+        } if getattr(current_user, "organization", None) else None,
     }
 
 

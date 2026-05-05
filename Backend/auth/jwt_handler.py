@@ -89,9 +89,14 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_access_token(user_id: int, username: str) -> str:
+def create_access_token(user_id: int, username: str, role: Optional[str] = None, org_id: Optional[str] = None) -> str:
+    payload = {"sub": str(user_id), "username": username, "type": "access"}
+    if role is not None:
+        payload["role"] = role
+    if org_id is not None:
+        payload["org_id"] = str(org_id)
     return _create_token(
-        {"sub": str(user_id), "username": username, "type": "access"},
+        payload,
         ACCESS_TOKEN_EXPIRE,
     )
 
@@ -104,6 +109,8 @@ def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise ValueError("User not found")
+        if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
+            raise ValueError("User account is not eligible for refresh tokens")
         jti = secrets.token_urlsafe(32)
         expires_at = _utcnow() + REFRESH_TOKEN_EXPIRE
         token = _create_token(
@@ -207,6 +214,8 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Op
         user = db.query(User).filter(User.id == session_row.user_id).first()
         if not user:
             return None
+        if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
+            return None
 
         new_jti = secrets.token_urlsafe(32)
         new_refresh_token = _create_token(
@@ -228,7 +237,12 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Op
         db.commit()
 
         return {
-            "access_token": create_access_token(user.id, user.username),
+            "access_token": create_access_token(
+                user.id,
+                user.username,
+                role=getattr(user.role, "name", None),
+                org_id=user.org_id,
+            ),
             "refresh_token": new_refresh_token,
             "token_type": "bearer",
         }

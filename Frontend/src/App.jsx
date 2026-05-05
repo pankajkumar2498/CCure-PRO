@@ -16,6 +16,7 @@ import ArchivedScans     from "./pages/ArchivedScans";
 import RecycleBin        from "./pages/RecycleBin";
 import SecurityReports    from "./pages/SecurityReports";
 import UserManagement     from "./pages/admin/UserManagement";
+import DeletedUsers       from "./pages/admin/DeletedUsers";
 import RoleManagement     from "./pages/admin/RoleManagement";
 import OrganizationManagement from "./pages/admin/OrganizationManagement";
 import AuditLogs          from "./pages/admin/AuditLogs";
@@ -50,6 +51,7 @@ export default function App() {
 
         {/* Admin Module */}
         <Route path="/admin/users"   element={<PrivateRoute requiredPermission={{resource: "users", action: "read"}}><UserManagement /></PrivateRoute>} />
+        <Route path="/admin/deleted-users" element={<PrivateRoute requiredPermission={{resource: "users", action: "delete"}}><DeletedUsers /></PrivateRoute>} />
         <Route path="/admin/roles"   element={<PrivateRoute requiredPermission={{resource: "roles", action: "read"}}><RoleManagement /></PrivateRoute>} />
         <Route path="/admin/organizations" element={<PrivateRoute requiredPermission={{resource: "organizations", action: "read"}}><OrganizationManagement /></PrivateRoute>} />
         <Route path="/admin/audit-logs" element={<PrivateRoute requiredPermission={{resource: "audit", action: "read"}}><AuditLogs /></PrivateRoute>} />

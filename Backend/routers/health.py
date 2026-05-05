@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from db.base import get_db
 from db.models import User
-from auth.dependencies import get_current_user
+from auth.rbac import require_permission
 from scan_helpers import get_api, PIPELINE_PHASES
 from scans.progress import read_progress as _db_read_progress
 
@@ -36,7 +36,7 @@ async def root():
 async def get_scan_progress(
     scan_id: str,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_user),
+    current_user: User    = Depends(require_permission("scans", "read")),
 ):
     """
     Get real-time progress for an ongoing scan (multi-worker safe).

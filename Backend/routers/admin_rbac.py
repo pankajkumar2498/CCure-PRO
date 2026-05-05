@@ -9,6 +9,7 @@ from db.models import Role, RolePermission, Permission, User
 
 router = APIRouter(prefix="/admin/roles", tags=["RBAC Administration"])
 
+@router.get("")
 @router.get("/")
 def list_roles(
     db: Session = Depends(get_db),
@@ -28,6 +29,7 @@ def list_roles(
     }
 
 @router.get("/{role_id}/permissions")
+@router.get("/{role_id}/permissions/")
 def list_role_permissions(
     role_id: int,
     db: Session = Depends(get_db),

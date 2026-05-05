@@ -1,9 +1,11 @@
 """
 auth/dependencies.py
 --------------------
-FastAPI dependency that reads the Bearer token from the
-Authorization header and returns the current User (or raises 401).
+FastAPI dependencies for authenticated user resolution and tenant scope.
 """
+
+from dataclasses import dataclass
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -16,21 +18,15 @@ from db.models import User
 bearer_scheme = HTTPBearer()
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    """
-    Inject as a dependency on any protected endpoint:
+@dataclass(frozen=True)
+class AuthContext:
+    user: User
+    user_id: str
+    organization_id: Optional[str]
+    role: str
 
-        @app.get("/protected")
-        def protected(user: User = Depends(get_current_user)):
-            ...
 
-    The user's Role is eagerly loaded so RBAC guards can access
-    ``user.role.name`` without triggering lazy-load issues.
-    """
-    token = credentials.credentials
+def _decode_access_payload(token: str) -> dict:
     payload = decode_token(token)
 
     if not payload or payload.get("type") != "access":
@@ -40,6 +36,10 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return payload
+
+
+def _load_auth_context_from_payload(payload: dict, db: Session) -> AuthContext:
     try:
         user_id = str(payload["sub"])
     except (KeyError, TypeError, ValueError):
@@ -51,7 +51,7 @@ def get_current_user(
 
     user = (
         db.query(User)
-        .options(joinedload(User.role))
+        .options(joinedload(User.role), joinedload(User.organization))
         .filter(User.id == user_id)
         .first()
     )
@@ -60,8 +60,66 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+    if getattr(user, "is_deleted", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account has been deleted",
+        )
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive",
+        )
 
-    return user
+    db_role = (getattr(getattr(user, "role", None), "name", "") or "").lower()
+    db_org_id = str(user.org_id) if user.org_id else None
+
+    token_role = payload.get("role")
+    token_org_id = payload.get("org_id")
+
+    # Enforce claim consistency when present, while remaining compatible with
+    # older access tokens until they naturally rotate out.
+    if token_role is not None and str(token_role).lower() != db_role:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token role scope no longer matches the user account",
+        )
+    if token_org_id is not None and str(token_org_id) != db_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token organization scope no longer matches the user account",
+        )
+
+    return AuthContext(
+        user=user,
+        user_id=str(user.id),
+        organization_id=db_org_id,
+        role=db_role,
+    )
+
+
+def get_current_auth_context(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> AuthContext:
+    payload = _decode_access_payload(credentials.credentials)
+    return _load_auth_context_from_payload(payload, db)
+
+
+def get_current_user(
+    auth_context: AuthContext = Depends(get_current_auth_context),
+) -> User:
+    """
+    Inject as a dependency on any protected endpoint:
+
+        @app.get("/protected")
+        def protected(user: User = Depends(get_current_user)):
+            ...
+
+    The user's Role is eagerly loaded so RBAC guards can access
+    ``user.role.name`` without triggering lazy-load issues.
+    """
+    return auth_context.user
 
 
 def get_current_user_flexible(
@@ -85,31 +143,5 @@ def get_current_user_flexible(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = decode_token(final_token)
-    if not payload or payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    try:
-        user_id = str(payload["sub"])
-    except (KeyError, TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    user = (
-        db.query(User)
-        .options(joinedload(User.role))
-        .filter(User.id == user_id)
-        .first()
-    )
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-
-    return user
+    payload = _decode_access_payload(final_token)
+    return _load_auth_context_from_payload(payload, db).user

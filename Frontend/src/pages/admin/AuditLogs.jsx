@@ -2,6 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import { listAuditLogs } from "../../api/admin";
 import { formatDateTime } from "../../utils/date";
+import Button from "../../components/common/Button";
+import FormField from "../../components/common/FormField";
+import { useToasts, ToastContainer } from "../../components/common/Toast";
+import AuditLogDetailsModal from "../../components/admin/AuditLogDetailsModal";
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
@@ -10,6 +14,9 @@ export default function AuditLogs() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({ action: "", resource_type: "", status: "" });
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -25,11 +32,12 @@ export default function AuditLogs() {
       setTotal(data.total);
     } catch (err) {
       setError("Failed to load audit logs.");
+      pushToast(err.response?.data?.detail || "Unable to refresh audit logs.", "error");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filters]);
+  }, [filters, pushToast]);
 
   useEffect(() => {
     loadData();
@@ -57,17 +65,22 @@ export default function AuditLogs() {
             <h2 className="page-title">Audit Logs</h2>
             <p className="page-subtitle">Immutable trail of system activities and user actions</p>
           </div>
-          <button className="btn btn--ghost" onClick={() => loadData(true)} disabled={refreshing}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing}>
             {refreshing ? "Syncing..." : "Sync Logs"}
-          </button>
+          </Button>
         </div>
 
         {error && <div className="alert alert--error">{error}</div>}
 
-        <div className="filter-bar" style={{ marginBottom: 20 }}>
-          <div className="filter-group">
-            <label>Action</label>
-            <select name="action" className="form-input" style={{ width: 180 }} value={filters.action} onChange={handleFilterChange}>
+        <div className="filter-bar">
+          <FormField className="filter-group" htmlFor="filter-action" label="Action">
+            <select
+              id="filter-action"
+              name="action"
+              className="field-input"
+              value={filters.action}
+              onChange={handleFilterChange}
+            >
               <option value="">All Actions</option>
               <option value="user.login">Login</option>
               <option value="user.login_failed">Login Failed</option>
@@ -76,25 +89,37 @@ export default function AuditLogs() {
               <option value="user.deleted">User Deleted</option>
               <option value="scan.created">Scan Created</option>
             </select>
-          </div>
-          <div className="filter-group">
-            <label>Resource</label>
-            <select name="resource_type" className="form-input" style={{ width: 150 }} value={filters.resource_type} onChange={handleFilterChange}>
+          </FormField>
+
+          <FormField className="filter-group" htmlFor="filter-resource" label="Resource">
+            <select
+              id="filter-resource"
+              name="resource_type"
+              className="field-input"
+              value={filters.resource_type}
+              onChange={handleFilterChange}
+            >
               <option value="">All Resources</option>
               <option value="user">User</option>
               <option value="scan">Scan</option>
               <option value="organization">Organization</option>
             </select>
-          </div>
-          <div className="filter-group">
-            <label>Status</label>
-            <select name="status" className="form-input" style={{ width: 120 }} value={filters.status} onChange={handleFilterChange}>
+          </FormField>
+
+          <FormField className="filter-group" htmlFor="filter-status" label="Status">
+            <select
+              id="filter-status"
+              name="status"
+              className="field-input"
+              value={filters.status}
+              onChange={handleFilterChange}
+            >
               <option value="">All Status</option>
               <option value="success">Success</option>
               <option value="failure">Failure</option>
               <option value="denied">Denied</option>
             </select>
-          </div>
+          </FormField>
         </div>
 
         <div className="table-wrap">
@@ -131,13 +156,17 @@ export default function AuditLogs() {
                   <td><code style={{ fontSize: 12 }}>{log.ip_address || "—"}</code></td>
                   <td>
                     {log.changes ? (
-                      <button 
-                        className="btn btn--ghost" 
-                        style={{ padding: "2px 8px", fontSize: 11 }}
-                        onClick={() => alert(JSON.stringify(log.changes, null, 2))}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setDetailsOpen(true);
+                        }}
                       >
                         View Changes
-                      </button>
+                      </Button>
                     ) : "—"}
                   </td>
                 </tr>
@@ -158,6 +187,9 @@ export default function AuditLogs() {
            </p>
         )}
       </div>
+
+      <AuditLogDetailsModal isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} log={selectedLog} />
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );
 }

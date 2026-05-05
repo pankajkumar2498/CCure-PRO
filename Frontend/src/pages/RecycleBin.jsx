@@ -4,6 +4,7 @@ import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { getScans, purgeScan, restoreScan } from "../api/scans";
 import { formatDateTime } from "../utils/date";
+import { useToasts, ToastContainer } from "../components/common/Toast";
 
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
@@ -128,6 +129,7 @@ export default function RecycleBin() {
   const [purgingId, setPurgingId] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
   const [modal, setModal] = useState(null);
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,8 +155,9 @@ export default function RecycleBin() {
       await restoreScan(id);
       setScans((prev) => prev.filter((scan) => scan.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
+      pushToast("Scan restored successfully.", "success");
     } catch (err) {
-      alert(err.response?.data?.detail || "Failed to restore scan.");
+      pushToast(err.response?.data?.detail || "Failed to restore scan.", "error");
     } finally {
       setRestoringId(null);
     }
@@ -188,9 +191,10 @@ export default function RecycleBin() {
       setScans((prev) => prev.filter((scan) => scan.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
       setModal(null);
+      pushToast("Scan permanently deleted.", "success");
     } catch (err) {
       setModal(null);
-      alert(err.response?.data?.detail || "Failed to delete scan permanently.");
+      pushToast(err.response?.data?.detail || "Failed to delete scan permanently.", "error");
     } finally {
       setPurgingId(null);
     }
@@ -313,6 +317,7 @@ export default function RecycleBin() {
           onCancel={() => setModal(null)}
         />
       )}
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );
 }

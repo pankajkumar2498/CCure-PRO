@@ -16,11 +16,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from auth.dependencies import get_current_user, get_current_user_flexible
+from auth.jwt_handler import decode_token
+from auth.rbac import require_permission
 from db.base import get_db, SessionLocal, utcnow
-from db.models import User
+from db.models import User, RolePermission, Permission
 from db.models.scans import Scan
 from scans.legacy_json_builder import build_legacy_scan_results
 
@@ -168,6 +169,54 @@ def _scan_history_snapshot(db: Session, org_id, scope: str, skip: int, limit: in
     }
 
 
+def _get_websocket_user(websocket: WebSocket) -> User:
+    token = websocket.query_params.get("token")
+    if not token:
+        auth_header = websocket.headers.get("authorization", "") or ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication token is required for WebSocket connections.")
+
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload.")
+
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .options(joinedload(User.role))
+            .filter(User.id == str(user_id))
+            .first()
+        )
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+
+        if getattr(user.role, "name", "").lower() != "superadmin":
+            has_perm = (
+                db.query(RolePermission)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .filter(
+                    RolePermission.role_id == user.role_id,
+                    Permission.resource == "scans",
+                    Permission.action == "read",
+                )
+                .first()
+            ) is not None
+            if not has_perm:
+                raise HTTPException(status_code=403, detail="Insufficient privileges.")
+
+        return user
+    finally:
+        db.close()
+
+
 def _format_sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
 
@@ -180,7 +229,7 @@ def list_scans(
     limit: int = Query(50, ge=1, le=200),
     scope: str = Query("active"),
     db:    Session = Depends(get_db),
-    user:  User    = Depends(get_current_user),
+    user:  User    = Depends(require_permission("scans", "read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
@@ -196,7 +245,7 @@ async def stream_scan_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=200),
     interval: float = Query(2.0, ge=0.5, le=15.0),
-    user: User = Depends(get_current_user_flexible),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
@@ -246,12 +295,18 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     Real-time progress WebSocket endpoint using Redis PubSub.
     Sends current state immediately on connect to avoid race conditions.
     """
+    try:
+        current_user = _get_websocket_user(websocket)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     # 1. Send current status from DB immediately
     db = SessionLocal()
     try:
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == current_user.org_id).first()
         if scan and scan.phases:
             # Send status of the most recent phase
             latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
@@ -296,7 +351,7 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
 def get_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    user: User    = Depends(require_permission("scans", "read")),
 ):
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -307,7 +362,7 @@ def get_scan(
 def archive_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    user: User    = Depends(require_permission("scans", "delete")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -334,7 +389,7 @@ def archive_scan(
 def restore_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    user: User    = Depends(require_permission("scans", "delete")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -374,7 +429,7 @@ def restore_scan(
 def delete_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    user: User    = Depends(require_permission("scans", "delete")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -399,7 +454,7 @@ def delete_scan(
 def purge_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
+    user: User    = Depends(require_permission("scans", "delete")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db)

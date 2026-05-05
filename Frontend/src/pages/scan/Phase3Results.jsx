@@ -24,7 +24,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import Modal from "../../components/layout/Modal";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
-import api from "../../api/axiosInstance";
+import api, { authSession } from "../../api/axiosInstance";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
@@ -175,10 +175,15 @@ export default function Phase3Results() {
 
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
+  const buildScanProgressUrl = (scanId) => {
+    const token = authSession.getAccessToken();
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${wsPrefix}/scans/${scanId}/progress${query}`;
+  };
 
   const waitForPhase = (scanId, phase, signal) => {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      const ws = new WebSocket(buildScanProgressUrl(scanId));
       
       const handleAbort = () => {
         ws.close();

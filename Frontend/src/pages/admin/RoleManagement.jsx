@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import { listRoles, listRolePermissions } from "../../api/admin";
+import Button from "../../components/common/Button";
+import { useToasts, ToastContainer } from "../../components/common/Toast";
 
 export default function RoleManagement() {
   const [roles, setRoles] = useState([]);
@@ -9,6 +11,7 @@ export default function RoleManagement() {
   const [loading, setLoading] = useState(true);
   const [loadingPerms, setLoadingPerms] = useState(false);
   const [error, setError] = useState("");
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const loadRoles = useCallback(async () => {
     setLoading(true);
@@ -36,7 +39,7 @@ export default function RoleManagement() {
       const data = await listRolePermissions(role.id);
       setPermissions(data.permissions);
     } catch (err) {
-      alert("Failed to load permissions for this role");
+      pushToast("Failed to load permissions for this role.", "error");
     } finally {
       setLoadingPerms(false);
     }
@@ -64,30 +67,25 @@ export default function RoleManagement() {
 
         {error && <div className="alert alert--error">{error}</div>}
 
-        <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24, marginTop: 20 }}>
+        <div className="admin-grid">
           {/* Roles List */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontWeight: 600 }}>Roles</div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {roles.map(r => (
-                <button
+          <div className="card role-card">
+            <div className="card__header role-card__header">
+              <h3>Roles</h3>
+            </div>
+            <div className="role-list">
+              {roles.map((r) => (
+                <Button
                   key={r.id}
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  className={`role-list-item ${selectedRole?.id === r.id ? "role-list-item--selected" : ""}`}
                   onClick={() => handleSelectRole(r)}
-                  style={{
-                    padding: "16px 20px",
-                    textAlign: "left",
-                    background: selectedRole?.id === r.id ? "rgba(37, 99, 235, 0.1)" : "transparent",
-                    border: "none",
-                    borderLeft: selectedRole?.id === r.id ? "4px solid var(--primary)" : "4px solid transparent",
-                    color: selectedRole?.id === r.id ? "var(--primary)" : "var(--text)",
-                    cursor: "pointer",
-                    fontWeight: selectedRole?.id === r.id ? 600 : 400,
-                    transition: "all 0.2s"
-                  }}
                 >
-                  <div style={{ fontSize: 14 }}>{r.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{r.description || "No description"}</div>
-                </button>
+                  <div className="role-list-item__title">{r.name}</div>
+                  <div className="role-list-item__subtitle">{r.description || "No description"}</div>
+                </Button>
               ))}
             </div>
           </div>
@@ -100,7 +98,7 @@ export default function RoleManagement() {
             </div>
 
             {loadingPerms ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+              <div className="section-loader">
                 <div className="spinner" />
               </div>
             ) : (
@@ -133,6 +131,7 @@ export default function RoleManagement() {
           </div>
         </div>
       </div>
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );
 }

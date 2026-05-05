@@ -1,16 +1,21 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from auth.rbac import require_permission
-from auth.dependencies import get_current_user
 from db.base import get_db
 from db.models import AuditLog, User
 
 router = APIRouter(prefix="/admin/audit-logs", tags=["Audit Logs"])
 
+
+def _is_superadmin(user: User) -> bool:
+    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+
 @router.get("")
+@router.get("/")
 def list_audit_logs(
     user_id: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
@@ -21,7 +26,19 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("audit", "read"))
 ):
-    query = db.query(AuditLog).filter(AuditLog.org_id == current_user.org_id)
+    query = db.query(AuditLog)
+
+    if not _is_superadmin(current_user):
+        query = (
+            query.outerjoin(User, AuditLog.user_id == User.id)
+            .filter(
+                or_(
+                    AuditLog.org_id == current_user.org_id,
+                    User.org_id == current_user.org_id,
+                )
+            )
+            .distinct()
+        )
     
     if user_id:
         query = query.filter(AuditLog.user_id == user_id)

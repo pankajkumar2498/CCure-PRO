@@ -18,11 +18,16 @@ from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_a
 from db.base import utcnow
 
 
+def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Optional[Scan]:
+    org_id = _get_org_id(db, user_id)
+    return db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == org_id).first()
+
+
 def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
     """
     Load a scan and all its phase results into a single dictionary.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
+    scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return {}
 
@@ -123,7 +128,7 @@ def update_scan_phase1(
     """
     Called right after /scan/host-discovery succeeds. Updates the existing scan.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
+    scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return None
 
@@ -182,7 +187,7 @@ def update_scan_phase(
     """
     Called after /scan/asset-discovery (phase=2) or /scan/advanced-scan (phase=3).
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
+    scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return None
 
@@ -280,7 +285,7 @@ def mark_scan_failed(
     user_id: str,
     reason:  str,
 ) -> Optional[Scan]:
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
+    scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return None
 

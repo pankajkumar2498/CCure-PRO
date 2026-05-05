@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
-import api from "../../api/axiosInstance";
+import api, { authSession } from "../../api/axiosInstance";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -99,7 +99,7 @@ export default function NewScan() {
   const waitForPhase1 = (scanId) => {
     console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] waitForPhase1 started for scan ${scanId}`);
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${wsPrefix}/scans/${scanId}/progress`);
+      const ws = new WebSocket(buildScanProgressUrl(scanId));
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 
 from api.host_discovery_api import HostDiscoveryAPI
 from scans.models import ensure_scan_schema
+from db.models.users import ensure_user_schema
 from scan_helpers import set_api
 
 # ── Router imports ────────────────────────────────────────────────────────────
@@ -112,7 +113,11 @@ async def lifespan(app: FastAPI):
                     f"PostgreSQL schema bootstrap did not create required tables: {sorted(still_missing)}"
                 )
 
-    # 1.5. Ensure first admin exists
+    # 1.5. Additive backfills before any User queries run
+    ensure_scan_schema()
+    ensure_user_schema()
+
+    # 1.6. Ensure first admin exists
     from db.models.users import User
     from db.models.rbac import Organization, Role
     from auth.jwt_handler import hash_password
@@ -143,9 +148,6 @@ async def lifespan(app: FastAPI):
                     log.error(f"Failed to seed admin: {e}")
             else:
                 log.warning("Could not seed admin: default org or superadmin role missing.")
-
-    # 2. Additive backfills
-    ensure_scan_schema()
     
     # 3. Initialize scan engines
     api = HostDiscoveryAPI(silent=False)

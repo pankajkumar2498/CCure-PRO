@@ -74,9 +74,10 @@ const NAV_ITEMS = [
 ];
 
 const ADMIN_NAV_ITEMS = [
-  { id: "admin-users", label: "User Mgmt",      Icon: IcoUsers,   route: "/admin/users",         permission: { resource: "users", action: "read" } },
-  { id: "admin-roles", label: "Roles & Perms",  Icon: IcoLock,    route: "/admin/roles",         permission: { resource: "roles", action: "read" } },
+  { id: "admin-users", label: "User Management",      Icon: IcoUsers,   route: "/admin/users",         permission: { resource: "users", action: "read" } },
   { id: "admin-orgs",  label: "Organizations",  Icon: IcoOrg,     route: "/admin/organizations", permission: { resource: "organizations", action: "read" } },
+  { id: "admin-roles", label: "Roles & Permissions",  Icon: IcoLock,    route: "/admin/roles",         permission: { resource: "roles", action: "read" } },
+  { id: "admin-deleted-users", label: "Deleted Users", Icon: IcoTrash, route: "/admin/deleted-users", permission: { resource: "users", action: "delete" } },
   { id: "admin-logs",  label: "Audit Logs",     Icon: IcoList,    route: "/admin/audit-logs",    permission: { resource: "audit", action: "read" } },
 ];
 
@@ -136,6 +137,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     if (pathname.startsWith("/dashboard"))   return "dashboard";
     if (pathname.startsWith("/scan"))      return "dashboard";
     if (pathname.startsWith("/admin/users")) return "admin-users";
+    if (pathname.startsWith("/admin/deleted-users")) return "admin-deleted-users";
     if (pathname.startsWith("/admin/roles")) return "admin-roles";
     if (pathname.startsWith("/admin/organizations")) return "admin-orgs";
     if (pathname.startsWith("/admin/audit-logs")) return "admin-logs";
@@ -159,6 +161,33 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
 
         {/* Nav */}
         <nav className="sidebar-nav">
+          {/* Admin Section */}
+          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission.resource, item.permission.action)) && (
+            <>
+              <span className="sidebar-section-label">Administration</span>
+              {ADMIN_NAV_ITEMS.map(({ id, label, Icon, route, permission }) => {
+                if (!hasPermission(user, permission.resource, permission.action)) return null;
+                return (
+                  <button
+                    key={id}
+                    className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""}`}
+                    onClick={() => {
+                      if (isCollapsed) setIsCollapsed(false);
+                      if (route) navigate(route);
+                    }}
+                    title={label}
+                  >
+                    <span className="sidebar-item-icon">
+                      <Icon />
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+              <div style={{ height: 16 }} />
+            </>
+          )}
+
           <span className="sidebar-section-label">Navigation</span>
           {NAV_ITEMS.map(({ id, label, Icon, route, disabled }) => (
             <button
@@ -181,33 +210,6 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
               )}
             </button>
           ))}
-
-          {/* Admin Section */}
-          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission.resource, item.permission.action)) && (
-            <>
-              <div style={{ height: 16 }} />
-              <span className="sidebar-section-label">Administration</span>
-              {ADMIN_NAV_ITEMS.map(({ id, label, Icon, route, permission }) => {
-                if (!hasPermission(user, permission.resource, permission.action)) return null;
-                return (
-                  <button
-                    key={id}
-                    className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""}`}
-                    onClick={() => {
-                      if (isCollapsed) setIsCollapsed(false);
-                      if (route) navigate(route);
-                    }}
-                    title={label}
-                  >
-                    <span className="sidebar-item-icon">
-                      <Icon />
-                    </span>
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </>
-          )}
         </nav>
 
         {/* Footer: user chip */}

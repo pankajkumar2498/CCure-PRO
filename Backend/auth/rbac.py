@@ -125,6 +125,12 @@ def require_permission(resource: str, action: str):
                 detail="Your account does not have a role assigned.",
             )
 
+        role_name = getattr(role, "name", "unknown")
+
+        # Superadmin bypass: superadmins have all permissions
+        if role_name.lower() == "superadmin":
+            return user
+
         # Check if the user's role has this specific permission
         has_perm = (
             db.query(RolePermission)

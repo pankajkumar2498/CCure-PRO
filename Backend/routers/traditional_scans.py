@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from db.models import User
-from auth.rbac import require_role
+from auth.rbac import require_permission
 from scan_helpers import get_api, limiter
 
 router = APIRouter(tags=["Traditional Scans"])
@@ -47,7 +47,7 @@ from core.tasks import run_traditional_scan_task
 
 @router.post("/scan/host")
 @limiter.limit("5/minute")
-async def scan_host(request: Request, req: SingleHostRequest, current_user: User = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"]))):
+async def scan_host(request: Request, req: SingleHostRequest, current_user: User = Depends(require_permission("scans", "execute"))):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id), targets=[req.target], phases="1+2+3+4", scan_type=req.scan_type, intensity="normal"
     )
@@ -60,7 +60,7 @@ async def scan_host(request: Request, req: SingleHostRequest, current_user: User
 
 @router.post("/scan/range")
 @limiter.limit("5/minute")
-async def scan_range(request: Request, req: RangeRequest, current_user: User = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"]))):
+async def scan_range(request: Request, req: RangeRequest, current_user: User = Depends(require_permission("scans", "execute"))):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id), targets=[req.target], phases="1", scan_type=req.scan_type, intensity="normal"
     )
@@ -73,7 +73,7 @@ async def scan_range(request: Request, req: RangeRequest, current_user: User = D
 
 @router.post("/scan/subnet")
 @limiter.limit("5/minute")
-async def scan_subnet(request: Request, req: SubnetRequest, current_user: User = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"]))):
+async def scan_subnet(request: Request, req: SubnetRequest, current_user: User = Depends(require_permission("scans", "execute"))):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id), targets=[req.target], phases="1", scan_type=req.scan_type, intensity="normal"
     )
@@ -86,7 +86,7 @@ async def scan_subnet(request: Request, req: SubnetRequest, current_user: User =
 
 @router.post("/scan/subnets")
 @limiter.limit("5/minute")
-async def scan_subnets(request: Request, req: SubnetsRequest, current_user: User = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"]))):
+async def scan_subnets(request: Request, req: SubnetsRequest, current_user: User = Depends(require_permission("scans", "execute"))):
     # Note: run_phases doesn't natively handle subnet_prefix expansion in the same way, 
     # but for compatibility we trigger it as Phase 1.
     task = run_traditional_scan_task.delay(

@@ -11,6 +11,23 @@ pip install -r requirements.txt
 
 
 
+
+# Run Project
+.\start_host_scan_stack.ps1
+
+docker compose down
+
+# For Running Worker for Nmap Scans locally
+.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker 
+
+
+
+
+
+
+
+
+
 # Download next 1000 (offset 3300)
 python scripts/download_nvd.py --limit 1000 --offset 3300
 

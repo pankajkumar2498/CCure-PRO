@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from db.base import get_db
 from db.models import User
-from auth.rbac import require_role
+from auth.rbac import require_permission
 from scans.db_helpers import (
     create_scan,
     update_scan_phase,
@@ -131,7 +131,7 @@ from core.tasks import (
 async def scan_host_discovery(
     request: Request,
     req:  HostDiscoveryRequest,
-    user: User    = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"])),
+    user: User    = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """
@@ -200,7 +200,7 @@ async def scan_host_discovery(
 async def scan_asset_discovery(
     request: Request,
     req:  AssetDiscoveryRequest,
-    user: User    = Depends(require_role(["superadmin", "org_admin", "analyst", "scanner"])),
+    user: User    = Depends(require_permission("scans", "execute")),
 ):
     """
     Asset Discovery: Phase 2 (Trigger and Return Immediately).
@@ -229,7 +229,7 @@ async def scan_asset_discovery(
 async def scan_advanced_scan(
     request: Request,
     req:  AdvancedScanRequest,
-    user: User    = Depends(require_role(["superadmin", "org_admin", "analyst"])),
+    user: User    = Depends(require_permission("scans", "execute")),
 ):
     """
     Advanced Scan: Phase 3 (Trigger and Return Immediately).
@@ -257,7 +257,7 @@ async def scan_advanced_scan(
 async def scan_phases(
     request: Request,
     req: PhasesRequest,
-    current_user: User = Depends(require_role(["superadmin", "org_admin", "analyst"])),
+    current_user: User = Depends(require_permission("scans", "execute")),
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""
     validate_total_targets(req.targets)

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from db.base import get_db
 from db.models import User
-from auth.rbac import require_role
+from auth.rbac import require_permission
 from scans.db_helpers import create_completed_scan
 from scan_helpers import get_api, limiter, log
 
@@ -136,7 +136,7 @@ from core.tasks import run_credentialed_scan_task
 async def scan_credentialed(
     request: Request,
     req:  CredentialedScanRequest,
-    user: User    = Depends(require_role(["superadmin", "org_admin"])),
+    user: User    = Depends(require_permission("scans", "execute")),
 ):
     """
     SSH Credentialed Scan (Trigger Background Task).

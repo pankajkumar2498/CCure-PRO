@@ -93,8 +93,8 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
     return d
 
 
-def _get_scan_or_404(scan_id: str, user_id: str, db: Session) -> Scan:
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+def _get_scan_or_404(scan_id: str, user: User, db: Session) -> Scan:
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
@@ -119,8 +119,8 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, user_id: str, scope: str):
-    query = db.query(Scan).filter(Scan.created_by == user_id)
+def _build_scans_query(db: Session, org_id, scope: str):
+    query = db.query(Scan).filter(Scan.org_id == org_id)
 
     if scope == "active":
         query = query.filter(Scan.is_deleted.is_(False), Scan.is_archived.is_(False))
@@ -140,8 +140,8 @@ def _build_scans_query(db: Session, user_id: str, scope: str):
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, user_id: str, scope: str, skip: int, limit: int) -> dict:
-    query, order_by = _build_scans_query(db, user_id, scope)
+def _scan_history_snapshot(db: Session, org_id, scope: str, skip: int, limit: int) -> dict:
+    query, order_by = _build_scans_query(db, org_id, scope)
     scans = (
         query
         .order_by(*order_by)
@@ -186,7 +186,7 @@ def list_scans(
     Return the current user's scan history, archived scans, or recycle-bin entries.
     Does NOT include full results blob (use GET /scans/{id} for that).
     """
-    return _scan_history_snapshot(db, user.id, scope, skip, limit)
+    return _scan_history_snapshot(db, user.org_id, scope, skip, limit)
 
 
 @router.get("/events")
@@ -205,7 +205,7 @@ async def stream_scan_history(
     if scope not in {"active", "archived", "deleted", "all"}:
         raise HTTPException(status_code=400, detail="Invalid scope. Use active, archived, deleted, or all.")
 
-    user_id = user.id
+    org_id = user.org_id
 
     async def event_generator():
         last_version = None
@@ -214,7 +214,7 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user_id, scope, skip, limit)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, org_id, scope, skip, limit)
             finally:
                 db.close()
 
@@ -299,7 +299,7 @@ def get_scan(
     user: User    = Depends(get_current_user),
 ):
     """Return full detail of one scan including all phase results."""
-    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    scan = _get_scan_or_404(scan_id, user, db)
     return _scan_to_dict(scan, db=db, include_results=True)
 
 
@@ -310,7 +310,7 @@ def archive_scan(
     user: User    = Depends(get_current_user),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    scan = _get_scan_or_404(scan_id, user, db)
     if scan.is_deleted:
         raise HTTPException(status_code=400, detail="Cannot archive a scan from the recycle bin.")
     if scan.is_archived:
@@ -337,7 +337,7 @@ def restore_scan(
     user: User    = Depends(get_current_user),
 ):
     """Restore an archived scan back to My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    scan = _get_scan_or_404(scan_id, user, db)
     if scan.is_deleted:
         scan.is_deleted = False
         scan.deleted_at = None
@@ -377,7 +377,7 @@ def delete_scan(
     user: User    = Depends(get_current_user),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
-    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    scan = _get_scan_or_404(scan_id, user, db)
     if scan.is_deleted:
         return {
             "detail": f"Scan {scan_id} is already in the recycle bin",
@@ -402,7 +402,7 @@ def purge_scan(
     user: User    = Depends(get_current_user),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
-    scan = _get_scan_or_404(scan_id, str(user.id), db)
+    scan = _get_scan_or_404(scan_id, user, db)
     if not scan.is_deleted:
         raise HTTPException(
             status_code=400,

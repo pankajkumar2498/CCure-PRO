@@ -6,12 +6,6 @@
  *   • Dark left sidebar (#1a2332) with nav items + brand
  *   • White top header (52px) with + New Scan, Settings, Profile
  *   • Responsive: sidebar hides on mobile
- *
- * Props:
- *   children      — page content
- *   pageTitle     — shown in header breadcrumb
- *   saveStatus    — "saving" | "saved" | "error" | "" (scan pages)
- *   onNewScan     — optional function to call instead of navigating to /dashboard
  */
 import { useRef, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -64,6 +58,11 @@ const IcoChevronRight = () => (
   </svg>
 );
 
+const IcoUsers = () => <Icon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />;
+const IcoLock  = () => <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 11V7" />;
+const IcoList  = () => <Icon d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />;
+const IcoOrg   = () => <Icon d="M3 21h18M3 7v1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7M4 21V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v17" />;
+
 /* ─── Sidebar navigation config ────────────────────────────────────────── */
 const NAV_ITEMS = [
   { id: "dashboard", label: "Scan Library",     Icon: IcoGrid,    route: "/dashboard" },
@@ -73,6 +72,18 @@ const NAV_ITEMS = [
   { id: "reports",   label: "Security Reports", Icon: IcoChart,   route: "/reports"   },
   { id: "recycle",   label: "Recycle Bin",      Icon: IcoTrash,   route: "/recycle-bin" },
 ];
+
+const ADMIN_NAV_ITEMS = [
+  { id: "admin-users", label: "User Mgmt",      Icon: IcoUsers,   route: "/admin/users",         permission: { resource: "users", action: "read" } },
+  { id: "admin-roles", label: "Roles & Perms",  Icon: IcoLock,    route: "/admin/roles",         permission: { resource: "roles", action: "read" } },
+  { id: "admin-orgs",  label: "Organizations",  Icon: IcoOrg,     route: "/admin/organizations", permission: { resource: "organizations", action: "read" } },
+  { id: "admin-logs",  label: "Audit Logs",     Icon: IcoList,    route: "/admin/audit-logs",    permission: { resource: "audit", action: "read" } },
+];
+
+const hasPermission = (user, resource, action) => {
+  if (!user?.role?.permissions) return false;
+  return user.role.permissions.some(p => p.resource === resource && (p.action === action || p.action === 'manage'));
+};
 
 /* ─── Profile dropdown ──────────────────────────────────────────────────── */
 function ProfileDropdown({ user, onClose, onLogout }) {
@@ -124,6 +135,10 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     if (pathname.startsWith("/reports"))     return "reports";
     if (pathname.startsWith("/dashboard"))   return "dashboard";
     if (pathname.startsWith("/scan"))      return "dashboard";
+    if (pathname.startsWith("/admin/users")) return "admin-users";
+    if (pathname.startsWith("/admin/roles")) return "admin-roles";
+    if (pathname.startsWith("/admin/organizations")) return "admin-orgs";
+    if (pathname.startsWith("/admin/audit-logs")) return "admin-logs";
     return "dashboard";
   })();
 
@@ -166,6 +181,33 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
               )}
             </button>
           ))}
+
+          {/* Admin Section */}
+          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission.resource, item.permission.action)) && (
+            <>
+              <div style={{ height: 16 }} />
+              <span className="sidebar-section-label">Administration</span>
+              {ADMIN_NAV_ITEMS.map(({ id, label, Icon, route, permission }) => {
+                if (!hasPermission(user, permission.resource, permission.action)) return null;
+                return (
+                  <button
+                    key={id}
+                    className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""}`}
+                    onClick={() => {
+                      if (isCollapsed) setIsCollapsed(false);
+                      if (route) navigate(route);
+                    }}
+                    title={label}
+                  >
+                    <span className="sidebar-item-icon">
+                      <Icon />
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* Footer: user chip */}

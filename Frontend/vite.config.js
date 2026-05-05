@@ -11,6 +11,7 @@ export default defineConfig({
       "/scan":    "http://localhost:8000",
       "/scans":   "http://localhost:8000",
       "/reports": "http://localhost:8000",
+      "/admin":   "http://localhost:8000",
     },
   },
 });

@@ -15,6 +15,10 @@ import ScanHistory       from "./pages/ScanHistory";
 import ArchivedScans     from "./pages/ArchivedScans";
 import RecycleBin        from "./pages/RecycleBin";
 import SecurityReports    from "./pages/SecurityReports";
+import UserManagement     from "./pages/admin/UserManagement";
+import RoleManagement     from "./pages/admin/RoleManagement";
+import OrganizationManagement from "./pages/admin/OrganizationManagement";
+import AuditLogs          from "./pages/admin/AuditLogs";
 import NewScan           from "./pages/scan/NewScan";
 import Phase1Results     from "./pages/scan/Phase1Results";
 import Phase2Results     from "./pages/scan/Phase2Results";
@@ -43,6 +47,12 @@ export default function App() {
         <Route path="/archived-scans" element={<PrivateRoute><ArchivedScans /></PrivateRoute>} />
         <Route path="/recycle-bin"   element={<PrivateRoute><RecycleBin /></PrivateRoute>} />
         <Route path="/reports"       element={<PrivateRoute><SecurityReports /></PrivateRoute>} />
+
+        {/* Admin Module */}
+        <Route path="/admin/users"   element={<PrivateRoute requiredPermission={{resource: "users", action: "read"}}><UserManagement /></PrivateRoute>} />
+        <Route path="/admin/roles"   element={<PrivateRoute requiredPermission={{resource: "roles", action: "read"}}><RoleManagement /></PrivateRoute>} />
+        <Route path="/admin/organizations" element={<PrivateRoute requiredPermission={{resource: "organizations", action: "read"}}><OrganizationManagement /></PrivateRoute>} />
+        <Route path="/admin/audit-logs" element={<PrivateRoute requiredPermission={{resource: "audit", action: "read"}}><AuditLogs /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

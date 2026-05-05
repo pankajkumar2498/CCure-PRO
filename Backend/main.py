@@ -33,6 +33,10 @@ from routers.traditional_scans import router as traditional_scans_router
 from routers.phase_scans import router as phase_scans_router
 from routers.credentialed import router as credentialed_router
 from routers.reports import router as reports_router
+from routers.admin_users import router as admin_users_router
+from routers.admin_rbac import router as admin_rbac_router
+from routers.admin_orgs import router as admin_orgs_router
+from routers.audit import router as audit_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -254,6 +258,10 @@ app.include_router(traditional_scans_router)
 app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
 app.include_router(reports_router)
+app.include_router(admin_users_router)
+app.include_router(admin_rbac_router)
+app.include_router(admin_orgs_router)
+app.include_router(audit_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

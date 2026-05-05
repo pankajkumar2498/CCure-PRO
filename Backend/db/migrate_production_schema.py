@@ -118,8 +118,18 @@ PERMISSIONS = [
     # Settings / Org
     ("settings",    "read",    "View organization settings"),
     ("settings",    "update",  "Change organization settings and feature flags"),
-    # Audit
-    ("audit_logs",  "read",    "View the immutable audit log"),
+    # Roles & Permissions
+    ("roles",       "read",    "View system roles and permissions"),
+    ("roles",       "create",  "Create custom roles"),
+    ("roles",       "update",  "Modify role permissions"),
+    ("roles",       "delete",  "Delete custom roles"),
+    # Organizations (multi-tenant)
+    ("organizations", "read",    "View organizations"),
+    ("organizations", "create",  "Create new organizations"),
+    ("organizations", "update",  "Update organization settings"),
+    ("organizations", "delete",  "Delete organizations"),
+    # Audit Logs
+    ("audit",       "read",    "View the immutable audit log"),
 ]
 
 # Which permissions are granted to each role
@@ -133,9 +143,10 @@ ROLE_PERMISSIONS = {
         "findings:read", "findings:update", "findings:export",
         "reports:create", "reports:read", "reports:delete",
         "users:create", "users:read", "users:update", "users:delete",
+        "roles:read",
         "credentials:create", "credentials:read", "credentials:delete",
         "settings:read", "settings:update",
-        "audit_logs:read",
+        "audit:read",
     ],
     "analyst": [
         "scans:create", "scans:read", "scans:execute", "scans:cancel",

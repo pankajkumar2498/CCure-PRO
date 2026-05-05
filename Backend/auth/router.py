@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List, Union
 
 from auth.dependencies import get_current_user
 from auth.jwt_handler import (
@@ -82,13 +82,20 @@ class LogoutRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
-from typing import Optional, Union
+class PermissionOut(BaseModel):
+    resource: str
+    action: str
+
+class RoleOut(BaseModel):
+    name: str
+    permissions: List[PermissionOut]
 
 class UserOut(BaseModel):
-    id: Union[str, int]  # Support both legacy integer IDs and new UUIDs (as string)
+    id: Union[str, int]
     username: str
     email: str
     created_at: str
+    role: Optional[RoleOut] = None
 
     model_config = {"from_attributes": True}
 
@@ -183,21 +190,48 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
+            "role": {
+                "name": user.role.name,
+                "permissions": [
+                    {"resource": rp.permission.resource, "action": rp.permission.action}
+                    for rp in user.role.permissions
+                ]
+            } if user.role else None
         },
     }
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
     Returns access + refresh tokens on success.
     """
+    from core.audit import log_audit_event
+    from db.base import utcnow
+    import datetime
+
     user = db.query(User).filter(User.email == req.email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
+        )
+
+    if not user.is_active:
+        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account disabled"})
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled",
+        )
+
+    if user.locked_until and user.locked_until > utcnow():
+        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account locked"})
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account locked temporarily",
         )
 
     try:
@@ -208,16 +242,27 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
             req.email,
             exc.__class__.__name__,
         )
+        is_valid = False
+
+    if not is_valid:
+        user.failed_login_count += 1
+        if user.failed_login_count >= 5:
+            user.locked_until = utcnow() + datetime.timedelta(minutes=15)
+            log_audit_event(db, user, "user.locked", request=request, status="failure", changes={"reason": "too many failed attempts"})
+        
+        log_audit_event(db, user, "user.login_failed", request=request, status="failure")
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
+    # Success
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.last_login_at = utcnow()
+    log_audit_event(db, user, "user.login", request=request, status="success")
+    db.commit()
 
     refresh_token = create_refresh_token(user.id, db)
     _set_refresh_cookie(response, refresh_token)
@@ -229,6 +274,13 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
+            "role": {
+                "name": user.role.name,
+                "permissions": [
+                    {"resource": rp.permission.resource, "action": rp.permission.action}
+                    for rp in user.role.permissions
+                ]
+            } if user.role else None
         },
     }
 
@@ -272,6 +324,13 @@ def me(current_user: User = Depends(get_current_user)):
         "username": current_user.username,
         "email": current_user.email,
         "created_at": current_user.created_at.isoformat(),
+        "role": {
+            "name": current_user.role.name,
+            "permissions": [
+                {"resource": rp.permission.resource, "action": rp.permission.action}
+                for rp in current_user.role.permissions
+            ]
+        } if current_user.role else None
     }
 
 

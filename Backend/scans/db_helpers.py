@@ -22,7 +22,7 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
     """
     Load a scan and all its phase results into a single dictionary.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
     if not scan:
         return {}
 
@@ -123,7 +123,7 @@ def update_scan_phase1(
     """
     Called right after /scan/host-discovery succeeds. Updates the existing scan.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
     if not scan:
         return None
 
@@ -182,7 +182,7 @@ def update_scan_phase(
     """
     Called after /scan/asset-discovery (phase=2) or /scan/advanced-scan (phase=3).
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
     if not scan:
         return None
 
@@ -280,7 +280,7 @@ def mark_scan_failed(
     user_id: str,
     reason:  str,
 ) -> Optional[Scan]:
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
     if not scan:
         return None
 

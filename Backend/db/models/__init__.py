@@ -12,6 +12,7 @@ from .findings   import (
     Service, TLSDetail, HttpSecurityDetail,
     VulnerabilityDefinition, AssetVulnerability,
 )
+from .notifications import Notification
 
 __all__ = [
     # RBAC
@@ -37,4 +38,6 @@ __all__ = [
     "HttpSecurityDetail",
     "VulnerabilityDefinition",
     "AssetVulnerability",
+    # Notifications
+    "Notification",
 ]

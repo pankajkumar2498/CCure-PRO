@@ -96,6 +96,12 @@ export default function NewScan() {
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
 
+  const buildScanProgressUrl = (scanId) => {
+    const token = authSession.getAccessToken();
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${wsPrefix}/scans/${scanId}/progress${query}`;
+  };
+
   const waitForPhase1 = (scanId) => {
     console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] waitForPhase1 started for scan ${scanId}`);
     return new Promise((resolve, reject) => {

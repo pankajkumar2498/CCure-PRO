@@ -38,6 +38,8 @@ from routers.admin_users import router as admin_users_router
 from routers.admin_rbac import router as admin_rbac_router
 from routers.admin_orgs import router as admin_orgs_router
 from routers.audit import router as audit_router
+from routers.user_profile import router as user_profile_router
+from routers.notifications import router as notifications_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -82,6 +84,7 @@ async def lifespan(app: FastAPI):
             import db.models.scans
             import db.models.assets
             import db.models.findings
+            import db.models.notifications
             Base.metadata.create_all(bind=engine)
         else:
             log.warning(
@@ -264,6 +267,8 @@ app.include_router(admin_users_router)
 app.include_router(admin_rbac_router)
 app.include_router(admin_orgs_router)
 app.include_router(audit_router)
+app.include_router(user_profile_router)
+app.include_router(notifications_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

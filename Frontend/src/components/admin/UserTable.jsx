@@ -36,7 +36,7 @@ function TableRow({ user, roleName, organizationName, showOrganizationColumn, on
             title="Edit user"
             onClick={() => onEdit(user)}
           >
-            Edit
+            ✏️ Edit
           </Button>
           {isLocked && (
             <Button
@@ -56,7 +56,7 @@ function TableRow({ user, roleName, organizationName, showOrganizationColumn, on
             title={user.is_active ? "Deactivate user" : "Activate user"}
             onClick={() => onToggleStatus(user)}
           >
-            {user.is_active ? "Deactivate" : "Activate"}
+            {user.is_active ? "⏻ Deactivate" : "▶ Activate"}
           </Button>
           <Button
             type="button"
@@ -65,7 +65,7 @@ function TableRow({ user, roleName, organizationName, showOrganizationColumn, on
             title="Delete user"
             onClick={() => onDelete(user)}
           >
-            Delete
+            🗑️ Delete
           </Button>
         </div>
       </td>

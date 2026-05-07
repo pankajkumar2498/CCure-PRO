@@ -192,6 +192,36 @@ def change_organization_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("organizations", "update"))
 ):
+    """
+    Update organization's active/inactive status.
+    
+    Production Deactivation Flow:
+    ─────────────────────────────────────────────────────────────────────────────
+    
+    DEACTIVATION (is_active: false):
+      • All users in the organization lose access IMMEDIATELY
+      • Existing sessions/tokens become invalid on next request
+      • New login attempts are rejected with HTTP 403
+      • Token refresh fails with HTTP 401
+      • Individual user statuses remain UNCHANGED
+      • Audit trail logs the deactivation event
+    
+    REACTIVATION (is_active: true):
+      • Users regain access without modification
+      • No need to re-enable individual users
+      • Existing tokens remain valid (if not expired)
+      • Full reversal of deactivation state
+    
+    Benefits:
+      ✓ Instant access revocation without manual user modifications
+      ✓ Reversible state - no data loss or extra cleanup
+      ✓ Scalable - handles thousands of users in deactivated orgs
+      ✓ Clean audit trail - org status change is primary audit event
+      ✓ No token invalidation needed - checked on every request
+    
+    Returns:
+      Organization object with updated status
+    """
     org = _scoped_organization_query(db, org_id, current_user).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -199,7 +229,10 @@ def change_organization_status(
     if org.is_active != status_data.is_active:
         changes = {"is_active": {"old": org.is_active, "new": status_data.is_active}}
         org.is_active = status_data.is_active
-        log_audit_event(db, current_user, "organization.status_changed", "organization", str(org.id), changes, request)
+        
+        # Log audit event with detailed context
+        action = "organization.deactivated" if not status_data.is_active else "organization.activated"
+        log_audit_event(db, current_user, action, "organization", str(org.id), changes, request)
         db.commit()
         db.refresh(org)
 

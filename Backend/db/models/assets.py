@@ -34,7 +34,7 @@ PostgreSQL-native types used
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, ForeignKey, Integer,
-    SmallInteger, String, Text, UniqueConstraint, Index,
+    SmallInteger, String, Text, UniqueConstraint, Index, CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import (
     INET, JSONB, MACADDR, UUID,
@@ -80,6 +80,17 @@ class Asset(Base):
         Index("ix_assets_org_risk", "org_id", "risk_score"),
         Index("ix_assets_last_seen", "last_seen_at"),
         Index("ix_assets_category", "device_category"),
+
+        # ── Enterprise Enhancements ──────────────────────────────────────────
+        # 1. GIN index for deep JSONB searching (vuln counts)
+        Index("idx_assets_vuln_counts_gin", "vuln_counts", postgresql_using="gin"),
+        
+        # 2. Trigram index for fast partial hostname search (LIKE '%term%')
+        Index("idx_assets_hostname_trgm", "hostname", postgresql_using="gin",
+              postgresql_ops={"hostname": "gin_trgm_ops"}),
+        
+        # 3. Integrity constraint for risk scores
+        CheckConstraint("risk_score >= 0 AND risk_score <= 100", name="ck_assets_risk_score"),
     )
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)

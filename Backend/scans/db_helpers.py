@@ -170,6 +170,21 @@ def update_scan_phase1(
     from core.tasks import sync_host_discovery_task
     sync_host_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
 
+    if is_final:
+        try:
+            from routers.notifications import create_notification, NotificationType, NotificationCategory
+            create_notification(
+                db=db,
+                user_id=scan.created_by,
+                notification_type=NotificationType.SCAN_COMPLETED,
+                category=NotificationCategory.SCAN,
+                title=f"Scan {scan.scan_no} Completed",
+                message=f"Host Discovery scan on {scan.target_str} has finished. Found {scan.active_hosts} active hosts.",
+                related_scan_id=str(scan.id)
+            )
+        except Exception as e:
+            pass # Silent fail for notifications
+
     return scan
 
 
@@ -276,6 +291,47 @@ def update_scan_phase(
         from core.tasks import sync_advanced_scan_task
         sync_advanced_scan_task.delay(str(scan.id), org_id, user_id, hosts_data)
 
+    if is_final:
+        try:
+            from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
+            
+            # Additional logic: if critical vulns were found, send a Security notification
+            if getattr(scan, "critical_count", 0) > 0:
+                create_notification(
+                    db=db,
+                    user_id=scan.created_by,
+                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    category=NotificationCategory.SECURITY,
+                    title=f"Critical Vulnerabilities Found",
+                    message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
+                    related_scan_id=str(scan.id)
+                )
+                
+                # ESCALATION RULE: Fan-out to leadership
+                fan_out_notification(
+                    db=db,
+                    org_id=str(scan.org_id),
+                    target_roles=["superadmin", "org_admin"],
+                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    category=NotificationCategory.SECURITY,
+                    title=f"Critical Vulnerabilities Found",
+                    message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
+                    related_scan_id=str(scan.id),
+                    exclude_user_id=str(scan.created_by)
+                )
+            else:
+                create_notification(
+                    db=db,
+                    user_id=scan.created_by,
+                    notification_type=NotificationType.SCAN_COMPLETED,
+                    category=NotificationCategory.SCAN,
+                    title=f"Scan {scan.scan_no} Completed",
+                    message=f"Scan on {scan.target_str} has finished successfully.",
+                    related_scan_id=str(scan.id)
+                )
+        except Exception as e:
+            pass
+
     return scan
 
 
@@ -295,6 +351,21 @@ def mark_scan_failed(
 
     db.commit()
     db.refresh(scan)
+
+    try:
+        from routers.notifications import create_notification, NotificationType, NotificationCategory
+        create_notification(
+            db=db,
+            user_id=scan.created_by,
+            notification_type=NotificationType.SCAN_FAILED,
+            category=NotificationCategory.SCAN,
+            title=f"Scan {scan.scan_no} Failed",
+            message=f"Scan on {scan.target_str} failed: {reason}",
+            related_scan_id=str(scan.id)
+        )
+    except Exception:
+        pass
+
     return scan
 
 
@@ -380,4 +451,48 @@ def create_completed_scan(
 
     db.commit()
     db.refresh(scan)
+
+    try:
+        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
+        
+        # Check if credentialed report has criticals
+        vulns = (scan.options or {}).get("credentialed_report", {}).get("vulnerabilities", [])
+        critical_count = sum(1 for v in vulns if str(v.get("severity", "")).lower() == "critical")
+        
+        if critical_count > 0:
+            create_notification(
+                db=db,
+                user_id=scan.created_by,
+                notification_type=NotificationType.VULNERABILITY_FOUND,
+                category=NotificationCategory.SECURITY,
+                title=f"Critical Vulnerabilities Found",
+                message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
+                related_scan_id=str(scan.id)
+            )
+            
+            # ESCALATION RULE: Fan-out to leadership
+            fan_out_notification(
+                db=db,
+                org_id=str(scan.org_id),
+                target_roles=["superadmin", "org_admin"],
+                notification_type=NotificationType.VULNERABILITY_FOUND,
+                category=NotificationCategory.SECURITY,
+                title=f"Critical Vulnerabilities Found",
+                message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
+                related_scan_id=str(scan.id),
+                exclude_user_id=str(scan.created_by)
+            )
+        else:
+            create_notification(
+                db=db,
+                user_id=scan.created_by,
+                notification_type=NotificationType.SCAN_COMPLETED,
+                category=NotificationCategory.SCAN,
+                title=f"Scan {scan.scan_no} Completed",
+                message=f"Credentialed scan on {scan.target_str} has finished successfully.",
+                related_scan_id=str(scan.id)
+            )
+    except Exception:
+        pass
+
     return scan

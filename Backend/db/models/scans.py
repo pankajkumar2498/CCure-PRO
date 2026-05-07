@@ -68,6 +68,7 @@ class Scan(Base):
         Index("ix_scans_org_pipeline",  "org_id", "pipeline_mode"),
         Index("ix_scans_org_scan_no",   "org_id", "scan_no"),
         Index("ix_scans_is_deleted",    "is_deleted"),
+        Index("idx_scans_options_gin", "options", postgresql_using="gin"),
     )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)

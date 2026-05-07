@@ -14,6 +14,7 @@ import AppLayout from "../components/layout/AppLayout";
 import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
+import { usePreferences } from "../context/PreferencesContext";
 import { getScans, getScan, deleteScan, archiveScan, streamScanEvents } from "../api/scans";
 import { buildPhasePayload } from "../config/scanConfig";
 import api from "../api/axiosInstance";
@@ -436,6 +437,8 @@ export default function ScanHistory() {
   const [viewId, setViewId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDate, setFilterDate] = useState("all");
+  const [page, setPage] = useState(1);
+  const { preferences } = usePreferences();
 
   // Confirm dialog state
   const [dialog, setDialog] = useState(null); // { type, scan, config }
@@ -649,13 +652,22 @@ export default function ScanHistory() {
     if (dialog.type === "rerun") return handleConfirmRerun();
   };
 
-  /* ── Filtering ── */
+  /* ── Filtering & Pagination ── */
   const now = Date.now();
   const visible = scans.filter(scan => {
     if (filterStatus !== "all" && normalizeStatus(scan.status) !== filterStatus) return false;
     if (filterDate !== "all" && now - dateTimeMs(getScanDisplayDate(scan)) > DATE_MS[filterDate]) return false;
     return true;
   });
+
+  const rowsPerPage = preferences?.default_rows_per_page || 10;
+  const totalPages = Math.ceil(visible.length / rowsPerPage) || 1;
+  const paginated = visible.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+  // Reset page when filters or total pages change
+  useEffect(() => {
+    if (page > totalPages) setPage(1);
+  }, [totalPages, page]);
 
   return (
     <AppLayout pageTitle="Scan History">
@@ -749,7 +761,7 @@ export default function ScanHistory() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map(scan => {
+                {paginated.map(scan => {
                   const summary = scan.summary || {};
                   const isRunning = normalizeStatus(scan.status) === "running";
 
@@ -832,10 +844,39 @@ export default function ScanHistory() {
                 })}
               </tbody>
             </table>
+            
+            {totalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                  Showing {(page - 1) * rowsPerPage + 1} to {Math.min(page * rowsPerPage, visible.length)} of {visible.length}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button 
+                    className="btn btn--ghost" 
+                    disabled={page === 1} 
+                    onClick={() => setPage(p => p - 1)}
+                    style={{ padding: "4px 10px" }}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", padding: "0 8px" }}>
+                    Page {page} of {totalPages}
+                  </span>
+                  <button 
+                    className="btn btn--ghost" 
+                    disabled={page === totalPages} 
+                    onClick={() => setPage(p => p + 1)}
+                    style={{ padding: "4px 10px" }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {visible.length > 0 && visible.length < total && (
+        {visible.length > 0 && visible.length < total && totalPages <= 1 && (
           <p className="muted" style={{ textAlign: "center", marginTop: 16, fontSize: 13, fontFamily: "var(--mono)" }}>
             Showing {visible.length} of {total} scans
           </p>

@@ -102,6 +102,13 @@ def create_access_token(user_id: int, username: str, role: Optional[str] = None,
 
 
 def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
+    """
+    Create a new refresh token for a user.
+    
+    Organization Status Check:
+    - User must belong to an active organization.
+    - This prevents token creation for deactivated organizations.
+    """
     owns_session = db is None
     db = db or SessionLocal()
 
@@ -111,6 +118,14 @@ def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
             raise ValueError("User not found")
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
             raise ValueError("User account is not eligible for refresh tokens")
+        
+        # ─ Organization Status Check ────────────────────────────────────────
+        # Prevent token creation for users in deactivated organizations.
+        from db.models import Organization
+        organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+        if organization and not organization.is_active:
+            raise ValueError("User's organization is deactivated; cannot create refresh token")
+        
         jti = secrets.token_urlsafe(32)
         expires_at = _utcnow() + REFRESH_TOKEN_EXPIRE
         token = _create_token(
@@ -201,7 +216,11 @@ def revoke_refresh_token(refresh_token: str, db: Optional[Session] = None) -> bo
 def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Optional[dict]:
     """
     Given a valid refresh token, rotate it and return fresh access/refresh tokens.
-    Returns None if the refresh token is invalid, expired, revoked, or unknown.
+    Returns None if the refresh token is invalid, expired, revoked, unknown, or from a deactivated org.
+    
+    Organization Status Check:
+    - If the user's organization has been deactivated, refresh fails immediately.
+    - This prevents token rotation for users in inactive organizations.
     """
     owns_session = db is None
     db = db or SessionLocal()
@@ -215,6 +234,14 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Op
         if not user:
             return None
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
+            return None
+
+        # ─ Organization Status Check ────────────────────────────────────────
+        # Prevent token refresh if organization is deactivated.
+        # This ensures session termination for deactivated organizations.
+        from db.models import Organization
+        organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+        if organization and not organization.is_active:
             return None
 
         new_jti = secrets.token_urlsafe(32)

@@ -42,14 +42,15 @@ from sqlalchemy import text, inspect
 from db.base import engine, Base
 
 # Import ALL models so SQLAlchemy knows about them before create_all()
-from db.models.rbac     import Organization, Role, Permission, RolePermission
-from db.models.users    import User, RefreshTokenSession, AuditLog
-from db.models.assets   import Asset, AssetTag, AssetNote, AssetChangeLog
-from db.models.scans    import Scan, ScanPhase
-from db.models.findings import (
+from db.models.rbac          import Organization, Role, Permission, RolePermission
+from db.models.users         import User, RefreshTokenSession, AuditLog
+from db.models.assets        import Asset, AssetTag, AssetNote, AssetChangeLog
+from db.models.scans         import Scan, ScanPhase
+from db.models.findings      import (
     Service, TLSDetail, HttpSecurityDetail,
     VulnerabilityDefinition, AssetVulnerability,
 )
+from db.models.notifications import Notification  # ← must be imported so create_all() creates the table
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RBAC Seed Data
@@ -252,6 +253,7 @@ def create_all_tables():
         "scan_phases",
         "services", "tls_details", "http_security_details",
         "vulnerability_definitions", "asset_vulnerabilities",
+        "notifications",
     ]
 
     with engine.connect() as conn:
@@ -260,8 +262,23 @@ def create_all_tables():
             status = "✓ exists" if exists else "✗ MISSING"
             print(f"  {status:12s} {table}")
         
-    with engine.begin() as conn:
         sync_missing_columns(conn)
+    
+    # ── Create Partitions ───────────────────────────────────────────────────
+    # Since SQLAlchemy create_all() creates the parent partitioned table 
+    # but not the actual partitions, we create 8 hash partitions here.
+    with engine.begin() as conn:
+        print(f"\n  Creating table partitions (Enterprise Mode)...")
+        partition_targets = ["audit_logs", "asset_vulnerabilities"]
+        for table in partition_targets:
+            for i in range(8):
+                partition_name = f"{table}_p{i}"
+                conn.execute(text(f"""
+                    CREATE TABLE IF NOT EXISTS {partition_name} 
+                    PARTITION OF {table} 
+                    FOR VALUES WITH (MODULUS 8, REMAINDER {i})
+                """))
+            print(f"    ✓ 8 partitions created for {table}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -405,6 +422,7 @@ def print_summary(conn):
         ("http_security_details",  "HTTP security header assessment"),
         ("vulnerability_definitions", "CVE/vuln catalog"),
         ("asset_vulnerabilities",  "Findings (asset × cve per scan)"),
+        ("notifications",          "User notification inbox"),
     ]
 
     print(f"\n  {'Table':<30} {'Rows':>8}   {'Purpose'}")

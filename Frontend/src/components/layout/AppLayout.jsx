@@ -6,10 +6,25 @@
  *   • Dark left sidebar (#1a2332) with nav items + brand
  *   • White top header (52px) with + New Scan, Settings, Profile
  *   • Responsive: sidebar hides on mobile
+ *
+ * v2 — Integrated modals/drawers/panels:
+ *   • My Account  → ProfileModal
+ *   • Settings    → SettingsDrawer
+ *   • Notifications → NotificationsPanel (with live badge)
+ *   • Help        → HelpPanel
+ *   • Change Password → ChangePasswordModal (opened from ProfileModal)
  */
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { getUnreadCount } from "../../api/notifications";
+import { usePreferences } from "../../context/PreferencesContext";
+
+// ── Lazy-loaded panels (code-split friendly) ──────────────────────────────
+import ProfileModal       from "./ProfileModal";
+import SettingsDrawer     from "./SettingsDrawer";
+import NotificationsPanel, { NotificationBell } from "./NotificationsPanel";
+import HelpPanel          from "./HelpPanel";
 
 /* ─── SVG icon set (self-contained, no external deps) ─────────────────── */
 const Icon = ({ d, size = 16 }) => (
@@ -28,11 +43,6 @@ const IcoUser    = () => <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 1
 const IcoPlus    = () => (
   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-  </svg>
-);
-const IcoBell    = () => (
-  <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
   </svg>
 );
 const IcoSettings = () => (
@@ -87,7 +97,7 @@ const hasPermission = (user, resource, action) => {
 };
 
 /* ─── Profile dropdown ──────────────────────────────────────────────────── */
-function ProfileDropdown({ user, onClose, onLogout }) {
+function ProfileDropdown({ user, onClose, onLogout, onOpenProfile }) {
   const ref = useRef(null);
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
@@ -105,7 +115,12 @@ function ProfileDropdown({ user, onClose, onLogout }) {
         </div>
       </div>
       <div className="pd-body">
-        <button className="pd-btn pd-btn--primary">My Account</button>
+        <button
+          className="pd-btn pd-btn--primary"
+          onClick={() => { onClose(); onOpenProfile(); }}
+        >
+          My Account
+        </button>
         <button className="pd-btn pd-btn--signout" onClick={onLogout}>
           ↩ Sign Out
         </button>
@@ -119,14 +134,59 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const navigate              = useNavigate();
   const { pathname }          = useLocation();
   const { user, logout }      = useAuth();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    return localStorage.getItem("sidebarCollapsed") === "true";
-  });
 
+  // UI visibility state
+  const [profileOpen, setProfileOpen]     = useState(false);
+  const [showProfile, setShowProfile]     = useState(false);
+  const [showSettings, setShowSettings]   = useState(false);
+  const [showNotifs, setShowNotifs]       = useState(false);
+  const [showHelp, setShowHelp]           = useState(false);
+  const [unreadCount, setUnreadCount]     = useState(0);
+
+  const { preferences, updateLocalPreferences } = usePreferences();
+
+  // Initialize from context but allow local toggle. Sync with local storage so it persists across reloads immediately.
+  const [localCollapsed, setLocalCollapsed] = useState(() => localStorage.getItem("sidebarCollapsed") === "true");
+
+  // Sync when preferences load or update via SettingsDrawer
   useEffect(() => {
-    localStorage.setItem("sidebarCollapsed", isCollapsed);
-  }, [isCollapsed]);
+    if (preferences && preferences.sidebar_collapsed !== undefined) {
+      setLocalCollapsed(preferences.sidebar_collapsed);
+      localStorage.setItem("sidebarCollapsed", preferences.sidebar_collapsed);
+    }
+  }, [preferences?.sidebar_collapsed]);
+
+  const toggleSidebar = () => {
+    const next = !localCollapsed;
+    setLocalCollapsed(next);
+    localStorage.setItem("sidebarCollapsed", next);
+  };
+
+
+  // Poll for unread notification count every 30s
+  useEffect(() => {
+    let mounted = true;
+    const fetchCount = async () => {
+      try {
+        const summary = await getUnreadCount();
+        if (mounted) setUnreadCount(summary.total_unread || 0);
+      } catch { /* silent fail */ }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
+  const handleUnreadChange = useCallback((count) => {
+    setUnreadCount(count);
+  }, []);
+
+  // Close all panels helper
+  const closeAll = useCallback(() => {
+    setShowNotifs(false);
+    setShowHelp(false);
+    setShowSettings(false);
+  }, []);
 
   // Derive active sidebar item from current route
   const activeId = (() => {
@@ -148,15 +208,15 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     <div className="app-layout">
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
-      <aside className={`sidebar ${isCollapsed ? "sidebar--collapsed" : ""}`}>
+      <aside className={`sidebar ${localCollapsed ? "sidebar--collapsed" : ""}`}>
         
         {/* Toggle Button */}
         <button 
           className="sidebar-toggle"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          onClick={toggleSidebar}
+          title={localCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
-          {isCollapsed ? <IcoChevronRight /> : <IcoChevronLeft />}
+          {localCollapsed ? <IcoChevronRight /> : <IcoChevronLeft />}
         </button>
 
         {/* Nav */}
@@ -172,7 +232,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
                     key={id}
                     className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""}`}
                     onClick={() => {
-                      if (isCollapsed) setIsCollapsed(false);
+                      if (localCollapsed) toggleSidebar();
                       if (route) navigate(route);
                     }}
                     title={label}
@@ -194,7 +254,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
               key={id}
               className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""} ${disabled ? "sidebar-item--disabled" : ""}`}
               onClick={() => {
-                if (isCollapsed) setIsCollapsed(false);
+                if (localCollapsed) toggleSidebar();
                 if (!disabled && route) navigate(route);
               }}
               title={disabled ? "Coming soon" : label}
@@ -267,13 +327,46 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
             </button>
 
             {/* Settings */}
-            <button className="btn-icon" title="Settings"><IcoSettings /><span>Settings</span></button>
+            <button
+              className={`btn-icon ${showSettings ? "btn-icon--active" : ""}`}
+              title="Settings"
+              onClick={() => { closeAll(); setShowSettings(s => !s); }}
+            >
+              <IcoSettings /><span>Settings</span>
+            </button>
 
             {/* Help */}
-            <button className="btn-icon btn-icon--round" title="Help"><IcoHelp /></button>
+            <button
+              id="header-help-btn"
+              className={`btn-icon btn-icon--round ${showHelp ? "btn-icon--active" : ""}`}
+              title="Help"
+              onClick={() => { closeAll(); setShowHelp(s => !s); }}
+            >
+              <IcoHelp />
+            </button>
 
             {/* Notifications */}
-            <button className="btn-icon btn-icon--round" title="Notifications"><IcoBell /></button>
+            <div style={{ position: "relative" }}>
+              <NotificationBell
+                unreadCount={unreadCount}
+                onClick={() => { closeAll(); setShowNotifs(s => !s); }}
+              />
+              {showNotifs && (
+                <div className="np-panel-wrap">
+                  <NotificationsPanel
+                    onClose={() => setShowNotifs(false)}
+                    onUnreadChange={handleUnreadChange}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Help panel */}
+            {showHelp && (
+              <div className="hp-panel-wrap">
+                <HelpPanel onClose={() => setShowHelp(false)} />
+              </div>
+            )}
 
             {/* Profile */}
             <div style={{ position: "relative" }}>
@@ -287,6 +380,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
                   user={user}
                   onClose={() => setProfileOpen(false)}
                   onLogout={() => { setProfileOpen(false); logout(); }}
+                  onOpenProfile={() => setShowProfile(true)}
                 />
               )}
             </div>
@@ -298,6 +392,21 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
           {children}
         </main>
       </div>
+
+      {/* ── MODALS & DRAWERS (rendered outside main-area for proper stacking) ── */}
+
+      {/* Settings Drawer */}
+      {showSettings && (
+        <SettingsDrawer 
+          onClose={() => setShowSettings(false)} 
+          onPreferencesUpdated={updateLocalPreferences}
+        />
+      )}
+
+      {/* Profile Modal */}
+      {showProfile && (
+        <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
     </div>
   );
 }

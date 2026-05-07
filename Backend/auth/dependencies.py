@@ -71,6 +71,20 @@ def _load_auth_context_from_payload(payload: dict, db: Session) -> AuthContext:
             detail="User account is inactive",
         )
 
+    # ─ Organization Status Check ────────────────────────────────────────────
+    # When an organization is deactivated, ALL users in that org lose access
+    # immediately, even if their individual user status remains active.
+    #
+    # This is enforced on every request/token refresh, so deactivation takes
+    # effect instantly without invalidating existing JWT tokens (stateless).
+    # Reactivating the org restores access without modifying user statuses.
+    organization = getattr(user, "organization", None)
+    if organization and not getattr(organization, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your organization has been deactivated. Please contact support.",
+        )
+
     db_role = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     db_org_id = str(user.org_id) if user.org_id else None
 

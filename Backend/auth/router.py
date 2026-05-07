@@ -18,6 +18,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List, Union
+from uuid import UUID
 
 from auth.dependencies import get_current_user
 from auth.jwt_handler import (
@@ -91,15 +92,15 @@ class RoleOut(BaseModel):
     permissions: List[PermissionOut]
 
 class OrganizationOut(BaseModel):
-    id: Union[str, int]
+    id: Union[str, UUID, int]
     name: str
     slug: str
 
     model_config = {"from_attributes": True}
 
 class UserOut(BaseModel):
-    id: Union[str, int]
-    org_id: Optional[Union[str, int]] = None
+    id: Union[str, UUID, int]
+    org_id: Optional[Union[str, UUID, int]] = None
     username: str
     email: str
     created_at: str
@@ -237,6 +238,11 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     """
     Authenticate with email + password.
     Returns access + refresh tokens on success.
+    
+    Organization Status Validation:
+    - Users from deactivated organizations cannot log in.
+    - This prevents new sessions from being created for inactive orgs.
+    - Existing sessions are checked on every request in middleware.
     """
     from core.audit import log_audit_event
     from db.base import utcnow
@@ -263,6 +269,19 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabled",
+        )
+
+    # ─ Organization Status Check ────────────────────────────────────────────
+    # Prevent login for users whose organization has been deactivated.
+    # User statuses remain unchanged for reversibility.
+    organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+    if organization and not organization.is_active:
+        log_audit_event(db, user, "user.login_failed", request=request, status="denied", 
+                       changes={"reason": "organization deactivated"})
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your organization has been deactivated. Please contact support.",
         )
 
     if user.locked_until and user.locked_until > utcnow():

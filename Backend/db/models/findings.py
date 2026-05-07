@@ -25,7 +25,7 @@ Why normalize findings?
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, Numeric, ForeignKey,
-    Integer, SmallInteger, String, Text, UniqueConstraint, Index,
+    Integer, SmallInteger, String, Text, UniqueConstraint, Index, CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -59,6 +59,7 @@ class Service(Base):
         Index("ix_services_asset_port",  "asset_id", "port"),
         Index("ix_services_scan_asset",  "scan_id",  "asset_id"),
         Index("ix_services_service_name","service_name"),
+        CheckConstraint("port >= 1 AND port <= 65535", name="ck_service_port"),
     )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
@@ -230,6 +231,14 @@ class VulnerabilityDefinition(Base):
         Index("ix_vuln_def_cvss_v3",       "cvss_v3_score"),
         Index("ix_vuln_def_published",     "published_at"),
         Index("ix_vuln_def_source",        "source"),
+        
+        # Trigram index for fast partial vulnerability title search
+        Index("idx_vuln_def_title_trgm", "title", postgresql_using="gin",
+              postgresql_ops={"title": "gin_trgm_ops"}),
+        
+        # Integrity constraint for CVSS scores
+        CheckConstraint("cvss_v3_score >= 0.0 AND cvss_v3_score <= 10.0", 
+                        name="ck_vuln_cvss_score"),
     )
 
     id           = Column(String(30), primary_key=True)   # "CVE-2024-4577" or "CCURE-CUSTOM-001"
@@ -311,9 +320,15 @@ class AssetVulnerability(Base):
         Index("ix_asset_vuln_severity",  "severity"),
         Index("ix_asset_vuln_status",    "status"),
         Index("ix_asset_vuln_first_found","first_found_at"),
+        # Enable Hash Partitioning by org_id
+        {"postgresql_partition_by": "HASH (org_id)"}
     )
 
+    # Primary key must include the partition key in PostgreSQL partitioned tables
     id          = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
+    org_id      = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                         primary_key=True, index=True)
+    
     scan_id     = Column(UUID(as_uuid=True), ForeignKey("scans.id",   ondelete="CASCADE"),
                          nullable=False, index=True)
     asset_id    = Column(UUID(as_uuid=True), ForeignKey("assets.id",  ondelete="CASCADE"),

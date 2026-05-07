@@ -172,6 +172,34 @@ def create_user(
     )
     db.commit()
     db.refresh(new_user)
+    
+    try:
+        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
+        
+        # 1. Personal receipt for the admin who created it
+        create_notification(
+            db=db,
+            user_id=str(current_user.id),
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title="User Created",
+            message=f"Successfully created new user account: {new_user.username}",
+        )
+        
+        # 2. AUDIT TRANSPARENCY: Fan out to other admins
+        fan_out_notification(
+            db=db,
+            org_id=str(current_user.org_id),
+            target_roles=["superadmin", "org_admin"],
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title="New User Created",
+            message=f"Admin {current_user.username} created new user account: {new_user.username}",
+            exclude_user_id=str(current_user.id)
+        )
+    except Exception:
+        pass
+
     return {"id": str(new_user.id), "username": new_user.username, "organization_id": str(new_user.org_id)}
 
 @router.put("/{user_id}")
@@ -302,6 +330,34 @@ def delete_user(
         request,
     )
     db.commit()
+    
+    try:
+        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
+        
+        # 1. Personal receipt
+        create_notification(
+            db=db,
+            user_id=str(current_user.id),
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title="User Suspended",
+            message=f"User {user.username} has been moved to Deleted Users.",
+        )
+        
+        # 2. AUDIT TRANSPARENCY: Fan out
+        fan_out_notification(
+            db=db,
+            org_id=str(current_user.org_id),
+            target_roles=["superadmin", "org_admin"],
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title="User Suspended",
+            message=f"Admin {current_user.username} suspended user account: {user.username}.",
+            exclude_user_id=str(current_user.id)
+        )
+    except Exception:
+        pass
+
     return {
         "detail": "User moved to Deleted Users",
         "moved_to_deleted_users": True,

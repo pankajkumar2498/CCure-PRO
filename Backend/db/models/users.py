@@ -22,7 +22,7 @@ Production improvements over v1
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, ForeignKey, Integer,
-    SmallInteger, String, Text, inspect, text,
+    SmallInteger, String, Text, inspect, text, Index,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -166,10 +166,16 @@ class AuditLog(Base):
     status: "success" | "failure" | "denied"
     """
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_action", "action"),
+        Index("ix_audit_logs_created", "created_at"),
+        {"postgresql_partition_by": "HASH (org_id)"}
+    )
 
+    # Primary key must include the partition key for PostgreSQL partitioning
     id            = Column(BigInteger, primary_key=True, autoincrement=True)
-    org_id        = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"),
-                           nullable=True, index=True)
+    org_id        = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                           primary_key=True, nullable=False)
     user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
                            nullable=True, index=True)
 

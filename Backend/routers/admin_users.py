@@ -6,7 +6,7 @@ from datetime import datetime
 
 from auth.rbac import require_permission
 from auth.jwt_handler import hash_password
-from db.base import get_db, utcnow
+from db.base import get_db, utcnow, gen_user_id
 from db.models import (
     AssetNote,
     AssetTag,
@@ -150,7 +150,12 @@ def create_user(
     if role.name == "superadmin" and current_user.role.name != "superadmin":
         raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
 
+    # Resolve org slug for readable ID generation
+    org = db.query(Organization).filter(Organization.id == target_org_id).first()
+    org_slug = org.slug if org else target_org_id
+
     new_user = User(
+        id=gen_user_id(org_slug, user_data.username),   # e.g. usr_acm_alice_x9v1
         username=user_data.username,
         email=user_data.email,
         full_name=user_data.full_name,
@@ -201,6 +206,99 @@ def create_user(
         pass
 
     return {"id": str(new_user.id), "username": new_user.username, "organization_id": str(new_user.org_id)}
+
+
+class UserMoveOrgSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    organization_id: str   # Target org ID (e.g. "org_acme_corp")
+
+
+@router.patch("/{user_id}/organization")
+@router.patch("/{user_id}/organization/")
+def move_user_to_organization(
+    user_id: str,
+    request: Request,
+    body: UserMoveOrgSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "update"))
+):
+    """
+    Move a user to a different organization.
+
+    Rules:
+      - Only superadmins can move users across organizations.
+      - You cannot move yourself.
+      - The target organization must exist and be active.
+      - All active refresh token sessions are revoked immediately
+        so the user's next login picks up the new org context cleanly.
+
+    Example:
+      PATCH /admin/users/usr_sel_alice_x9v1/organization
+      { "organization_id": "org_acme_corp" }
+    """
+    if not _is_superadmin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only superadmins can move users between organizations."
+        )
+
+    if str(user_id) == str(current_user.id):
+        raise HTTPException(status_code=400, detail="You cannot move yourself to another organization.")
+
+    # Load the target user
+    user = db.query(User).filter(User.id == user_id, User.is_deleted.is_(False)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Validate target org
+    target_org = db.query(Organization).filter(Organization.id == body.organization_id).first()
+    if not target_org:
+        raise HTTPException(status_code=404, detail=f"Organization '{body.organization_id}' not found.")
+    if not target_org.is_active:
+        raise HTTPException(status_code=400, detail=f"Organization '{target_org.name}' is deactivated.")
+
+    # No-op if already in that org
+    if str(user.org_id) == str(body.organization_id):
+        return {
+            "detail": f"User '{user.username}' is already in organization '{target_org.name}'.",
+            "no_change": True,
+        }
+
+    old_org_id = str(user.org_id)
+    old_org = db.query(Organization).filter(Organization.id == old_org_id).first()
+    old_org_name = old_org.name if old_org else old_org_id
+
+    # Move the user
+    user.org_id = body.organization_id
+
+    # Revoke all active sessions — next login will get a fresh token with new org context
+    db.query(RefreshTokenSession).filter(
+        RefreshTokenSession.user_id == user.id
+    ).delete(synchronize_session=False)
+
+    log_audit_event(
+        db=db,
+        user=current_user,
+        action="user.organization_changed",
+        resource_type="user",
+        resource_id=str(user.id),
+        changes={
+            "org_id": {"old": old_org_id, "new": body.organization_id},
+            "old_org_name": old_org_name,
+            "new_org_name": target_org.name,
+        },
+        request=request,
+    )
+    db.commit()
+
+    return {
+        "detail": f"User '{user.username}' moved successfully.",
+        "user_id": str(user.id),
+        "username": user.username,
+        "old_organization": {"id": old_org_id, "name": old_org_name},
+        "new_organization": {"id": str(target_org.id), "name": target_org.name},
+        "sessions_revoked": True,
+    }
 
 @router.put("/{user_id}")
 @router.put("/{user_id}/")
@@ -271,6 +369,9 @@ def change_status(
         
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+        
+    if str(user.id) == str(current_user.id) and status_data.is_active is False:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
         
     changes = {}
     if status_data.is_active is not None and user.is_active != status_data.is_active:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
 from auth.dependencies import get_current_user
-from db.base import get_db
+from db.base import get_db, gen_org_id
 from db.models import Organization, User
 from core.audit import log_audit_event
 
@@ -124,6 +124,7 @@ def create_organization(
     
     try:
         new_org = Organization(
+            id=gen_org_id(org_data.slug),   # e.g. org_acme_corp
             name=org_data.name,
             slug=org_data.slug,
             plan=org_data.plan,

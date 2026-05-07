@@ -9,22 +9,20 @@ Tables
   refresh_token_sessions — JWT refresh token rotation with revocation support
   audit_logs             — Immutable record of every user action (SIEM-ready)
 
-Production improvements over v1
-────────────────────────────────
-  - UUID primary keys (not sequential integers) — prevents user enumeration
-  - org_id FK — full multi-tenant isolation
-  - role_id FK — fine-grained RBAC
-  - is_active + is_verified — account lifecycle management
-  - failed_login_count / locked_until — brute-force protection
-  - preferences JSONB — per-user UI settings without extra migrations
-  - AuditLog table — full immutable action trail (required for SOC 2 / ISO 27001)
+ID Convention (Stripe-Style)
+─────────────────────────────
+  User     →  usr_{org_3chars}_{username}_{4rand}
+               e.g.  usr_def_pankaj_x9v1
+                     usr_acm_alice_3k8p
+
+  The org_id FK uses ON UPDATE CASCADE so renaming an org auto-updates all users.
 """
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, ForeignKey, Integer,
     SmallInteger, String, Text, inspect, text, Index,
 )
-from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import relationship
 
 from db.base import Base, TIMESTAMPTZ, gen_uuid, utcnow
@@ -38,26 +36,26 @@ class User(Base):
     """
     An individual user account — always scoped to one Organization.
 
+    ID: usr_{org_3chars}_{username}_{4rand}
+        e.g. usr_def_pankaj_x9v1
+
     Lifecycle states
     ────────────────
       is_active=False   → Account disabled by admin (soft lock)
-      is_verified=False → Email not yet confirmed (for future email workflow)
+      is_verified=False → Email not yet confirmed
       locked_until      → Time-based lockout after too many failed logins
-
-    preferences JSONB examples:
-      {
-        "theme": "dark",
-        "default_scan_type": "asset",
-        "email_alerts": true,
-        "timezone": "Asia/Kolkata"
-      }
     """
     __tablename__ = "users"
 
-    id              = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
-    org_id          = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+    # Stripe-style readable ID: "usr_def_pankaj_x9v1"
+    id              = Column(String(150), primary_key=True)
+
+    # ON UPDATE CASCADE: if org_id (org_default) changes to org_acme,
+    # all users of that org get their org_id updated automatically.
+    org_id          = Column(String(100), ForeignKey("organizations.id",
+                             ondelete="CASCADE", onupdate="CASCADE"),
                              nullable=False, index=True)
-    role_id         = Column(SmallInteger,       ForeignKey("roles.id", ondelete="RESTRICT"),
+    role_id         = Column(SmallInteger, ForeignKey("roles.id", ondelete="RESTRICT"),
                              nullable=False, index=True)
 
     # ── Identity ──────────────────────────────────────────────────────────────
@@ -72,12 +70,12 @@ class User(Base):
     is_verified      = Column(Boolean, nullable=False, default=False)
     last_login_at    = Column(TIMESTAMPTZ, nullable=True)
     failed_login_count = Column(Integer, nullable=False, default=0)
-    locked_until     = Column(TIMESTAMPTZ, nullable=True)   # null = not locked
+    locked_until     = Column(TIMESTAMPTZ, nullable=True)
     deleted_at       = Column(TIMESTAMPTZ, nullable=True)
 
     # ── Profile ───────────────────────────────────────────────────────────────
     avatar_url      = Column(String(512), nullable=True)
-    preferences     = Column(JSONB, nullable=False, default=dict)  # Per-user settings
+    preferences     = Column(JSONB, nullable=False, default=dict)
 
     # ── Audit ─────────────────────────────────────────────────────────────────
     created_at      = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
@@ -94,7 +92,7 @@ class User(Base):
     asset_tags      = relationship("AssetTag",  back_populates="created_by_user", passive_deletes=True)
 
     def __repr__(self):
-        return f"<User {self.username!r}>"
+        return f"<User {self.id!r}>"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,22 +102,17 @@ class User(Base):
 class RefreshTokenSession(Base):
     """
     Tracks issued JWT refresh tokens for rotation and revocation.
-
-    token_jti   — JWT ID (unique per token; stored in the JWT payload)
-    token_hash  — bcrypt/sha256 hash of the raw token (never store raw tokens)
-    replaced_by — When a token is rotated, records the JTI of its successor
-                  (allows detecting token-reuse attacks)
-    device_info — User-agent / device fingerprint for the "active sessions" UI
-
-    Revocation model: token is invalid if (revoked_at IS NOT NULL) OR (expires_at < NOW())
+    Uses BigInteger PK — high-volume table, small integer is most efficient.
     """
     __tablename__ = "refresh_token_sessions"
 
     id          = Column(BigInteger, primary_key=True, autoincrement=True)
-    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
-                         nullable=False, index=True)
-    org_id      = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
-                         nullable=False, index=True)
+    user_id     = Column(String(150), ForeignKey("users.id",
+                          ondelete="CASCADE", onupdate="CASCADE"),
+                          nullable=False, index=True)
+    org_id      = Column(String(100), ForeignKey("organizations.id",
+                          ondelete="CASCADE", onupdate="CASCADE"),
+                          nullable=False, index=True)
 
     token_jti   = Column(String(128), nullable=False, unique=True, index=True)
     token_hash  = Column(String(255), nullable=False, unique=True)
@@ -127,11 +120,10 @@ class RefreshTokenSession(Base):
     issued_at   = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     expires_at  = Column(TIMESTAMPTZ, nullable=False)
     revoked_at  = Column(TIMESTAMPTZ, nullable=True)
-    replaced_by = Column(String(128), nullable=True)    # JTI of successor token
+    replaced_by = Column(String(128), nullable=True)
 
-    # Device context — shown in "Active Sessions" UI
-    ip_address  = Column(INET,   nullable=True)
-    device_info = Column(JSONB,  nullable=True, default=dict)  # {user_agent, os, browser}
+    ip_address  = Column(INET,  nullable=True)
+    device_info = Column(JSONB, nullable=True, default=dict)
 
     user = relationship("User", back_populates="refresh_tokens")
 
@@ -152,48 +144,44 @@ class AuditLog(Base):
     """
     Immutable record of every user action — never updated or deleted.
 
+    ID: aud_{org_3chars}_{action}_{4rand}
+        e.g. aud_def_scan_created_x9v1
+
     Required for: SOC 2 Type II, ISO/IEC 27001, PCI-DSS, HIPAA audits.
-
-    action examples:
-      user.login, user.login_failed, user.logout
-      scan.created, scan.cancelled, scan.deleted
-      asset.tagged, asset.note_added
-      report.exported, settings.changed
-
-    changes JSONB shape (for update events):
-      {"before": {"status": "running"}, "after": {"status": "cancelled"}}
-
-    status: "success" | "failure" | "denied"
     """
     __tablename__ = "audit_logs"
     __table_args__ = (
         Index("ix_audit_logs_action", "action"),
         Index("ix_audit_logs_created", "created_at"),
+        Index("ix_audit_logs_org_id", "org_id"),
         {"postgresql_partition_by": "HASH (org_id)"}
     )
 
-    # Primary key must include the partition key for PostgreSQL partitioning
-    id            = Column(BigInteger, primary_key=True, autoincrement=True)
-    org_id        = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
-                           primary_key=True, nullable=False)
-    user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
-                           nullable=True, index=True)
+    # Stripe-style readable ID: "aud_def_scan_created_x9v1"
+    id            = Column(String(200), primary_key=True)
 
-    action        = Column(String(100), nullable=False, index=True)  # "scan.created"
-    resource_type = Column(String(100), nullable=True)               # "scan" | "asset" | "user"
-    resource_id   = Column(String(255), nullable=True)               # UUID or integer as string
+    org_id        = Column(String(100), ForeignKey("organizations.id",
+                            ondelete="CASCADE", onupdate="CASCADE"),
+                            primary_key=True, nullable=False)
+    user_id       = Column(String(150), ForeignKey("users.id",
+                            ondelete="SET NULL", onupdate="CASCADE"),
+                            nullable=True, index=True)
 
-    changes       = Column(JSONB, nullable=True)       # before/after diff
+    action        = Column(String(100), nullable=False, index=True)
+    resource_type = Column(String(100), nullable=True)
+    resource_id   = Column(String(255), nullable=True)  # The readable ID of the resource
+
+    changes       = Column(JSONB, nullable=True)
     ip_address    = Column(INET,  nullable=True)
     user_agent    = Column(Text,  nullable=True)
-    status        = Column(String(20), nullable=False, default="success")  # success | failure | denied
+    status        = Column(String(20), nullable=False, default="success")
 
     created_at    = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
 
     user = relationship("User", back_populates="audit_logs")
 
     def __repr__(self):
-        return f"<AuditLog action={self.action!r} user={self.user_id}>"
+        return f"<AuditLog {self.id!r} action={self.action!r}>"
 
 
 def ensure_user_schema():

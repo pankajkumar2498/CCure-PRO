@@ -30,7 +30,7 @@ from auth.jwt_handler import (
     revoke_refresh_token,
     verify_password,
 )
-from db.base import get_db
+from db.base import get_db, gen_org_id, gen_user_id
 from db.models import User, Organization, Role
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -170,6 +170,7 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     # Create self-service org if it doesn't exist
     if not self_service_org:
         self_service_org = Organization(
+            id=gen_org_id("self-service"),   # → org_self-service
             name="Self-Service Users",
             slug="self-service",
             plan="community",
@@ -187,6 +188,7 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
         raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
 
     user = User(
+        id=gen_user_id(self_service_org.slug, req.username.strip()),  # → usr_sel_pankaj_x9v1
         username=req.username.strip(),
         email=req.email,
         password_hash=hash_password(req.password),

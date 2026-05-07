@@ -13,9 +13,10 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from db.models.users import User
+from db.models.rbac import Organization
 from db.models.scans import Scan, ScanPhase
 from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_advanced_scan
-from db.base import utcnow
+from db.base import utcnow, gen_scan_id, gen_scan_phase_id
 
 
 def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Optional[Scan]:
@@ -99,7 +100,11 @@ def create_scan(
 ) -> Scan:
     """Create an empty running scan before Phase 1 starts."""
     org_id = _get_org_id(db, user_id)
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org_slug = org.slug if org else org_id
+    
     scan = Scan(
+        id=gen_scan_id(org_slug),
         org_id=org_id,
         created_by=user_id,
         scan_no=_next_scan_no(db, org_id, user_id),
@@ -150,6 +155,7 @@ def update_scan_phase1(
     full_summary = {**summary, "_phase_data": hosts_data}
 
     phase_row = ScanPhase(
+        id=gen_scan_phase_id(scan.id, "host_discovery"),
         scan_id=scan.id,
         phase_key="host_discovery",
         phase_order=1,
@@ -250,6 +256,7 @@ def update_scan_phase(
             phase_row.started_at = now
     else:
         phase_row = ScanPhase(
+            id=gen_scan_phase_id(scan.id, phase_key),
             scan_id=scan.id,
             phase_key=phase_key,
             phase_order=phase,
@@ -385,9 +392,12 @@ def create_completed_scan(
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
     org_id = _get_org_id(db, user_id)
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org_slug = org.slug if org else org_id
     base_targets = targets or [target]
     
     scan = Scan(
+        id=gen_scan_id(org_slug),
         org_id=org_id,
         created_by=user_id,
         scan_no=_next_scan_no(db, org_id, user_id),
@@ -427,6 +437,7 @@ def create_completed_scan(
             hosts_data = hosts_data or [{"ip_address": target}]
 
         phase_row = ScanPhase(
+            id=gen_scan_phase_id(scan.id, phase_key),
             scan_id=scan.id,
             phase_key=phase_key,
             phase_order=phase_order,

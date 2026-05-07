@@ -12,7 +12,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from db.models.assets import Asset
 from db.models.findings import Service, AssetVulnerability, VulnerabilityDefinition
-from db.base import utcnow
+from db.models.rbac import Organization
+from db.base import utcnow, gen_asset_id, gen_service_id
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
 
     macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h) != "00:00:00:00:00:00"]
     ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org_slug = org.slug if org else org_id
 
     # Pre-fetch existing assets in one go
     existing_assets = []
@@ -90,6 +94,7 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
         else:
             # Prepare new asset for bulk insert
             new_asset = Asset(
+                id=gen_asset_id(org_slug, ip if ip != "0.0.0.0" else (mac or "unknown")),
                 org_id=org_id,
                 ip_address=ip if ip != "0.0.0.0" else None,
                 mac_address=mac if mac != "00:00:00:00:00:00" else None,
@@ -188,6 +193,7 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
                 svc.scan_id = scan_id
             else:
                 svc = Service(
+                    id=gen_service_id(ip, int(port_num), proto),
                     asset_id=asset.id,
                     scan_id=scan_id,
                     port=int(port_num),
@@ -310,6 +316,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
                 finding.scan_id = scan_id
             else:
                 finding = AssetVulnerability(
+                    id=f"fnd_{asset.id}_{cve_def.id}",
                     scan_id=scan_id,
                     asset_id=asset.id,
                     vuln_id=cve_def.id,

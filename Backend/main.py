@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
     from db.models.users import User
     from db.models.rbac import Organization, Role
     from auth.jwt_handler import hash_password
-    from db.base import SessionLocal
+    from db.base import SessionLocal, gen_user_id
 
     with SessionLocal() as db:
         admin_email = "admin@ccurepro.com"
@@ -134,6 +134,7 @@ async def lifespan(app: FastAPI):
             role = db.query(Role).filter(Role.name == "superadmin").first()
             if org and role:
                 admin = User(
+                    id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1
                     username="admin",
                     email=admin_email,
                     password_hash=hash_password("AdminCdac@123"),

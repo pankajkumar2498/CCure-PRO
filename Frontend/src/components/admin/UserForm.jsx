@@ -36,7 +36,7 @@ export default function UserForm({
         email: user.email || "",
         password: "",
         role_id: user.role_id ?? "",
-        organization_id: user.organization_id ?? "",
+        organization_id: user.organization_id || user.org_id || "",
       });
     } else {
       setForm({
@@ -48,12 +48,12 @@ export default function UserForm({
 
   const isRoleSelected = useMemo(() => !!form.role_id, [form.role_id]);
   const isOrganizationSelected = useMemo(
-    () => mode !== "create" || !isSuperadmin || !!form.organization_id,
-    [form.organization_id, isSuperadmin, mode]
+    () => !isSuperadmin || !!form.organization_id,
+    [form.organization_id, isSuperadmin]
   );
   const canSubmit = mode === "create"
     ? form.username.trim() && form.email.trim() && form.password.trim() && isRoleSelected && isOrganizationSelected
-    : form.email.trim() && isRoleSelected;
+    : form.email.trim() && isRoleSelected && isOrganizationSelected;
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -140,7 +140,7 @@ export default function UserForm({
           />
         </FormField>
 
-        {mode === "create" && isSuperadmin && (
+        {isSuperadmin && (
           <FormField label="Organization" className="field--full">
             <select
               className="field-input"

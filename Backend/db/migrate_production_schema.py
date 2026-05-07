@@ -39,7 +39,7 @@ if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
 from sqlalchemy import text, inspect
-from db.base import engine, Base
+from db.base import engine, Base, gen_org_id
 
 # Import ALL models so SQLAlchemy knows about them before create_all()
 from db.models.rbac          import Organization, Role, Permission, RolePermission
@@ -50,7 +50,7 @@ from db.models.findings      import (
     Service, TLSDetail, HttpSecurityDetail,
     VulnerabilityDefinition, AssetVulnerability,
 )
-from db.models.notifications import Notification  # ← must be imported so create_all() creates the table
+from db.models.notifications import Notification
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RBAC Seed Data
@@ -170,8 +170,8 @@ ROLE_PERMISSIONS = {
     ],
 }
 
-DEFAULT_ORG_NAME = "Default Organization"
-DEFAULT_ORG_SLUG = "default"
+DEFAULT_ORG_NAME = "superadmin"
+DEFAULT_ORG_SLUG = "KING"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -265,20 +265,46 @@ def create_all_tables():
         sync_missing_columns(conn)
     
     # ── Create Partitions ───────────────────────────────────────────────────
-    # Since SQLAlchemy create_all() creates the parent partitioned table 
-    # but not the actual partitions, we create 8 hash partitions here.
+    # SQLAlchemy create_all() creates the parent partitioned table but not
+    # the actual child partitions. We create 8 hash partitions here.
+    # IMPORTANT: Only runs if the table is actually a partitioned table in PG.
+    # If the table was created as a regular table (legacy schema), we skip it
+    # gracefully with a warning instead of crashing.
     with engine.begin() as conn:
         print(f"\n  Creating table partitions (Enterprise Mode)...")
         partition_targets = ["audit_logs", "asset_vulnerabilities"]
         for table in partition_targets:
+            # Check if this table is actually a partitioned table in PostgreSQL
+            is_partitioned = conn.execute(text("""
+                SELECT COUNT(*) FROM pg_partitioned_table pt
+                JOIN pg_class c ON c.oid = pt.partrelid
+                WHERE c.relname = :table_name
+            """), {"table_name": table}).scalar()
+
+            if not is_partitioned:
+                print(f"    ⚠  Skipping partitions for '{table}' — table exists as a regular "
+                      f"(non-partitioned) table. Drop and recreate it to enable partitioning.")
+                continue
+
+            created = 0
             for i in range(8):
                 partition_name = f"{table}_p{i}"
-                conn.execute(text(f"""
-                    CREATE TABLE IF NOT EXISTS {partition_name} 
-                    PARTITION OF {table} 
-                    FOR VALUES WITH (MODULUS 8, REMAINDER {i})
-                """))
-            print(f"    ✓ 8 partitions created for {table}")
+                # Check if partition already exists before creating
+                already_exists = conn.execute(text("""
+                    SELECT COUNT(*) FROM pg_class
+                    WHERE relname = :pname
+                """), {"pname": partition_name}).scalar()
+                if not already_exists:
+                    conn.execute(text(f"""
+                        CREATE TABLE {partition_name}
+                        PARTITION OF {table}
+                        FOR VALUES WITH (MODULUS 8, REMAINDER {i})
+                    """))
+                    created += 1
+            if created > 0:
+                print(f"    ✓ {created} new partitions created for '{table}'")
+            else:
+                print(f"    ✓ All 8 partitions already exist for '{table}'")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -370,7 +396,7 @@ def seed_rbac(conn):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def seed_default_org(conn):
-    _print_header("Step 4: Seeding Default Organization")
+    _print_header("Step 4: Seeding Default Organization (Stripe-Style ID)")
 
     existing = conn.execute(
         text("SELECT id, name FROM organizations WHERE slug = :slug"),
@@ -381,18 +407,22 @@ def seed_default_org(conn):
         print(f"  ✓ Default organization already exists: '{existing[1]}' (id={existing[0]})")
         return existing[0]
 
+    # Stripe-style readable ID: "org_default"
+    org_id = gen_org_id(DEFAULT_ORG_SLUG)
+
     result = conn.execute(
         text("""
             INSERT INTO organizations
                 (id, name, slug, plan, max_assets, max_users, is_active, settings, created_at, updated_at)
             VALUES
-                (gen_random_uuid(), :name, :slug, 'pro', 10000, 100, true, '{}', NOW(), NOW())
+                (:id, :name, :slug, 'pro', 10000, 100, true, '{}', NOW(), NOW())
             RETURNING id, name
         """),
-        {"name": DEFAULT_ORG_NAME, "slug": DEFAULT_ORG_SLUG},
+        {"id": org_id, "name": DEFAULT_ORG_NAME, "slug": DEFAULT_ORG_SLUG},
     )
     row = result.fetchone()
     print(f"  + Created default organization: '{row[1]}' (id={row[0]})")
+    print(f"  ✔ ID is human-readable: {row[0]!r} (not a UUID!)")
     return row[0]
 
 
@@ -433,10 +463,19 @@ def print_summary(conn):
         print(f"  {table:<30} {count_str:>8}   {purpose}")
 
     print(f"\n  ✅ Production schema is ready.")
+    print(f"")
+    print(f"  ✨ Stripe-Style ID Examples (what you'll see in your DB now):")
+    print(f"     org_default              → Default Organization")
+    print(f"     usr_def_pankaj_x9v1      → User 'pankaj' in default org")
+    print(f"     scn_def_07may25_x9v1     → Scan run on May 7 2025 in default org")
+    print(f"     ast_def_192.168.1.5      → Host 192.168.1.5 in default org")
+    print(f"     svc_192.168.1.5_22_tcp   → TCP/22 service on that host")
+    print(f"     fnd_ast_def_...CVE-2024  → Finding: CVE on that host")
+    print(f"")
     print(f"  Next steps:")
-    print(f"    1. Update auth/models.py to point to db.base (engine, SessionLocal, Base)")
-    print(f"    2. Create your first admin user via the /auth/register endpoint")
-    print(f"    3. Run: python -m db.asset_registry.sync  (after any scan completion)")
+    print(f"    1. Create your first admin user via the /auth/register endpoint")
+    print(f"    2. The user ID will look like: usr_def_[username]_[4rand]")
+    print(f"    3. Run scans — scan IDs will look like: scn_def_[ddmonyy]_[4rand]")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

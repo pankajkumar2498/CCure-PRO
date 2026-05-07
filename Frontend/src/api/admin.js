@@ -20,6 +20,11 @@ export const changeUserRole = async (userId, roleId) => {
   return response.data;
 };
 
+export const moveUserOrganization = async (userId, orgId) => {
+  const response = await axiosInstance.patch(`/admin/users/${userId}/organization/`, { organization_id: orgId });
+  return response.data;
+};
+
 export const changeUserStatus = async (userId, statusData) => {
   const response = await axiosInstance.patch(`/admin/users/${userId}/status/`, statusData);
   return response.data;

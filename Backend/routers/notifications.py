@@ -27,12 +27,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
 
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from db.base import get_db
+from db.base import get_db, gen_notification_id
 from db.models import User, Notification, Role
 from auth.dependencies import get_current_user
 
@@ -68,7 +67,7 @@ class NotificationCategory(str, Enum):
 
 class NotificationResponse(BaseModel):
     """Notification response model."""
-    id: UUID
+    id: str
     type: str
     category: str
     title: str
@@ -111,7 +110,11 @@ def create_notification(
     
     Called internally when scan completes, vulnerability is found, etc.
     """
+    user = db.query(User).filter(User.id == user_id).first()
+    username = user.username if user else user_id
+
     notification = Notification(
+        id=gen_notification_id(username, notification_type.value),
         user_id=user_id,
         type=notification_type.value,
         category=category.value,
@@ -171,6 +174,7 @@ def fan_out_notification(
             continue
 
         notification = Notification(
+            id=gen_notification_id(user.username, notification_type.value),
             user_id=user.id,
             type=notification_type.value,
             category=category.value,

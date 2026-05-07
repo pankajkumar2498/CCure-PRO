@@ -11,6 +11,7 @@ import {
   changeUserRole,
   changeUserStatus,
   deleteUser,
+  moveUserOrganization,
 } from "../../api/admin";
 import Button from "../../components/common/Button";
 import Modal from "../../components/layout/Modal";
@@ -145,6 +146,16 @@ export default function UserManagement() {
         await changeUserRole(selectedUser.id, data.role_id);
       }
 
+      if (
+        data.organization_id &&
+        String(data.organization_id) !== String(selectedUser.organization_id || selectedUser.org_id)
+      ) {
+        await moveUserOrganization(selectedUser.id, data.organization_id);
+        if (currentUser.id === selectedUser.id) {
+          pushToast("Organization changed. You will need to log in again.", "warning");
+        }
+      }
+
       pushToast("User updated successfully.", "success");
       closeModal();
       await loadData();
@@ -272,6 +283,7 @@ export default function UserManagement() {
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
           totalCount={filteredUsers.length}
+          currentUser={currentUser}
           onEdit={openEditModal}
           onToggleStatus={handleToggleStatus}
           onUnlock={handleUnlockUser}

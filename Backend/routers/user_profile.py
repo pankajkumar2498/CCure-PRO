@@ -17,7 +17,6 @@ Endpoints
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, field_validator
@@ -95,7 +94,7 @@ class PreferencesRequest(BaseModel):
 
 class UserProfileResponse(BaseModel):
     """User profile information."""
-    id: UUID
+    id: str
     username: str
     email: str
     full_name: Optional[str]

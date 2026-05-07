@@ -10,18 +10,21 @@ Tables
   permissions     — Granular permission atoms  (resource × action)
   role_permissions— M:M bridge: which permissions each role holds
 
-This mirrors Nessus / Tenable.io's "Access Group" concept, allowing
-multiple teams to share the same CCure instance with strict data isolation.
+ID Convention (Stripe-Style)
+─────────────────────────────
+  Organization  →  org_{slug}          e.g. org_default, org_acme
+  Role          →  SmallInteger (kept — roles are system-seeded and never renamed)
+  Permission    →  SmallInteger (kept — permissions are system-seeded atoms)
 """
 
 from sqlalchemy import (
     Boolean, Column, ForeignKey, Integer, SmallInteger,
     String, Text, UniqueConstraint, Index,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
-from db.base import Base, TIMESTAMPTZ, gen_uuid, utcnow
+from db.base import Base, TIMESTAMPTZ, utcnow
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,20 +38,26 @@ class Organization(Base):
     Every User, Asset, and Scan belongs to exactly one Organization.
     Data from Org A is NEVER visible to Org B (enforced at query level).
 
+    ID Convention:
+      id = gen_org_id(slug)  →  e.g. "org_default", "org_acme_corp"
+      This ID is readable and used as FK in all child tables.
+      ON UPDATE CASCADE means: if you ever rename the slug, all child rows update.
+
     plan         — 'community' | 'pro' | 'enterprise'  (controls feature flags)
     max_assets   — Hard cap enforced at scan save time
     settings     — JSONB bag for per-org feature flags (e.g. {"sso_enabled": true})
     """
     __tablename__ = "organizations"
 
-    id          = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
+    # Stripe-style readable ID: "org_default", "org_acme"
+    id          = Column(String(100), primary_key=True)
     name        = Column(String(255), nullable=False, unique=True)
     slug        = Column(String(100), nullable=False, unique=True)  # URL-safe short name
-    plan        = Column(String(50),  nullable=False, default="community")  # community | pro | enterprise
+    plan        = Column(String(50),  nullable=False, default="community")
     max_assets  = Column(Integer, nullable=False, default=500)
     max_users   = Column(Integer, nullable=False, default=10)
     is_active   = Column(Boolean, nullable=False, default=True)
-    settings    = Column(JSONB,   nullable=False, default=dict)    # Feature flags / custom config
+    settings    = Column(JSONB,   nullable=False, default=dict)
 
     created_at  = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at  = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
@@ -59,7 +68,7 @@ class Organization(Base):
     scans  = relationship("Scan",  back_populates="organization", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Organization {self.slug!r} plan={self.plan!r}>"
+        return f"<Organization {self.id!r} plan={self.plan!r}>"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,15 +77,8 @@ class Organization(Base):
 
 class Role(Base):
     """
-    System-wide role definitions.  Five built-in roles mirror Tenable / Nessus:
-
-      superadmin  — Full platform access (CCure SaaS admin; not bound to any org)
-      org_admin   — Full access within their Organization (create users, manage scans)
-      analyst     — Can run scans, view all results, generate reports
-      viewer      — Read-only: view dashboards and existing scan history
-      scanner     — API-only service account; can submit and read back scan jobs
-
-    is_system_role=True means this role is seeded at startup and cannot be deleted.
+    System-wide role definitions.  Five built-in roles mirror Tenable / Nessus.
+    Roles keep SmallInteger PKs — they are seeded once and never renamed by users.
     """
     __tablename__ = "roles"
 
@@ -100,23 +102,15 @@ class Role(Base):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Permission(Base):
-    """
-    Atomic permission tokens: resource × action.
-
-    resource examples: scans, assets, reports, users, settings, credentials
-    action   examples: create, read, update, delete, execute, export
-
-    These are additive — a Role accumulates all permissions assigned to it
-    via the role_permissions bridge table.
-    """
+    """Atomic permission tokens: resource × action."""
     __tablename__ = "permissions"
     __table_args__ = (
         UniqueConstraint("resource", "action", name="uq_permissions_resource_action"),
     )
 
     id       = Column(SmallInteger, primary_key=True, autoincrement=True)
-    resource = Column(String(100), nullable=False)   # e.g. "scans", "assets", "reports"
-    action   = Column(String(50),  nullable=False)   # e.g. "create", "read", "execute"
+    resource = Column(String(100), nullable=False)
+    action   = Column(String(50),  nullable=False)
     description = Column(Text, nullable=True)
 
     roles = relationship("RolePermission", back_populates="permission", cascade="all, delete-orphan")

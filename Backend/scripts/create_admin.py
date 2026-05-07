@@ -13,6 +13,7 @@ from db.base import SessionLocal
 from db.models.users import User
 from db.models.rbac import Organization, Role
 from auth.jwt_handler import hash_password
+from db.base import SessionLocal, gen_user_id
 
 def create_admin():
     email = "admin@ccurepro.com"
@@ -37,6 +38,7 @@ def create_admin():
 
         # 3. Create user
         new_user = User(
+            id=gen_user_id(org.slug, username),  # e.g. usr_def_admin_x9v1
             username=username,
             email=email,
             password_hash=hash_password(password),

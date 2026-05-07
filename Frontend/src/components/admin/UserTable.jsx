@@ -8,9 +8,10 @@ const statusConfig = {
   locked: { label: "Locked", className: "chip chip--danger" },
 };
 
-function TableRow({ user, roleName, organizationName, showOrganizationColumn, onEdit, onToggleStatus, onUnlock, onDelete }) {
+function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onToggleStatus, onUnlock, onDelete }) {
   const isLocked = user.locked_until && new Date(user.locked_until) > new Date();
   const status = isLocked ? statusConfig.locked : user.is_active ? statusConfig.active : statusConfig.inactive;
+  const isSelf = currentUser && String(currentUser.id) === String(user.id);
 
   return (
     <tr>
@@ -49,24 +50,28 @@ function TableRow({ user, roleName, organizationName, showOrganizationColumn, on
               Unlock
             </Button>
           )}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            title={user.is_active ? "Deactivate user" : "Activate user"}
-            onClick={() => onToggleStatus(user)}
-          >
-            {user.is_active ? "⏻ Deactivate" : "▶ Activate"}
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            title="Delete user"
-            onClick={() => onDelete(user)}
-          >
-            🗑️ Delete
-          </Button>
+          {!isSelf && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                title={user.is_active ? "Deactivate user" : "Activate user"}
+                onClick={() => onToggleStatus(user)}
+              >
+                {user.is_active ? "⏻ Deactivate" : "▶ Activate"}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                title="Delete user"
+                onClick={() => onDelete(user)}
+              >
+                🗑️ Delete
+              </Button>
+            </>
+          )}
         </div>
       </td>
     </tr>
@@ -85,6 +90,7 @@ export default function UserTable({
   pageSize,
   onPageChange,
   totalCount,
+  currentUser,
   onEdit,
   onToggleStatus,
   onUnlock,
@@ -158,6 +164,7 @@ export default function UserTable({
                       roleName={roleName}
                       organizationName={organizationName}
                       showOrganizationColumn={showOrganizationColumn}
+                      currentUser={currentUser}
                       onEdit={onEdit}
                       onToggleStatus={onToggleStatus}
                       onUnlock={onUnlock}

@@ -283,9 +283,9 @@ export default function OrganizationManagement() {
 
       {/* Create Org Modal */}
       {isCreateModalOpen && (
-        <Modal 
-          isOpen={isCreateModalOpen} 
-          title="Provision New Organization" 
+        <Modal
+          isOpen={isCreateModalOpen}
+          title="Provision New Organization"
           onClose={() => setIsCreateModalOpen(false)}
         >
           <OrganizationForm
@@ -300,8 +300,8 @@ export default function OrganizationManagement() {
 
       {/* Edit Org Modal */}
       {isEditModalOpen && (
-        <Modal 
-          isOpen={isEditModalOpen} 
+        <Modal
+          isOpen={isEditModalOpen}
           title={selectedOrg ? `Edit ${selectedOrg.name}` : "Edit organization"}
           onClose={() => setIsEditModalOpen(false)}
         >

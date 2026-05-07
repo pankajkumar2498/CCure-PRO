@@ -31,7 +31,12 @@ export default function Login() {
       await login({ email, password });
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed. Check your credentials.");
+      let errMsg = "Login failed. Check your credentials.";
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+      }
+      setError(errMsg);
     } finally {
       setLoading(false);
     }

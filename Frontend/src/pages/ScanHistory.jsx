@@ -245,6 +245,10 @@ function DetailModal({ scanId, onClose }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const summaryEntries = Object.entries(detail?.summary || {}).filter(([key, value]) => {
+    if (String(key).startsWith("_")) return false;
+    return value == null || ["string", "number", "boolean"].includes(typeof value);
+  });
 
   useEffect(() => {
     getScan(scanId)
@@ -299,11 +303,11 @@ function DetailModal({ scanId, onClose }) {
             </div>
 
             {/* Summary */}
-            {detail.summary && Object.keys(detail.summary).length > 0 && (
+            {summaryEntries.length > 0 && (
               <div className="detail-section">
                 <h4 className="section-title" style={{ marginBottom: 8 }}>Summary</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  {Object.entries(detail.summary).map(([k, v]) => (
+                  {summaryEntries.map(([k, v]) => (
                     <div key={k} style={{ display: "flex", gap: 12, padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}>
                       <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-muted)", minWidth: 160 }}>
                         {k.replace(/_/g, " ")}

@@ -89,6 +89,13 @@ function CredTable({ head, rows }) {
   );
 }
 
+const maskSecretLine = value => {
+  const text = String(value ?? "");
+  const eq = text.indexOf("=");
+  if (eq === -1) return text.replace(/(:\s*)(.+)$/i, "$1********");
+  return `${text.slice(0, eq + 1)}********`;
+};
+
 function hydrateFromHistory(detail) {
   const report = detail?.results?.credentialed?.report;
   return report ? { scan_id: detail.id, scan_no: detail.scan_no ?? detail.display_id, ...report } : null;
@@ -197,6 +204,17 @@ export default function CredentialedResults() {
 
   const SEV_ORDER   = ["All", "Critical", "High", "Medium", "Low", "Info"];
   const filteredCves = cveFilter === "All" ? cves : cves.filter(c => c.severity === cveFilter);
+  const vulnerablePackageNames = new Set(
+    cves.map(c => String(c.package || "").toLowerCase()).filter(Boolean)
+  );
+  const packagesWithCves = packages.filter(pkg => vulnerablePackageNames.has(String(pkg.name || "").toLowerCase()));
+  const hasAdvancedEvidence = Boolean(
+    sudo_rules_raw ||
+    network_interfaces_raw ||
+    failed_logins_recent.length > 0 ||
+    env_vars_flagged.length > 0 ||
+    packages.length > 0
+  );
 
   return (
     <AppLayout pageTitle="Credentialed Results">
@@ -363,14 +381,6 @@ export default function CredentialedResults() {
               </div>
             </div>
           )}
-          {sudo_rules_raw && (
-            <div style={{ marginTop: 12 }}>
-              <h4 className="section-title">Sudo Rules</h4>
-              <pre style={{ background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-mid)", overflowX: "auto", maxHeight: 160, overflowY: "auto" }}>
-                {sudo_rules_raw}
-              </pre>
-            </div>
-          )}
         </Section>
 
         {/* Running Services */}
@@ -407,22 +417,21 @@ export default function CredentialedResults() {
         )}
 
         {/* Packages */}
-        {packages.length > 0 && (
-          <Section title={`📦 Installed Packages (${package_count})`}>
+        {packagesWithCves.length > 0 && (
+          <Section title={`Packages with CVE Matches (${packagesWithCves.length})`}>
             <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-              Packages with CVE matches are highlighted.
+              Showing only packages that match vulnerability findings.
             </p>
             <CredTable
               head={["Package", "Version", "Manager", "CVE?"]}
-              rows={packages.map(pkg => {
-                const hasCve = cves.some(c => c.package?.toLowerCase() === pkg.name?.toLowerCase());
+              rows={packagesWithCves.map(pkg => {
                 return {
-                  _style: hasCve ? { background: "rgba(249,115,22,0.07)" } : {},
+                  _style: { background: "rgba(249,115,22,0.07)" },
                   cells: [
-                    { content: <span style={{ color: hasCve ? "#f97316" : undefined }}>{pkg.name}{hasCve && <span style={{ marginLeft: 6, fontSize: 10, color: "#f97316" }}>⚠</span>}</span> },
+                    { content: <span style={{ color: "#f97316" }}>{pkg.name}<span style={{ marginLeft: 6, fontSize: 10, color: "#f97316" }}>match</span></span> },
                     { content: <code style={{ fontSize: 11 }}>{pkg.version}</code> },
                     { content: pkg.manager, style: { fontSize: 11, color: "var(--text-muted)" } },
-                    { content: hasCve ? "⚠ CVE" : "—", style: { fontSize: 11, color: hasCve ? "#f97316" : "var(--text-faint)" } },
+                    { content: "CVE match", style: { fontSize: 11, color: "#f97316" } },
                   ],
                 };
               })}
@@ -450,26 +459,37 @@ export default function CredentialedResults() {
         )}
 
         {/* Login History */}
-        {(failed_login_count > 0 || failed_logins_recent.length > 0) && (
+        {failed_login_count > 0 && (
           <Section title="📋 Login History">
             <div className="kv-grid">
               <KV k="Failed Logins"    v={String(failed_login_count)}               danger={brute_force_warning} />
               <KV k="Brute Force Alert" v={brute_force_warning ? "⚠ YES" : "No"}    danger={brute_force_warning} />
             </div>
+          </Section>
+        )}
+
+        {/* Advanced Evidence */}
+        {hasAdvancedEvidence && (
+          <Section title="Advanced Evidence">
+            <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+              Raw evidence is hidden by default to keep the report readable. Sensitive values are masked.
+            </p>
+            {sudo_rules_raw && (
+              <div style={{ marginTop: 12 }}>
+                <h4 className="section-title">Sudo Rules</h4>
+                <pre style={{ background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-mid)", overflowX: "auto", maxHeight: 160, overflowY: "auto" }}>
+                  {sudo_rules_raw}
+                </pre>
+              </div>
+            )}
             {failed_logins_recent.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <h4 className="section-title">Recent Failures</h4>
+              <div style={{ marginTop: 12 }}>
+                <h4 className="section-title">Recent Login Failures</h4>
                 <pre style={{ background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 12, maxHeight: 140, overflowY: "auto" }}>
                   {failed_logins_recent.join("\n")}
                 </pre>
               </div>
             )}
-          </Section>
-        )}
-
-        {/* Network */}
-        {(network_interfaces_raw || env_vars_flagged.length > 0) && (
-          <Section title="🌐 Network & Environment">
             {network_interfaces_raw && (
               <>
                 <h4 className="section-title">Network Interfaces</h4>
@@ -484,8 +504,23 @@ export default function CredentialedResults() {
                   ⚠ Sensitive Environment Variables ({env_vars_flagged.length})
                 </h4>
                 {env_vars_flagged.map((v, i) => (
-                  <div key={i} style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#f97316", marginBottom: 2 }}>{v}</div>
+                  <div key={i} style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#f97316", marginBottom: 2 }}>{maskSecretLine(v)}</div>
                 ))}
+              </div>
+            )}
+            {packages.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <h4 className="section-title">Full Package Inventory ({package_count})</h4>
+                <CredTable
+                  head={["Package", "Version", "Manager"]}
+                  rows={packages.map(pkg => ({
+                    cells: [
+                      { content: pkg.name },
+                      { content: <code style={{ fontSize: 11 }}>{pkg.version}</code> },
+                      { content: pkg.manager, style: { fontSize: 11, color: "var(--text-muted)" } },
+                    ],
+                  }))}
+                />
               </div>
             )}
           </Section>

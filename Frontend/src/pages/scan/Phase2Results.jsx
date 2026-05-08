@@ -404,13 +404,6 @@ export default function Phase2Results() {
                     </span>
                   )}
 
-                  {(host.closed_ports_count > 0 || host.filtered_ports_count > 0) && (
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 3, padding: "2px 7px" }}>
-                      {host.closed_ports_count > 0 && <span style={{ color: "#ef4444" }}>{host.closed_ports_count} closed</span>}
-                      {host.closed_ports_count > 0 && host.filtered_ports_count > 0 && <span style={{ margin: "0 4px", color: "var(--text-muted)" }}>·</span>}
-                      {host.filtered_ports_count > 0 && <span style={{ color: "#f59e0b" }}>{host.filtered_ports_count} filtered</span>}
-                    </span>
-                  )}
                   {host.os_guess && host.os_guess !== "Unknown" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-app)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
                       {textValue(host.os_guess)}

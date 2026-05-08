@@ -54,13 +54,23 @@ def _load_phase_results(db: Session, scan: Scan) -> dict:
     return build_legacy_scan_results(db, str(scan.id))
 
 
+def _public_summary(summary: dict) -> dict:
+    if not isinstance(summary, dict):
+        return {}
+    return {
+        key: value
+        for key, value in summary.items()
+        if not str(key).startswith("_")
+    }
+
+
 def _scan_summary(scan: Scan) -> dict:
     if not scan.phases:
         return {}
     summary: dict = {}
     for phase in sorted(scan.phases, key=lambda p: p.phase_order or 0):
         if isinstance(phase.summary, dict):
-            summary.update(phase.summary)
+            summary.update(_public_summary(phase.summary))
     return summary
 
 
@@ -285,7 +295,7 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, current_user, scope, skip, limit)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, scope, skip, limit)
             finally:
                 db.close()
 
@@ -336,15 +346,16 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
         if scan and scan.phases:
             # Send status of the most recent phase
             latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
+            latest_summary = _public_summary(latest_phase.summary)
             await websocket.send_json({
                 "scan_id": scan_id,
                 "phase": latest_phase.phase_order,
                 "progress": {
                     "status": latest_phase.status,
-                    "summary": latest_phase.summary,
+                    "summary": latest_summary,
                     # Include enough data to satisfy frontend checks
                     "discovered": latest_phase.hosts_processed,
-                    "total_ips": (latest_phase.summary or {}).get("total_hosts", 0)
+                    "total_ips": latest_summary.get("total_hosts", 0)
                 }
             })
     finally:

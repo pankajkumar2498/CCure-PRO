@@ -95,6 +95,20 @@ const fmtSec = (v) => {
 
 const safeArr = (v) => (Array.isArray(v) ? v : []);
 
+const usefulText = value => {
+  const text = String(value ?? "").trim();
+  if (!text || text.toLowerCase() === "unknown" || text.toLowerCase() === "n/a") return "";
+  return text;
+};
+
+const truncateEvidence = (value, max = 120) => {
+  const text = usefulText(value);
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+};
+
+const maskCredential = cred => `${cred?.user || "user"}/********`;
+
 /* ── Phase progress messages ──────────────────────────────────────────────── */
 const PHASE_MESSAGES = {
   [PIPELINE_STATES.DISCOVERY]: { title: "Running Discovery…", desc: "Probing the network for live hosts." },
@@ -1029,13 +1043,13 @@ export default function Phase3Results() {
                         <code style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", fontWeight: 600 }}>{host.ip_address}</code>
                       </td>
                       <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                        {host.hostname || "Unknown"}
+                        {usefulText(host.hostname) || <span className="muted">Not detected</span>}
                       </td>
                       <td style={{ padding: "12px", fontSize: "0.8rem" }}>
                         {(host.open_ports || []).length > 0 ? `${(host.open_ports || []).length}` : "—"}
                       </td>
                       <td style={{ padding: "12px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                        {host.os_guess || "Unknown"}
+                        {usefulText(host.os_guess) || <span className="muted">Not detected</span>}
                       </td>
                       <td style={{ padding: "12px", textAlign: "center", fontWeight: 700 }}>
                         {host.cves?.length ?? 0}
@@ -1087,7 +1101,7 @@ export default function Phase3Results() {
                   <div>
                     <code style={{ fontFamily: "var(--mono)", fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
                     <span style={{ marginLeft: "12px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {host.hostname || "Unknown"}
+                      {usefulText(host.hostname) || <span className="muted">Not detected</span>}
                     </span>
                   </div>
                   <span style={{
@@ -1159,7 +1173,7 @@ export default function Phase3Results() {
                   {host.ftp_info?.open && (
                     <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(249,115,22,0.06)", borderLeft: "3px solid #f97316", borderRadius: 4 }}>
                       <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: 6, color: "#f97316" }}>📂 FTP Service</div>
-                      {host.ftp_info.banner && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 4 }}>Banner: <code>{host.ftp_info.banner}</code></div>}
+                      {truncateEvidence(host.ftp_info.banner) && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 4 }}>Banner: <code>{truncateEvidence(host.ftp_info.banner)}</code></div>}
                       {(host.ftp_info.issues || []).map((issue, i) => (
                         <div key={i} style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginBottom: 2 }}>• {issue}</div>
                       ))}
@@ -1167,7 +1181,7 @@ export default function Phase3Results() {
                         <div style={{ fontSize: "0.78rem", marginTop: 6 }}>
                           <strong style={{ color: "#f59e0b" }}>Weak credentials accepted:</strong>{" "}
                           {host.ftp_info.weak_credentials.map((c, i) => (
-                            <code key={i} style={{ marginRight: 6, background: "rgba(0,0,0,0.15)", padding: "1px 4px", borderRadius: 3 }}>{c.user}/{c.password}</code>
+                            <code key={i} style={{ marginRight: 6, background: "rgba(0,0,0,0.15)", padding: "1px 4px", borderRadius: 3 }}>{maskCredential(c)}</code>
                           ))}
                         </div>
                       )}
@@ -1178,7 +1192,7 @@ export default function Phase3Results() {
                   {host.http_audit && (host.http_audit.exposed_paths?.length || host.http_audit.admin_panels?.length || host.http_audit.dangerous_methods?.length || host.http_audit.issues?.length) && (
                     <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(245,158,11,0.06)", borderLeft: "3px solid #f59e0b", borderRadius: 4 }}>
                       <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: 6, color: "#f59e0b" }}>🌐 HTTP Service</div>
-                      {host.http_audit.server_header && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 6 }}>Server: <code>{host.http_audit.server_header}</code></div>}
+                      {truncateEvidence(host.http_audit.server_header) && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 6 }}>Server: <code>{truncateEvidence(host.http_audit.server_header)}</code></div>}
                       {/* Security header issues */}
                       {(host.http_audit.issues || []).slice(0, 4).map((issue, i) => (
                         <div key={i} style={{ fontSize: "0.78rem", color: "var(--text-mid)", marginBottom: 2 }}>• {issue}</div>
@@ -1294,7 +1308,6 @@ export default function Phase3Results() {
               <li>HTTP exposed paths: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0), 0)}</li>
               <li>HTTP admin panels found: {localVulnResults.reduce((sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0), 0)}</li>
               <li>Active misconfiguration findings: {localVulnResults.reduce((sum, h) => sum + countActiveFindings(h), 0)}</li>
-              <li>Scan completed at: {new Date().toLocaleString()}</li>
             </ul>
           </div>
 

@@ -19,6 +19,51 @@ from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_a
 from db.base import utcnow, gen_scan_id, gen_scan_phase_id
 
 
+_UNSAFE_JSONB_CHARS = {
+    codepoint: None
+    for codepoint in range(32)
+    if codepoint not in (9, 10, 13)
+}
+
+
+def _sanitize_jsonb_value(value: Any) -> Any:
+    """
+    Network probe output can contain NUL/binary control bytes from SNMP, banners,
+    or service scripts. PostgreSQL JSONB rejects those characters, so clean the
+    payload at the persistence boundary without changing scan execution.
+    """
+    if isinstance(value, str):
+        return value.translate(_UNSAFE_JSONB_CHARS)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").translate(_UNSAFE_JSONB_CHARS)
+    if isinstance(value, dict):
+        return {
+            _sanitize_jsonb_value(key): _sanitize_jsonb_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_jsonb_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_jsonb_value(item) for item in value]
+    if isinstance(value, set):
+        return [_sanitize_jsonb_value(item) for item in value]
+    return value
+
+
+def _phase_summary_payload(summary: dict, hosts_data: list) -> dict:
+    return _sanitize_jsonb_value({**(summary or {}), "_phase_data": hosts_data or []})
+
+
+def _public_phase_summary(summary: Any) -> dict:
+    if not isinstance(summary, dict):
+        return {}
+    return {
+        key: value
+        for key, value in summary.items()
+        if not str(key).startswith("_")
+    }
+
+
 def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Optional[Scan]:
     org_id = _get_org_id(db, user_id)
     return db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == org_id).first()
@@ -43,7 +88,7 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
         # For performance, in production we'd use the legacy_json_builder
         phases_data[key] = {
             "status": phase.status,
-            "summary": phase.summary,
+            "summary": _public_phase_summary(phase.summary),
             # 'data' is usually populated via legacy_json_builder or asset_syncer
         }
 
@@ -152,7 +197,7 @@ def update_scan_phase1(
     if report_xml_path: scan.report_xml_path = report_xml_path
 
     # Full payload embedded in summary
-    full_summary = {**summary, "_phase_data": hosts_data}
+    full_summary = _phase_summary_payload(summary, hosts_data)
 
     phase_row = ScanPhase(
         id=gen_scan_phase_id(scan.id, "host_discovery"),
@@ -236,7 +281,7 @@ def update_scan_phase(
     phase_key = phase_key_map.get(phase, f"phase{phase}")
 
     # Embed raw data into summary to ensure 100% historical fidelity without schema changes
-    full_summary_payload = {**summary, "_phase_data": hosts_data}
+    full_summary_payload = _phase_summary_payload(summary, hosts_data)
 
     phase_row = (
         db.query(ScanPhase)
@@ -444,7 +489,7 @@ def create_completed_scan(
             status="complete",
             duration_seconds=phase_summary.get("scan_duration", 0.0),
             hosts_processed=len(hosts_data),
-            summary={**phase_summary, "_phase_data": hosts_data},
+            summary=_phase_summary_payload(phase_summary, hosts_data),
             started_at=utcnow(),
             completed_at=utcnow()
         )

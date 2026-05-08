@@ -9,9 +9,36 @@ from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from db.models.users import User
-from db.models.rbac import Role
+from db.models.rbac import Organization, Role
 from db.models.scans import Scan
 from auth.jwt_handler import hash_password
+from scans.db_helpers import _phase_summary_payload, _public_phase_summary
+
+
+def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
+    payload = _phase_summary_payload(
+        {"scan_duration": 1.0, "description": "ok\x00bad\x01value\nkept"},
+        [
+            {
+                "ip_address": "192.168.1.10",
+                "interfaces": [{"address": "\x01\x01\x00binary"}],
+                "raw": b"snmp\x00response",
+            }
+        ],
+    )
+
+    assert payload["description"] == "okbadvalue\nkept"
+    assert payload["_phase_data"][0]["interfaces"][0]["address"] == "binary"
+    assert payload["_phase_data"][0]["raw"] == "snmpresponse"
+
+
+def test_public_phase_summary_hides_internal_phase_data():
+    summary = _public_phase_summary({
+        "total_hosts": 254,
+        "_phase_data": [{"ip_address": "192.168.1.10"}],
+    })
+
+    assert summary == {"total_hosts": 254}
 
 def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
     """Test the Phase 1 Host Discovery API logic and DB persistence."""

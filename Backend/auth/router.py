@@ -26,13 +26,14 @@ from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
     create_refresh_token,
+    decode_token,
     hash_password,
     refresh_access_token,
     revoke_refresh_token,
     verify_password,
 )
 from db.base import get_db, gen_org_id, gen_user_id
-from db.models import User, Organization, Role
+from db.models import User, Organization, Role, RefreshTokenSession
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ def check_email(q: str, db: Session = Depends(get_db)):
     return {"available": not bool(exists)}
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-def register(req: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Create a new user account.
     Returns access + refresh tokens immediately so the user is logged in.
@@ -227,6 +228,20 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="Registration failed: duplicate entry")
 
     db.refresh(user)
+    from core.audit import log_audit_event
+
+    log_audit_event(
+        db,
+        user,
+        "user.created",
+        "user",
+        str(user.id),
+        request=request,
+        status="success",
+        changes={"source": "self_registration"},
+    )
+    db.commit()
+
     refresh_token = create_refresh_token(user.id, db)
     _set_refresh_cookie(response, refresh_token)
 
@@ -278,7 +293,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if getattr(user, "is_deleted", False):
-        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account deleted"})
+        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account deleted"})
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -286,7 +301,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if not user.is_active:
-        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account disabled"})
+        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account disabled"})
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -298,7 +313,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     # User statuses remain unchanged for reversibility.
     organization = db.query(Organization).filter(Organization.id == user.org_id).first()
     if organization and not organization.is_active:
-        log_audit_event(db, user, "user.login_failed", request=request, status="denied", 
+        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied",
                        changes={"reason": "organization deactivated"})
         db.commit()
         raise HTTPException(
@@ -307,7 +322,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if user.locked_until and user.locked_until > utcnow():
-        log_audit_event(db, user, "user.login_failed", request=request, status="denied", changes={"reason": "account locked"})
+        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account locked"})
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -328,9 +343,9 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         user.failed_login_count += 1
         if user.failed_login_count >= 5:
             user.locked_until = utcnow() + datetime.timedelta(minutes=15)
-            log_audit_event(db, user, "user.locked", request=request, status="failure", changes={"reason": "too many failed attempts"})
+            log_audit_event(db, user, "user.locked", "user", str(user.id), request=request, status="failure", changes={"reason": "too many failed attempts"})
         
-        log_audit_event(db, user, "user.login_failed", request=request, status="failure")
+        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="failure")
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -341,7 +356,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = utcnow()
-    log_audit_event(db, user, "user.login", request=request, status="success")
+    log_audit_event(db, user, "user.login", "user", str(user.id), request=request, status="success")
     db.commit()
 
     refresh_token = create_refresh_token(user.id, db)
@@ -381,6 +396,8 @@ def logout(
     """
     Revoke the presented refresh token server-side.
     """
+    from core.audit import log_audit_event
+
     refresh_token = _resolve_refresh_token(request, req.refresh_token if req else None)
     if not refresh_token:
         _clear_refresh_cookie(response)
@@ -389,6 +406,18 @@ def logout(
             detail="Invalid or expired refresh token",
         )
 
+    payload = decode_token(refresh_token)
+    session_row = None
+    user = None
+    if payload and payload.get("type") == "refresh" and payload.get("jti"):
+        session_row = (
+            db.query(RefreshTokenSession)
+            .filter(RefreshTokenSession.token_jti == payload.get("jti"))
+            .first()
+        )
+        if session_row:
+            user = db.query(User).filter(User.id == session_row.user_id).first()
+
     revoked = revoke_refresh_token(refresh_token, db)
     _clear_refresh_cookie(response)
     if not revoked:
@@ -396,6 +425,18 @@ def logout(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
+    if user:
+        log_audit_event(
+            db,
+            user,
+            "user.logout",
+            "session",
+            str(session_row.id) if session_row else str(user.id),
+            request=request,
+            status="success",
+            changes={"user_id": str(user.id)},
+        )
+        db.commit()
     return {"detail": "Logged out successfully."}
 
 

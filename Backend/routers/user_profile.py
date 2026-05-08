@@ -233,16 +233,18 @@ def update_profile(
             current_user.email = email
 
     if changes:
-        db.commit()
-        db.refresh(current_user)
         log_audit_event(
             db,
             current_user,
             "user.profile_updated",
+            "user",
+            str(current_user.id),
             request=request,
             status="success",
             changes=changes,
         )
+        db.commit()
+        db.refresh(current_user)
         logger.info(f"User {current_user.username} updated profile: {changes}")
     
     return _serialize_profile(current_user)
@@ -266,10 +268,13 @@ def change_password(
             db,
             current_user,
             "user.password_change_failed",
+            "user",
+            str(current_user.id),
             request=request,
             status="denied",
             changes={"reason": "invalid current password"},
         )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
@@ -277,6 +282,17 @@ def change_password(
 
     # Check that new password is different from current
     if verify_password(req.new_password, current_user.password_hash):
+        log_audit_event(
+            db,
+            current_user,
+            "user.password_change_failed",
+            "user",
+            str(current_user.id),
+            request=request,
+            status="denied",
+            changes={"reason": "new password matches current password"},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must be different from current password",
@@ -285,16 +301,17 @@ def change_password(
     # Update password
     current_user.password_hash = hash_password(req.new_password)
     current_user.failed_login_count = 0  # Reset failed attempts
-    db.commit()
-
     log_audit_event(
         db,
         current_user,
         "user.password_changed",
+        "user",
+        str(current_user.id),
         request=request,
         status="success",
         changes={"detail": "User changed their password"},
     )
+    db.commit()
     logger.info(f"User {current_user.username} changed their password")
 
     return {"detail": "Password changed successfully"}
@@ -361,16 +378,18 @@ def update_preferences(
         from sqlalchemy.orm.attributes import flag_modified
         current_user.preferences = stored
         flag_modified(current_user, "preferences")
-        db.commit()
-        db.refresh(current_user)
         log_audit_event(
             db,
             current_user,
             "user.preferences_updated",
+            "user",
+            str(current_user.id),
             request=request,
             status="success",
             changes=changes,
         )
+        db.commit()
+        db.refresh(current_user)
         logger.info(f"User {current_user.username} updated preferences: {changes}")
 
     return _get_user_preferences(current_user)
@@ -429,16 +448,17 @@ def revoke_session(
         )
 
     session.revoked_at = datetime.now(timezone.utc)
-    db.commit()
-
     log_audit_event(
         db,
         current_user,
         "user.session_revoked",
+        "session",
+        str(session.id),
         request=request,
         status="success",
         changes={"session_id": session_id, "ip": str(session.ip_address) if session.ip_address else None},
     )
+    db.commit()
     logger.info(f"User {current_user.username} revoked session {session_id}")
 
     return None

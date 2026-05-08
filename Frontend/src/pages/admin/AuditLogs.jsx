@@ -47,6 +47,22 @@ export default function AuditLogs() {
     setFilters({ ...filters, [e.target.name]: e.target.value });
   };
 
+  const displayResource = (log) => {
+    if (log.resource_type) return log.resource_type;
+    if (String(log.action || "").includes("session")) return "session";
+    if (String(log.action || "").startsWith("user.")) return "user";
+    if (String(log.action || "").startsWith("organization.")) return "organization";
+    if (String(log.action || "").startsWith("scan.")) return "scan";
+    return "event";
+  };
+
+  const displayTargetId = (log) => {
+    if (log.resource_id) return log.resource_id;
+    if (log.user_id) return log.user_id;
+    if (log.changes?.session_id) return String(log.changes.session_id);
+    return log.id || "unknown";
+  };
+
   if (loading) {
     return (
       <AppLayout pageTitle="Audit Logs">
@@ -142,8 +158,8 @@ export default function AuditLogs() {
                     {formatDateTime(log.created_at)}
                   </td>
                   <td><strong style={{ fontSize: 13 }}>{log.action}</strong></td>
-                  <td><span className="method-chip" style={{ fontSize: 11 }}>{log.resource_type || "—"}</span></td>
-                  <td><code style={{ fontSize: 11 }}>{log.resource_id || "—"}</code></td>
+                  <td><span className="method-chip" style={{ fontSize: 11 }}>{displayResource(log)}</span></td>
+                  <td><code style={{ fontSize: 11 }}>{displayTargetId(log)}</code></td>
                   <td>
                     <span style={{ 
                       color: log.status === 'success' ? 'var(--ok)' : 'var(--danger)',

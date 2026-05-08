@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
 import {
@@ -16,6 +17,7 @@ import OrganizationForm from "../../components/admin/OrganizationForm";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 
 export default function OrganizationManagement() {
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const [orgs, setOrgs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -230,6 +232,17 @@ export default function OrganizationManagement() {
                   <td>
                     {canManageOrg(o) ? (
                       <div className="action-btns table-action-cell">
+                        {isSuperadmin && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="View users in this organization"
+                            onClick={() => navigate(`/admin/users?org_id=${o.id}`)}
+                          >
+                            👥 Users
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"

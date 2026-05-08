@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
 import {
@@ -24,83 +24,83 @@ const PAGE_SIZE = 10;
 
 export default function UserManagement() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user: currentUser } = useAuth();
+
+  // Data
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
+
+  // UI state
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Filters — initialise org from URL param if Superadmin linked here from Orgs page
   const [search, setSearch] = useState("");
+  const [selectedOrgId, setSelectedOrgId] = useState(searchParams.get("org_id") || "");
   const [page, setPage] = useState(1);
+
+  // Modals
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [selectedUser, setSelectedUser] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState(null);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const loadData = useCallback(async () => {
+  const normalizedRoleName = (currentUser?.role?.name || "").toLowerCase().replace(/\s+/g, "_");
+  const isSuperadmin = normalizedRoleName === "superadmin";
+  const isOrgAdmin = normalizedRoleName === "org_admin";
+
+  // ── Data loading (server-side) ────────────────────────────────────────────
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     setError("");
-
     try {
-      const [usersData, rolesData, organizationsData] = await Promise.all([
-        listUsers({ skip: 0, limit: 100 }),
-        listRoles(),
-        listOrganizations().catch(() => null),
-      ]);
-
-      setUsers(usersData.users || []);
-      setTotalCount(usersData.total ?? (usersData.users || []).length);
-      setRoles(rolesData.roles || []);
-      setOrganizations(organizationsData?.organizations || []);
+      const data = await listUsers({
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+        q: search.trim() || undefined,
+        organization_id: isSuperadmin && selectedOrgId ? selectedOrgId : undefined,
+      });
+      setUsers(data.users || []);
+      setTotalCount(data.total || 0);
     } catch (err) {
       console.error(err);
-      setError("Unable to load users and roles. Please try again.");
+      setError("Unable to load users. Please try again.");
     } finally {
       setLoading(false);
     }
+  }, [page, search, selectedOrgId, isSuperadmin]);
+
+  // Load roles + orgs once on mount (these rarely change)
+  useEffect(() => {
+    listRoles()
+      .then(d => setRoles(d.roles || []))
+      .catch(() => {});
+    listOrganizations()
+      .then(d => setOrganizations(d.organizations || []))
+      .catch(() => {});
   }, []);
 
+  // Reload users when filters/page change
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadUsers();
+  }, [loadUsers]);
 
+  // Reset to page 1 when search or org filter changes
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, selectedOrgId]);
 
-  const normalizedRoleName = (currentUser?.role?.name || "").toLowerCase().replace(/\s+/g, "_");
-  const isOrgAdmin = normalizedRoleName === "org_admin";
-  const currentOrganizationName = currentUser?.organization?.name || "";
+  // Resolve the display name of the currently filtered org
+  const filteredOrgName = selectedOrgId
+    ? (organizations.find(o => String(o.id) === String(selectedOrgId))?.name || "")
+    : "";
 
-  const filteredUsers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return users;
-
-    return users.filter((user) => {
-      const roleName = roles.find((role) => String(role.id) === String(user.role_id))?.name || "";
-      const organizationName = organizations.find(
-        (organization) => String(organization.id) === String(user.organization_id || user.org_id)
-      )?.name || "";
-
-      return [user.username, user.full_name, user.email, roleName, organizationName]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [organizations, roles, search, users]);
-
-  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-  const pagedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
-
+  // ── Modal helpers ─────────────────────────────────────────────────────────
   const openCreateModal = () => {
     setModalMode("create");
     setSelectedUser(null);
@@ -118,13 +118,14 @@ export default function UserManagement() {
     setSelectedUser(null);
   };
 
+  // ── CRUD handlers ─────────────────────────────────────────────────────────
   const handleCreateUser = async (data) => {
     setBusy(true);
     try {
       await createUser(data);
       pushToast("User created successfully.", "success");
       closeModal();
-      await loadData();
+      await loadUsers();
     } catch (err) {
       pushToast(err?.response?.data?.detail || "Failed to create user.", "error");
     } finally {
@@ -135,7 +136,6 @@ export default function UserManagement() {
   const handleUpdateUser = async (data) => {
     if (!selectedUser) return;
     setBusy(true);
-
     try {
       await updateUser(selectedUser.id, {
         full_name: data.full_name,
@@ -158,7 +158,7 @@ export default function UserManagement() {
 
       pushToast("User updated successfully.", "success");
       closeModal();
-      await loadData();
+      await loadUsers();
     } catch (err) {
       pushToast(err?.response?.data?.detail || "Failed to update user.", "error");
     } finally {
@@ -180,11 +180,9 @@ export default function UserManagement() {
         setBusy(true);
         try {
           await changeUserStatus(user.id, { is_active: !user.is_active });
-          setUsers((prevUsers) =>
-            prevUsers.map((existingUser) =>
-              existingUser.id === user.id
-                ? { ...existingUser, is_active: !existingUser.is_active }
-                : existingUser
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === user.id ? { ...u, is_active: !u.is_active } : u
             )
           );
           pushToast(`User ${user.username} ${user.is_active ? "deactivated" : "activated"}.`, "success");
@@ -203,10 +201,8 @@ export default function UserManagement() {
     setBusy(true);
     try {
       await changeUserStatus(user.id, { locked_until: null });
-      setUsers((prevUsers) =>
-        prevUsers.map((existingUser) =>
-          existingUser.id === user.id ? { ...existingUser, locked_until: null } : existingUser
-        )
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, locked_until: null } : u))
       );
       pushToast("User unlocked successfully.", "success");
     } catch (err) {
@@ -229,8 +225,8 @@ export default function UserManagement() {
         setBusy(true);
         try {
           await deleteUser(user.id);
-          setUsers((prevUsers) => prevUsers.filter((existingUser) => existingUser.id !== user.id));
-          setTotalCount((prevCount) => Math.max(0, prevCount - 1));
+          setUsers((prev) => prev.filter((u) => u.id !== user.id));
+          setTotalCount((prev) => Math.max(0, prev - 1));
           pushToast("User moved to Deleted Users.", "success");
         } catch (err) {
           pushToast(err?.response?.data?.detail || "Unable to delete user.", "error");
@@ -243,24 +239,33 @@ export default function UserManagement() {
     });
   };
 
+  // ── Subtitle for page header ──────────────────────────────────────────────
+  const subtitle = isSuperadmin
+    ? filteredOrgName
+      ? `Viewing ${totalCount} user${totalCount !== 1 ? "s" : ""} in ${filteredOrgName}`
+      : `${totalCount} total users across all organizations`
+    : `${totalCount} user${totalCount !== 1 ? "s" : ""} in your organization`;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout pageTitle="User Management">
       <div className="page-inner">
+        {/* Header */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">User Management</h2>
-            <p className="page-subtitle">{totalCount} users in your organization</p>
-            <p className="page-note">
-              {isOrgAdmin && currentOrganizationName
-                ? `Showing active users in ${currentOrganizationName}. Org admins can only manage users in their own org.`
-                : "Showing active users in your organization. Org admins can only manage users in their own org."}
-            </p>
+            <p className="page-subtitle">{subtitle}</p>
+            {isOrgAdmin && (
+              <p className="page-note">
+                Org admins can only manage users in their own organization.
+              </p>
+            )}
           </div>
           <div className="page-actions-row">
             <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/deleted-users")} disabled={busy}>
               Deleted users
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={loadData} disabled={loading || busy}>
+            <Button type="button" variant="ghost" size="sm" onClick={loadUsers} disabled={loading || busy}>
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
             <Button type="button" variant="primary" size="sm" onClick={openCreateModal} disabled={busy}>
@@ -271,8 +276,36 @@ export default function UserManagement() {
 
         {error && <div className="alert alert--error">{error}</div>}
 
+        {/* Filters toolbar */}
+        <div className="table-filters-row">
+          <div className="search-box">
+            <span className="search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="Search by username, email or name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="search-input"
+            />
+          </div>
+          {isSuperadmin && (
+            <select
+              className="org-filter-select"
+              value={selectedOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              title="Filter by organization"
+            >
+              <option value="">All Organizations</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={org.id}>{org.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Table — server-side data, no client-side slicing */}
         <UserTable
-          users={pagedUsers}
+          users={users}
           roles={roles}
           organizations={organizations}
           showOrganizationColumn={!isOrgAdmin}
@@ -282,7 +315,7 @@ export default function UserManagement() {
           page={page}
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
-          totalCount={filteredUsers.length}
+          totalCount={totalCount}
           currentUser={currentUser}
           onEdit={openEditModal}
           onToggleStatus={handleToggleStatus}

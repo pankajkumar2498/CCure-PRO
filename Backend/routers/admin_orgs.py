@@ -1,13 +1,14 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, EmailStr
 from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
 from auth.dependencies import get_current_user
-from db.base import get_db, gen_org_id
-from db.models import Organization, User
+from auth.jwt_handler import hash_password
+from db.base import get_db, gen_org_id, gen_user_id
+from db.models import Organization, User, Role
 from core.audit import log_audit_event
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,11 @@ class OrganizationCreateSchema(BaseModel):
     plan: Optional[str] = "community"
     max_assets: Optional[int] = Field(default=500, ge=1)
     max_users: Optional[int] = Field(default=10, ge=1)
+
+    admin_username: Optional[str] = None
+    admin_email: Optional[EmailStr] = None
+    admin_password: Optional[str] = None
+    admin_full_name: Optional[str] = None
 
     @field_validator("name", "slug")
     @classmethod
@@ -121,6 +127,18 @@ def create_organization(
     # Check for duplicate name
     if db.query(Organization).filter(Organization.name == org_data.name).first():
         raise HTTPException(status_code=400, detail=f"Organization name '{org_data.name}' is already in use")
+        
+    # Check if we need to create an admin user and if their info is valid
+    org_admin_role = None
+    if org_data.admin_username and org_data.admin_email and org_data.admin_password:
+        if db.query(User).filter(User.username == org_data.admin_username).first():
+            raise HTTPException(status_code=400, detail=f"Admin username '{org_data.admin_username}' is already in use")
+        if db.query(User).filter(User.email == org_data.admin_email).first():
+            raise HTTPException(status_code=400, detail=f"Admin email '{org_data.admin_email}' is already in use")
+        
+        org_admin_role = db.query(Role).filter(Role.name == "org_admin").first()
+        if not org_admin_role:
+            raise HTTPException(status_code=500, detail="The 'org_admin' role does not exist in the system.")
     
     try:
         new_org = Organization(
@@ -137,6 +155,23 @@ def create_organization(
         db.flush()
 
         log_audit_event(db, current_user, "organization.created", "organization", str(new_org.id), request=request)
+        
+        # Create admin user if requested
+        if org_data.admin_username and org_data.admin_email and org_data.admin_password:
+            new_admin = User(
+                id=gen_user_id(org_data.admin_username),
+                username=org_data.admin_username,
+                email=org_data.admin_email,
+                full_name=org_data.admin_full_name,
+                hashed_password=hash_password(org_data.admin_password),
+                role_id=org_admin_role.id,
+                org_id=new_org.id,
+                is_active=True
+            )
+            db.add(new_admin)
+            db.flush()
+            log_audit_event(db, current_user, "user.created", "user", str(new_admin.id), request=request, details={"note": "Initial org admin created"})
+
         db.commit()
         db.refresh(new_org)
         

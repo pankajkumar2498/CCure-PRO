@@ -111,7 +111,7 @@ class UserProfileResponse(BaseModel):
 
 class UserPreferencesResponse(BaseModel):
     """User preferences."""
-    theme: str = "dark"
+    theme: str = "light"
     default_scan_type: str = "asset"
     email_alerts: bool = True
     in_app_alerts: bool = True
@@ -158,7 +158,7 @@ def _get_user_preferences(user: User) -> UserPreferencesResponse:
     """Merge stored preferences with defaults."""
     stored = user.preferences or {}
     defaults = {
-        "theme": "dark",
+        "theme": "light",
         "default_scan_type": "asset",
         "email_alerts": True,
         "in_app_alerts": True,

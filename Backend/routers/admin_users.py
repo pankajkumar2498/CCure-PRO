@@ -101,7 +101,9 @@ class UserStatusUpdateSchema(BaseModel):
 @router.get("/")
 def list_users(
     role_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
     is_active: Optional[bool] = None,
+    q: Optional[str] = None,
     scope: str = "active",
     skip: int = 0,
     limit: int = 50,
@@ -109,18 +111,31 @@ def list_users(
     current_user: User = Depends(require_permission("users", "read"))
 ):
     query = _scoped_users_query(db, current_user, scope=scope)
-        
+
     if role_id is not None:
         query = query.filter(User.role_id == role_id)
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
-    
+
+    # Superadmins can drill down into a specific org; non-superadmins are already scoped
+    if _is_superadmin(current_user) and organization_id:
+        query = query.filter(User.org_id == organization_id)
+
+    # Server-side search: username, email, full_name
+    if q:
+        term = f"%{q}%"
+        query = query.filter(
+            (User.username.ilike(term)) |
+            (User.email.ilike(term)) |
+            (User.full_name.ilike(term))
+        )
+
     total = query.count()
     order_by = [User.created_at.desc()]
     if scope == "deleted":
         order_by = [User.deleted_at.desc(), User.created_at.desc()]
     users = query.order_by(*order_by).offset(skip).limit(limit).all()
-    
+
     return {
         "total": total,
         "scope": scope,

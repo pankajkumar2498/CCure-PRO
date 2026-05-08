@@ -3,22 +3,24 @@
  * Dark-themed registration form matching CAST design.
  * API: POST /auth/register → { access_token, refresh_token, user }
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { checkUsername, checkEmail } from "../api/auth";
+import { useDebounce } from "../hooks/useDebounce";
 
 function validate(username, email, password, confirm) {
   if (username.trim().length < 3) return "Username must be at least 3 characters.";
   if (!/\S+@\S+\.\S+/.test(email)) return "Enter a valid email address.";
-  if (password.length < 6)         return "Password must be at least 6 characters.";
-  if (password !== confirm)        return "Passwords do not match.";
+  if (password.length < 6) return "Password must be at least 6 characters.";
+  if (password !== confirm) return "Passwords do not match.";
   return null;
 }
 
 function strengthOf(pw) {
-  if (!pw)           return { label: "",       level: 0 };
-  if (pw.length < 6) return { label: "Weak",   level: 1 };
-  if (pw.length < 10)return { label: "Fair",   level: 2 };
+  if (!pw) return { label: "", level: 0 };
+  if (pw.length < 6) return { label: "Weak", level: 1 };
+  if (pw.length < 10) return { label: "Fair", level: 2 };
   if (/[^a-zA-Z0-9]/.test(pw)) return { label: "Strong", level: 4 };
   return { label: "Good", level: 3 };
 }
@@ -28,11 +30,33 @@ export default function Register() {
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
-  const [email,    setEmail]    = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [usernameTaken, setUsernameTaken] = useState(false);
+  const [emailTaken, setEmailTaken] = useState(false);
+
+  const debouncedUsername = useDebounce(username, 500);
+  const debouncedEmail = useDebounce(email, 500);
+
+  useEffect(() => {
+    if (debouncedUsername.length >= 3) {
+      checkUsername(debouncedUsername).then(res => setUsernameTaken(!res.available)).catch(() => { });
+    } else {
+      setUsernameTaken(false);
+    }
+  }, [debouncedUsername]);
+
+  useEffect(() => {
+    if (/\S+@\S+\.\S+/.test(debouncedEmail)) {
+      checkEmail(debouncedEmail).then(res => setEmailTaken(!res.available)).catch(() => { });
+    } else {
+      setEmailTaken(false);
+    }
+  }, [debouncedEmail]);
 
   const strength = strengthOf(password);
 
@@ -75,16 +99,19 @@ export default function Register() {
           <div className="auth-error" role="alert"><span>⚠</span> {error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form form-horizontal">
           <div className="field">
             <label htmlFor="username">Username</label>
             <input
               id="username" type="text" autoComplete="username"
               value={username} onChange={e => setUsername(e.target.value)}
-              placeholder="operator_name" required
+              placeholder="username" required
             />
             {username && username.length < 3 && (
               <span className="field-hint field-hint--warn">Min. 3 characters</span>
+            )}
+            {usernameTaken && (
+              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This username is already taken.</span>
             )}
           </div>
 
@@ -93,8 +120,11 @@ export default function Register() {
             <input
               id="email" type="email" autoComplete="email"
               value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="operator@domain.com" required
+              placeholder="username@ccure.com" required
             />
+            {emailTaken && (
+              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This email is already registered.</span>
+            )}
           </div>
 
           <div className="field">
@@ -106,7 +136,7 @@ export default function Register() {
             />
             {password && (
               <div className="strength-bar">
-                {[1,2,3,4].map(n => (
+                {[1, 2, 3, 4].map(n => (
                   <span key={n} className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`} />
                 ))}
                 <span className="strength-label">{strength.label}</span>
@@ -141,3 +171,4 @@ export default function Register() {
     </div>
   );
 }
+

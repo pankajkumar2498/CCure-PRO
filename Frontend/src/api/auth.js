@@ -31,3 +31,13 @@ export const logout = async () => {
     window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "logout" } }));
   }
 };
+
+export const checkUsername = async (username) => {
+  const response = await axiosInstance.get(`/auth/check-username?q=${encodeURIComponent(username)}`);
+  return response.data;
+};
+
+export const checkEmail = async (email) => {
+  const response = await axiosInstance.get(`/auth/check-email?q=${encodeURIComponent(email)}`);
+  return response.data;
+};

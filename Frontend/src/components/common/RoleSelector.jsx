@@ -5,9 +5,6 @@ export default function RoleSelector({ roles = [], value = "", onChange, disable
     <div className="field">
       <label className="field-label">{label}</label>
       <div className="role-selector-row">
-        <div className={`chip ${selectedRole ? "chip--info" : "chip--neutral"}`}>
-          {selectedRole ? selectedRole.name : "No role selected"}
-        </div>
         <select
           className="field-input"
           value={value ?? ""}

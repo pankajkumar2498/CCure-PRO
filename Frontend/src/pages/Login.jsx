@@ -79,7 +79,7 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form form-horizontal">
           <div className="field">
             <label htmlFor="email">Email</label>
             <input
@@ -88,7 +88,7 @@ export default function Login() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="operator@ccure.com"
+              placeholder="username@ccure.com"
               required
             />
           </div>

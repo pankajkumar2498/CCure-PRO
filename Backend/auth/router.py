@@ -151,6 +151,22 @@ def _clear_refresh_cookie(response: Response) -> None:
 def _resolve_refresh_token(request: Request, token_from_body: Optional[str]) -> Optional[str]:
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
 
+@router.get("/check-username")
+def check_username(q: str, db: Session = Depends(get_db)):
+    """Check if a username is available"""
+    if len(q.strip()) < 3:
+        return {"available": False}
+    exists = db.query(User).filter(User.username == q.strip()).first()
+    return {"available": not bool(exists)}
+
+@router.get("/check-email")
+def check_email(q: str, db: Session = Depends(get_db)):
+    """Check if an email is available"""
+    if not q.strip() or "@" not in q:
+        return {"available": False}
+    exists = db.query(User).filter(User.email == q.strip()).first()
+    return {"available": not bool(exists)}
+
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(req: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     """
@@ -435,3 +451,4 @@ def refresh(
         _set_refresh_cookie(response, token_bundle["refresh_token"])
     token_bundle["refresh_token"] = None
     return token_bundle
+

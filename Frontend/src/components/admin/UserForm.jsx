@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import Button from "../common/Button";
 import FormField from "../common/FormField";
 import RoleSelector from "../common/RoleSelector";
+import { checkUsername, checkEmail } from "../../api/auth";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const createInitial = {
   username: "",
@@ -23,6 +25,32 @@ export default function UserForm({
   busy,
 }) {
   const [form, setForm] = useState(createInitial);
+  const [usernameTaken, setUsernameTaken] = useState(false);
+  const [emailTaken, setEmailTaken] = useState(false);
+
+  const debouncedUsername = useDebounce(form.username, 500);
+  const debouncedEmail = useDebounce(form.email, 500);
+
+  useEffect(() => {
+    if (mode === "create" && debouncedUsername.length >= 3) {
+      checkUsername(debouncedUsername).then(res => setUsernameTaken(!res.available)).catch(() => { });
+    } else {
+      setUsernameTaken(false);
+    }
+  }, [debouncedUsername, mode]);
+
+  useEffect(() => {
+    if (mode === "edit" && user?.email === debouncedEmail) {
+      setEmailTaken(false);
+      return;
+    }
+
+    if (/\S+@\S+\.\S+/.test(debouncedEmail)) {
+      checkEmail(debouncedEmail).then(res => setEmailTaken(!res.available)).catch(() => { });
+    } else {
+      setEmailTaken(false);
+    }
+  }, [debouncedEmail, mode, user]);
   const title = mode === "create" ? "Create new user" : "Edit user details";
   const submitLabel = mode === "create" ? "Create user" : "Save changes";
   const roleName = currentUser?.role?.name?.toLowerCase() || "";
@@ -51,9 +79,9 @@ export default function UserForm({
     () => !isSuperadmin || !!form.organization_id,
     [form.organization_id, isSuperadmin]
   );
-  const canSubmit = mode === "create"
+  const canSubmit = (mode === "create"
     ? form.username.trim() && form.email.trim() && form.password.trim() && isRoleSelected && isOrganizationSelected
-    : form.email.trim() && isRoleSelected && isOrganizationSelected;
+    : form.email.trim() && isRoleSelected && isOrganizationSelected) && !usernameTaken && !emailTaken;
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -75,7 +103,7 @@ export default function UserForm({
         </div>
       </div>
 
-      <form className="user-form-grid" onSubmit={handleSubmit}>
+      <form className="form-horizontal" onSubmit={handleSubmit}>
         {mode === "create" && (
           <FormField label="Username" htmlFor="username">
             <input
@@ -88,6 +116,9 @@ export default function UserForm({
               disabled={busy}
               required
             />
+            {usernameTaken && (
+              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This username is already taken.</span>
+            )}
           </FormField>
         )}
 
@@ -108,12 +139,15 @@ export default function UserForm({
             id="email"
             className="field-input"
             type="email"
-            placeholder="jane.doe@example.com"
+            placeholder="jane.doe@ccure.com"
             value={form.email}
             onChange={handleChange("email")}
             disabled={busy}
             required
           />
+          {emailTaken && (
+            <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This email is already taken.</span>
+          )}
         </FormField>
 
         {mode === "create" && (
@@ -128,20 +162,22 @@ export default function UserForm({
               disabled={busy}
               required
             />
+            {usernameTaken && (
+              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This username is already taken.</span>
+            )}
           </FormField>
         )}
 
-        <FormField label="Role" className="field--full">
-          <RoleSelector
-            roles={roles}
-            value={form.role_id}
-            onChange={(role_id) => setForm((prev) => ({ ...prev, role_id }))}
-            disabled={busy}
-          />
-        </FormField>
+        <RoleSelector
+          label="Role"
+          roles={roles}
+          value={form.role_id}
+          onChange={(role_id) => setForm((prev) => ({ ...prev, role_id }))}
+          disabled={busy}
+        />
 
         {isSuperadmin && (
-          <FormField label="Organization" className="field--full">
+          <FormField label="Organization">
             <select
               className="field-input"
               value={form.organization_id}
@@ -171,3 +207,4 @@ export default function UserForm({
     </div>
   );
 }
+

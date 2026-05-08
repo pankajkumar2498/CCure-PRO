@@ -114,7 +114,7 @@ def create_notification(
     username = user.username if user else user_id
 
     notification = Notification(
-        id=gen_notification_id(username, notification_type.value),
+        id=gen_notification_id(user_id, notification_type.value),
         user_id=user_id,
         type=notification_type.value,
         category=category.value,
@@ -174,7 +174,7 @@ def fan_out_notification(
             continue
 
         notification = Notification(
-            id=gen_notification_id(user.username, notification_type.value),
+            id=gen_notification_id(user.id, notification_type.value),
             user_id=user.id,
             type=notification_type.value,
             category=category.value,

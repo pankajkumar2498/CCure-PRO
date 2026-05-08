@@ -13,9 +13,9 @@ Tables
 
 ID Convention (Stripe-Style)
 ─────────────────────────────
-  Service         →  svc_{ip}_{port}_{proto}
-                     e.g.  svc_192.168.1.5_22_tcp
-                     Reading it: "TCP port 22 (SSH) on host 192.168.1.5"
+  Service         →  svc_{asset_id}_{port}_{proto}
+                     e.g.  svc_ast_defa_1a2b3c4d_192_168_1_5_22_tcp
+                     Reading it: "TCP port 22 on the asset with id ast_defa_1a2b3c4d_192_168_1_5"
 
   TLSDetail /
   HttpDetail      →  BigInteger (1:1 with service, no need for its own readable ID)

@@ -8,14 +8,16 @@ Key design decisions:
   - Connection pool tuned for production workloads
   - All timestamps are timezone-aware (TIMESTAMPTZ)
   - Stripe-style human-readable IDs are used as primary keys:
-      org_default          → Organization
-      usr_def_pankaj_x9v1  → User (org_slug + username + 4-char random)
-      scn_def_07may25_x9v1 → Scan (org + date + 4-char random)
-      ast_def_192.168.1.5  → Asset (org + IP address)
-      svc_192.168.1.5_22   → Service (IP + port)
+      org_default               → Organization
+      usr_defa_1a2b3c4d_pankaj_x9v1  → User (org namespace + username + random)
+      scn_defa_1a2b3c4d_07may25_x9v1 → Scan (org namespace + date + random)
+      ast_defa_1a2b3c4d_192_168_1_5   → Asset (org namespace + IP address)
+      svc_ast_defa_1a2b3c4d_192_168_1_5_22_tcp → Service (asset id + port + proto)
 """
 
+import hashlib
 import random
+import re
 import string
 from datetime import datetime, timezone
 
@@ -66,6 +68,31 @@ def _rand(n: int = 4) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
+def _safe_id_part(value: str, max_len: int = 20) -> str:
+    """Normalize a value to a lowercase, underscore-separated ID-safe token."""
+    if value is None:
+        return "x"
+    safe = re.sub(r"[^a-z0-9]+", "_", str(value).lower()).strip("_")
+    return safe[:max_len] or "x"
+
+
+def _stable_hash(value: str, length: int = 8) -> str:
+    """Generate a stable hex digest for a value, useful for namespace tokens."""
+    return hashlib.blake2b(str(value).encode("utf-8"), digest_size=(length + 1) // 2).hexdigest()[:length]
+
+
+def gen_org_token(org_identifier: str) -> str:
+    """
+    Generate a stable organization namespace token.
+    Example: defa_1a2b3c4d
+    """
+    short_slug = _safe_id_part(org_identifier, max_len=4).strip("_")
+    if not short_slug:
+        short_slug = "org"
+    token = _stable_hash(org_identifier, length=8)
+    return f"{short_slug}_{token}"
+
+
 # ── Keep gen_uuid as a fallback (used by junction tables / sessions) ──────────
 def gen_uuid() -> str:
     """Fallback UUID — only used for tables that don't need readable IDs."""
@@ -87,20 +114,20 @@ def gen_org_id(slug: str) -> str:
 def gen_user_id(org_slug: str, username: str) -> str:
     """
     Generate a readable User ID.
-    Example: usr_def_pankaj_x9v1
-    Org slug is truncated to 3 chars for brevity.
+    Example: usr_defa_1a2b3c4d_pankaj_x9v1
+    Uses a stable org namespace token so users are unique across orgs.
     """
-    org_part = org_slug.lower()[:3]
-    user_part = username.lower().replace(" ", "_")[:12]
+    org_part = gen_org_token(org_slug)
+    user_part = _safe_id_part(username)[:12]
     return f"usr_{org_part}_{user_part}_{_rand()}"
 
 
 def gen_scan_id(org_slug: str) -> str:
     """
     Generate a readable Scan ID.
-    Example: scn_def_07may25_x9v1
+    Example: scn_defa_1a2b3c4d_07may25_x9v1
     """
-    org_part = org_slug.lower()[:3]
+    org_part = gen_org_token(org_slug)
     date_part = datetime.now(timezone.utc).strftime("%d%b%y").lower()  # 07may25
     return f"scn_{org_part}_{date_part}_{_rand()}"
 
@@ -108,11 +135,12 @@ def gen_scan_id(org_slug: str) -> str:
 def gen_asset_id(org_identifier: str, ip_address: str) -> str:
     """
     Generate a readable Asset ID.
-    Example: ast_org_cdackp2_in_192.168.1.5
+    Example: ast_defa_1a2b3c4d_192_168_1_5
     NOTE: Asset IDs are deterministic and globally unique by organization and IP.
     """
-    safe_org = org_identifier.lower().replace(" ", "_").replace(".", "_").replace("/", "_")
-    return f"ast_{safe_org}_{ip_address}"
+    org_part = gen_org_token(org_identifier)
+    ip_part = _safe_id_part(ip_address, max_len=50)
+    return f"ast_{org_part}_{ip_part}"
 
 
 def gen_service_id(asset_id: str, port: int, protocol: str = "tcp") -> str:
@@ -131,23 +159,24 @@ def gen_scan_phase_id(scan_id: str, phase_key: str) -> str:
     return f"sph_{scan_id}_{phase_key}"
 
 
-def gen_notification_id(username: str, notif_type: str) -> str:
+def gen_notification_id(user_id: str, notif_type: str) -> str:
     """
     Generate a readable Notification ID.
-    Example: ntf_pankaj_scan_complete_x9v1
+    Example: ntf_usr_defa_1a2b3c4d_pankaj_scan_complete_x9v1
+    Uses the user ID to ensure uniqueness across organizations.
     """
-    user_part = username.lower()[:10]
-    type_part = notif_type.lower()[:15]
+    user_part = _safe_id_part(user_id, max_len=30)
+    type_part = _safe_id_part(notif_type, max_len=15)
     return f"ntf_{user_part}_{type_part}_{_rand()}"
 
 
 def gen_audit_id(org_slug: str, action: str) -> str:
     """
     Generate a readable Audit Log ID.
-    Example: aud_def_scan_created_x9v1
+    Example: aud_defa_1a2b3c4d_scan_created_x9v1
     """
-    org_part = org_slug.lower()[:3]
-    action_part = action.lower().replace(".", "_")[:20]
+    org_part = gen_org_token(org_slug)
+    action_part = _safe_id_part(action)[:20]
     return f"aud_{org_part}_{action_part}_{_rand()}"
 
 

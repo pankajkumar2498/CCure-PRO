@@ -161,7 +161,7 @@ def create_organization(
         # Create admin user if requested
         if org_data.admin_username and org_data.admin_email and org_data.admin_password:
             new_admin = User(
-                id=gen_user_id(org_data.admin_username),
+                id=gen_user_id(new_org.slug, org_data.admin_username),
                 username=org_data.admin_username,
                 email=admin_email,
                 full_name=org_data.admin_full_name,
@@ -172,7 +172,7 @@ def create_organization(
             )
             db.add(new_admin)
             db.flush()
-            log_audit_event(db, current_user, "user.created", "user", str(new_admin.id), request=request, details={"note": "Initial org admin created"})
+            log_audit_event(db, current_user, "user.created", "user", str(new_admin.id), request=request, changes={"note": "Initial org admin created"})
 
         db.commit()
         db.refresh(new_org)

@@ -12,10 +12,10 @@ Tables
 
 ID Convention (Stripe-Style)
 ─────────────────────────────
-  Asset  →  ast_{org_3chars}_{ip_address}
-            e.g.  ast_def_192.168.1.5
+  Asset  →  ast_{org_token}_{ip_address}
+            e.g.  ast_defa_1a2b3c4d_192_168_1_5
             Deterministic: the same host always gets the same ID in the same org.
-            Reading it: "Asset discovered at 192.168.1.5 in the default org."
+            Reading it: "Asset discovered at 192.168.1.5 in the default org namespace."
 
   AssetTag / AssetNote / AssetChangeLog → BigInteger (high-volume, no need for readable IDs)
 """

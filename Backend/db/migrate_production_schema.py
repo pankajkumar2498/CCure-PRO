@@ -88,7 +88,8 @@ SYSTEM_ROLES = [
 PERMISSIONS = [
     # Scans
     ("scans",       "create",  "Create and start new scan sessions"),
-    ("scans",       "read",    "View scan history and results"),
+    ("scans",       "read",    "View your own scan history and results"),
+    ("scans",       "read_all", "View all scan history within the organization"),
     ("scans",       "update",  "Modify scan configuration"),
     ("scans",       "delete",  "Delete or archive scans"),
     ("scans",       "execute", "Trigger scan execution via API"),
@@ -138,7 +139,7 @@ PERMISSIONS = [
 ROLE_PERMISSIONS = {
     "superadmin": "*",      # all permissions
     "org_admin":  [
-        "scans:create", "scans:read", "scans:update", "scans:delete",
+        "scans:create", "scans:read", "scans:read_all", "scans:update", "scans:delete",
         "scans:execute", "scans:cancel",
         "assets:create", "assets:read", "assets:update", "assets:delete", "assets:export",
         "findings:read", "findings:update", "findings:export",
@@ -150,7 +151,7 @@ ROLE_PERMISSIONS = {
         "audit:read",
     ],
     "analyst": [
-        "scans:create", "scans:read", "scans:execute", "scans:cancel",
+        "scans:create", "scans:read", "scans:read_all", "scans:execute", "scans:cancel",
         "assets:read", "assets:update", "assets:export",
         "findings:read", "findings:update", "findings:export",
         "reports:create", "reports:read",

@@ -24,6 +24,20 @@ def test_login_success(client: TestClient, test_user: User):
     assert data["user"]["email"] == "admin@test.com"
 
 
+def test_login_email_is_case_insensitive(client: TestClient, db_session: Session, test_user: User):
+    """Login should match stored email regardless of submitted casing."""
+    test_user.email = "Admin@Test.COM"
+    db_session.commit()
+
+    response = client.post(
+        "/auth/login",
+        json={"email": "ADMIN@test.com", "password": "securepassword123"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "Admin@Test.COM"
+
+
 def test_login_invalid_credentials(client: TestClient, test_user: User):
     """Test login with wrong password fails."""
     response = client.post(
@@ -48,6 +62,21 @@ def test_register_user(client: TestClient):
     data = response.json()
     assert data["user"]["email"] == "newuser@test.com"
     assert data["user"]["username"] == "newuser"
+
+
+def test_register_normalizes_email_to_lowercase(client: TestClient):
+    """Registration stores normalized lowercase emails."""
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "mixedcaseuser",
+            "email": "MixedCase@Example.COM",
+            "password": "StrongP@ssw0rd!"
+        }
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["email"] == "mixedcase@example.com"
 
 
 def test_get_current_user(client: TestClient, auth_headers: dict):

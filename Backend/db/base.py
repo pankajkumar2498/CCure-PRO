@@ -105,23 +105,22 @@ def gen_scan_id(org_slug: str) -> str:
     return f"scn_{org_part}_{date_part}_{_rand()}"
 
 
-def gen_asset_id(org_slug: str, ip_address: str) -> str:
+def gen_asset_id(org_identifier: str, ip_address: str) -> str:
     """
     Generate a readable Asset ID.
-    Example: ast_def_192.168.1.5
-    NOTE: Asset IDs are deterministic (no random) so the same host always
-    maps to the same ID within an org.
+    Example: ast_org_cdackp2_in_192.168.1.5
+    NOTE: Asset IDs are deterministic and globally unique by organization and IP.
     """
-    org_part = org_slug.lower()[:3]
-    return f"ast_{org_part}_{ip_address}"
+    safe_org = org_identifier.lower().replace(" ", "_").replace(".", "_").replace("/", "_")
+    return f"ast_{safe_org}_{ip_address}"
 
 
-def gen_service_id(ip_address: str, port: int, protocol: str = "tcp") -> str:
+def gen_service_id(asset_id: str, port: int, protocol: str = "tcp") -> str:
     """
     Generate a readable Service ID.
-    Example: svc_192.168.1.5_22_tcp
+    Example: svc_ast_org_cdackp2_in_192.168.1.5_22_tcp
     """
-    return f"svc_{ip_address}_{port}_{protocol}"
+    return f"svc_{asset_id}_{port}_{protocol}"
 
 
 def gen_scan_phase_id(scan_id: str, phase_key: str) -> str:

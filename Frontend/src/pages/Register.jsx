@@ -62,11 +62,12 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const ve = validate(username, email, password, confirm);
+    const normalizedEmail = email.trim().toLowerCase();
+    const ve = validate(username, normalizedEmail, password, confirm);
     if (ve) { setError(ve); return; }
     setError(""); setLoading(true);
     try {
-      await register({ username, email, password });
+      await register({ username, email: normalizedEmail, password });
       navigate("/dashboard", { replace: true });
     } catch (err) {
       let errMsg = "Registration failed. Please try again.";

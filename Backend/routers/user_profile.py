@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from db.base import get_db
 from db.models import User, RefreshTokenSession
 from auth.dependencies import get_current_user
+from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password, verify_password
 from core.audit import log_audit_event
 
@@ -219,16 +220,17 @@ def update_profile(
             current_user.full_name = req.full_name
 
     if req.email is not None:
-        if req.email != current_user.email:
+        email = normalize_email(req.email)
+        if email != current_user.email:
             # Check if email is already in use
-            existing = db.query(User).filter(User.email == req.email, User.id != current_user.id).first()
+            existing = db.query(User).filter(email_matches(User.email, email), User.id != current_user.id).first()
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Email address is already in use by another account",
                 )
-            changes["email"] = f"{current_user.email} → {req.email}"
-            current_user.email = req.email
+            changes["email"] = f"{current_user.email} -> {email}"
+            current_user.email = email
 
     if changes:
         db.commit()

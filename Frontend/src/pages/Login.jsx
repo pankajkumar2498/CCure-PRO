@@ -28,7 +28,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login({ email, password });
+      await login({ email: email.trim().toLowerCase(), password });
       navigate(from, { replace: true });
     } catch (err) {
       let errMsg = "Login failed. Check your credentials.";

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from auth.rbac import require_permission
+from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
 from db.base import get_db, utcnow, gen_user_id
 from db.models import (
@@ -151,10 +152,11 @@ def create_user(
     current_user: User = Depends(require_permission("users", "create"))
 ):
     target_org_id = _resolve_target_org_id(db, current_user, user_data.organization_id)
+    email = normalize_email(user_data.email)
 
     if db.query(User).filter(User.username == user_data.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
-    if db.query(User).filter(User.email == user_data.email).first():
+    if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=400, detail="Email already exists")
         
     role = db.query(Role).filter(Role.id == user_data.role_id).first()
@@ -172,7 +174,7 @@ def create_user(
     new_user = User(
         id=gen_user_id(org_slug, user_data.username),   # e.g. usr_acm_alice_x9v1
         username=user_data.username,
-        email=user_data.email,
+        email=email,
         full_name=user_data.full_name,
         role_id=user_data.role_id,
         org_id=target_org_id,
@@ -333,11 +335,13 @@ def update_user(
     if user_data.full_name is not None and user.full_name != user_data.full_name:
         changes["full_name"] = {"old": user.full_name, "new": user_data.full_name}
         user.full_name = user_data.full_name
-    if user_data.email is not None and user.email != user_data.email:
-        if db.query(User).filter(User.email == user_data.email).first():
+    if user_data.email is not None:
+        email = normalize_email(user_data.email)
+        if user.email != email and db.query(User).filter(email_matches(User.email, email), User.id != user.id).first():
             raise HTTPException(status_code=400, detail="Email already in use")
-        changes["email"] = {"old": user.email, "new": user_data.email}
-        user.email = user_data.email
+        if user.email != email:
+            changes["email"] = {"old": user.email, "new": email}
+            user.email = email
         
     if changes:
         log_audit_event(db, current_user, "user.updated", "user", str(user.id), changes, request)

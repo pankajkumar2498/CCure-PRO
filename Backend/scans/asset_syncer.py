@@ -92,19 +92,22 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             asset.discovery_method = discovery_method
             asset.response_time_ms = response_time_ms
         else:
-            # Prepare new asset for bulk insert
-            new_asset = Asset(
-                id=gen_asset_id(org_slug, ip if ip != "0.0.0.0" else (mac or "unknown")),
-                org_id=org_id,
-                ip_address=ip if ip != "0.0.0.0" else None,
-                mac_address=mac if mac != "00:00:00:00:00:00" else None,
-                hostname=hostname,
-                vendor=vendor if vendor != "Unknown" else None,
-                is_active=is_active,
-                discovery_method=discovery_method,
-                response_time_ms=response_time_ms,
-                last_scan_id=scan_id
-            )
+            asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
+            new_asset = {
+                "id": asset_id,
+                "org_id": org_id,
+                "ip_address": ip if ip != "0.0.0.0" else None,
+                "mac_address": mac if mac != "00:00:00:00:00:00" else None,
+                "hostname": hostname,
+                "vendor": vendor if vendor != "Unknown" else None,
+                "is_active": is_active,
+                "discovery_method": discovery_method,
+                "response_time_ms": response_time_ms,
+                "last_scan_id": scan_id,
+                "last_seen_at": utcnow(),
+                "created_at": utcnow(),
+                "updated_at": utcnow(),
+            }
             new_assets.append(new_asset)
             if mac and mac != "00:00:00:00:00:00":
                 asset_map_by_mac[mac] = new_asset
@@ -112,8 +115,24 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
                 asset_map_by_ip[ip] = new_asset
 
     if new_assets:
-        db.add_all(new_assets)
-            
+        stmt = insert(Asset).values(new_assets)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Asset.id],
+            set_={
+                "ip_address": stmt.excluded.ip_address,
+                "mac_address": stmt.excluded.mac_address,
+                "hostname": stmt.excluded.hostname,
+                "vendor": stmt.excluded.vendor,
+                "is_active": stmt.excluded.is_active,
+                "discovery_method": stmt.excluded.discovery_method,
+                "response_time_ms": stmt.excluded.response_time_ms,
+                "last_scan_id": stmt.excluded.last_scan_id,
+                "last_seen_at": stmt.excluded.last_seen_at,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        db.execute(stmt)
+
     db.commit()
 
 
@@ -193,7 +212,7 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
                 svc.scan_id = scan_id
             else:
                 svc = Service(
-                    id=gen_service_id(ip, int(port_num), proto),
+                    id=gen_service_id(asset.id, int(port_num), proto),
                     asset_id=asset.id,
                     scan_id=scan_id,
                     port=int(port_num),

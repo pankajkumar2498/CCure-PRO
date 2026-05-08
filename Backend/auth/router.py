@@ -21,6 +21,7 @@ from typing import Optional, List, Union
 from uuid import UUID
 
 from auth.dependencies import get_current_user
+from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
@@ -164,7 +165,7 @@ def check_email(q: str, db: Session = Depends(get_db)):
     """Check if an email is available"""
     if not q.strip() or "@" not in q:
         return {"available": False}
-    exists = db.query(User).filter(User.email == q.strip()).first()
+    exists = db.query(User).filter(email_matches(User.email, q)).first()
     return {"available": not bool(exists)}
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -173,7 +174,9 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     Create a new user account.
     Returns access + refresh tokens immediately so the user is logged in.
     """
-    if db.query(User).filter(User.email == req.email).first():
+    email = normalize_email(req.email)
+
+    if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=409, detail="Email already registered")
 
     if db.query(User).filter(User.username == req.username.strip()).first():
@@ -206,7 +209,7 @@ def register(req: RegisterRequest, response: Response, db: Session = Depends(get
     user = User(
         id=gen_user_id(self_service_org.slug, req.username.strip()),  # → usr_sel_pankaj_x9v1
         username=req.username.strip(),
-        email=req.email,
+        email=email,
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
         role_id=default_role.id
@@ -266,7 +269,8 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     from db.base import utcnow
     import datetime
 
-    user = db.query(User).filter(User.email == req.email).first()
+    email = normalize_email(req.email)
+    user = db.query(User).filter(email_matches(User.email, email)).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -315,7 +319,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     except Exception as exc:
         logger.warning(
             "Password verification failed for login attempt on email=%s: %s",
-            req.email,
+            email,
             exc.__class__.__name__,
         )
         is_valid = False

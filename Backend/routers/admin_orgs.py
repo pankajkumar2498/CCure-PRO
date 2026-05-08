@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
 from auth.dependencies import get_current_user
+from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
 from db.base import get_db, gen_org_id, gen_user_id
 from db.models import Organization, User, Role
@@ -130,11 +131,12 @@ def create_organization(
         
     # Check if we need to create an admin user and if their info is valid
     org_admin_role = None
+    admin_email = normalize_email(org_data.admin_email) if org_data.admin_email else None
     if org_data.admin_username and org_data.admin_email and org_data.admin_password:
         if db.query(User).filter(User.username == org_data.admin_username).first():
             raise HTTPException(status_code=400, detail=f"Admin username '{org_data.admin_username}' is already in use")
-        if db.query(User).filter(User.email == org_data.admin_email).first():
-            raise HTTPException(status_code=400, detail=f"Admin email '{org_data.admin_email}' is already in use")
+        if db.query(User).filter(email_matches(User.email, admin_email)).first():
+            raise HTTPException(status_code=400, detail=f"Admin email '{admin_email}' is already in use")
         
         org_admin_role = db.query(Role).filter(Role.name == "org_admin").first()
         if not org_admin_role:
@@ -161,9 +163,9 @@ def create_organization(
             new_admin = User(
                 id=gen_user_id(org_data.admin_username),
                 username=org_data.admin_username,
-                email=org_data.admin_email,
+                email=admin_email,
                 full_name=org_data.admin_full_name,
-                hashed_password=hash_password(org_data.admin_password),
+                password_hash=hash_password(org_data.admin_password),
                 role_id=org_admin_role.id,
                 org_id=new_org.id,
                 is_active=True

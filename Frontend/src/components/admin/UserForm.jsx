@@ -91,7 +91,7 @@ export default function UserForm({
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!canSubmit) return;
-    onSubmit({ ...form });
+    onSubmit({ ...form, email: form.email.trim().toLowerCase() });
   };
 
   return (
@@ -207,4 +207,3 @@ export default function UserForm({
     </div>
   );
 }
-

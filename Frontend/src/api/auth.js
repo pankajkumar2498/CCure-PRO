@@ -1,13 +1,21 @@
 import axiosInstance, { authSession } from "./axiosInstance";
 
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+
 export const login = async (credentials) => {
-  const response = await axiosInstance.post("/auth/login", credentials);
+  const response = await axiosInstance.post("/auth/login", {
+    ...credentials,
+    email: normalizeEmail(credentials?.email),
+  });
   authSession.setTokens(response.data || {});
   return response.data;
 };
 
 export const register = async (userData) => {
-  const response = await axiosInstance.post("/auth/register", userData);
+  const response = await axiosInstance.post("/auth/register", {
+    ...userData,
+    email: normalizeEmail(userData?.email),
+  });
   authSession.setTokens(response.data || {});
   return response.data;
 };
@@ -38,6 +46,6 @@ export const checkUsername = async (username) => {
 };
 
 export const checkEmail = async (email) => {
-  const response = await axiosInstance.get(`/auth/check-email?q=${encodeURIComponent(email)}`);
+  const response = await axiosInstance.get(`/auth/check-email?q=${encodeURIComponent(normalizeEmail(email))}`);
   return response.data;
 };

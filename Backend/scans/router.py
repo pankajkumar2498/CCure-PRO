@@ -94,8 +94,28 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
     return d
 
 
+def _user_can_read_all_scans(user: User, db: Session) -> bool:
+    if getattr(getattr(user, "role", None), "name", "").lower() == "superadmin":
+        return True
+
+    return (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == user.role_id,
+            Permission.resource == "scans",
+            Permission.action == "read_all",
+        )
+        .first()
+    ) is not None
+
+
 def _get_scan_or_404(scan_id: str, user: User, db: Session) -> Scan:
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id).first()
+    query = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id)
+    if not _user_can_read_all_scans(user, db):
+        query = query.filter(Scan.created_by == str(user.id))
+
+    scan = query.first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
@@ -120,8 +140,10 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, org_id, scope: str):
-    query = db.query(Scan).filter(Scan.org_id == org_id)
+def _build_scans_query(db: Session, user: User, scope: str):
+    query = db.query(Scan).filter(Scan.org_id == user.org_id)
+    if not _user_can_read_all_scans(user, db):
+        query = query.filter(Scan.created_by == str(user.id))
 
     if scope == "active":
         query = query.filter(Scan.is_deleted.is_(False), Scan.is_archived.is_(False))
@@ -141,8 +163,8 @@ def _build_scans_query(db: Session, org_id, scope: str):
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, org_id, scope: str, skip: int, limit: int) -> dict:
-    query, order_by = _build_scans_query(db, org_id, scope)
+def _scan_history_snapshot(db: Session, user: User, scope: str, skip: int, limit: int) -> dict:
+    query, order_by = _build_scans_query(db, user, scope)
     scans = (
         query
         .order_by(*order_by)
@@ -235,7 +257,7 @@ def list_scans(
     Return the current user's scan history, archived scans, or recycle-bin entries.
     Does NOT include full results blob (use GET /scans/{id} for that).
     """
-    return _scan_history_snapshot(db, user.org_id, scope, skip, limit)
+    return _scan_history_snapshot(db, user, scope, skip, limit)
 
 
 @router.get("/events")
@@ -263,7 +285,7 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, org_id, scope, skip, limit)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, current_user, scope, skip, limit)
             finally:
                 db.close()
 
@@ -306,7 +328,11 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     # 1. Send current status from DB immediately
     db = SessionLocal()
     try:
-        scan = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == current_user.org_id).first()
+        query = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == current_user.org_id)
+        if not _user_can_read_all_scans(current_user, db):
+            query = query.filter(Scan.created_by == str(current_user.id))
+
+        scan = query.first()
         if scan and scan.phases:
             # Send status of the most recent phase
             latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]

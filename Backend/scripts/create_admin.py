@@ -12,18 +12,19 @@ from sqlalchemy.orm import Session
 from db.base import SessionLocal
 from db.models.users import User
 from db.models.rbac import Organization, Role
+from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
 from db.base import SessionLocal, gen_user_id
 
 def create_admin():
-    email = "admin@ccurepro.com"
+    email = normalize_email("admin@ccurepro.com")
     username = "admin"
     password = "AdminCdac@123"
     
     db: Session = SessionLocal()
     try:
         # 1. Check if user already exists
-        existing = db.query(User).filter(User.email == email).first()
+        existing = db.query(User).filter(email_matches(User.email, email)).first()
         if existing:
             print(f"User {email} already exists.")
             return

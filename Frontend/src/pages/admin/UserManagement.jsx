@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
@@ -53,6 +53,14 @@ export default function UserManagement() {
   const normalizedRoleName = (currentUser?.role?.name || "").toLowerCase().replace(/\s+/g, "_");
   const isSuperadmin = normalizedRoleName === "superadmin";
   const isOrgAdmin = normalizedRoleName === "org_admin";
+  const assignableRoles = useMemo(() => {
+    if (isSuperadmin) return roles;
+
+    return roles.filter((role) => {
+      const roleName = String(role.name || "").toLowerCase().replace(/\s+/g, "_");
+      return roleName !== "superadmin";
+    });
+  }, [roles, isSuperadmin]);
 
   // ── Data loading (server-side) ────────────────────────────────────────────
   const loadUsers = useCallback(async () => {
@@ -332,7 +340,7 @@ export default function UserManagement() {
         <UserForm
           mode={modalMode}
           user={selectedUser}
-          roles={roles}
+          roles={assignableRoles}
           organizations={organizations}
           currentUser={currentUser}
           onSubmit={modalMode === "create" ? handleCreateUser : handleUpdateUser}

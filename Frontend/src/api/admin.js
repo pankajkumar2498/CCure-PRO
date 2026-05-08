@@ -1,17 +1,23 @@
 import axiosInstance from "./axiosInstance";
 
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const withNormalizedEmail = (payload, key = "email") => {
+  if (!payload || payload[key] == null) return payload;
+  return { ...payload, [key]: normalizeEmail(payload[key]) };
+};
+
 export const listUsers = async (params) => {
   const response = await axiosInstance.get("/admin/users/", { params });
   return response.data;
 };
 
 export const createUser = async (userData) => {
-  const response = await axiosInstance.post("/admin/users/", userData);
+  const response = await axiosInstance.post("/admin/users/", withNormalizedEmail(userData));
   return response.data;
 };
 
 export const updateUser = async (userId, userData) => {
-  const response = await axiosInstance.put(`/admin/users/${userId}/`, userData);
+  const response = await axiosInstance.put(`/admin/users/${userId}/`, withNormalizedEmail(userData));
   return response.data;
 };
 
@@ -61,7 +67,7 @@ export const listOrganizations = async () => {
 };
 
 export const createOrganization = async (orgData) => {
-  const response = await axiosInstance.post("/admin/organizations/", orgData);
+  const response = await axiosInstance.post("/admin/organizations/", withNormalizedEmail(orgData, "admin_email"));
   return response.data;
 };
 

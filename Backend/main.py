@@ -123,12 +123,13 @@ async def lifespan(app: FastAPI):
     # 1.6. Ensure first admin exists
     from db.models.users import User
     from db.models.rbac import Organization, Role
+    from auth.email_utils import email_matches, normalize_email
     from auth.jwt_handler import hash_password
     from db.base import SessionLocal, gen_user_id
 
     with SessionLocal() as db:
-        admin_email = "admin@ccurepro.com"
-        if not db.query(User).filter(User.email == admin_email).first():
+        admin_email = normalize_email("admin@ccurepro.com")
+        if not db.query(User).filter(email_matches(User.email, admin_email)).first():
             log.info(f"Seeding default admin user: {admin_email}")
             org = db.query(Organization).filter(Organization.slug == "default").first()
             role = db.query(Role).filter(Role.name == "superadmin").first()

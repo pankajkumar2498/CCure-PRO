@@ -336,6 +336,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
             else:
                 finding = AssetVulnerability(
                     id=f"fnd_{asset.id}_{cve_def.id}",
+                    org_id=org_id,
                     scan_id=scan_id,
                     asset_id=asset.id,
                     vuln_id=cve_def.id,

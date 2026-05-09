@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getScans, purgeScan, restoreScan } from "../api/scans";
 import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
+import { can, denyMessage } from "../auth/permissions";
 
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
@@ -121,6 +122,7 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
 export default function RecycleBin() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canDeleteScans = can(user, "scans", "delete");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
@@ -150,6 +152,10 @@ export default function RecycleBin() {
   }, [load]);
 
   const handleRestore = async (id) => {
+    if (!canDeleteScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setRestoringId(id);
     try {
       await restoreScan(id);
@@ -164,6 +170,10 @@ export default function RecycleBin() {
   };
 
   const handlePermanentDelete = (id) => {
+    if (!canDeleteScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     const scan = scans.find(s => s.id === id);
     if (!scan) return;
     
@@ -182,6 +192,11 @@ export default function RecycleBin() {
   };
 
   const handleConfirmDelete = async () => {
+    if (!canDeleteScans) {
+      setModal(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
     if (!modal?.scanId) return;
     
     const id = modal.scanId;
@@ -285,20 +300,26 @@ export default function RecycleBin() {
                     </td>
                     <td>
                       <div className="action-btns">
-                        <button
-                          className="action-btn"
-                          onClick={() => handleRestore(scan.id)}
-                          disabled={restoringId === scan.id}
-                        >
-                          {restoringId === scan.id ? "..." : "Restore"}
-                        </button>
-                        <button
-                          className="action-btn action-btn--danger"
-                          onClick={() => handlePermanentDelete(scan.id)}
-                          disabled={purgingId === scan.id}
-                        >
-                          {purgingId === scan.id ? "..." : "Delete Permanently"}
-                        </button>
+                        {canDeleteScans ? (
+                          <>
+                            <button
+                              className="action-btn"
+                              onClick={() => handleRestore(scan.id)}
+                              disabled={restoringId === scan.id}
+                            >
+                              {restoringId === scan.id ? "..." : "Restore"}
+                            </button>
+                            <button
+                              className="action-btn action-btn--danger"
+                              onClick={() => handlePermanentDelete(scan.id)}
+                              disabled={purgingId === scan.id}
+                            >
+                              {purgingId === scan.id ? "..." : "Delete Permanently"}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="muted">Read only</span>
+                        )}
                       </div>
                     </td>
                   </tr>

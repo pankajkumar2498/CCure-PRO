@@ -12,11 +12,13 @@ from dotenv import load_dotenv
 
 BACKEND_DIR = Path(__file__).resolve().parent
 DEFAULT_SQLITE_DB = BACKEND_DIR / "ccure_users.db"
-ENV_FILE = BACKEND_DIR / ".env"
+ENV_FILE = BACKEND_DIR / ".env.test"  # Always use test config for development
 
 # Always load the Backend/.env file so database switching is controlled
 # from one place even when the app is launched outside the Backend folder.
-load_dotenv(dotenv_path=ENV_FILE)
+# Skip if running in tests to allow conftest.py to control environment.
+if not os.getenv("SKIP_DOTENV_LOAD"):
+    load_dotenv(dotenv_path=ENV_FILE)
 
 
 def _normalize_database_url(database_url: str) -> str:

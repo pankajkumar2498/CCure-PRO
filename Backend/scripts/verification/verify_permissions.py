@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'Backend'))
 
-os.environ["DATABASE_URL"] = "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_db"
+os.environ["DATABASE_URL"] = "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test"
 
 from sqlalchemy import text, create_engine
 

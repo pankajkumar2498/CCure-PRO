@@ -7,6 +7,8 @@ import EmptyState from "../../components/common/EmptyState";
 import Loader from "../../components/common/Loader";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import { listOrganizations, listRoles, listUsers, purgeUser, restoreUser } from "../../api/admin";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 const PAGE_SIZE = 10;
 
@@ -27,6 +29,8 @@ function resolveRoleName(user, roles) {
 
 export default function DeletedUsers() {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const canDeleteUsers = can(currentUser, "users", "delete");
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);
@@ -94,6 +98,10 @@ export default function DeletedUsers() {
   }, [page, pageCount]);
 
   const handleRestore = (user) => {
+    if (!canDeleteUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setConfirmConfig({
       title: `Restore ${user.username}`,
       subtitle: "This will return the account to the normal user list.",
@@ -120,6 +128,10 @@ export default function DeletedUsers() {
   };
 
   const handlePermanentDelete = (user) => {
+    if (!canDeleteUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setConfirmConfig({
       title: `Permanently delete ${user.username}?`,
       subtitle: "This action cannot be undone. The user record will be removed from the system.",
@@ -231,24 +243,30 @@ export default function DeletedUsers() {
                         <td>{formatDate(user.last_login_at)}</td>
                         <td>
                           <div className="action-btns table-action-cell">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleRestore(user)}
-                              disabled={busyId === user.id}
-                            >
-                              Restore
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="danger"
-                              size="sm"
-                              onClick={() => handlePermanentDelete(user)}
-                              disabled={busyId === user.id}
-                            >
-                              Delete permanently
-                            </Button>
+                            {canDeleteUsers ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleRestore(user)}
+                                  disabled={busyId === user.id}
+                                >
+                                  Restore
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => handlePermanentDelete(user)}
+                                  disabled={busyId === user.id}
+                                >
+                                  Delete permanently
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-muted">Read only</span>
+                            )}
                           </div>
                         </td>
                       </tr>

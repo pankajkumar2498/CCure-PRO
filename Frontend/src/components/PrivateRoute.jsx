@@ -5,8 +5,29 @@
  */
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { canPermission, canAny, canAll, isSuperAdmin } from "../auth/permissions";
 
-export default function PrivateRoute({ children, requiredPermission }) {
+const fallbackPathFor = (user, currentPath) => {
+  const candidates = [
+    { path: "/dashboard", permission: { resource: "scans", action: "execute" } },
+    { path: "/history", permission: { resource: "scans", action: "read" } },
+    { path: "/reports", permission: { resource: "reports", action: "read" } },
+    { path: "/admin/users", permission: { resource: "users", action: "read" } },
+    { path: "/admin/audit-logs", permission: { resource: "audit", action: "read" } },
+  ];
+
+  return candidates.find(
+    (candidate) => candidate.path !== currentPath && canPermission(user, candidate.permission)
+  )?.path || "/login";
+};
+
+export default function PrivateRoute({
+  children,
+  requiredPermission,
+  requiredAny,
+  requiredAll,
+  superadminOnly = false,
+}) {
   const { user, loading, authState, authMessage } = useAuth();
   const location          = useLocation();
 
@@ -34,15 +55,14 @@ export default function PrivateRoute({ children, requiredPermission }) {
     );
   }
 
-  if (requiredPermission) {
-    const { resource, action } = requiredPermission;
-    const hasPermission = user.role?.permissions?.some(
-      (p) => p.resource === resource && (p.action === action || p.action === "manage")
-    );
+  const authorized =
+    (!superadminOnly || isSuperAdmin(user)) &&
+    (!requiredPermission || canPermission(user, requiredPermission)) &&
+    (!requiredAny || canAny(user, requiredAny)) &&
+    (!requiredAll || canAll(user, requiredAll));
 
-    if (!hasPermission) {
-      return <Navigate to="/dashboard" replace />;
-    }
+  if (!authorized) {
+    return <Navigate to={fallbackPathFor(user, location.pathname)} replace />;
   }
 
   return children;

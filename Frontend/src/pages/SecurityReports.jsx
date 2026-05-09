@@ -6,11 +6,12 @@
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../components/layout/AppLayout";
-import { getScans, purgeScan } from "../api/scans";
+import { getScans, deleteReport } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
+import { can, denyMessage } from "../auth/permissions";
 
 /* ── Constants & Helpers ─────────────────────────────────────────────────── */
 
@@ -95,6 +96,8 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
 
 export default function SecurityReports() {
   const { user } = useAuth();
+  const canReadReports = can(user, "reports", "read");
+  const canDeleteReports = can(user, "reports", "delete");
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -138,6 +141,10 @@ export default function SecurityReports() {
   useEffect(() => { load(); }, [load]);
 
   const handleDownload = async (scanId, format) => {
+    if (!canReadReports) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     try {
       const response = await api.get(`/reports/download/${scanId}`, {
         params: { fmt: format },
@@ -169,6 +176,10 @@ export default function SecurityReports() {
   };
 
   const handleDelete = (scanId) => {
+    if (!canDeleteReports) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     const scan = scans.find(s => s.id === scanId);
     if (!scan) return;
     
@@ -187,11 +198,16 @@ export default function SecurityReports() {
   };
 
   const handleConfirmDelete = async () => {
+    if (!canDeleteReports) {
+      setModal(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
     if (!modal?.scanId) return;
     
     const scanId = modal.scanId;
     try {
-      await purgeScan(scanId);
+      await deleteReport(scanId);
       setScans(prev => prev.filter(s => s.id !== scanId));
       setModal(null);
     } catch (err) {
@@ -286,6 +302,8 @@ export default function SecurityReports() {
                 scan={scan} 
                 onDownload={handleDownload}
                 onDelete={handleDelete}
+                canReadReports={canReadReports}
+                canDeleteReports={canDeleteReports}
               />
             ))}
           </div>
@@ -506,7 +524,7 @@ export default function SecurityReports() {
   );
 }
 
-function ReportCard({ scan, onDownload }) {
+function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteReports }) {
   const typeLabel = REPORT_TYPE_LABELS[scan.pipeline_mode] || 
                    (scan.scan_type === "credentialed" ? REPORT_TYPE_LABELS.credentialed : "Security Audit");
 
@@ -542,6 +560,7 @@ function ReportCard({ scan, onDownload }) {
         <button 
           className="download-btn download-btn--json" 
           onClick={() => onDownload(scan.id, 'JSON')}
+          disabled={!canReadReports}
           title="Download Professional PDF Report with formatted tables"
         >
           <span>📄</span> Official Report
@@ -549,10 +568,20 @@ function ReportCard({ scan, onDownload }) {
         <button 
           className="download-btn download-btn--xml" 
           onClick={() => onDownload(scan.id, 'XML')}
+          disabled={!canReadReports}
           title="Download Technical PDF containing raw audit data"
         >
           <span>📝</span> Technical Data
         </button>
+        {canDeleteReports && (
+          <button
+            className="download-btn download-btn--delete"
+            onClick={() => onDelete(scan.id)}
+            title="Delete report artifacts"
+          >
+            <span>🗑️</span>
+          </button>
+        )}
       </div>
       
       {/* Visual indicate for "Stored in Cabinet" */}

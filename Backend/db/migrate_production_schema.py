@@ -1,20 +1,15 @@
 """
 db/migrate_production_schema.py
 ──────────────────────────────────────────────────────────────────────────────
-Additive migration: creates all production-grade tables without touching
-or dropping any existing data.
+Schema initialization and RBAC seeding script.
 
-SAFE TO RUN MULTIPLE TIMES — every CREATE TABLE uses IF NOT EXISTS and every
-ALTER TABLE checks for the column before adding it.
+This script:
+  1. Runs Alembic migrations to create/update all database schema
+  2. Seeds the 5 built-in RBAC roles and permission atoms
+  3. Seeds a default 'default' Organization
+  4. Prints a final summary of what was created
 
-What this script does
-─────────────────────
-  1. Validates the PostgreSQL connection.
-  2. Enables required PG extensions (pg_trgm, pgcrypto, uuid-ossp).
-  3. Drops and recreates the full production schema in dependency order.
-  4. Seeds the 5 built-in RBAC roles and all permission atoms.
-  5. Seeds a default 'default' Organization.
-  6. Prints a final summary of what was created.
+IMPORTANT: Alembic handles all schema creation. This script only handles data initialization.
 
 Usage
 ─────
@@ -28,6 +23,7 @@ Usage
 import sys
 import os
 import io
+import subprocess
 
 # Force UTF-8 output on Windows (cp1252 terminal cannot handle checkmarks/arrows)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -41,19 +37,74 @@ if _BACKEND not in sys.path:
 from sqlalchemy import text, inspect
 from db.base import engine, Base, gen_org_id
 
-# Import ALL models so SQLAlchemy knows about them before create_all()
-from db.models.rbac          import Organization, Role, Permission, RolePermission
-from db.models.users         import User, RefreshTokenSession, AuditLog
-from db.models.assets        import Asset, AssetTag, AssetNote, AssetChangeLog
-from db.models.scans         import Scan, ScanPhase
-from db.models.findings      import (
-    Service, TLSDetail, HttpSecurityDetail,
-    VulnerabilityDefinition, AssetVulnerability,
-)
-from db.models.notifications import Notification
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def is_database_empty(conn) -> bool:
+    result = conn.execute(
+        text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'")
+    )
+    return result.scalar() == 0
+
+
+def create_partitions(conn):
+    print(f"\n  Creating table partitions (Enterprise Mode)...")
+    partition_targets = ["audit_logs", "asset_vulnerabilities"]
+
+    for table in partition_targets:
+        is_partitioned = conn.execute(text("""
+            SELECT COUNT(*)
+            FROM pg_partitioned_table pt
+            JOIN pg_class c ON c.oid = pt.partrelid
+            WHERE c.relname = :table_name
+        """), {"table_name": table}).scalar()
+
+        if not is_partitioned:
+            print(f"    ⚠ Skipping partitions for '{table}' — table exists as a regular (non-partitioned) table.")
+            continue
+
+        created = 0
+        for i in range(8):
+            partition_name = f"{table}_p{i}"
+            already_exists = conn.execute(
+                text("SELECT COUNT(*) FROM pg_class WHERE relname = :pname"),
+                {"pname": partition_name}
+            ).scalar()
+            if not already_exists:
+                conn.execute(text(f"CREATE TABLE {partition_name} PARTITION OF {table} FOR VALUES WITH (MODULUS 8, REMAINDER {i})"))
+                created += 1
+
+        if created > 0:
+            print(f"    ✓ {created} new partitions created for '{table}'")
+        else:
+            print(f"    ✓ All partitions already exist for '{table}'")
+
+
+def _print_header(title: str):
+    print(f"\n{'=' * 60}")
+    print(f"  {title}")
+    print('=' * 60)
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    result = conn.execute(
+        text("SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+             "WHERE table_schema='public' AND table_name=:t)"),
+        {"t": table_name}
+    )
+    return result.scalar()
+
+
+def _row_count(conn, table_name: str) -> int:
+    try:
+        return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+    except Exception:
+        return -1
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RBAC Seed Data
+# Step 1 — Run Alembic Migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_ROLES = [
@@ -202,118 +253,59 @@ def _row_count(conn, table_name: str) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 1 — Extensions
+# Step 1 — Run Alembic Migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
-def enable_extensions(conn):
-    _print_header("Step 1: Enabling PostgreSQL Extensions")
-    extensions = ["pg_trgm", "pgcrypto", '"uuid-ossp"']
-    for ext in extensions:
-        conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext}"))
-        print(f"  ✓ {ext.replace(chr(34), '')}")
+def run_alembic_migrations():
+    _print_header("Step 1: Running Alembic Schema Migrations")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Step 2 — Tables
-# ─────────────────────────────────────────────────────────────────────────────
-
-def sync_missing_columns(conn):
-    """Additive migration for the 'assets' table: ensuring newly added columns exist."""
-    print(f"\n  Checking for missing columns...")
-    
-    # List of (table, column, type)
-    columns_to_ensure = [
-        ("assets", "discovery_method", "VARCHAR(50)"),
-        ("assets", "response_time_ms", "INTEGER"),
-        ("users", "is_deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
-        ("users", "deleted_at", "TIMESTAMPTZ"),
-    ]
-    
-    for table, col, col_type in columns_to_ensure:
-        # Check if column exists
-        res = conn.execute(text(f"""
-            SELECT count(*) 
-            FROM information_schema.columns 
-            WHERE table_name = '{table}' AND column_name = '{col}'
-        """)).scalar()
-        
-        if res == 0:
-            print(f"    + Adding column {col} to {table}...")
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
-        else:
-            print(f"    ✓ Column {col} exists in {table}")
-
-def create_all_tables():
-    _print_header("Step 2: Creating Production Schema Tables")
-    Base.metadata.create_all(bind=engine, checkfirst=True)
-
-    table_order = [
-        "organizations", "roles", "permissions", "role_permissions",
-        "users", "refresh_token_sessions", "audit_logs",
-        "scans", "assets", "asset_tags", "asset_notes", "asset_change_log",
-        "scan_phases",
-        "services", "tls_details", "http_security_details",
-        "vulnerability_definitions", "asset_vulnerabilities",
-        "notifications",
-    ]
-
-    with engine.connect() as conn:
-        for table in table_order:
-            exists = _table_exists(conn, table)
-            status = "✓ exists" if exists else "✗ MISSING"
-            print(f"  {status:12s} {table}")
-        
-        sync_missing_columns(conn)
-    
-    # ── Create Partitions ───────────────────────────────────────────────────
-    # SQLAlchemy create_all() creates the parent partitioned table but not
-    # the actual child partitions. We create 8 hash partitions here.
-    # IMPORTANT: Only runs if the table is actually a partitioned table in PG.
-    # If the table was created as a regular table (legacy schema), we skip it
-    # gracefully with a warning instead of crashing.
     with engine.begin() as conn:
-        print(f"\n  Creating table partitions (Enterprise Mode)...")
-        partition_targets = ["audit_logs", "asset_vulnerabilities"]
-        for table in partition_targets:
-            # Check if this table is actually a partitioned table in PostgreSQL
-            is_partitioned = conn.execute(text("""
-                SELECT COUNT(*) FROM pg_partitioned_table pt
-                JOIN pg_class c ON c.oid = pt.partrelid
-                WHERE c.relname = :table_name
-            """), {"table_name": table}).scalar()
+        empty = is_database_empty(conn)
 
-            if not is_partitioned:
-                print(f"    ⚠  Skipping partitions for '{table}' — table exists as a regular "
-                      f"(non-partitioned) table. Drop and recreate it to enable partitioning.")
-                continue
+    if empty:
+        print("  ✓ No public tables found; bootstrapping schema from SQLAlchemy metadata.")
+        Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            create_partitions(conn)
 
-            created = 0
-            for i in range(8):
-                partition_name = f"{table}_p{i}"
-                # Check if partition already exists before creating
-                already_exists = conn.execute(text("""
-                    SELECT COUNT(*) FROM pg_class
-                    WHERE relname = :pname
-                """), {"pname": partition_name}).scalar()
-                if not already_exists:
-                    conn.execute(text(f"""
-                        CREATE TABLE {partition_name}
-                        PARTITION OF {table}
-                        FOR VALUES WITH (MODULUS 8, REMAINDER {i})
-                    """))
-                    created += 1
-            if created > 0:
-                print(f"    ✓ {created} new partitions created for '{table}'")
-            else:
-                print(f"    ✓ All 8 partitions already exist for '{table}'")
+        print("  ✓ Schema bootstrap complete; stamping Alembic head.")
+        command = [sys.executable, "-m", "alembic", "stamp", "head"]
+    else:
+        command = [sys.executable, "-m", "alembic", "upgrade", "head"]
+
+    try:
+        result = subprocess.run(
+            command,
+            cwd=_BACKEND,
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        if result.returncode == 0:
+            print("  ✓ Alembic command completed successfully")
+            if result.stdout:
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        print(f"    {line}")
+        else:
+            print("  ✗ Alembic command failed:")
+            print(result.stderr)
+            sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print("  ✗ Alembic command timed out")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  ✗ Error running Alembic: {e}")
+        sys.exit(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 3 — Seed RBAC
+# Step 2 — Seed RBAC
 # ─────────────────────────────────────────────────────────────────────────────
 
 def seed_rbac(conn):
-    _print_header("Step 3: Seeding RBAC Roles & Permissions")
+    _print_header("Step 2: Seeding RBAC Roles & Permissions")
 
     # ── Roles ─────────────────────────────────────────────────────────────────
     role_ids = {}
@@ -393,11 +385,11 @@ def seed_rbac(conn):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 4 — Default Organization
+# Step 3 — Default Organization
 # ─────────────────────────────────────────────────────────────────────────────
 
 def seed_default_org(conn):
-    _print_header("Step 4: Seeding Default Organization (Stripe-Style ID)")
+    _print_header("Step 3: Seeding Default Organization (Stripe-Style ID)")
 
     existing = conn.execute(
         text("SELECT id, name FROM organizations WHERE slug = :slug"),
@@ -428,11 +420,11 @@ def seed_default_org(conn):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 5 — Summary
+# Step 4 — Summary
 # ─────────────────────────────────────────────────────────────────────────────
 
 def print_summary(conn):
-    _print_header("Migration Complete — Schema Summary")
+    _print_header("Database Initialization Complete")
 
     tables = [
         ("organizations",          "Tenant organizations"),
@@ -463,7 +455,7 @@ def print_summary(conn):
         count_str = str(count) if count >= 0 else "ERR"
         print(f"  {table:<30} {count_str:>8}   {purpose}")
 
-    print(f"\n  ✅ Production schema is ready.")
+    print(f"\n  ✅ Database is initialized and ready.")
     print(f"")
     print(f"  ✨ Stripe-Style ID Examples (what you'll see in your DB now):")
     print(f"     org_default              → Default Organization")
@@ -485,7 +477,7 @@ def print_summary(conn):
 
 def run_migration():
     print("\n" + "=" * 60)
-    print("  CCure Audit PRO -- Production Schema Migration")
+    print("  CCure Audit PRO -- Database Initialization")
     print("=" * 60)
     print(f"\n  Database: {engine.url}")
 
@@ -498,20 +490,22 @@ def run_migration():
         print(f"\n  ✗ Cannot connect to database: {e}")
         sys.exit(1)
 
-    # Run all steps in a single transaction
-    with engine.begin() as conn:
-        enable_extensions(conn)
+    # Step 1: Run Alembic migrations
+    run_alembic_migrations()
 
-    # create_all must use the engine directly (not a connection)
-    create_all_tables()
-
+    # Step 2 & 3: Seed RBAC and default org in a transaction
     with engine.begin() as conn:
         seed_rbac(conn)
         seed_default_org(conn)
 
+    # Step 4: Print summary
     with engine.connect() as conn:
         print_summary(conn)
 
 
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     run_migration()

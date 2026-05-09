@@ -19,6 +19,8 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api, { authSession } from "../../api/axiosInstance";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 const INTENSITIES = ["light", "normal", "deep"];
 
@@ -37,6 +39,8 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
 
 export default function Phase1Results() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canExecuteScans = can(user, "scans", "execute");
   const {
     target, scanId, scanNo,
     phase1Hosts, phase1Summary,
@@ -155,6 +159,10 @@ export default function Phase1Results() {
   };
 
   const runAssetDiscovery = async () => {
+    if (!canExecuteScans) {
+      setAssetError(denyMessage);
+      return;
+    }
     if (!selectedCount) return;
     const payloadHosts = phase1Hosts.filter(h => assetSelected.has(h.ip_address));
     setPhase2Hosts(payloadHosts);
@@ -212,6 +220,10 @@ export default function Phase1Results() {
   };
 
   const proceedToNextPhase = () => {
+    if (!canExecuteScans) {
+      setAssetError(denyMessage);
+      return;
+    }
     if (!canProceedToPhase2) return;
     navigate(nextPhase.route);
   };
@@ -307,7 +319,7 @@ export default function Phase1Results() {
                     key={val}
                     className={`filter-tab ${assetFilter === val ? "filter-tab--active" : ""}`}
                     onClick={() => setAssetFilter(val)}
-                    disabled={assetLoading}
+                    disabled={assetLoading || !canExecuteScans}
                   >
                     {lbl}
                   </button>
@@ -323,7 +335,7 @@ export default function Phase1Results() {
                     key={level}
                     className={`filter-tab ${assetIntensity === level ? "filter-tab--active" : ""}`}
                     onClick={() => setAssetIntensity(level)}
-                    disabled={assetLoading}
+                    disabled={assetLoading || !canExecuteScans}
                   >
                     {level}
                   </button>
@@ -335,7 +347,7 @@ export default function Phase1Results() {
               <button
                 className="btn btn--ghost btn--sm"
                 onClick={toggleAssetAll}
-                disabled={assetLoading || !activeHosts.length}
+                disabled={assetLoading || !activeHosts.length || !canExecuteScans}
               >
                 {selectedCount === activeHosts.length ? "Deselect all" : "Select all active"}
               </button>
@@ -343,7 +355,7 @@ export default function Phase1Results() {
               <button
                 className="btn btn--primary"
                 onClick={runAssetDiscovery}
-                disabled={assetLoading || selectedCount === 0}
+                disabled={assetLoading || selectedCount === 0 || !canExecuteScans}
                 style={{ minWidth: 170 }}
               >
                 {assetLoading
@@ -468,7 +480,7 @@ export default function Phase1Results() {
               </div>
             </div>
             <div className="pipeline-error-actions">
-              <button className="btn btn--primary" onClick={runAssetDiscovery}>
+              <button className="btn btn--primary" onClick={runAssetDiscovery} disabled={!canExecuteScans}>
                 ↻ Retry Port Scan
               </button>
             </div>
@@ -646,7 +658,7 @@ export default function Phase1Results() {
             <p className="muted" style={{ fontSize: "0.85rem" }}>
               Continue to Port Scan to choose hosts and intensity on the same page.
             </p>
-            <button className="btn btn--primary" onClick={proceedToNextPhase}>
+            <button className="btn btn--primary" onClick={proceedToNextPhase} disabled={!canExecuteScans}>
               Continue to Port Scan
             </button>
           </div>

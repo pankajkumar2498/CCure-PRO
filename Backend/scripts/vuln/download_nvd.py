@@ -20,7 +20,7 @@ from pathlib import Path
 from datetime import datetime
 
 # SQLite DB location
-DB_PATH = Path(__file__).parent.parent / "cves.db"
+DB_PATH = Path(__file__).parent.parent.parent / "db" / "cves.db"
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 

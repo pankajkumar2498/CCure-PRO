@@ -37,23 +37,23 @@ export default function App() {
         <Route path="/"        element={<Navigate to="/dashboard" replace />} />
         <Route path="/archived" element={<Navigate to="/archived-scans" replace />} />
 
-        <Route path="/dashboard"     element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/scan"          element={<PrivateRoute><NewScan /></PrivateRoute>} />
-        <Route path="/scan/host-discovery"   element={<PrivateRoute><Phase1Results /></PrivateRoute>} />
-        <Route path="/scan/asset-discovery"   element={<PrivateRoute><Phase2Results /></PrivateRoute>} />
-        <Route path="/scan/advanced-scan"   element={<PrivateRoute><Phase3Results /></PrivateRoute>} />
-        <Route path="/scan/credentialed"         element={<PrivateRoute><CredentialedScan /></PrivateRoute>} />
-        <Route path="/scan/credentialed/results" element={<PrivateRoute><CredentialedResults /></PrivateRoute>} />
-        <Route path="/history"       element={<PrivateRoute><ScanHistory /></PrivateRoute>} />
-        <Route path="/archived-scans" element={<PrivateRoute><ArchivedScans /></PrivateRoute>} />
-        <Route path="/recycle-bin"   element={<PrivateRoute><RecycleBin /></PrivateRoute>} />
-        <Route path="/reports"       element={<PrivateRoute><SecurityReports /></PrivateRoute>} />
+        <Route path="/dashboard"     element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><Dashboard /></PrivateRoute>} />
+        <Route path="/scan"          element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><NewScan /></PrivateRoute>} />
+        <Route path="/scan/host-discovery"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase1Results /></PrivateRoute>} />
+        <Route path="/scan/asset-discovery"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase2Results /></PrivateRoute>} />
+        <Route path="/scan/advanced-scan"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase3Results /></PrivateRoute>} />
+        <Route path="/scan/credentialed"         element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><CredentialedScan /></PrivateRoute>} />
+        <Route path="/scan/credentialed/results" element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><CredentialedResults /></PrivateRoute>} />
+        <Route path="/history"       element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><ScanHistory /></PrivateRoute>} />
+        <Route path="/archived-scans" element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><ArchivedScans /></PrivateRoute>} />
+        <Route path="/recycle-bin"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><RecycleBin /></PrivateRoute>} />
+        <Route path="/reports"       element={<PrivateRoute requiredPermission={{resource: "reports", action: "read"}}><SecurityReports /></PrivateRoute>} />
 
         {/* Admin Module */}
         <Route path="/admin/users"   element={<PrivateRoute requiredPermission={{resource: "users", action: "read"}}><UserManagement /></PrivateRoute>} />
         <Route path="/admin/deleted-users" element={<PrivateRoute requiredPermission={{resource: "users", action: "delete"}}><DeletedUsers /></PrivateRoute>} />
         <Route path="/admin/roles"   element={<PrivateRoute requiredPermission={{resource: "roles", action: "read"}}><RoleManagement /></PrivateRoute>} />
-        <Route path="/admin/organizations" element={<PrivateRoute requiredPermission={{resource: "organizations", action: "read"}}><OrganizationManagement /></PrivateRoute>} />
+        <Route path="/admin/organizations" element={<PrivateRoute superadminOnly><OrganizationManagement /></PrivateRoute>} />
         <Route path="/admin/audit-logs" element={<PrivateRoute requiredPermission={{resource: "audit", action: "read"}}><AuditLogs /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

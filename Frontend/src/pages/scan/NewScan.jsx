@@ -17,6 +17,8 @@ import AppLayout  from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api, { authSession } from "../../api/axiosInstance";
+import { can, denyMessage } from "../../auth/permissions";
+import { useAuth } from "../../context/AuthContext";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -66,6 +68,8 @@ const PIPELINE_BADGE = {
 
 export default function NewScan() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canExecuteScans = can(user, "scans", "execute");
   const {
     target, setTarget,
     pipelineMode,
@@ -137,6 +141,10 @@ export default function NewScan() {
   };
 
   const handleScan = async () => {
+    if (!canExecuteScans) {
+      setError(denyMessage);
+      return;
+    }
     if (!target.trim()) return;
     setLoading(true);
     setError("");
@@ -214,9 +222,9 @@ export default function NewScan() {
                 className="ns-input"
                 value={target}
                 onChange={e => setTarget(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleScan()}
+                onKeyDown={e => e.key === "Enter" && canExecuteScans && handleScan()}
                 placeholder="192.168.1.0/24   ·   10.0.0.1-50   ·   192.168.1.10"
-                disabled={loading}
+                disabled={loading || !canExecuteScans}
                 autoFocus
                 autoComplete="off"
                 spellCheck={false}
@@ -238,7 +246,7 @@ export default function NewScan() {
                   key={t}
                   className="ns-chip"
                   onClick={() => setTarget(t)}
-                  disabled={loading}
+                  disabled={loading || !canExecuteScans}
                   title={`Use ${t}`}
                 >
                   {t}
@@ -269,7 +277,7 @@ export default function NewScan() {
                           isActive ? "ns-int-card--active" : "",
                         ].join(" ")}
                         onClick={() => setDiscoveryIntensity(di.value)}
-                        disabled={loading}
+                        disabled={loading || !canExecuteScans}
                       >
                         <span className="ns-int-icon">{di.icon}</span>
                         <span className="ns-int-name">{di.label}</span>
@@ -306,7 +314,7 @@ export default function NewScan() {
                           isActive ? "ns-int-card--active" : "",
                         ].join(" ")}
                         onClick={() => setIntensity(si.value)}
-                        disabled={loading}
+                        disabled={loading || !canExecuteScans}
                       >
                         <span className="ns-int-icon">{si.icon}</span>
                         <span className="ns-int-name">{si.label}</span>
@@ -335,7 +343,7 @@ export default function NewScan() {
                 value={rateLimit}
                 onChange={e => setRateLimit(e.target.value)}
                 placeholder="e.g. 500"
-                disabled={loading}
+                disabled={loading || !canExecuteScans}
               />
             </div>
           </div>
@@ -368,7 +376,7 @@ export default function NewScan() {
             id="ns-start-btn"
             className={`ns-start-btn${loading ? " ns-start-btn--scanning" : ""}`}
             onClick={handleScan}
-            disabled={loading || !target.trim()}
+            disabled={loading || !target.trim() || !canExecuteScans}
           >
             {loading ? (
               <>

@@ -15,6 +15,7 @@ import Button from "../../components/common/Button";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import OrganizationForm from "../../components/admin/OrganizationForm";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
+import { can, denyMessage, isSuperAdmin } from "../../auth/permissions";
 
 export default function OrganizationManagement() {
   const navigate = useNavigate();
@@ -32,14 +33,10 @@ export default function OrganizationManagement() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const [formData, setFormData] = useState({ name: "", slug: "", plan: "community", max_assets: 500, max_users: 10 });
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
-  const roleName = currentUser?.role?.name?.toLowerCase() || "";
-  const isSuperadmin = roleName === "superadmin";
-  const canCreateOrganizations = currentUser?.role?.permissions?.some(
-    (permission) => permission.resource === "organizations" && permission.action === "create"
-  );
-  const canUpdateOrganizations = currentUser?.role?.permissions?.some(
-    (permission) => permission.resource === "organizations" && permission.action === "update"
-  );
+  const isSuperadmin = isSuperAdmin(currentUser);
+  const canCreateOrganizations = can(currentUser, "organizations", "create");
+  const canUpdateOrganizations = can(currentUser, "organizations", "update");
+  const canDeleteOrganizations = isSuperadmin && can(currentUser, "organizations", "delete");
 
   const canManageOrg = (org) => (
     isSuperadmin || (canUpdateOrganizations && String(org.id) === String(currentUser?.org_id))
@@ -64,6 +61,10 @@ export default function OrganizationManagement() {
   }, [loadData]);
 
   const handleCreateOrg = async (data) => {
+    if (!canCreateOrganizations) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setBusy(true);
     try {
       await createOrganization(data);
@@ -79,6 +80,10 @@ export default function OrganizationManagement() {
   };
 
   const handleUpdateOrg = async (data) => {
+    if (!canUpdateOrganizations) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     if (!selectedOrg) return;
     setBusy(true);
     try {
@@ -100,6 +105,10 @@ export default function OrganizationManagement() {
   };
 
   const handleToggleStatus = (org) => {
+    if (!canUpdateOrganizations) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     const action = org.is_active ? "Deactivate" : "Activate";
     setConfirmConfig({
       title: `${action} organization`,
@@ -129,6 +138,10 @@ export default function OrganizationManagement() {
   };
 
   const handleDeleteOrg = (org) => {
+    if (!canDeleteOrganizations) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setConfirmConfig({
       title: `Delete ${org.name}`,
       subtitle: "Are you sure you want to delete this organization?",
@@ -232,7 +245,7 @@ export default function OrganizationManagement() {
                   <td>
                     {canManageOrg(o) ? (
                       <div className="action-btns table-action-cell">
-                        {isSuperadmin && (
+                        {canDeleteOrganizations && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -263,7 +276,7 @@ export default function OrganizationManagement() {
                         >
                           {o.is_active ? "⏻ Deactivate" : "▶ Activate"}
                         </Button>
-                        {isSuperadmin && (
+                        {canDeleteOrganizations && (
                           <Button
                             type="button"
                             variant="danger"

@@ -22,6 +22,9 @@ export const restoreScan = (id) =>
 export const purgeScan  = (id) =>
   api.delete(`/scans/${id}/purge`);
 
+export const deleteReport = (id) =>
+  api.delete(`/reports/${id}`);
+
 const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2 } = {}) => {
   const baseURL = api.defaults.baseURL || "";
   const prefix = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;

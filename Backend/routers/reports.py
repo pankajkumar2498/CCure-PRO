@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from db.base import get_db
-from db.models import Scan, User
+from db.models import Scan, User, RolePermission, Permission
 from auth.dependencies import get_current_user_flexible
 from scans.legacy_json_builder import build_legacy_scan_results
 from pdf_generator import ScanReportGenerator
@@ -106,6 +106,82 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     return report_paths
 
 
+def _require_reports_read(user: User, db: Session) -> None:
+    role = getattr(user, "role", None)
+    role_name = (getattr(role, "name", "") or "").lower()
+
+    # Keep parity with global RBAC behavior: superadmin bypass.
+    if role_name == "superadmin":
+        return
+
+    if not role:
+        raise HTTPException(status_code=403, detail="Your account does not have a role assigned.")
+
+    has_reports_read = (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == role.id,
+            Permission.resource == "reports",
+            Permission.action == "read",
+        )
+        .first()
+    ) is not None
+
+    if not has_reports_read:
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient privileges. Your role does not have 'reports:read' permission.",
+        )
+
+
+def _require_reports_delete(user: User, db: Session) -> None:
+    role = getattr(user, "role", None)
+    role_name = (getattr(role, "name", "") or "").lower()
+
+    if role_name == "superadmin":
+        return
+
+    if not role:
+        raise HTTPException(status_code=403, detail="Your account does not have a role assigned.")
+
+    has_reports_delete = (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == role.id,
+            Permission.resource == "reports",
+            Permission.action == "delete",
+        )
+        .first()
+    ) is not None
+
+    if not has_reports_delete:
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient privileges. Your role does not have 'reports:delete' permission.",
+        )
+
+
+def _is_superadmin(user: User) -> bool:
+    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+
+
+def _can_read_all_org_scans(user: User, db: Session) -> bool:
+    if _is_superadmin(user):
+        return True
+    return (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == user.role_id,
+            Permission.resource == "scans",
+            Permission.action == "read_all",
+        )
+        .first()
+    ) is not None
+
+
 @router.get("/reports/download/{scan_id}")
 def download_report(
     scan_id: str,
@@ -114,10 +190,15 @@ def download_report(
     db:      Session        = Depends(get_db),
     user:    User           = Depends(get_current_user_flexible),
 ):
-    scan = db.query(Scan).filter(
-        Scan.id == scan_id,
-        Scan.created_by == user.id,
-    ).first()
+    _require_reports_read(user, db)
+
+    query = db.query(Scan).filter(Scan.id == scan_id)
+    if not _is_superadmin(user):
+        query = query.filter(Scan.org_id == user.org_id)
+        if not _can_read_all_org_scans(user, db):
+            query = query.filter(Scan.created_by == user.id)
+
+    scan = query.first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found.")
 
@@ -148,3 +229,43 @@ def download_report(
         media_type = "application/pdf",
         filename   = os.path.basename(pdf_path),
     )
+
+
+@router.delete("/reports/{scan_id}")
+def delete_report(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_flexible),
+):
+    _require_reports_delete(user, db)
+
+    query = db.query(Scan).filter(Scan.id == scan_id)
+    if not _is_superadmin(user):
+        query = query.filter(Scan.org_id == user.org_id)
+        if not _can_read_all_org_scans(user, db):
+            query = query.filter(Scan.created_by == user.id)
+
+    scan = query.first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+
+    deleted_files = 0
+    for path_attr in ("report_json_path", "report_xml_path", "report_pdf_path"):
+        report_path = getattr(scan, path_attr, None)
+        if not report_path:
+            continue
+
+        abs_path = os.path.abspath(report_path)
+        if os.path.isfile(abs_path):
+            try:
+                if os.path.commonpath([os.path.abspath(_REPORTS_DIR), abs_path]) == os.path.abspath(_REPORTS_DIR):
+                    os.remove(abs_path)
+                    deleted_files += 1
+            except Exception as exc:
+                log.warning("Failed to delete report file '%s': %s", abs_path, exc)
+
+        setattr(scan, path_attr, None)
+
+    db.add(scan)
+    db.commit()
+    return {"detail": f"Report artifacts deleted for scan {scan_id}", "deleted_files": deleted_files}

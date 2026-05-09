@@ -19,6 +19,7 @@ import UserTable from "../../components/admin/UserTable";
 import UserForm from "../../components/admin/UserForm";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
+import { can, denyMessage, isOrgAdmin, isSuperAdmin } from "../../auth/permissions";
 
 const PAGE_SIZE = 10;
 
@@ -50,9 +51,11 @@ export default function UserManagement() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const normalizedRoleName = (currentUser?.role?.name || "").toLowerCase().replace(/\s+/g, "_");
-  const isSuperadmin = normalizedRoleName === "superadmin";
-  const isOrgAdmin = normalizedRoleName === "org_admin";
+  const isSuperadmin = isSuperAdmin(currentUser);
+  const orgAdmin = isOrgAdmin(currentUser);
+  const canCreateUsers = can(currentUser, "users", "create");
+  const canUpdateUsers = can(currentUser, "users", "update");
+  const canDeleteUsers = can(currentUser, "users", "delete");
   const assignableRoles = useMemo(() => {
     if (isSuperadmin) return roles;
 
@@ -110,12 +113,20 @@ export default function UserManagement() {
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
   const openCreateModal = () => {
+    if (!canCreateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setModalMode("create");
     setSelectedUser(null);
     setModalOpen(true);
   };
 
   const openEditModal = (user) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setSelectedUser(user);
     setModalMode("edit");
     setModalOpen(true);
@@ -128,6 +139,10 @@ export default function UserManagement() {
 
   // ── CRUD handlers ─────────────────────────────────────────────────────────
   const handleCreateUser = async (data) => {
+    if (!canCreateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setBusy(true);
     try {
       await createUser(data);
@@ -142,6 +157,10 @@ export default function UserManagement() {
   };
 
   const handleUpdateUser = async (data) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     if (!selectedUser) return;
     setBusy(true);
     try {
@@ -175,6 +194,10 @@ export default function UserManagement() {
   };
 
   const handleToggleStatus = (user) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     const action = user.is_active ? "Deactivate" : "Activate";
     setConfirmConfig({
       title: `${action} user`,
@@ -206,6 +229,10 @@ export default function UserManagement() {
   };
 
   const handleUnlockUser = async (user) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setBusy(true);
     try {
       await changeUserStatus(user.id, { locked_until: null });
@@ -221,6 +248,10 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = (user) => {
+    if (!canDeleteUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setConfirmConfig({
       title: `Move ${user.username} to Deleted Users`,
       subtitle: "This is a soft delete. The user will be removed from the active user list.",
@@ -263,22 +294,26 @@ export default function UserManagement() {
           <div>
             <h2 className="page-title">User Management</h2>
             <p className="page-subtitle">{subtitle}</p>
-            {isOrgAdmin && (
+            {orgAdmin && (
               <p className="page-note">
                 Org admins can only manage users in their own organization.
               </p>
             )}
           </div>
           <div className="page-actions-row">
-            <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/deleted-users")} disabled={busy}>
-              Deleted users
-            </Button>
+            {canDeleteUsers && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/deleted-users")} disabled={busy}>
+                Deleted users
+              </Button>
+            )}
             <Button type="button" variant="ghost" size="sm" onClick={loadUsers} disabled={loading || busy}>
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
-            <Button type="button" variant="primary" size="sm" onClick={openCreateModal} disabled={busy}>
-              + Create user
-            </Button>
+            {canCreateUsers && (
+              <Button type="button" variant="primary" size="sm" onClick={openCreateModal} disabled={busy}>
+                + Create user
+              </Button>
+            )}
           </div>
         </div>
 
@@ -316,7 +351,7 @@ export default function UserManagement() {
           users={users}
           roles={roles}
           organizations={organizations}
-          showOrganizationColumn={!isOrgAdmin}
+          showOrganizationColumn={!orgAdmin}
           loading={loading}
           search={search}
           onSearch={setSearch}
@@ -329,6 +364,8 @@ export default function UserManagement() {
           onToggleStatus={handleToggleStatus}
           onUnlock={handleUnlockUser}
           onDelete={handleDeleteUser}
+          canUpdateUsers={canUpdateUsers}
+          canDeleteUsers={canDeleteUsers}
         />
       </div>
 

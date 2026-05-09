@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getScans, restoreScan, deleteScan } from "../api/scans";
 import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
+import { can, denyMessage } from "../auth/permissions";
 
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
@@ -55,6 +56,7 @@ function StatusBadge({ status }) {
 export default function ArchivedScans() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canDeleteScans = can(user, "scans", "delete");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
@@ -83,6 +85,10 @@ export default function ArchivedScans() {
   }, [load]);
 
   const handleRestore = async (id) => {
+    if (!canDeleteScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setRestoringId(id);
     try {
       await restoreScan(id);
@@ -97,6 +103,10 @@ export default function ArchivedScans() {
   };
 
   const handleDelete = async (id) => {
+    if (!canDeleteScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setDeletingId(id);
     try {
       await deleteScan(id);
@@ -195,20 +205,26 @@ export default function ArchivedScans() {
                     </td>
                     <td>
                       <div className="action-btns">
-                        <button
-                          className="action-btn"
-                          onClick={() => handleRestore(scan.id)}
-                          disabled={restoringId === scan.id}
-                        >
-                          {restoringId === scan.id ? "..." : "Restore"}
-                        </button>
-                        <button
-                          className="action-btn action-btn--danger"
-                          onClick={() => handleDelete(scan.id)}
-                          disabled={deletingId === scan.id}
-                        >
-                          {deletingId === scan.id ? "..." : "Delete"}
-                        </button>
+                        {canDeleteScans ? (
+                          <>
+                            <button
+                              className="action-btn"
+                              onClick={() => handleRestore(scan.id)}
+                              disabled={restoringId === scan.id}
+                            >
+                              {restoringId === scan.id ? "..." : "Restore"}
+                            </button>
+                            <button
+                              className="action-btn action-btn--danger"
+                              onClick={() => handleDelete(scan.id)}
+                              disabled={deletingId === scan.id}
+                            >
+                              {deletingId === scan.id ? "..." : "Delete"}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="muted">Read only</span>
+                        )}
                       </div>
                     </td>
                   </tr>

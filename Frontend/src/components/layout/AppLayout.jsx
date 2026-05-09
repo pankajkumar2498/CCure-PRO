@@ -19,6 +19,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { getUnreadCount } from "../../api/notifications";
 import { usePreferences } from "../../context/PreferencesContext";
+import { canPermission } from "../../auth/permissions";
 
 // ── Lazy-loaded panels (code-split friendly) ──────────────────────────────
 import ProfileModal       from "./ProfileModal";
@@ -75,12 +76,12 @@ const IcoOrg   = () => <Icon d="M3 21h18M3 7v1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0
 
 /* ─── Sidebar navigation config ────────────────────────────────────────── */
 const NAV_ITEMS = [
-  { id: "dashboard", label: "Scan Library",     Icon: IcoGrid,    route: "/dashboard" },
-  { id: "history",   label: "My Scan Jobs",     Icon: IcoFile,    route: "/history"   },
-  { id: "archived",  label: "Archived Scans",   Icon: IcoArchive, route: "/archived-scans" },
+  { id: "dashboard", label: "Scan Library",     Icon: IcoGrid,    route: "/dashboard", permission: { resource: "scans", action: "execute" } },
+  { id: "history",   label: "My Scan Jobs",     Icon: IcoFile,    route: "/history", permission: { resource: "scans", action: "read" } },
+  { id: "archived",  label: "Archived Scans",   Icon: IcoArchive, route: "/archived-scans", permission: { resource: "scans", action: "read" } },
   { id: "policies",  label: "Scan Policies",    Icon: IcoShield,  disabled: true      },
-  { id: "reports",   label: "Security Reports", Icon: IcoChart,   route: "/reports"   },
-  { id: "recycle",   label: "Recycle Bin",      Icon: IcoTrash,   route: "/recycle-bin" },
+  { id: "reports",   label: "Security Reports", Icon: IcoChart,   route: "/reports", permission: { resource: "reports", action: "read" } },
+  { id: "recycle",   label: "Recycle Bin",      Icon: IcoTrash,   route: "/recycle-bin", permission: { resource: "scans", action: "read" } },
 ];
 
 const ADMIN_NAV_ITEMS = [
@@ -91,10 +92,7 @@ const ADMIN_NAV_ITEMS = [
   { id: "admin-logs",  label: "Audit Logs",     Icon: IcoList,    route: "/admin/audit-logs",    permission: { resource: "audit", action: "read" } },
 ];
 
-const hasPermission = (user, resource, action) => {
-  if (!user?.role?.permissions) return false;
-  return user.role.permissions.some(p => p.resource === resource && (p.action === action || p.action === 'manage'));
-};
+const hasPermission = (user, permission) => canPermission(user, permission);
 
 /* ─── Profile dropdown ──────────────────────────────────────────────────── */
 function ProfileDropdown({ user, onClose, onLogout, onOpenProfile }) {
@@ -134,6 +132,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const navigate              = useNavigate();
   const { pathname }          = useLocation();
   const { user, logout }      = useAuth();
+  const canStartScans         = hasPermission(user, { resource: "scans", action: "execute" });
 
   // UI visibility state
   const [profileOpen, setProfileOpen]     = useState(false);
@@ -222,11 +221,11 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
         {/* Nav */}
         <nav className="sidebar-nav">
           {/* Admin Section */}
-          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission.resource, item.permission.action)) && (
+          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission)) && (
             <>
               <span className="sidebar-section-label">Administration</span>
               {ADMIN_NAV_ITEMS.map(({ id, label, Icon, route, permission }) => {
-                if (!hasPermission(user, permission.resource, permission.action)) return null;
+                if (!hasPermission(user, permission)) return null;
                 return (
                   <button
                     key={id}
@@ -249,27 +248,31 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
           )}
 
           <span className="sidebar-section-label">Navigation</span>
-          {NAV_ITEMS.map(({ id, label, Icon, route, disabled }) => (
-            <button
-              key={id}
-              className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""} ${disabled ? "sidebar-item--disabled" : ""}`}
-              onClick={() => {
-                if (localCollapsed) toggleSidebar();
-                if (!disabled && route) navigate(route);
-              }}
-              title={disabled ? "Coming soon" : label}
-            >
-              <span className="sidebar-item-icon">
-                <Icon />
-              </span>
-              <span>{label}</span>
-              {disabled && (
-                <span style={{ marginLeft: "auto", fontSize: "0.6rem", background: "#334155", color: "#64748b", padding: "1px 5px", borderRadius: 3, letterSpacing: "0.05em" }}>
-                  SOON
+          {NAV_ITEMS.map(({ id, label, Icon, route, disabled, permission }) => {
+            if (permission && !hasPermission(user, permission)) return null;
+
+            return (
+              <button
+                key={id}
+                className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""} ${disabled ? "sidebar-item--disabled" : ""}`}
+                onClick={() => {
+                  if (localCollapsed) toggleSidebar();
+                  if (!disabled && route) navigate(route);
+                }}
+                title={disabled ? "Coming soon" : label}
+              >
+                <span className="sidebar-item-icon">
+                  <Icon />
                 </span>
-              )}
-            </button>
-          ))}
+                <span>{label}</span>
+                {disabled && (
+                  <span style={{ marginLeft: "auto", fontSize: "0.6rem", background: "#334155", color: "#64748b", padding: "1px 5px", borderRadius: 3, letterSpacing: "0.05em" }}>
+                    SOON
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
 
         {/* Footer: user chip */}
@@ -321,10 +324,12 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
             )}
 
             {/* + New Scan */}
-            <button className="btn-new-scan" onClick={onNewScan || (() => navigate("/dashboard"))}>
-              <IcoPlus />
-              New Scan
-            </button>
+            {canStartScans && (
+              <button className="btn-new-scan" onClick={onNewScan || (() => navigate("/dashboard"))}>
+                <IcoPlus />
+                New Scan
+              </button>
+            )}
 
             {/* Settings */}
             <button

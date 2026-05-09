@@ -4,6 +4,7 @@ import FormField from "../common/FormField";
 import RoleSelector from "../common/RoleSelector";
 import { checkUsername, checkEmail } from "../../api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
+import { isSuperAdmin } from "../../auth/permissions";
 
 const createInitial = {
   username: "",
@@ -53,8 +54,7 @@ export default function UserForm({
   }, [debouncedEmail, mode, user]);
   const title = mode === "create" ? "Create new user" : "Edit user details";
   const submitLabel = mode === "create" ? "Create user" : "Save changes";
-  const roleName = currentUser?.role?.name?.toLowerCase() || "";
-  const isSuperadmin = roleName === "superadmin";
+  const isSuperadmin = isSuperAdmin(currentUser);
 
   useEffect(() => {
     if (mode === "edit" && user) {

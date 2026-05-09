@@ -13,6 +13,8 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api, { authSession } from "../../api/axiosInstance";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 const INTENSITIES = ["light", "normal", "deep"];
 
@@ -39,6 +41,8 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
 
 export default function Phase2Results() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canExecuteScans = can(user, "scans", "execute");
   const {
     phase1Hosts,
     phase2Hosts,
@@ -149,6 +153,10 @@ export default function Phase2Results() {
   };
 
   const runScan = async () => {
+    if (!canExecuteScans) {
+      setError(denyMessage);
+      return;
+    }
     if (!selectedCount) return;
 
     const payloadHosts = discoveredHosts.filter(h => selected.has(h.ip_address));
@@ -204,6 +212,10 @@ export default function Phase2Results() {
   };
 
   const proceedToNextPhase = () => {
+    if (!canExecuteScans) {
+      setError(denyMessage);
+      return;
+    }
     if (!canProceedToPhase3 || !nextPhase) return;
     setPhase3Results(results.filter(h => selected.has(h.ip_address)));
     navigate(nextPhase.route);
@@ -233,7 +245,7 @@ export default function Phase2Results() {
                     key={i}
                     className={`filter-tab ${intensity === i ? "filter-tab--active" : ""}`}
                     onClick={() => setIntensity(i)}
-                    disabled={loading}
+                    disabled={loading || !canExecuteScans}
                   >
                     {i}
                   </button>
@@ -243,7 +255,7 @@ export default function Phase2Results() {
 
             <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
 
-            <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0}>
+            <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0 || !canExecuteScans}>
               {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
             </button>
           </div>
@@ -270,7 +282,7 @@ export default function Phase2Results() {
               </button>
             ))}
           </div>
-          <button className="btn btn--ghost btn--sm" onClick={toggleAll} disabled={loading || !activeHosts.length}>
+          <button className="btn btn--ghost btn--sm" onClick={toggleAll} disabled={loading || !activeHosts.length || !canExecuteScans}>
             {selectedCount === activeHosts.length ? "Deselect all" : "Select all active"}
           </button>
         </div>
@@ -700,7 +712,7 @@ export default function Phase2Results() {
                 ? "Select hosts above to run a deep vulnerability audit."
                 : `${selectedCount} host${selectedCount > 1 ? "s" : ""} selected for deep audit.`}
             </p>
-            <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selectedCount === 0}>
+            <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selectedCount === 0 || !canExecuteScans}>
               {nextPhase?.label ?? "Vulnerability Audit"} →
             </button>
           </div>

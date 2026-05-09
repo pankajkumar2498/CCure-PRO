@@ -8,7 +8,7 @@ const statusConfig = {
   locked: { label: "Locked", className: "chip chip--danger" },
 };
 
-function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onToggleStatus, onUnlock, onDelete }) {
+function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onToggleStatus, onUnlock, onDelete, canUpdateUsers, canDeleteUsers }) {
   const isLocked = user.locked_until && new Date(user.locked_until) > new Date();
   const status = isLocked ? statusConfig.locked : user.is_active ? statusConfig.active : statusConfig.inactive;
   const isSelf = currentUser && String(currentUser.id) === String(user.id);
@@ -30,7 +30,7 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
       <td>{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "Never"}</td>
       <td>
         <div className="action-btns table-action-cell">
-          <Button
+          {canUpdateUsers && <Button
             type="button"
             variant="ghost"
             size="sm"
@@ -38,8 +38,8 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
             onClick={() => onEdit(user)}
           >
             ✏️ Edit
-          </Button>
-          {isLocked && (
+          </Button>}
+          {isLocked && canUpdateUsers && (
             <Button
               type="button"
               variant="info"
@@ -50,9 +50,9 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
               Unlock
             </Button>
           )}
-          {!isSelf && (
+          {!isSelf && (canUpdateUsers || canDeleteUsers) && (
             <>
-              <Button
+              {canUpdateUsers && <Button
                 type="button"
                 variant="secondary"
                 size="sm"
@@ -60,8 +60,8 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
                 onClick={() => onToggleStatus(user)}
               >
                 {user.is_active ? "⏻ Deactivate" : "▶ Activate"}
-              </Button>
-              <Button
+              </Button>}
+              {canDeleteUsers && <Button
                 type="button"
                 variant="danger"
                 size="sm"
@@ -69,9 +69,10 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
                 onClick={() => onDelete(user)}
               >
                 🗑️ Delete
-              </Button>
+              </Button>}
             </>
           )}
+          {!canUpdateUsers && !canDeleteUsers && <span className="text-muted">Read only</span>}
         </div>
       </td>
     </tr>
@@ -95,6 +96,8 @@ export default function UserTable({
   onToggleStatus,
   onUnlock,
   onDelete,
+  canUpdateUsers = false,
+  canDeleteUsers = false,
 }) {
   const startIndex = Math.min((page - 1) * pageSize + 1, totalCount);
   const endIndex = Math.min(startIndex + users.length - 1, totalCount);
@@ -169,6 +172,8 @@ export default function UserTable({
                       onToggleStatus={onToggleStatus}
                       onUnlock={onUnlock}
                       onDelete={onDelete}
+                      canUpdateUsers={canUpdateUsers}
+                      canDeleteUsers={canDeleteUsers}
                     />
                   );
                 })}

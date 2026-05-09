@@ -10,6 +10,8 @@
  */
 import { useState } from "react";
 import api from "../../api/axiosInstance";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 export default function ExportPanel({
   results,
@@ -23,6 +25,8 @@ export default function ExportPanel({
   phase2Results = [],
   phase2Summary = null,
 }) {
+  const { user } = useAuth();
+  const canReadReports = can(user, "reports", "read");
   const [copied,     setCopied]     = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError,   setPdfError]   = useState("");
@@ -37,6 +41,11 @@ export default function ExportPanel({
 
   /* ── JSON ─────────────────────────────────────────────────────────── */
   const downloadJSON = () => {
+    if (!canReadReports) {
+      setPdfError(denyMessage);
+      setTimeout(() => setPdfError(""), 3000);
+      return;
+    }
     const payload = {
       scan_no: scanNo ?? null,
       target,
@@ -62,6 +71,11 @@ export default function ExportPanel({
 
   /* ── CSV ──────────────────────────────────────────────────────────── */
   const downloadCSV = () => {
+    if (!canReadReports) {
+      setPdfError(denyMessage);
+      setTimeout(() => setPdfError(""), 3000);
+      return;
+    }
     let rows = [];
 
     if (isFinalAdvancedExport) {
@@ -175,6 +189,11 @@ export default function ExportPanel({
 
   /* ── PDF (backend) ────────────────────────────────────────────────── */
   const downloadPDF = async (fmt = "JSON") => {
+    if (!canReadReports) {
+      setPdfError(denyMessage);
+      setTimeout(() => setPdfError(""), 3000);
+      return;
+    }
     if (!scanId) {
       setPdfError("No scan ID — complete a scan first.");
       setTimeout(() => setPdfError(""), 3000);
@@ -201,6 +220,11 @@ export default function ExportPanel({
 
   /* ── Copy summary ─────────────────────────────────────────────────── */
   const copySummary = () => {
+    if (!canReadReports) {
+      setPdfError(denyMessage);
+      setTimeout(() => setPdfError(""), 3000);
+      return;
+    }
     let lines;
     if (isPhase1) {
       // Phase 1 summary
@@ -287,11 +311,11 @@ export default function ExportPanel({
       <p className="section-title" style={{ marginBottom: 12 }}>⬇ Export Results</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {[
-          { label: "JSON",     icon: "{ }",   sub: "Full data",    action: downloadJSON },
-          { label: "CSV",      icon: "⊞",     sub: "Spreadsheet",  action: downloadCSV },
-          { label: "PDF",      icon: pdfLoading ? "⏳" : "📄", sub: "Report",  action: () => downloadPDF("JSON"), disabled: pdfLoading },
-          { label: "PDF/XML",  icon: pdfLoading ? "⏳" : "🗂", sub: "XML report", action: () => downloadPDF("XML"),  disabled: pdfLoading },
-          { label: copied ? "Copied!" : "Copy", icon: copied ? "✓" : "⎘", sub: "Summary", action: copySummary },
+          { label: "JSON",     icon: "{ }",   sub: "Full data",    action: downloadJSON, disabled: !canReadReports },
+          { label: "CSV",      icon: "⊞",     sub: "Spreadsheet",  action: downloadCSV, disabled: !canReadReports },
+          { label: "PDF",      icon: pdfLoading ? "⏳" : "📄", sub: "Report",  action: () => downloadPDF("JSON"), disabled: pdfLoading || !canReadReports },
+          { label: "PDF/XML",  icon: pdfLoading ? "⏳" : "🗂", sub: "XML report", action: () => downloadPDF("XML"),  disabled: pdfLoading || !canReadReports },
+          { label: copied ? "Copied!" : "Copy", icon: copied ? "✓" : "⎘", sub: "Summary", action: copySummary, disabled: !canReadReports },
         ].map((b) => (
           <button
             key={b.label}

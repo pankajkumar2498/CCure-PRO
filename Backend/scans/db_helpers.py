@@ -16,6 +16,7 @@ from db.models.users import User
 from db.models.rbac import Organization
 from db.models.scans import Scan, ScanPhase
 from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_advanced_scan
+from core.audit import log_audit_event
 from db.base import utcnow, gen_scan_id, gen_scan_phase_id
 
 
@@ -163,6 +164,23 @@ def create_scan(
     db.add(scan)
     db.commit()
     db.refresh(scan)
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        log_audit_event(
+            db=db,
+            user=user,
+            action="scan.created",
+            resource_type="scan",
+            resource_id=str(scan.id),
+            changes={
+                "scan_no": scan.scan_no,
+                "pipeline_mode": pipeline_mode,
+                "targets": targets,
+            }
+        )
+        db.commit()
+
     return scan
 
 
@@ -216,6 +234,24 @@ def update_scan_phase1(
 
     db.commit()
     db.refresh(scan)
+
+    if is_final:
+        user = db.query(User).filter(User.id == scan.created_by).first()
+        if user:
+            log_audit_event(
+                db=db,
+                user=user,
+                action="scan.completed",
+                resource_type="scan",
+                resource_id=str(scan.id),
+                changes={
+                    "scan_no": scan.scan_no,
+                    "target": scan.target_str,
+                    "duration_seconds": duration,
+                    "phase": 1,
+                }
+            )
+            db.commit()
 
     # Asset Sync in background (AFTER commit to avoid FK race condition)
     from core.tasks import sync_host_discovery_task
@@ -335,6 +371,24 @@ def update_scan_phase(
     db.commit()
     db.refresh(scan)
 
+    if is_final:
+        user = db.query(User).filter(User.id == scan.created_by).first()
+        if user:
+            log_audit_event(
+                db=db,
+                user=user,
+                action="scan.completed",
+                resource_type="scan",
+                resource_id=str(scan.id),
+                changes={
+                    "scan_no": scan.scan_no,
+                    "target": scan.target_str,
+                    "duration_seconds": scan.duration_seconds,
+                    "phase": phase,
+                }
+            )
+            db.commit()
+
     # Synchronization (AFTER commit to avoid FK race condition)
     if phase == 2:
         from core.tasks import sync_asset_discovery_task
@@ -403,6 +457,21 @@ def mark_scan_failed(
 
     db.commit()
     db.refresh(scan)
+
+    user = db.query(User).filter(User.id == scan.created_by).first()
+    if user:
+        log_audit_event(
+            db=db,
+            user=user,
+            action="scan.failed",
+            resource_type="scan",
+            resource_id=str(scan.id),
+            changes={
+                "reason": reason,
+            },
+            status="failure"
+        )
+        db.commit()
 
     try:
         from routers.notifications import create_notification, NotificationType, NotificationCategory
@@ -507,6 +576,35 @@ def create_completed_scan(
 
     db.commit()
     db.refresh(scan)
+
+    user = db.query(User).filter(User.id == scan.created_by).first()
+    if user:
+        log_audit_event(
+            db=db,
+            user=user,
+            action="scan.created",
+            resource_type="scan",
+            resource_id=str(scan.id),
+            changes={
+                "scan_no": scan.scan_no,
+                "pipeline_mode": pipeline_mode,
+                "targets": base_targets,
+            }
+        )
+        log_audit_event(
+            db=db,
+            user=user,
+            action="scan.completed",
+            resource_type="scan",
+            resource_id=str(scan.id),
+            changes={
+                "scan_no": scan.scan_no,
+                "target": scan.target_str,
+                "duration_seconds": scan.duration_seconds,
+                "phase": phase,
+            }
+        )
+        db.commit()
 
     try:
         from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory

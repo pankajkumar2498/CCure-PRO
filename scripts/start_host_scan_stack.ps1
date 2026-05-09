@@ -1,8 +1,8 @@
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $backendDir = Join-Path $repoRoot "Backend"
-$workerScript = Join-Path $backendDir "scripts\start_host_scanner_worker.ps1"
+$workerScript = Join-Path $backendDir "scripts\scan\start_host_scanner_worker.ps1"
 
 if (-not (Test-Path $workerScript)) {
     throw "Worker script not found at $workerScript"

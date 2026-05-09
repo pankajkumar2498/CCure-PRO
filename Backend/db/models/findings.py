@@ -244,14 +244,14 @@ class AssetVulnerability(Base):
     """
     __tablename__ = "asset_vulnerabilities"
     __table_args__ = (
-        UniqueConstraint("scan_id", "asset_id", "vuln_id",
+        UniqueConstraint("org_id", "scan_id", "asset_id", "vuln_id",
                          name="uq_asset_vuln_scan_asset_cve"),
         Index("ix_asset_vuln_asset_id",   "asset_id"),
         Index("ix_asset_vuln_vuln_id",    "vuln_id"),
         Index("ix_asset_vuln_severity",   "severity"),
         Index("ix_asset_vuln_status",     "status"),
         Index("ix_asset_vuln_first_found","first_found_at"),
-        {"postgresql_partition_by": "HASH (org_id)"}
+        # {"postgresql_partition_by": "HASH (org_id)"}
     )
 
     # Stripe-style readable ID: "fnd_ast_def_192.168.1.5_CVE-2024-4577"

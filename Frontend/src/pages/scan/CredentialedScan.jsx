@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { runCredentialedScan } from "../../api/credentialedScan";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 const SECTIONS = [
   { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel/build, CPU, RAM, disk"       },
@@ -22,6 +24,8 @@ const SECTIONS = [
 export default function CredentialedScan() {
   const location   = useLocation();
   const navigate   = useNavigate();
+  const { user }   = useAuth();
+  const canExecuteScans = can(user, "scans", "execute");
   const prefillIp  = location.state?.prefill?.ip ?? "";
 
   const [ip,         setIp]         = useState(prefillIp);
@@ -53,6 +57,7 @@ export default function CredentialedScan() {
 
   const handleSubmit = async () => {
     setError("");
+    if (!canExecuteScans) return setError(denyMessage);
     if (!ip.trim())       return setError("Please enter a target IP or hostname.");
     if (!username.trim()) return setError("Please enter an SSH username.");
     if (authMethod === "password" && !password) return setError("Please enter a password.");
@@ -116,20 +121,20 @@ export default function CredentialedScan() {
                 <input className="field-input" type="text"
                   placeholder="192.168.1.10 or server.local"
                   value={ip} onChange={e => setIp(e.target.value)}
-                  disabled={loading} autoComplete="off"
+                  disabled={loading || !canExecuteScans} autoComplete="off"
                 />
               </div>
               <div className="cred-field cred-field--narrow">
                 <label className="field-label">SSH Port</label>
                 <input className="field-input" type="number" min={1} max={65535}
                   value={port} onChange={e => setPort(e.target.value)}
-                  disabled={loading}
+                  disabled={loading || !canExecuteScans}
                 />
               </div>
               <div className="cred-field cred-field--narrow">
                 <label className="field-label">Target OS</label>
                 <select className="field-input" value={osType}
-                  onChange={e => setOsType(e.target.value)} disabled={loading}>
+                  onChange={e => setOsType(e.target.value)} disabled={loading || !canExecuteScans}>
                   <option value="auto">Auto-detect</option>
                   <option value="linux">Linux</option>
                   <option value="windows">Windows ⚠ Beta</option>
@@ -159,7 +164,7 @@ export default function CredentialedScan() {
                 <button key={method}
                   className={`cred-auth-btn ${authMethod === method ? "cred-auth-btn--active" : ""}`}
                   onClick={() => setAuthMethod(method)}
-                  disabled={loading}
+                  disabled={loading || !canExecuteScans}
                 >
                   {method === "password" ? "🔑 Password" : "📄 SSH Key"}
                 </button>
@@ -172,7 +177,7 @@ export default function CredentialedScan() {
                 <input className="field-input" type="text"
                   placeholder="root" value={username}
                   onChange={e => setUsername(e.target.value)}
-                  disabled={loading} autoComplete="off"
+                  disabled={loading || !canExecuteScans} autoComplete="off"
                 />
               </div>
 
@@ -184,7 +189,7 @@ export default function CredentialedScan() {
                       type={showPass ? "text" : "password"}
                       placeholder="••••••••"
                       value={password} onChange={e => setPassword(e.target.value)}
-                      disabled={loading} autoComplete="current-password"
+                      disabled={loading || !canExecuteScans} autoComplete="current-password"
                     />
                     <button className="pass-toggle"
                       onClick={() => setShowPass(p => !p)} tabIndex={-1}>
@@ -198,7 +203,7 @@ export default function CredentialedScan() {
                   <input className="field-input" type="text"
                     placeholder="/home/user/.ssh/id_rsa"
                     value={keyPath} onChange={e => setKeyPath(e.target.value)}
-                    disabled={loading} autoComplete="off"
+                    disabled={loading || !canExecuteScans} autoComplete="off"
                   />
                 </div>
               )}
@@ -215,7 +220,7 @@ export default function CredentialedScan() {
               <h3 className="cred-section-title">Collect</h3>
               <button className="btn btn--ghost"
                 style={{ fontSize: 12, padding: "4px 12px" }}
-                onClick={toggleAll} disabled={loading}>
+                onClick={toggleAll} disabled={loading || !canExecuteScans}>
                 {allSelected ? "Deselect All" : "Select All"}
               </button>
             </div>
@@ -226,7 +231,7 @@ export default function CredentialedScan() {
                   <input type="checkbox" style={{ display: "none" }}
                     checked={sections.has(s.key)}
                     onChange={() => toggleSection(s.key)}
-                    disabled={loading}
+                    disabled={loading || !canExecuteScans}
                   />
                   <span className="csc-icon">{s.icon}</span>
                   <span className="csc-label">{s.label}</span>
@@ -251,7 +256,7 @@ export default function CredentialedScan() {
             <button
               className="btn btn--danger cred-submit-btn"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || !canExecuteScans}
             >
               {loading
                 ? <><span className="btn-spinner" /> Scanning…</>

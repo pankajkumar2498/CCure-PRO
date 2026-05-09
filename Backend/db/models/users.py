@@ -158,7 +158,7 @@ class AuditLog(Base):
     )
 
     # Stripe-style readable ID: "aud_def_scan_created_x9v1"
-    id            = Column(String(200), primary_key=True)
+    id            = Column(String(200), primary_key=True, default=gen_uuid)
 
     org_id        = Column(String(100), ForeignKey("organizations.id",
                             ondelete="CASCADE", onupdate="CASCADE"),
@@ -167,7 +167,7 @@ class AuditLog(Base):
                             ondelete="SET NULL", onupdate="CASCADE"),
                             nullable=True, index=True)
 
-    action        = Column(String(100), nullable=False, index=True)
+    action        = Column(String(100), nullable=False)
     resource_type = Column(String(100), nullable=True)
     resource_id   = Column(String(255), nullable=True)  # The readable ID of the resource
 
@@ -176,7 +176,7 @@ class AuditLog(Base):
     user_agent    = Column(Text,  nullable=True)
     status        = Column(String(20), nullable=False, default="success")
 
-    created_at    = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
+    created_at    = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
 
     user = relationship("User", back_populates="audit_logs")
 

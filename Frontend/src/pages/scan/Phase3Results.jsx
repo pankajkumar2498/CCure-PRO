@@ -25,6 +25,8 @@ import ScanStepper from "../../components/layout/ScanStepper";
 import Modal from "../../components/layout/Modal";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api, { authSession } from "../../api/axiosInstance";
+import { useAuth } from "../../context/AuthContext";
+import { can, denyMessage } from "../../auth/permissions";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
@@ -120,6 +122,8 @@ const PHASE_MESSAGES = {
 
 export default function Phase3Results() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canExecuteScans = can(user, "scans", "execute");
   const {
     phase1Hosts, phase1Summary,
     phase2Results, phase2Summary,
@@ -236,6 +240,11 @@ export default function Phase3Results() {
 
   /* ── The automated pipeline executor ────────────────────────────────────── */
   const runFullPipeline = useCallback(async (retryFromPhase = null) => {
+    if (!canExecuteScans) {
+      setPipelineError({ phase: "AUTHORIZATION", message: denyMessage });
+      setPipelineState(PIPELINE_STATES.ERROR);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -360,7 +369,7 @@ export default function Phase3Results() {
       setTimeout(() => setSaveStatus(""), 4000);
     }
   }, [
-    activeDiscoveryHosts, intensity, scanId, pipelineMode, phase2Results,
+    activeDiscoveryHosts, intensity, scanId, pipelineMode, phase2Results, canExecuteScans,
     setPipelineState, setPipelineError, setSaveStatus,
     setPhase2Results, setPhase2Summary, setPhase3Summary, setPhase3AuditResults,
     setPipelinePhaseTimings, pipelinePhaseTimings, abortRef,

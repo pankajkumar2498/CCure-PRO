@@ -43,6 +43,7 @@ class OUIDatabase:
                 os.path.join(current_dir, "manuf.txt"),
                 os.path.join(backend_dir, "manuf.txt"),
                 os.path.join(backend_dir, "data", "manuf.txt"),
+                os.path.join(backend_dir, "db", "manuf.txt"),
             ]
             for path in possible_paths:
                 if os.path.exists(path):

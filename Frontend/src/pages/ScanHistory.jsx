@@ -19,6 +19,7 @@ import { getScans, getScan, deleteScan, archiveScan, streamScanEvents } from "..
 import { buildPhasePayload } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
+import { can, denyMessage } from "../auth/permissions";
 
 /* ── constants ── */
 const STATUS_STYLE = {
@@ -430,6 +431,9 @@ export default function ScanHistory() {
   const { user } = useAuth();
   const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, setScanNo, resetScan } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const canReadScans = can(user, "scans", "read");
+  const canExecuteScans = can(user, "scans", "execute");
+  const canDeleteScans = can(user, "scans", "delete");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
@@ -530,6 +534,10 @@ export default function ScanHistory() {
   }, [applySnapshot, load]);
 
   const handleView = scan => {
+    if (!canReadScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     if (isCred(scan)) {
       navigate(`/scan/credentialed/results?scan_id=${scan.id}`);
       return;
@@ -539,6 +547,10 @@ export default function ScanHistory() {
 
   /* ── Dialog openers ── */
   const openRerunDialog = scan => {
+    if (!canExecuteScans) {
+      pushToast(denyMessage, "error");
+      return;
+    }
     setDialog({
       type: "rerun",
       scan,
@@ -565,6 +577,11 @@ export default function ScanHistory() {
 
   /* ── Dialog confirm handlers ── */
   const handleConfirmRerun = async () => {
+    if (!canExecuteScans) {
+      setDialog(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
     const scan = dialog.scan;
     try {
       // Handle credentialed scans separately
@@ -622,6 +639,11 @@ export default function ScanHistory() {
   };
 
   const handleConfirmArchive = async (dialogObj) => {
+    if (!canDeleteScans) {
+      setDialog(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
     const scan = dialogObj?.scan || dialog?.scan;
     if (!scan) return;
     try {
@@ -637,6 +659,11 @@ export default function ScanHistory() {
   };
 
   const handleConfirmDelete = async (dialogObj) => {
+    if (!canDeleteScans) {
+      setDialog(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
     const scan = dialogObj?.scan || dialog?.scan;
     if (!scan) return;
     try {
@@ -805,42 +832,50 @@ export default function ScanHistory() {
                       <td>
                         <div className="action-btns">
                           {/* View */}
-                          <button
-                            className="action-btn"
-                            onClick={() => handleView(scan)}
-                            title="View scan details"
-                          >
-                            View
-                          </button>
+                          {canReadScans && (
+                            <button
+                              className="action-btn"
+                              onClick={() => handleView(scan)}
+                              title="View scan details"
+                            >
+                              View
+                            </button>
+                          )}
 
                           {/* Re-run — disabled for running scans */}
-                          <button
-                            className="action-btn action-btn--rerun"
-                            onClick={() => openRerunDialog(scan)}
-                            disabled={isRunning}
-                            title={isRunning ? "Scan is already running" : "Re-run this scan against the same target"}
-                          >
-                            Re-run
-                          </button>
+                          {canExecuteScans && (
+                            <button
+                              className="action-btn action-btn--rerun"
+                              onClick={() => openRerunDialog(scan)}
+                              disabled={isRunning}
+                              title={isRunning ? "Scan is already running" : "Re-run this scan against the same target"}
+                            >
+                              Re-run
+                            </button>
+                          )}
 
                           {/* Archive — disabled for running scans */}
-                          <button
-                            className="action-btn"
-                            onClick={() => handleConfirmArchive({ scan })}
-                            disabled={isRunning}
-                            title={isRunning ? "Cannot archive a running scan" : "Move to archived scans"}
-                          >
-                            Archive
-                          </button>
+                          {canDeleteScans && (
+                            <button
+                              className="action-btn"
+                              onClick={() => handleConfirmArchive({ scan })}
+                              disabled={isRunning}
+                              title={isRunning ? "Cannot archive a running scan" : "Move to archived scans"}
+                            >
+                              Archive
+                            </button>
+                          )}
 
                           {/* Delete */}
-                          <button
-                            className="action-btn action-btn--danger"
-                            onClick={() => handleConfirmDelete({ scan })}
-                            title="Move to Recycle Bin"
-                          >
-                            Delete
-                          </button>
+                          {canDeleteScans && (
+                            <button
+                              className="action-btn action-btn--danger"
+                              onClick={() => handleConfirmDelete({ scan })}
+                              title="Move to Recycle Bin"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

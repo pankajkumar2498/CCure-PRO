@@ -2,7 +2,7 @@
 tests/conftest.py
 ─────────────────────────────────────────────────────────────────────────────
 Pytest configuration and global fixtures for the CCure Audit PRO backend.
-Sets up an in-memory SQLite database, FastAPI TestClient, and mock users.
+Tests are expected to run against PostgreSQL and require DATABASE_URL to be set accordingly.
 """
 
 import os
@@ -10,10 +10,11 @@ import pytest
 from typing import Generator
 from fastapi.testclient import TestClient
 import sys
-import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-# ── SQLite Compatibility Hacks ────────────────────────────────────────────────
-# Make SQLite accept PostgreSQL-specific types without compile/bind errors.
+# ── Legacy SQLite Compatibility Helpers ───────────────────────────────────────
+# These helpers remain available for older test code, but tests must run on PostgreSQL.
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET, MACADDR, CIDR
 from sqlalchemy.types import String, JSON, SmallInteger, BigInteger, Integer
 import sqlalchemy.dialects.sqlite.base as sqlite_base
@@ -31,8 +32,40 @@ sqlite_base.SQLiteDialect.colspecs.update({
 # Add Backend to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Set test environment before importing the app
-os.environ["DATABASE_URL"] = "sqlite:///test_db.sqlite"
+# Load environment from Backend/.env.test if available BEFORE importing app
+dotenv_path = Path(__file__).resolve().parent / ".env.test"
+if dotenv_path.exists():
+    load_dotenv(dotenv_path=dotenv_path)
+
+# Prevent config.py from loading .env and overriding our test settings
+os.environ["SKIP_DOTENV_LOAD"] = "1"
+
+# Require PostgreSQL for pytest
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise RuntimeError(
+        "DATABASE_URL must be set for pytest. Use a PostgreSQL URL like postgresql://user:pass@host:port/dbname"
+    )
+if not database_url.startswith("postgresql"):
+    raise RuntimeError(
+        "Tests must run against PostgreSQL. Set DATABASE_URL to a postgresql:// URL instead of sqlite:///."
+    )
+
+# Safety guard: refuse to run against production databases
+from urllib.parse import urlparse
+parsed = urlparse(database_url)
+db_name = parsed.path.lstrip('/')
+if db_name in ('ccure_db', 'prod', 'production'):
+    raise RuntimeError(
+        f"Refusing to run tests against production database '{db_name}'. "
+        "Use a dedicated test database like 'ccure_test'."
+    )
+if 'prod' in db_name.lower():
+    raise RuntimeError(
+        f"Refusing to run tests against database '{db_name}' containing 'prod'. "
+        "Use a dedicated test database."
+    )
+
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 
 from sqlalchemy.orm import Session
@@ -88,9 +121,15 @@ UUID.bind_processor = custom_bind_processor
 
 # ── Database Setup ────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="function", autouse=True)
+@pytest.fixture(scope="function")
 def reset_database():
     """Drop and recreate all tables for each test to ensure isolation."""
+    # For PostgreSQL with existing data, skip drop_all and seeding, assume DB is ready
+    if not database_url.startswith("sqlite"):
+        # Assume PostgreSQL has the schema and seed data already set up from production dump
+        return
+    
+    # For SQLite, drop and recreate as before
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     

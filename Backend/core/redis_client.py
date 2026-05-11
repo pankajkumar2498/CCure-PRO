@@ -21,7 +21,8 @@ async def publish_progress(scan_id: str, phase: int, progress: dict):
     })
     l.info("[TRACE][REDIS][%s] Publishing progress (ASYNC) for scan %s, phase %d, status %s", 
            datetime.datetime.now().isoformat(), scan_id, phase, progress.get("status"))
-    await redis_client.publish(f"scan_progress:{scan_id}", message)
+    import asyncio
+    await asyncio.to_thread(_sync_redis_client.publish, f"scan_progress:{scan_id}", message)
 
 def publish_progress_sync(scan_id: str, phase: int, progress: dict):
     """Synchronous progress publishing for threaded engines (Vulnerability) or Celery tasks."""

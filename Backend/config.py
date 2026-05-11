@@ -79,7 +79,9 @@ class ScanConfig:
     """Scan engine configuration."""
 
     NMAP_TIMEOUT: int = int(os.getenv("NMAP_TIMEOUT", "300"))
-    NMAP_THREADS: int = int(os.getenv("NMAP_THREADS", "4"))
+    NMAP_THREADS: int = int(os.getenv("NMAP_THREADS", "20"))
+    MAX_NMAP_PROCESSES: int = int(os.getenv("MAX_NMAP_PROCESSES", "20"))
+    NMAP_PROCESS_WAIT_TIMEOUT: int = int(os.getenv("NMAP_PROCESS_WAIT_TIMEOUT", "900"))
 
 
 class CeleryConfig:
@@ -87,6 +89,10 @@ class CeleryConfig:
 
     BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
     RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    WORKER_CONCURRENCY: int = int(
+        os.getenv("SCANNER_WORKER_CONCURRENCY", os.getenv("NMAP_THREADS", "20"))
+    )
+    WORKER_PREFETCH_MULTIPLIER: int = int(os.getenv("SCANNER_WORKER_PREFETCH_MULTIPLIER", "1"))
 
 
 class VulnIntelConfig:
@@ -123,10 +129,14 @@ class AppConfig:
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT
     NMAP_THREADS = ScanConfig.NMAP_THREADS
+    MAX_NMAP_PROCESSES = ScanConfig.MAX_NMAP_PROCESSES
+    NMAP_PROCESS_WAIT_TIMEOUT = ScanConfig.NMAP_PROCESS_WAIT_TIMEOUT
 
     # Celery
     CELERY_BROKER_URL = CeleryConfig.BROKER_URL
     CELERY_RESULT_BACKEND = CeleryConfig.RESULT_BACKEND
+    SCANNER_WORKER_CONCURRENCY = CeleryConfig.WORKER_CONCURRENCY
+    SCANNER_WORKER_PREFETCH_MULTIPLIER = CeleryConfig.WORKER_PREFETCH_MULTIPLIER
 
     # Vulnerability intelligence
     VULN_DB_HOST = VulnIntelConfig.HOST

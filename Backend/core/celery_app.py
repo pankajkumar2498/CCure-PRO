@@ -25,6 +25,7 @@ celery_app.conf.update(
         Queue("scanner"),
     ),
     task_track_started=True,
-    worker_concurrency=AppConfig.NMAP_THREADS, # Limits parallel heavy scans
+    worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY, # Limits parallel heavy scans
+    worker_prefetch_multiplier=AppConfig.SCANNER_WORKER_PREFETCH_MULTIPLIER,
     task_time_limit=AppConfig.NMAP_TIMEOUT + 60, # Kill tasks if they hang
 )

@@ -64,10 +64,10 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
 
         # Identity Resolution
         asset = None
-        if mac and mac != "00:00:00:00:00:00":
-            asset = asset_map_by_mac.get(mac)
-        if not asset and ip and ip != "0.0.0.0":
+        if ip and ip != "0.0.0.0":
             asset = asset_map_by_ip.get(ip)
+        if not asset and mac and mac != "00:00:00:00:00:00":
+            asset = asset_map_by_mac.get(mac)
 
         is_active = host.get("is_active") or host.get("state") == "up"
         discovery_method = host.get("discovery_method") or host.get("method")
@@ -75,22 +75,39 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
 
         if asset:
             # Update existing asset
-            if mac and mac != "00:00:00:00:00:00":
-                asset.mac_address = mac
-                asset_map_by_mac[mac] = asset
-            if ip and ip != "0.0.0.0":
-                asset.ip_address = ip
-                asset_map_by_ip[ip] = asset
-            if hostname:
-                asset.hostname = hostname
-            if vendor and vendor != "Unknown":
-                asset.vendor = vendor
-            
-            asset.last_seen_at = utcnow()
-            asset.last_scan_id = scan_id
-            asset.is_active = is_active
-            asset.discovery_method = discovery_method
-            asset.response_time_ms = response_time_ms
+            if isinstance(asset, dict):
+                if mac and mac != "00:00:00:00:00:00":
+                    asset["mac_address"] = mac
+                    asset_map_by_mac[mac] = asset
+                if ip and ip != "0.0.0.0":
+                    asset["ip_address"] = ip
+                    asset_map_by_ip[ip] = asset
+                if hostname:
+                    asset["hostname"] = hostname
+                if vendor and vendor != "Unknown":
+                    asset["vendor"] = vendor
+                asset["last_seen_at"] = utcnow()
+                asset["last_scan_id"] = scan_id
+                asset["is_active"] = is_active
+                asset["discovery_method"] = discovery_method
+                asset["response_time_ms"] = response_time_ms
+            else:
+                if mac and mac != "00:00:00:00:00:00":
+                    asset.mac_address = mac
+                    asset_map_by_mac[mac] = asset
+                if ip and ip != "0.0.0.0":
+                    asset.ip_address = ip
+                    asset_map_by_ip[ip] = asset
+                if hostname:
+                    asset.hostname = hostname
+                if vendor and vendor != "Unknown":
+                    asset.vendor = vendor
+                
+                asset.last_seen_at = utcnow()
+                asset.last_scan_id = scan_id
+                asset.is_active = is_active
+                asset.discovery_method = discovery_method
+                asset.response_time_ms = response_time_ms
         else:
             asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
             new_asset = {
@@ -177,10 +194,10 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
 
         # Resolve asset
         asset = None
-        if mac and mac != "00:00:00:00:00:00":
-            asset = asset_map_by_mac.get(mac)
-        if not asset and ip and ip != "0.0.0.0":
+        if ip and ip != "0.0.0.0":
             asset = asset_map_by_ip.get(ip)
+        if not asset and mac and mac != "00:00:00:00:00:00":
+            asset = asset_map_by_mac.get(mac)
 
         if not asset:
             continue

@@ -124,6 +124,7 @@ from core.tasks import (
     run_host_discovery_task,
     run_asset_discovery_task,
     run_advanced_scan_task,
+    run_traditional_scan_task,
 )
 
 @router.post("/scan/host-discovery")

@@ -20,6 +20,12 @@ docker compose down
 # For Running Worker for Nmap Scans locally
 .\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker 
 
+# Scanner worker concurrency
+# Default is 20 parallel scan tasks. Override before starting the worker if needed:
+$env:SCANNER_WORKER_CONCURRENCY="30"
+$env:MAX_NMAP_PROCESSES="20"   # global Nmap process cap; raise only if the scanner host can handle it
+.\Backend\scripts\start_host_scanner_worker.ps1
+
 
 
 

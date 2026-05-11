@@ -24,8 +24,15 @@ from scan_helpers import (
 
 log = logging.getLogger("ccure.tasks")
 
-# Orchestrator singleton for the worker
-_orch = ScanOrchestrator(silent=False)
+
+def _new_orchestrator() -> ScanOrchestrator:
+    """Create one orchestrator per task so parallel scans do not share mutable state."""
+    return ScanOrchestrator(silent=False)
+
+
+def _run_async(coro):
+    """Run async scanner code safely from Celery worker threads."""
+    return asyncio.run(coro)
 
 
 def _merge_host_identity(enriched_hosts: List[dict], source_hosts: List[dict]) -> List[dict]:
@@ -126,9 +133,9 @@ def run_host_discovery_task(
         is_final = (terminal == 1)
 
         # 1. Run Discovery
-        loop = asyncio.get_event_loop()
         log.info("[TRACE][ENGINE][%s] Calling run_host_discovery_only", ts())
-        result = loop.run_until_complete(_orch.run_host_discovery_only(
+        orch = _new_orchestrator()
+        result = _run_async(orch.run_host_discovery_only(
             targets=targets, scan_type=scan_type, pipeline_mode=mode,
             discovery_intensity=discovery_intensity, scan_id=scan_id,
             rate_limit=rate_limit, max_concurrency=max_concurrency
@@ -146,7 +153,7 @@ def run_host_discovery_task(
 
         report_paths = {}
         if is_final:
-            raw_paths = _orch.generate_phase_report(result, "host_discovery")
+            raw_paths = orch.generate_phase_report(result, "host_discovery")
             report_paths = {k: v for k, v in raw_paths.items() if v and os.path.isfile(v)}
 
         # 3. Update Scan (updates Scan and Phase 1 rows in DB)
@@ -190,8 +197,8 @@ def run_asset_discovery_task(
         mode = resolve_pipeline_mode(pipeline_mode)
         is_final = (get_terminal_phase(mode) == 2)
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(_orch.run_asset_discovery_only(
+        orch = _new_orchestrator()
+        result = _run_async(orch.run_asset_discovery_only(
             hosts=hosts, intensity=intensity, pipeline_mode=mode, scan_id=scan_id
         ))
 
@@ -212,7 +219,7 @@ def run_asset_discovery_task(
 
         report_paths = {}
         if is_final:
-            raw_paths = _orch.generate_phase_report(result, "asset_discovery")
+            raw_paths = orch.generate_phase_report(result, "asset_discovery")
             report_paths = {k: v for k, v in raw_paths.items() if v and os.path.isfile(v)}
 
         update_scan_phase(
@@ -249,7 +256,8 @@ def run_advanced_scan_task(
     db = SessionLocal()
     try:
         mode = resolve_pipeline_mode(pipeline_mode)
-        result = _orch.run_advanced_scan_only(hosts=hosts, scan_id=scan_id)
+        orch = _new_orchestrator()
+        result = orch.run_advanced_scan_only(hosts=hosts, scan_id=scan_id)
 
         if not result.get("success"):
             mark_scan_failed(db, scan_id, user_id, result.get("error", "Advanced Scan failed"))
@@ -267,7 +275,7 @@ def run_advanced_scan_task(
                 for k in ("total_hosts", "active_hosts", "inactive_hosts"):
                     if p1_sum.get(k) is not None: result["summary"][k] = p1_sum[k]
 
-        raw_paths = _orch.generate_phase_report(result, "phase_selective_scan")
+        raw_paths = orch.generate_phase_report(result, "phase_selective_scan")
         report_paths = {k: v for k, v in raw_paths.items() if v and os.path.isfile(v)}
 
         update_scan_phase(
@@ -304,9 +312,8 @@ def run_traditional_scan_task(
     """Traditional Scan Task."""
     db = SessionLocal()
     try:
-        import asyncio
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(_orch.run_phases(
+        orch = _new_orchestrator()
+        result = _run_async(orch.run_phases(
             targets=targets, phases=phases, scan_type=scan_type, intensity=intensity
         ))
         return result
@@ -396,7 +403,8 @@ def run_credentialed_scan_task(
             "summary": {"scan_type": "credentialed", "cve_count": len(cve_list), "scan_duration": scan_duration},
             "metadata": {"target": ip, "scan_type": "credentialed"},
         }
-        report_paths = _orch.generate_phase_report(report_result, "credentialed_scan")
+        orch = _new_orchestrator()
+        report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
         scan = create_completed_scan(
             db=db, user_id=user_id, target=ip, targets=[ip], scan_type="credentialed", phase=3,
             results={"credentialed": {"report": stored_report}}, summary=report_result["summary"],

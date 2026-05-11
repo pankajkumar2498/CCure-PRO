@@ -31,13 +31,136 @@ AVAILABILITY:
 """
 
 import logging
+import threading
 import shutil
 import time
+import uuid
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
 
+from config import AppConfig
+
 log = logging.getLogger("ccure.nmap")
+
+
+class _NmapProcessLimiter:
+    """
+    Cross-worker guard for local Nmap process pressure.
+
+    Redis is used when available so multiple Celery worker processes/containers
+    share one global limit. If Redis is unreachable, we fall back to an in-process
+    semaphore so scans still run, but the cap is local to that Python process.
+    """
+
+    _RELEASE_SCRIPT = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+    end
+    return 0
+    """
+
+    def __init__(self, max_processes: int, wait_timeout: int, lease_seconds: int):
+        self.max_processes = max(1, int(max_processes or 1))
+        self.wait_timeout = max(1, int(wait_timeout or lease_seconds))
+        self.lease_seconds = max(60, int(lease_seconds or 300) + 120)
+        self._local = threading.BoundedSemaphore(self.max_processes)
+        self._redis = None
+        self._redis_unavailable_logged = False
+
+    def _client(self):
+        if self._redis is not None:
+            return self._redis
+        try:
+            import redis
+            self._redis = redis.from_url(
+                AppConfig.CELERY_BROKER_URL,
+                socket_timeout=3,
+                socket_connect_timeout=3,
+                decode_responses=True,
+            )
+            self._redis.ping()
+            return self._redis
+        except Exception as exc:
+            if not self._redis_unavailable_logged:
+                log.warning(
+                    "Redis unavailable for global Nmap limiter; using local process limiter only: %s",
+                    exc,
+                )
+                self._redis_unavailable_logged = True
+            self._redis = None
+            return None
+
+    def acquire(self):
+        owner = f"{uuid.uuid4()}:{threading.get_ident()}"
+        redis_client = self._client()
+        if redis_client is None:
+            if not self._local.acquire(timeout=self.wait_timeout):
+                raise TimeoutError(
+                    f"Timed out waiting for local Nmap slot "
+                    f"(max={self.max_processes}, wait={self.wait_timeout}s)"
+                )
+            return ("local", owner)
+
+        deadline = time.time() + self.wait_timeout
+        keys = [f"ccure:nmap:slot:{i}" for i in range(self.max_processes)]
+        while time.time() < deadline:
+            for key in keys:
+                try:
+                    if redis_client.set(key, owner, nx=True, ex=self.lease_seconds):
+                        return ("redis", key, owner)
+                except Exception as exc:
+                    log.warning("Redis Nmap limiter failed; falling back to local limiter: %s", exc)
+                    self._redis = None
+                    if not self._local.acquire(timeout=self.wait_timeout):
+                        raise TimeoutError(
+                            f"Timed out waiting for local Nmap slot "
+                            f"(max={self.max_processes}, wait={self.wait_timeout}s)"
+                        )
+                    return ("local", owner)
+            time.sleep(0.25)
+
+        raise TimeoutError(
+            f"Timed out waiting for global Nmap slot "
+            f"(max={self.max_processes}, wait={self.wait_timeout}s)"
+        )
+
+    def release(self, token) -> None:
+        if not token:
+            return
+        if token[0] == "local":
+            self._local.release()
+            return
+        _, key, owner = token
+        redis_client = self._client()
+        if redis_client is None:
+            return
+        try:
+            redis_client.eval(self._RELEASE_SCRIPT, 1, key, owner)
+        except Exception as exc:
+            log.warning("Failed to release Redis Nmap slot %s: %s", key, exc)
+
+
+_nmap_limiter = _NmapProcessLimiter(
+    max_processes=AppConfig.MAX_NMAP_PROCESSES,
+    wait_timeout=AppConfig.NMAP_PROCESS_WAIT_TIMEOUT,
+    lease_seconds=AppConfig.NMAP_TIMEOUT,
+)
+
+
+@contextmanager
+def _nmap_process_slot(label: str):
+    token = None
+    start = time.time()
+    try:
+        token = _nmap_limiter.acquire()
+        waited = time.time() - start
+        if waited >= 1:
+            log.info("Acquired Nmap slot for %s after %.1fs", label, waited)
+        yield
+    finally:
+        _nmap_limiter.release(token)
 
 # ── Try importing python-nmap (preferred) ────────────────────────────────────
 try:
@@ -320,8 +443,9 @@ class NmapScanner:
 
         t0 = time.time()
         try:
-            nm = _nmap_lib.PortScanner()
-            nm.scan(hosts=target, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
+            with _nmap_process_slot(f"single:{target}"):
+                nm = _nmap_lib.PortScanner()
+                nm.scan(hosts=target, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
             duration = time.time() - t0
 
             # Extract first host (single target mode)
@@ -351,8 +475,9 @@ class NmapScanner:
         target_str = " ".join(targets)
         t0 = time.time()
         try:
-            nm = _nmap_lib.PortScanner()
-            nm.scan(hosts=target_str, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
+            with _nmap_process_slot(f"multi:{len(targets)} hosts"):
+                nm = _nmap_lib.PortScanner()
+                nm.scan(hosts=target_str, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
             duration = time.time() - t0
 
             results = {}
@@ -390,11 +515,12 @@ class NmapScanner:
             cmd = ["sudo"] + cmd
 
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=self.timeout_sec,
-            )
+            with _nmap_process_slot(f"subprocess:{target}"):
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=self.timeout_sec,
+                )
             duration = time.time() - t0
 
             if not os.path.exists(xml_out):

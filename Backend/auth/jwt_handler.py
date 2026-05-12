@@ -24,21 +24,33 @@ from db.models.users import RefreshTokenSession, User
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-ENVIRONMENT = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE = timedelta(hours=1)
-REFRESH_TOKEN_EXPIRE = timedelta(days=7)
+# Single source of truth: read JWT settings from config.JWTConfig so that
+# config.py (which loads .env) is the only place that touches env vars.
+from config import JWTConfig as _JWTCfg
 
-if not SECRET_KEY:
+ENVIRONMENT = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
+SECRET_KEY: str = _JWTCfg.SECRET_KEY
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE = timedelta(minutes=_JWTCfg.ACCESS_TOKEN_EXPIRES_MINUTES)
+REFRESH_TOKEN_EXPIRE = timedelta(days=_JWTCfg.REFRESH_TOKEN_EXPIRES_DAYS)
+
+# Runtime guard: warn or fail if the key is insecure.
+_KNOWN_WEAK_KEYS = {
+    "dev-secret-key-change-in-production",
+    "ccure-dev-only-secret-change-me",
+    "ccure-super-secret-change-in-production",
+    "your-super-secret-jwt-key-change-in-production",
+}
+if SECRET_KEY in _KNOWN_WEAK_KEYS:
     if ENVIRONMENT == "production":
-        raise RuntimeError("JWT_SECRET_KEY must be set to a strong non-default value before starting the application.")
-    SECRET_KEY = "ccure-dev-only-secret-change-me"
-    logger.warning("JWT_SECRET_KEY is not set; using a development-only fallback secret.")
-elif SECRET_KEY in ("ccure-super-secret-change-in-production", "your-super-secret-jwt-key-change-in-production"):
-    if ENVIRONMENT == "production":
-        raise RuntimeError("JWT_SECRET_KEY must not use a known default value in production.")
-    logger.warning("JWT_SECRET_KEY is using a legacy default secret outside production. Change it before deployment.")
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set to a strong, unique value in production. "
+            "The current value is a known development default."
+        )
+    logger.warning(
+        "JWT_SECRET_KEY is using a development default. "
+        "Set JWT_SECRET_KEY in your .env before deploying to production."
+    )
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 argon2_hasher = PasswordHasher()

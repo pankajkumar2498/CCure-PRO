@@ -10,7 +10,7 @@
  *
  * On success → saves Phase 1 data to ScanContext → navigates to results page.
  */
-import "./NewScan.css";
+import "../../styles/NewScan.css";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
@@ -109,19 +109,17 @@ export default function NewScan() {
   };
 
   const waitForPhase1 = (scanId) => {
-    console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] waitForPhase1 started for scan ${scanId}`);
+
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(buildScanProgressUrl(scanId));
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] WS Message: phase=${data.phase}, status=${data.progress?.status}`);
           
           const isP1Done = (data.phase === 1 && (data.progress?.status === "complete" || data.progress?.status === "failed"));
           const isLaterPhase = (data.phase > 1);
 
           if (isP1Done || isLaterPhase) {
-            console.log(`[TRACE][FRONTEND][${new Date().toISOString()}] Resolving waitForPhase1: isP1Done=${isP1Done}, isLaterPhase=${isLaterPhase}`);
             ws.close();
             resolve(data.progress || { status: "complete" });
           } else if (data.phase === 1) {

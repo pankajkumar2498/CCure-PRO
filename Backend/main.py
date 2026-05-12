@@ -5,18 +5,20 @@ FastAPI entry point for Ccure Audit Pro Edition v1.
 
 This file is ONLY responsible for:
   - App instantiation and lifespan
-  - Middleware (CORS, rate limiting, validation error scrubbing)
+  - Middleware (CORS, rate limiting, request-ID correlation, validation error scrubbing)
   - Router registration via app.include_router()
 
 All endpoint logic lives in focused router modules under routers/.
 All shared helpers and pipeline constants live in scan_helpers.py.
 """
 
+import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -41,12 +43,41 @@ from routers.audit import router as audit_router
 from routers.user_profile import router as user_profile_router
 from routers.notifications import router as notifications_router
 
-# ── Logging ───────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s %(name)s - %(message)s",
-    datefmt="%H:%M:%S",
-)
+# ── Structured JSON Logging ──────────────────────────────────────────────────
+
+class _JsonFormatter(logging.Formatter):
+    """Emit every log record as a single-line JSON object."""
+
+    def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
+        payload: dict = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        # Attach request_id if injected by the correlation middleware
+        if hasattr(record, "request_id"):
+            payload["request_id"] = record.request_id  # type: ignore[attr-defined]
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+_use_json_logs = os.getenv("LOG_FORMAT", "text").lower() == "json"
+_log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+_handler = logging.StreamHandler()
+if _use_json_logs:
+    _handler.setFormatter(_JsonFormatter())
+else:
+    _handler.setFormatter(
+        logging.Formatter(
+            "[%(asctime)s] %(levelname)s %(name)s - %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
+
+logging.basicConfig(level=_log_level, handlers=[_handler])
 log = logging.getLogger("ccure.api")
 
 
@@ -226,7 +257,75 @@ from slowapi.errors import RateLimitExceeded
 from scan_helpers import limiter
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _make_rate_limit_response(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Return a machine-readable 429 in the standard error envelope."""
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "error_code": "RATE_LIMIT_EXCEEDED",
+            "message": str(exc.detail),
+            "request_id": request_id,
+        },
+        headers={"X-Request-ID": request_id or ""},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _make_rate_limit_response)
+
+
+# ── Request-ID correlation middleware ────────────────────────────────────────────
+
+@app.middleware("http")
+async def _request_id_middleware(request: Request, call_next):
+    """
+    Stamp every request with a unique X-Request-ID so that logs,
+    error responses, and client retries can all be correlated.
+    Honour an incoming X-Request-ID header if provided by an upstream proxy.
+    """
+    req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request.state.request_id = req_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
+
+
+# ── Global HTTP exception handler (unified error envelope) ───────────────────────
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Wrap every HTTP error in a machine-readable envelope:
+
+        {
+          "success": false,
+          "error_code": "HTTP_<STATUS>",
+          "message": "<detail>",
+          "request_id": "<uuid>"
+        }
+
+    This replaces FastAPI's default {"detail": ...} shape and satisfies
+    the .agent expectation for structured error codes + correlation IDs.
+    """
+    request_id = getattr(request.state, "request_id", None)
+    # Allow endpoints to pass a custom error_code via exc.headers
+    error_code = (
+        (exc.headers or {}).get("X-Error-Code")
+        or f"HTTP_{exc.status_code}"
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error_code": error_code,
+            "message": exc.detail,
+            "request_id": request_id,
+        },
+        headers={"X-Request-ID": request_id or ""},
+    )
 
 
 # ── Validation error scrubbing ────────────────────────────────────────────────
@@ -240,20 +339,32 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
     Override FastAPI's default 422 handler to mask any field whose name
     matches a known-sensitive pattern.  Without this, Pydantic may echo
     the raw user-submitted value (e.g. a password) in the error body.
+    Also wraps the response in the standard error envelope with request_id.
     """
+    request_id = getattr(request.state, "request_id", None)
     scrubbed = []
     for err in exc.errors():
         err_copy = dict(err)
-        # Always remove the raw 'input' payload. Pydantic V2 attaches the entire 
+        # Always remove the raw 'input' payload. Pydantic V2 attaches the entire
         # request body to every error, so even a missing 'ip' field error would
         # echo the raw 'password' field in its 'input' dictionary.
         err_copy.pop("input", None)
-        
+
         loc = err_copy.get("loc", ())
         if any(str(segment).lower() in _SENSITIVE_FIELDS for segment in loc):
             err_copy["ctx"] = {"note": "Value redacted for security."}
         scrubbed.append(err_copy)
-    return JSONResponse(status_code=422, content={"detail": scrubbed})
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "error_code": "VALIDATION_ERROR",
+            "message": "Request validation failed.",
+            "errors": scrubbed,
+            "request_id": request_id,
+        },
+        headers={"X-Request-ID": request_id or ""},
+    )
 
 
 # ── Router registration ──────────────────────────────────────────────────────

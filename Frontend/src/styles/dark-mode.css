@@ -1,0 +1,28 @@
+/* ── Dark mode component-specific fixes ─────────────────────────────────── */
+:root[data-theme="dark"] .btn--secondary {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+:root[data-theme="dark"] .btn--secondary:hover:not(:disabled) {
+  background: #334155;
+}
+
+:root[data-theme="dark"] .cpw-close:hover,
+:root[data-theme="dark"] .pm-close:hover,
+:root[data-theme="dark"] .np-close:hover,
+:root[data-theme="dark"] .hp-close:hover {
+  background: #334155;
+}
+
+:root[data-theme="dark"] .table-card,
+:root[data-theme="dark"] .card {
+  background: var(--bg-white);
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] th {
+  border-color: var(--border);
+}

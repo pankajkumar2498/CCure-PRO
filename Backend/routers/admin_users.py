@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
@@ -22,6 +23,7 @@ from db.models import (
 from core.audit import log_audit_event
 
 router = APIRouter(prefix="/admin/users", tags=["User Management"])
+log = logging.getLogger(__name__)
 
 
 def _is_superadmin(user: User) -> bool:
@@ -219,8 +221,15 @@ def create_user(
             message=f"Admin {current_user.username} created new user account: {new_user.username}",
             exclude_user_id=str(current_user.id)
         )
-    except Exception:
-        pass
+    except Exception as _notif_exc:
+        log.warning(
+            "Notification dispatch failed after user creation "
+            "[created_user=%s, acting_admin=%s]: %s",
+            new_user.username,
+            current_user.username,
+            _notif_exc,
+            exc_info=True,
+        )
 
     return {"id": str(new_user.id), "username": new_user.username, "organization_id": str(new_user.org_id)}
 
@@ -475,8 +484,15 @@ def delete_user(
             message=f"Admin {current_user.username} suspended user account: {user.username}.",
             exclude_user_id=str(current_user.id)
         )
-    except Exception:
-        pass
+    except Exception as _notif_exc:
+        log.warning(
+            "Notification dispatch failed after user deletion "
+            "[deleted_user=%s, acting_admin=%s]: %s",
+            user.username,
+            current_user.username,
+            _notif_exc,
+            exc_info=True,
+        )
 
     return {
         "detail": "User moved to Deleted Users",

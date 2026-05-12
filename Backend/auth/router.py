@@ -34,6 +34,7 @@ from auth.jwt_handler import (
 )
 from db.base import get_db, gen_org_id, gen_user_id
 from db.models import User, Organization, Role, RefreshTokenSession
+from scan_helpers import limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -154,7 +155,8 @@ def _resolve_refresh_token(request: Request, token_from_body: Optional[str]) -> 
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
 
 @router.get("/check-username")
-def check_username(q: str, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def check_username(request: Request, q: str, db: Session = Depends(get_db)):
     """Check if a username is available"""
     if len(q.strip()) < 3:
         return {"available": False}
@@ -162,7 +164,8 @@ def check_username(q: str, db: Session = Depends(get_db)):
     return {"available": not bool(exists)}
 
 @router.get("/check-email")
-def check_email(q: str, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def check_email(request: Request, q: str, db: Session = Depends(get_db)):
     """Check if an email is available"""
     if not q.strip() or "@" not in q:
         return {"available": False}
@@ -170,6 +173,7 @@ def check_email(q: str, db: Session = Depends(get_db)):
     return {"available": not bool(exists)}
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
+@limiter.limit("5/minute")
 def register(req: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Create a new user account.
@@ -270,6 +274,7 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.

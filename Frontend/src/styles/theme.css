@@ -1,0 +1,65 @@
+/* ============================================================================
+   CCURE AUDIT PRO — UNIFIED DESIGN SYSTEM
+   Based on CAST Dashboard color theme (#1a2332 sidebar, #0ea5e9 accent)
+   Applied consistently across: Auth, Dashboard, NewScan, Phase1-3, Credentialed, History
+   ============================================================================ */
+
+/* ── CSS Variables ───────────────────────────────────────────────────────── */
+:root {
+  /* Brand colors */
+  --sidebar-bg: #1a2332;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
+  --accent-dim: rgba(14, 165, 233, 0.12);
+
+  /* Neutrals */
+  --bg-app: #f8fafc;
+  --bg-white: #ffffff;
+  --bg-dark: #1e293b;
+  --border: #e2e8f0;
+  --border-dark: #334155;
+
+  /* Text */
+  --text: #0f172a;
+  --text-mid: #1e293b;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --text-white: #f1f5f9;
+
+  /* Severity */
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --info: #60a5fa;
+
+  /* Typography */
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'SF Mono', 'Fira Mono', 'Consolas', monospace;
+
+  /* Spacing */
+  --sidebar-w: 220px;
+  --header-h: 52px;
+}
+
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg-app);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+

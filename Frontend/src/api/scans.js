@@ -25,6 +25,12 @@ export const purgeScan  = (id) =>
 export const deleteReport = (id) =>
   api.delete(`/reports/${id}`);
 
+/** GET /scan/quota — returns the org's current quota status */
+export const getScanQuota = () =>
+  api.get("/scan/quota");
+
+
+
 const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2 } = {}) => {
   const baseURL = api.defaults.baseURL || "";
   const prefix = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;

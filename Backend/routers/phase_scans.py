@@ -40,8 +40,44 @@ from scan_helpers import (
     PIPELINE_PHASES,
     log,
 )
+from core.quota import check_scan_quota, get_quota_status
+from core.tasks import (
+    run_host_discovery_task,
+    run_asset_discovery_task,
+    run_advanced_scan_task,
+    run_traditional_scan_task,
+)
 
 router = APIRouter(tags=["Phase-Selective Scans"])
+
+
+# ── Quota status endpoint ─────────────────────────────────────────────────────
+
+@router.get("/scan/quota")
+def get_scan_quota(
+    db:   Session = Depends(get_db),
+    user: User    = Depends(require_permission("scans", "read")),
+):
+    """
+    Return the organisation's current scan quota status.
+
+    Response::
+
+        {
+          "plan": "community",
+          "scans_used_24h": 3,
+          "scans_limit_24h": 5,
+          "concurrent_running": 1,
+          "concurrent_limit": 1,
+          "max_ips_per_scan": 254,
+          "max_subnet_prefix": 24,
+          "quota_exceeded": false,
+          "concurrent_exceeded": false
+        }
+    """
+    return get_quota_status(db, org_id=str(user.org_id))
+
+
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -120,13 +156,6 @@ class PhasesRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-from core.tasks import (
-    run_host_discovery_task,
-    run_asset_discovery_task,
-    run_advanced_scan_task,
-    run_traditional_scan_task,
-)
-
 @router.post("/scan/host-discovery")
 @limiter.limit("5/minute")
 async def scan_host_discovery(
@@ -137,10 +166,16 @@ async def scan_host_discovery(
 ):
     """
     Host Discovery: Phase 1 (Trigger and Return Immediately).
+
+    Quota enforcement runs BEFORE the scan row is created, so rejected
+    requests never produce orphaned DB rows.
     """
     validate_total_targets(req.targets)
     raw_intensity = (req.discovery_intensity or "normal").strip().lower()
     discovery_intensity = raw_intensity if raw_intensity in ("light", "normal", "deep") else "normal"
+
+    # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
+    check_scan_quota(db, org_id=str(user.org_id), targets=req.targets)
 
     scan = create_scan(
         db=db,

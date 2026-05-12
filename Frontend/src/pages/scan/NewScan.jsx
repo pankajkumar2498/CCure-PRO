@@ -11,7 +11,7 @@
  * On success → saves Phase 1 data to ScanContext → navigates to results page.
  */
 import "./NewScan.css";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
@@ -19,6 +19,7 @@ import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api, { authSession } from "../../api/axiosInstance";
 import { can, denyMessage } from "../../auth/permissions";
 import { useAuth } from "../../context/AuthContext";
+import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -83,6 +84,7 @@ export default function NewScan() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
   const [rateLimit, setRateLimit] = useState("");
+  const [quotaBlocked, setQuotaBlocked] = useState(false);
 
   const pipeline  = getScanPipeline(pipelineMode || "basic");
   const badgeMeta = PIPELINE_BADGE[pipelineMode] || PIPELINE_BADGE.basic;
@@ -205,6 +207,13 @@ export default function NewScan() {
           <h1 className="ns-title">{pipeline.label}</h1>
           <p className="ns-sub">{pipeline.description}</p>
         </div>
+
+        {/* ── Quota bar — between hero and card ───────────────────────── */}
+        <ScanQuotaBar
+          onQuotaChange={({ quota_exceeded, concurrent_exceeded }) =>
+            setQuotaBlocked(quota_exceeded || concurrent_exceeded)
+          }
+        />
 
         {/* ── Card ──────────────────────────────────────────────────────── */}
         <div className="ns-card">
@@ -376,7 +385,7 @@ export default function NewScan() {
             id="ns-start-btn"
             className={`ns-start-btn${loading ? " ns-start-btn--scanning" : ""}`}
             onClick={handleScan}
-            disabled={loading || !target.trim() || !canExecuteScans}
+            disabled={loading || !target.trim() || !canExecuteScans || quotaBlocked}
           >
             {loading ? (
               <>

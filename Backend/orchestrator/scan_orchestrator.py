@@ -809,15 +809,60 @@ class ScanOrchestrator:
     # ── Helpers (unchanged from original) ────────────────────────────────────
 
     def _format_host(self, ip: str, data: Dict, input_hostname: str = None) -> HostResult:
-        """Unchanged from original orchestrator."""
+        """
+        Resolve hostname with live-source priority over stale DNS.
+
+        Priority order (highest → lowest):
+          1. NetBIOS computer name   — from nbns.py / enrichment._netbios_query()
+          2. mDNS local name         — from enrichment._mdns_query()
+          3. hostname already in data — set by nbns technique during discovery
+          4. DNS PTR (last resort)   — socket.gethostbyaddr() — may be stale
+          5. input_hostname argument
+          6. "Unknown"
+        """
         ip = ip or self._get_host_ip(data)
         is_active = data.get("is_active", False)
         hostname = "Unknown"
+
         if is_active and ip:
-            try:
-                hostname = socket.gethostbyaddr(ip)[0]
-            except Exception:
-                hostname = input_hostname or "Unknown"
+            # ── 1. NetBIOS computer name (live UDP-137 response from target) ──
+            netbios_name = data.get("netbios_computer") or ""
+            if not netbios_name:
+                # Also scan netbios_names list for the workstation entry
+                for entry in data.get("netbios_names", []):
+                    if isinstance(entry, dict) and not (entry.get("flags", 0xFFFF) & 0x8000):
+                        netbios_name = entry.get("name", "")
+                        break
+
+            if netbios_name and netbios_name not in ("Unknown", ""):
+                hostname = netbios_name
+
+            # ── 2. mDNS local name (unicast .local PTR response from target) ──
+            elif data.get("mdns_name") and data["mdns_name"] not in ("Unknown", ""):
+                hostname = data["mdns_name"]
+
+            # ── 3. hostname already set by discovery engine ───────────────────
+            elif (
+                data.get("hostname")
+                and data["hostname"] not in ("Unknown", "", "N/A")
+            ):
+                hostname = data["hostname"]
+
+            # ── 4. DNS PTR — last resort (may be stale) ───────────────────────
+            else:
+                try:
+                    dns_name = socket.gethostbyaddr(ip)[0]
+                    if dns_name and dns_name != ip:
+                        hostname = dns_name
+                        log.debug(
+                            "_format_host(%s): DNS PTR used as fallback → %s "
+                            "(NetBIOS/mDNS returned nothing — result may be stale)",
+                            ip, dns_name,
+                        )
+                    else:
+                        hostname = input_hostname or "Unknown"
+                except Exception:
+                    hostname = input_hostname or "Unknown"
         else:
             hostname = input_hostname or "Unknown"
 

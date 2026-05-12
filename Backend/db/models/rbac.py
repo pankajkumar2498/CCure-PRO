@@ -56,6 +56,12 @@ class Organization(Base):
     plan        = Column(String(50),  nullable=False, default="community")
     max_assets  = Column(Integer, nullable=False, default=500)
     max_users   = Column(Integer, nullable=False, default=10)
+
+    # ── Scan Quota Overrides (NULL = use plan default from core/quota.py) ──────
+    # Superadmins can set per-org overrides that take precedence over plan limits.
+    max_scans_per_day    = Column(Integer, nullable=True)  # rolling 24-h window
+    max_concurrent_scans = Column(Integer, nullable=True)  # simultaneous running scans
+
     is_active   = Column(Boolean, nullable=False, default=True)
     settings    = Column(JSONB,   nullable=False, default=dict)
 

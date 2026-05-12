@@ -45,11 +45,13 @@ export default function DeletedUsers() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
+    const isSuperadmin = currentUser?.role?.name?.toLowerCase() === "superadmin";
+
     try {
       const [usersData, rolesData, organizationsData] = await Promise.all([
         listUsers({ skip: 0, limit: 100, scope: "deleted" }),
         listRoles(),
-        listOrganizations().catch(() => null),
+        isSuperadmin ? listOrganizations().catch(() => null) : Promise.resolve(null),
       ]);
 
       setUsers(usersData.users || []);

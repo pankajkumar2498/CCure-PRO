@@ -138,7 +138,7 @@ export default function NewScan() {
       setTimeout(() => {
         ws.close();
         reject(new Error("Phase 1 timed out"));
-      }, 180000);
+      }, 600000); // Increased to 10 minutes for SaaS stability
     });
   };
 
@@ -168,7 +168,20 @@ export default function NewScan() {
       setScanId(data.scan_id ?? null);
       setScanNo(data.scan_no ?? data.display_id ?? null);
 
-      // Wait for Phase 1 via WebSocket
+      // ── Backgrounding Check ────────────────────────────────────────────────
+      // If target is larger than a /24, or user wants background, we don't wait.
+      const isLargeSubnet = target.includes("/") && parseInt(target.split("/")[1], 10) <= 24;
+      
+      if (isLargeSubnet) {
+        setSaveStatus("saved");
+        // Give a small delay so user sees the 'Success' state before navigating
+        setTimeout(() => {
+          navigate("/scan-history");
+        }, 1500);
+        return;
+      }
+
+      // Wait for Phase 1 via WebSocket (for smaller, interactive scans)
       const p1Result = await waitForPhase1(data.scan_id);
       if (p1Result?.status === "failed") {
          throw new Error("Phase 1 background task failed.");
@@ -390,7 +403,9 @@ export default function NewScan() {
             {loading ? (
               <>
                 <span className="ns-spinner" />
-                Discovering hosts…
+                {target.includes("/") && parseInt(target.split("/")[1], 10) <= 24 
+                  ? "Starting Background Scan..." 
+                  : "Discovering hosts..."}
               </>
             ) : (
               <>
@@ -399,6 +414,15 @@ export default function NewScan() {
               </>
             )}
           </button>
+
+          {loading && (
+            <div className="ns-background-hint">
+              <p>Large scan detected. You can safely leave this page; the scan will continue in the background.</p>
+              <button className="ns-btn-secondary" onClick={() => navigate("/scan-history")}>
+                View in Scan History
+              </button>
+            </div>
+          )}
 
         </div>{/* /ns-card */}
       </div>{/* /ns-page */}

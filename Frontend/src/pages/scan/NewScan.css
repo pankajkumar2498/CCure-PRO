@@ -591,6 +591,49 @@
   font-size: 0.78rem;
 }
 
+/* ── Background Scan Hint ────────────────────────────────────────────────── */
+.ns-background-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 16px;
+  background: rgba(14, 165, 233, 0.05);
+  border: 1px dashed rgba(14, 165, 233, 0.3);
+  border-radius: 12px;
+  animation: nsFadeIn 0.4s ease forwards;
+}
+
+.ns-background-hint p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.ns-btn-secondary {
+  padding: 8px 16px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ns-btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(14, 165, 233, 0.03);
+}
+
+@keyframes nsFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* ============================================================================
    ScanQuotaBar — Quota usage widget on the NewScan page

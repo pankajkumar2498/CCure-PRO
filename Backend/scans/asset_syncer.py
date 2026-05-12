@@ -18,139 +18,148 @@ from db.base import utcnow, gen_asset_id, gen_service_id
 logger = logging.getLogger(__name__)
 
 def _resolve_ip(host_data: dict) -> str:
-    return host_data.get("ip_address") or host_data.get("ip") or "0.0.0.0"
+    return str(host_data.get("ip_address") or host_data.get("ip") or "0.0.0.0").strip()
 
-def _resolve_mac(host_data: dict) -> str:
+def _resolve_mac(host_data: dict) -> Optional[str]:
     mac = host_data.get("mac_address") or host_data.get("mac")
-    return mac if mac and str(mac).upper() != "N/A" and str(mac).upper() != "UNKNOWN" else "00:00:00:00:00:00"
+    if not mac: return None
+    mac_str = str(mac).strip().upper()
+    if mac_str in ["N/A", "UNKNOWN", "00:00:00:00:00:00", ""]:
+        return None
+    return mac_str
+
+def _resolve_asset(host_data: dict, mac_map: dict, ip_map: dict) -> Optional[Asset]:
+    """Helper to resolve asset identity using the same waterfall as Phase 1."""
+    ip = _resolve_ip(host_data)
+    mac = _resolve_mac(host_data)
+    
+    # Priority 1: MAC
+    if mac and mac in mac_map:
+        return mac_map[mac]
+    
+    # Priority 2: IP
+    if ip != "0.0.0.0" and ip in ip_map:
+        return ip_map[ip]
+        
+    return None
 
 
 def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 1 (Host Discovery).
-    Upserts IPs and MAC addresses into the Asset registry using batch queries.
+    Performs Identity Resolution (MAC-first) and upserts hosts into the Asset Registry.
     """
     if not hosts:
         return
 
     logger.info(f"Syncing {len(hosts)} discovered hosts to Asset Registry for scan: {scan_id}")
 
-    macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h) != "00:00:00:00:00:00"]
-    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+    # 1. Prepare unique lookups for this batch
+    batch_ips = set()
+    batch_macs = set()
+    for h in hosts:
+        ip = _resolve_ip(h)
+        mac = _resolve_mac(h)
+        if ip != "0.0.0.0": batch_ips.add(ip)
+        if mac: batch_macs.add(mac)
 
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    org_slug = org.slug if org else org_id
-
-    # Pre-fetch existing assets in one go
+    # 2. Pre-fetch ALL candidate assets in one query
     existing_assets = []
-    if macs or ips:
+    if batch_ips or batch_macs:
         from sqlalchemy import or_
         filters = []
-        if macs: filters.append(Asset.mac_address.in_(macs))
-        if ips: filters.append(Asset.ip_address.in_(ips))
-        if filters:
-            existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
+        if batch_ips: filters.append(Asset.ip_address.in_(list(batch_ips)))
+        if batch_macs: filters.append(Asset.mac_address.in_(list(batch_macs)))
+        
+        existing_assets = db.query(Asset).filter(
+            Asset.org_id == org_id, 
+            or_(*filters)
+        ).all()
 
-    asset_map_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
-    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+    # Create maps for quick resolution
+    # Note: If multiple rows have same MAC (shouldn't happen but...) or same IP, we take the latest
+    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
+    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
 
-    new_assets = []
+    to_update = []
+    to_create = []
 
+    # 3. Resolve Identity Host-by-Host
     for host in hosts:
         ip = _resolve_ip(host)
         mac = _resolve_mac(host)
         hostname = host.get("hostname") or host.get("hostnames", [None])[0] if isinstance(host.get("hostnames"), list) else host.get("hostname")
         vendor = host.get("vendor", "Unknown")
-
-        # Identity Resolution
-        asset = None
-        if ip and ip != "0.0.0.0":
-            asset = asset_map_by_ip.get(ip)
-        if not asset and mac and mac != "00:00:00:00:00:00":
-            asset = asset_map_by_mac.get(mac)
-
         is_active = host.get("is_active") or host.get("state") == "up"
         discovery_method = host.get("discovery_method") or host.get("method")
         response_time_ms = host.get("response_time_ms") or host.get("elapsed_ms")
 
-        if asset:
-            # Update existing asset
-            if isinstance(asset, dict):
-                if mac and mac != "00:00:00:00:00:00":
-                    asset["mac_address"] = mac
-                    asset_map_by_mac[mac] = asset
-                if ip and ip != "0.0.0.0":
-                    asset["ip_address"] = ip
-                    asset_map_by_ip[ip] = asset
-                if hostname:
-                    asset["hostname"] = hostname
-                if vendor and vendor != "Unknown":
-                    asset["vendor"] = vendor
-                asset["last_seen_at"] = utcnow()
-                asset["last_scan_id"] = scan_id
-                asset["is_active"] = is_active
-                asset["discovery_method"] = discovery_method
-                asset["response_time_ms"] = response_time_ms
-            else:
-                if mac and mac != "00:00:00:00:00:00":
-                    asset.mac_address = mac
-                    asset_map_by_mac[mac] = asset
-                if ip and ip != "0.0.0.0":
-                    asset.ip_address = ip
-                    asset_map_by_ip[ip] = asset
-                if hostname:
-                    asset.hostname = hostname
-                if vendor and vendor != "Unknown":
-                    asset.vendor = vendor
-                
-                asset.last_seen_at = utcnow()
-                asset.last_scan_id = scan_id
-                asset.is_active = is_active
-                asset.discovery_method = discovery_method
-                asset.response_time_ms = response_time_ms
+        # Identity Resolution Waterfall
+        target_asset = None
+        
+        # Priority 1: Match by MAC
+        if mac:
+            target_asset = db_by_mac.get(mac)
+        
+        # Priority 2: Match by IP (only if MAC didn't find anything)
+        if not target_asset and ip != "0.0.0.0":
+            target_asset = db_by_ip.get(ip)
+
+        if target_asset:
+            # We found an identity! Update it.
+            # IMPORTANT: If we found it by MAC but it has a DIFFERENT IP now, 
+            # we update the IP. This handles DHCP changes perfectly.
+            target_asset.ip_address = ip if ip != "0.0.0.0" else target_asset.ip_address
+            if mac: target_asset.mac_address = mac
+            if hostname: target_asset.hostname = hostname
+            if vendor and vendor != "Unknown": target_asset.vendor = vendor
+            
+            target_asset.last_seen_at = utcnow()
+            target_asset.last_scan_id = scan_id
+            target_asset.is_active = is_active
+            target_asset.discovery_method = discovery_method
+            target_asset.response_time_ms = response_time_ms
+            target_asset.updated_at = utcnow()
+            
+            # If the IP changed, update the lookup map to prevent other hosts in this batch
+            # from accidentally matching the 'old' IP of this asset.
+            db_by_ip[ip] = target_asset
         else:
+            # New Asset Discovery
             asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
-            new_asset = {
-                "id": asset_id,
-                "org_id": org_id,
-                "ip_address": ip if ip != "0.0.0.0" else None,
-                "mac_address": mac if mac != "00:00:00:00:00:00" else None,
-                "hostname": hostname,
-                "vendor": vendor if vendor != "Unknown" else None,
-                "is_active": is_active,
-                "discovery_method": discovery_method,
-                "response_time_ms": response_time_ms,
-                "last_scan_id": scan_id,
-                "last_seen_at": utcnow(),
-                "created_at": utcnow(),
-                "updated_at": utcnow(),
-            }
-            new_assets.append(new_asset)
-            if mac and mac != "00:00:00:00:00:00":
-                asset_map_by_mac[mac] = new_asset
-            if ip and ip != "0.0.0.0":
-                asset_map_by_ip[ip] = new_asset
+            
+            new_asset = Asset(
+                id=asset_id,
+                org_id=org_id,
+                ip_address=ip if ip != "0.0.0.0" else None,
+                mac_address=mac,
+                hostname=hostname,
+                vendor=vendor if vendor != "Unknown" else None,
+                is_active=is_active,
+                discovery_method=discovery_method,
+                response_time_ms=response_time_ms,
+                last_scan_id=scan_id,
+                last_seen_at=utcnow(),
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
+            db.add(new_asset)
+            to_create.append(new_asset)
+            
+            # Add to maps so subsequent hosts in this same batch can correlate
+            if mac: db_by_mac[mac] = new_asset
+            if ip != "0.0.0.0": db_by_ip[ip] = new_asset
 
-    if new_assets:
-        stmt = insert(Asset).values(new_assets)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[Asset.id],
-            set_={
-                "ip_address": stmt.excluded.ip_address,
-                "mac_address": stmt.excluded.mac_address,
-                "hostname": stmt.excluded.hostname,
-                "vendor": stmt.excluded.vendor,
-                "is_active": stmt.excluded.is_active,
-                "discovery_method": stmt.excluded.discovery_method,
-                "response_time_ms": stmt.excluded.response_time_ms,
-                "last_scan_id": stmt.excluded.last_scan_id,
-                "last_seen_at": stmt.excluded.last_seen_at,
-                "updated_at": stmt.excluded.updated_at,
-            },
-        )
-        db.execute(stmt)
-
-    db.commit()
+    # 4. Final Safety: If two hosts in the DB share a MAC/IP due to previous bugs, 
+    # the flush might still hit a constraint. We use a try/except or flush carefully.
+    try:
+        db.flush()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Asset Sync Phase 1 Failed: {str(e)}")
+        # In a real SaaS, we might want to retry with a more aggressive de-duplication script here
+        raise
 
 
 def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
@@ -163,21 +172,21 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
 
     logger.info(f"Syncing Phase 2 asset features (ports/services) for scan: {scan_id}")
 
-    macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h) != "00:00:00:00:00:00"]
-    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+    batch_macs = [m for h in hosts if (m := _resolve_mac(h))]
+    batch_ips = [i for h in hosts if (i := _resolve_ip(h)) != "0.0.0.0"]
 
     # Pre-fetch existing assets
     existing_assets = []
-    if macs or ips:
+    if batch_macs or batch_ips:
         from sqlalchemy import or_
         filters = []
-        if macs: filters.append(Asset.mac_address.in_(macs))
-        if ips: filters.append(Asset.ip_address.in_(ips))
-        if filters:
-            existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
+        if batch_macs: filters.append(Asset.mac_address.in_(batch_macs))
+        if batch_ips: filters.append(Asset.ip_address.in_(batch_ips))
+        
+        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
 
-    asset_map_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
-    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
+    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
 
     # Pre-fetch services for these assets
     asset_ids = [a.id for a in existing_assets]
@@ -189,15 +198,8 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
     new_services = []
 
     for host in hosts:
-        ip = _resolve_ip(host)
-        mac = _resolve_mac(host)
-
-        # Resolve asset
-        asset = None
-        if ip and ip != "0.0.0.0":
-            asset = asset_map_by_ip.get(ip)
-        if not asset and mac and mac != "00:00:00:00:00:00":
-            asset = asset_map_by_mac.get(mac)
+        # Resolve asset using standardized waterfall
+        asset = _resolve_asset(host, db_by_mac, db_by_ip)
 
         if not asset:
             continue
@@ -265,13 +267,21 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
 
     logger.info(f"Syncing Phase 3 vulnerabilities for scan: {scan_id}")
 
-    ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+    batch_macs = [m for h in hosts if (m := _resolve_mac(h))]
+    batch_ips = [i for h in hosts if (i := _resolve_ip(h)) != "0.0.0.0"]
 
     # Pre-fetch existing assets
     existing_assets = []
-    if ips:
-        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address.in_(ips)).all()
-    asset_map_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
+    if batch_macs or batch_ips:
+        from sqlalchemy import or_
+        filters = []
+        if batch_macs: filters.append(Asset.mac_address.in_(batch_macs))
+        if batch_ips: filters.append(Asset.ip_address.in_(batch_ips))
+        
+        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
+
+    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
+    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
 
     # Collect all unique CVE IDs from payload
     all_cve_ids = set()
@@ -299,11 +309,8 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
     new_findings = []
 
     for host in hosts:
-        ip = _resolve_ip(host)
-        asset = asset_map_by_ip.get(ip)
-
-        if not asset:
-            continue
+        # Resolve asset using standardized waterfall
+        asset = _resolve_asset(host, db_by_mac, db_by_ip)
 
         vulns = host.get("vulnerabilities") or host.get("cves") or []
         for v in vulns:
@@ -332,8 +339,8 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
         db.flush() # Ensure we have IDs for new definitions
 
     for host in hosts:
-        ip = _resolve_ip(host)
-        asset = asset_map_by_ip.get(ip)
+        # Resolve asset
+        asset = _resolve_asset(host, db_by_mac, db_by_ip)
         if not asset: continue
 
         vulns = host.get("vulnerabilities") or host.get("cves") or []

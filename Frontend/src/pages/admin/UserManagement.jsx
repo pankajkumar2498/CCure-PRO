@@ -88,12 +88,21 @@ export default function UserManagement() {
 
   // Load roles + orgs once on mount (these rarely change)
   useEffect(() => {
-    listRoles()
-      .then(d => setRoles(d.roles || []))
-      .catch(() => {});
-    listOrganizations()
-      .then(d => setOrganizations(d.organizations || []))
-      .catch(() => {});
+    // Superadmins need the full list of roles and orgs for filters/dropdowns.
+    // Org admins only manage their own users and don't need these global lists.
+    if (isSuperadmin) {
+      listRoles()
+        .then(d => setRoles(d.roles || []))
+        .catch(() => {});
+      listOrganizations()
+        .then(d => setOrganizations(d.organizations || []))
+        .catch(() => {});
+    } else {
+      // Org admins still need the roles list to assign roles (filtered in assignableRoles)
+      listRoles()
+        .then(d => setRoles(d.roles || []))
+        .catch(() => {});
+    }
   }, []);
 
   // Reload users when filters/page change

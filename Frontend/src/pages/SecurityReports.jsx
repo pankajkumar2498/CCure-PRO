@@ -132,8 +132,7 @@ export default function SecurityReports() {
       );
       
       setScans(reportableScans);
-    } catch (err) {
-      console.error("Failed to load reports:", err);
+    } catch {
       setError("Failed to synchronize with the report repository.");
     } finally {
       setLoading(false);
@@ -171,8 +170,7 @@ export default function SecurityReports() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download failed:", err);
+    } catch {
       pushToast("Failed to download report. The session may have expired.", "error");
     }
   };
@@ -212,8 +210,7 @@ export default function SecurityReports() {
       await deleteReport(scanId);
       setScans(prev => prev.filter(s => s.id !== scanId));
       setModal(null);
-    } catch (err) {
-      console.error("Delete failed:", err);
+    } catch {
       setModal(null);
       pushToast("Failed to delete report.", "error");
     }

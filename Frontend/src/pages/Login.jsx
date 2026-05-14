@@ -32,7 +32,9 @@ export default function Login() {
       navigate(from, { replace: true });
     } catch (err) {
       let errMsg = "Login failed. Check your credentials.";
-      if (err.response?.data?.detail) {
+      if (err.response?.data?.message) {
+        errMsg = err.response.data.message;
+      } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
         errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
       }

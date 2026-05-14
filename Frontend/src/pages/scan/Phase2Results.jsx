@@ -12,7 +12,7 @@ import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
-import api, { authSession } from "../../api/axiosInstance";
+import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
@@ -122,15 +122,16 @@ export default function Phase2Results() {
   const [scanProgress, setScanProgress] = useState(null);
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
-  const buildScanProgressUrl = (scanId) => {
-    const token = authSession.getAccessToken();
-    const query = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${wsPrefix}/scans/${scanId}/progress${query}`;
+  const buildScanProgressUrl = (scanId, ticket) => {
+    return `${wsPrefix}/scans/${scanId}/progress?ticket=${encodeURIComponent(ticket)}`;
   };
 
-  const waitForPhase = (scanId, phase) => {
+  const waitForPhase = async (scanId, phase) => {
+    const { data } = await api.post("/auth/ticket");
+    const ticket = data.ticket;
+
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(buildScanProgressUrl(scanId));
+      const ws = new WebSocket(buildScanProgressUrl(scanId, ticket));
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.phase === phase) {

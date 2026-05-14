@@ -113,6 +113,15 @@ def create_access_token(user_id: int, username: str, role: Optional[str] = None,
     )
 
 
+def create_download_ticket(user_id: str, username: str) -> str:
+    """Create a short-lived (60 seconds) ticket for secure websockets/downloads."""
+    payload = {"sub": str(user_id), "username": username, "type": "ticket"}
+    return _create_token(
+        payload,
+        timedelta(seconds=60),
+    )
+
+
 def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
     """
     Create a new refresh token for a user.

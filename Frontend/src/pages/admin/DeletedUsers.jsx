@@ -57,8 +57,7 @@ export default function DeletedUsers() {
       setUsers(usersData.users || []);
       setRoles(rolesData.roles || []);
       setOrganizations(organizationsData?.organizations || []);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError("Failed to load deleted users.");
     } finally {
       setLoading(false);

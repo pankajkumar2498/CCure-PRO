@@ -33,7 +33,7 @@ sqlite_base.SQLiteDialect.colspecs.update({
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Load environment from Backend/.env.test if available BEFORE importing app
-dotenv_path = Path(__file__).resolve().parent / ".env.test"
+dotenv_path = Path(__file__).resolve().parents[1] / ".env.test"
 if dotenv_path.exists():
     load_dotenv(dotenv_path=dotenv_path)
 

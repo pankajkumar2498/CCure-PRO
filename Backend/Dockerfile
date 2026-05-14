@@ -60,4 +60,9 @@ EXPOSE 8000
 # Use ccure user by default (overridden for worker in docker-compose)
 USER ccure
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Ensure start.sh has executable permissions
+# We do this as root before switching user if we were copying it later,
+# but since it's copied earlier with the app code and chowned, we just chmod it here.
+RUN chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]

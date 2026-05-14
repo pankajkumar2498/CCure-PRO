@@ -12,9 +12,19 @@ from dotenv import load_dotenv
 
 BACKEND_DIR = Path(__file__).resolve().parent
 DEFAULT_SQLITE_DB = BACKEND_DIR / "ccure_users.db"
-ENV_FILE = BACKEND_DIR / ".env.test"  # Always use test config for development
 
-# Always load the Backend/.env file so database switching is controlled
+
+def _selected_env_file() -> Path:
+    """Use test/dev config by default; use main config in production."""
+    app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))).lower()
+    if app_env in {"production", "prod"}:
+        return BACKEND_DIR / ".env"
+    return BACKEND_DIR / ".env.test"
+
+
+ENV_FILE = _selected_env_file()
+
+# Load the selected Backend env file so database switching is controlled
 # from one place even when the app is launched outside the Backend folder.
 # Skip if running in tests to allow conftest.py to control environment.
 if not os.getenv("SKIP_DOTENV_LOAD"):
@@ -112,6 +122,13 @@ class VulnIntelConfig:
         )
 
 
+class AdminConfig:
+    """Default administrator account configuration."""
+
+    EMAIL: str = os.getenv("DEFAULT_ADMIN_EMAIL", "")
+    PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -145,6 +162,10 @@ class AppConfig:
     VULN_DB_USER = VulnIntelConfig.USER
     VULN_DB_PASSWORD = VulnIntelConfig.PASSWORD
     VULN_DB_URL = VulnIntelConfig.database_url()
+
+    # Initial Admin Seed
+    DEFAULT_ADMIN_EMAIL = AdminConfig.EMAIL
+    DEFAULT_ADMIN_PASSWORD = AdminConfig.PASSWORD
 
     @staticmethod
     def is_sqlite() -> bool:

@@ -12,15 +12,15 @@ import { useDebounce } from "../hooks/useDebounce";
 function validate(username, email, password, confirm) {
   if (username.trim().length < 3) return "Username must be at least 3 characters.";
   if (!/\S+@\S+\.\S+/.test(email)) return "Enter a valid email address.";
-  if (password.length < 6) return "Password must be at least 6 characters.";
+  if (password.length < 12) return "Password must be at least 12 characters.";
   if (password !== confirm) return "Passwords do not match.";
   return null;
 }
 
 function strengthOf(pw) {
   if (!pw) return { label: "", level: 0 };
-  if (pw.length < 6) return { label: "Weak", level: 1 };
-  if (pw.length < 10) return { label: "Fair", level: 2 };
+  if (pw.length < 12) return { label: "Weak", level: 1 };
+  if (pw.length < 14) return { label: "Fair", level: 2 };
   if (/[^a-zA-Z0-9]/.test(pw)) return { label: "Strong", level: 4 };
   return { label: "Good", level: 3 };
 }
@@ -71,7 +71,11 @@ export default function Register() {
       navigate("/dashboard", { replace: true });
     } catch (err) {
       let errMsg = "Registration failed. Please try again.";
-      if (err.response?.data?.detail) {
+      if (err.response?.data?.details) {
+        errMsg = err.response.data.details.map(d => d.msg || d.type).join(", ");
+      } else if (err.response?.data?.message) {
+        errMsg = err.response.data.message;
+      } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
         errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
       }

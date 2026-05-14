@@ -78,8 +78,7 @@ export default function UserManagement() {
       });
       setUsers(data.users || []);
       setTotalCount(data.total || 0);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError("Unable to load users. Please try again.");
     } finally {
       setLoading(false);

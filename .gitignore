@@ -35,6 +35,7 @@ Thumbs.db
 .env.development.local
 .env.test.local
 .env.production.local
+Backend/.env.test
 
 # Logs
 logs/
@@ -72,6 +73,11 @@ test_reports/
 # Test database files
 test_*.db
 test_User_DB*
+
+# Backend test data
+Backend/db/test_data/prod_data.sql
+Backend/db/test_data/prod_full.dump
+Backend/db/test_data/prod_schema.sql
 
 # Type checking caches
 .pytype/

@@ -12,13 +12,16 @@ from alembic import context
 # Load environment variables
 from dotenv import load_dotenv
 
-# Prefer explicit DATABASE_URL from environment. Otherwise load Backend/.env.
-env_path = Path(__file__).resolve().parents[1] / ".env"
+# Prefer explicit DATABASE_URL from environment. Otherwise load the same
+# Backend env file as the app: .env.test for development, .env for production.
+backend_dir = Path(__file__).resolve().parents[1]
+app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))).lower()
+env_path = backend_dir / (".env" if app_env in {"production", "prod"} else ".env.test")
 if "DATABASE_URL" not in os.environ and env_path.exists():
     load_dotenv(dotenv_path=env_path)
 
 # Add project root to Python path so imports work.
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_PROJECT_ROOT = backend_dir
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 

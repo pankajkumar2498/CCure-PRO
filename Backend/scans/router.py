@@ -202,18 +202,18 @@ def _scan_history_snapshot(db: Session, user: User, scope: str, skip: int, limit
 
 
 def _get_websocket_user(websocket: WebSocket) -> User:
-    token = websocket.query_params.get("token")
-    if not token:
-        auth_header = websocket.headers.get("authorization", "") or ""
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
+    ticket = websocket.query_params.get("ticket")
 
-    if not token:
-        raise HTTPException(status_code=401, detail="Authentication token is required for WebSocket connections.")
+    if not ticket:
+        raise HTTPException(status_code=401, detail="Authentication ticket is required for WebSocket connections.")
 
-    payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+    payload = decode_token(ticket)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication.")
+
+    token_type = payload.get("type")
+    if token_type != "ticket":
+        raise HTTPException(status_code=401, detail="Unsupported token type for WebSocket.")
 
     user_id = payload.get("sub")
     if not user_id:

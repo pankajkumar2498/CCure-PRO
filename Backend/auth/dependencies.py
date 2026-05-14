@@ -137,18 +137,27 @@ def get_current_user(
 
 
 def get_current_user_flexible(
-    token: str = None,
+    ticket: str = None,
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
     db: Session = Depends(get_db),
 ) -> User:
     """
     More flexible version of get_current_user that checks:
-      1. 'token' query parameter (for direct file downloads)
+      1. 'ticket' query parameter (for direct file downloads via short-lived JWT ticket)
       2. 'Authorization: Bearer <token>' header (standard API calls)
 
     The user's Role is eagerly loaded for RBAC enforcement.
     """
-    final_token = token or (credentials.credentials if credentials else None)
+    if ticket:
+        payload = decode_token(ticket)
+        if not payload or payload.get("type") != "ticket":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired download ticket.",
+            )
+        return _load_auth_context_from_payload(payload, db).user
+
+    final_token = credentials.credentials if credentials else None
     
     if not final_token:
         raise HTTPException(

@@ -224,16 +224,75 @@ class DiscoveryEngine:
         # ── Process in batches ─────────────────────────────────────────────
         for i in range(0, len(scan_order), batch_sz):
             batch = scan_order[i:i + batch_sz]
+            
+            monitor_task = None
+            if scan_id:
+                async def _live_publisher():
+                    last_active_count = sum(1 for r in results.values() if r["is_active"])
+                    while True:
+                        await asyncio.sleep(0.15)
+                        active_hosts_snapshot = [
+                            {
+                                "ip_address":   r.get("ip_address") or r.get("ip", ""),
+                                "hostname":     (
+                                    r.get("hostname")
+                                    or r.get("mdns_name")
+                                    or (r.get("netbios_names") or [""])[0]
+                                    or ""
+                                ),
+                                "mac_address":  r.get("mac") or r.get("mac_address") or "",
+                                "vendor":       r.get("vendor", ""),
+                                "response_time": r.get("elapsed_ms"),
+                                "is_active":    True,
+                            }
+                            for r in results.values() if r["is_active"]
+                        ]
+                        if len(active_hosts_snapshot) > last_active_count:
+                            last_active_count = len(active_hosts_snapshot)
+                            await publish_progress(scan_id, 1, {
+                                "discovered": discovered + (last_active_count - sum(1 for r in list(results.values())[:discovered] if r["is_active"])), # approximate progress
+                                "active": len(active_hosts_snapshot),
+                                "total_ips": total_ips,
+                                "status": "running",
+                                "hosts": active_hosts_snapshot,
+                            })
+                monitor_task = asyncio.create_task(_live_publisher())
+
             await self._probe_batch(batch, results)
             
+            if monitor_task:
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
+
             discovered += len(batch)
-            active_so_far = sum(1 for r in results.values() if r["is_active"])
+            # Final batch publish — NBNS has now completed so netbios_names is populated
+            active_hosts_snapshot = [
+                {
+                    "ip_address":   r.get("ip_address") or r.get("ip", ""),
+                    "hostname":     (
+                        r.get("hostname")
+                        or r.get("mdns_name")
+                        or (r.get("netbios_names") or [""])[0]
+                        or ""
+                    ),
+                    "mac_address":  r.get("mac") or r.get("mac_address") or "",
+                    "vendor":       r.get("vendor", ""),
+                    "response_time": r.get("elapsed_ms"),
+                    "is_active":    True,
+                }
+                for r in results.values()
+                if r["is_active"]
+            ]
             if scan_id:
                 await publish_progress(scan_id, 1, {
                     "discovered": discovered,
-                    "active": active_so_far,
+                    "active": len(active_hosts_snapshot),
                     "total_ips": total_ips,
-                    "status": "running"
+                    "status": "running",
+                    "hosts": active_hosts_snapshot,
                 })
 
             # ── Hostile-env auto-escalation ───────────────────────────────
@@ -254,6 +313,37 @@ class DiscoveryEngine:
             active_ips = [ip for ip, r in results.items() if r["is_active"]]
             if active_ips:
                 await self._enrich_active(active_ips, results)
+
+        # ── Final enrichment publish: send complete hostname/vendor data ─────
+        # This fires once after all probing + enrichment, ensuring the frontend
+        # receives updated hostnames (netbios/mdns resolved) for every host.
+        if scan_id:
+            def _extract_hostname(r):
+                return (
+                    r.get("hostname")
+                    or r.get("mdns_name")
+                    or (r.get("netbios_names") or [""])[0]
+                    or ""
+                )
+            enriched_snapshot = [
+                {
+                    "ip_address":   r.get("ip_address") or r.get("ip", ""),
+                    "hostname":     _extract_hostname(r),
+                    "mac_address":  r.get("mac") or r.get("mac_address") or "",
+                    "vendor":       r.get("vendor", ""),
+                    "response_time": r.get("elapsed_ms"),
+                    "is_active":    True,
+                }
+                for r in results.values()
+                if r["is_active"]
+            ]
+            await publish_progress(scan_id, 1, {
+                "discovered": total_ips,
+                "active": len(enriched_snapshot),
+                "total_ips": total_ips,
+                "status": "enriching",   # distinct status so frontend knows
+                "hosts": enriched_snapshot,
+            })
 
         return list(results.values())
 

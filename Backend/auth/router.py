@@ -26,6 +26,7 @@ from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
     create_refresh_token,
+    create_download_ticket,
     decode_token,
     hash_password,
     refresh_access_token,
@@ -127,6 +128,12 @@ class RefreshResponse(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/ticket")
+def generate_ws_download_ticket(current_user: User = Depends(get_current_user)):
+    """Generate a short-lived (60s) JWT ticket for WebSocket connections and PDF downloads."""
+    ticket = create_download_ticket(current_user.id, current_user.username)
+    return {"ticket": ticket}
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     response.set_cookie(

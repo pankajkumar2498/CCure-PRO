@@ -108,9 +108,18 @@
 }
 
 .data-table tr.tr-host:hover {
-  background: #f0f7ff !important;
+  background: rgba(0, 0, 0, 0.04) !important;
   transform: translateX(2px);
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+:root[data-theme="dark"] .data-table tr.tr-host:hover {
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: var(--text-white) !important;
+}
+
+:root[data-theme="dark"] .data-table tr.tr-host:hover td {
+  color: inherit !important;
 }
 
 .data-table tr.tr-selected {

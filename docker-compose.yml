@@ -21,7 +21,7 @@ services:
     restart: always
     environment:
       # host.docker.internal allows the container to reach the PostgreSQL on your local Windows machine
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-ccure_user}:${POSTGRES_PASSWORD:-ccure_admin_2026}@host.docker.internal:5432/${POSTGRES_DB:-ccure_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@host.docker.internal:5432/${POSTGRES_DB:?Database name must be set}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-host.docker.internal}
@@ -54,7 +54,7 @@ services:
     user: root
     command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-ccure_user}:${POSTGRES_PASSWORD:-ccure_admin_2026}@host.docker.internal:5432/${POSTGRES_DB:-ccure_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@host.docker.internal:5432/${POSTGRES_DB:?Database name must be set}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-host.docker.internal}

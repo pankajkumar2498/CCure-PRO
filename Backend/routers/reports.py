@@ -186,7 +186,7 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
 def download_report(
     scan_id: str,
     fmt:     str            = "JSON",
-    token:   Optional[str]  = Query(None),
+    ticket:  Optional[str]  = Query(None),
     db:      Session        = Depends(get_db),
     user:    User           = Depends(get_current_user_flexible),
 ):

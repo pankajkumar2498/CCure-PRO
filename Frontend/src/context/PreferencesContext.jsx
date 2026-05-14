@@ -32,8 +32,8 @@ export function PreferencesProvider({ children }) {
       if (prefs.sidebar_collapsed !== undefined) {
         localStorage.setItem("sidebarCollapsed", prefs.sidebar_collapsed);
       }
-    } catch (e) {
-      console.error("Failed to load preferences", e);
+    } catch {
+      setPreferences(null);
     } finally {
       setLoading(false);
     }

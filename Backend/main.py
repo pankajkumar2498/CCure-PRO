@@ -100,56 +100,15 @@ async def lifespan(app: FastAPI):
         # We no longer raise RuntimeError to allow the container to start.
         # The app will likely fail on requests, but the container stays alive for debugging/migration.
     
-    # 1. Health check: ensure DB schema is populated
-    inspector = inspect(engine)
-    existing_tables = set(inspector.get_table_names())
-    required_tables = {"users", "organizations", "roles", "scans", "assets"}
-    
-    if not required_tables.issubset(existing_tables):
-        missing = required_tables - existing_tables
-        if AppConfig.is_sqlite() or "sqlite" in AppConfig.DATABASE_URL:
-            log.warning(f"Missing tables {missing}. Development mode: Auto-creating via Base.metadata.create_all()")
-            # Import models so Base metadata is populated
-            import db.models.users
-            import db.models.rbac
-            import db.models.scans
-            import db.models.assets
-            import db.models.findings
-            import db.models.notifications
-            Base.metadata.create_all(bind=engine)
-        else:
-            log.warning(
-                "Database schema incomplete for PostgreSQL. Missing tables: %s. "
-                "Running production schema bootstrap automatically.",
-                sorted(missing),
-            )
-            from db.migrate_production_schema import (
-                create_all_tables,
-                enable_extensions,
-                seed_default_org,
-                seed_rbac,
-            )
-
-            with engine.begin() as conn:
-                enable_extensions(conn)
-            create_all_tables()
-            with engine.begin() as conn:
-                seed_rbac(conn)
-                seed_default_org(conn)
-
-            # Re-check after bootstrap so startup fails loudly only if the schema
-            # is still incomplete after the additive migration.
-            inspector = inspect(engine)
-            existing_tables = set(inspector.get_table_names())
-            still_missing = required_tables - existing_tables
-            if still_missing:
-                raise RuntimeError(
-                    f"PostgreSQL schema bootstrap did not create required tables: {sorted(still_missing)}"
-                )
-
-    # 1.5. Additive backfills before any User queries run
-    ensure_scan_schema()
-    ensure_user_schema()
+    # 1. Ensure basic roles and default organization exist (Data Seeding)
+    # This assumes Alembic migrations have already run.
+    from db.migrate_production_schema import seed_default_org, seed_rbac
+    try:
+        with engine.begin() as conn:
+            seed_rbac(conn)
+            seed_default_org(conn)
+    except Exception as e:
+        log.warning(f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}")
 
     # 1.6. Ensure first admin exists
     from db.models.users import User
@@ -159,17 +118,18 @@ async def lifespan(app: FastAPI):
     from db.base import SessionLocal, gen_user_id
 
     with SessionLocal() as db:
-        admin_email = normalize_email("admin@ccurepro.com")
-        if not db.query(User).filter(email_matches(User.email, admin_email)).first():
-            log.info(f"Seeding default admin user: {admin_email}")
-            org = db.query(Organization).filter(Organization.slug == "default").first()
-            role = db.query(Role).filter(Role.name == "superadmin").first()
-            if org and role:
-                admin = User(
-                    id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1
-                    username="admin",
-                    email=admin_email,
-                    password_hash=hash_password("AdminCdac@123"),
+        if AppConfig.DEFAULT_ADMIN_EMAIL and AppConfig.DEFAULT_ADMIN_PASSWORD:
+            admin_email = normalize_email(AppConfig.DEFAULT_ADMIN_EMAIL)
+            if not db.query(User).filter(email_matches(User.email, admin_email)).first():
+                log.info(f"Seeding default admin user: {admin_email}")
+                org = db.query(Organization).filter(Organization.slug == "default").first()
+                role = db.query(Role).filter(Role.name == "superadmin").first()
+                if org and role:
+                    admin = User(
+                        id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1
+                        username="admin",
+                        email=admin_email,
+                        password_hash=hash_password(AppConfig.DEFAULT_ADMIN_PASSWORD),
                     org_id=org.id,
                     role_id=role.id,
                     is_active=True,
@@ -184,6 +144,9 @@ async def lifespan(app: FastAPI):
                     log.error(f"Failed to seed admin: {e}")
             else:
                 log.warning("Could not seed admin: default org or superadmin role missing.")
+        else:
+            if db.query(User).count() == 0:
+                log.warning("Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded.")
     
     # 3. Initialize scan engines
     api = HostDiscoveryAPI(silent=False)
@@ -214,8 +177,8 @@ async def lifespan(app: FastAPI):
 is_prod = os.getenv("ENV", "development").lower() == "production"
 
 app = FastAPI(
-    title       = "Ccure Audit - Pro Edition",
-    description = "CDAC-style network scanner.",
+    title       = "CCure Pro Audit",
+    description = "CDAC RTSG Vulnerability Scanner.",
     version     = "1.0.0",
     lifespan    = lifespan,
     docs_url    = None if is_prod else "/docs",
@@ -244,6 +207,7 @@ allow_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
@@ -281,13 +245,21 @@ app.add_exception_handler(RateLimitExceeded, _make_rate_limit_response)
 
 @app.middleware("http")
 async def _request_id_middleware(request: Request, call_next):
-    """
-    Stamp every request with a unique X-Request-ID so that logs,
-    error responses, and client retries can all be correlated.
-    Honour an incoming X-Request-ID header if provided by an upstream proxy.
-    """
+    # DIAGNOSTIC LOG: Log every single incoming request
+    print(f"[DIAGNOSTIC] Incoming: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+    
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
+    
+    # Handle Private Network Access (PNA) preflight requests
+    if request.method == "OPTIONS" and request.headers.get("Access-Control-Request-Private-Network"):
+        response = Response()
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = req_id
     return response

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from db.models import User
 from auth.rbac import require_permission
-from scan_helpers import get_api, limiter
+from scan_helpers import get_api, limiter, log
 
 router = APIRouter(tags=["Traditional Scans"])
 
@@ -55,7 +55,8 @@ async def scan_host(request: Request, req: SingleHostRequest, current_user: User
         result = task.get(timeout=180)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Traditional scan failed: {exc}")
+        log.error("Traditional scan failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred while processing the host scan request. Please contact support.")
 
 
 @router.post("/scan/range")
@@ -68,7 +69,8 @@ async def scan_range(request: Request, req: RangeRequest, current_user: User = D
         result = task.get(timeout=120)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Range scan failed: {exc}")
+        log.error("Range scan failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred while processing the range scan request. Please contact support.")
 
 
 @router.post("/scan/subnet")
@@ -81,7 +83,8 @@ async def scan_subnet(request: Request, req: SubnetRequest, current_user: User =
         result = task.get(timeout=120)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Subnet scan failed: {exc}")
+        log.error("Subnet scan failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred while processing the subnet scan request. Please contact support.")
 
 
 @router.post("/scan/subnets")
@@ -96,4 +99,5 @@ async def scan_subnets(request: Request, req: SubnetsRequest, current_user: User
         result = task.get(timeout=120)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Subnets scan failed: {exc}")
+        log.error("Subnets scan failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred while processing the subnets scan request. Please contact support.")

@@ -106,31 +106,62 @@ export default function CredentialedResults() {
   const location     = useLocation();
   const stateResult  = location.state?.result ?? null;
   const scanIdParam  = new URLSearchParams(location.search).get("scan_id");
+  const hasReport    = Boolean(stateResult?.system_info || stateResult?.cves || stateResult?.packages);
 
-  const [result,    setResult]    = useState(stateResult);
-  const [loading,   setLoading]   = useState(!stateResult && !!scanIdParam);
-  const [error,     setError]     = useState("");
-  const [cveFilter, setCveFilter] = useState("All");
+  const [result,      setResult]      = useState(hasReport ? stateResult : null);
+  const [loading,     setLoading]     = useState(hasReport ? false : !!scanIdParam);
+  const [error,       setError]       = useState("");
+  const [scanStatus,  setScanStatus]  = useState(stateResult?.status || "running");
+  const [cveFilter,   setCveFilter]   = useState("All");
 
   useEffect(() => {
-    if (stateResult) { setResult(stateResult); setLoading(false); return; }
+    if (stateResult && stateResult.system_info) { setResult(stateResult); setLoading(false); return; }
     if (!scanIdParam) { setLoading(false); return; }
 
     let cancelled = false;
-    setLoading(true);
-    getScan(scanIdParam)
-      .then(({ data }) => {
+    const pollScan = async () => {
+      try {
+        const { data } = await getScan(scanIdParam);
         if (cancelled) return;
+
+        const normalizedStatus = String(data.status || "running").toLowerCase();
+        setScanStatus(normalizedStatus);
+
+        if (normalizedStatus === "running" || normalizedStatus === "queued") {
+          if (!cancelled) {
+            setLoading(true);
+            setTimeout(() => { if (!cancelled) pollScan(); }, 3000);
+          }
+          return;
+        }
+
+        if (normalizedStatus === "failed" || normalizedStatus === "cancelled" || normalizedStatus === "canceled") {
+          throw new Error(data.failure_reason || `Scan ${normalizedStatus}`);
+        }
+
         const r = hydrateFromHistory(data);
         if (!r) throw new Error("Stored credentialed report not found for this scan.");
-        setResult(r);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        setError(err.response?.data?.detail || err.message || "Failed to load results.");
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
 
+        setResult(r);
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err.response?.data?.detail || err.message || "Failed to load results.";
+
+        if (scanStatus === "running" || scanStatus === "queued") {
+          if (!cancelled) {
+            setLoading(true);
+            setTimeout(() => { if (!cancelled) pollScan(); }, 3000);
+          }
+          return;
+        }
+
+        setError(msg);
+        setLoading(false);
+      }
+    };
+
+    pollScan();
     return () => { cancelled = true; };
   }, [scanIdParam, stateResult]);
 

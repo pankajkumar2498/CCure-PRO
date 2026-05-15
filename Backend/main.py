@@ -18,7 +18,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -78,6 +78,7 @@ else:
     )
 
 logging.basicConfig(level=_log_level, handlers=[_handler])
+logging.getLogger("uvicorn.access").setLevel(os.getenv("ACCESS_LOG_LEVEL", "WARNING").upper())
 log = logging.getLogger("ccure.api")
 
 
@@ -245,9 +246,6 @@ app.add_exception_handler(RateLimitExceeded, _make_rate_limit_response)
 
 @app.middleware("http")
 async def _request_id_middleware(request: Request, call_next):
-    # DIAGNOSTIC LOG: Log every single incoming request
-    print(f"[DIAGNOSTIC] Incoming: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
-    
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
     
@@ -262,6 +260,10 @@ async def _request_id_middleware(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = req_id
+    if response.status_code >= 500:
+        log.error("%s %s returned %s", request.method, request.url.path, response.status_code)
+    elif response.status_code >= 400:
+        log.warning("%s %s returned %s", request.method, request.url.path, response.status_code)
     return response
 
 

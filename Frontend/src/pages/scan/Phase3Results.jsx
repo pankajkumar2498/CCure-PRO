@@ -19,7 +19,7 @@
  *   • Failure handling with phase-specific retry
  */
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import Modal from "../../components/layout/Modal";
@@ -122,11 +122,13 @@ const PHASE_MESSAGES = {
 
 export default function Phase3Results() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const canExecuteScans = can(user, "scans", "execute");
   const {
     phase1Hosts, phase1Summary,
     phase2Results, phase2Summary,
+    phase3Results,
     phase3AuditResults, phase3Summary,
     scanId, scanNo, target, intensity,
     setPhase2Results, setPhase2Summary,
@@ -156,6 +158,9 @@ export default function Phase3Results() {
 
   const safePhase1Hosts = safeArr(phase1Hosts);
   const activeDiscoveryHosts = safePhase1Hosts.filter(h => h.is_active);
+  const auditQueueHosts = safeArr(phase3Results);
+  const vulnerabilityProfile = location.state?.vulnerabilityProfile || "recommended";
+  const requestedStartPhase = location.state?.startPhase;
 
   // Redirect if no hosts exist
   useEffect(() => {
@@ -176,20 +181,27 @@ export default function Phase3Results() {
       !activeDiscoveryHosts.length
     ) return;
 
-    // Don't auto-start if pipeline already completed or is mid-run
-    if ([
+    // A route-level start request means this page owns the next transition,
+    // even if the previous page left a stale PORT_SCAN state in context.
+    if (!requestedStartPhase && [
       PIPELINE_STATES.PORT_SCAN,
       PIPELINE_STATES.VULN_SCAN,
       PIPELINE_STATES.REPORT_READY,
       PIPELINE_STATES.COMPLETE,
     ].includes(pipelineState)) return;
 
-    // Don't auto-start if we already have results (page refresh scenario)
-    if (safeArr(phase2Results).length > 0 || safeArr(phase3AuditResults).length > 0) return;
+    if (safeArr(phase3AuditResults).length > 0) return;
+    if (!requestedStartPhase && !auditQueueHosts.length && safeArr(phase2Results).length > 0) return;
 
     pipelineStarted.current = true;
-    runFullPipeline();
-  }, [safePhase1Hosts.length, activeDiscoveryHosts.length]);
+    runFullPipeline(requestedStartPhase || (auditQueueHosts.length ? "VULN_SCAN" : "PORT_SCAN"));
+  }, [
+    safePhase1Hosts.length,
+    activeDiscoveryHosts.length,
+    auditQueueHosts.length,
+    phase2Results.length,
+    requestedStartPhase,
+  ]);
 
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
@@ -317,12 +329,13 @@ export default function Phase3Results() {
     try {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
-      const hostsForAudit = portHosts.length ? portHosts : safeArr(phase2Results);
+      const hostsForAudit = portHosts.length ? portHosts : (safeArr(phase3Results).length ? safeArr(phase3Results) : safeArr(phase2Results));
 
       const { data: auditDataTrigger } = await api.post("/scan/advanced-scan", {
         hosts: hostsForAudit,
         scan_id: scanId,
         pipeline_mode: pipelineMode,
+        vulnerability_profile: vulnerabilityProfile,
         phases: [1, 2, 3],
       }, { signal });
 
@@ -370,7 +383,7 @@ export default function Phase3Results() {
       setTimeout(() => setSaveStatus(""), 4000);
     }
   }, [
-    activeDiscoveryHosts, intensity, scanId, pipelineMode, phase2Results, canExecuteScans,
+    activeDiscoveryHosts, intensity, scanId, pipelineMode, phase2Results, phase3Results, vulnerabilityProfile, canExecuteScans,
     setPipelineState, setPipelineError, setSaveStatus,
     setPhase2Results, setPhase2Summary, setPhase3Summary, setPhase3AuditResults,
     setPipelinePhaseTimings, pipelinePhaseTimings, abortRef,

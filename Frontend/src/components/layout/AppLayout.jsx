@@ -17,9 +17,9 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { getUnreadCount } from "../../api/notifications";
+import { getUnreadCount, streamNotificationEvents } from "../../api/notifications";
 import { usePreferences } from "../../context/PreferencesContext";
-import { canPermission } from "../../auth/permissions";
+import { canPermission, canAny } from "../../auth/permissions";
 
 // ── Lazy-loaded panels (code-split friendly) ──────────────────────────────
 import ProfileModal       from "./ProfileModal";
@@ -78,10 +78,28 @@ const IcoOrg   = () => <Icon d="M3 21h18M3 7v1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0
 const NAV_ITEMS = [
   { id: "dashboard", label: "Scan Library",     Icon: IcoGrid,    route: "/dashboard", permission: { resource: "scans", action: "execute" } },
   { id: "history",   label: "My Scan Jobs",     Icon: IcoFile,    route: "/history", permission: { resource: "scans", action: "read" } },
-  { id: "archived",  label: "Archived Scans",   Icon: IcoArchive, route: "/archived-scans", permission: { resource: "scans", action: "read" } },
+  {
+    id: "archived",
+    label: "Archived Scans",
+    Icon: IcoArchive,
+    route: "/archived-scans",
+    requiredAny: [
+      { resource: "scans", action: "restore" },
+      { resource: "scans", action: "recycle" },
+    ],
+  },
   { id: "policies",  label: "Scan Policies",    Icon: IcoShield,  disabled: true      },
   { id: "reports",   label: "Security Reports", Icon: IcoChart,   route: "/reports", permission: { resource: "reports", action: "read" } },
-  { id: "recycle",   label: "Recycle Bin",      Icon: IcoTrash,   route: "/recycle-bin", permission: { resource: "scans", action: "read" } },
+  {
+    id: "recycle",
+    label: "Recycle Bin",
+    Icon: IcoTrash,
+    route: "/recycle-bin",
+    requiredAny: [
+      { resource: "scans", action: "restore" },
+      { resource: "scans", action: "purge" },
+    ],
+  },
 ];
 
 const ADMIN_NAV_ITEMS = [
@@ -93,6 +111,11 @@ const ADMIN_NAV_ITEMS = [
 ];
 
 const hasPermission = (user, permission) => canPermission(user, permission);
+const canSeeNavItem = (user, item) => {
+  if (item.permission && !hasPermission(user, item.permission)) return false;
+  if (item.requiredAny && !canAny(user, item.requiredAny)) return false;
+  return true;
+};
 
 /* ─── Profile dropdown ──────────────────────────────────────────────────── */
 function ProfileDropdown({ user, onClose, onLogout, onOpenProfile }) {
@@ -141,6 +164,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const [showNotifs, setShowNotifs]       = useState(false);
   const [showHelp, setShowHelp]           = useState(false);
   const [unreadCount, setUnreadCount]     = useState(0);
+  const [notificationEvent, setNotificationEvent] = useState(null);
 
   const { preferences, updateLocalPreferences } = usePreferences();
 
@@ -162,18 +186,61 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   };
 
 
-  // Poll for unread notification count every 30s
+  // Maintain one lightweight notification stream instead of polling every tab/user.
   useEffect(() => {
-    let mounted = true;
-    const fetchCount = async () => {
+    let stopped = false;
+    const controller = new AbortController();
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    const refreshSummary = async () => {
       try {
         const summary = await getUnreadCount();
-        if (mounted) setUnreadCount(summary.total_unread || 0);
+        if (!stopped) setUnreadCount(summary.total_unread || 0);
       } catch { /* silent fail */ }
     };
-    fetchCount();
-    const interval = setInterval(fetchCount, 30000);
-    return () => { mounted = false; clearInterval(interval); };
+
+    const connect = async () => {
+      let failures = 0;
+
+      while (!stopped) {
+        try {
+          await streamNotificationEvents({
+            signal: controller.signal,
+            onEvent: ({ event, data }) => {
+              if (stopped || !data) return;
+
+              if (event === "connected" && data.summary) {
+                setUnreadCount(data.summary.total_unread || 0);
+              }
+
+              if (event === "notification.created" && data.notification) {
+                setNotificationEvent({ type: "created", notification: data.notification, receivedAt: Date.now() });
+                if (!data.notification.is_read) {
+                  setUnreadCount(count => count + 1);
+                }
+              }
+
+              if (event === "notifications.summary" && data.summary) {
+                setUnreadCount(data.summary.total_unread || 0);
+              }
+            },
+          });
+
+          if (!stopped) throw new Error("Notification stream closed.");
+        } catch {
+          if (stopped || controller.signal.aborted) return;
+          failures += 1;
+          if (failures === 1) await refreshSummary();
+          await wait(Math.min(30000, 1000 * 2 ** Math.min(failures, 5)));
+        }
+      }
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      controller.abort();
+    };
   }, []);
 
   const handleUnreadChange = useCallback((count) => {
@@ -221,11 +288,12 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
         {/* Nav */}
         <nav className="sidebar-nav">
           {/* Admin Section */}
-          {ADMIN_NAV_ITEMS.some(item => hasPermission(user, item.permission)) && (
+          {ADMIN_NAV_ITEMS.some(item => canSeeNavItem(user, item)) && (
             <>
               <span className="sidebar-section-label">Administration</span>
-              {ADMIN_NAV_ITEMS.map(({ id, label, Icon, route, permission }) => {
-                if (!hasPermission(user, permission)) return null;
+              {ADMIN_NAV_ITEMS.map((item) => {
+                const { id, label, Icon, route } = item;
+                if (!canSeeNavItem(user, item)) return null;
                 return (
                   <button
                     key={id}
@@ -248,8 +316,9 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
           )}
 
           <span className="sidebar-section-label">Navigation</span>
-          {NAV_ITEMS.map(({ id, label, Icon, route, disabled, permission }) => {
-            if (permission && !hasPermission(user, permission)) return null;
+          {NAV_ITEMS.map((item) => {
+            const { id, label, Icon, route, disabled } = item;
+            if (!canSeeNavItem(user, item)) return null;
 
             return (
               <button
@@ -361,6 +430,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
                   <NotificationsPanel
                     onClose={() => setShowNotifs(false)}
                     onUnreadChange={handleUnreadChange}
+                    liveEvent={notificationEvent}
                   />
                 </div>
               )}

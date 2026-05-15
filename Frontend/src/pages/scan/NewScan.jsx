@@ -340,8 +340,11 @@ export default function NewScan() {
     intensity, setIntensity,
     discoveryIntensity, setDiscoveryIntensity,
     setPhase1Hosts, setPhase1Summary,
+    setPhase2Hosts, setPhase2Summary, setPhase2Results,
+    setPhase3Results, setPhase3Summary, setPhase3AuditResults,
     setScanId, setScanNo, setSaveStatus,
     setPipelineState,
+    autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget,
     scanId: ctxScanId,
     scanNo: ctxScanNo,
   } = useScan();
@@ -368,6 +371,7 @@ export default function NewScan() {
   const missionScanIdRef  = useRef(null);
   const pollHostsRef      = useRef(null);
   const hostFirstSeenRef  = useRef(new Map()); // ip → time string
+  const latestDiscoveredHostsRef = useRef([]);
 
   const pipeline  = getScanPipeline(pipelineMode || "basic");
   const badgeMeta = PIPELINE_BADGE[pipelineMode] || PIPELINE_BADGE.basic;
@@ -400,6 +404,7 @@ export default function NewScan() {
           _enriching_hostname: !h.hostname || h.hostname === "Unknown",
           _enriching_mac: !h.mac_address || h.mac_address === "N/A",
         }));
+        latestDiscoveredHostsRef.current = enriched;
         setMissionState(prev => {
           const existingIps = new Set(prev.discoveredHosts.map(x => x.ip_address));
           const newOnes = enriched.filter(h => !existingIps.has(h.ip_address)).map(h => h.ip_address);
@@ -495,6 +500,7 @@ export default function NewScan() {
                 
                 next.discoveredHosts = [...merged, ...brandNew];
                 next.discovered      = next.discoveredHosts.length;
+                latestDiscoveredHostsRef.current = next.discoveredHosts;
                 // No glow animation for enrichment updates
 
               } else {
@@ -521,6 +527,7 @@ export default function NewScan() {
                 next.discoveredHosts = enriched;
                 next.discovered      = enriched.length;
                 next.newHostIps      = newIps;
+                latestDiscoveredHostsRef.current = next.discoveredHosts;
               }
             }
 
@@ -545,9 +552,11 @@ export default function NewScan() {
 
     const trimmedTarget = target.trim();
     const startMs = Date.now();
+    let autoRunSingleAdvanced = false;
 
     // Reset host tracking and transition to mission view
     hostFirstSeenRef.current = new Map();
+    latestDiscoveredHostsRef.current = [];
     setMissionState({
       status: "running",
       progress: 5,
@@ -566,6 +575,14 @@ export default function NewScan() {
     setSaveStatus("saving");
     setPipelineState(PIPELINE_STATES.DISCOVERY);
     setTarget(trimmedTarget);
+    setPhase2Hosts([]);
+    setPhase2Summary(null);
+    setPhase2Results([]);
+    setPhase3Results([]);
+    setPhase3Summary(null);
+    setPhase3AuditResults([]);
+    setIntensity("normal");
+    setAutoRunAdvancedSingleTarget(false);
 
     try {
       const payload = buildPhasePayload(pipelineMode || "basic", {
@@ -596,9 +613,16 @@ export default function NewScan() {
       // Final fetch to populate ScanContext + complete host list
       try {
         const { data: fullScan } = await api.get(`/scans/${scanId}`);
-        const activeHosts = (fullScan?.results?.phase1?.data || []).filter(h => h.is_active);
-        setPhase1Hosts(fullScan?.results?.phase1?.data || []);
-        setPhase1Summary(fullScan?.results?.phase1?.summary || {});
+        const phase1Data = fullScan?.results?.phase1?.data?.length
+          ? fullScan.results.phase1.data
+          : latestDiscoveredHostsRef.current;
+        const phase1Summary = fullScan?.results?.phase1?.summary || {};
+        const activeHosts = phase1Data.filter(h => h.is_active);
+        const activeHostCount = activeHosts.length || Number(phase1Summary.active_hosts || 0);
+        autoRunSingleAdvanced = pipelineMode === "advanced" && activeHostCount === 1;
+        setAutoRunAdvancedSingleTarget(autoRunSingleAdvanced);
+        setPhase1Hosts(phase1Data);
+        setPhase1Summary(phase1Summary);
         const now = fmtTime(new Date());
         const enriched = activeHosts.map(h => ({
           ...h, _seenAt: hostFirstSeenRef.current.get(h.ip_address) || now,
@@ -618,6 +642,19 @@ export default function NewScan() {
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
 
+      if (finalStatus !== "failed" && pipelineMode !== "basic") {
+        if (autoRunSingleAdvanced) {
+          setPipelineState(PIPELINE_STATES.IDLE);
+          navigate("/scan/advanced-scan", {
+            replace: true,
+            state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" },
+          });
+        } else {
+          setPipelineState(PIPELINE_STATES.PORT_SCAN);
+          navigate("/scan/asset-discovery", { replace: true });
+        }
+      }
+
     } catch (err) {
       stopHostPolling();
       const msg = err.response?.data?.detail || err.message || "Scan failed";
@@ -635,8 +672,16 @@ export default function NewScan() {
   }, [navigate]);
 
   const handleViewResults = useCallback(() => {
+    if (pipelineMode === "asset") {
+      navigate("/scan/asset-discovery");
+      return;
+    }
+    if (pipelineMode === "advanced" && autoRunAdvancedSingleTarget) {
+      navigate("/scan/advanced-scan", { state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } });
+      return;
+    }
     navigate(pipelineMode === "advanced" ? "/scan/advanced-scan" : "/scan/host-discovery");
-  }, [navigate, pipelineMode]);
+  }, [navigate, pipelineMode, autoRunAdvancedSingleTarget]);
 
   const handleNewScan = useCallback(() => {
     stopHostPolling();
@@ -781,6 +826,9 @@ export default function NewScan() {
               <div className="ns-divider" />
               <div className="ns-section">
                 <div className="ns-label">Scan Intensity</div>
+                <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>
+                  If discovery finds exactly one active host, Advanced Scan will continue through port scan and vulnerability audit automatically.
+                </p>
                 <div className="ns-intensity-grid">
                   {SCAN_INTENSITIES.map(si => {
                     const isActive = intensity === si.value;

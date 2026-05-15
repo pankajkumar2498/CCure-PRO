@@ -6,6 +6,8 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    environment:
+      - TZ=Asia/Kolkata
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -20,6 +22,7 @@ services:
     container_name: ccure-api
     restart: always
     environment:
+      - TZ=Asia/Kolkata
       # host.docker.internal allows the container to reach the PostgreSQL on your local Windows machine
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@host.docker.internal:5432/${POSTGRES_DB:?Database name must be set}
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -54,6 +57,7 @@ services:
     user: root
     command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
+      - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@host.docker.internal:5432/${POSTGRES_DB:?Database name must be set}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -88,6 +92,7 @@ services:
     ports:
       - "3000:80"
     environment:
+      - TZ=Asia/Kolkata
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
     depends_on:
       - api

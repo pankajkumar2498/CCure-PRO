@@ -22,18 +22,23 @@ Notification Types
   - admin_notice      → User invitation, permission changes, etc.
 """
 
+import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from db.base import get_db, gen_notification_id
+from db.base import get_db, gen_notification_id, SessionLocal, utcnow
 from db.models import User, Notification, Role
 from auth.dependencies import get_current_user
+from core.redis_client import publish_notification_sync, redis_client
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 logger = logging.getLogger(__name__)
@@ -94,6 +99,52 @@ class NotificationSummaryResponse(BaseModel):
 # Helper Functions
 # ────────────────────────────────────────────────────────────────────────────
 
+def _format_sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, default=str, separators=(',', ':'))}\n\n"
+
+
+def _notification_payload(notification: Notification) -> dict:
+    return NotificationResponse.model_validate(notification).model_dump(mode="json")
+
+
+def _summary_payload(db: Session, user_id: str) -> dict:
+    unread_by_category = db.query(
+        Notification.category,
+        func.count(Notification.id).label("count")
+    ).filter(
+        Notification.user_id == user_id,
+        Notification.is_read == False,
+    ).group_by(Notification.category).all()
+
+    category_counts = {cat: 0 for cat in ["scan", "security", "system", "admin"]}
+    for cat, count in unread_by_category:
+        category_counts[cat] = count
+
+    last_notif = db.query(Notification).filter(
+        Notification.user_id == user_id
+    ).order_by(Notification.created_at.desc()).first()
+
+    return NotificationSummaryResponse(
+        total_unread=sum(category_counts.values()),
+        by_category=category_counts,
+        last_notification_at=last_notif.created_at if last_notif else None,
+    ).model_dump(mode="json")
+
+
+def _publish_new_notification(notification: Notification) -> None:
+    publish_notification_sync(str(notification.user_id), {
+        "event": "notification.created",
+        "notification": _notification_payload(notification),
+    })
+
+
+def _publish_summary(db: Session, user_id: str) -> None:
+    publish_notification_sync(str(user_id), {
+        "event": "notifications.summary",
+        "summary": _summary_payload(db, str(user_id)),
+    })
+
+
 def create_notification(
     db: Session,
     user_id: str,
@@ -127,7 +178,9 @@ def create_notification(
     db.add(notification)
     db.commit()
     db.refresh(notification)
-    logger.info(f"Created notification for user {user_id}: {title}")
+    logger.info("Created notification for user %s: %s", user_id, title)
+    _publish_new_notification(notification)
+    _publish_summary(db, user_id)
     return notification
 
 def fan_out_notification(
@@ -163,6 +216,7 @@ def fan_out_notification(
     ).all()
 
     inserted = 0
+    notifications = []
     for user in users:
         # Exclude the triggerer if requested (e.g. they already got a direct personal notification)
         if exclude_user_id and str(user.id) == exclude_user_id:
@@ -185,11 +239,15 @@ def fan_out_notification(
             action_url=action_url,
         )
         db.add(notification)
+        notifications.append(notification)
         inserted += 1
 
     if inserted > 0:
         db.commit()
-        logger.info(f"Fanned out notification '{title}' to {inserted} users in org {org_id}")
+        for notification in notifications:
+            _publish_new_notification(notification)
+            _publish_summary(db, str(notification.user_id))
+        logger.info("Fanned out notification %r to %d users in org %s", title, inserted, org_id)
         
     return inserted
 
@@ -235,32 +293,75 @@ def get_notification_summary(
     
     Useful for showing badge counts in UI.
     """
-    # Count unread by category
-    from sqlalchemy import func
+    return _summary_payload(db, str(current_user.id))
 
-    unread_by_category = db.query(
-        Notification.category,
-        func.count(Notification.id).label("count")
-    ).filter(
-        Notification.user_id == current_user.id,
-        Notification.is_read == False,
-    ).group_by(Notification.category).all()
 
-    category_counts = {cat: 0 for cat in ["scan", "security", "system", "admin"]}
-    for cat, count in unread_by_category:
-        category_counts[cat] = count
+@router.get("/stream")
+async def stream_notifications(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Stream committed notification events for the current user.
 
-    total_unread = sum(category_counts.values())
+    The durable inbox stays in PostgreSQL. Redis Pub/Sub distributes events
+    across API workers, and this SSE stream keeps the browser updated without
+    periodic "do I have anything new?" requests.
+    """
+    user_id = str(current_user.id)
+    channel = f"notifications:user:{user_id}"
 
-    # Get last notification timestamp
-    last_notif = db.query(Notification).filter(
-        Notification.user_id == current_user.id
-    ).order_by(Notification.created_at.desc()).first()
+    async def event_generator():
+        db = SessionLocal()
+        try:
+            yield _format_sse("connected", {
+                "ok": True,
+                "summary": _summary_payload(db, user_id),
+            })
+        finally:
+            db.close()
 
-    return NotificationSummaryResponse(
-        total_unread=total_unread,
-        by_category=category_counts,
-        last_notification_at=last_notif.created_at if last_notif else None,
+        pubsub = redis_client.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+            logger.info("Notification stream connected for user %s", user_id)
+        except Exception as exc:
+            logger.warning(
+                "Notification stream heartbeat-only mode for user %s: %s",
+                user_id,
+                exc.__class__.__name__,
+            )
+            await pubsub.close()
+            while not await request.is_disconnected():
+                yield _format_sse("heartbeat", {"emitted_at": utcnow().isoformat()})
+                await asyncio.sleep(25)
+            return
+
+        try:
+            while not await request.is_disconnected():
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=25)
+                if message:
+                    payload = json.loads(message["data"])
+                    yield _format_sse(payload.get("event", "notification"), payload)
+                else:
+                    yield _format_sse("heartbeat", {"emitted_at": utcnow().isoformat()})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("Notification stream failed for user %s: %s", user_id, exc)
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+            logger.info("Notification stream disconnected for user %s", user_id)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -287,6 +388,7 @@ def mark_as_read(
         notification.read_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(notification)
+        _publish_summary(db, str(current_user.id))
 
     return notification
 
@@ -306,6 +408,7 @@ def mark_all_as_read(
         Notification.read_at: now,
     })
     db.commit()
+    _publish_summary(db, str(current_user.id))
     return {"detail": "All notifications marked as read"}
 
 
@@ -329,6 +432,7 @@ def delete_notification(
 
     db.delete(notification)
     db.commit()
+    _publish_summary(db, str(current_user.id))
     return None
 
 
@@ -342,4 +446,5 @@ def delete_all_notifications(
         Notification.user_id == current_user.id,
     ).delete()
     db.commit()
+    _publish_summary(db, str(current_user.id))
     return None

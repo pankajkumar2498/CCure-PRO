@@ -332,6 +332,7 @@ def run_credentialed_scan_task(
     auth_method: str,
     sections:    Optional[List[str]],
     os_type_req: str,
+    scan_id:     Optional[str] = None,
 ):
     """Phase 5 Credentialed Scan Task."""
     from engines.credentialed.ssh_scanner     import SSHScanner
@@ -400,7 +401,17 @@ def run_credentialed_scan_task(
         }
         report_result = {
             "success": True, "data": {"credentialed": {"report": stored_report}},
-            "summary": {"scan_type": "credentialed", "cve_count": len(cve_list), "scan_duration": scan_duration},
+            "summary": {
+                "scan_type": "credentialed",
+                "cve_count": len(cve_list),
+                "scan_duration": scan_duration,
+                "critical_count": severity_counts["Critical"],
+                "high_count": severity_counts["High"],
+                "medium_count": severity_counts["Medium"],
+                "low_count": severity_counts["Low"],
+                "info_count": severity_counts["Info"],
+                "total_vulns": len(cve_list),
+            },
             "metadata": {"target": ip, "scan_type": "credentialed"},
         }
         orch = _new_orchestrator()
@@ -408,7 +419,8 @@ def run_credentialed_scan_task(
         scan = create_completed_scan(
             db=db, user_id=user_id, target=ip, targets=[ip], scan_type="credentialed", phase=3,
             results={"credentialed": {"report": stored_report}}, summary=report_result["summary"],
-            scan_duration=scan_duration, report_json_path=report_paths.get("json_pdf"), report_xml_path=report_paths.get("xml_pdf")
+            scan_duration=scan_duration, report_json_path=report_paths.get("json_pdf"), report_xml_path=report_paths.get("xml_pdf"),
+            scan_id=scan_id,
         )
         return {"success": True, "scan_id": str(scan.id)}
     except Exception as exc:

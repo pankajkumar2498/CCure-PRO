@@ -503,31 +503,58 @@ def create_completed_scan(
     report_json_path: Optional[str]   = None,
     report_xml_path:  Optional[str]   = None,
     pipeline_mode:    str             = "advanced",
+    scan_id:          Optional[str]   = None,
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
     org_id = _get_org_id(db, user_id)
     org = db.query(Organization).filter(Organization.id == org_id).first()
     org_slug = org.slug if org else org_id
     base_targets = targets or [target]
-    
-    scan = Scan(
-        id=gen_scan_id(org_slug),
-        org_id=org_id,
-        created_by=user_id,
-        scan_no=_next_scan_no(db, org_id, user_id),
-        target_str=target,
-        target_hosts=base_targets,
-        scan_type=scan_type,
-        pipeline_mode=pipeline_mode,
-        status="complete",
-        started_at=utcnow(),
-        completed_at=utcnow(),
-        duration_seconds=scan_duration or summary.get("scan_duration", 0.0),
-        total_hosts=summary.get("total_hosts", 0),
-        active_hosts=summary.get("active_hosts", 0),
-        report_json_path=report_json_path,
-        report_xml_path=report_xml_path,
-    )
+
+    if scan_id:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if not scan:
+            raise ValueError(f"Scan {scan_id} not found")
+
+        scan.status = "complete"
+        scan.completed_at = utcnow()
+        scan.duration_seconds = scan_duration or summary.get("scan_duration", 0.0)
+        scan.total_hosts = summary.get("total_hosts", 0)
+        scan.active_hosts = summary.get("active_hosts", 0)
+        scan.report_json_path = report_json_path
+        scan.report_xml_path = report_xml_path
+        scan.pipeline_mode = pipeline_mode or scan.pipeline_mode
+        scan.total_vulns = summary.get("total_vulns", scan.total_vulns or 0)
+        scan.critical_count = summary.get("critical_count", scan.critical_count or 0)
+        scan.high_count = summary.get("high_count", scan.high_count or 0)
+        scan.medium_count = summary.get("medium_count", scan.medium_count or 0)
+        scan.low_count = summary.get("low_count", scan.low_count or 0)
+        scan.info_count = summary.get("info_count", scan.info_count or 0)
+    else:
+        scan = Scan(
+            id=gen_scan_id(org_slug),
+            org_id=org_id,
+            created_by=user_id,
+            scan_no=_next_scan_no(db, org_id, user_id),
+            target_str=target,
+            target_hosts=base_targets,
+            scan_type=scan_type,
+            pipeline_mode=pipeline_mode,
+            status="complete",
+            started_at=utcnow(),
+            completed_at=utcnow(),
+            duration_seconds=scan_duration or summary.get("scan_duration", 0.0),
+            total_hosts=summary.get("total_hosts", 0),
+            active_hosts=summary.get("active_hosts", 0),
+            total_vulns=summary.get("total_vulns", 0),
+            critical_count=summary.get("critical_count", 0),
+            high_count=summary.get("high_count", 0),
+            medium_count=summary.get("medium_count", 0),
+            low_count=summary.get("low_count", 0),
+            info_count=summary.get("info_count", 0),
+            report_json_path=report_json_path,
+            report_xml_path=report_xml_path,
+        )
 
     credentialed_report = (results or {}).get("credentialed", {}).get("report")
     if credentialed_report:

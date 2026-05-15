@@ -56,7 +56,8 @@ function StatusBadge({ status }) {
 export default function ArchivedScans() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canDeleteScans = can(user, "scans", "delete");
+  const canRestoreScans = can(user, "scans", "restore");
+  const canRecycleScans = can(user, "scans", "recycle");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
@@ -85,7 +86,7 @@ export default function ArchivedScans() {
   }, [load]);
 
   const handleRestore = async (id) => {
-    if (!canDeleteScans) {
+    if (!canRestoreScans) {
       pushToast(denyMessage, "error");
       return;
     }
@@ -103,7 +104,7 @@ export default function ArchivedScans() {
   };
 
   const handleDelete = async (id) => {
-    if (!canDeleteScans) {
+    if (!canRecycleScans) {
       pushToast(denyMessage, "error");
       return;
     }
@@ -205,22 +206,26 @@ export default function ArchivedScans() {
                     </td>
                     <td>
                       <div className="action-btns">
-                        {canDeleteScans ? (
+                        {(canRestoreScans || canRecycleScans) ? (
                           <>
-                            <button
-                              className="action-btn"
-                              onClick={() => handleRestore(scan.id)}
-                              disabled={restoringId === scan.id}
-                            >
-                              {restoringId === scan.id ? "..." : "Restore"}
-                            </button>
-                            <button
-                              className="action-btn action-btn--danger"
-                              onClick={() => handleDelete(scan.id)}
-                              disabled={deletingId === scan.id}
-                            >
-                              {deletingId === scan.id ? "..." : "Delete"}
-                            </button>
+                            {canRestoreScans && (
+                              <button
+                                className="action-btn"
+                                onClick={() => handleRestore(scan.id)}
+                                disabled={restoringId === scan.id}
+                              >
+                                {restoringId === scan.id ? "..." : "Restore"}
+                              </button>
+                            )}
+                            {canRecycleScans && (
+                              <button
+                                className="action-btn action-btn--danger"
+                                onClick={() => handleDelete(scan.id)}
+                                disabled={deletingId === scan.id}
+                              >
+                                {deletingId === scan.id ? "..." : "Delete"}
+                              </button>
+                            )}
                           </>
                         ) : (
                           <span className="muted">Read only</span>

@@ -45,8 +45,8 @@ export default function App() {
         <Route path="/scan/credentialed"         element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><CredentialedScan /></PrivateRoute>} />
         <Route path="/scan/credentialed/results" element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><CredentialedResults /></PrivateRoute>} />
         <Route path="/history"       element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><ScanHistory /></PrivateRoute>} />
-        <Route path="/archived-scans" element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><ArchivedScans /></PrivateRoute>} />
-        <Route path="/recycle-bin"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><RecycleBin /></PrivateRoute>} />
+        <Route path="/archived-scans" element={<PrivateRoute requiredAny={[{resource: "scans", action: "restore"}, {resource: "scans", action: "recycle"}]}><ArchivedScans /></PrivateRoute>} />
+        <Route path="/recycle-bin"   element={<PrivateRoute requiredAny={[{resource: "scans", action: "restore"}, {resource: "scans", action: "purge"}]}><RecycleBin /></PrivateRoute>} />
         <Route path="/reports"       element={<PrivateRoute requiredPermission={{resource: "reports", action: "read"}}><SecurityReports /></PrivateRoute>} />
 
         {/* Admin Module */}

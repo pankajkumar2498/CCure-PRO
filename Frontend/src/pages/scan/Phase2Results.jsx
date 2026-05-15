@@ -10,13 +10,18 @@ import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
-import { useScan } from "../../context/ScanContext";
+import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
 const INTENSITIES = ["light", "normal", "deep"];
+const VULN_PROFILES = [
+  { value: "recommended", label: "Recommended", desc: "Service-aware checks for discovered open ports" },
+  { value: "conservative", label: "Conservative", desc: "Lower-impact checks for fragile or OT systems" },
+  { value: "deep", label: "Deep", desc: "Broader audit scope for approved maintenance windows" },
+];
 
 const RISK_COLOR = {
   Critical: "#ff4d4d",
@@ -39,13 +44,15 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
   return Number.isFinite(num) ? num.toFixed(digits) : fallback;
 };
 
+const hasDetectedServices = (host) =>
+  (host?.open_ports?.length || 0) > 0 || (host?.udp_services?.length || 0) > 0;
+
 export default function Phase2Results() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canExecuteScans = can(user, "scans", "execute");
   const {
     phase1Hosts,
-    phase2Hosts,
     phase2Results,
     phase2Summary,
     scanId,
@@ -53,21 +60,21 @@ export default function Phase2Results() {
     target,
     pipelineMode,
     saveStatus,
+    intensity,
+    setIntensity,
     setSaveStatus,
     setPhase2Hosts,
     setPhase2Summary,
     setPhase2Results,
     setPhase3Results,
+    setPipelineState,
   } = useScan();
   const [filter, setFilter] = useState("active");
-  const [intensity, setIntensity] = useState("normal");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [summary, setSummary] = useState(null);
-  const [selected, setSelected] = useState(() => {
-    const initialSelection = phase2Hosts.length ? phase2Hosts : phase1Hosts.filter(h => h.is_active);
-    return new Set(initialSelection.map(h => h.ip_address));
-  });
+  const [selected, setSelected] = useState(() => new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
+  const [vulnProfile, setVulnProfile] = useState("recommended");
   const [expanded, setExpanded] = useState(new Set());
   const [error, setError] = useState("");
   const [hasScanned, setHasScanned] = useState(false);
@@ -76,6 +83,7 @@ export default function Phase2Results() {
     if (phase2Results.length) {
       setResults(phase2Results);
       setHasScanned(true);
+      setSelected(new Set(phase2Results.filter(hasDetectedServices).map(h => h.ip_address)));
     }
     if (phase2Summary) {
       setSummary(phase2Summary);
@@ -89,12 +97,10 @@ export default function Phase2Results() {
   }, [phase1Hosts.length, navigate]);
 
   useEffect(() => {
-    if (phase2Hosts.length) {
-      setSelected(new Set(phase2Hosts.map(h => h.ip_address)));
+    if (!hasScanned) {
+      setSelected(new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
     }
-  }, [phase2Hosts]);
-
-  if (!phase1Hosts.length) return null;
+  }, [phase1Hosts, hasScanned]);
 
   const discoveredHosts = phase1Hosts;
   const activeHosts = discoveredHosts.filter(h => h.is_active);
@@ -158,7 +164,14 @@ export default function Phase2Results() {
       setError(denyMessage);
       return;
     }
-    if (!selectedCount) return;
+    if (!selectedCount) {
+      setError("Select at least one active host before running Port Scan.");
+      return;
+    }
+    if (!intensity) {
+      setError("Choose a scan intensity before running Port Scan.");
+      return;
+    }
 
     const payloadHosts = discoveredHosts.filter(h => selected.has(h.ip_address));
     setPhase2Hosts(payloadHosts);
@@ -193,6 +206,7 @@ export default function Phase2Results() {
       setSummary(fullScan?.results?.phase2?.summary || {});
       setPhase2Summary(fullScan?.results?.phase2?.summary || {});
       setPhase2Results(fullScan?.results?.phase2?.data || []);
+      setSelected(new Set((fullScan?.results?.phase2?.data || []).filter(hasDetectedServices).map(h => h.ip_address)));
       setHasScanned(true);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 3000);
@@ -218,11 +232,23 @@ export default function Phase2Results() {
       return;
     }
     if (!canProceedToPhase3 || !nextPhase) return;
+    if (!selectedCount) {
+      setError("Select at least one host with approved scope before running Vulnerability Audit.");
+      return;
+    }
     setPhase3Results(results.filter(h => selected.has(h.ip_address)));
-    navigate(nextPhase.route);
+    setPipelineState(PIPELINE_STATES.IDLE);
+    navigate(nextPhase.route, {
+      state: {
+        vulnerabilityProfile: vulnProfile,
+        startPhase: "VULN_SCAN",
+      },
+    });
   };
 
   const activeResults = results.filter(h => h.is_active);
+
+  if (!phase1Hosts.length) return null;
 
   return (
     <AppLayout pageTitle="Port Scan" saveStatus={saveStatus}>
@@ -256,15 +282,18 @@ export default function Phase2Results() {
 
             <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
 
-            <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0 || !canExecuteScans}>
-              {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
-            </button>
+            {!hasScanned && (
+              <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0 || !intensity || !canExecuteScans}>
+                {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
+              </button>
+            )}
           </div>
         </div>
 
         <div className="summary-bar" style={{ marginTop: 16 }}>
           <span className="summary-item"><b>{activeHosts.length}</b> Active hosts available</span>
           <span className="summary-item"><b>{selectedCount}</b> selected</span>
+          <span className="summary-item"><b>{intensity || "Choose"}</b> intensity</span>
           <span className="summary-item"><b>{filter === "active" ? activeHosts.length : discoveredHosts.length}</b> shown</span>
         </div>
 
@@ -708,13 +737,31 @@ export default function Phase2Results() {
 
         {hasScanned && canProceedToPhase3 && (
           <div className="phase-footer">
-            <p className="muted" style={{ fontSize: 13 }}>
-              {selectedCount === 0
-                ? "Select hosts above to run a deep vulnerability audit."
-                : `${selectedCount} host${selectedCount > 1 ? "s" : ""} selected for deep audit.`}
-            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+                {selectedCount === 0
+                  ? "Select hosts with approved scope before running a vulnerability audit."
+                  : `${selectedCount} host${selectedCount > 1 ? "s" : ""} queued for vulnerability audit.`}
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Audit profile</span>
+                <div className="filter-tabs">
+                  {VULN_PROFILES.map(profile => (
+                    <button
+                      key={profile.value}
+                      className={`filter-tab ${vulnProfile === profile.value ? "filter-tab--active" : ""}`}
+                      onClick={() => setVulnProfile(profile.value)}
+                      title={profile.desc}
+                      disabled={!canExecuteScans}
+                    >
+                      {profile.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
             <button className="btn btn--danger" onClick={proceedToNextPhase} disabled={selectedCount === 0 || !canExecuteScans}>
-              {nextPhase?.label ?? "Vulnerability Audit"} →
+              Run Vulnerability Audit →
             </button>
           </div>
         )}

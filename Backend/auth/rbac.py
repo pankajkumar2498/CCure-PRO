@@ -21,9 +21,9 @@ Usage
 
 Role hierarchy (seeded in db/migrate_production_schema.py):
   superadmin  → all permissions
-  org_admin   → full org scope (scans, assets, users, settings, credentials)
+  org_admin   → full org scope (scans, scan lifecycle, assets, users, settings, credentials)
   analyst     → scans (create/read/execute/cancel), assets (read), reports
-  viewer      → read-only (scans, assets, findings, reports, settings)
+  viewer      → org-wide read-only (scans, assets, findings, reports, settings)
   scanner     → API-only (scans create/read/execute, credentials read)
 """
 

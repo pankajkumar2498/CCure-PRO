@@ -4,6 +4,7 @@ from config import AppConfig
 import json
 import datetime
 import logging
+from redis.exceptions import RedisError
 
 # Async client for FastAPI WebSocket (PubSub)
 redis_client = async_redis.from_url(AppConfig.CELERY_BROKER_URL)
@@ -35,3 +36,14 @@ def publish_progress_sync(scan_id: str, phase: int, progress: dict):
     l.info("[TRACE][REDIS][%s] Publishing progress (SYNC) for scan %s, phase %d, status %s", 
            datetime.datetime.now().isoformat(), scan_id, phase, progress.get("status"))
     _sync_redis_client.publish(f"scan_progress:{scan_id}", message)
+
+
+def publish_notification_sync(user_id: str, event: dict) -> None:
+    """Publish a user-scoped notification event without failing the caller."""
+    logger = logging.getLogger("ccure.redis")
+    channel = f"notifications:user:{user_id}"
+    try:
+        _sync_redis_client.publish(channel, json.dumps(event, default=str))
+        logger.debug("Published notification event %s for user %s", event.get("event"), user_id)
+    except RedisError as exc:
+        logger.warning("Notification realtime publish failed for user %s: %s", user_id, exc.__class__.__name__)

@@ -399,7 +399,7 @@ def get_scan(
 def archive_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "delete")),
+    user: User    = Depends(require_permission("scans", "archive")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -426,7 +426,7 @@ def archive_scan(
 def restore_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "delete")),
+    user: User    = Depends(require_permission("scans", "restore")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -466,7 +466,7 @@ def restore_scan(
 def delete_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "delete")),
+    user: User    = Depends(require_permission("scans", "recycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db)
@@ -491,7 +491,7 @@ def delete_scan(
 def purge_scan(
     scan_id: str,
     db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "delete")),
+    user: User    = Depends(require_permission("scans", "purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db)

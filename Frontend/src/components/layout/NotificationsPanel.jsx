@@ -124,7 +124,7 @@ export function NotificationBell({ onClick, unreadCount }) {
 }
 
 /* ── Main panel ──────────────────────────────────────────────────────────── */
-export default function NotificationsPanel({ onClose, onUnreadChange }) {
+export default function NotificationsPanel({ onClose, onUnreadChange, liveEvent }) {
   const [category, setCategory]   = useState("all");
   const [items, setItems]         = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -138,18 +138,33 @@ export default function NotificationsPanel({ onClose, onUnreadChange }) {
         limit: 50,
       });
       setItems(data);
-      if (onUnreadChange) {
-        const unread = data.filter(n => !n.is_read).length;
-        onUnreadChange(unread);
-      }
     } catch {
       setError("Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [category, onUnreadChange]);
+  }, [category]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (liveEvent?.type !== "created" || !liveEvent.notification) return;
+    const notif = liveEvent.notification;
+    if (category !== "all" && notif.category !== category) return;
+
+    setItems(prev => {
+      if (prev.some(item => item.id === notif.id)) return prev;
+      return [notif, ...prev].slice(0, 50);
+    });
+  }, [category, liveEvent]);
+
+  const refreshUnreadCount = useCallback(async () => {
+    if (!onUnreadChange) return;
+    try {
+      const summary = await getUnreadCount();
+      onUnreadChange(summary.total_unread || 0);
+    } catch { /* ignore */ }
+  }, [onUnreadChange]);
 
   // Click-outside to close
   useEffect(() => {
@@ -168,10 +183,7 @@ export default function NotificationsPanel({ onClose, onUnreadChange }) {
     try {
       await markAsRead(id);
       setItems(prev => prev.map(n => n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n));
-      if (onUnreadChange) {
-        const unread = items.filter(n => !n.is_read && n.id !== id).length;
-        onUnreadChange(unread);
-      }
+      refreshUnreadCount();
     } catch { /* ignore */ }
   };
 
@@ -180,7 +192,7 @@ export default function NotificationsPanel({ onClose, onUnreadChange }) {
       await deleteNotification(id);
       const next = items.filter(n => n.id !== id);
       setItems(next);
-      if (onUnreadChange) onUnreadChange(next.filter(n => !n.is_read).length);
+      refreshUnreadCount();
     } catch { /* ignore */ }
   };
 

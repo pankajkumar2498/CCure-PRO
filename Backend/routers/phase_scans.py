@@ -142,6 +142,9 @@ class AdvancedScanRequest(BaseModel):
     pipeline_mode: Optional[str]  = Field("advanced",
                                           example="advanced",
                                           description="basic | asset | advanced")
+    vulnerability_profile: Optional[str] = Field("recommended",
+                                                 example="recommended",
+                                                 description="recommended | conservative | deep")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
 
 

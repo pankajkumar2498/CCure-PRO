@@ -142,7 +142,10 @@ PERMISSIONS = [
     ("scans",       "read",    "View your own scan history and results"),
     ("scans",       "read_all", "View all scan history within the organization"),
     ("scans",       "update",  "Modify scan configuration"),
-    ("scans",       "delete",  "Delete or archive scans"),
+    ("scans",       "archive", "Move scans to the archived area"),
+    ("scans",       "restore", "Restore archived or recycled scans"),
+    ("scans",       "recycle", "Move scans to the recycle bin"),
+    ("scans",       "purge",   "Permanently delete recycled scans"),
     ("scans",       "execute", "Trigger scan execution via API"),
     ("scans",       "cancel",  "Cancel an in-progress scan"),
     # Assets
@@ -190,7 +193,8 @@ PERMISSIONS = [
 ROLE_PERMISSIONS = {
     "superadmin": "*",      # all permissions
     "org_admin":  [
-        "scans:create", "scans:read", "scans:read_all", "scans:update", "scans:delete",
+        "scans:create", "scans:read", "scans:read_all", "scans:update",
+        "scans:archive", "scans:restore", "scans:recycle", "scans:purge",
         "scans:execute", "scans:cancel",
         "assets:create", "assets:read", "assets:update", "assets:delete", "assets:export",
         "findings:read", "findings:update", "findings:export",
@@ -210,7 +214,7 @@ ROLE_PERMISSIONS = {
         "settings:read",
     ],
     "viewer": [
-        "scans:read",
+        "scans:read", "scans:read_all",
         "assets:read",
         "findings:read",
         "reports:read",
@@ -354,6 +358,26 @@ def seed_rbac(conn):
 
     print(f"\n  Total permissions: {len(perm_ids)}")
 
+    legacy_scan_delete_ids = [
+        row[0] for row in conn.execute(
+            text("SELECT id FROM permissions WHERE resource='scans' AND action='delete'")
+        ).fetchall()
+    ]
+    if legacy_scan_delete_ids:
+        conn.execute(
+            text("""
+                DELETE FROM role_permissions
+                WHERE permission_id IN (
+                    SELECT id FROM permissions
+                    WHERE resource='scans' AND action='delete'
+                )
+            """)
+        )
+        conn.execute(
+            text("DELETE FROM permissions WHERE resource='scans' AND action='delete'")
+        )
+        print("  - Removed legacy permission: scans:delete")
+
     # ── Role ↔ Permission assignments ─────────────────────────────────────────
     print("\n  Assigning permissions to roles...")
     all_perm_ids = list(perm_ids.values())
@@ -390,18 +414,16 @@ def seed_rbac(conn):
 
 def seed_default_org(conn):
     _print_header("Step 3: Seeding Default Organization (Stripe-Style ID)")
+    org_id = gen_org_id(DEFAULT_ORG_SLUG)
 
     existing = conn.execute(
-        text("SELECT id, name FROM organizations WHERE slug = :slug"),
-        {"slug": DEFAULT_ORG_SLUG}
+        text("SELECT id, name FROM organizations WHERE slug = :slug OR id = :id"),
+        {"slug": DEFAULT_ORG_SLUG, "id": org_id}
     ).fetchone()
 
     if existing:
         print(f"  ✓ Default organization already exists: '{existing[1]}' (id={existing[0]})")
         return existing[0]
-
-    # Stripe-style readable ID: "org_default"
-    org_id = gen_org_id(DEFAULT_ORG_SLUG)
 
     result = conn.execute(
         text("""

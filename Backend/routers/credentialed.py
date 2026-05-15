@@ -18,10 +18,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from sqlalchemy.orm import Session
 
-from db.base import get_db
+from db.base import get_db, SessionLocal
 from db.models import User
 from auth.rbac import require_permission
-from scans.db_helpers import create_completed_scan
+from scans.db_helpers import create_scan
 from scan_helpers import get_api, limiter, log
 
 from engines.credentialed.ssh_scanner       import SSHScanner, PARAMIKO_AVAILABLE
@@ -154,6 +154,21 @@ async def scan_credentialed(
             detail=f"Cannot reach {req.ip}:{req.port} — host is down or port is closed.",
         )
 
+    db = SessionLocal()
+    try:
+        scan = create_scan(
+            db=db,
+            user_id=str(user.id),
+            target=req.ip,
+            targets=[req.ip],
+            scan_type="credentialed",
+            pipeline_mode="advanced",
+        )
+        scan_id = str(scan.id)
+        scan_no = scan.scan_no
+    finally:
+        db.close()
+
     task = run_credentialed_scan_task.delay(
         user_id     = str(user.id),
         ip          = req.ip,
@@ -164,34 +179,15 @@ async def scan_credentialed(
         auth_method = req.auth_method,
         sections    = req.sections,
         os_type_req = req.os_type,
+        scan_id     = scan_id,
     )
 
-    log.info("Credentialed scan triggered — target=%s task_id=%s", req.ip, task.id)
+    log.info("Credentialed scan queued — target=%s scan_id=%s task_id=%s", req.ip, scan_id, task.id)
 
-    try:
-        # Credentialed scans are very slow (15-60s)
-        result = task.get(timeout=120)
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Credentialed scan failed"))
+    return {
+        "success": True,
+        "scan_id": scan_id,
+        "scan_no": scan_no,
+        "status": "running",
+    }
 
-        from scans.db_helpers import read_scan_full
-        from db.base import SessionLocal
-        db = SessionLocal()
-        try:
-            full_data = read_scan_full(db, result["scan_id"], str(user.id))
-            # The frontend expects the 'stored_report' fields at the top level
-            # Extract credentialed results from the phase3 results
-            from scans.legacy_json_builder import build_legacy_scan_results
-            legacy = build_legacy_scan_results(db, result["scan_id"])
-            report_data = legacy.get("credentialed", {}).get("report", {})
-            
-            return {
-                "success": True,
-                "scan_id": result["scan_id"],
-                **report_data
-            }
-        finally:
-            db.close()
-    except Exception as exc:
-        log.error("Credentialed Scan wait failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Credentialed scan timed out or failed in background.")

@@ -433,7 +433,8 @@ export default function ScanHistory() {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const canReadScans = can(user, "scans", "read");
   const canExecuteScans = can(user, "scans", "execute");
-  const canDeleteScans = can(user, "scans", "delete");
+  const canArchiveScans = can(user, "scans", "archive");
+  const canRecycleScans = can(user, "scans", "recycle");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);
@@ -639,7 +640,7 @@ export default function ScanHistory() {
   };
 
   const handleConfirmArchive = async (dialogObj) => {
-    if (!canDeleteScans) {
+    if (!canArchiveScans) {
       setDialog(null);
       pushToast(denyMessage, "error");
       return;
@@ -659,7 +660,7 @@ export default function ScanHistory() {
   };
 
   const handleConfirmDelete = async (dialogObj) => {
-    if (!canDeleteScans) {
+    if (!canRecycleScans) {
       setDialog(null);
       pushToast(denyMessage, "error");
       return;
@@ -855,7 +856,7 @@ export default function ScanHistory() {
                           )}
 
                           {/* Archive — disabled for running scans */}
-                          {canDeleteScans && (
+                          {canArchiveScans && (
                             <button
                               className="action-btn"
                               onClick={() => handleConfirmArchive({ scan })}
@@ -867,7 +868,7 @@ export default function ScanHistory() {
                           )}
 
                           {/* Delete */}
-                          {canDeleteScans && (
+                          {canRecycleScans && (
                             <button
                               className="action-btn action-btn--danger"
                               onClick={() => handleConfirmDelete({ scan })}

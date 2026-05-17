@@ -92,6 +92,9 @@ class ScanConfig:
     NMAP_THREADS: int = int(os.getenv("NMAP_THREADS", "20"))
     MAX_NMAP_PROCESSES: int = int(os.getenv("MAX_NMAP_PROCESSES", "20"))
     NMAP_PROCESS_WAIT_TIMEOUT: int = int(os.getenv("NMAP_PROCESS_WAIT_TIMEOUT", "900"))
+    NMAP_CACHE_ENABLED: bool = os.getenv("NMAP_CACHE_ENABLED", "True").lower() == "true"
+    NMAP_CACHE_TTL_HOURS: int = int(os.getenv("NMAP_CACHE_TTL_HOURS", "72"))
+
 
 
 class CeleryConfig:
@@ -148,6 +151,8 @@ class AppConfig:
     NMAP_THREADS = ScanConfig.NMAP_THREADS
     MAX_NMAP_PROCESSES = ScanConfig.MAX_NMAP_PROCESSES
     NMAP_PROCESS_WAIT_TIMEOUT = ScanConfig.NMAP_PROCESS_WAIT_TIMEOUT
+    NMAP_CACHE_ENABLED = ScanConfig.NMAP_CACHE_ENABLED
+    NMAP_CACHE_TTL_HOURS = ScanConfig.NMAP_CACHE_TTL_HOURS
 
     # Celery
     CELERY_BROKER_URL = CeleryConfig.BROKER_URL

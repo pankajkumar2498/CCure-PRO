@@ -201,23 +201,31 @@ class TokenBucket:
             time.sleep(sleep_time)
 
 
-# =============================================================================
-# CVE Lookup
-# =============================================================================
+from functools import lru_cache
 
+@lru_cache(maxsize=1024)
 def lookup_cve(banner: str) -> List[Dict]:
     """
     Match a banner / service string against CVE database.
     Falls back to hardcoded hints if database is unavailable.
+    
+    Cashed with LRU to prevent redundant DB hits for common services 
+    (e.g. many ports running the same web server).
     """
+    if not banner:
+        return []
+        
     banner_lc = banner.lower()
     found: List[Dict] = []
     
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
-        db_results = CVE_DB.search_cves_for_service(banner, "")
-        if db_results:
-            found.extend(db_results)
+        try:
+            db_results = CVE_DB.search_cves_for_service(banner, "")
+            if db_results:
+                found.extend(db_results)
+        except Exception as e:
+            log.debug("CVE DB search error for '%s': %s", banner, e)
     
     # Fallback to hardcoded hints if no database results
     if not found:

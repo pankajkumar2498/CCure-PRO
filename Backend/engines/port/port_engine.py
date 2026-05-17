@@ -283,7 +283,23 @@ class PortEngine:
         ip = self._ip(host)
         existing_ports = {p["port"] for p in host.get("open_ports", [])}
 
-        for nmap_port in nmap_result.open_ports:
+        # ── Parallelize CVE Lookups for all open ports ────────────────────────
+        # This avoids the sequential bottleneck when a host has many ports.
+        from concurrent.futures import ThreadPoolExecutor
+        
+        open_ports = nmap_result.open_ports
+        results_map = {}
+        
+        def _lookup_task(port_obj):
+            banner = port_obj.banner or port_obj.scripts.get("banner", "")
+            query_str = banner or port_obj.service.lower()
+            return port_obj.port, lookup_cve(query_str)
+
+        with ThreadPoolExecutor(max_workers=min(len(open_ports), 20)) as pool:
+            for p_num, cves in pool.map(_lookup_task, open_ports):
+                results_map[p_num] = cves
+
+        for nmap_port in open_ports:
             if nmap_port.port in existing_ports:
                 continue
 
@@ -299,8 +315,9 @@ class PortEngine:
                 or extract_version(nmap_port.banner, nmap_port.service)
             )
             banner = nmap_port.banner or nmap_port.scripts.get("banner", "")
-
-            cves = lookup_cve(banner or nmap_port.service.lower())
+            
+            # Use pre-fetched CVEs from our parallel pool
+            cves = results_map.get(nmap_port.port, [])
 
             pr = PortResult(
                 port    = nmap_port.port,

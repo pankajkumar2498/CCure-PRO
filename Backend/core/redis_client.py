@@ -12,6 +12,10 @@ redis_client = async_redis.from_url(AppConfig.CELERY_BROKER_URL)
 # Sync client for Celery workers / Thread pools (Publishing)
 _sync_redis_client = sync_redis.from_url(AppConfig.CELERY_BROKER_URL)
 
+def get_redis_client():
+    """Return the synchronous Redis client."""
+    return _sync_redis_client
+
 async def publish_progress(scan_id: str, phase: int, progress: dict):
     """Async progress publishing for async engines (Discovery, Port)."""
     l = logging.getLogger("ccure.redis")

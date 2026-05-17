@@ -30,17 +30,20 @@ AVAILABILITY:
   and logs a warning. The port_engine falls back to TCP connect in that case.
 """
 
+import json
 import logging
 import threading
 import shutil
 import time
 import uuid
+import hashlib
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
 
 from config import AppConfig
+from core.redis_client import get_redis_client
 
 log = logging.getLogger("ccure.nmap")
 
@@ -329,14 +332,118 @@ class NmapScanner:
     # dramatically reducing wall-clock time on local LAN subnets.
     _MULTI_PERF_ARGS = "--min-parallelism 64 --min-rate 500"
 
-    def __init__(self, sudo: bool = True, timeout_sec: int = 300):
+    def __init__(self, sudo: bool = True, timeout_sec: int = 300, cache_ttl_hours: Optional[int] = None):
         """
         Args:
-            sudo:        Run nmap with sudo (required for SYN scan, OS detection).
-            timeout_sec: Per-host scan timeout in seconds.
+            sudo:            Run nmap with sudo (required for SYN scan, OS detection).
+            timeout_sec:     Per-host scan timeout in seconds.
+            cache_ttl_hours: Override default TTL from config.
         """
         self.sudo = sudo
         self.timeout_sec = timeout_sec
+        self.cache_ttl = (cache_ttl_hours or AppConfig.NMAP_CACHE_TTL_HOURS) * 3600
+        self._redis = None
+        self._cache_enabled = self._init_redis() if AppConfig.NMAP_CACHE_ENABLED else False
+
+    def _init_redis(self) -> bool:
+        """Initialize Redis connection for caching (non-fatal if fails)."""
+        try:
+            self._redis = get_redis_client()
+            if self._redis:
+                self._redis.ping()
+                log.info("Redis cache enabled for Nmap results")
+                return True
+        except Exception as e:
+            log.warning("Redis unavailable for Nmap cache: %s", e)
+        return False
+
+    def _cache_key(self, target: str, ports: Optional[List[int]], mode: str) -> str:
+        """
+        Generate cache key for Nmap results.
+        Format: nmap_cache:{target}:{ports_hash}:{mode}
+        """
+        # Create hash of port list for compact key
+        port_str = ",".join(sorted(str(p) for p in ports)) if ports else "all"
+        port_hash = hashlib.md5(port_str.encode()).hexdigest()[:8]
+        return f"nmap_cache:{target}:{port_hash}:{mode}"
+
+    def _get_cache(self, key: str) -> Optional[NmapScanResult]:
+        """Retrieve cached Nmap result from Redis."""
+        if not self._cache_enabled or not self._redis:
+            return None
+        try:
+            cached = self._redis.get(key)
+            if cached:
+                data = json.loads(cached)
+                log.debug("Nmap cache HIT: %s", key)
+                return self._deserialize_nmap_result(data)
+        except Exception as e:
+            log.debug("Nmap cache read error: %s", e)
+        return None
+
+    def _set_cache(self, key: str, result: NmapScanResult) -> None:
+        """Store Nmap result in Redis cache."""
+        if not self._cache_enabled or not self._redis:
+            return
+        try:
+            data = self._serialize_nmap_result(result)
+            self._redis.setex(key, self.cache_ttl, json.dumps(data))
+            log.debug("Nmap cache SET: %s (TTL: %d seconds)", key, self.cache_ttl)
+        except Exception as e:
+            log.debug("Nmap cache write error: %s", e)
+
+    def _serialize_nmap_result(self, result: NmapScanResult) -> dict:
+        """Convert NmapScanResult to JSON-serializable dict."""
+        return {
+            "ip":            result.ip,
+            "hostname":      result.hostname,
+            "state":         result.state,
+            "error_message": result.error_message,
+            "ports":         [p.to_dict() for p in result.ports],
+            "os_matches":    [o.to_dict() for o in result.os_matches],
+            "scan_duration": result.scan_duration,
+            "nmap_version":  result.nmap_version,
+            "command_line":  result.command_line,
+        }
+
+    def _deserialize_nmap_result(self, data: dict) -> NmapScanResult:
+        """Reconstruct NmapScanResult from cached JSON."""
+        ports = [
+            NmapPortResult(
+                port     = p["port"],
+                protocol = p["protocol"],
+                state    = p["state"],
+                service  = p["service"],
+                product  = p["product"],
+                version  = p["version"],
+                extra    = p["extra"],
+                banner   = p["banner"],
+                cpe      = p["cpe"],
+                scripts  = p["scripts"],
+            )
+            for p in data.get("ports", [])
+        ]
+        os_matches = [
+            NmapOSMatch(
+                name      = o["name"],
+                accuracy  = o["accuracy"],
+                os_family = o["os_family"],
+                os_gen    = o["os_gen"],
+                cpe       = o["cpe"],
+            )
+            for o in data.get("os_matches", [])
+        ]
+        return NmapScanResult(
+            ip            = data["ip"],
+            hostname      = data["hostname"],
+            state         = data["state"],
+            error_message = data.get("error_message"),
+            ports         = ports,
+            os_matches    = os_matches,
+            scan_duration = data.get("scan_duration", 0.0),
+            nmap_version  = data.get("nmap_version", ""),
+            command_line  = data.get("command_line", ""),
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -361,9 +468,22 @@ class NmapScanner:
         if not NMAP_AVAILABLE:
             return self._unavailable_result(target)
 
+        # Check cache first
+        cache_key = self._cache_key(target, ports, "service")
+        cached = self._get_cache(cache_key)
+        if cached:
+            log.info("Using cached Nmap service result for %s", target)
+            return cached
+
         port_arg = self._port_arg(ports, "normal")
         args = f"-sS -sV --version-light {port_arg} -T4"
-        return self._run(target, args)
+        result = self._run(target, args)
+
+        # Cache successful result
+        if result.state not in ("error", "nmap_unavailable", "timeout"):
+            self._set_cache(cache_key, result)
+
+        return result
 
     def full_scan(
         self,
@@ -388,12 +508,25 @@ class NmapScanner:
         if not NMAP_AVAILABLE:
             return self._unavailable_result(target)
 
+        # Check cache first
+        cache_key = self._cache_key(target, ports, "full")
+        cached = self._get_cache(cache_key)
+        if cached:
+            log.info("Using cached Nmap full result for %s (saves ~60 seconds)", target)
+            return cached
+
         port_arg = self._port_arg(ports, "normal")
         # OPTIMIZATION: Use --version-intensity 5 (vs 7) for 30-40% faster service detection
         # while maintaining 95%+ accuracy. Keep -O for accurate OS fingerprinting (core
         # feature of Advanced module). Phase 1/2 don't perform active OS fingerprinting.
         args = f"-sS -sV -O --version-intensity 5 {port_arg} -T4"
-        return self._run(target, args)
+        result = self._run(target, args)
+
+        # Cache successful result
+        if result.state not in ("error", "nmap_unavailable", "timeout"):
+            self._set_cache(cache_key, result)
+
+        return result
 
     def scan_hosts(
         self,

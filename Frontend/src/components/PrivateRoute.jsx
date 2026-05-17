@@ -3,7 +3,7 @@
  * Wraps protected routes. Shows spinner while auth state loads,
  * then redirects to /login if user is not authenticated.
  */
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { canPermission, canAny, canAll, isSuperAdmin } from "../auth/permissions";
 
@@ -65,5 +65,5 @@ export default function PrivateRoute({
     return <Navigate to={fallbackPathFor(user, location.pathname)} replace />;
   }
 
-  return children;
+  return children || <Outlet />;
 }

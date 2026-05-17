@@ -23,6 +23,7 @@ import socket
 import time
 import uuid
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -663,14 +664,9 @@ class ScanOrchestrator:
 
         t0 = time.time()
 
-        # ── Optional: Nmap OS fingerprint upgrade before vuln plugins ─────
-        # This runs nmap -sV -O on the known open ports for each host.
-        # If nmap is unavailable, this is a no-op (VulnEngine runs as-before).
-        self._nmap_pre_enrich(active_hosts)
-
-        # ── VulnerabilityEngine (UNCHANGED) ───────────────────────────────
-        vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-        vuln_engine.run(active_hosts, scan_id=scan_id)
+        # ── Nmap OS fingerprint + service upgrade in parallel with vulnerability scanning ─────
+        # This overlaps Phase 3 Nmap enrichment and plugin execution to reduce overall scan time.
+        self._run_nmap_and_vuln_parallel(active_hosts, scan_id=scan_id)
         self._apply_os_inference(active_hosts)
         
         # ── Enrich asset registry with vulnerability findings ───────────────
@@ -712,11 +708,14 @@ class ScanOrchestrator:
     @staticmethod
     def _nmap_pre_enrich(hosts: List[Dict]) -> None:
         """
-        Run Nmap OS detection + service version upgrade on each active host.
+        Run Nmap OS fingerprinting + service/version upgrade on each active host.
         Uses known open ports from Phase 2 to limit scan scope.
 
-        This is a best-effort step — if Nmap fails or is unavailable,
-        the host data from Phase 2 is used as-is.
+        This is a critical step for the Advanced module — it provides accurate OS
+        detection (active fingerprinting) and service version enrichment that feeds
+        the SNMP-based device classification.
+
+        If Nmap fails or is unavailable, the host data from Phase 2 is used as-is.
         """
         from core.nmap.wrapper import NmapScanner, NMAP_AVAILABLE
         if not NMAP_AVAILABLE:
@@ -734,6 +733,7 @@ class ScanOrchestrator:
                 return
             try:
                 result = scanner.full_scan(ip, ports=open_port_nums)
+                # Enrich service/version info
                 for nmap_port in result.open_ports:
                     for existing in host.get("open_ports", []):
                         if existing["port"] == nmap_port.port:
@@ -743,6 +743,7 @@ class ScanOrchestrator:
                                 existing["service"] = nmap_port.product
                             if nmap_port.scripts and not existing.get("banner"):
                                 existing["banner"] = nmap_port.scripts.get("banner", "")
+                # CRITICAL: Add accurate OS fingerprinting results
                 best_os = result.best_os
                 if best_os and best_os.accuracy >= 75:
                     host["os_guess"]      = best_os.name
@@ -760,6 +761,24 @@ class ScanOrchestrator:
                     f.result()
                 except Exception as exc:
                     log.debug("_nmap_pre_enrich error: %s", exc)
+
+    def _run_nmap_and_vuln_parallel(self, active_hosts: List[Dict], scan_id: Optional[str] = None) -> None:
+        """Run Nmap enrichment and vulnerability scanning in parallel."""
+        vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
+
+        futures = {}
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures[executor.submit(self._nmap_pre_enrich, active_hosts)] = "nmap"
+            futures[executor.submit(vuln_engine.run, active_hosts, scan_id)] = "vuln"
+
+            for future in as_completed(futures):
+                role = futures[future]
+                try:
+                    future.result()
+                    log.debug("Phase 3 %s task completed", role)
+                except Exception as exc:
+                    log.exception("Phase 3 %s task failed", role)
+                    raise
 
     # ── Preserve vendor from unified asset registry ─────────────────────────
 

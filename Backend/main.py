@@ -42,6 +42,9 @@ from routers.admin_orgs import router as admin_orgs_router
 from routers.audit import router as audit_router
 from routers.user_profile import router as user_profile_router
 from routers.notifications import router as notifications_router
+from routers.dashboard import router as dashboard_router
+from routers.assets    import router as assets_router
+from routers.findings  import router as findings_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -356,6 +359,9 @@ app.include_router(admin_orgs_router)
 app.include_router(audit_router)
 app.include_router(user_profile_router)
 app.include_router(notifications_router)
+app.include_router(dashboard_router)
+app.include_router(assets_router)
+app.include_router(findings_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

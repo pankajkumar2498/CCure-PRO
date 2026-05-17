@@ -152,7 +152,7 @@ export default function Dashboard() {
    *  2. Cards with `pipelineMode` use the SCAN_PIPELINES config:
    *     - Sets pipelineMode in context so downstream phases know the pipeline.
    *     - Resets scan state (all three modes always start fresh via /scan).
-   *     - Navigates to the pipeline's entryRoute (/scan).
+   *     - Navigates to the scan form (/scan/new).
    *
    * NOTE: Asset Discovery no longer skips to /scan/asset-discovery even if phase1 data
    * exists — it always restarts from Host Discovery as required.
@@ -168,7 +168,7 @@ export default function Dashboard() {
 
     // ── Pipeline-driven scan ──
     if (tpl.pipelineMode) {
-      const pipeline = getScanPipeline(tpl.pipelineMode);
+      getScanPipeline(tpl.pipelineMode);
 
       // Always reset — every scan starts fresh regardless of cached state
       resetScan();
@@ -176,8 +176,8 @@ export default function Dashboard() {
       // Store the chosen pipeline mode in context
       setPipelineMode(tpl.pipelineMode);
 
-      // Navigate to entry point (always /scan for all three modes)
-      navigate(pipeline.entryRoute);
+      // Open the shared scan form. The selected pipeline mode controls which phases run.
+      navigate("/scan/new");
     }
   };
 

@@ -124,8 +124,9 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             # If the IP changed, update the lookup map to prevent other hosts in this batch
             # from accidentally matching the 'old' IP of this asset.
             db_by_ip[ip] = target_asset
-        else:
-            # New Asset Discovery
+        elif is_active:
+            # New Asset Discovery — ONLY if host is actually live.
+            # We do NOT insert inactive IPs that are not already in the registry.
             asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
             
             new_asset = Asset(

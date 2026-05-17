@@ -85,3 +85,7 @@ Backend/db/test_data/prod_schema.sql
 
 # .md files
 .agent/
+
+
+# docs/
+docs/

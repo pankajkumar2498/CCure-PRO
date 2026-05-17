@@ -1,63 +1,122 @@
 /**
  * src/App.jsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * NOTE: BrowserRouter + AuthProvider are already in main.jsx — do NOT re-wrap.
+ * This file only defines Routes.
  *
- * Advanced Scan pipeline: Host Discovery → Asset Discovery → Vulnerability & Risk Audit (3 phases).
- * Phase 4 (Risk Report) is embedded inside Phase 3 on the backend — no separate frontend phase needed.
+ * Route changes from original:
+ *   /           → SecurityDashboard (new SOC overview)
+ *   /dashboard  → SecurityDashboard
+ *   /scan       → Dashboard.jsx (scan template picker, moved from /)
+ *   /assets     → AssetRegistry
+ *   /assets/:id → AssetDetail
+ *   /vulnerabilities → VulnerabilityBrowser
+ *
+ * All original pages kept exactly. Missing pages (ScanDetail, NotFound,
+ * NotificationsPage) are replaced with the pages that actually exist.
  */
-import { Routes, Route, Navigate } from "react-router-dom";
-import { ScanProvider }            from "./context/ScanContext";
-import PrivateRoute                from "./components/PrivateRoute";
 
-import Login             from "./pages/Login";
-import Register          from "./pages/Register";
-import Dashboard         from "./pages/Dashboard";
-import ScanHistory       from "./pages/ScanHistory";
-import ArchivedScans     from "./pages/ArchivedScans";
-import RecycleBin        from "./pages/RecycleBin";
-import SecurityReports    from "./pages/SecurityReports";
-import UserManagement     from "./pages/admin/UserManagement";
-import DeletedUsers       from "./pages/admin/DeletedUsers";
-import RoleManagement     from "./pages/admin/RoleManagement";
+import { Routes, Route, Navigate } from "react-router-dom";
+import PrivateRoute from "./components/PrivateRoute";
+import { ScanProvider } from "./context/ScanContext";
+
+// ── New dashboard pages ───────────────────────────────────────────────────────
+import SecurityDashboard    from "./pages/SecurityDashboard";
+import AssetRegistry        from "./pages/AssetRegistry";
+import AssetDetail          from "./pages/AssetDetail";
+import VulnerabilityBrowser from "./pages/VulnerabilityBrowser";
+
+// ── Existing pages (all verified to exist on disk) ────────────────────────────
+import Login                from "./pages/Login";
+import Register             from "./pages/Register";
+import Dashboard            from "./pages/Dashboard";        // scan launcher → /scan
+import ScanHistory          from "./pages/ScanHistory";
+import ArchivedScans        from "./pages/ArchivedScans";
+import RecycleBin           from "./pages/RecycleBin";
+import SecurityReports      from "./pages/SecurityReports";
+
+// Scan sub-pages
+import NewScan              from "./pages/scan/NewScan";
+import Phase1Results        from "./pages/scan/Phase1Results";
+import Phase2Results        from "./pages/scan/Phase2Results";
+import Phase3Results        from "./pages/scan/Phase3Results";
+import CredentialedScan     from "./pages/scan/CredentialedScan";
+import CredentialedResults  from "./pages/scan/CredentialedResults";
+
+// Admin pages
+import AuditLogs            from "./pages/admin/AuditLogs";
+import UserManagement       from "./pages/admin/UserManagement";
 import OrganizationManagement from "./pages/admin/OrganizationManagement";
-import AuditLogs          from "./pages/admin/AuditLogs";
-import NewScan           from "./pages/scan/NewScan";
-import Phase1Results     from "./pages/scan/Phase1Results";
-import Phase2Results     from "./pages/scan/Phase2Results";
-import Phase3Results     from "./pages/scan/Phase3Results";
-import CredentialedScan  from "./pages/scan/CredentialedScan";
-import CredentialedResults from "./pages/scan/CredentialedResults";
+import RoleManagement       from "./pages/admin/RoleManagement";
+import DeletedUsers         from "./pages/admin/DeletedUsers";
 
 export default function App() {
   return (
     <ScanProvider>
-      <Routes>
-        <Route path="/login"    element={<Login />} />
-        <Route path="/register" element={<Register />} />
+    <Routes>
+      {/* ── Public ── */}
+      <Route path="/login"    element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
-        <Route path="/"        element={<Navigate to="/dashboard" replace />} />
-        <Route path="/archived" element={<Navigate to="/archived-scans" replace />} />
+      {/* ── Protected ── */}
+      <Route element={<PrivateRoute />}>
 
-        <Route path="/dashboard"     element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><Dashboard /></PrivateRoute>} />
-        <Route path="/scan"          element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><NewScan /></PrivateRoute>} />
-        <Route path="/scan/host-discovery"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase1Results /></PrivateRoute>} />
-        <Route path="/scan/asset-discovery"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase2Results /></PrivateRoute>} />
-        <Route path="/scan/advanced-scan"   element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><Phase3Results /></PrivateRoute>} />
-        <Route path="/scan/credentialed"         element={<PrivateRoute requiredPermission={{resource: "scans", action: "execute"}}><CredentialedScan /></PrivateRoute>} />
-        <Route path="/scan/credentialed/results" element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><CredentialedResults /></PrivateRoute>} />
-        <Route path="/history"       element={<PrivateRoute requiredPermission={{resource: "scans", action: "read"}}><ScanHistory /></PrivateRoute>} />
-        <Route path="/archived-scans" element={<PrivateRoute requiredAny={[{resource: "scans", action: "restore"}, {resource: "scans", action: "recycle"}]}><ArchivedScans /></PrivateRoute>} />
-        <Route path="/recycle-bin"   element={<PrivateRoute requiredAny={[{resource: "scans", action: "restore"}, {resource: "scans", action: "purge"}]}><RecycleBin /></PrivateRoute>} />
-        <Route path="/reports"       element={<PrivateRoute requiredPermission={{resource: "reports", action: "read"}}><SecurityReports /></PrivateRoute>} />
+        {/* SOC Security Dashboard — new home */}
+        <Route path="/"          element={<SecurityDashboard />} />
+        <Route path="/dashboard" element={<SecurityDashboard />} />
 
-        {/* Admin Module */}
-        <Route path="/admin/users"   element={<PrivateRoute requiredPermission={{resource: "users", action: "read"}}><UserManagement /></PrivateRoute>} />
-        <Route path="/admin/deleted-users" element={<PrivateRoute requiredPermission={{resource: "users", action: "delete"}}><DeletedUsers /></PrivateRoute>} />
-        <Route path="/admin/roles"   element={<PrivateRoute requiredPermission={{resource: "roles", action: "read"}}><RoleManagement /></PrivateRoute>} />
-        <Route path="/admin/organizations" element={<PrivateRoute superadminOnly><OrganizationManagement /></PrivateRoute>} />
-        <Route path="/admin/audit-logs" element={<PrivateRoute requiredPermission={{resource: "audit", action: "read"}}><AuditLogs /></PrivateRoute>} />
+        {/* Original scan launcher (moved from / to /scan) */}
+        <Route path="/scan"      element={<Dashboard />} />
 
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+        {/* Asset Registry */}
+        <Route path="/assets"    element={<AssetRegistry />} />
+        <Route path="/assets/:id" element={<AssetDetail />} />
+
+        {/* Vulnerability Browser */}
+        <Route path="/vulnerabilities" element={<VulnerabilityBrowser />} />
+
+          {/* Scan history + lifecycle */}
+          <Route path="/history"          element={<ScanHistory />} />
+          <Route path="/scan-history"     element={<Navigate to="/history" replace />} />
+          <Route path="/archived"         element={<ArchivedScans />} />
+          <Route path="/archived-scans"   element={<Navigate to="/archived" replace />} />
+          <Route path="/recycle-bin"      element={<RecycleBin />} />
+
+          {/* Scan sub-pages (existing + legacy compatibility routes) */}
+          <Route path="/scan/new"                      element={<NewScan />} />
+          <Route path="/scan/host-discovery"           element={<Phase1Results />} />
+          <Route path="/scan/asset-discovery"          element={<Phase2Results />} />
+          <Route path="/scan/advanced-scan"            element={<Phase3Results />} />
+          <Route path="/scan/credentialed"             element={<CredentialedScan />} />
+          <Route path="/scan/credentialed/results"     element={<CredentialedResults />} />
+          <Route path="/scan/:scanId/phase1"            element={<Phase1Results />} />
+          <Route path="/scan/:scanId/phase2"            element={<Phase2Results />} />
+          <Route path="/scan/:scanId/phase3"            element={<Phase3Results />} />
+        <Route path="/scan/:scanId/credentialed"      element={<CredentialedScan />} />
+        <Route path="/scan/:scanId/credentialed-results" element={<CredentialedResults />} />
+
+        {/* Reports */}
+        <Route path="/reports" element={<SecurityReports />} />
+
+        {/* Admin — RBAC-gated */}
+        <Route element={<PrivateRoute requiredPermission={{ resource: "audit", action: "read" }} />}>
+          <Route path="/admin/audit-logs" element={<AuditLogs />} />
+        </Route>
+        <Route element={<PrivateRoute requiredPermission={{ resource: "users", action: "read" }} />}>
+          <Route path="/admin/users"         element={<UserManagement />} />
+          <Route path="/admin/users/deleted" element={<DeletedUsers />} />
+        </Route>
+        <Route element={<PrivateRoute requiredPermission={{ resource: "organizations", action: "read" }} />}>
+          <Route path="/admin/organizations" element={<OrganizationManagement />} />
+        </Route>
+        <Route element={<PrivateRoute requiredPermission={{ resource: "roles", action: "read" }} />}>
+          <Route path="/admin/roles" element={<RoleManagement />} />
+        </Route>
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
     </ScanProvider>
   );
 }

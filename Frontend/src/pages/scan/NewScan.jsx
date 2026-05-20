@@ -355,6 +355,18 @@ export default function NewScan() {
   const [rateLimit, setRateLimit] = useState("");
   const [quotaBlocked, setQuotaBlocked] = useState(false);
 
+  // File Upload State
+  const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadSummary, setUploadSummary] = useState({
+    total: 0,
+    valid: 0,
+    invalid: 0,
+    invalidEntries: [],
+    duplicates: 0,
+    show: false,
+  });
+
   // Mission-view state
   const [missionState, setMissionState] = useState({
     status: "running",
@@ -469,7 +481,7 @@ export default function NewScan() {
                 const merged = prev.discoveredHosts.map(existing => {
                   const patch = patchMap.get(existing.ip_address);
                   if (!patch) return existing;
-                  
+
                   const updated = {
                     ...existing,
                     // Only overwrite if the patched value is non-empty
@@ -477,15 +489,15 @@ export default function NewScan() {
                     mac_address:  (patch.mac_address && patch.mac_address !== "N/A")    ? patch.mac_address : existing.mac_address,
                     vendor:       (patch.vendor      && patch.vendor      !== "Unknown") ? patch.vendor      : existing.vendor,
                   };
-                  
+
                   // Clear enriching flags when enrichment data arrives for that field
                   // Even if the field is still empty, stop showing "Resolving…" after enrichment pass
                   if (patch.hostname !== undefined) updated._enriching_hostname = false;
                   if (patch.mac_address !== undefined) updated._enriching_mac = false;
-                  
+
                   return updated;
                 });
-                
+
                 // Also add any brand-new IPs that appear only in the enrichment pass
                 const existingIps = new Set(prev.discoveredHosts.map(x => x.ip_address));
                 const brandNew = incomingHosts
@@ -497,7 +509,6 @@ export default function NewScan() {
                     _enriching_hostname: false,
                     _enriching_mac: false,
                   }));
-                
                 next.discoveredHosts = [...merged, ...brandNew];
                 next.discovered      = next.discoveredHosts.length;
                 latestDiscoveredHostsRef.current = next.discoveredHosts;
@@ -544,6 +555,98 @@ export default function NewScan() {
     });
   }, [wsPrefix]);
 
+  /* ── File Upload logic ──────────────────────────────────────────────────── */
+
+  const processFile = (file) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target.result;
+      const targets = [];
+      const invalid = [];
+      const seen = new Set();
+      let duplicates = 0;
+
+      // Flatten everything: split by newline and comma, then filter empty tokens
+      const allTokens = content.split(/[\r\n,]+/).map(t => t.trim()).filter(Boolean);
+
+      allTokens.forEach(token => {
+        // Skip header if present
+        if (token.toLowerCase() === "target") return;
+
+        if (seen.has(token)) {
+          duplicates++;
+          return;
+        }
+
+        // Basic validation: allowed characters (matches Backend InputValidator._SAFE_RE)
+        if (/^[\w.\-:/\[\]]+$/.test(token)) {
+          targets.push(token);
+          seen.add(token);
+        } else {
+          invalid.push(token);
+        }
+      });
+
+      if (targets.length > 0) {
+        setTarget(targets.join(", "));
+        setUploadSummary({
+          total: targets.length + invalid.length + duplicates,
+          valid: targets.length,
+          invalid: invalid.length,
+          invalidEntries: invalid,
+          duplicates: duplicates,
+          show: true,
+        });
+      } else {
+        setError("No valid targets found in file.");
+      }
+    };
+    reader.onerror = () => setError("Failed to read file.");
+    reader.readAsText(file);
+  };
+
+  const handleBrowseClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = (e) => {
+    processFile(e.target.files[0]);
+    // Reset input so the same file can be uploaded again
+    e.target.value = "";
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleExportInvalid = () => {
+    if (!uploadSummary.invalidEntries || uploadSummary.invalidEntries.length === 0) return;
+    const blob = new Blob([uploadSummary.invalidEntries.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'invalid_targets.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   /* ── Main scan handler ───────────────────────────────────────────────────── */
   const handleScan = async () => {
@@ -747,21 +850,80 @@ export default function NewScan() {
               Target
               <span className="ns-label-hint">IP, CIDR, or range</span>
             </div>
-            <div className="ns-input-wrap">
-              <span className="ns-input-icon" aria-hidden="true">🎯</span>
-              <input
-                id="ns-target-input"
-                className="ns-input"
-                value={target}
-                onChange={e => setTarget(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && canExecuteScans && !loading && handleScan()}
-                placeholder="192.168.1.0/24   ·   10.0.0.1-50   ·   192.168.1.10"
-                disabled={loading || !canExecuteScans}
-                autoFocus
-                autoComplete="off"
-                spellCheck={false}
-              />
+            
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".txt,.csv"
+              style={{ display: "none" }}
+            />
+
+            <div 
+              className={`ns-drop-zone ${isDragging ? 'ns-drop-zone--active' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <div className="ns-input-row">
+                <div className="ns-input-wrap">
+                  <span className="ns-input-icon" aria-hidden="true">🎯</span>
+                  <input
+                    id="ns-target-input"
+                    className="ns-input"
+                    value={target}
+                    onChange={e => {
+                      setTarget(e.target.value);
+                      if (uploadSummary.show) setUploadSummary(prev => ({ ...prev, show: false }));
+                    }}
+                    onKeyDown={e => e.key === "Enter" && canExecuteScans && !loading && handleScan()}
+                    placeholder="192.168.1.0/24   ·   10.0.0.1-50   ·   192.168.1.10"
+                    disabled={loading || !canExecuteScans}
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <button
+                  className="ns-browse-btn"
+                  onClick={handleBrowseClick}
+                  disabled={loading || !canExecuteScans}
+                  title="Upload .txt or .csv file"
+                >
+                  <span>📂</span> Upload File
+                </button>
+              </div>
             </div>
+
+            {/* Upload Summary */}
+            {uploadSummary.show && (
+              <div className="ns-upload-summary">
+                <div className="ns-summary-content">
+                  <div className="ns-summary-main">
+                    <span className="ns-summary-stat">Total: <strong>{uploadSummary.total}</strong></span>
+                    <span className="ns-summary-stat ns-stat--valid">Valid: <strong>{uploadSummary.valid}</strong></span>
+                    {uploadSummary.invalid > 0 && (
+                      <span className="ns-summary-stat ns-stat--invalid">
+                        Invalid: <strong>{uploadSummary.invalid}</strong>
+                        <button className="ns-export-btn" onClick={handleExportInvalid} title="Download invalid entries">
+                          ⬇ Export
+                        </button>
+                      </span>
+                    )}
+                    {uploadSummary.duplicates > 0 && (
+                      <span className="ns-summary-stat ns-stat--dup">Duplicates: <strong>{uploadSummary.duplicates}</strong></span>
+                    )}
+                  </div>
+                  <p className="ns-summary-hint">Existing Intelligent detection will be used for all valid targets.</p>
+                </div>
+                <button 
+                  className="ns-summary-close" 
+                  onClick={() => setUploadSummary(prev => ({ ...prev, show: false }))}
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             {/* Quick targets */}
             <div className="ns-chips">

@@ -70,24 +70,17 @@ class LinuxCollector:
 
     # ── Entry point ────────────────────────────────────────────────────────
 
-    def collect_all(self, sections: Optional[List[str]] = None) -> Dict[str, Any]:
+    def collect_all(self, sections: Optional[List[str]] = None, on_section_complete: Optional[callable] = None) -> Dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.
 
         Parameters
         ----------
         sections : Optional list of section names to collect.
-                   If None, all sections are collected.
-                   Valid names: system_info, packages, services, ports,
-                                users, security, network, history.
-
-        All section collectors are independent — they run concurrently via
-        a ThreadPoolExecutor to reduce wall-clock time. If one fails the
-        others are unaffected.
+        on_section_complete : Optional callback(section_name) called as each finish.
         """
         run_all = sections is None
 
-        # Build list of (section_name, callable) pairs to run
         tasks: List[tuple] = []
         if run_all or "system_info" in sections:
             tasks.append(("system_info", self._collect_system_info))
@@ -116,7 +109,9 @@ class LinuxCollector:
                 name = future_map[future]
                 try:
                     data = future.result()
-                    # system_info and security return flat dicts; merge them
+                    if on_section_complete:
+                        on_section_complete(name)
+                        
                     if name in ("system_info", "security", "network", "history"):
                         result.update(data)
                     elif name == "packages":

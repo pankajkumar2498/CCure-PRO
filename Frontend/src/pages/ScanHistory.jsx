@@ -9,13 +9,14 @@
  * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/host-discovery (re-run)
  */
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
+// ... (omitting some imports for brevity in thought, but I will provide the full block)
 import { useScan } from "../context/ScanContext";
 import { usePreferences } from "../context/PreferencesContext";
-import { getScans, getScan, deleteScan, archiveScan, streamScanEvents } from "../api/scans";
+import { getScans, getScan, deleteScan, stopScan, archiveScan, streamScanEvents } from "../api/scans";
 import { buildPhasePayload } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
@@ -27,8 +28,8 @@ const STATUS_STYLE = {
   completed: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
   running: { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
   failed: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
-  cancelled: { color: "#64748b", bg: "rgba(100,116,139,.1)", border: "rgba(100,116,139,.25)" },
-  canceled: { color: "#64748b", bg: "rgba(100,116,139,.1)", border: "rgba(100,116,139,.25)" },
+  cancelled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  canceled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
 };
 const STATUS_LABELS = {
   complete: "Completed",
@@ -47,6 +48,8 @@ const LIVE_LABELS = {
   reconnecting: "Live sync reconnecting",
   polling: "Live sync polling",
 };
+
+const TERMINAL_STATUSES = ["complete", "failed", "cancelled", "canceled"];
 
 const normalizeStatus = status => {
   const raw = String(status || "running").toLowerCase();
@@ -424,10 +427,88 @@ function ScanProgress({ scan }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   MONITOR CARD COMPONENT
+   ══════════════════════════════════════════════════════════════════════════ */
+function ScanMonitorCard({ scan, onStop, onView }) {
+  const progress = getScanProgress(scan);
+  const status = normalizeStatus(scan.status);
+  const summary = scan.summary || {};
+
+  return (
+    <div className="monitor-card">
+      <div className="monitor-card-header">
+        <div className="monitor-card-title">
+          <code className="ip-code">{scan.scan_no ?? scan.display_id ?? "-"}</code>
+          <span className="monitor-card-target" title={scan.target}>{scan.target}</span>
+        </div>
+        <StatusBadge status={scan.status} />
+      </div>
+
+      <div className="monitor-card-body">
+        <div className="monitor-card-meta">
+          <div className="monitor-meta-item">
+            <span className="label">Phase:</span>
+            <span className="value">{phaseLabel(scan)}</span>
+          </div>
+          <div className="monitor-meta-item">
+            <span className="label">Duration:</span>
+            <span className="value">{fmtDur(scan.scan_duration)}</span>
+          </div>
+          <div className="monitor-meta-item">
+            <span className="label">Type:</span>
+            <span className="value">{scan.scan_type}</span>
+          </div>
+        </div>
+
+        <div className="monitor-card-progress">
+          <div className="progress-label">
+            <span>Overall Progress</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+          <div className="progress-track">
+            <div
+              className={`progress-fill progress-fill--${status}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {summary.active_hosts !== undefined && (
+          <div className="monitor-card-stats">
+            <div className="monitor-stat">
+              <span className="stat-value">{summary.active_hosts}</span>
+              <span className="stat-label">Active Hosts</span>
+            </div>
+            {summary.vulnerabilities !== undefined && (
+               <div className="monitor-stat">
+                <span className="stat-value" style={{ color: "#ef4444" }}>{summary.vulnerabilities}</span>
+                <span className="stat-label">Findings</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="monitor-card-footer">
+        <button className="btn btn--ghost btn--sm" onClick={() => onView(scan)}>
+          View Detailed Results
+        </button>
+        <button className="btn btn--danger btn--sm" onClick={() => onStop(scan)}>
+          Stop Scan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════════ */
-export default function ScanHistory() {
+export default function ScanHistory({ mode = "history" }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isMonitor = mode === "monitor";
+  
   const { user } = useAuth();
   const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, setScanNo, resetScan } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
@@ -444,10 +525,23 @@ export default function ScanHistory() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [error, setError] = useState("");
   const [viewId, setViewId] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState(() => {
+    if (isMonitor) return "running";
+    return searchParams.get("status") || "all";
+  });
   const [filterDate, setFilterDate] = useState("all");
   const [page, setPage] = useState(1);
   const { preferences } = usePreferences();
+
+  // Sync filterStatus with query param
+  useEffect(() => {
+    if (isMonitor) {
+      setFilterStatus("running");
+      return;
+    }
+    const status = searchParams.get("status");
+    setFilterStatus(status || "all");
+  }, [searchParams, isMonitor]);
 
   // Confirm dialog state
   const [dialog, setDialog] = useState(null); // { type, scan, config }
@@ -679,16 +773,50 @@ export default function ScanHistory() {
     }
   };
 
+  const handleConfirmStop = async () => {
+    if (!canExecuteScans) {
+      setDialog(null);
+      pushToast(denyMessage, "error");
+      return;
+    }
+    const scan = dialog?.scan;
+    if (!scan) return;
+    try {
+      await stopScan(scan.id);
+      setScans(prev => prev.map(s => s.id === scan.id ? { ...s, status: "cancelled" } : s));
+      setDialog(null);
+      pushToast(`${scanLabel(scan)} stopped.`, "success");
+    } catch (err) {
+      setDialog(null);
+      pushToast("Failed to stop scan: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
   const handleDialogConfirm = () => {
     if (!dialog) return;
     if (dialog.type === "rerun") return handleConfirmRerun();
+    if (dialog.type === "stop") return handleConfirmStop();
   };
 
   /* ── Filtering & Pagination ── */
   const now = Date.now();
   const visible = scans.filter(scan => {
-    if (filterStatus !== "all" && normalizeStatus(scan.status) !== filterStatus) return false;
+    const status = normalizeStatus(scan.status);
+    const isTerminal = TERMINAL_STATUSES.includes(status);
+
+    // 1. Separation logic
+    if (isMonitor) {
+      if (isTerminal) return false; // Monitor only shows non-terminal
+    } else {
+      if (!isTerminal) return false; // History only shows terminal
+    }
+
+    // 2. Status tab filtering
+    if (filterStatus !== "all" && status !== filterStatus) return false;
+
+    // 3. Date filtering
     if (filterDate !== "all" && now - dateTimeMs(getScanDisplayDate(scan)) > DATE_MS[filterDate]) return false;
+
     return true;
   });
 
@@ -702,15 +830,15 @@ export default function ScanHistory() {
   }, [totalPages, page]);
 
   return (
-    <AppLayout pageTitle="Scan History">
+    <AppLayout pageTitle={isMonitor ? "Active Scans" : "Scan History"}>
       <div className="page-inner">
 
         {/* Page header */}
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Scan History</h2>
+            <h2 className="page-title">{isMonitor ? "Active Scans" : "Scan History"}</h2>
             <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
-              {total} scan{total !== 1 ? "s" : ""} · {user?.username}
+              {isMonitor ? `${visible.length} active operation${visible.length !== 1 ? "s" : ""}` : `${total} scan${total !== 1 ? "s" : ""} · ${user?.username}`}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -729,31 +857,34 @@ export default function ScanHistory() {
           <div className="filter-group">
             <label>Status</label>
             <div className="filter-tabs">
-              {["all", "complete", "running", "failed", "cancelled"].map(s => (
+              {(isMonitor ? ["running"] : ["all", "complete", "running", "failed", "cancelled"]).map(s => (
                 <button
                   key={s}
                   className={`filter-tab ${filterStatus === s ? "filter-tab--active" : ""}`}
                   onClick={() => setFilterStatus(s)}
+                  disabled={isMonitor}
                 >
                   {s === "all" ? "All" : STATUS_LABELS[s]}
                 </button>
               ))}
             </div>
           </div>
-          <div className="filter-group">
-            <label>Time range</label>
-            <div className="filter-tabs">
-              {[["all", "All time"], ["1h", "1 hr"], ["24h", "24 hrs"], ["7d", "7 days"], ["30d", "30 days"]].map(([v, l]) => (
-                <button
-                  key={v}
-                  className={`filter-tab ${filterDate === v ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilterDate(v)}
-                >
-                  {l}
-                </button>
-              ))}
+          {!isMonitor && (
+            <div className="filter-group">
+              <label>Time range</label>
+              <div className="filter-tabs">
+                {[["all", "All time"], ["1h", "1 hr"], ["24h", "24 hrs"], ["7d", "7 days"], ["30d", "30 days"]].map(([v, l]) => (
+                  <button
+                    key={v}
+                    className={`filter-tab ${filterDate === v ? "filter-tab--active" : ""}`}
+                    onClick={() => setFilterDate(v)}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {error && <div className="alert alert--error">{error}</div>}
@@ -766,17 +897,48 @@ export default function ScanHistory() {
 
         {!loading && !error && visible.length === 0 && (
           <div className="empty-state">
-            <span className="empty-state-icon">📋</span>
+            <span className="empty-state-icon">{isMonitor ? "📡" : "📋"}</span>
             <p className="empty-state-title">
-              {filterStatus !== "all" || filterDate !== "all" ? "No scans match your filters." : "No scans yet."}
+              {isMonitor 
+                ? "No active scans running right now." 
+                : (filterStatus !== "all" || filterDate !== "all" ? "No scans match your filters." : "No scans yet.")
+              }
             </p>
             <button className="btn btn--primary" style={{ marginTop: 16 }} onClick={() => navigate("/scan")}>
-              Start your first scan →
+              {isMonitor ? "Launch new scan" : "Start your first scan"} →
             </button>
           </div>
         )}
 
-        {!loading && visible.length > 0 && (
+        {!loading && visible.length > 0 && isMonitor && (
+          <div className="monitor-grid">
+            {visible.map(scan => (
+              <ScanMonitorCard 
+                key={scan.id} 
+                scan={scan} 
+                onView={handleView}
+                onStop={(s) => {
+                  setDialog({
+                    type: "stop",
+                    scan: s,
+                    config: {
+                      type: "delete", // Reuse danger style
+                      icon: "⏹",
+                      iconClass: "danger",
+                      title: "Stop Scan?",
+                      subtitle: `Are you sure you want to terminate ${scanLabel(s)}?`,
+                      warning: "Stopping a scan will immediately terminate all active probes. Any results gathered so far will be saved, but the scan will be marked as cancelled.",
+                      confirmLabel: "Stop Scan",
+                      confirmClass: "danger",
+                    }
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {!loading && visible.length > 0 && !isMonitor && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>

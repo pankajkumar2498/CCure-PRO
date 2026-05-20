@@ -3,15 +3,24 @@
  * Displays credentialed scan report.
  * Can hydrate from router state (fresh scan) or GET /scans/{id} (history).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout  from "../../components/layout/AppLayout";
 import RiskBadge  from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
+import api from "../../api/axiosInstance";
 
 const SEV_COLOR = {
   Critical: "#ff4d4d", High: "#f97316", Medium: "#f59e0b", Low: "#22c55e", Info: "#60a5fa",
 };
+
+const STAGES = [
+  { id: "connecting", label: "Connection", icon: "🔌" },
+  { id: "detection",  label: "OS Detection", icon: "🔍" },
+  { id: "collection", label: "Collection", icon: "📦" },
+  { id: "analysis",   label: "CVE Analysis", icon: "🧠" },
+  { id: "syncing",    label: "Finalizing", icon: "💾" },
+];
 
 /* ── helpers ── */
 function KV({ k, v, danger, warn, mono }) {
@@ -114,12 +123,31 @@ export default function CredentialedResults() {
   const [scanStatus,  setScanStatus]  = useState(stateResult?.status || "running");
   const [cveFilter,   setCveFilter]   = useState("All");
 
+  // Live progress state
+  const [progress, setProgress] = useState({
+    percentage: 0,
+    message: "Initializing scan...",
+    stage: "connecting",
+    logs: []
+  });
+
+  const logRef = useRef(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [progress.logs]);
+
   useEffect(() => {
     if (stateResult && stateResult.system_info) { setResult(stateResult); setLoading(false); return; }
     if (!scanIdParam) { setLoading(false); return; }
 
+    let ws = null;
+    let pollTimer = null;
     let cancelled = false;
-    const pollScan = async () => {
+
+    const fetchResult = async () => {
       try {
         const { data } = await getScan(scanIdParam);
         if (cancelled) return;
@@ -127,42 +155,90 @@ export default function CredentialedResults() {
         const normalizedStatus = String(data.status || "running").toLowerCase();
         setScanStatus(normalizedStatus);
 
-        if (normalizedStatus === "running" || normalizedStatus === "queued") {
-          if (!cancelled) {
-            setLoading(true);
-            setTimeout(() => { if (!cancelled) pollScan(); }, 3000);
+        if (normalizedStatus === "complete" || normalizedStatus === "completed") {
+          const r = hydrateFromHistory(data);
+          if (r) {
+            setResult(r);
+            setLoading(false);
+            if (ws) ws.close();
+            return true;
           }
-          return;
+        } else if (normalizedStatus === "failed" || normalizedStatus === "cancelled" || normalizedStatus === "canceled") {
+          setError(data.failure_reason || `Scan ${normalizedStatus}`);
+          setLoading(false);
+          if (ws) ws.close();
+          return true;
         }
-
-        if (normalizedStatus === "failed" || normalizedStatus === "cancelled" || normalizedStatus === "canceled") {
-          throw new Error(data.failure_reason || `Scan ${normalizedStatus}`);
-        }
-
-        const r = hydrateFromHistory(data);
-        if (!r) throw new Error("Stored credentialed report not found for this scan.");
-
-        setResult(r);
-        setLoading(false);
+        return false;
       } catch (err) {
-        if (cancelled) return;
-        const msg = err.response?.data?.detail || err.message || "Failed to load results.";
-
-        if (scanStatus === "running" || scanStatus === "queued") {
-          if (!cancelled) {
-            setLoading(true);
-            setTimeout(() => { if (!cancelled) pollScan(); }, 3000);
-          }
-          return;
-        }
-
-        setError(msg);
+        if (cancelled) return true;
+        setError(err.response?.data?.detail || err.message || "Failed to load results.");
         setLoading(false);
+        return true;
       }
     };
 
-    pollScan();
-    return () => { cancelled = true; };
+    const startProgressWs = async () => {
+      try {
+        const { data: ticketData } = await api.post("/auth/ticket");
+        if (cancelled) return;
+
+        const baseURL = api.defaults.baseURL || "";
+        const wsPrefix = baseURL.replace(/^http/, "ws");
+        const wsUrl = `${wsPrefix}/scans/${scanIdParam}/progress?ticket=${encodeURIComponent(ticketData.ticket)}`;
+        
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          if (cancelled) return;
+          const data = JSON.parse(event.data);
+          if (data.phase === 5 && data.progress) {
+            const p = data.progress;
+            setProgress(prev => ({
+              percentage: p.percentage || prev.percentage,
+              message: p.message || prev.message,
+              stage: p.stage || prev.stage,
+              logs: p.message ? [...prev.logs.slice(-49), { text: p.message, time: new Date().toLocaleTimeString() }] : prev.logs
+            }));
+            
+            if (p.status === "complete") {
+              fetchResult();
+            } else if (p.status === "failed") {
+              setError(p.message || "Scan failed");
+              setLoading(false);
+            }
+          }
+        };
+        ws.onclose = () => {
+          if (!cancelled && !result) {
+            // If WS closes but we don't have results yet, fallback to polling
+            pollTimer = setTimeout(pollScan, 3000);
+          }
+        };
+      } catch (err) {
+        console.error("Failed to start progress WebSocket", err);
+        pollTimer = setTimeout(pollScan, 3000);
+      }
+    };
+
+    const pollScan = async () => {
+      const finished = await fetchResult();
+      if (!finished && !cancelled) {
+        pollTimer = setTimeout(pollScan, 3000);
+      }
+    };
+
+    // Initial check
+    fetchResult().then(finished => {
+      if (!finished && !cancelled) {
+        startProgressWs();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (ws) ws.close();
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [scanIdParam, stateResult]);
 
   useEffect(() => {
@@ -171,12 +247,108 @@ export default function CredentialedResults() {
     }
   }, [loading, result, scanIdParam, error, navigate]);
 
-  /* ── loading ── */
-  if (loading) {
+  /* ── loading (Progress Dashboard) ── */
+  if (loading && !result) {
+    const currentStageIndex = STAGES.findIndex(s => s.id === progress.stage);
+
     return (
-      <AppLayout pageTitle="Credentialed Results">
-        <div className="page-inner" style={{ display: "flex", justifyContent: "center", paddingTop: 60 }}>
-          <div className="spinner" />
+      <AppLayout pageTitle="Credentialed Scan In Progress">
+        <div className="page-inner">
+          <div className="page-title-row">
+            <div>
+              <h2 className="page-title">🔐 Credentialed Scan In Progress</h2>
+              <p className="page-subtitle">
+                Target: <code className="ip-code">{stateResult?.target || scanIdParam}</code>
+                <span className="muted"> · Scan No. {stateResult?.scan_no || "-"}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="pipeline-progress-card" style={{ marginTop: 20 }}>
+            <div className="pipeline-progress-header">
+              <div className="pipeline-pulse" />
+              <div style={{ flex: 1 }}>
+                <h3 className="pipeline-progress-title">{progress.message}</h3>
+                <p className="pipeline-progress-desc">
+                  Performing authenticated system inspection via SSH. This typically takes 30-90 seconds.
+                </p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--accent)" }}>
+                  {progress.percentage}%
+                </span>
+              </div>
+            </div>
+
+            <div className="progress-bar progress-bar--pipeline">
+              <div 
+                className="progress-fill progress-fill--animated" 
+                style={{ width: `${progress.percentage}%`, transition: "width 0.5s ease-out" }} 
+              />
+            </div>
+
+            {/* Stage Stepper */}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 30, marginBottom: 20, padding: "0 10px" }}>
+              {STAGES.map((s, idx) => {
+                const isDone = idx < currentStageIndex;
+                const isActive = idx === currentStageIndex;
+                return (
+                  <div key={s.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flex: 1, position: "relative" }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: isDone ? "var(--ok)" : isActive ? "var(--accent)" : "var(--bg-app)",
+                      color: isDone || isActive ? "#fff" : "var(--text-faint)",
+                      border: `2px solid ${isDone ? "var(--ok)" : isActive ? "var(--accent)" : "var(--border)"}`,
+                      zIndex: 2, fontSize: 14, transition: "all 0.3s"
+                    }}>
+                      {isDone ? "✓" : s.icon}
+                    </div>
+                    <span style={{ 
+                      fontSize: 11, fontWeight: isActive ? 700 : 500, 
+                      color: isActive ? "var(--accent)" : isDone ? "var(--text)" : "var(--text-faint)",
+                      textAlign: "center"
+                    }}>
+                      {s.label}
+                    </span>
+                    {idx < STAGES.length - 1 && (
+                      <div style={{
+                        position: "absolute", top: 16, left: "60%", width: "80%", height: 2,
+                        background: isDone ? "var(--ok)" : "var(--border)",
+                        zIndex: 1
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Live Logs */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", animation: "pulse 1.5s infinite" }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Live Activity</span>
+              </div>
+              <div 
+                ref={logRef}
+                style={{ 
+                  background: "#0f172a", color: "#e2e8f0", padding: "12px 16px", borderRadius: 8, 
+                  fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6, maxHeight: 180, overflowY: "auto",
+                  border: "1px solid #334155", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)"
+                }}
+              >
+                {progress.logs.length === 0 ? (
+                  <div style={{ color: "#64748b", fontStyle: "italic" }}>Waiting for activity...</div>
+                ) : (
+                  progress.logs.map((log, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, marginBottom: 2 }}>
+                      <span style={{ color: "#64748b", flexShrink: 0 }}>[{log.time}]</span>
+                      <span style={{ color: log.text.includes("failed") ? "#fca5a5" : "#94a3b8" }}>{log.text}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </AppLayout>
     );
@@ -194,7 +366,14 @@ export default function CredentialedResults() {
               <button className="btn btn--primary" onClick={() => navigate("/scan/credentialed")}>New Scan</button>
             </div>
           </div>
-          <div className="alert alert--error">{error}</div>
+          <div className="alert alert--error">
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Scan Failed</div>
+            {error}
+          </div>
+          <div className="empty-state" style={{ marginTop: 40 }}>
+             <p className="muted">Please verify your SSH credentials and ensure the host is reachable.</p>
+             <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={() => navigate("/scan/credentialed")}>Try Again</button>
+          </div>
         </div>
       </AppLayout>
     );

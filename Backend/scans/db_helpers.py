@@ -143,6 +143,7 @@ def create_scan(
     targets: List[str],
     scan_type: str,
     pipeline_mode: str = "basic",
+    current_task_id: Optional[str] = None,
 ) -> Scan:
     """Create an empty running scan before Phase 1 starts."""
     org_id = _get_org_id(db, user_id)
@@ -160,6 +161,7 @@ def create_scan(
         pipeline_mode=pipeline_mode,
         status="running",
         started_at=utcnow(),
+        current_task_id=current_task_id,
     )
     db.add(scan)
     db.commit()

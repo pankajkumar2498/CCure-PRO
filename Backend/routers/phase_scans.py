@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from db.base import get_db
-from db.models import User
+from db.models import User, Scan
 from auth.rbac import require_permission
 from scans.db_helpers import (
     create_scan,
@@ -203,6 +203,10 @@ async def scan_host_discovery(
         max_concurrency     = req.max_concurrency,
     )
 
+    # Store the task ID so it can be revoked if needed
+    scan.current_task_id = task.id
+    db.commit()
+
     log.info("Host Discovery triggered — task_id=%s, scan_id=%s, wait=%s", task.id, scan_id, req.wait)
 
     if req.wait:
@@ -240,6 +244,7 @@ async def scan_asset_discovery(
     request: Request,
     req:  AssetDiscoveryRequest,
     user: User    = Depends(require_permission("scans", "execute")),
+    db: Session = Depends(get_db),
 ):
     """
     Asset Discovery: Phase 2 (Trigger and Return Immediately).
@@ -256,6 +261,11 @@ async def scan_asset_discovery(
         pipeline_mode = req.pipeline_mode,
     )
 
+    # Track active task for termination
+    if req.scan_id:
+        db.query(Scan).filter(Scan.id == req.scan_id).update({"current_task_id": task.id})
+        db.commit()
+
     return {
         "success": True,
         "task_id": task.id,
@@ -269,6 +279,7 @@ async def scan_advanced_scan(
     request: Request,
     req:  AdvancedScanRequest,
     user: User    = Depends(require_permission("scans", "execute")),
+    db: Session = Depends(get_db),
 ):
     """
     Advanced Scan: Phase 3 (Trigger and Return Immediately).
@@ -283,6 +294,11 @@ async def scan_advanced_scan(
         scan_id       = req.scan_id,
         pipeline_mode = req.pipeline_mode,
     )
+
+    # Track active task for termination
+    if req.scan_id:
+        db.query(Scan).filter(Scan.id == req.scan_id).update({"current_task_id": task.id})
+        db.commit()
 
     return {
         "success": True,

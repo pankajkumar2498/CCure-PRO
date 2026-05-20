@@ -16,6 +16,9 @@ export const deleteScan = (id) =>
 export const archiveScan = (id) =>
   api.post(`/scans/${id}/archive`);
 
+export const stopScan = (id) =>
+  api.post(`/scans/${id}/stop`);
+
 export const restoreScan = (id) =>
   api.post(`/scans/${id}/restore`);
 

@@ -30,13 +30,13 @@ import "../styles/dashboard.css";
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
 
-const fmt  = (n) => (n ?? 0).toLocaleString();
-const pct  = (a, b) => (b ? Math.round(a / b * 100) : 0);
-const ago  = (iso) => {
+const fmt = (n) => (n ?? 0).toLocaleString();
+const pct = (a, b) => (b ? Math.round(a / b * 100) : 0);
+const ago = (iso) => {
   if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1)  return "just now";
+  if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -161,16 +161,43 @@ function MetricCards({ summary, quota, loading, onNavigate }) {
     );
   }
 
-  const sev  = summary?.severity  || {};
-  const ast  = summary?.assets    || {};
-  const scn  = summary?.scans     || {};
-  const kev  = summary?.kev       || {};
+  const sev = summary?.severity || {};
+  const ast = summary?.assets || {};
+  const scn = summary?.scans || {};
+  const kev = summary?.kev || {};
+  const d = sev.deltas || {};
+
+  const getVulnTrend = (val) => {
+    if (val > 0) return { label: `🔺 +${val} from last scan`, color: "#ef4444" };
+    if (val < 0) return { label: `🔻 ${Math.abs(val)} remediated`, color: "#22c55e" };
+    return { label: "— unchanged", color: "var(--text-muted)" };
+  };
+
+  const getRiskTrend = (val) => {
+    if (val > 0) return { label: `🔺 +${val} pts vs last week`, color: "#ef4444" };
+    if (val < 0) return { label: `🔻 ${Math.abs(val)} pts vs last week`, color: "#22c55e" };
+    return { label: "— stable", color: "var(--text-muted)" };
+  };
+
+  const getAssetTrend = (val) => {
+    if (val > 0) return { label: `🔺 +${val} new hosts`, color: "#22c55e" };
+    return { label: "— unchanged", color: "var(--text-muted)" };
+  };
+
+  const tCritical = getVulnTrend(d.critical);
+  const tHigh = getVulnTrend(d.high);
+  const tMedium = getVulnTrend(d.medium);
+  const tLowInfo = getVulnTrend(d.low_info);
+  const tAssets = getAssetTrend(ast.new_24h);
+  const tRisk = getRiskTrend(ast.risk_delta_7d);
 
   const cards = [
     {
       label: "Critical Findings",
       value: fmt(sev.critical),
       variant: "critical",
+      trend: tCritical.label,
+      trendColor: tCritical.color,
       sub: `Across ${ast.total || 0} assets`,
       nav: "/vulnerabilities?severity=Critical",
     },
@@ -178,49 +205,63 @@ function MetricCards({ summary, quota, loading, onNavigate }) {
       label: "High Findings",
       value: fmt(sev.high),
       variant: "high",
-      sub: "Open, unaccepted",
+      trend: tHigh.label,
+      trendColor: tHigh.color,
+      sub: `Across assets`,
       nav: "/vulnerabilities?severity=High",
     },
     {
       label: "Medium Findings",
       value: fmt(sev.medium),
       variant: "medium",
-      sub: `${sev.total || 0} total open findings`,
+      trend: tMedium.label,
+      trendColor: tMedium.color,
+      sub: `Across assets`,
       nav: "/vulnerabilities?severity=Medium",
     },
     {
       label: "Low / Info",
       value: fmt((sev.low || 0) + (sev.info || 0)),
       variant: "low",
-      sub: "Informational",
+      trend: tLowInfo.label,
+      trendColor: tLowInfo.color,
+      sub: "Informational only",
       nav: "/vulnerabilities?severity=Low,Info",
     },
     {
       label: "Assets Discovered",
       value: fmt(ast.total),
       variant: "blue",
-      sub: `${ast.unmanaged || 0} unmanaged · ${ast.new_7d || 0} new`,
+      trend: tAssets.label,
+      trendColor: tAssets.color,
+      sub: `${ast.unmanaged || 0} unmanaged`,
       nav: "/assets",
     },
     {
       label: "Scans (24h)",
       value: fmt(scn.last_24h),
       variant: "teal",
-      sub: `${scn.running || 0} running · ${scn.queued || 0} queued`,
+      trend: `${scn.running || 0} running · ${scn.queued || 0} queued`,
+      trendColor: "var(--text-muted)",
+      sub: `Plan limit ${scn.quota_limit_24h || 50}/day`,
       nav: "/history",
     },
     {
       label: "Org Risk Score",
       value: `${ast.avg_risk_score || 0}/100`,
       variant: "purple",
-      sub: ast.risk_level || "—",
+      trend: tRisk.label,
+      trendColor: tRisk.color,
+      sub: `${ast.risk_level || "INFO"} risk level`,
       nav: "/assets",
     },
     {
-      label: "Open KEV CVEs",
+      label: "Open CVEs (KEV)",
       value: fmt(kev.open_count),
       variant: "critical",
-      sub: "CISA KEV listed — P0",
+      trend: "CISA KEV listed",
+      trendColor: "#ef4444",
+      sub: "Priority P0 required",
       nav: "/vulnerabilities?in_kev=true",
     },
   ];
@@ -236,6 +277,11 @@ function MetricCards({ summary, quota, loading, onNavigate }) {
         >
           <div className="db-metric-label">{c.label}</div>
           <div className={`db-metric-value db-metric-value--${c.variant}`}>{c.value}</div>
+          {c.trend && (
+            <div style={{ fontSize: "0.75rem", fontWeight: 700, marginTop: 4, marginBottom: 2, color: c.trendColor }}>
+              {c.trend}
+            </div>
+          )}
           <div className="db-metric-sub">{c.sub}</div>
         </div>
       ))}
@@ -246,14 +292,14 @@ function MetricCards({ summary, quota, loading, onNavigate }) {
 // ── 2. Severity Bar ───────────────────────────────────────────────────────────
 
 function SevBar({ summary }) {
-  const sev   = summary?.severity || {};
+  const sev = summary?.severity || {};
   const total = sev.total || 1;
-  const segs  = [
+  const segs = [
     { key: "critical", label: "Critical", color: SEV_COLORS.Critical, count: sev.critical || 0 },
-    { key: "high",     label: "High",     color: SEV_COLORS.High,     count: sev.high     || 0 },
-    { key: "medium",   label: "Medium",   color: SEV_COLORS.Medium,   count: sev.medium   || 0 },
-    { key: "low",      label: "Low",      color: SEV_COLORS.Low,      count: sev.low      || 0 },
-    { key: "info",     label: "Info",     color: SEV_COLORS.Info,     count: sev.info     || 0 },
+    { key: "high", label: "High", color: SEV_COLORS.High, count: sev.high || 0 },
+    { key: "medium", label: "Medium", color: SEV_COLORS.Medium, count: sev.medium || 0 },
+    { key: "low", label: "Low", color: SEV_COLORS.Low, count: sev.low || 0 },
+    { key: "info", label: "Info", color: SEV_COLORS.Info, count: sev.info || 0 },
   ];
 
   return (
@@ -298,13 +344,13 @@ function RiskScorePanel({ summary, breakdown, loading }) {
   }
 
   const ast = summary?.assets || {};
-  const bd  = breakdown || {};
+  const bd = breakdown || {};
   const score = ast.avg_risk_score || 0;
   const level = ast.risk_level || "INFO";
 
-  const pd  = bd.priority_distribution || {};
+  const pd = bd.priority_distribution || {};
   const tls = bd.tls_issues || {};
-  const fs  = bd.finding_status || {};
+  const fs = bd.finding_status || {};
 
   return (
     <div className="db-card">
@@ -322,10 +368,10 @@ function RiskScorePanel({ summary, breakdown, loading }) {
 
       <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
         {[
-          { label: "P0 KEV",    val: pd.p0_kev   || 0, color: "#f87171" },
+          { label: "P0 KEV", val: pd.p0_kev || 0, color: "#f87171" },
           { label: "P2 CVSS≥9", val: pd.p2_cvss_9 || 0, color: "#fbbf24" },
-          { label: "Open",      val: fs.open     || 0, color: "var(--text-muted)" },
-          { label: "Fixed",     val: fs.fixed    || 0, color: "#4ade80" },
+          { label: "Open", val: fs.open || 0, color: "var(--text-muted)" },
+          { label: "Fixed", val: fs.fixed || 0, color: "#4ade80" },
         ].map((b) => (
           <div key={b.label} style={{
             flex: 1, textAlign: "center",
@@ -350,7 +396,7 @@ function FindingsDonut({ summary, breakdown, loading }) {
         <div style={{ marginTop: 14, display: "flex", gap: 12 }}>
           <Skeleton h={80} w={80} style={{ borderRadius: "50%" }} />
           <div style={{ flex: 1 }}>
-            {[1,2,3,4,5].map(i => <Skeleton key={i} h={8} w="100%" style={{ marginBottom: 7 }} />)}
+            {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} h={8} w="100%" style={{ marginBottom: 7 }} />)}
           </div>
         </div>
       </div>
@@ -358,22 +404,22 @@ function FindingsDonut({ summary, breakdown, loading }) {
   }
 
   const sev = summary?.severity || {};
-  const fs  = breakdown?.finding_status || {};
+  const fs = breakdown?.finding_status || {};
   const total = sev.total || 0;
 
   const items = [
     { label: "Critical", color: "#ef4444", count: sev.critical || 0 },
-    { label: "High",     color: "#f97316", count: sev.high     || 0 },
-    { label: "Medium",   color: "#eab308", count: sev.medium   || 0 },
-    { label: "Low",      color: "#22c55e", count: sev.low      || 0 },
-    { label: "Info",     color: "#6366f1", count: sev.info     || 0 },
+    { label: "High", color: "#f97316", count: sev.high || 0 },
+    { label: "Medium", color: "#eab308", count: sev.medium || 0 },
+    { label: "Low", color: "#22c55e", count: sev.low || 0 },
+    { label: "Info", color: "#6366f1", count: sev.info || 0 },
   ];
 
   // CSS conic-gradient donut
   let cumulative = 0;
   const segments = items.map(item => {
     const slice = total > 0 ? (item.count / total) * 360 : 0;
-    const from  = cumulative;
+    const from = cumulative;
     cumulative += slice;
     return { ...item, from, to: cumulative };
   });
@@ -415,9 +461,9 @@ function FindingsDonut({ summary, breakdown, loading }) {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <BarRow label="Open"     value={fs.open     || 0} max={Math.max(total, 1)} color="#ef4444" />
+        <BarRow label="Open" value={fs.open || 0} max={Math.max(total, 1)} color="#ef4444" />
         <BarRow label="Accepted" value={fs.accepted || 0} max={Math.max(total, 1)} color="#eab308" />
-        <BarRow label="Fixed"    value={fs.fixed    || 0} max={Math.max(total, 1)} color="#22c55e" />
+        <BarRow label="Fixed" value={fs.fixed || 0} max={Math.max(total, 1)} color="#22c55e" />
       </div>
     </div>
   );
@@ -431,7 +477,7 @@ function ScanActivity({ scans, loading }) {
       <div className="db-card">
         <Skeleton h={12} w="40%" />
         <div style={{ marginTop: 14 }}>
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
               <Skeleton h={30} w={30} style={{ borderRadius: 8, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
@@ -471,8 +517,8 @@ function ScanActivity({ scans, loading }) {
         const iconBg = scan.status === "running"
           ? "rgba(59,130,246,0.1)"
           : scan.status === "failed"
-          ? "rgba(239,68,68,0.1)"
-          : "rgba(34,197,94,0.08)";
+            ? "rgba(239,68,68,0.1)"
+            : "rgba(34,197,94,0.08)";
 
         return (
           <div key={scan.id} className="db-scan-row">
@@ -485,8 +531,8 @@ function ScanActivity({ scans, loading }) {
                 {scan.current_phase
                   ? `Phase: ${scan.current_phase.replace(/_/g, " ")} · ${scan.progress_pct || 0}%`
                   : scan.active_hosts
-                  ? `${scan.active_hosts} hosts · C:${scan.critical_count} H:${scan.high_count}`
-                  : scan.scan_name || scan.id}
+                    ? `${scan.active_hosts} hosts · C:${scan.critical_count} H:${scan.high_count}`
+                    : scan.scan_name || scan.id}
               </div>
               {scan.status === "running" && (
                 <div className="db-progress" style={{ marginTop: 5 }}>
@@ -516,7 +562,7 @@ function TopAssetsTable({ assets, loading, onNavigate }) {
       <div className="db-card">
         <Skeleton h={12} w="40%" />
         <div style={{ marginTop: 14 }}>
-          {[1,2,3,4,5].map(i => <Skeleton key={i} h={36} w="100%" style={{ marginBottom: 2 }} />)}
+          {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} h={36} w="100%" style={{ marginBottom: 2 }} />)}
         </div>
       </div>
     );
@@ -615,7 +661,7 @@ function TopCVEsTable({ cves, loading, onNavigate }) {
       <div className="db-card">
         <Skeleton h={12} w="40%" />
         <div style={{ marginTop: 14 }}>
-          {[1,2,3,4,5].map(i => <Skeleton key={i} h={36} w="100%" style={{ marginBottom: 2 }} />)}
+          {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} h={36} w="100%" style={{ marginBottom: 2 }} />)}
         </div>
       </div>
     );
@@ -688,8 +734,8 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
     <div className="db-card"><Skeleton h={12} w="50%" /><Skeleton h={80} w="100%" style={{ marginTop: 14 }} /></div>
   );
 
-  const t   = assetBreakdown?.totals || {};
-  const os  = assetBreakdown?.os_distribution || [];
+  const t = assetBreakdown?.totals || {};
+  const os = assetBreakdown?.os_distribution || [];
   const OS_ICON = { Linux: "🐧", Windows: "🪟", macOS: "🍎", "BSD": "🐡", Unknown: "❓" };
 
   return (
@@ -705,10 +751,10 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
           </div>
         ))}
       </div>
-      <BarRow label="Managed"   value={t.managed   || 0} max={t.total || 1} color="#22c55e" />
-      <BarRow label="Unmanaged" value={t.unmanaged  || 0} max={t.total || 1} color="#ef4444" />
-      <BarRow label="Active"    value={t.active     || 0} max={t.total || 1} color="#3b82f6" />
-      <BarRow label="Offline"   value={t.offline    || 0} max={t.total || 1} color="var(--text-faint)" />
+      <BarRow label="Managed" value={t.managed || 0} max={t.total || 1} color="#22c55e" />
+      <BarRow label="Unmanaged" value={t.unmanaged || 0} max={t.total || 1} color="#ef4444" />
+      <BarRow label="Active" value={t.active || 0} max={t.total || 1} color="#3b82f6" />
+      <BarRow label="Offline" value={t.offline || 0} max={t.total || 1} color="var(--text-faint)" />
     </div>
   );
 }
@@ -760,9 +806,9 @@ function TLSHealthPanel({ tlsHealth, httpHeaders, loading }) {
     <div className="db-card"><Skeleton h={12} w="50%" /><Skeleton h={140} w="100%" style={{ marginTop: 14 }} /></div>
   );
 
-  const tls  = tlsHealth  || {};
+  const tls = tlsHealth || {};
   const http = httpHeaders || {};
-  const gd   = tls.grade_distribution || {};
+  const gd = tls.grade_distribution || {};
 
   const grades = [
     { g: "A", color: "#22c55e" }, { g: "B", color: "#4ade80" },
@@ -818,7 +864,7 @@ function CompliancePanel({ compliance, loading, onNavigate }) {
     <div className="db-card">
       <Skeleton h={12} w="50%" />
       <div className="db-compliance-grid" style={{ marginTop: 14 }}>
-        {[1,2,3,4,5,6].map(i => <Skeleton key={i} h={70} />)}
+        {[1, 2, 3, 4, 5, 6].map(i => <Skeleton key={i} h={70} />)}
       </div>
     </div>
   );
@@ -860,7 +906,7 @@ function CompliancePanel({ compliance, loading, onNavigate }) {
 function InsightsStrip({ insights, loading }) {
   if (loading) return (
     <div className="db-insights-strip">
-      {[1,2,3].map(i => <Skeleton key={i} h={72} />)}
+      {[1, 2, 3].map(i => <Skeleton key={i} h={72} />)}
     </div>
   );
 
@@ -892,7 +938,7 @@ function AuditTimeline({ onNavigate }) {
     import("../api/axiosInstance").then(({ default: api }) => {
       api.get("/admin/audit-logs", { params: { limit: 6 } })
         .then(r => setLogs(r.data?.logs || []))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setLoading(false));
     });
   }, []);
@@ -921,7 +967,7 @@ function AuditTimeline({ onNavigate }) {
       </div>
       <div className="db-card-sub">Immutable · SOC 2 / ISO 27001 ready</div>
 
-      {loading && [1,2,3,4,5].map(i => (
+      {loading && [1, 2, 3, 4, 5].map(i => (
         <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           <Skeleton h={28} w={28} style={{ borderRadius: 7, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
@@ -966,21 +1012,21 @@ function NotifCenter({ onNavigate }) {
     import("../api/axiosInstance").then(({ default: api }) => {
       api.get("/notifications", { params: { limit: 5, unread_only: true } })
         .then(r => setNotifs(r.data?.notifications || []))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setLoading(false));
     });
   }, []);
 
-  const TYPE_ICON  = {
+  const TYPE_ICON = {
     scan_completed: "📡", scan_failed: "❌", vulnerability_found: "🚨",
     system_message: "ℹ️", admin_notice: "👤",
   };
   const TYPE_COLOR = {
     vulnerability_found: "rgba(239,68,68,0.1)",
-    scan_failed:         "rgba(239,68,68,0.1)",
-    scan_completed:      "rgba(59,130,246,0.1)",
-    system_message:      "rgba(234,179,8,0.1)",
-    admin_notice:        "rgba(168,85,247,0.1)",
+    scan_failed: "rgba(239,68,68,0.1)",
+    scan_completed: "rgba(59,130,246,0.1)",
+    system_message: "rgba(234,179,8,0.1)",
+    admin_notice: "rgba(168,85,247,0.1)",
   };
 
   return (
@@ -992,7 +1038,7 @@ function NotifCenter({ onNavigate }) {
         </button>
       </div>
 
-      {loading && [1,2,3].map(i => (
+      {loading && [1, 2, 3].map(i => (
         <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           <Skeleton h={28} w={28} style={{ borderRadius: 7 }} />
           <div style={{ flex: 1 }}>
@@ -1031,11 +1077,11 @@ function NotifCenter({ onNavigate }) {
 
 function useDashboard() {
   const [state, setState] = useState({
-    summary:       null, breakdown:  null, topAssets:  null,
-    topCVEs:       null, services:   null, tlsHealth:  null,
-    httpHeaders:   null, compliance: null, assetBreakdown: null,
-    scanActivity:  null, insights:   null,
-    loading:       true, error:      null,
+    summary: null, breakdown: null, topAssets: null,
+    topCVEs: null, services: null, tlsHealth: null,
+    httpHeaders: null, compliance: null, assetBreakdown: null,
+    scanActivity: null, insights: null,
+    loading: true, error: null,
   });
 
   const load = useCallback(async () => {
@@ -1058,17 +1104,17 @@ function useDashboard() {
     const ok = (r, key) => r.status === "fulfilled" ? r.value?.data?.[key] || r.value?.data || null : null;
 
     setState({
-      summary:        results[0].status === "fulfilled" ? results[0].value?.data : null,
-      breakdown:      results[1].status === "fulfilled" ? results[1].value?.data : null,
-      topAssets:      ok(results[2], "assets"),
-      topCVEs:        ok(results[3], "cves"),
-      services:       ok(results[4], "services"),
-      tlsHealth:      results[5].status === "fulfilled" ? results[5].value?.data : null,
-      httpHeaders:    results[6].status === "fulfilled" ? results[6].value?.data : null,
-      compliance:     results[7].status === "fulfilled" ? results[7].value?.data : null,
+      summary: results[0].status === "fulfilled" ? results[0].value?.data : null,
+      breakdown: results[1].status === "fulfilled" ? results[1].value?.data : null,
+      topAssets: ok(results[2], "assets"),
+      topCVEs: ok(results[3], "cves"),
+      services: ok(results[4], "services"),
+      tlsHealth: results[5].status === "fulfilled" ? results[5].value?.data : null,
+      httpHeaders: results[6].status === "fulfilled" ? results[6].value?.data : null,
+      compliance: results[7].status === "fulfilled" ? results[7].value?.data : null,
       assetBreakdown: results[8].status === "fulfilled" ? results[8].value?.data : null,
-      scanActivity:   ok(results[9], "scans"),
-      insights:       ok(results[10], "insights"),
+      scanActivity: ok(results[9], "scans"),
+      insights: ok(results[10], "insights"),
       loading: false,
       error: null,
     });
@@ -1097,31 +1143,34 @@ function useDashboard() {
 
 export default function SecurityDashboard() {
   const navigate = useNavigate();
-  const { user }  = useAuth();
-  const db        = useDashboard();
+  const { user } = useAuth();
+  const db = useDashboard();
   const [activeTab, setActiveTab] = useState("overview");
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [dateRange, setDateRange] = useState("Last 30 days");
 
-  const canAssets   = canPermission(user, { resource: "assets",   action: "read" });
-  const canFindings = canPermission(user, { resource: "findings",  action: "read" });
-  const canReports  = canPermission(user, { resource: "reports",   action: "read" });
-  const canAudit    = canPermission(user, { resource: "audit",     action: "read" });
+  const canAssets = canPermission(user, { resource: "assets", action: "read" });
+  const canFindings = canPermission(user, { resource: "findings", action: "read" });
+  const canReports = canPermission(user, { resource: "reports", action: "read" });
+  const canAudit = canPermission(user, { resource: "audit", action: "read" });
 
   const nav = useCallback((path) => navigate(path), [navigate]);
 
   // Alert banners from real data
-  const critCount   = db.summary?.severity?.critical || 0;
-  const kevCount    = db.summary?.kev?.open_count || 0;
-  const certExpire  = db.tlsHealth?.expiring_in_30d || 0;
-  const hasAlerts   = critCount > 0 || certExpire > 0;
+  const critCount = db.summary?.severity?.critical || 0;
+  const kevCount = db.summary?.kev?.open_count || 0;
+  const certExpire = db.tlsHealth?.expiring_in_30d || 0;
+  const hasAlerts = critCount > 0 || certExpire > 0;
 
   const lastUpdated = new Date().toLocaleTimeString();
 
   const tabs = [
-    { id: "overview",    label: "Overview" },
-    { id: "assets",      label: "Assets",      show: canAssets },
-    { id: "vulns",       label: "Vulnerabilities", show: canFindings },
-    { id: "compliance",  label: "Compliance",  show: canReports },
-    { id: "executive",   label: "Executive",   show: canReports },
+    { id: "overview", label: "Overview" },
+    { id: "assets", label: "Assets", show: canAssets },
+    { id: "vulns", label: "Vulnerabilities", show: canFindings },
+    { id: "scans", label: "Scans" },
+    { id: "compliance", label: "Compliance", show: canReports },
+    { id: "audit", label: "Audit", show: canAudit },
   ].filter(t => t.show !== false);
 
   return (
@@ -1138,12 +1187,32 @@ export default function SecurityDashboard() {
             </div>
           </div>
           <div className="db-header-actions">
-            <button className="db-btn db-btn--ghost" onClick={db.refresh} title="Refresh data">
-              ↻ Refresh
-            </button>
+            <div style={{ position: "relative" }}>
+              <div
+                onClick={() => setShowDateDropdown(s => !s)}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.05)", padding: "4px 12px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)", fontSize: "0.78rem", color: "var(--text)", transition: "background 0.2s" }}
+              >
+                <span style={{ color: "var(--text)" }}>📅 {dateRange}</span>
+                <span style={{ marginLeft: 4, color: "var(--text-muted)", fontSize: "0.6rem" }}>▼</span>
+              </div>
+              {showDateDropdown && (
+                <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, width: 180, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,0.5)", zIndex: 100, overflow: "hidden" }}>
+                  {["Last 7 days", "Last 30 days", "Last 90 days", "Year to date"].map(range => (
+                    <button
+                      key={range}
+                      onClick={() => { setDateRange(range); setShowDateDropdown(false); db.refresh(); }}
+                      style={{ width: "100%", padding: "10px 12px", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.82rem", color: range === dateRange ? "var(--accent)" : "var(--text)", display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      {range === dateRange ? <span style={{ width: 14 }}>✓</span> : <span style={{ width: 14 }} />}
+                      {range}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {canReports && (
               <button className="db-btn db-btn--ghost" onClick={() => navigate("/reports")}>
-                ⬇ Reports
+                ⬇ Export PDF
               </button>
             )}
             <button className="db-btn db-btn--primary" onClick={() => navigate("/scan")}>
@@ -1306,65 +1375,27 @@ export default function SecurityDashboard() {
           </div>
         )}
 
-        {/* ═══════════ EXECUTIVE TAB ═══════════ */}
-        {activeTab === "executive" && canReports && (
+        {/* ═══════════ SCANS TAB ═══════════ */}
+        {activeTab === "scans" && (
           <div className="db-section" style={{ marginTop: 16 }}>
-            <div className="db-section-title">Executive Security Summary</div>
-
-            <div className="db-exec-callout" style={{ marginBottom: 16 }}>
-              <div className="db-exec-callout-title">🏆 Executive Security Posture — {new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</div>
-              <div className="db-exec-callout-text">
-                Your organization&apos;s risk score is{" "}
-                <strong style={{ color: db.summary?.assets?.avg_risk_score >= 75 ? "#ef4444" : db.summary?.assets?.avg_risk_score >= 50 ? "#f97316" : "#eab308" }}>
-                  {db.summary?.assets?.avg_risk_score || 0}/100 ({db.summary?.assets?.risk_level || "—"})
-                </strong>
-                {db.summary?.severity?.critical > 0 && (
-                  <>
-                    , driven by <strong>{db.summary.severity.critical} critical CVE{db.summary.severity.critical > 1 ? "s" : ""}</strong>
-                    {kevCount > 0 && <> including <strong>{kevCount} CISA KEV-listed</strong></>}
-                  </>
-                )}.
-                {" "}{db.summary?.assets?.total || 0} assets discovered, {db.summary?.assets?.unmanaged || 0} unmanaged.
-                Scan coverage: {db.summary?.scans?.last_24h || 0} scans in the last 24 hours.
+            <div className="db-section-title">Scan Activity & History</div>
+            <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
+              <ScanActivity scans={db.scanActivity} loading={db.loading} />
+              <div style={{ textAlign: "center", paddingTop: 8 }}>
+                <button className="db-btn db-btn--primary" onClick={() => nav("/history")}>
+                  Open Full Scan History →
+                </button>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="db-actions-grid">
-              <div className="db-action-panel db-action-panel--critical">
-                <div className="db-action-panel-title" style={{ color: "#f87171" }}>🔴 Immediate Actions</div>
-                <ul>
-                  {(db.topCVEs || []).slice(0, 4).map(c => (
-                    <li key={c.id}>{c.id} — {c.priority_label} on {c.affected_assets} assets</li>
-                  ))}
-                  {(db.tlsHealth?.expiring_in_30d || 0) > 0 && (
-                    <li>Renew {db.tlsHealth.expiring_in_30d} expiring TLS certificates</li>
-                  )}
-                </ul>
-              </div>
-              <div className="db-action-panel db-action-panel--warning">
-                <div className="db-action-panel-title" style={{ color: "#fbbf24" }}>🟡 Short-term (7 days)</div>
-                <ul>
-                  {(db.assetBreakdown?.totals?.unmanaged || 0) > 0 && (
-                    <li>Tag {db.assetBreakdown.totals.unmanaged} unmanaged assets</li>
-                  )}
-                  <li>Review and remediate High severity findings</li>
-                  <li>Add missing HTTP security headers</li>
-                  <li>Disable cleartext protocols (FTP/Telnet)</li>
-                </ul>
-              </div>
-              <div className="db-action-panel db-action-panel--ok">
-                <div className="db-action-panel-title" style={{ color: "#4ade80" }}>🟢 Strategic (30 days)</div>
-                <ul>
-                  <li>Achieve compliance target scores</li>
-                  <li>Enable credentialed scanning on all assets</li>
-                  <li>Set up weekly advanced scan schedule</li>
-                  <li>Configure automated report delivery</li>
-                </ul>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-              <CompliancePanel compliance={db.compliance} loading={db.loading} onNavigate={nav} />
+        {/* ═══════════ AUDIT TAB ═══════════ */}
+        {activeTab === "audit" && canAudit && (
+          <div className="db-section" style={{ marginTop: 16 }}>
+            <div className="db-section-title">Audit Logs & Activity</div>
+            <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
+              <AuditTimeline onNavigate={nav} />
             </div>
           </div>
         )}

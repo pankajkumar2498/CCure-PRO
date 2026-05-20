@@ -79,6 +79,7 @@ class Scan(Base):
     # ── Status ────────────────────────────────────────────────────────────────
     status          = Column(String(50), nullable=False, default="queued", index=True)
     failure_reason  = Column(Text, nullable=True)
+    current_task_id = Column(String(100), nullable=True)  # Track active Celery task
 
     # ── Timing ────────────────────────────────────────────────────────────────
     queued_at        = Column(TIMESTAMPTZ, nullable=False, default=utcnow)

@@ -99,17 +99,50 @@ def get_dashboard_summary(
     low      = sev_map.get("low", 0)
     info     = sev_map.get("info", 0)
 
+    # ── Calculate Deltas from last scan ───────────────────────────────────────
+    last_scans = (
+        db.query(Scan)
+        .filter(Scan.org_id == org, Scan.status.in_(["complete", "completed"]), Scan.is_deleted == False)
+        .order_by(Scan.completed_at.desc())
+        .limit(2)
+        .all()
+    )
+
+    sev_deltas = {"critical": 0, "high": 0, "medium": 0, "low_info": 0}
+    if len(last_scans) >= 2:
+        s1, s2 = last_scans[0], last_scans[1]
+        sev_deltas["critical"] = (s1.critical_count or 0) - (s2.critical_count or 0)
+        sev_deltas["high"]     = (s1.high_count or 0) - (s2.high_count or 0)
+        sev_deltas["medium"]   = (s1.medium_count or 0) - (s2.medium_count or 0)
+        sev_deltas["low_info"] = ((s1.low_count or 0) + (s1.info_count or 0)) - \
+                                 ((s2.low_count or 0) + (s2.info_count or 0))
+    elif len(last_scans) == 1:
+        s1 = last_scans[0]
+        sev_deltas["critical"] = s1.critical_count or 0
+        sev_deltas["high"]     = s1.high_count or 0
+        sev_deltas["medium"]   = s1.medium_count or 0
+        sev_deltas["low_info"] = (s1.low_count or 0) + (s1.info_count or 0)
+
     # ── Asset stats ────────────────────────────────────────────────────────────
     ast_row = (
         db.query(
             func.count(Asset.id).label("total"),
             func.count(case((Asset.is_managed == False, 1))).label("unmanaged"),
             func.count(case((Asset.first_seen_at >= w7d, 1))).label("new_7d"),
+            func.count(case((Asset.first_seen_at >= w24h, 1))).label("new_24h"),
             func.avg(Asset.risk_score).label("avg_risk"),
         )
         .filter(Asset.org_id == org)
         .one()
     )
+
+    # Calculate risk delta (approximate: current avg vs avg of assets older than 7d)
+    old_avg_risk = (
+        db.query(func.avg(Asset.risk_score))
+        .filter(Asset.org_id == org, Asset.first_seen_at < w7d)
+        .scalar() or ast_row.avg_risk or 0
+    )
+    risk_delta_7d = round(float(ast_row.avg_risk or 0) - float(old_avg_risk), 1)
 
     # ── Scan stats ─────────────────────────────────────────────────────────────
     scans_24h = (
@@ -163,13 +196,16 @@ def get_dashboard_summary(
             "critical": critical, "high": high, "medium": medium,
             "low": low, "info": info,
             "total": critical + high + medium + low + info,
+            "deltas": sev_deltas,
         },
         "assets": {
             "total":          ast_row.total or 0,
             "unmanaged":      ast_row.unmanaged or 0,
             "new_7d":         ast_row.new_7d or 0,
+            "new_24h":        ast_row.new_24h or 0,
             "avg_risk_score": avg_risk,
             "risk_level":     risk_level,
+            "risk_delta_7d":  risk_delta_7d,
         },
         "scans": {
             "last_24h":        scans_24h,

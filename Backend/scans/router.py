@@ -422,6 +422,49 @@ def archive_scan(
     }
 
 
+@router.post("/{scan_id}/stop")
+def stop_scan(
+    scan_id: str,
+    db:   Session = Depends(get_db),
+    user: User    = Depends(require_permission("scans", "execute")),
+):
+    """
+    Terminates an active scan session.
+    Marks the scan and any active phases as 'cancelled'.
+    Also revokes the active Celery task.
+    """
+    scan = _get_scan_or_404(scan_id, user, db)
+    if scan.status in TERMINAL_STATUSES:
+        return {"detail": f"Scan {scan_id} is already in a terminal state ({scan.status})", "stopped": False}
+
+    # 1. Update DB Status
+    scan.status = "cancelled"
+    scan.updated_at = utcnow()
+    
+    # Mark all non-terminal phases as cancelled
+    for phase in scan.phases:
+        if phase.status not in ("complete", "failed", "skipped", "cancelled"):
+            phase.status = "cancelled"
+            phase.completed_at = utcnow()
+            
+    # 2. Revoke Celery Task
+    if scan.current_task_id:
+        try:
+            from core.celery_app import celery_app
+            # On Windows, terminate=True might not work for all pool types, 
+            # but revoke() will at least prevent the task from starting if it's queued.
+            # We omit the signal param to use the OS default (SIGTERM on Linux, N/A on Windows).
+            celery_app.control.revoke(scan.current_task_id, terminate=True)
+            log.info("Revoked task %s for scan %s", scan.current_task_id, scan_id)
+        except Exception as e:
+            log.error("Failed to revoke task %s: %s", scan.current_task_id, e)
+
+    db.add(scan)
+    db.commit()
+    log.info("Scan %s stopped by user %s", scan_id, user.id)
+    return {"detail": f"Scan {scan_id} stopped", "stopped": True}
+
+
 @router.post("/{scan_id}/restore")
 def restore_scan(
     scan_id: str,

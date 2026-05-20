@@ -42,6 +42,18 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
+def _check_cancelled(db: SessionLocal, scan_id: str) -> bool:
+    """Check if the scan has been marked as cancelled in the DB."""
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    return scan and scan.status == "cancelled"
+
+
+def _update_task_id(db: SessionLocal, scan_id: str, task_id: str):
+    """Update the current active task ID for the scan."""
+    db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": task_id})
+    db.commit()
+
+
 def _merge_host_identity(enriched_hosts: List[dict], source_hosts: List[dict]) -> List[dict]:
     """
     Preserve identity/context fields from the previous phase when the next phase
@@ -404,8 +416,9 @@ def sync_host_discovery_task(scan_id: str, org_id: str, user_id: Optional[str], 
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_host_discovery", queue="scanner")
+@celery_app.task(name="ccure.tasks.run_host_discovery", queue="scanner", bind=True)
 def run_host_discovery_task(
+    self,
     user_id:             str,
     targets:             List[str],
     scan_type:           str,
@@ -422,6 +435,11 @@ def run_host_discovery_task(
     log.info("[TRACE][TASK][%s] Starting run_host_discovery_task", ts())
     db = SessionLocal()
     try:
+        _update_task_id(db, scan_id, self.request.id)
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled before host discovery", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
+
         from scans.db_helpers import update_scan_phase1
         mode = resolve_pipeline_mode(pipeline_mode)
         terminal = get_terminal_phase(mode)
@@ -436,6 +454,10 @@ def run_host_discovery_task(
             rate_limit=rate_limit, max_concurrency=max_concurrency
         ))
         log.info("[TRACE][ENGINE][%s] run_host_discovery_only finished", ts())
+
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled after host discovery", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(db, scan_id, user_id, result.get("error", "Host Discovery failed"))
@@ -478,8 +500,9 @@ def run_host_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_asset_discovery", queue="scanner")
+@celery_app.task(name="ccure.tasks.run_asset_discovery", queue="scanner", bind=True)
 def run_asset_discovery_task(
+    self,
     user_id:       str,
     hosts:         List[dict],
     intensity:     str,
@@ -489,6 +512,11 @@ def run_asset_discovery_task(
     """Phase 2 Background Task."""
     db = SessionLocal()
     try:
+        _update_task_id(db, scan_id, self.request.id)
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled before asset discovery", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
+
         mode = resolve_pipeline_mode(pipeline_mode)
         is_final = (get_terminal_phase(mode) == 2)
 
@@ -496,6 +524,10 @@ def run_asset_discovery_task(
         result = _run_async(orch.run_asset_discovery_only(
             hosts=hosts, intensity=intensity, pipeline_mode=mode, scan_id=scan_id
         ))
+
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled after asset discovery", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(db, scan_id, user_id, result.get("error", "Asset Discovery failed"))
@@ -540,8 +572,9 @@ def run_asset_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_advanced_scan", queue="scanner")
+@celery_app.task(name="ccure.tasks.run_advanced_scan", queue="scanner", bind=True)
 def run_advanced_scan_task(
+    self,
     user_id:       str,
     hosts:         List[dict],
     scan_id:       str,
@@ -550,9 +583,18 @@ def run_advanced_scan_task(
     """Phase 3 Background Task."""
     db = SessionLocal()
     try:
+        _update_task_id(db, scan_id, self.request.id)
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled before advanced scan", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
+
         mode = resolve_pipeline_mode(pipeline_mode)
         orch = _new_orchestrator()
         result = orch.run_advanced_scan_only(hosts=hosts, scan_id=scan_id)
+
+        if _check_cancelled(db, scan_id):
+            log.info("Scan %s cancelled after advanced scan", scan_id)
+            return {"success": False, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(db, scan_id, user_id, result.get("error", "Advanced Scan failed"))
@@ -635,26 +677,69 @@ def run_credentialed_scan_task(
     from engines.credentialed.windows_collector import WindowsCollector
     from engines.credentialed.vuln_matcher    import VulnMatcher
     from routers.credentialed import _detect_os 
+    from core.redis_client import publish_progress_sync
     
     db = SessionLocal()
     start_time = time.time()
-    try:
-        with SSHScanner(ip=ip, username=username, password=password, key_path=key_path, port=port, timeout=20) as ssh:
-            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
-            collector = WindowsCollector(ssh) if os_type == "windows" else LinuxCollector(ssh)
-            system_data = collector.collect_all(sections=sections)
-            system_data["detected_os"] = os_type
+    
+    def emit(status, message, percentage=0, stage=None):
+        if not scan_id: return
+        publish_progress_sync(scan_id, 5, {
+            "status": status,
+            "message": message,
+            "percentage": percentage,
+            "stage": stage,
+            "target": ip,
+            "timestamp": utcnow().isoformat()
+        })
 
+    try:
+        # 1. Connecting
+        emit("running", f"Connecting to {ip}:{port}...", 10, "connecting")
+        
+        with SSHScanner(ip=ip, username=username, password=password, key_path=key_path, port=port, timeout=20) as ssh:
+            # 2. OS Detection
+            emit("running", "Detecting Operating System...", 20, "detection")
+            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+            
+            # 3. Data Collection
+            emit("running", f"Collecting system data ({os_type})...", 30, "collection")
+            collector = WindowsCollector(ssh) if os_type == "windows" else LinuxCollector(ssh)
+            
+            def on_section(name):
+                # Map internal section names to friendly display names
+                friendly = {
+                    "system_info": "System Profile",
+                    "packages":    "Software Inventory",
+                    "services":    "Running Services",
+                    "ports":       "Network Sockets",
+                    "users":       "User Accounts",
+                    "security":    "Security Policies",
+                    "network":     "Interface Config",
+                    "history":     "Login Events"
+                }.get(name, name)
+                emit("running", f"Collected {friendly}", 50, "collection")
+
+            system_data = collector.collect_all(sections=sections, on_section_complete=on_section)
+            system_data["detected_os"] = os_type
+            
+        # 4. Vulnerability Matching
+        emit("running", "Analyzing packages for vulnerabilities...", 70, "analysis")
         packages     = system_data.get("packages", [])
         matcher      = VulnMatcher()
         raw_findings = matcher.match_packages(packages)
         cve_list     = matcher.to_report_format(raw_findings)
+        
         severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
         for cve in cve_list:
             sev = cve.get("severity", "Info")
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         scan_duration = round(time.time() - start_time, 2)
+        
+        # 5. Finalizing
+        emit("running", "Generating report and syncing assets...", 90, "syncing")
+        
         stored_report = {
             "scan_type": "credentialed",
             "target": ip,
@@ -732,9 +817,16 @@ def run_credentialed_scan_task(
         except Exception:
             db.rollback()
             log.exception("Credentialed asset sync failed for %s", ip)
+
+        # 6. Complete
+        emit("complete", "Scan completed successfully.", 100, "complete")
         return {"success": True, "scan_id": str(scan.id)}
     except Exception as exc:
         log.exception("Credentialed Scan Task Failed")
+        emit("failed", f"Scan failed: {str(exc)}", 0, "error")
+        if scan_id:
+            mark_scan_failed(db, scan_id, user_id, str(exc))
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
+

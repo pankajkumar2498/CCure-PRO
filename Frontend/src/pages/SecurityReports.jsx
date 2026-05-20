@@ -5,6 +5,7 @@
  * Allows users to search, filter, and download historical reports (PDF/XML) for compliance.
  */
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { getScans, deleteReport } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
@@ -98,6 +99,8 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
 
 export default function SecurityReports() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentTab = searchParams.get("tab") || "";
   const canReadReports = can(user, "reports", "read");
   const canDeleteReports = can(user, "reports", "delete");
   const [scans, setScans] = useState([]);
@@ -250,67 +253,125 @@ export default function SecurityReports() {
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
-        <div className="reports-filter-bar">
-          <div className="search-input-wrap">
-            <span className="search-icon">🔍</span>
-            <input 
-              type="text" 
-              placeholder="Search by target IP or Scan No..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="search-input"
-            />
-          </div>
-          <div className="filter-select-wrap">
-            <select 
-              value={filterType} 
-              onChange={e => setFilterType(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Report Types</option>
-              <option value="basic">Host Discovery</option>
-              <option value="asset">Asset Discovery</option>
-              <option value="advanced">Advanced Audits</option>
-              <option value="credentialed">Credentialed Audits</option>
-            </select>
-          </div>
-          <button className="btn btn--ghost" onClick={load} disabled={loading}>
-            {loading ? "Syncing..." : "Refresh Cabinet"}
-          </button>
+        {/* Tab Navigation */}
+        <div style={{ margin: "0 -32px 24px", padding: "0 32px", borderBottom: "1px solid var(--border)", display: "flex", gap: 24 }}>
+          {[
+            { id: "", label: "Report Cabinet" },
+            { id: "executive", label: "Executive Report" },
+            { id: "compliance", label: "Compliance" },
+            { id: "trends", label: "Risk Trends" },
+          ].map(tab => {
+            const active = currentTab === tab.id;
+            return (
+              <div 
+                key={tab.id}
+                onClick={() => setSearchParams(tab.id ? { tab: tab.id } : {})}
+                style={{
+                  padding: "0 4px 12px",
+                  fontSize: "0.85rem",
+                  fontWeight: active ? 700 : 500,
+                  color: active ? "var(--accent)" : "var(--text-muted)",
+                  borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                {tab.label}
+              </div>
+            );
+          })}
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {currentTab === "" && (
+          <>
+            {/* Search & Filter Bar */}
+            <div className="reports-filter-bar">
+              <div className="search-input-wrap">
+                <span className="search-icon">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Search by target IP or Scan No..." 
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="search-input"
+                />
+              </div>
+              <div className="filter-select-wrap">
+                <select 
+                  value={filterType} 
+                  onChange={e => setFilterType(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Report Types</option>
+                  <option value="basic">Host Discovery</option>
+                  <option value="asset">Asset Discovery</option>
+                  <option value="advanced">Advanced Audits</option>
+                  <option value="credentialed">Credentialed Audits</option>
+                </select>
+              </div>
+              <button className="btn btn--ghost" onClick={load} disabled={loading}>
+                {loading ? "Syncing..." : "Refresh Cabinet"}
+              </button>
+            </div>
 
-        {loading ? (
-          <div className="reports-loading-state">
-            <div className="spinner" />
-            <p>Accessing secure storage...</p>
+            {error && <div className="alert alert--error">{error}</div>}
+
+            {loading ? (
+              <div className="reports-loading-state">
+                <div className="spinner" />
+                <p>Accessing secure storage...</p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="empty-state">
+                <span className="empty-state-icon">📁</span>
+                <p className="empty-state-title">No reports found in this section.</p>
+                <p className="empty-state-subtitle">Complete a scan to automatically generate and store a report here.</p>
+              </div>
+            ) : (
+              <div className="reports-grid">
+                {filtered.map(scan => (
+                  <ReportCard 
+                    key={scan.id} 
+                    scan={scan} 
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    canReadReports={canReadReports}
+                    canDeleteReports={canDeleteReports}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {currentTab === "executive" && (
+          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "3rem", marginBottom: 16 }}>📊</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Executive Report Generation</h3>
+            <p>Generate high-level, business-focused security posture summaries for stakeholders.</p>
+            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-state-icon">📁</span>
-            <p className="empty-state-title">No reports found in this section.</p>
-            <p className="empty-state-subtitle">Complete a scan to automatically generate and store a report here.</p>
+        )}
+
+        {currentTab === "compliance" && (
+          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "3rem", marginBottom: 16 }}>✅</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Compliance Auditing</h3>
+            <p>Map scan findings to standard compliance frameworks (CIS, SOC 2, ISO 27001).</p>
+            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
           </div>
-        ) : (
-          <div className="reports-grid">
-            {filtered.map(scan => (
-              <ReportCard 
-                key={scan.id} 
-                scan={scan} 
-                onDownload={handleDownload}
-                onDelete={handleDelete}
-                canReadReports={canReadReports}
-                canDeleteReports={canDeleteReports}
-              />
-            ))}
+        )}
+
+        {currentTab === "trends" && (
+          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "3rem", marginBottom: 16 }}>📈</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Risk Trends Analytics</h3>
+            <p>Visualize organizational risk over time, MTTR (Mean Time to Remediate), and vulnerability velocity.</p>
+            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
           </div>
         )}
 
       </div>
-
-      
 
       {/* Confirmation modal for permanent deletion */}
       {modal && (

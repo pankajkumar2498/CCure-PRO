@@ -76,7 +76,8 @@ export default function App() {
         <Route path="/vulnerabilities" element={<VulnerabilityBrowser />} />
 
           {/* Scan history + lifecycle */}
-          <Route path="/history"          element={<ScanHistory />} />
+          <Route path="/monitor"          element={<ScanHistory mode="monitor" />} />
+          <Route path="/history"          element={<ScanHistory mode="history" />} />
           <Route path="/scan-history"     element={<Navigate to="/history" replace />} />
           <Route path="/archived"         element={<ArchivedScans />} />
           <Route path="/archived-scans"   element={<Navigate to="/archived" replace />} />

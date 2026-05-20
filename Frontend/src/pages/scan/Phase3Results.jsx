@@ -25,6 +25,7 @@ import ScanStepper from "../../components/layout/ScanStepper";
 import Modal from "../../components/layout/Modal";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api from "../../api/axiosInstance";
+import { stopScan } from "../../api/scans";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
@@ -396,11 +397,23 @@ export default function Phase3Results() {
     runFullPipeline(pipelineError?.phase || "PORT_SCAN");
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    // 1. Abort the local frontend request
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+
+    // 2. Call the backend to actually stop the worker task
+    if (scanId) {
+      try {
+        await stopScan(scanId);
+      } catch (err) {
+        console.error("Failed to stop scan in backend:", err);
+      }
+    }
+
+    // 3. Update local UI state
     setPipelineState(PIPELINE_STATES.CANCELLED);
   };
 

@@ -134,7 +134,7 @@ class WindowsCollector:
             f' -EncodedCommand {encoded}'
         )
 
-    def collect_all(self, sections: Optional[List[str]] = None) -> Dict[str, Any]:
+    def collect_all(self, sections: Optional[List[str]] = None, on_section_complete: Optional[callable] = None) -> Dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.
 
@@ -172,6 +172,9 @@ class WindowsCollector:
                 name = future_map[future]
                 try:
                     data = future.result()
+                    if on_section_complete:
+                        on_section_complete(name)
+                        
                     # Flat-merge sections that return dicts
                     if name in ("system_info", "security", "network", "history"):
                         result.update(data)

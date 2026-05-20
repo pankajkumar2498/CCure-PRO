@@ -11,6 +11,8 @@ const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
   running:  { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
   failed:   { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  cancelled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  canceled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
 };
 
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };

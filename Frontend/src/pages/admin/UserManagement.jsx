@@ -310,7 +310,7 @@ export default function UserManagement() {
           </div>
           <div className="page-actions-row">
             {canDeleteUsers && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/deleted-users")} disabled={busy}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/users/deleted")} disabled={busy}>
                 Deleted users
               </Button>
             )}

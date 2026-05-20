@@ -13,6 +13,7 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
+import { stopScan } from "../../api/scans";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
@@ -220,6 +221,19 @@ export default function Phase2Results() {
     }
   };
 
+  const handleCancel = async () => {
+    if (loading && scanId) {
+      try {
+        await stopScan(scanId);
+      } catch (err) {
+        console.error("Failed to stop scan in backend:", err);
+      }
+    }
+    setLoading(false);
+    setScanProgress(null);
+    setError("Scan cancelled by user.");
+  };
+
   const toggleExpand = (ip) => {
     const next = new Set(expanded);
     next.has(ip) ? next.delete(ip) : next.add(ip);
@@ -281,6 +295,12 @@ export default function Phase2Results() {
             </div>
 
             <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
+
+            {loading && (
+              <button className="btn btn--cancel" onClick={handleCancel}>
+                ✕ Cancel Scan
+              </button>
+            )}
 
             {!hasScanned && (
               <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0 || !intensity || !canExecuteScans}>

@@ -358,6 +358,7 @@ export default function NewScan() {
   // File Upload State
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [parsedTargets, setParsedTargets] = useState([]); // Array of { value, type }
   const [uploadSummary, setUploadSummary] = useState({
     total: 0,
     valid: 0,
@@ -557,22 +558,55 @@ export default function NewScan() {
 
   /* ── File Upload logic ──────────────────────────────────────────────────── */
 
+  const detectTargetType = (val) => {
+    if (val.includes('/')) return 'CIDR';
+    
+    // Stricter Range Detection:
+    // 1. Must have a hyphen
+    // 2. Left side must look like an IP (digits and dots)
+    // 3. Right side must be numeric or an IP
+    if (val.includes('-')) {
+      const parts = val.split('-');
+      if (parts.length === 2) {
+        const left = parts[0].trim();
+        const right = parts[1].trim();
+        const leftIsIp = /^[0-9.]+$/.test(left) && left.includes('.');
+        const rightIsNumeric = /^[0-9.]+$/.test(right);
+        if (leftIsIp && rightIsNumeric) return 'Range';
+      }
+    }
+
+    // IP Check: Strictly numeric/dots or hex/colons
+    if (/^[0-9a-fA-F:.]+$/.test(val) && (val.includes('.') || val.includes(':'))) return 'IP';
+    
+    return 'Hostname';
+  };
+
   const processFile = (file) => {
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target.result;
-      const targets = [];
+      const validResults = []; // Array of { value, type }
       const invalid = [];
       const seen = new Set();
       let duplicates = 0;
 
-      // Flatten everything: split by newline and comma, then filter empty tokens
-      const allTokens = content.split(/[\r\n,]+/).map(t => t.trim()).filter(Boolean);
+      // 1. CONTEXTUAL STITCHING:
+      // Collapse ALL whitespace around hyphens globally.
+      // This turns "10.0.0.1  -   50" into "10.0.0.1-50" before tokenizing.
+      // Since spaces are illegal in both IPs and Hostnames, this is safe.
+      const stitchedContent = content.replace(/\s*-\s*/g, "-");
 
-      allTokens.forEach(token => {
-        // Skip header if present
+      // 2. Aggressive Tokenizer: Split by commas, semicolons, and remaining whitespace
+      const rawTokens = stitchedContent.split(/[,\s;]+/).map(t => t.trim()).filter(Boolean);
+
+      rawTokens.forEach(rawToken => {
+        // 3. Precision Sanitization: Remove hidden control characters
+        const token = rawToken.replace(/[^\w.\-:/\[\]]/g, "");
+        if (!token) return;
+
         if (token.toLowerCase() === "target") return;
 
         if (seen.has(token)) {
@@ -580,20 +614,20 @@ export default function NewScan() {
           return;
         }
 
-        // Basic validation: allowed characters (matches Backend InputValidator._SAFE_RE)
         if (/^[\w.\-:/\[\]]+$/.test(token)) {
-          targets.push(token);
+          validResults.push({ value: token, type: detectTargetType(token) });
           seen.add(token);
         } else {
           invalid.push(token);
         }
       });
 
-      if (targets.length > 0) {
-        setTarget(targets.join(", "));
+      if (validResults.length > 0) {
+        setTarget(validResults.map(r => r.value).join(", "));
+        setParsedTargets(validResults);
         setUploadSummary({
-          total: targets.length + invalid.length + duplicates,
-          valid: targets.length,
+          total: validResults.length + invalid.length + duplicates,
+          valid: validResults.length,
           invalid: invalid.length,
           invalidEntries: invalid,
           duplicates: duplicates,
@@ -875,6 +909,7 @@ export default function NewScan() {
                     onChange={e => {
                       setTarget(e.target.value);
                       if (uploadSummary.show) setUploadSummary(prev => ({ ...prev, show: false }));
+                      if (parsedTargets.length > 0) setParsedTargets([]);
                     }}
                     onKeyDown={e => e.key === "Enter" && canExecuteScans && !loading && handleScan()}
                     placeholder="192.168.1.0/24   ·   10.0.0.1-50   ·   192.168.1.10"
@@ -918,10 +953,52 @@ export default function NewScan() {
                 </div>
                 <button 
                   className="ns-summary-close" 
-                  onClick={() => setUploadSummary(prev => ({ ...prev, show: false }))}
+                  onClick={() => {
+                    setUploadSummary(prev => ({ ...prev, show: false }));
+                    setParsedTargets([]);
+                  }}
                 >
                   ×
                 </button>
+              </div>
+            )}
+
+            {/* Target Preview Table */}
+            {parsedTargets.length > 0 && (
+              <div className="ns-preview-section">
+                <div className="ns-preview-header">
+                  <div className="ns-label">
+                    Parsed Targets
+                    <span className="ns-label-hint">Review identified objects</span>
+                  </div>
+                  <button className="ns-preview-clear" onClick={() => { setParsedTargets([]); setTarget(""); setUploadSummary(prev => ({ ...prev, show: false })); }}>
+                    Clear All
+                  </button>
+                </div>
+                <div className="ns-preview-table-wrap">
+                  <table className="ns-preview-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Target Object</th>
+                        <th>Detection Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedTargets.map((pt, idx) => (
+                        <tr key={idx}>
+                          <td className="ns-pt-idx">{idx + 1}</td>
+                          <td className="ns-pt-val">{pt.value}</td>
+                          <td>
+                            <span className={`ns-pt-badge ns-pt-badge--${pt.type.toLowerCase()}`}>
+                              {pt.type}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 

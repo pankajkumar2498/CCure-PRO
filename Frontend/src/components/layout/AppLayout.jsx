@@ -62,7 +62,7 @@ const SIDEBAR_SECTIONS = [
     label: "Scanning",
     items: [
       { id: "scan-templates", label: "Scan Templates", Icon: IcoGrid,    route: "/scan", permission: { resource: "scans", action: "execute" } },
-      { id: "scan-monitor",   label: "Scan Monitor",   Icon: IcoMonitor, route: "/monitor", permission: { resource: "scans", action: "read" }, badgeKey: "runningScans", badgeColor: "info" },
+      { id: "scan-monitor",   label: "Active Scans",   Icon: IcoMonitor, route: "/monitor", permission: { resource: "scans", action: "read" }, badgeKey: "runningScans", badgeColor: "info" },
       { id: "scan-history",   label: "Scan History",   Icon: IcoFile,    route: "/history", permission: { resource: "scans", action: "read" } },
       { id: "archived-scans", label: "Archived Scans", Icon: IcoArchive, route: "/archived", requiredAny: [{ resource: "scans", action: "restore" }, { resource: "scans", action: "recycle" }] },
       { id: "recycle-bin",    label: "Recycle Bin",    Icon: IcoTrash,   route: "/recycle-bin", requiredAny: [{ resource: "scans", action: "restore" }, { resource: "scans", action: "purge" }] },

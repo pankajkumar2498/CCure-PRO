@@ -9,6 +9,7 @@ Imports use only what actually exists:
   Service/TLS/HTTP fields verified from db/models/findings.py
 """
 
+import json
 import logging
 from typing import Optional
 
@@ -30,6 +31,12 @@ from core.audit import log_audit_event
 
 log = logging.getLogger("ccure.assets")
 router = APIRouter(prefix="/assets", tags=["Assets"])
+
+
+def _display_json_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 def _is_superadmin(user: User) -> bool:
@@ -319,8 +326,8 @@ def get_asset_changelog(
                 "id":          e.id,
                 "change_type": e.change_type,
                 "field_name":  e.field_name,
-                "old_value":   e.old_value,
-                "new_value":   e.new_value,
+                "old_value":   _display_json_value(e.old_value),
+                "new_value":   _display_json_value(e.new_value),
                 "scan_id":     e.scan_id,
                 "detected_at": e.detected_at.isoformat() if e.detected_at else None,
             }

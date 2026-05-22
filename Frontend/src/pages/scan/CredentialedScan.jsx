@@ -91,11 +91,20 @@ export default function CredentialedScan() {
         state: { result: { ...data, os_type_was_auto: osType === "auto" } },
       });
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Scan failed");
+      const msg = err.response?.data?.detail || err.message || "Scan failed";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
+
+  const isUnreachableError = error && (
+    error.toLowerCase().includes("reach") || 
+    error.toLowerCase().includes("timeout") || 
+    error.toLowerCase().includes("route") || 
+    error.toLowerCase().includes("refused") || 
+    error.toLowerCase().includes("down")
+  );
 
   return (
     <AppLayout pageTitle="Credentialed Scan">
@@ -249,7 +258,25 @@ export default function CredentialedScan() {
                 : <>⏳ Collecting system data via SSH&hellip; this takes 15&ndash;60s.</>}
             </p>
           )}
-          {error && <div className="alert alert--error">⚠ {error}</div>}
+
+          {error && isUnreachableError && (
+            <div style={{
+              margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+              background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+              display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+            }}>
+              <span style={{ fontSize: 24 }}>⚠️</span>
+              <div>
+                <strong style={{ display: "block", fontSize: 16 }}>Host is unreachable or down</strong>
+                <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                  The scanner could not establish an SSH connection to <code>{ip}</code>. 
+                  Verify the IP address, SSH service status, and firewall rules.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {error && !isUnreachableError && <div className="alert alert--error">⚠ {error}</div>}
 
           {/* Submit */}
           <div className="cred-submit-row">

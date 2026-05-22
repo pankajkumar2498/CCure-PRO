@@ -253,6 +253,16 @@ async def scan_asset_discovery(
     if not is_phase_in_pipeline(mode, 2):
         raise HTTPException(status_code=400, detail=f"Asset Discovery is not part of the '{mode}' pipeline.")
 
+    # SaaS Stability: Prevent duplicate phase triggers if the backend is already chaining
+    scan = db.query(Scan).filter(Scan.id == req.scan_id).first()
+    if scan and scan.status == "running" and scan.current_task_id:
+        log.info("Phase 2 already in progress (chained) for scan %s, skipping redundant trigger.", req.scan_id)
+        return {
+            "success": True,
+            "task_id": scan.current_task_id,
+            "status": "running"
+        }
+
     task = run_asset_discovery_task.delay(
         user_id       = str(user.id),
         hosts         = req.hosts,
@@ -287,6 +297,16 @@ async def scan_advanced_scan(
     mode = resolve_pipeline_mode(req.pipeline_mode)
     if not is_phase_in_pipeline(mode, 3):
         raise HTTPException(status_code=400, detail=f"Advanced Scan is not part of the '{mode}' pipeline.")
+
+    # SaaS Stability: Prevent duplicate phase triggers if the backend is already chaining
+    scan = db.query(Scan).filter(Scan.id == req.scan_id).first()
+    if scan and scan.status == "running" and scan.current_task_id:
+        log.info("Phase 3 already in progress (chained) for scan %s, skipping redundant trigger.", req.scan_id)
+        return {
+            "success": True,
+            "task_id": scan.current_task_id,
+            "status": "running"
+        }
 
     task = run_advanced_scan_task.delay(
         user_id       = str(user.id),

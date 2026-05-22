@@ -355,7 +355,9 @@ export default function CredentialedResults() {
   }
 
   /* ── error ── */
-  if (error) {
+  if (error || scanStatus === "unreachable") {
+    const isUnreachable = scanStatus === "unreachable" || String(error).toLowerCase().includes("reach") || String(error).toLowerCase().includes("timeout") || String(error).toLowerCase().includes("route");
+
     return (
       <AppLayout pageTitle="Credentialed Results">
         <div className="page-inner">
@@ -366,12 +368,36 @@ export default function CredentialedResults() {
               <button className="btn btn--primary" onClick={() => navigate("/scan/credentialed")}>New Scan</button>
             </div>
           </div>
-          <div className="alert alert--error">
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Scan Failed</div>
-            {error}
-          </div>
+
+          {isUnreachable ? (
+             <div style={{
+               margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+               background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+               display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+             }}>
+               <span style={{ fontSize: 24 }}>⚠️</span>
+               <div>
+                 <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+                 <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                   The credentialed scan failed because the host could not be reached via SSH. 
+                   Verify the IP address, network connectivity, and firewall rules.
+                 </p>
+               </div>
+             </div>
+          ) : (
+            <div className="alert alert--error">
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Scan Failed</div>
+              {error}
+            </div>
+          )}
+
           <div className="empty-state" style={{ marginTop: 40 }}>
-             <p className="muted">Please verify your SSH credentials and ensure the host is reachable.</p>
+             <p className="muted">
+                {isUnreachable 
+                  ? "Please ensure the target is powered on and accessible from the scanning engine."
+                  : "Please verify your SSH credentials and ensure the host is reachable."
+                }
+             </p>
              <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={() => navigate("/scan/credentialed")}>Try Again</button>
           </div>
         </div>

@@ -269,6 +269,49 @@ def update_finding_status(
 
     db.commit()
 
+    # After status change, refresh vuln_counts and possibly risk_score for the asset
+    try:
+        asset_id = finding.asset_id
+        sev_rows = (
+            db.query(AssetVulnerability.severity, func.count(AssetVulnerability.id).label("cnt"))
+            .filter(AssetVulnerability.asset_id == asset_id, AssetVulnerability.status == "open")
+            .group_by(AssetVulnerability.severity)
+            .all()
+        )
+        sev_map = {r.severity.title(): r.cnt for r in sev_rows} if sev_rows else {}
+        asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        if asset:
+            asset.vuln_counts = {
+                "critical": sev_map.get("Critical", 0),
+                "high":     sev_map.get("High", 0),
+                "medium":   sev_map.get("Medium", 0),
+                "low":      sev_map.get("Low", 0),
+            }
+
+            # Recompute a simple aggregate risk score from counts (same logic as credentialed sync)
+            computed = min(
+                100,
+                (asset.vuln_counts.get("critical", 0) * 25) +
+                (asset.vuln_counts.get("high", 0) * 15) +
+                (asset.vuln_counts.get("medium", 0) * 8) +
+                (asset.vuln_counts.get("low", 0) * 3)
+            )
+            if computed >= int(asset.risk_score or 0):
+                asset.risk_score = int(computed)
+                if computed >= 90:
+                    asset.risk_level = "Critical"
+                elif computed >= 70:
+                    asset.risk_level = "High"
+                elif computed >= 40:
+                    asset.risk_level = "Medium"
+                elif computed > 0:
+                    asset.risk_level = "Low"
+                else:
+                    asset.risk_level = "Info"
+            db.commit()
+    except Exception:
+        db.rollback()
+
     log_audit_event(
         db=db, user=user,
         action=f"finding_{body.status}",

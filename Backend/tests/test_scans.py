@@ -12,11 +12,12 @@ from db.models.users import User, AuditLog
 from db.models.rbac import Organization, Role
 from db.models.scans import Scan
 from db.models.assets import Asset
-from db.models.findings import AssetVulnerability
+from db.models.findings import AssetVulnerability, VulnerabilityDefinition
 from auth.jwt_handler import hash_password
-from db.base import utcnow
+from db.base import utcnow, gen_asset_id
+from routers.findings import StatusUpdate, update_finding_status
 from scans.db_helpers import _phase_summary_payload, _public_phase_summary, create_scan, update_scan_phase1, mark_scan_failed
-from scans.asset_syncer import sync_advanced_scan
+from scans.asset_syncer import sync_advanced_scan, sync_asset_discovery, sync_host_discovery
 
 
 def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
@@ -272,6 +273,739 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
     assert finding.org_id == org.id
     assert finding.scan_id == scan_id
     assert finding.vuln_id == "CVE-9999-0001"
+    assert finding.source_family == "network_service"
+    assert finding.evidence_source == "advanced"
+
+
+def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
+    import uuid
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset = Asset(
+        id=f"ast_{org_id}_192_168_1_10",
+        org_id=org.id,
+        ip_address="192.168.1.10",
+        mac_address="AA:BB:CC:DD:EE:FF",
+        hostname="test-host",
+        last_seen_at=utcnow(),
+        risk_score=0,
+        risk_level="Info",
+        vuln_counts={"critical": 0, "high": 0, "medium": 0, "low": 0},
+    )
+    db_session.add(asset)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    scan = Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.10",
+        scan_type="adaptive",
+        pipeline_mode="advanced",
+    )
+    db_session.add(scan)
+    db_session.commit()
+
+    hosts = [
+        {
+            "ip_address": "192.168.1.10",
+            "vulnerabilities": [
+                {
+                    "cve_id": "CVE-9999-0001",
+                    "title": "Test vulnerability 1",
+                    "description": "Test description",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "plugin_output": "Test output",
+                },
+                {
+                    "cve_id": "CVE-9999-0002",
+                    "title": "Test vulnerability 2",
+                    "description": "Test description",
+                    "severity": "Low",
+                    "cvss": 2.5,
+                    "plugin_output": "Test output",
+                },
+            ],
+        }
+    ]
+
+    sync_advanced_scan(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+
+    db_session.refresh(asset)
+    assert asset.vuln_counts == {"critical": 0, "high": 1, "medium": 0, "low": 1}
+    assert asset.risk_score == 18
+    assert asset.risk_level == "Low"
+
+
+def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "192.168.1.20")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="192.168.1.20",
+        hostname="credentialed-host",
+        discovery_method="credentialed",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.20",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    ))
+    db_session.commit()
+
+    sync_host_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[{"ip_address": "192.168.1.20", "hostname": "basic-host", "is_active": True}],
+    )
+
+    db_session.refresh(asset)
+    assert asset.hostname == "credentialed-host"
+
+
+def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostname(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "192.168.1.23")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="192.168.1.23",
+        hostname="superusr-HP3",
+        fqdn="superusr-HP3",
+        discovery_method="credentialed",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()},
+                "fqdn": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()},
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.23",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    ))
+    db_session.commit()
+
+    sync_host_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[
+            {
+                "ip_address": "192.168.1.23",
+                "hostname": "atharv-desktop.blr.cdac.in",
+                "ptr_hostname": "atharv-desktop.blr.cdac.in",
+                "is_active": True,
+            }
+        ],
+    )
+
+    db_session.refresh(asset)
+    assert asset.hostname == "superusr-HP3"
+    assert asset.fqdn == "atharv-desktop.blr.cdac.in"
+    assert asset.dns_name == "atharv-desktop.blr.cdac.in"
+
+
+def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "10.180.6.45")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="10.180.6.45",
+        hostname="superusr-HP3",
+        discovery_method="credentialed",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="10.180.6.45",
+        scan_type="adaptive",
+        pipeline_mode="advanced",
+    ))
+    db_session.commit()
+
+    sync_advanced_scan(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[{
+            "ip_address": "10.180.6.45",
+            "hostname": "atharv-desktop.blr.cdac.in",
+            "vulnerabilities": [],
+        }],
+    )
+
+    db_session.refresh(asset)
+    assert asset.hostname == "superusr-HP3"
+    assert asset.fqdn == "atharv-desktop.blr.cdac.in"
+    assert asset.dns_name == "atharv-desktop.blr.cdac.in"
+
+
+def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "10.180.6.45")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="10.180.6.45",
+        hostname="superusr-HP3",
+        discovery_method="credentialed",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="10.180.6.45",
+        scan_type="adaptive",
+        pipeline_mode="asset",
+    ))
+    db_session.commit()
+
+    sync_asset_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[{
+            "ip_address": "10.180.6.45",
+            "hostname": "atharv-desktop.blr.cdac.in",
+            "ports": [],
+        }],
+    )
+
+    db_session.refresh(asset)
+    assert asset.hostname == "superusr-HP3"
+    assert asset.fqdn == "atharv-desktop.blr.cdac.in"
+    assert asset.dns_name == "atharv-desktop.blr.cdac.in"
+
+
+def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Session):
+    import uuid
+    from core.tasks import _sync_credentialed_asset_identity
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+
+    user = User(
+        id=f"usr_{org_id}_admin",
+        username=f"testadmin{uuid.uuid4().hex[:8]}",
+        email=f"admin{uuid.uuid4().hex[:8]}@test.com",
+        full_name="Test Admin",
+        password_hash=hash_password("securepassword123"),
+        org_id=org.id,
+        role_id=3,
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(user)
+
+    asset_id = gen_asset_id(org.id, "10.180.6.45")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="10.180.6.45",
+        hostname="atharv-desktop.blr.cdac.in",
+        fqdn="atharv-desktop.blr.cdac.in",
+        dns_name="atharv-desktop.blr.cdac.in",
+        discovery_method="advanced",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "fqdn": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()},
+                "dns_name": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()},
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="10.180.6.45",
+        scan_type="credentialed",
+        pipeline_mode="credentialed",
+    ))
+    db_session.commit()
+
+    _sync_credentialed_asset_identity(
+        db_session,
+        user_id=user.id,
+        ip="10.180.6.45",
+        scan_id=scan_id,
+        os_type="linux",
+        system_data={
+            "os_name": "Ubuntu 24.04.4 LTS",
+            "hostname_short": "superusr-HP3",
+            "hostname_fqdn": "superusr-HP3.localdomain",
+            "fqdn": "superusr-HP3.localdomain",
+        },
+        stored_report={"open_ports_credentialed": []},
+        cve_list=[],
+        severity_counts={},
+    )
+    db_session.commit()
+
+    db_session.refresh(asset)
+    assert asset.hostname == "superusr-HP3"
+    assert asset.fqdn == "atharv-desktop.blr.cdac.in"
+    assert asset.dns_name == "atharv-desktop.blr.cdac.in"
+
+
+def test_credentialed_short_hostname_is_not_treated_as_fqdn():
+    from core.tasks import _extract_credentialed_identity_names
+
+    hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names({
+        "hostname_fqdn": "superusr-HP3",
+    })
+
+    assert hostname == "superusr-HP3"
+    assert fqdn == ""
+    assert raw_hostname_fqdn == "superusr-HP3"
+
+
+def test_credentialed_linux_interface_parser_extracts_target_mac():
+    from engines.credentialed.linux_collector import _mac_from_linux_interfaces
+
+    raw = """
+    [
+      {"ifname":"lo","address":"00:00:00:00:00:00","addr_info":[{"family":"inet","local":"127.0.0.1","prefixlen":8}]},
+      {"ifname":"enp2s0","address":"2c:58:b9:87:0b:b3","addr_info":[{"family":"inet","local":"10.180.6.45","prefixlen":22}]}
+    ]
+    """
+
+    assert _mac_from_linux_interfaces(raw, "10.180.6.45") == "2c:58:b9:87:0b:b3"
+
+
+def test_credentialed_windows_interface_parser_extracts_target_mac():
+    from engines.credentialed.windows_collector import _mac_from_windows_interfaces
+
+    raw = [
+        {"IPAddress": "10.180.6.44", "PrefixLength": 22, "MacAddress": "AA-BB-CC-DD-EE-FF"},
+        {"IPAddress": "10.180.6.45", "PrefixLength": 22, "MacAddress": "2C-58-B9-87-0B-B3"},
+    ]
+
+    assert _mac_from_windows_interfaces(raw, "10.180.6.45") == "2c:58:b9:87:0b:b3"
+
+
+def test_credentialed_scan_always_collects_identity_sections():
+    from core.tasks import _credentialed_sections_with_identity
+
+    sections = _credentialed_sections_with_identity(["packages"])
+
+    assert sections == ["packages", "system_info", "network"]
+    assert _credentialed_sections_with_identity(None) is None
+
+
+def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
+    import uuid
+    from core.tasks import _sync_credentialed_asset_identity
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+
+    user = User(
+        id=f"usr_{org_id}_admin",
+        username=f"testadmin{uuid.uuid4().hex[:8]}",
+        email=f"admin{uuid.uuid4().hex[:8]}@test.com",
+        full_name="Test Admin",
+        password_hash=hash_password("securepassword123"),
+        org_id=org.id,
+        role_id=3,
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(user)
+
+    asset_id = gen_asset_id(org.id, "192.168.1.24")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="192.168.1.24",
+        last_seen_at=utcnow(),
+    )
+    db_session.add(asset)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.24",
+        scan_type="credentialed",
+        pipeline_mode="credentialed",
+    ))
+    db_session.commit()
+
+    _sync_credentialed_asset_identity(
+        db_session,
+        user_id=user.id,
+        ip="192.168.1.24",
+        scan_id=scan_id,
+        os_type="linux",
+        system_data={
+            "os_name": "Ubuntu 24.04.4 LTS",
+            "os_version_id": "24.04",
+            "hostname_fqdn": "superusr-HP3.localdomain",
+            "manufacturer": "HP",
+            "mac_address": "02-11-22-33-44-55",
+            "subnet": "192.168.1.0/24",
+            "credentialed_response_time_ms": 123,
+        },
+        stored_report={"open_ports_credentialed": []},
+        cve_list=[],
+        severity_counts={},
+    )
+    db_session.commit()
+
+    db_session.refresh(asset)
+    assert str(asset.mac_address) == "02:11:22:33:44:55"
+    assert asset.manufacturer == "HP"
+    assert asset.vendor == "HP"
+    assert asset.subnet == "192.168.1.0/24"
+    assert asset.fqdn is None
+    assert asset.response_time_ms == 123
+
+
+def test_asset_discovery_does_not_overwrite_advanced_os(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "192.168.1.21")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="192.168.1.21",
+        os_name="Ubuntu 24.04.4 LTS",
+        discovery_method="advanced",
+        last_seen_at=utcnow(),
+        custom_attributes={
+            "provenance": {
+                "os_name": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()}
+            }
+        },
+    )
+    db_session.add(asset)
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.21",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    ))
+    db_session.commit()
+
+    sync_asset_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[{"ip_address": "192.168.1.21", "os_guess": "Linux"}],
+    )
+
+    db_session.refresh(asset)
+    assert asset.os_name == "Ubuntu 24.04.4 LTS"
+
+
+def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "192.168.1.22")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address="192.168.1.22",
+        hostname="pkg-host",
+        last_seen_at=utcnow(),
+    )
+    db_session.add(asset)
+
+    cve_id = f"CVE-9999-{uuid.uuid4().hex[:8]}"
+    vuln = VulnerabilityDefinition(
+        id=cve_id,
+        cve_id=cve_id,
+        title="Package CVE",
+        severity="High",
+        cvss_v3_score=8.0,
+        source="credentialed",
+    )
+    db_session.add(vuln)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    scan = Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.22",
+        scan_type="adaptive",
+        pipeline_mode="advanced",
+    )
+    db_session.add(scan)
+
+    finding = AssetVulnerability(
+        id=f"fnd_{asset_id}_credentialed_package_{cve_id}",
+        org_id=org.id,
+        scan_id=scan_id,
+        asset_id=asset_id,
+        vuln_id=cve_id,
+        severity="High",
+        cvss_score=8.0,
+        status="open",
+        source_family="credentialed_package",
+        evidence_source="credentialed",
+        proof="Source_Family:credentialed_package\nPackage: openssl 3.0",
+    )
+    db_session.add(finding)
+    db_session.commit()
+
+    sync_advanced_scan(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[{"ip_address": "192.168.1.22", "vulnerabilities": []}],
+    )
+
+    db_session.refresh(finding)
+    assert finding.status == "open"
+    assert finding.fixed_at is None
+
+
+def test_update_finding_status_refreshes_asset_counts(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+
+    user = User(
+        id=f"usr_{org_id}_admin",
+        username=f"testadmin{uuid.uuid4().hex[:8]}",
+        email=f"admin{uuid.uuid4().hex[:8]}@test.com",
+        full_name="Test Admin",
+        password_hash=hash_password("securepassword123"),
+        org_id=org.id,
+        role_id=3,
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(user)
+
+    asset = Asset(
+        id=f"ast_{org_id}_192_168_1_11",
+        org_id=org.id,
+        ip_address="192.168.1.11",
+        mac_address="AA:BB:CC:DD:EE:00",
+        hostname="status-host",
+        last_seen_at=utcnow(),
+        vuln_counts={"critical": 0, "high": 0, "medium": 0, "low": 0},
+    )
+    db_session.add(asset)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    scan = Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.11",
+        scan_type="adaptive",
+        pipeline_mode="advanced",
+    )
+    db_session.add(scan)
+    db_session.commit()
+
+    hosts = [
+        {
+            "ip_address": "192.168.1.11",
+            "vulnerabilities": [
+                {
+                    "cve_id": "CVE-9999-0003",
+                    "title": "Test vulnerability status",
+                    "description": "Test description",
+                    "severity": "High",
+                    "cvss": 8.0,
+                    "plugin_output": "Test output",
+                }
+            ],
+        }
+    ]
+
+    sync_advanced_scan(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    finding = db_session.query(AssetVulnerability).filter(AssetVulnerability.asset_id == asset.id).one()
+    assert finding.status == "open"
+
+    update_finding_status(
+        finding_id=finding.id,
+        body=StatusUpdate(status="fixed"),
+        org_id=org.id,
+        db=db_session,
+        user=user,
+    )
+
+    db_session.refresh(asset)
+    assert asset.vuln_counts == {"critical": 0, "high": 0, "medium": 0, "low": 0}
 
 
 def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):

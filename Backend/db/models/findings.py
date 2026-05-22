@@ -81,6 +81,7 @@ class Service(Base):
     banner          = Column(Text,        nullable=True)
 
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     # ── Relationships ─────────────────────────────────────────────────────────
     scan        = relationship("Scan",  back_populates="services")
@@ -250,6 +251,8 @@ class AssetVulnerability(Base):
         Index("ix_asset_vuln_vuln_id",    "vuln_id"),
         Index("ix_asset_vuln_severity",   "severity"),
         Index("ix_asset_vuln_status",     "status"),
+        Index("ix_asset_vuln_source_family", "source_family"),
+        Index("ix_asset_vuln_evidence_source", "evidence_source"),
         Index("ix_asset_vuln_first_found","first_found_at"),
         # {"postgresql_partition_by": "HASH (org_id)"}
     )
@@ -277,6 +280,9 @@ class AssetVulnerability(Base):
     cvss_score = Column(Numeric(3, 1), nullable=True)
 
     status = Column(String(50), nullable=False, default="open", index=True)
+
+    source_family  = Column(String(50), nullable=False, default="unknown")
+    evidence_source = Column(String(50), nullable=False, default="unknown")
 
     proof         = Column(Text, nullable=True)
     plugin_output = Column(Text, nullable=True)

@@ -179,7 +179,9 @@ export default function Phase3Results() {
     if (
       pipelineStarted.current ||
       !safePhase1Hosts.length ||
-      !activeDiscoveryHosts.length
+      !activeDiscoveryHosts.length ||
+      pipelineState === PIPELINE_STATES.REPORT_READY ||
+      pipelineState === PIPELINE_STATES.COMPLETE
     ) return;
 
     // A route-level start request means this page owns the next transition,
@@ -199,9 +201,7 @@ export default function Phase3Results() {
   }, [
     safePhase1Hosts.length,
     activeDiscoveryHosts.length,
-    auditQueueHosts.length,
-    phase2Results.length,
-    requestedStartPhase,
+    requestedStartPhase
   ]);
 
   const baseURL = api.defaults.baseURL || "";
@@ -455,6 +455,9 @@ export default function Phase3Results() {
   const currentStep = localVulnResults.length ? 3 : localPortHosts.length ? 2 : 1;
   const activeMsg = PHASE_MESSAGES[pipelineState];
 
+  // PHASE 4: Reachability Validation
+  const isUnreachable = phase1Summary && (phase1Summary.status === "unreachable" || (Number(phase1Summary.active_hosts) === 0 && Number(phase1Summary.total_hosts) > 0));
+
   // Filter display logic for each section
   const displayDiscoveryHosts = filter1 === "active" ? activeDiscoveryHosts : safePhase1Hosts;
   const activePortHosts = localPortHosts.filter(h => h.is_active);
@@ -485,6 +488,24 @@ export default function Phase3Results() {
             <button className="btn btn--ghost" onClick={() => navigate("/scan")}>← Back</button>
           </div>
         </div>
+
+        {/* PHASE 4: Unreachable Banner */}
+        {isUnreachable && (
+          <div style={{
+            margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+            background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+            display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+          }}>
+            <span style={{ fontSize: 24 }}>⚠️</span>
+            <div>
+              <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                The automated pipeline stopped because Phase 1 (Discovery) found no active hosts. 
+                Verify the target network and probes before re-scanning.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Discovery Summary ───────────────────────────────────────────── */}
         <div className="summary-bar" style={{ marginBottom: 16 }}>

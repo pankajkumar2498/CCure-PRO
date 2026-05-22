@@ -207,12 +207,24 @@ def update_scan_phase1(
     duration = summary.get("scan_duration", 0.0)
     hosts_data = phase1_data.get("data", [])
 
+    total = summary.get("total_hosts", 0)
+    active = summary.get("active_hosts", 0)
+
+    scan.total_hosts = total
+    scan.active_hosts = active
+
+    # Default terminal status
     scan.status = "complete" if is_final else "running"
-    if is_final:
+    
+    # ATOMIC UNREACHABLE DETECTION
+    if active == 0 and total > 0:
+        scan.status = "unreachable"
         scan.completed_at = utcnow()
+
+    if is_final or scan.status == "unreachable":
+        scan.completed_at = utcnow()
+
     scan.duration_seconds = duration
-    scan.total_hosts = summary.get("total_hosts", 0)
-    scan.active_hosts = summary.get("active_hosts", 0)
     if report_json_path: scan.report_json_path = report_json_path
     if report_xml_path: scan.report_xml_path = report_xml_path
 
@@ -309,10 +321,14 @@ def update_scan_phase(
 
     # Keep duration rolling
     scan.duration_seconds = (scan.duration_seconds or 0.0) + duration
-    scan.status = "complete" if is_final else "running"
-    
+
+    # ENTERPRISE FIX: Preserve 'unreachable' status if already set by Phase 1
     if is_final:
+        if scan.status != "unreachable":
+            scan.status = "complete"
         scan.completed_at = utcnow()
+    else:
+        scan.status = "running"
 
     # Track phase
     phase_key_map = {2: "asset_discovery", 3: "vulnerability_assessment", 4: "credentialed"}
@@ -321,39 +337,58 @@ def update_scan_phase(
     # Embed raw data into summary to ensure 100% historical fidelity without schema changes
     full_summary_payload = _phase_summary_payload(summary, hosts_data)
 
-    phase_row = (
-        db.query(ScanPhase)
-        .filter(ScanPhase.scan_id == scan.id, ScanPhase.phase_key == phase_key)
-        .first()
-    )
-    now = utcnow()
-    if phase_row:
-        phase_row.phase_order = phase
-        phase_row.status = "complete"
-        phase_row.duration_seconds = duration
-        phase_row.hosts_processed = len(hosts_data)
-        phase_row.summary = full_summary_payload
-        phase_row.completed_at = now
-        phase_row.updated_at = now
-        if not phase_row.started_at:
-            phase_row.started_at = now
-    else:
-        phase_row = ScanPhase(
-            id=gen_scan_phase_id(scan.id, phase_key),
-            scan_id=scan.id,
-            phase_key=phase_key,
-            phase_order=phase,
-            status="complete",
-            duration_seconds=duration,
-            hosts_processed=len(hosts_data),
-            summary=full_summary_payload,
-            started_at=now,
-            completed_at=now
+    # SaaS Stability: Use a robust Upsert-style logic to prevent crash on redundant triggers
+    try:
+        phase_row = (
+            db.query(ScanPhase)
+            .filter(ScanPhase.scan_id == scan.id, ScanPhase.phase_key == phase_key)
+            .first()
         )
-        db.add(phase_row)
-        db.flush()
+        now = utcnow()
+        if phase_row:
+            # Update existing row
+            phase_row.phase_order = phase
+            phase_row.status = "complete"
+            phase_row.duration_seconds = duration
+            phase_row.hosts_processed = len(hosts_data)
+            phase_row.summary = full_summary_payload
+            phase_row.completed_at = now
+            phase_row.updated_at = now
+            if not phase_row.started_at:
+                phase_row.started_at = now
+            db.commit()
+        else:
+            # Try to insert new row
+            phase_row = ScanPhase(
+                id=gen_scan_phase_id(scan.id, phase_key),
+                scan_id=scan.id,
+                phase_key=phase_key,
+                phase_order=phase,
+                status="complete",
+                duration_seconds=duration,
+                hosts_processed=len(hosts_data),
+                summary=full_summary_payload,
+                started_at=now,
+                completed_at=now
+            )
+            db.add(phase_row)
+            db.commit()
+    except Exception as e:
+        # If a collision occurred (another worker finished first), just update the existing one
+        db.rollback()
+        db.query(ScanPhase).filter(
+            ScanPhase.scan_id == scan.id, 
+            ScanPhase.phase_key == phase_key
+        ).update({
+            "status": "complete",
+            "duration_seconds": duration,
+            "hosts_processed": len(hosts_data),
+            "summary": full_summary_payload,
+            "updated_at": utcnow()
+        })
+        db.commit()
 
-    if phase >= 3:
+    if is_final:
         # Update denormalized vuln counts on Scan row for dashboard performance
         all_vulns = []
         for h in hosts_data:
@@ -369,6 +404,10 @@ def update_scan_phase(
         scan.medium_count = medium_count
         scan.low_count = low_count
         scan.total_vulns = critical_count + high_count + medium_count + low_count
+
+        # ENTERPRISE FIX: Do not overwrite 'unreachable' status with 'complete'
+        if scan.status != "unreachable":
+            scan.status = "complete"
 
     db.commit()
     db.refresh(scan)
@@ -448,12 +487,13 @@ def mark_scan_failed(
     scan_id: str,
     user_id: str,
     reason:  str,
+    status:  str = "failed",
 ) -> Optional[Scan]:
     scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return None
 
-    scan.status = "failed"
+    scan.status = status
     scan.failure_reason = reason
     scan.completed_at = utcnow()
 
@@ -465,7 +505,7 @@ def mark_scan_failed(
         log_audit_event(
             db=db,
             user=user,
-            action="scan.failed",
+            action=f"scan.{status}",
             resource_type="scan",
             resource_id=str(scan.id),
             changes={
@@ -477,13 +517,18 @@ def mark_scan_failed(
 
     try:
         from routers.notifications import create_notification, NotificationType, NotificationCategory
+        ntype = NotificationType.SCAN_FAILED
+        title = f"Scan {scan.scan_no} Failed"
+        if status == "unreachable":
+            title = f"Scan {scan.scan_no} Unreachable"
+        
         create_notification(
             db=db,
             user_id=scan.created_by,
-            notification_type=NotificationType.SCAN_FAILED,
+            notification_type=ntype,
             category=NotificationCategory.SCAN,
-            title=f"Scan {scan.scan_no} Failed",
-            message=f"Scan on {scan.target_str} failed: {reason}",
+            title=title,
+            message=f"Scan on {scan.target_str} {status}: {reason}",
             related_scan_id=str(scan.id)
         )
     except Exception:
@@ -506,6 +551,7 @@ def create_completed_scan(
     report_xml_path:  Optional[str]   = None,
     pipeline_mode:    str             = "advanced",
     scan_id:          Optional[str]   = None,
+    commit:           bool            = True,
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
     org_id = _get_org_id(db, user_id)
@@ -518,7 +564,8 @@ def create_completed_scan(
         if not scan:
             raise ValueError(f"Scan {scan_id} not found")
 
-        scan.status = "complete"
+        if scan.status != "unreachable":
+            scan.status = "complete"
         scan.completed_at = utcnow()
         scan.duration_seconds = scan_duration or summary.get("scan_duration", 0.0)
         scan.total_hosts = summary.get("total_hosts", 0)
@@ -603,8 +650,9 @@ def create_completed_scan(
         elif phase_order >= 3:
             sync_advanced_scan(db, str(scan.id), org_id, user_id, hosts_data)
 
-    db.commit()
-    db.refresh(scan)
+    if commit:
+        db.commit()
+        db.refresh(scan)
 
     user = db.query(User).filter(User.id == scan.created_by).first()
     if user:
@@ -633,7 +681,8 @@ def create_completed_scan(
                 "phase": phase,
             }
         )
-        db.commit()
+        if commit:
+            db.commit()
 
     try:
         from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory

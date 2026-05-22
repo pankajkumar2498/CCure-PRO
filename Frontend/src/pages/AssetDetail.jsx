@@ -41,6 +41,20 @@ const ago = (iso) => {
 
 const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
+const hasDisplayValue = (value) =>
+  value !== null && value !== undefined && value !== "";
+
+const formatDisplayValue = (value) => {
+  if (!hasDisplayValue(value)) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
 const riskColor = (score) =>
   score >= 75 ? "#ef4444" : score >= 50 ? "#f97316" : score >= 25 ? "#eab308" : "#22c55e";
 
@@ -462,10 +476,10 @@ function ChangelogTab({ assetId }) {
                 {e.change_type?.replace(/_/g, " ")}
                 {e.field_name && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> — {e.field_name}</span>}
               </div>
-              {(e.old_value || e.new_value) && (
-                <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: "0.68rem" }}>
-                  {e.old_value && <span style={{ color: "#f87171", fontFamily: "var(--mono)" }}>− {e.old_value}</span>}
-                  {e.new_value && <span style={{ color: "#4ade80", fontFamily: "var(--mono)" }}>+ {e.new_value}</span>}
+              {(hasDisplayValue(e.old_value) || hasDisplayValue(e.new_value)) && (
+                <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: "0.68rem", flexWrap: "wrap" }}>
+                  {hasDisplayValue(e.old_value) && <span style={{ color: "#f87171", fontFamily: "var(--mono)", overflowWrap: "anywhere" }}>− {formatDisplayValue(e.old_value)}</span>}
+                  {hasDisplayValue(e.new_value) && <span style={{ color: "#4ade80", fontFamily: "var(--mono)", overflowWrap: "anywhere" }}>+ {formatDisplayValue(e.new_value)}</span>}
                 </div>
               )}
               {e.scan_id && <div style={{ fontSize: "0.62rem", color: "var(--text-faint)", marginTop: 2 }}>Scan: {e.scan_id}</div>}

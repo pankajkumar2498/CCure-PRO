@@ -16,6 +16,8 @@ Usage (called by the endpoint, not directly)::
         data = collector.collect_all()
 """
 
+import ipaddress
+import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -35,7 +37,12 @@ COMMANDS: Dict[str, str] = {
     "os_release":      "cat /etc/os-release 2>/dev/null",
     "kernel":          "uname -r 2>/dev/null",
     "uname_full":      "uname -a 2>/dev/null",
-    "hostname":        "hostname -f 2>/dev/null || hostname 2>/dev/null",
+    "hostname_short":  "hostname -s 2>/dev/null || hostname 2>/dev/null",
+    "hostname_fqdn":   "hostname -f 2>/dev/null || hostname 2>/dev/null",
+    "domain":          "dnsdomainname 2>/dev/null || domainname 2>/dev/null",
+    "dmi_vendor":      "cat /sys/class/dmi/id/sys_vendor 2>/dev/null",
+    "dmi_product":     "cat /sys/class/dmi/id/product_name 2>/dev/null",
+    "dmi_serial":      "cat /sys/class/dmi/id/product_serial 2>/dev/null || cat /etc/machine-id 2>/dev/null",
     "uptime":          "uptime -p 2>/dev/null || uptime 2>/dev/null",
     "packages_deb":    "dpkg -l 2>/dev/null",
     "packages_rpm":    "rpm -qa --queryformat '%{NAME} %{VERSION}-%{RELEASE}\\n' 2>/dev/null",
@@ -51,7 +58,8 @@ COMMANDS: Dict[str, str] = {
     "cpu":             "lscpu 2>/dev/null",
     "memory":          "free -h 2>/dev/null",
     "disk":            "df -h 2>/dev/null",
-    "network_iface":   "ip addr show 2>/dev/null || ifconfig 2>/dev/null",
+    "network_iface":   "ip -j addr show 2>/dev/null || ip addr show 2>/dev/null || ifconfig 2>/dev/null",
+    "network_route":   "ip -j route show default 2>/dev/null || ip route show default 2>/dev/null",
     "arp_table":       "arp -n 2>/dev/null || ip neigh 2>/dev/null",
     "login_history":   "last -n 20 2>/dev/null",
     "failed_logins":   "lastb -n 20 2>/dev/null || journalctl _COMM=sshd -n 30 --no-pager 2>/dev/null",
@@ -146,7 +154,15 @@ class LinuxCollector:
         data["uname_full"]     = self._run("uname_full")
 
         # Hostname
-        data["hostname_fqdn"] = self._run("hostname")
+        hostname_fqdn = self._run("hostname_fqdn")
+        data["hostname_fqdn"] = hostname_fqdn
+        data["hostname_short"] = self._run("hostname_short")
+        data["fqdn"] = hostname_fqdn if "." in hostname_fqdn else ""
+        data["domain"] = self._run("domain")
+        data["manufacturer"] = self._run("dmi_vendor")
+        data["hardware_model"] = self._run("dmi_product")
+        data["os_family"] = "Linux"
+        data["os_confidence"] = 100
 
         # Uptime
         data["uptime"] = self._run("uptime")
@@ -277,8 +293,13 @@ class LinuxCollector:
     # ── Network ────────────────────────────────────────────────────────────
 
     def _collect_network(self) -> Dict[str, Any]:
+        iface_raw = self._run("network_iface")
+        subnet = _subnet_from_linux_interfaces(iface_raw, self._ssh.ip)
+        primary_mac = _mac_from_linux_interfaces(iface_raw, self._ssh.ip)
         return {
-            "network_interfaces_raw": self._run("network_iface"),
+            "network_interfaces_raw": iface_raw,
+            "subnet":                 subnet,
+            "mac_address":            primary_mac,
             "arp_table_raw":          self._run("arp_table"),
             "env_vars_summary":       _extract_sensitive_env(self._run("env_vars")),
         }
@@ -322,6 +343,99 @@ def _parse_key_value(text: str, sep: str = "=") -> Dict[str, str]:
             k, _, v = line.partition(sep)
             out[k.strip()] = v.strip()
     return out
+
+
+def _subnet_from_linux_interfaces(raw: str, target_ip: str) -> str:
+    if not raw or not target_ip:
+        return ""
+    try:
+        target = ipaddress.ip_address(target_ip)
+    except ValueError:
+        return ""
+
+    try:
+        interfaces = json.loads(raw)
+        if isinstance(interfaces, list):
+            for iface in interfaces:
+                for addr in iface.get("addr_info") or []:
+                    if addr.get("family") != "inet":
+                        continue
+                    local = addr.get("local")
+                    prefixlen = addr.get("prefixlen")
+                    if not local or prefixlen is None:
+                        continue
+                    try:
+                        network = ipaddress.ip_network(f"{local}/{prefixlen}", strict=False)
+                    except ValueError:
+                        continue
+                    if target in network:
+                        return str(network)
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    for match in re.finditer(r"inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", raw):
+        local, prefixlen = match.groups()
+        try:
+            network = ipaddress.ip_network(f"{local}/{prefixlen}", strict=False)
+        except ValueError:
+            continue
+        if target in network:
+            return str(network)
+    return ""
+
+
+def _normalize_mac(value: str) -> str:
+    text = str(value or "").strip().lower().replace("-", ":")
+    if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
+        return ""
+    if re.fullmatch(r"[0-9a-f]{12}", text):
+        text = ":".join(text[i:i + 2] for i in range(0, 12, 2))
+    return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
+
+
+def _mac_from_linux_interfaces(raw: str, target_ip: str) -> str:
+    if not raw:
+        return ""
+    try:
+        target = ipaddress.ip_address(target_ip) if target_ip else None
+    except ValueError:
+        target = None
+
+    try:
+        interfaces = json.loads(raw)
+        if isinstance(interfaces, list):
+            fallback = ""
+            for iface in interfaces:
+                mac = _normalize_mac(iface.get("address"))
+                if not mac:
+                    continue
+                if iface.get("ifname") != "lo" and not fallback:
+                    fallback = mac
+                for addr in iface.get("addr_info") or []:
+                    if addr.get("family") == "inet" and target and addr.get("local") == str(target):
+                        return mac
+            if fallback:
+                return fallback
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    blocks = re.split(r"\n(?=\d+:\s+)", raw)
+    fallback = ""
+    for block in blocks:
+        mac_match = re.search(
+            r"(?:link/(?:ether|loopback)|ether|HWaddr)\s+([0-9a-fA-F:.-]{12,17})",
+            block,
+        )
+        if not mac_match:
+            continue
+        mac = _normalize_mac(mac_match.group(1))
+        if not mac:
+            continue
+        if " lo:" not in block and not fallback:
+            fallback = mac
+        if target and re.search(rf"inet\s+{re.escape(str(target))}/", block):
+            return mac
+    return fallback
 
 
 def _unquote(s: str) -> str:

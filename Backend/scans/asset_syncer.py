@@ -9,13 +9,40 @@ import logging
 from typing import Optional, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import func, text
 
-from db.models.assets import Asset
-from db.models.findings import Service, AssetVulnerability, VulnerabilityDefinition
+from db.models import (
+    Asset, AssetChangeLog,
+    Service, AssetVulnerability, VulnerabilityDefinition
+)
 from db.models.rbac import Organization
 from db.base import utcnow, gen_asset_id, gen_service_id
 
 logger = logging.getLogger(__name__)
+
+SOURCE_PRIORITY = {
+    "legacy": 5,
+    "discovery": 10,
+    "basic": 10,
+    "host_discovery": 10,
+    "asset_discovery": 20,
+    "fingerprinting": 20,
+    "advanced": 30,
+    "scanner": 30,
+    "scanner_network": 30,
+    "credentialed": 40,
+    "credentialed_package": 40,
+}
+
+FINDING_SOURCE_FAMILY = {
+    "advanced": "network_service",
+    "scanner": "network_service",
+    "scanner_network": "network_service",
+    "credentialed": "credentialed_package",
+    "credentialed_package": "credentialed_package",
+}
+
+EMPTY_VALUES = {None, "", "Unknown", "unknown", "UNKNOWN", "N/A", "n/a", "None", "00:00:00:00:00:00"}
 
 def _resolve_ip(host_data: dict) -> str:
     return str(host_data.get("ip_address") or host_data.get("ip") or "0.0.0.0").strip()
@@ -28,360 +55,520 @@ def _resolve_mac(host_data: dict) -> Optional[str]:
         return None
     return mac_str
 
-def _resolve_asset(host_data: dict, mac_map: dict, ip_map: dict) -> Optional[Asset]:
-    """Helper to resolve asset identity using the same waterfall as Phase 1."""
-    ip = _resolve_ip(host_data)
-    mac = _resolve_mac(host_data)
-    
-    # Priority 1: MAC
-    if mac and mac in mac_map:
-        return mac_map[mac]
-    
-    # Priority 2: IP
-    if ip != "0.0.0.0" and ip in ip_map:
-        return ip_map[ip]
-        
+def _existing_assets_for_hosts(db: Session, org_id: str, hosts: List[dict]):
+    batch_ids = [
+        gen_asset_id(org_id, _resolve_ip(h) if _resolve_ip(h) != "0.0.0.0" else (_resolve_mac(h) or "unknown"))
+        for h in hosts
+    ]
+    batch_ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+    query = db.query(Asset).filter(Asset.org_id == org_id)
+    assets = query.filter((Asset.id.in_(batch_ids)) | (Asset.ip_address.in_(batch_ips))).all()
+    return (
+        {a.id: a for a in assets},
+        {str(a.ip_address): a for a in assets if a.ip_address},
+    )
+
+def _should_update(current, incoming) -> bool:
+    """Enterprise merge rule: Only update if the new value is non-empty and non-trivial."""
+    return _has_value(incoming)
+
+def _has_value(value) -> bool:
+    if value in EMPTY_VALUES:
+        return False
+    if isinstance(value, str) and value.strip() in EMPTY_VALUES:
+        return False
+    if value in ([], {}):
+        return False
+    return True
+
+def _looks_like_fqdn(value) -> bool:
+    if not _has_value(value) or not isinstance(value, str):
+        return False
+    text_value = value.strip().rstrip(".")
+    if "." not in text_value:
+        return False
+    labels = [label for label in text_value.split(".") if label]
+    if len(labels) < 2:
+        return False
+    return not all(label.isdigit() for label in labels)
+
+def _fqdn_label_count(value) -> int:
+    if not _looks_like_fqdn(value):
+        return 0
+    return len([label for label in str(value).strip().rstrip(".").split(".") if label])
+
+def _first_text(*values) -> Optional[str]:
+    for value in values:
+        if isinstance(value, list):
+            for item in value:
+                text = _first_text(item)
+                if text:
+                    return text
+            continue
+        if isinstance(value, dict):
+            text = _first_text(value.get("name"), value.get("hostname"))
+            if text:
+                return text
+            continue
+        if _has_value(value):
+            return str(value).strip()
     return None
 
+def _first_fqdn(*values) -> Optional[str]:
+    for value in values:
+        if isinstance(value, list):
+            nested = _first_fqdn(*value)
+            if nested:
+                return nested
+            continue
+        if isinstance(value, dict):
+            nested = _first_fqdn(value.get("name"), value.get("hostname"))
+            if nested:
+                return nested
+            continue
+        text_value = str(value).strip().rstrip(".") if _has_value(value) else ""
+        if _looks_like_fqdn(text_value):
+            return text_value
+    return None
+
+def _extract_netbios_name(host_data: dict) -> Optional[str]:
+    netbios_name = _first_text(host_data.get("netbios_computer"), host_data.get("netbios_name"))
+    if netbios_name:
+        return netbios_name
+    for entry in host_data.get("netbios_names") or []:
+        if isinstance(entry, dict) and entry.get("suffix") in ("00", "20") and entry.get("name"):
+            return str(entry.get("name")).strip()
+    return None
+
+def _extract_dns_identity(host_data: dict) -> tuple[Optional[str], Optional[str]]:
+    dns_name = _first_fqdn(
+        host_data.get("dns_name"),
+        host_data.get("ptr_hostname"),
+        host_data.get("fqdn"),
+        host_data.get("hostname"),
+        host_data.get("hostnames"),
+    )
+    fqdn = _first_fqdn(
+        dns_name,
+        host_data.get("fqdn"),
+        host_data.get("ptr_hostname"),
+        host_data.get("dns_name"),
+        host_data.get("hostname"),
+        host_data.get("hostnames"),
+        host_data.get("mdns_name"),
+    )
+    return dns_name, fqdn
+
+def _confidence_to_percent(value) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return max(0, min(100, int(value)))
+    label = str(value).strip().lower()
+    if label.endswith("%"):
+        label = label[:-1]
+    try:
+        return max(0, min(100, int(float(label))))
+    except ValueError:
+        return {"high": 90, "medium": 60, "low": 30, "n/a": None}.get(label)
+
+def _to_int(value) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+def _normalize_source(source: Optional[str]) -> str:
+    source = str(source or "legacy").strip().lower()
+    return {
+        "phase1": "discovery",
+        "phase2": "asset_discovery",
+        "phase3": "advanced",
+        "vulnerability_assessment": "advanced",
+        "port_scan": "asset_discovery",
+    }.get(source, source)
+
+def _source_rank(source: Optional[str]) -> int:
+    return SOURCE_PRIORITY.get(_normalize_source(source), SOURCE_PRIORITY["legacy"])
+
+def _current_source(asset: Asset, field: str) -> str:
+    attrs = dict(asset.custom_attributes or {})
+    provenance = dict(attrs.get("provenance") or {})
+    source = (provenance.get(field) or {}).get("source")
+    if source:
+        return _normalize_source(source)
+    return _normalize_source(asset.discovery_method or "legacy")
+
+def _can_update_field(asset: Asset, field: str, incoming, incoming_source: str) -> bool:
+    if not _has_value(incoming):
+        return False
+    if field in ("fqdn", "dns_name") and not _looks_like_fqdn(str(incoming)):
+        return False
+    incoming_source = _normalize_source(incoming_source)
+    if field in ("fqdn", "dns_name") and incoming_source == "credentialed":
+        return False
+    current = getattr(asset, field, None)
+    if not _has_value(current):
+        return True
+    if field in ("fqdn", "dns_name"):
+        current_source = _current_source(asset, field)
+        current_is_fqdn = _looks_like_fqdn(str(current))
+        if not current_is_fqdn:
+            return True
+        if _source_rank(incoming_source) < _source_rank(current_source):
+            return False
+        if _fqdn_label_count(str(incoming)) < _fqdn_label_count(str(current)):
+            return False
+        return True
+    return _source_rank(incoming_source) >= _source_rank(_current_source(asset, field))
+
+def _set_asset_field(
+    db: Session,
+    asset: Asset,
+    scan_id: str,
+    field: str,
+    incoming,
+    source: str,
+    max_len: Optional[int] = None,
+) -> bool:
+    if not _can_update_field(asset, field, incoming, source):
+        return False
+    value = str(incoming).strip() if isinstance(incoming, str) else incoming
+    if isinstance(value, str) and max_len:
+        value = value[:max_len]
+    old_value = getattr(asset, field, None)
+    if old_value != value:
+        _record_asset_change(db, asset.id, scan_id, field, old_value, value)
+        setattr(asset, field, value)
+    _update_provenance(asset, field, source, scan_id)
+    return True
+
+def _finding_family(source: str) -> str:
+    return FINDING_SOURCE_FAMILY.get(_normalize_source(source), "unknown")
+
+def _finding_source_from_record(finding: AssetVulnerability) -> str:
+    source_family = getattr(finding, "source_family", None)
+    if _has_value(source_family) and source_family != "unknown":
+        return "credentialed_package" if source_family == "credentialed_package" else "advanced"
+    text = " ".join(str(v or "") for v in (finding.proof, finding.plugin_output)).lower()
+    if "source_family:credentialed_package" in text or "package:" in text:
+        return "credentialed_package"
+    if "source_family:network_service" in text:
+        return "advanced"
+    return "advanced"
+
+def _source_specific_finding_id(asset_id: str, cve_id: str, source_family: str) -> str:
+    return f"fnd_{asset_id}_{source_family}_{cve_id}"
+
+def _resolve_finding_id(db: Session, org_id: str, asset_id: str, cve_id: str, source_family: str) -> str:
+    legacy_id = f"fnd_{asset_id}_{cve_id}"
+    existing = db.query(AssetVulnerability).filter(
+        AssetVulnerability.id == legacy_id,
+        AssetVulnerability.org_id == org_id,
+    ).first()
+    if existing and _finding_family(_finding_source_from_record(existing)) == source_family:
+        return legacy_id
+    return _source_specific_finding_id(asset_id, cve_id, source_family)
+
+def _recalculate_asset_risk(db: Session, asset_id: str):
+    sev_rows = (
+        db.query(AssetVulnerability.severity, func.count(AssetVulnerability.id).label("cnt"))
+        .filter(AssetVulnerability.asset_id == asset_id, AssetVulnerability.status == "open")
+        .group_by(AssetVulnerability.severity)
+        .all()
+    )
+    sev_map = {str(r.severity).title(): r.cnt for r in sev_rows} if sev_rows else {}
+    counts = {
+        "critical": sev_map.get("Critical", 0),
+        "high":     sev_map.get("High", 0),
+        "medium":   sev_map.get("Medium", 0),
+        "low":      sev_map.get("Low", 0),
+    }
+    computed = min(
+        100,
+        counts["critical"] * 25
+        + counts["high"] * 15
+        + counts["medium"] * 8
+        + counts["low"] * 3,
+    )
+    return counts, computed, "Critical" if computed >= 90 else "High" if computed >= 70 else "Medium" if computed >= 40 else "Low" if computed > 0 else "Info"
+
+def _record_asset_change(db: Session, asset_id: str, scan_id: str, field: str, old_val: Any, new_val: Any):
+    """Logs a specific field change to the AssetChangeLog."""
+    if old_val == new_val or (not old_val and not new_val):
+        return
+    db.add(AssetChangeLog(
+        asset_id=asset_id,
+        scan_id=scan_id,
+        change_type="field_update",
+        field_name=field,
+        old_value={"val": old_val},
+        new_value={"val": new_val},
+        detected_at=utcnow()
+    ))
+
+def _update_provenance(asset: Asset, field: str, source: str, scan_id: str):
+    """Tracks which scan type provided which piece of data."""
+    attrs = dict(asset.custom_attributes or {})
+    prov = dict(attrs.get("provenance") or {})
+    prov[field] = {
+        "source": source,
+        "scan_id": scan_id,
+        "at": utcnow().isoformat()
+    }
+    attrs["provenance"] = prov
+    asset.custom_attributes = attrs
 
 def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 1 (Host Discovery).
-    Performs Identity Resolution (MAC-first) and upserts hosts into the Asset Registry.
+    Phase 4: Adds Change Auditing and Provenance.
     """
-    if not hosts:
-        return
+    if not hosts: return
 
-    logger.info(f"Syncing {len(hosts)} discovered hosts to Asset Registry for scan: {scan_id}")
+    logger.info(f"Syncing {len(hosts)} hosts with Phase 4 Change Auditing")
 
-    # 1. Prepare unique lookups for this batch
-    batch_ips = set()
-    batch_macs = set()
-    for h in hosts:
-        ip = _resolve_ip(h)
-        mac = _resolve_mac(h)
-        if ip != "0.0.0.0": batch_ips.add(ip)
-        if mac: batch_macs.add(mac)
+    # Pre-fetch existing assets for comparison (Selective Select-then-Update for Change Log accuracy)
+    existing, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
 
-    # 2. Pre-fetch ALL candidate assets in one query
-    existing_assets = []
-    if batch_ips or batch_macs:
-        from sqlalchemy import or_
-        filters = []
-        if batch_ips: filters.append(Asset.ip_address.in_(list(batch_ips)))
-        if batch_macs: filters.append(Asset.mac_address.in_(list(batch_macs)))
-        
-        existing_assets = db.query(Asset).filter(
-            Asset.org_id == org_id, 
-            or_(*filters)
-        ).all()
-
-    # Create maps for quick resolution
-    # Note: If multiple rows have same MAC (shouldn't happen but...) or same IP, we take the latest
-    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
-    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
-
-    to_update = []
-    to_create = []
-
-    # 3. Resolve Identity Host-by-Host
     for host in hosts:
         ip = _resolve_ip(host)
         mac = _resolve_mac(host)
-        hostname = host.get("hostname") or host.get("hostnames", [None])[0] if isinstance(host.get("hostnames"), list) else host.get("hostname")
+        hostname = (host.get("hostname") or host.get("hostnames", [None])[0]) if isinstance(host.get("hostnames"), list) else host.get("hostname")
+        netbios_name = _extract_netbios_name(host)
+        dns_name, fqdn = _extract_dns_identity(host)
         vendor = host.get("vendor", "Unknown")
         is_active = host.get("is_active") or host.get("state") == "up"
-        discovery_method = host.get("discovery_method") or host.get("method")
-        response_time_ms = host.get("response_time_ms") or host.get("elapsed_ms")
+        response_time = _to_int(host.get("response_time_ms") or host.get("response_time"))
+        os_confidence = _confidence_to_percent(host.get("os_confidence") or host.get("confidence"))
 
-        # Identity Resolution Waterfall
-        target_asset = None
-        
-        # Priority 1: Match by MAC
-        if mac:
-            target_asset = db_by_mac.get(mac)
-        
-        # Priority 2: Match by IP (only if MAC didn't find anything)
-        if not target_asset and ip != "0.0.0.0":
-            target_asset = db_by_ip.get(ip)
+        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
+        asset = existing.get(asset_id) or existing_by_ip.get(ip)
+        if asset:
+            asset_id = asset.id
 
-        if target_asset:
-            # We found an identity! Update it.
-            # IMPORTANT: If we found it by MAC but it has a DIFFERENT IP now, 
-            # we update the IP. This handles DHCP changes perfectly.
-            target_asset.ip_address = ip if ip != "0.0.0.0" else target_asset.ip_address
-            if mac: target_asset.mac_address = mac
-            if hostname: target_asset.hostname = hostname
-            if vendor and vendor != "Unknown": target_asset.vendor = vendor
-            
-            target_asset.last_seen_at = utcnow()
-            target_asset.last_scan_id = scan_id
-            target_asset.is_active = is_active
-            target_asset.discovery_method = discovery_method
-            target_asset.response_time_ms = response_time_ms
-            target_asset.updated_at = utcnow()
-            
-            # If the IP changed, update the lookup map to prevent other hosts in this batch
-            # from accidentally matching the 'old' IP of this asset.
-            db_by_ip[ip] = target_asset
+        if asset:
+            # PHASE 4: CHANGE AUDITING
+            _set_asset_field(db, asset, scan_id, "hostname", hostname, "discovery", max_len=255)
+            _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "discovery", max_len=512)
+            _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "discovery", max_len=512)
+            _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "discovery", max_len=255)
+            _set_asset_field(db, asset, scan_id, "vendor", vendor, "discovery", max_len=255)
+            _set_asset_field(db, asset, scan_id, "mac_address", mac, "discovery")
+            _set_asset_field(db, asset, scan_id, "response_time_ms", response_time, "discovery")
+            _set_asset_field(db, asset, scan_id, "os_confidence", os_confidence, "discovery")
+            _set_asset_field(db, asset, scan_id, "discovery_method", "discovery", "discovery", max_len=50)
+
+            if asset.ip_address != ip and ip != "0.0.0.0":
+                _record_asset_change(db, asset_id, scan_id, "ip_address", str(asset.ip_address), ip)
+                asset.ip_address = ip
+
+            asset.last_seen_at = utcnow()
+            asset.last_scan_id = scan_id
+            asset.is_active = is_active
+            asset.updated_at = utcnow()
         elif is_active:
-            # New Asset Discovery — ONLY if host is actually live.
-            # We do NOT insert inactive IPs that are not already in the registry.
-            asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
-            
+            # New Asset
             new_asset = Asset(
-                id=asset_id,
-                org_id=org_id,
-                ip_address=ip if ip != "0.0.0.0" else None,
-                mac_address=mac,
-                hostname=hostname,
-                vendor=vendor if vendor != "Unknown" else None,
-                is_active=is_active,
-                discovery_method=discovery_method,
-                response_time_ms=response_time_ms,
-                last_scan_id=scan_id,
-                last_seen_at=utcnow(),
-                created_at=utcnow(),
-                updated_at=utcnow(),
+                id=asset_id, org_id=org_id, ip_address=ip if ip != "0.0.0.0" else None,
+                mac_address=mac, hostname=hostname, vendor=vendor if vendor != "Unknown" else None,
+                response_time_ms=response_time, os_confidence=os_confidence,
+                is_active=True, discovery_method="discovery",
+                last_scan_id=scan_id, last_seen_at=utcnow(), created_at=utcnow(), updated_at=utcnow()
             )
             db.add(new_asset)
-            to_create.append(new_asset)
-            
-            # Add to maps so subsequent hosts in this same batch can correlate
-            if mac: db_by_mac[mac] = new_asset
-            if ip != "0.0.0.0": db_by_ip[ip] = new_asset
+            if _has_value(hostname):
+                _update_provenance(new_asset, "hostname", "discovery", scan_id)
+            if _has_value(vendor):
+                _update_provenance(new_asset, "vendor", "discovery", scan_id)
+            if _has_value(mac):
+                _update_provenance(new_asset, "mac_address", "discovery", scan_id)
+            if _has_value(response_time):
+                _update_provenance(new_asset, "response_time_ms", "discovery", scan_id)
+            if _has_value(os_confidence):
+                _update_provenance(new_asset, "os_confidence", "discovery", scan_id)
+            if _looks_like_fqdn(str(fqdn)):
+                new_asset.fqdn = str(fqdn)[:512]
+                _update_provenance(new_asset, "fqdn", "discovery", scan_id)
+            if _looks_like_fqdn(str(dns_name)):
+                new_asset.dns_name = str(dns_name)[:512]
+                _update_provenance(new_asset, "dns_name", "discovery", scan_id)
+            if _has_value(netbios_name):
+                new_asset.netbios_name = str(netbios_name)[:255]
+                _update_provenance(new_asset, "netbios_name", "discovery", scan_id)
+            _record_asset_change(db, asset_id, scan_id, "lifecycle", None, "discovered")
 
-    # 4. Final Safety: If two hosts in the DB share a MAC/IP due to previous bugs, 
-    # the flush might still hit a constraint. We use a try/except or flush carefully.
-    try:
-        db.flush()
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Asset Sync Phase 1 Failed: {str(e)}")
-        # In a real SaaS, we might want to retry with a more aggressive de-duplication script here
-        raise
+    db.commit()
 
 
 def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
     Called after Phase 2 (Asset Discovery / Port Scan).
-    Upserts open ports mapping to the newly registered assets using batch operations.
+    Phase 4: Provenance tracking for fingerprinting.
     """
-    if not hosts:
-        return
+    if not hosts: return
 
-    logger.info(f"Syncing Phase 2 asset features (ports/services) for scan: {scan_id}")
-
-    batch_macs = [m for h in hosts if (m := _resolve_mac(h))]
-    batch_ips = [i for h in hosts if (i := _resolve_ip(h)) != "0.0.0.0"]
-
-    # Pre-fetch existing assets
-    existing_assets = []
-    if batch_macs or batch_ips:
-        from sqlalchemy import or_
-        filters = []
-        if batch_macs: filters.append(Asset.mac_address.in_(batch_macs))
-        if batch_ips: filters.append(Asset.ip_address.in_(batch_ips))
-        
-        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
-
-    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
-    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
-
-    # Pre-fetch services for these assets
-    asset_ids = [a.id for a in existing_assets]
-    existing_services = []
-    if asset_ids:
-        existing_services = db.query(Service).filter(Service.asset_id.in_(asset_ids)).all()
-
-    service_map = {(s.asset_id, s.port, s.protocol): s for s in existing_services}
-    new_services = []
+    existing, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
 
     for host in hosts:
-        # Resolve asset using standardized waterfall
-        asset = _resolve_asset(host, db_by_mac, db_by_ip)
-
-        if not asset:
-            continue
+        ip = _resolve_ip(host)
+        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (_resolve_mac(host) or "unknown"))
+        asset = existing.get(asset_id) or existing_by_ip.get(ip)
+        if not asset: continue
+        asset_id = asset.id
+        dns_name, fqdn = _extract_dns_identity(host)
+        netbios_name = _extract_netbios_name(host)
 
         ports = host.get("open_ports") or host.get("ports") or []
         for p in ports:
             port_num = p.get("port")
-            if not port_num:
-                continue
-            
+            if not port_num: continue
             proto = p.get("protocol", "tcp").lower()
-            service_name = p.get("service") or p.get("name", "unknown")
-            product = p.get("product") or ""
-            version = p.get("version") or ""
-            extra = p.get("extrainfo") or p.get("extra") or ""
-            banner = p.get("banner") or ""
-            state = p.get("state") or "open"
+            service_id = gen_service_id(asset_id, int(port_num), proto)
 
-            # Check if this precise service runs on this asset
-            svc = service_map.get((asset.id, int(port_num), proto))
+            # Use UPSERT for services (high volume), but selective update for asset enrichment
+            db.execute(insert(Service).values(
+                id=service_id, asset_id=asset_id, scan_id=scan_id,
+                port=int(port_num), protocol=proto, state="open",
+                service_name=p.get("service") or "unknown", banner=p.get("banner"),
+                created_at=utcnow(), updated_at=utcnow()
+            ).on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "state": "open",
+                    "scan_id": scan_id,
+                    "updated_at": utcnow(),
+                    "service_name": func.coalesce(
+                        func.nullif(Service.service_name, "unknown"),
+                        func.nullif(p.get("service") or "", ""),
+                        Service.service_name,
+                    ),
+                    "banner": func.coalesce(Service.banner, func.nullif(p.get("banner") or "", "")),
+                }
+            ))
 
-            if svc:
-                svc.service_name = service_name
-                svc.service_product = product or None
-                svc.service_version = version or None
-                svc.service_extra = extra or None
-                svc.banner = banner or None
-                svc.state = state
-                svc.scan_id = scan_id
-            else:
-                svc = Service(
-                    id=gen_service_id(asset.id, int(port_num), proto),
-                    asset_id=asset.id,
-                    scan_id=scan_id,
-                    port=int(port_num),
-                    protocol=proto,
-                    state=state,
-                    service_name=service_name,
-                    service_product=product or None,
-                    service_version=version or None,
-                    service_extra=extra or None,
-                    banner=banner or None,
-                )
-                new_services.append(svc)
-                service_map[(asset.id, int(port_num), proto)] = svc
-
-        # Update Asset OS fingerprint
         os_match = host.get("os_match") or host.get("os_guess")
-        if os_match:
-            asset.os_name = os_match
-
-    if new_services:
-        db.add_all(new_services)
+        _set_asset_field(db, asset, scan_id, "hostname", host.get("hostname"), "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "asset_discovery", max_len=512)
+        _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "asset_discovery", max_len=512)
+        _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_name", os_match, "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "asset_discovery")
+        _set_asset_field(db, asset, scan_id, "discovery_method", "asset_discovery", "asset_discovery", max_len=50)
 
     db.commit()
 
 
 def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
-    Called after Phase 3 (Advanced Scan / Vulnerability Assessment).
-    Upserts CVEs and binds them to Assets using batch operations.
+    Called after Phase 3 (Advanced Scan).
+    Phase 4: Vulnerability Status Auditing (History).
     """
-    if not hosts:
-        return
+    if not hosts: return
 
-    logger.info(f"Syncing Phase 3 vulnerabilities for scan: {scan_id}")
+    existing_assets, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
 
-    batch_macs = [m for h in hosts if (m := _resolve_mac(h))]
-    batch_ips = [i for h in hosts if (i := _resolve_ip(h)) != "0.0.0.0"]
-
-    # Pre-fetch existing assets
-    existing_assets = []
-    if batch_macs or batch_ips:
-        from sqlalchemy import or_
-        filters = []
-        if batch_macs: filters.append(Asset.mac_address.in_(batch_macs))
-        if batch_ips: filters.append(Asset.ip_address.in_(batch_ips))
-        
-        existing_assets = db.query(Asset).filter(Asset.org_id == org_id, or_(*filters)).all()
-
-    db_by_mac = {a.mac_address: a for a in existing_assets if a.mac_address}
-    db_by_ip = {a.ip_address: a for a in existing_assets if a.ip_address}
-
-    # Collect all unique CVE IDs from payload
-    all_cve_ids = set()
+    touched_asset_ids = set()
     for host in hosts:
-        vulns = host.get("vulnerabilities") or host.get("cves") or []
-        for v in vulns:
-            cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
-            if cve_id:
-                all_cve_ids.add(cve_id)
-
-    # Pre-fetch existing CVE definitions
-    existing_cves = []
-    if all_cve_ids:
-        existing_cves = db.query(VulnerabilityDefinition).filter(VulnerabilityDefinition.cve_id.in_(list(all_cve_ids))).all()
-    cve_def_map = {c.cve_id: c for c in existing_cves}
-
-    # Collect asset IDs for findings
-    asset_ids = [a.id for a in existing_assets]
-    existing_findings = []
-    if asset_ids:
-        existing_findings = db.query(AssetVulnerability).filter(AssetVulnerability.asset_id.in_(asset_ids)).all()
-    finding_map = {(f.asset_id, f.vuln_id): f for f in existing_findings}
-
-    new_cve_defs = []
-    new_findings = []
-
-    for host in hosts:
-        # Resolve asset using standardized waterfall
-        asset = _resolve_asset(host, db_by_mac, db_by_ip)
-
-        vulns = host.get("vulnerabilities") or host.get("cves") or []
-        for v in vulns:
-            cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
-            if not cve_id:
-                continue
-
-            # Upsert into CVE Catalog (VulnerabilityDefinition)
-            cve_def = cve_def_map.get(cve_id)
-            if not cve_def:
-                cve_def = VulnerabilityDefinition(
-                    id=cve_id,
-                    cve_id=cve_id,
-                    title=v.get("title", f"Vulnerability {cve_id}"),
-                    description=v.get("description", ""),
-                    severity=str(v.get("severity", "Medium")).title(),
-                    cvss_v3_score=float(v.get("cvss", v.get("cvss_score", 0.0)) or 0.0),
-                    references=[],
-                    affected_software=[],
-                )
-                new_cve_defs.append(cve_def)
-                cve_def_map[cve_id] = cve_def
-
-    if new_cve_defs:
-        db.add_all(new_cve_defs)
-        db.flush() # Ensure we have IDs for new definitions
-
-    for host in hosts:
-        # Resolve asset
-        asset = _resolve_asset(host, db_by_mac, db_by_ip)
+        ip = _resolve_ip(host)
+        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (_resolve_mac(host) or "unknown"))
+        asset = existing_assets.get(asset_id) or existing_by_ip.get(ip)
         if not asset: continue
+        asset_id = asset.id
+        touched_asset_ids.add(asset_id)
+        dns_name, fqdn = _extract_dns_identity(host)
+        netbios_name = _extract_netbios_name(host)
 
+        _set_asset_field(db, asset, scan_id, "hostname", host.get("hostname"), "advanced", max_len=255)
+        _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "advanced", max_len=512)
+        _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "advanced", max_len=512)
+        _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "advanced", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_name", host.get("os_match") or host.get("os_guess"), "advanced", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_family", host.get("os_family"), "advanced", max_len=100)
+        _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "advanced")
+        _set_asset_field(db, asset, scan_id, "device_category", host.get("device_category"), "advanced", max_len=100)
+
+        source_family = _finding_family("advanced")
+        found_in_this_scan = set()
         vulns = host.get("vulnerabilities") or host.get("cves") or []
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id: continue
-            
-            cve_def = cve_def_map.get(cve_id)
-            if not cve_def: continue
+            found_in_this_scan.add(cve_id)
 
-            # Link vulnerability to asset in AssetVulnerability
-            finding = finding_map.get((asset.id, cve_def.id))
+            # UPSERT Catalog
+            db.execute(insert(VulnerabilityDefinition).values(
+                id=cve_id, cve_id=cve_id, title=v.get("title", f"Vuln {cve_id}"),
+                severity=str(v.get("severity", "Medium")).title(), cvss_v3_score=float(v.get("cvss", 0.0)),
+                source="scanner", created_at=utcnow(), updated_at=utcnow()
+            ).on_conflict_do_nothing(index_elements=["id"]))
 
-            if finding:
-                finding.last_seen_at = utcnow()
-                finding.scan_id = scan_id
-            else:
-                finding = AssetVulnerability(
-                    id=f"fnd_{asset.id}_{cve_def.id}",
-                    org_id=org_id,
-                    scan_id=scan_id,
-                    asset_id=asset.id,
-                    vuln_id=cve_def.id,
-                    severity=str(v.get("severity", cve_def.severity or "Medium")).title(),
-                    cvss_score=float(v.get("cvss", v.get("cvss_score", 0.0)) or 0.0),
-                    status="open",
-                    proof=v.get("proof") or v.get("evidence"),
-                    plugin_output=v.get("plugin_output") or v.get("description"),
-                    first_found_at=utcnow(),
-                    last_found_at=utcnow()
-                )
-                new_findings.append(finding)
-                finding_map[(asset.id, cve_def.id)] = finding
+            # PHASE 4: Detect Reopened Vulnerabilities
+            finding_id = _resolve_finding_id(db, org_id, asset_id, cve_id, source_family)
+            existing_fnd = db.query(AssetVulnerability).filter(AssetVulnerability.id == finding_id).first()
 
-        asset.risk_score = int(float(host.get("host_risk_score", 0.0) or 0.0))
-        asset.risk_level = str(host.get("host_risk_level", "Info") or "Info").title()
-        asset.device_category = host.get("device_category") or asset.device_category
-        asset.os_name = host.get("os_guess") or asset.os_name
+            if existing_fnd and existing_fnd.status == "fixed":
+                _record_asset_change(db, asset_id, scan_id, "vulnerability_reopened", cve_id, "open")
 
-    if new_findings:
-        db.add_all(new_findings)
+            # UPSERT Finding
+            proof = f"Source_Family:network_service\n{v.get('proof') or v.get('evidence') or ''}".strip()
+            plugin_output = v.get("plugin_output") or v.get("description") or v.get("title")
+            db.execute(insert(AssetVulnerability).values(
+                id=finding_id, org_id=org_id, scan_id=scan_id, asset_id=asset_id, vuln_id=cve_id,
+                severity=str(v.get("severity", "Medium")).title(), cvss_score=float(v.get("cvss", 0.0)),
+                status="open", proof=proof, plugin_output=plugin_output,
+                source_family=source_family, evidence_source="advanced",
+                first_found_at=utcnow(), last_found_at=utcnow()
+            ).on_conflict_do_update(
+                index_elements=["id", "org_id"],
+                set_={
+                    "last_found_at": utcnow(),
+                    "scan_id": scan_id,
+                    "status": "open",
+                    "severity": str(v.get("severity", "Medium")).title(),
+                    "cvss_score": float(v.get("cvss", 0.0)),
+                    "source_family": source_family,
+                    "evidence_source": "advanced",
+                    "proof": func.coalesce(func.nullif(proof, ""), AssetVulnerability.proof),
+                    "plugin_output": func.coalesce(func.nullif(plugin_output or "", ""), AssetVulnerability.plugin_output),
+                }
+            ))
+
+        # PHASE 4: Targeted Remediation with History
+        open_findings = db.query(AssetVulnerability).filter(
+            AssetVulnerability.asset_id == asset_id, AssetVulnerability.status == "open"
+        ).all()
+
+        for f in open_findings:
+            if _finding_family(_finding_source_from_record(f)) != source_family:
+                continue
+            if f.vuln_id not in found_in_this_scan:
+                f.status = "fixed"
+                f.fixed_at = utcnow()
+                _record_asset_change(db, asset_id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed")
+
+        asset.last_scan_id = scan_id
+        asset.last_seen_at = utcnow()
+        asset.updated_at = utcnow()
+        _set_asset_field(db, asset, scan_id, "discovery_method", "advanced", "advanced", max_len=50)
 
     db.commit()
+
+    # 4. Final aggregation (This could also be moved to a background trigger later)
+    # Keeping the existing recalculation logic but using more efficient queries if possible
+    # (Leaving it as is for Step 3 to ensure stability)
+    try:
+        # Simplified batch recalculation for assets in this scan
+        for a_id in touched_asset_ids:
+            counts, computed, level = _recalculate_asset_risk(db, a_id)
+            db.query(Asset).filter(Asset.id == a_id).update({
+                "vuln_counts": counts,
+                "risk_score": computed,
+                "risk_level": level,
+                "updated_at": utcnow(),
+            })
+        db.commit()
+    except Exception:
+        db.rollback()

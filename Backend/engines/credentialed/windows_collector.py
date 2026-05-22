@@ -12,6 +12,7 @@ Set shell:        New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" `
 """
 
 import base64
+import ipaddress
 import json
 import logging
 import re
@@ -35,13 +36,68 @@ def _clean_output(raw: str) -> str:
     return raw.strip()
 
 # PowerShell commands — output as plain text or JSON
+def _subnet_from_windows_interfaces(raw: Any, target_ip: str) -> str:
+    if not raw or not target_ip:
+        return ""
+    try:
+        target = ipaddress.ip_address(target_ip)
+    except ValueError:
+        return ""
+
+    interfaces = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    for iface in interfaces:
+        ip_addr = _first_value(iface.get("IPAddress") or iface.get("IPv4Address"))
+        prefix = _first_value(iface.get("PrefixLength"))
+        if not ip_addr or prefix is None:
+            continue
+        try:
+            network = ipaddress.ip_network(f"{ip_addr}/{prefix}", strict=False)
+        except ValueError:
+            continue
+        if target in network:
+            return str(network)
+    return ""
+
+
+def _first_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _normalize_mac(value: str) -> str:
+    text = str(value or "").strip().lower().replace("-", ":")
+    if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
+        return ""
+    if re.fullmatch(r"[0-9a-f]{12}", text):
+        text = ":".join(text[i:i + 2] for i in range(0, 12, 2))
+    return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
+
+
+def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:
+    interfaces = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    fallback = ""
+    for iface in interfaces:
+        mac = _normalize_mac(iface.get("MacAddress"))
+        if not mac:
+            continue
+        if not fallback:
+            fallback = mac
+        ip_addr = _first_value(iface.get("IPAddress") or iface.get("IPv4Address"))
+        if target_ip and ip_addr == target_ip:
+            return mac
+    return fallback
+
+
 COMMANDS: Dict[str, str] = {
     # OS info
     "os_info":       "(Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | ConvertTo-Json)",
     "hostname":      "hostname",
     "uptime":        "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
 
-    # Hardware
+    # Hardware & Identity
+    "computer_system": "(Get-CimInstance Win32_ComputerSystem | Select-Object Name, DNSHostName, Domain, PartOfDomain, Manufacturer, Model | ConvertTo-Json)",
+    "bios":            "(Get-CimInstance Win32_BIOS | Select-Object SerialNumber, SMBIOSBIOSVersion | ConvertTo-Json)",
     "cpu":           "(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json)",
     "memory":        "(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory | ConvertTo-Json)",
     "disk":          "(Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free | ConvertTo-Json)",
@@ -58,7 +114,19 @@ COMMANDS: Dict[str, str] = {
 
     # Network
     "open_ports":    "netstat -ano | findstr LISTENING",
-    "network_iface": "(Get-NetIPAddress | Select-Object InterfaceAlias, IPAddress, PrefixLength, AddressFamily | ConvertTo-Json)",
+    "network_iface": (
+        "Get-NetIPConfiguration | ForEach-Object { "
+        "$ipv4=$_.IPv4Address | Select-Object -First 1; "
+        "[PSCustomObject]@{ "
+        "InterfaceAlias=$_.InterfaceAlias; "
+        "InterfaceIndex=$_.InterfaceIndex; "
+        "IPAddress=$ipv4.IPAddress; "
+        "PrefixLength=$ipv4.PrefixLength; "
+        "MacAddress=$_.NetAdapter.MacAddress; "
+        "InterfaceDescription=$_.NetAdapter.InterfaceDescription "
+        "} } | ConvertTo-Json"
+    ),
+    "network_config": "(Get-NetIPConfiguration | Select-Object InterfaceAlias, IPv4Address, IPv6Address, IPv4DefaultGateway, DNSServer | ConvertTo-Json)",
 
     # Users
     "local_users":   "(Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordRequired, PasswordLastSet | ConvertTo-Json)",
@@ -200,8 +268,26 @@ class WindowsCollector:
         data["os_version_id"] = os_raw.get("Version", "")
         data["os_build"]      = os_raw.get("BuildNumber", "")
         data["cpu_arch"]      = os_raw.get("OSArchitecture", "")
+        data["os_family"]     = "Windows"
+        data["os_confidence"] = 100
 
-        data["hostname_fqdn"] = self._run("hostname")
+        computer_raw = self._run_json("computer_system")
+        if isinstance(computer_raw, list):
+            computer_raw = computer_raw[0] if computer_raw else {}
+        if isinstance(computer_raw, dict):
+            dns_host = (computer_raw.get("DNSHostName") or computer_raw.get("Name") or "").strip()
+            domain = (computer_raw.get("Domain") or "").strip()
+            data["hostname_short"] = dns_host
+            data["domain"] = domain
+            data["manufacturer"] = (computer_raw.get("Manufacturer") or "").strip()
+            data["hardware_model"] = (computer_raw.get("Model") or "").strip()
+            if dns_host and domain and domain.upper() != "WORKGROUP":
+                data["hostname_fqdn"] = f"{dns_host}.{domain}"
+                data["fqdn"] = data["hostname_fqdn"]
+            else:
+                data["hostname_fqdn"] = dns_host or self._run("hostname")
+        else:
+            data["hostname_fqdn"] = self._run("hostname")
         data["uptime"]        = self._run("uptime")
 
         cpu_raw = self._run_json("cpu")
@@ -361,6 +447,8 @@ class WindowsCollector:
         iface_raw = self._run_json("network_iface")
         return {
             "network_interfaces_raw": json.dumps(iface_raw) if iface_raw else "",
+            "subnet":                 _subnet_from_windows_interfaces(iface_raw, self._ssh.ip),
+            "mac_address":            _mac_from_windows_interfaces(iface_raw, self._ssh.ip),
             "arp_table_raw":          "",
             "env_vars_summary":       [],
         }

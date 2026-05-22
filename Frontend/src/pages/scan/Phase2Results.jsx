@@ -310,6 +310,24 @@ export default function Phase2Results() {
           </div>
         </div>
 
+        {/* PHASE 4: Unreachable Banner */}
+        {((!summary && activeHosts.length === 0 && discoveredHosts.length > 0) || (summary && (summary.status === "unreachable" || (Number(summary.active_hosts) === 0 && Number(summary.total_hosts) > 0)))) && (
+          <div style={{
+            margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+            background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+            display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+          }}>
+            <span style={{ fontSize: 24 }}>⚠️</span>
+            <div>
+              <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                The discovery scan completed but the target did not respond.
+                Verify the IP address and network connectivity before re-scanning.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="summary-bar" style={{ marginTop: 16 }}>
           <span className="summary-item"><b>{activeHosts.length}</b> Active hosts available</span>
           <span className="summary-item"><b>{selectedCount}</b> selected</span>

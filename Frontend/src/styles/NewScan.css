@@ -1422,6 +1422,104 @@
   flex-shrink: 0;
 }
 
+.am-ring-fill--warning {
+  stroke: #f59e0b;
+}
+
+.am-status-badge--warning {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.am-live-dot--warning {
+  background: #f59e0b;
+  box-shadow: none;
+  animation: none;
+}
+
+.am-progress-strip-fill--warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+/* ── Unreachable Banner ────────────────────────────────────────────────── */
+.am-unreachable-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 28px;
+  background: rgba(245, 158, 11, 0.05);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  animation: amFadeIn 0.4s ease both;
+}
+
+.am-unreachable-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.am-unreachable-text {
+  flex: 1;
+}
+
+.am-unreachable-text strong {
+  display: block;
+  font-size: 1.1rem;
+  color: #d97706;
+  margin-bottom: 6px;
+}
+
+.am-unreachable-text p {
+  font-size: 0.9rem;
+  color: var(--text-mid);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.am-unreachable-text code {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+}
+
+.am-unreachable-tips {
+  background: #fff;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+:root[data-theme="dark"] .am-unreachable-tips {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.am-unreachable-tips span {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.am-unreachable-tips ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.am-unreachable-tips li {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* ── Stats bar ────────────────────────────────────────────────────────────── */
 .am-stats-bar {
   display: flex;

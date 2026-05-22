@@ -9,9 +9,11 @@ import os
 import asyncio
 import time
 from typing import List, Optional, Dict
+from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import insert
 
 from core.celery_app import celery_app
-from db.base import SessionLocal, gen_service_id, utcnow
+from db.base import SessionLocal, gen_service_id, gen_asset_id, utcnow
 from db.models import (
     Asset,
     AssetVulnerability,
@@ -19,6 +21,7 @@ from db.models import (
     Scan,
     User,
     VulnerabilityDefinition,
+    Organization,
 )
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scans.db_helpers import create_scan, update_scan_phase, mark_scan_failed, create_completed_scan
@@ -106,10 +109,20 @@ def _sync_credentialed_asset_identity(
 ) -> None:
     """
     Promote trusted credentialed scan identity into the Asset Registry.
-
-    Nmap OS matches are unauthenticated fingerprints; credentialed collection is
-    the source of truth when it provides OS details for an existing asset.
+    Phase 4: Adds forensic logging and provenance.
     """
+    from scans.asset_syncer import (
+        _finding_family,
+        _finding_source_from_record,
+        _confidence_to_percent,
+        _has_value,
+        _record_asset_change,
+        _recalculate_asset_risk,
+        _set_asset_field,
+        _to_int,
+    )
+    from core.oui_lookup import lookup_vendor
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         log.warning("Credentialed asset sync skipped: user %s not found", user_id)
@@ -121,61 +134,108 @@ def _sync_credentialed_asset_identity(
         .first()
     )
     if not asset:
-        log.warning(
-            "Credentialed asset sync skipped: no asset found for org=%s ip=%s",
-            user.org_id,
-            ip,
+        log.info("Asset not found for ip=%s. Bootstrapping new asset record.", ip)
+        org = db.query(Organization).filter(Organization.id == str(user.org_id)).first()
+        org_slug = org.slug if org else str(user.org_id)
+
+        asset = Asset(
+            id=gen_asset_id(org_slug, ip),
+            org_id=str(user.org_id),
+            ip_address=ip,
+            is_active=True,
+            discovery_method="credentialed",
+            first_seen_at=utcnow(),
+            last_seen_at=utcnow(),
+            created_at=utcnow(),
+            updated_at=utcnow(),
         )
-        return
+        db.add(asset)
+        db.flush()
+        _record_asset_change(db, asset.id, scan_id, "lifecycle", None, "bootstrapped_via_credentialed")
 
     os_name = _clean_text(system_data.get("os_name"))
     os_version = _clean_text(system_data.get("os_version_id"))
+    hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(system_data)
     os_build = _clean_text(system_data.get("os_build"))
     kernel_version = _clean_text(system_data.get("kernel_version"))
-    hostname = _clean_text(system_data.get("hostname_fqdn"))
+    netbios_name = _clean_text(system_data.get("netbios_name") or system_data.get("netbios_computer"))
+    normalized_os_type = _clean_text(system_data.get("detected_os") or os_type).lower()
+    manufacturer = _clean_text(system_data.get("manufacturer"))
+    mac_address = _normalize_mac(system_data.get("mac_address"))
+    mac_vendor = _clean_text(system_data.get("mac_vendor") or (lookup_vendor(mac_address) if mac_address else ""))
+    vendor = mac_vendor or (manufacturer if not _has_value(asset.vendor) else "")
+    os_family = _clean_text(system_data.get("os_family") or ("Windows" if normalized_os_type == "windows" else "Linux" if normalized_os_type == "linux" else ""))
+    os_confidence = _confidence_to_percent(system_data.get("os_confidence") or 100)
+    subnet = _clean_text(system_data.get("subnet"))
+    credentialed_response_time = _to_int(system_data.get("credentialed_response_time_ms"))
 
-    has_os_identity = bool(os_name or os_version or os_build or kernel_version)
-    normalized_os_type = (os_type or "").strip().lower()
-
-    if os_name:
-        asset.os_name = os_name[:255]
-    if os_version:
-        asset.os_version = os_version[:100]
-    elif kernel_version:
-        asset.os_version = kernel_version[:100]
-
-    if has_os_identity:
-        family = "Windows" if normalized_os_type == "windows" else "Linux"
-        asset.os_family = family
-        asset.os_confidence = 100
-
-    if hostname:
-        asset.hostname = hostname[:255]
-        asset.fqdn = hostname[:512] if "." in hostname else asset.fqdn
+    # PHASE 4: FORENSIC CHANGE LOGGING
+    _set_asset_field(db, asset, scan_id, "os_name", os_name, "credentialed", max_len=255)
+    _set_asset_field(db, asset, scan_id, "os_family", os_family, "credentialed", max_len=100)
+    _set_asset_field(db, asset, scan_id, "os_version", os_version, "credentialed", max_len=100)
+    _set_asset_field(db, asset, scan_id, "os_confidence", os_confidence, "credentialed")
+    _set_asset_field(db, asset, scan_id, "hostname", hostname, "credentialed", max_len=255)
+    _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "credentialed", max_len=512)
+    _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "credentialed", max_len=255)
+    _set_asset_field(db, asset, scan_id, "mac_address", mac_address, "credentialed")
+    _set_asset_field(db, asset, scan_id, "vendor", vendor, "credentialed", max_len=255)
+    _set_asset_field(db, asset, scan_id, "subnet", subnet, "credentialed", max_len=50)
+    _set_asset_field(db, asset, scan_id, "manufacturer", manufacturer, "credentialed", max_len=255)
+    _set_asset_field(db, asset, scan_id, "discovery_method", "credentialed", "credentialed", max_len=50)
+    if credentialed_response_time and not _has_value(asset.response_time_ms):
+        _set_asset_field(db, asset, scan_id, "response_time_ms", credentialed_response_time, "credentialed")
 
     _sync_credentialed_services(db, asset, scan_id, stored_report.get("open_ports_credentialed", []))
+
+    # 1. Sync Vulnerabilities (Marks as open/reopened)
     _sync_credentialed_vulnerabilities(db, asset, str(user.org_id), scan_id, cve_list)
 
-    counts = _normalized_severity_counts(severity_counts)
-    asset.vuln_counts = {
-        "critical": counts["Critical"],
-        "high": counts["High"],
-        "medium": counts["Medium"],
-        "low": counts["Low"],
-    }
-    credentialed_score, credentialed_level = _credentialed_risk_from_counts(counts)
-    if credentialed_score >= int(asset.risk_score or 0):
-        asset.risk_score = credentialed_score
-        asset.risk_level = credentialed_level
+    # 2. PHASE 4: VULNERABILITY STATUS HISTORY
+    found_cve_ids = { _clean_text(v.get("cve_id") or v.get("cve") or v.get("id")) for v in (cve_list or []) }
+    found_cve_ids = { cid for cid in found_cve_ids if cid }
 
+    current_open = db.query(AssetVulnerability).filter(
+        AssetVulnerability.asset_id == asset.id,
+        AssetVulnerability.status == "open"
+    ).all()
+
+    for f in current_open:
+        if _finding_family(_finding_source_from_record(f)) != "credentialed_package":
+            continue
+        if f.vuln_id not in found_cve_ids:
+            f.status = "fixed"
+            f.fixed_at = utcnow()
+            _record_asset_change(db, asset.id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed")
+
+    db.flush()
+
+    # Recalculate aggregate vuln_counts
+    counts, agg_score, agg_level = _recalculate_asset_risk(db, asset.id)
+    asset.vuln_counts = counts
+    asset.risk_score = agg_score
+    asset.risk_level = agg_level
+
+    # Custom attributes merge
     attrs = dict(asset.custom_attributes or {})
     credentialed_attrs = dict(attrs.get("credentialed_system_info") or {})
     credentialed_attrs.update({
         "os_name": os_name,
         "os_version_id": os_version,
+        "os_family": os_family,
         "os_build": os_build,
         "kernel_version": kernel_version,
         "hostname": hostname,
+        "hostname_short": _clean_text(system_data.get("hostname_short")),
+        "hostname_fqdn_raw": raw_hostname_fqdn,
+        "netbios_name": netbios_name,
+        "fqdn": fqdn,
+        "mac_address": mac_address,
+        "mac_vendor": mac_vendor,
+        "vendor": vendor,
+        "domain": _clean_text(system_data.get("domain")),
+        "subnet": subnet,
+        "manufacturer": manufacturer,
+        "credentialed_response_time_ms": credentialed_response_time,
         "detected_os": normalized_os_type or os_type,
         "source_scan_id": scan_id,
         "synced_at": utcnow().isoformat(),
@@ -183,37 +243,49 @@ def _sync_credentialed_asset_identity(
     attrs["credentialed_system_info"] = {
         key: value for key, value in credentialed_attrs.items() if value
     }
-    attrs["credentialed_hardware"] = _compact_dict({
-        "cpu_model": system_data.get("cpu_model"),
-        "cpu_count": system_data.get("cpu_count"),
-        "cpu_arch": system_data.get("cpu_arch"),
-        "memory_summary": system_data.get("memory_summary"),
-        "disk_usage": system_data.get("disk_usage"),
-        "uptime": system_data.get("uptime"),
-    })
-    attrs["credentialed_security"] = _compact_dict({
-        "security_issues": stored_report.get("security_issues"),
-        "failed_login_count": stored_report.get("failed_login_count"),
-        "brute_force_warning": stored_report.get("brute_force_warning"),
-        "sudo_nopasswd": stored_report.get("sudo_nopasswd"),
-        "rdp_enabled": system_data.get("rdp_enabled"),
-        "package_count": stored_report.get("package_count"),
-        "running_service_count": len(stored_report.get("running_services") or []),
-        "credentialed_open_port_count": len(stored_report.get("open_ports_credentialed") or []),
-        "credentialed_cve_count": len(cve_list or []),
-        "severity_summary": counts,
-    })
     asset.custom_attributes = attrs
-
     asset.last_scan_id = scan_id
     asset.last_seen_at = utcnow()
     asset.updated_at = utcnow()
-    db.commit()
     log.info("Credentialed asset sync updated asset=%s ip=%s os=%s", asset.id, ip, asset.os_name)
+
+
+def _extract_credentialed_identity_names(system_data: Dict) -> tuple[str, str, str]:
+    raw_hostname_fqdn = _clean_text(system_data.get("hostname_fqdn"))
+    explicit_fqdn = _clean_text(system_data.get("fqdn"))
+    hostname_short = _clean_text(system_data.get("hostname_short"))
+    hostname = _clean_text(
+        system_data.get("hostname")
+        or hostname_short
+        or (raw_hostname_fqdn.split(".")[0] if raw_hostname_fqdn else "")
+    )
+    fqdn = explicit_fqdn if "." in explicit_fqdn else (raw_hostname_fqdn if "." in raw_hostname_fqdn else "")
+    return hostname, fqdn, raw_hostname_fqdn
 
 
 def _clean_text(value) -> str:
     return str(value or "").strip()
+
+
+def _normalize_mac(value) -> str:
+    text = _clean_text(value).lower().replace("-", ":")
+    if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
+        return ""
+    compact = text.replace(":", "").replace(".", "")
+    if len(compact) == 12 and all(ch in "0123456789abcdef" for ch in compact):
+        return ":".join(compact[i:i + 2] for i in range(0, 12, 2))
+    return text if len(text.split(":")) == 6 else ""
+
+
+def _credentialed_sections_with_identity(sections: Optional[List[str]]) -> Optional[List[str]]:
+    if sections is None:
+        return None
+    required = ["system_info", "network"]
+    merged = list(sections)
+    for section in required:
+        if section not in merged:
+            merged.append(section)
+    return merged
 
 
 def _compact_dict(data: Dict) -> Dict:
@@ -264,34 +336,43 @@ def _port_int(value) -> Optional[int]:
 
 
 def _sync_credentialed_services(db, asset: Asset, scan_id: str, ports: List[Dict]) -> None:
+    # De-duplicate ports by ID
+    unique_ports = {}
     for port_data in ports or []:
-        port = _port_int(port_data.get("port"))
-        if not port:
-            continue
-
+        port_num = _port_int(port_data.get("port"))
+        if not port_num: continue
         protocol = _clean_text(port_data.get("protocol") or "tcp").lower()[:10]
-        service_id = gen_service_id(asset.id, port, protocol)
-        service = db.query(Service).filter(Service.id == service_id).first()
-        if not service:
-            service = Service(
-                id=service_id,
-                scan_id=scan_id,
-                asset_id=asset.id,
-                port=port,
-                protocol=protocol,
-            )
-            db.add(service)
+        service_id = gen_service_id(asset.id, port_num, protocol)
+        if service_id not in unique_ports:
+            unique_ports[service_id] = (port_num, protocol, port_data)
 
-        service.scan_id = scan_id
+    for service_id, (port, protocol, port_data) in unique_ports.items():
         state = _clean_text(port_data.get("state") or "open").lower()
-        service.state = "open" if state in {"listen", "listening"} else state[:20]
-        service.service_name = _clean_text(
-            port_data.get("service")
-            or port_data.get("name")
-            or port_data.get("process")
-            or "unknown"
-        )[:100]
-        service.banner = _clean_text(port_data.get("local_addr") or port_data.get("banner")) or None
+        state = "open" if state in {"listen", "listening"} else state[:20]
+        service_name = _clean_text(port_data.get("service") or port_data.get("name") or port_data.get("process") or "unknown")[:100]
+        banner = _clean_text(port_data.get("banner")) or None
+
+        svc_insert = insert(Service).values(
+            id=service_id, asset_id=asset.id, scan_id=scan_id,
+            port=port, protocol=protocol, state=state,
+            service_name=service_name, banner=banner,
+            created_at=utcnow(), updated_at=utcnow()
+        )
+
+        svc_upsert = svc_insert.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "state": state, "scan_id": scan_id,
+                "updated_at": utcnow(),
+                "service_name": func.coalesce(
+                    func.nullif(Service.service_name, "unknown"),
+                    func.nullif(service_name, ""),
+                    Service.service_name,
+                ),
+                "banner": func.coalesce(Service.banner, func.nullif(banner, "")),
+            }
+        )
+        db.execute(svc_upsert)
 
 
 def _sync_credentialed_vulnerabilities(
@@ -301,10 +382,12 @@ def _sync_credentialed_vulnerabilities(
     scan_id: str,
     cve_list: List[Dict],
 ) -> None:
+    from scans.asset_syncer import _resolve_finding_id
+
+    source_family = "credentialed_package"
     for vuln in cve_list or []:
         cve_id = _clean_text(vuln.get("cve_id") or vuln.get("cve") or vuln.get("id"))
-        if not cve_id:
-            continue
+        if not cve_id: continue
 
         severity = _clean_text(vuln.get("severity") or "Medium").title()
         cvss = float(vuln.get("cvss_score", vuln.get("cvss", 0.0)) or 0.0)
@@ -313,71 +396,43 @@ def _sync_credentialed_vulnerabilities(
         installed_ver = _clean_text(vuln.get("installed_ver"))
         fixed_ver = _clean_text(vuln.get("fixed_ver"))
 
-        cve_def = db.query(VulnerabilityDefinition).filter(
-            VulnerabilityDefinition.id == cve_id
-        ).first()
-        if not cve_def:
-            cve_def = VulnerabilityDefinition(
-                id=cve_id,
-                cve_id=cve_id,
-                title=f"{cve_id} in {package_name}" if package_name else f"Vulnerability {cve_id}",
-                description=description,
-                severity=severity,
-                cvss_v3_score=cvss,
-                cvss_vector=_clean_text(vuln.get("cvss_vector")) or None,
-                source=_clean_text(vuln.get("source") or "credentialed"),
-                references=[],
-                affected_software=[],
-            )
-            db.add(cve_def)
+        proof = _clean_text(f"Source_Family:credentialed_package\nPackage: {package_name} {installed_ver}".strip())
+        plugin_output = _clean_text(f"{description}\nFixed version: {fixed_ver or 'N/A'}\nPriority: {vuln.get('priority_level') or 'N/A'} ({vuln.get('priority_score') or 0})")
 
-        affected = list(cve_def.affected_software or [])
-        if package_name and not any(
-            isinstance(item, dict) and item.get("package") == package_name
-            for item in affected
-        ):
-            affected.append({
-                "package": package_name,
-                "installed_version": installed_ver,
-                "fixed_version": fixed_ver,
-                "matched_by": _clean_text(vuln.get("matched_by")),
-            })
-            cve_def.affected_software = affected
-
-        finding_id = f"fnd_{asset.id}_{cve_id}"
-        finding = db.query(AssetVulnerability).filter(
-            AssetVulnerability.org_id == org_id,
-            AssetVulnerability.id == finding_id,
-        ).first()
-        proof = _clean_text(f"Package: {package_name} {installed_ver}".strip())
-        plugin_output = _clean_text(
-            f"{description}\nFixed version: {fixed_ver or 'N/A'}\n"
-            f"Priority: {vuln.get('priority_level') or 'N/A'} "
-            f"({vuln.get('priority_score') or 0})"
+        # 1. UPSERT CVE Definition
+        cve_insert = insert(VulnerabilityDefinition).values(
+            id=cve_id, cve_id=cve_id,
+            title=f"{cve_id} in {package_name}" if package_name else f"Vulnerability {cve_id}",
+            description=description, severity=severity, cvss_v3_score=cvss,
+            source="credentialed", created_at=utcnow(), updated_at=utcnow()
         )
-        if finding:
-            finding.scan_id = scan_id
-            finding.severity = severity
-            finding.cvss_score = cvss
-            finding.proof = proof or finding.proof
-            finding.plugin_output = plugin_output or finding.plugin_output
-            finding.last_found_at = utcnow()
-            finding.status = "open"
-        else:
-            db.add(AssetVulnerability(
-                id=finding_id,
-                org_id=org_id,
-                scan_id=scan_id,
-                asset_id=asset.id,
-                vuln_id=cve_id,
-                severity=severity,
-                cvss_score=cvss,
-                status="open",
-                proof=proof,
-                plugin_output=plugin_output,
-                first_found_at=utcnow(),
-                last_found_at=utcnow(),
-            ))
+        db.execute(cve_insert.on_conflict_do_nothing(index_elements=["id"]))
+
+        # 2. UPSERT Finding
+        finding_id = _resolve_finding_id(db, org_id, asset.id, cve_id, source_family)
+        fnd_insert = insert(AssetVulnerability).values(
+            id=finding_id, org_id=org_id, scan_id=scan_id, asset_id=asset.id, vuln_id=cve_id,
+            severity=severity, cvss_score=cvss, status="open",
+            source_family=source_family, evidence_source="credentialed",
+            proof=proof, plugin_output=plugin_output,
+            first_found_at=utcnow(), last_found_at=utcnow()
+        )
+
+        fnd_upsert = fnd_insert.on_conflict_do_update(
+            index_elements=["id", "org_id"],
+            set_={
+                "last_found_at": utcnow(),
+                "scan_id": scan_id,
+                "status": "open",
+                "severity": severity,
+                "cvss_score": cvss,
+                "source_family": source_family,
+                "evidence_source": "credentialed",
+                "proof": func.coalesce(func.nullif(proof, ""), AssetVulnerability.proof),
+                "plugin_output": func.coalesce(func.nullif(plugin_output, ""), AssetVulnerability.plugin_output),
+            }
+        )
+        db.execute(fnd_upsert)
 
 
 @celery_app.task(name="ccure.tasks.sync_asset_discovery_task", queue="scanner")
@@ -431,7 +486,7 @@ def run_host_discovery_task(
     """Phase 1 Background Task."""
     import datetime
     def ts(): return datetime.datetime.now().isoformat()
-    
+
     log.info("[TRACE][TASK][%s] Starting run_host_discovery_task", ts())
     db = SessionLocal()
     try:
@@ -484,11 +539,57 @@ def run_host_discovery_task(
 
         # 4. Final Progress Push (Post-Commit)
         from core.redis_client import publish_progress_sync
-        publish_progress_sync(scan_id, 1, {
-            "discovered": scan.active_hosts,
-            "total_ips": scan.total_hosts,
-            "status": "complete"
-        })
+
+        # If there's another phase to run, trigger it asynchronously
+        if not is_final and result.get("success") and result.get("data"):
+            active_hosts = [h for h in result["data"] if h.get("is_active")]
+            if active_hosts:
+                log.info("[TRACE][TASK][%s] Chaining next phase (Asset Discovery) for scan_id=%s", ts(), scan_id)
+                # Dispatch Phase 2 (Asset Discovery) directly
+                from core.tasks import run_asset_discovery_task
+                next_task = run_asset_discovery_task.delay(
+                    user_id=user_id,
+                    hosts=active_hosts,
+                    intensity=discovery_intensity,  # Use same intensity or default
+                    scan_id=scan_id,
+                    pipeline_mode=pipeline_mode
+                )
+                db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
+                db.commit()
+
+                # Publish progress to let UI know we are moving to next phase
+                publish_progress_sync(scan_id, 1, {
+                    "discovered": scan.active_hosts,
+                    "total_ips": scan.total_hosts,
+                    "status": "complete"
+                })
+
+                return {"success": True, "scan_id": scan_id, "chained_task": next_task.id}
+            else:
+                log.info("[TRACE][TASK][%s] No active hosts found, terminating pipeline early for scan_id=%s", ts(), scan_id)
+
+        # Ensure scan is marked complete if no next phase is chained
+        if is_final or not result.get("data") or not any(h.get("is_active") for h in result.get("data", [])):
+            log.info("[TRACE][TASK][%s] Scan %s pipeline complete", ts(), scan_id)
+            from db.base import utcnow
+
+            db.refresh(scan)
+            if scan.status != "unreachable":
+                db.query(Scan).filter(Scan.id == scan_id).update({
+                    "status": "complete",
+                    "completed_at": utcnow()
+                })
+                db.commit()
+                db.refresh(scan)
+            else:
+                log.info("[TRACE][TASK][%s] Scan %s remains 'unreachable' as expected", ts(), scan_id)
+
+            # FINAL PROGRESS PUSH: Use the actual scan status (could be complete or unreachable)
+            publish_progress_sync(scan_id, 1, {
+                "discovered": scan.active_hosts,
+                "total_ips": scan.total_hosts,
+                "status": scan.status
+            })
 
         log.info("[TRACE][TASK][%s] run_host_discovery_task finished", ts())
         return {"success": True, "scan_id": scan_id}
@@ -510,6 +611,9 @@ def run_asset_discovery_task(
     pipeline_mode: str,
 ):
     """Phase 2 Background Task."""
+    import datetime
+    def ts(): return datetime.datetime.now().isoformat()
+
     db = SessionLocal()
     try:
         _update_task_id(db, scan_id, self.request.id)
@@ -535,7 +639,7 @@ def run_asset_discovery_task(
 
         context = resolve_report_context(db, user_id, scan_id=scan_id, hosts=hosts)
         result.setdefault("metadata", {}).update(context)
-        
+
         # Apply Phase 1 hints manually for the summary
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
         if scan_row:
@@ -558,11 +662,50 @@ def run_asset_discovery_task(
 
         # Final Progress Push
         from core.redis_client import publish_progress_sync
+
+        # If there's another phase to run, trigger it asynchronously
+        if not is_final and result.get("success") and result.get("data"):
+            active_hosts = [h for h in result["data"] if h.get("is_active")]
+            if active_hosts:
+                log.info("[TRACE][TASK][%s] Chaining next phase (Advanced Scan) for scan_id=%s", ts(), scan_id)
+                # Dispatch Phase 3 (Advanced Scan) directly
+                from core.tasks import run_advanced_scan_task
+                next_task = run_advanced_scan_task.delay(
+                    user_id=user_id,
+                    hosts=active_hosts,
+                    scan_id=scan_id,
+                    pipeline_mode=pipeline_mode
+                )
+                db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
+                db.commit()
+
+                publish_progress_sync(scan_id, 2, {
+                    "scanned_hosts": result["summary"].get("total_hosts", 0),
+                    "total_hosts": result["summary"].get("total_hosts", 0),
+                    "status": "complete"
+                })
+                return {"success": True, "scan_id": scan_id, "chained_task": next_task.id}
+            else:
+                log.info("[TRACE][TASK][%s] No active hosts found, terminating pipeline early for scan_id=%s", ts(), scan_id)
+
         publish_progress_sync(scan_id, 2, {
             "scanned_hosts": result["summary"].get("total_hosts", 0),
             "total_hosts": result["summary"].get("total_hosts", 0),
             "status": "complete"
         })
+
+        # Ensure scan is marked complete if no next phase is chained
+        if is_final or not result.get("data") or not any(h.get("is_active") for h in result.get("data", [])):
+            log.info("[TRACE][TASK][%s] Scan %s pipeline complete", ts(), scan_id)
+            db.refresh(scan_row)
+            if scan_row.status != "unreachable":
+                db.query(Scan).filter(Scan.id == scan_id).update({
+                    "status": "complete",
+                    "completed_at": utcnow()
+                })
+                db.commit()
+            else:
+                log.info("[TRACE][TASK][%s] Scan %s remains 'unreachable' as expected", ts(), scan_id)
 
         return {"success": True, "scan_id": scan_id}
     except Exception as exc:
@@ -676,12 +819,12 @@ def run_credentialed_scan_task(
     from engines.credentialed.linux_collector import LinuxCollector
     from engines.credentialed.windows_collector import WindowsCollector
     from engines.credentialed.vuln_matcher    import VulnMatcher
-    from routers.credentialed import _detect_os 
+    from routers.credentialed import _detect_os
     from core.redis_client import publish_progress_sync
-    
+
     db = SessionLocal()
     start_time = time.time()
-    
+
     def emit(status, message, percentage=0, stage=None):
         if not scan_id: return
         publish_progress_sync(scan_id, 5, {
@@ -696,16 +839,19 @@ def run_credentialed_scan_task(
     try:
         # 1. Connecting
         emit("running", f"Connecting to {ip}:{port}...", 10, "connecting")
-        
+
+        connect_started = time.perf_counter()
+        credentialed_response_time_ms = None
         with SSHScanner(ip=ip, username=username, password=password, key_path=key_path, port=port, timeout=20) as ssh:
+            credentialed_response_time_ms = int(round((time.perf_counter() - connect_started) * 1000))
             # 2. OS Detection
             emit("running", "Detecting Operating System...", 20, "detection")
             os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
-            
+
             # 3. Data Collection
             emit("running", f"Collecting system data ({os_type})...", 30, "collection")
             collector = WindowsCollector(ssh) if os_type == "windows" else LinuxCollector(ssh)
-            
+
             def on_section(name):
                 # Map internal section names to friendly display names
                 friendly = {
@@ -720,26 +866,36 @@ def run_credentialed_scan_task(
                 }.get(name, name)
                 emit("running", f"Collected {friendly}", 50, "collection")
 
-            system_data = collector.collect_all(sections=sections, on_section_complete=on_section)
+            system_data = collector.collect_all(
+                sections=_credentialed_sections_with_identity(sections),
+                on_section_complete=on_section,
+            )
             system_data["detected_os"] = os_type
-            
+            system_data["credentialed_response_time_ms"] = credentialed_response_time_ms
+
         # 4. Vulnerability Matching
         emit("running", "Analyzing packages for vulnerabilities...", 70, "analysis")
         packages     = system_data.get("packages", [])
         matcher      = VulnMatcher()
         raw_findings = matcher.match_packages(packages)
         cve_list     = matcher.to_report_format(raw_findings)
-        
+
         severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
         for cve in cve_list:
             sev = cve.get("severity", "Info")
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         scan_duration = round(time.time() - start_time, 2)
-        
+
         # 5. Finalizing
         emit("running", "Generating report and syncing assets...", 90, "syncing")
-        
+
+        from core.oui_lookup import lookup_vendor
+
+        hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(system_data)
+        mac_address = _normalize_mac(system_data.get("mac_address"))
+        mac_vendor = _clean_text(system_data.get("mac_vendor") or (lookup_vendor(mac_address) if mac_address else ""))
+
         stored_report = {
             "scan_type": "credentialed",
             "target": ip,
@@ -748,16 +904,27 @@ def run_credentialed_scan_task(
             "os_type_was_auto": (os_type_req == "auto"),
             "system_info": {
                 "os_name":        system_data.get("os_name", ""),
+                "os_family":      system_data.get("os_family", ""),
                 "os_version_id":  system_data.get("os_version_id", ""),
+                "os_confidence":  system_data.get("os_confidence", ""),
                 "os_build":       system_data.get("os_build", ""),
                 "kernel_version": system_data.get("kernel_version", ""),
-                "hostname":       system_data.get("hostname_fqdn", ""),
+                "hostname":       hostname,
+                "hostname_short": system_data.get("hostname_short", ""),
+                "hostname_fqdn_raw": raw_hostname_fqdn,
+                "fqdn":           fqdn,
+                "domain":         system_data.get("domain", ""),
+                "manufacturer":   system_data.get("manufacturer", ""),
+                "mac_address":    mac_address,
+                "mac_vendor":     mac_vendor,
                 "cpu_model":      system_data.get("cpu_model", ""),
                 "cpu_count":      system_data.get("cpu_count", ""),
                 "cpu_arch":       system_data.get("cpu_arch", ""),
                 "uptime":         system_data.get("uptime", ""),
                 "memory_summary": system_data.get("memory_summary", {}),
                 "disk_usage":     system_data.get("disk_usage", []),
+                "subnet":         system_data.get("subnet", ""),
+                "credentialed_response_time_ms": system_data.get("credentialed_response_time_ms", ""),
             },
             "packages":                packages,
             "package_count":           len(packages),
@@ -801,32 +968,42 @@ def run_credentialed_scan_task(
             results={"credentialed": {"report": stored_report}}, summary=report_result["summary"],
             scan_duration=scan_duration, report_json_path=report_paths.get("json_pdf"), report_xml_path=report_paths.get("xml_pdf"),
             scan_id=scan_id,
+            commit=False, # ENTERPRISE FIX: Do not commit yet
         )
-        try:
-            _sync_credentialed_asset_identity(
-                db,
-                user_id=user_id,
-                ip=ip,
-                scan_id=str(scan.id),
-                os_type=os_type,
-                system_data=system_data,
-                stored_report=stored_report,
-                cve_list=cve_list,
-                severity_counts=severity_counts,
-            )
-        except Exception:
-            db.rollback()
-            log.exception("Credentialed asset sync failed for %s", ip)
+
+        # Sync to Asset Registry within the same transaction
+        _sync_credentialed_asset_identity(
+            db,
+            user_id=user_id,
+            ip=ip,
+            scan_id=str(scan.id),
+            os_type=os_type,
+            system_data=system_data,
+            stored_report=stored_report,
+            cve_list=cve_list,
+            severity_counts=severity_counts,
+        )
+
+        # ATOMIC COMMIT: Final persistence of everything
+        db.commit()
 
         # 6. Complete
         emit("complete", "Scan completed successfully.", 100, "complete")
         return {"success": True, "scan_id": str(scan.id)}
     except Exception as exc:
+        db.rollback() # Rollback everything if any step fails
         log.exception("Credentialed Scan Task Failed")
-        emit("failed", f"Scan failed: {str(exc)}", 0, "error")
+
+        # ENTERPRISE FIX: Categorize network errors as 'unreachable' vs 'failed'
+        reason = str(exc)
+        status = "failed"
+        if any(msg in reason.lower() for msg in ["reach", "timeout", "no route", "connection refused", "down"]):
+            status = "unreachable"
+
+        emit(status, f"Scan {status}: {reason}", 0, "error")
         if scan_id:
-            mark_scan_failed(db, scan_id, user_id, str(exc))
-        return {"success": False, "error": str(exc)}
+            mark_scan_failed(db, scan_id, user_id, reason, status=status)
+        return {"success": False, "error": reason}
     finally:
         db.close()
 

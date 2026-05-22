@@ -77,7 +77,10 @@ export default function Phase1Results() {
   const selectedHosts    = phase1Hosts.filter(h => assetSelected.has(h.ip_address) && h.is_active);
   const selectedCount    = selectedHosts.length;
 
-  const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2);
+  // PHASE 4: Reachability Validation
+  const isUnreachable = phase1Summary && (phase1Summary.status === "unreachable" || (Number(phase1Summary.active_hosts) === 0 && Number(phase1Summary.total_hosts) > 0));
+
+  const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2) && !isUnreachable;
   const nextPhase          = getNextPhase(pipelineMode, 1);
   const canShowAssetExport = assetHasScanned && assetSummary && assetResults.length > 0;
 
@@ -252,6 +255,24 @@ export default function Phase1Results() {
             ← New Scan
           </button>
         </div>
+
+        {/* PHASE 4: Unreachable Banner */}
+        {isUnreachable && (
+          <div style={{
+            margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+            background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+            display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+          }}>
+            <span style={{ fontSize: 24 }}>⚠️</span>
+            <div>
+              <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+              <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                The discovery scan completed but the target did not respond. 
+                Verify the IP address and network connectivity before re-scanning.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Phase 1 summary bar ─────────────────────────────────────────── */}
         {phase1Summary && (

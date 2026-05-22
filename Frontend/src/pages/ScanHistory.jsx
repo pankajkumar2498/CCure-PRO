@@ -30,6 +30,7 @@ const STATUS_STYLE = {
   failed: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
   cancelled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
   canceled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  unreachable: { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
 };
 const STATUS_LABELS = {
   complete: "Completed",
@@ -38,6 +39,7 @@ const STATUS_LABELS = {
   failed: "Failed",
   cancelled: "Cancelled",
   canceled: "Cancelled",
+  unreachable: "Host Unreachable",
 };
 const TERMINAL_PHASES = { basic: 1, asset: 2, advanced: 3 };
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
@@ -49,7 +51,7 @@ const LIVE_LABELS = {
   polling: "Live sync polling",
 };
 
-const TERMINAL_STATUSES = ["complete", "failed", "cancelled", "canceled"];
+const TERMINAL_STATUSES = ["complete", "failed", "cancelled", "canceled", "unreachable"];
 
 const normalizeStatus = status => {
   const raw = String(status || "running").toLowerCase();
@@ -693,14 +695,6 @@ export default function ScanHistory({ mode = "history" }) {
       const pipelineMode = scan.pipeline_mode || "basic";
       const targets = getStoredTargets(scan);
 
-      // Reset context FIRST
-      resetScan();
-
-      // Set up context for the new scan session with the ORIGINAL configuration
-      setTarget(target);
-      setScanType(scanType);
-      setPipelineMode(pipelineMode);
-
       // Build payload with correct phases based on pipeline mode
       const payload = buildPhasePayload(pipelineMode, {
         targets,
@@ -711,22 +705,30 @@ export default function ScanHistory({ mode = "history" }) {
       const { data } = await api.post("/scan/host-discovery", payload);
       if (!data.success) throw new Error(data.error || "Re-run failed");
 
-      // Store results
-      setPhase1Hosts(data.data);
-      setPhase1Summary(data.summary);
-      setScanId(data.scan_id ?? null);
-      setScanNo(data.scan_no ?? data.display_id ?? null);
+      // Reset context FIRST
+      resetScan();
+
+      // Set up context for the new scan session with the ORIGINAL configuration
+      setTarget(target);
+      setScanType(scanType);
+      setPipelineMode(pipelineMode);
+      setScanId(data.scan_id);
+      setScanNo(data.scan_no ?? data.display_id);
 
       setDialog(null);
 
-      // Navigate based on pipeline mode (same as when initially creating the scan)
-      if (pipelineMode === "advanced") {
-        navigate("/scan/advanced-scan");
-      } else {
-        navigate("/scan/host-discovery");
-      }
+      // Navigate to the "New Scan" view and tell it to show the mission for this scan
+      navigate("/scan", { 
+        state: { 
+          missionMode: true,
+          scanId: data.scan_id,
+          scanNo: data.scan_no ?? data.display_id,
+          target: target,
+          pipelineMode: pipelineMode
+        } 
+      });
 
-      pushToast(`Re-running scan with ${pipelineMode} mode (${payload.phases.length} phase${payload.phases.length !== 1 ? "s" : ""})`, "success");
+      pushToast(`Initiating re-run for ${target}`, "success");
     } catch (err) {
       setDialog(null);
       pushToast("Re-run failed: " + (err.response?.data?.detail || err.message), "error");

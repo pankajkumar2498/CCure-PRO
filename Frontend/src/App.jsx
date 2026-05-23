@@ -85,6 +85,7 @@ export default function App() {
 
           {/* Scan sub-pages (existing + legacy compatibility routes) */}
           <Route path="/scan/new"                      element={<NewScan />} />
+          <Route path="/scan/active/:scanId"           element={<NewScan />} />
           <Route path="/scan/host-discovery"           element={<Phase1Results />} />
           <Route path="/scan/asset-discovery"          element={<Phase2Results />} />
           <Route path="/scan/advanced-scan"            element={<Phase3Results />} />

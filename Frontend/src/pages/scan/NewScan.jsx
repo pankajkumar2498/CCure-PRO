@@ -5,7 +5,7 @@
  */
 import "../../styles/NewScan.css";
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
@@ -275,6 +275,7 @@ function ActiveMission({ scanState, onRunInBackground, onViewResults, onNewScan 
 export default function NewScan() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { scanId: urlScanId } = useParams();
   const { user } = useAuth();
   const canExecuteScans = can(user, "scans", "execute");
 
@@ -282,11 +283,12 @@ export default function NewScan() {
     target, setTarget, pipelineMode, intensity, setIntensity, discoveryIntensity, setDiscoveryIntensity,
     setPhase1Hosts, setPhase1Summary, setPhase2Hosts, setPhase2Summary, setPhase2Results,
     setPhase3Results, setPhase3Summary, setPhase3AuditResults,
-    setScanId, setScanNo, setSaveStatus, setPipelineState,
+    setScanId, setScanNo, setSaveStatus, setPipelineState, setPipelineMode,
     autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget, ctxScanNo,
   } = useScan();
 
-  const [view, setView] = useState("setup");
+  const isActiveRoute = !!urlScanId;
+  const [view, setView] = useState(isActiveRoute ? "mission" : "setup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [rateLimit, setRateLimit] = useState("");
@@ -413,20 +415,17 @@ export default function NewScan() {
       const payload = buildPhasePayload(pipelineMode || "basic", { targets: trimmedTarget.split(",").map(t => t.trim()).filter(Boolean), scan_type: "adaptive", ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}), ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}) });
       const { data } = await api.post("/scan/host-discovery", payload); if (!data.success) throw new Error(data.error);
       const sid = data.scan_id, sno = data.scan_no ?? data.display_id;
-      setScanId(sid); setScanNo(sno); missionScanIdRef.current = sid;
-      startHostPolling(sid); const res = await listenForProgress(sid); stopHostPolling();
-      const finalStatus = res?.status === "failed" ? "failed" : res?.status === "unreachable" ? "unreachable" : "complete";
-      try {
-        const { data: full } = await api.get(`/scans/${sid}`);
-        const p1d = full?.results?.phase1?.data || latestDiscoveredHostsRef.current, p1s = full?.results?.phase1?.summary || {}, active = p1d.filter(h => h.is_active);
-        const auto = pipelineMode === "advanced" && active.length === 1;
-        setAutoRunAdvancedSingleTarget(auto); setPhase1Hosts(p1d); setPhase1Summary(p1s);
-        setMissionState(prev => ({ ...prev, status: finalStatus, progress: (finalStatus === "failed" || finalStatus === "unreachable") ? prev.progress : 100, discovered: active.length, discoveredHosts: active }));
-        if (finalStatus !== "failed" && finalStatus !== "unreachable" && pipelineMode !== "basic") {
-          if (auto) navigate("/scan/advanced-scan", { replace: true, state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } });
-          else navigate("/scan/asset-discovery", { replace: true });
-        }
-      } catch { setMissionState(prev => ({ ...prev, status: finalStatus, progress: 100 })); }
+      
+      navigate(`/scan/active/${sid}`, { 
+        replace: true, 
+        state: { 
+          missionMode: true,
+          scanId: sid,
+          scanNo: sno,
+          target: trimmedTarget,
+          pipelineMode: pipelineMode || "basic"
+        } 
+      });
     } catch (err) { stopHostPolling(); setMissionState(prev => ({ ...prev, status: "failed", error: err.message })); } finally { setLoading(false); }
   };
 
@@ -437,28 +436,63 @@ export default function NewScan() {
     navigate(pipelineMode === "advanced" ? "/scan/advanced-scan" : "/scan/host-discovery");
   }, [navigate, pipelineMode, autoRunAdvancedSingleTarget]);
 
-  const handleNewScan = useCallback(() => { stopHostPolling(); setView("setup"); setMissionState({ status: "running", progress: 0, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null }); setLoading(false); }, [stopHostPolling]);
+  const handleNewScan = useCallback(() => { 
+    stopHostPolling(); 
+    navigate("/scan/new");
+    setView("setup"); 
+    setMissionState({ status: "running", progress: 0, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null }); 
+    setLoading(false); 
+  }, [stopHostPolling, navigate]);
 
   const hasAutoRunRef = useRef(false);
   useEffect(() => {
-    if (location.state?.missionMode && !hasAutoRunRef.current && location.state.scanId) {
-      hasAutoRunRef.current = true; const { scanId, scanNo, target: rt, pipelineMode: rm } = location.state;
-      setView("mission"); setMissionState(prev => ({ ...prev, scanId, scanNo, status: "running", progress: 10, startMs: Date.now() }));
-      missionScanIdRef.current = scanId; setTarget(rt); setPipelineMode(rm); setScanId(scanId); setScanNo(scanNo);
-      startHostPolling(scanId); listenForProgress(scanId).then(res => {
-        stopHostPolling(); const fs = res?.status === "failed" ? "failed" : res?.status === "unreachable" ? "unreachable" : "complete";
-        api.get(`/scans/${scanId}`).then(({ data: f }) => {
+    const effectiveScanId = location.state?.scanId || urlScanId;
+    const isMission = (location.state?.missionMode || !!urlScanId);
+
+    if (isMission && !hasAutoRunRef.current && effectiveScanId) {
+      hasAutoRunRef.current = true;
+      const { scanId, scanNo, target: rt, pipelineMode: rm } = location.state || { scanId: effectiveScanId };
+      
+      setView("mission");
+      setMissionState(prev => ({ 
+        ...prev, 
+        scanId: effectiveScanId, 
+        scanNo: scanNo || prev.scanNo, 
+        status: "running", 
+        progress: 10, 
+        startMs: Date.now() 
+      }));
+      missionScanIdRef.current = effectiveScanId;
+      if (rt) setTarget(rt);
+      if (rm) setPipelineMode(rm);
+      setScanId(effectiveScanId);
+      if (scanNo) setScanNo(scanNo);
+
+      startHostPolling(effectiveScanId);
+      listenForProgress(effectiveScanId).then(res => {
+        stopHostPolling();
+        const fs = res?.status === "failed" ? "failed" : res?.status === "unreachable" ? "unreachable" : "complete";
+        api.get(`/scans/${effectiveScanId}`).then(({ data: f }) => {
           const d = f?.results?.phase1?.data || latestDiscoveredHostsRef.current, active = d.filter(h => h.is_active);
           setPhase1Hosts(d); setPhase1Summary(f?.results?.phase1?.summary || {});
           setMissionState(prev => ({ ...prev, status: fs, progress: (fs === "failed" || fs === "unreachable") ? prev.progress : 100, discovered: active.length, discoveredHosts: active }));
-          if (fs !== "failed" && fs !== "unreachable" && rm !== "basic") { if (rm === "advanced" && active.length === 1) navigate("/scan/advanced-scan", { replace: true, state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } }); else navigate("/scan/asset-discovery", { replace: true }); }
+          if (fs !== "failed" && fs !== "unreachable" && (rm || f?.pipeline_mode) !== "basic") {
+            if ((rm || f?.pipeline_mode) === "advanced" && active.length === 1) navigate("/scan/advanced-scan", { replace: true, state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } });
+            else navigate("/scan/asset-discovery", { replace: true });
+          }
         });
       });
-      navigate(".", { replace: true, state: {} });
+      
+      // Clean up state but stay on the active URL
+      if (location.state?.missionMode) {
+        navigate(`/scan/active/${effectiveScanId}`, { replace: true, state: {} });
+      }
     } else if (location.state?.autoRun && !hasAutoRunRef.current && canExecuteScans && target && !loading && !quotaBlocked) {
-      hasAutoRunRef.current = true; navigate(".", { replace: true, state: {} }); setTimeout(() => handleScan(), 100);
+      hasAutoRunRef.current = true;
+      navigate(".", { replace: true, state: {} });
+      setTimeout(() => handleScan(), 100);
     }
-  }, [location.state, canExecuteScans, target, loading, quotaBlocked, navigate, startHostPolling, listenForProgress, stopHostPolling, setTarget, setScanId, setScanNo, setPhase1Hosts, setPhase1Summary, handleScan]);
+  }, [location.state, urlScanId, canExecuteScans, target, loading, quotaBlocked, navigate, startHostPolling, listenForProgress, stopHostPolling, setTarget, setScanId, setScanNo, setPhase1Hosts, setPhase1Summary, handleScan]);
 
   if (view === "mission") return <AppLayout pageTitle="Active Scan Mission"><ActiveMission scanState={{ ...missionState, target, scanNo: missionState.scanNo ?? ctxScanNo, pipelineMode: pipelineMode || "basic" }} onRunInBackground={handleRunInBackground} onViewResults={handleViewResults} onNewScan={handleNewScan} /></AppLayout>;
 

@@ -717,8 +717,8 @@ export default function ScanHistory({ mode = "history" }) {
 
       setDialog(null);
 
-      // Navigate to the "New Scan" view and tell it to show the mission for this scan
-      navigate("/scan", { 
+      // Navigate to the "Active Scan" view and tell it to show the mission for this scan
+      navigate(`/scan/active/${data.scan_id}`, { 
         state: { 
           missionMode: true,
           scanId: data.scan_id,

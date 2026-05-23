@@ -71,8 +71,8 @@ const TEMPLATES = [
   },
   {
     id:       "advanced",
-    title:    "Advanced Scan",
-    desc:     "Identifies Hosts and Deeply Scan the Network.",
+    title:    "Vulnerability Audit",
+    desc:     "Identifies hosts and performs a deep vulnerability audit.",
     Icon:     IcoLightning,
     bg:       "#fefce8",
     color:    "#eab308",

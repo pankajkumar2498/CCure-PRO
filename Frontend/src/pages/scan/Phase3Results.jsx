@@ -466,7 +466,7 @@ export default function Phase3Results() {
   const displayVulnHosts = filter3 === "active" ? activeVulnHosts : localVulnResults;
 
   return (
-    <AppLayout pageTitle="Advanced Scan" saveStatus={saveStatus}>
+    <AppLayout pageTitle="Vulnerability Audit" saveStatus={saveStatus}>
       <ScanStepper current={currentStep} />
 
       <div className="page-inner">
@@ -474,7 +474,7 @@ export default function Phase3Results() {
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Advanced Scan</h2>
+            <h2 className="page-title">Vulnerability Audit</h2>
             <p className="page-subtitle">
               Full pipeline execution from <code className="ip-code">{target}</code>
             </p>

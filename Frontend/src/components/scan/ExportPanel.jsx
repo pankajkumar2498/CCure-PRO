@@ -79,7 +79,7 @@ export default function ExportPanel({
     let rows = [];
 
     if (isFinalAdvancedExport) {
-      rows.push(["Advanced Scan Export"]);
+      rows.push(["Vulnerability Audit Export"]);
       rows.push([`Scan No: ${displayNo}`]);
       rows.push([`Target: ${target || "N/A"}`]);
       rows.push([`Exported: ${new Date().toLocaleString()}`]);

@@ -54,7 +54,7 @@ const QUICK_TARGETS = ["192.168.1.0/24", "10.0.0.0/24", "172.16.0.0/24", "192.16
 const PIPELINE_BADGE = {
   basic: { label: "Basic Scan", cls: "ns-badge--basic" },
   asset: { label: "Asset Discovery", cls: "ns-badge--asset" },
-  advanced: { label: "Advanced Scan", cls: "ns-badge--advanced" },
+  advanced: { label: "Vulnerability Audit", cls: "ns-badge--advanced" },
 };
 
 /* ── Helpers ───────────────────────────────────────────────────────────────── */
@@ -146,7 +146,7 @@ function ActiveMission({ scanState, onRunInBackground, onViewResults, onNewScan 
   const badgeLabel = isFailed ? "Failed" : isUnreachable ? "Unreachable" : isComplete ? "Complete" : "Live Scanning";
   const stripClass = isFailed ? "am-progress-strip-fill--failed" : isUnreachable ? "am-progress-strip-fill--warning" : isComplete ? "am-progress-strip-fill--complete" : "";
 
-  const pipelineLabel = { basic: "Host Discovery", asset: "Asset Discovery", advanced: "Advanced Scan" }[pipelineMode] || "Scan";
+  const pipelineLabel = { basic: "Host Discovery", asset: "Asset Discovery", advanced: "Vulnerability Audit" }[pipelineMode] || "Scan";
 
   return (
     <div className="am-page">

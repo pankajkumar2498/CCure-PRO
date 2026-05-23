@@ -50,14 +50,14 @@ export const SCAN_PIPELINES = {
   },
 
   /**
-   * Advanced Scan
+   * Vulnerability Audit
    * Full pipeline: Phase 1 → 2 → 3
    * Backend receives: { phases: [1, 2, 3] }
    */
   advanced: {
     id: "advanced",
-    label: "Advanced Scan",
-    description: "Full Network Scan with Detailed Information.",
+    label: "Vulnerability Audit",
+    description: "Full vulnerability audit pipeline with host, port, and risk assessment.",
     phases: [1, 2, 3],
     entryRoute: "/scan",
     badge: "Full Pipeline",

@@ -45,7 +45,7 @@ class Scan(Base):
     """
     __tablename__ = "scans"
     __table_args__ = (
-        UniqueConstraint("org_id", "created_by", "scan_no", name="uq_scans_org_user_scan_no"),
+        UniqueConstraint("org_id", "scan_no", name="uq_scans_org_scan_no"),
         Index("ix_scans_org_status",   "org_id", "status"),
         Index("ix_scans_org_created",  "org_id", "created_at"),
         Index("ix_scans_org_pipeline", "org_id", "pipeline_mode"),

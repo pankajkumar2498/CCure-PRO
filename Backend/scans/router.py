@@ -77,6 +77,11 @@ def _scan_summary(scan: Scan) -> dict:
 def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: bool = False) -> dict:
     """Serialize a Scan row to a JSON-safe dict."""
     pipeline_mode = getattr(scan, "pipeline_mode", "basic") or "basic"
+    creator = getattr(scan, "created_by_user", None)
+    creator_username = getattr(creator, "username", None)
+    creator_full_name = getattr(creator, "full_name", None)
+    creator_role = getattr(getattr(creator, "role", None), "name", None)
+
     d = {
         "id":            str(scan.id),
         "scan_no":       scan.scan_no,
@@ -97,6 +102,14 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
         "has_json_report": bool(getattr(scan, "report_json_path", None)),
         "has_xml_report":  bool(getattr(scan, "report_xml_path", None)),
         "summary":       _scan_summary(scan),
+        "created_by":    str(scan.created_by) if scan.created_by else None,
+        "started_by": {
+            "user_id":      str(scan.created_by) if scan.created_by else None,
+            "username":     creator_username,
+            "full_name":    creator_full_name,
+            "display_name": creator_full_name or creator_username,
+            "role":         creator_role,
+        },
     }
     d["progress_percentage"] = _scan_progress_percentage(scan, pipeline_mode)
     if include_results and db:
@@ -121,7 +134,7 @@ def _user_can_read_all_scans(user: User, db: Session) -> bool:
 
 
 def _get_scan_or_404(scan_id: str, user: User, db: Session) -> Scan:
-    query = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == user.org_id)
+    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.id == scan_id, Scan.org_id == user.org_id)
     if not _user_can_read_all_scans(user, db):
         query = query.filter(Scan.created_by == str(user.id))
 
@@ -150,9 +163,17 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, user: User, scope: str):
-    query = db.query(Scan).filter(Scan.org_id == user.org_id)
-    if not _user_can_read_all_scans(user, db):
+def _build_scans_query(db: Session, user: User, scope: str, created_by: Optional[str] = None):
+    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.org_id == user.org_id)
+
+    if created_by:
+        if created_by == "me":
+            query = query.filter(Scan.created_by == str(user.id))
+        elif _user_can_read_all_scans(user, db):
+            query = query.filter(Scan.created_by == created_by)
+        else:
+            raise HTTPException(status_code=403, detail="Insufficient privileges to view other users' scans.")
+    elif not _user_can_read_all_scans(user, db):
         query = query.filter(Scan.created_by == str(user.id))
 
     if scope == "active":
@@ -173,8 +194,8 @@ def _build_scans_query(db: Session, user: User, scope: str):
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, user: User, scope: str, skip: int, limit: int) -> dict:
-    query, order_by = _build_scans_query(db, user, scope)
+def _scan_history_snapshot(db: Session, user: User, scope: str, skip: int, limit: int, created_by: Optional[str] = None) -> dict:
+    query, order_by = _build_scans_query(db, user, scope, created_by)
     scans = (
         query
         .order_by(*order_by)
@@ -257,17 +278,18 @@ def _format_sse(event: str, payload: dict) -> str:
 
 @router.get("")
 def list_scans(
-    skip:  int = Query(0,  ge=0),
-    limit: int = Query(50, ge=1, le=200),
-    scope: str = Query("active"),
-    db:    Session = Depends(get_db),
-    user:  User    = Depends(require_permission("scans", "read")),
+    skip:       int = Query(0,  ge=0),
+    limit:      int = Query(50, ge=1, le=200),
+    scope:      str = Query("active"),
+    created_by: Optional[str] = Query(None),
+    db:         Session = Depends(get_db),
+    user:       User    = Depends(require_permission("scans", "read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
     Does NOT include full results blob (use GET /scans/{id} for that).
     """
-    return _scan_history_snapshot(db, user, scope, skip, limit)
+    return _scan_history_snapshot(db, user, scope, skip, limit, created_by)
 
 
 @router.get("/events")
@@ -277,6 +299,7 @@ async def stream_scan_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=200),
     interval: float = Query(2.0, ge=0.5, le=15.0),
+    created_by: Optional[str] = Query(None),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
@@ -295,7 +318,7 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, scope, skip, limit)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, scope, skip, limit, created_by)
             finally:
                 db.close()
 

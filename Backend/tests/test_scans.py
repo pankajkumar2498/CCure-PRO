@@ -98,6 +98,76 @@ def test_create_scan_writes_audit_log(db_session: Session):
     assert audit_entry.status == "success"
 
 
+def test_global_org_scan_numbering_across_users(db_session: Session):
+    import uuid
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    user1 = User(
+        id=f"user_test_{uuid.uuid4().hex[:8]}",
+        username=f"user1_{uuid.uuid4().hex[:8]}",
+        email=f"user1_{uuid.uuid4().hex[:8]}@test.com",
+        full_name="User One",
+        password_hash=hash_password("securepassword123"),
+        org_id=org.id,
+        role_id=3,
+        is_active=True,
+        is_verified=True,
+    )
+    user2 = User(
+        id=f"user_test_{uuid.uuid4().hex[:8]}",
+        username=f"user2_{uuid.uuid4().hex[:8]}",
+        email=f"user2_{uuid.uuid4().hex[:8]}@test.com",
+        full_name="User Two",
+        password_hash=hash_password("securepassword123"),
+        org_id=org.id,
+        role_id=3,
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add_all([user1, user2])
+    db_session.commit()
+
+    scan1 = create_scan(
+        db=db_session,
+        user_id=str(user1.id),
+        target="192.168.1.1",
+        targets=["192.168.1.1"],
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    )
+    scan2 = create_scan(
+        db=db_session,
+        user_id=str(user2.id),
+        target="192.168.1.2",
+        targets=["192.168.1.2"],
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    )
+    scan3 = create_scan(
+        db=db_session,
+        user_id=str(user1.id),
+        target="192.168.1.3",
+        targets=["192.168.1.3"],
+        scan_type="adaptive",
+        pipeline_mode="basic",
+    )
+
+    assert scan1.scan_no == 1
+    assert scan2.scan_no == 2
+    assert scan3.scan_no == 3
+
+
 def test_scan_completion_logs_audit_event(db_session: Session):
     import uuid
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -1086,6 +1156,79 @@ def test_credentialed_scan_validation_scrubbing(client: TestClient, auth_headers
     detail_str = str(data["detail"])
     assert "this_is_an_invalid_type_for_a_password_field" not in detail_str
     assert "Value redacted for security." in detail_str
+
+
+def test_scan_history_includes_started_by_metadata(client: TestClient, auth_headers: dict, test_user: User, db_session: Session):
+    """Test that scan history exposes scan starter metadata for the scan list."""
+    scan = Scan(
+        org_id=test_user.org_id,
+        created_by=str(test_user.id),
+        scan_no=101,
+        target_str="10.0.0.7",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+        status="queued",
+    )
+    db_session.add(scan)
+    db_session.commit()
+    db_session.refresh(scan)
+
+    response = client.get("/scans", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+
+    found = next((item for item in data.get("scans", []) if item.get("id") == scan.id), None)
+    assert found is not None
+    assert found["created_by"] == str(test_user.id)
+    assert found["started_by"]["user_id"] == str(test_user.id)
+    assert found["started_by"]["username"] == test_user.username
+    assert found["started_by"]["full_name"] == test_user.full_name
+    assert found["started_by"]["display_name"] == test_user.full_name
+
+
+def test_scan_history_owner_filter_returns_only_my_scans(client: TestClient, auth_headers: dict, test_user: User, db_session: Session):
+    other_user = User(
+        username="otheruser",
+        email="other@test.com",
+        full_name="Other User",
+        password_hash=hash_password("securepassword"),
+        org_id=test_user.org_id,
+        role_id=test_user.role_id,
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+
+    mine_scan = Scan(
+        org_id=test_user.org_id,
+        created_by=str(test_user.id),
+        scan_no=102,
+        target_str="10.0.0.8",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+        status="complete",
+    )
+    other_scan = Scan(
+        org_id=test_user.org_id,
+        created_by=str(other_user.id),
+        scan_no=103,
+        target_str="10.0.0.9",
+        scan_type="adaptive",
+        pipeline_mode="basic",
+        status="complete",
+    )
+    db_session.add_all([mine_scan, other_scan])
+    db_session.commit()
+
+    response = client.get("/scans?created_by=me", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+
+    ids = [item["id"] for item in data.get("scans", [])]
+    assert str(mine_scan.id) in ids
+    assert str(other_scan.id) not in ids
 
 
 def test_scan_progress_requires_scan_read_permission(client: TestClient, db_session: Session, test_org: Organization):

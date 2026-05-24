@@ -174,6 +174,8 @@ PERMISSIONS = [
     # Settings / Org
     ("settings",    "read",    "View organization settings"),
     ("settings",    "update",  "Change organization settings and feature flags"),
+    # Dashboard
+    ("dashboard",   "read",    "View the security analytics dashboard"),
     # Roles & Permissions
     ("roles",       "read",    "View system roles and permissions"),
     ("roles",       "create",  "Create custom roles"),
@@ -203,6 +205,7 @@ ROLE_PERMISSIONS = {
         "roles:read",
         "credentials:create", "credentials:read", "credentials:delete",
         "settings:read", "settings:update",
+        "dashboard:read",
         "audit:read",
     ],
     "analyst": [
@@ -212,6 +215,7 @@ ROLE_PERMISSIONS = {
         "reports:create", "reports:read",
         "credentials:read",
         "settings:read",
+        "dashboard:read",
     ],
     "viewer": [
         "scans:read", "scans:read_all",
@@ -219,6 +223,7 @@ ROLE_PERMISSIONS = {
         "findings:read",
         "reports:read",
         "settings:read",
+        "dashboard:read",
     ],
     "scanner": [
         "scans:create", "scans:read", "scans:execute",

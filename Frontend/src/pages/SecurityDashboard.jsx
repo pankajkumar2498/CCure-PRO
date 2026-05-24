@@ -1144,6 +1144,13 @@ function useDashboard() {
 export default function SecurityDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (user && !canPermission(user, { resource: "dashboard", action: "read" })) {
+      navigate("/scan", { replace: true });
+    }
+  }, [user, navigate]);
+
   const db = useDashboard();
   const [activeTab, setActiveTab] = useState("overview");
   const [showDateDropdown, setShowDateDropdown] = useState(false);

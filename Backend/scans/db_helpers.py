@@ -117,20 +117,21 @@ def _get_org_id(db: Session, user_id: str) -> str:
 
 def _next_scan_no(db: Session, org_id: str, user_id: str) -> int:
     """
-    Return the next human-facing scan number for this user inside the org.
+    Return the next human-facing scan number for the organization.
 
     UUID remains the real object identity; scan_no is only for display,
-    support, reports, and database lookups by humans.
+    support, reports, and database lookups by humans. Numbers are global
+    within an org so different users cannot produce duplicate scan numbers.
     """
     if db.bind and db.bind.dialect.name == "postgresql":
         db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-            {"lock_key": f"scan_no:{org_id}:{user_id}"},
+            {"lock_key": f"scan_no:{org_id}"},
         )
 
     current = (
         db.query(func.max(Scan.scan_no))
-        .filter(Scan.org_id == org_id, Scan.created_by == user_id)
+        .filter(Scan.org_id == org_id)
         .scalar()
     )
     return int(current or 0) + 1

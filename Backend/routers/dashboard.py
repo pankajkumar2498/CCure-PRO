@@ -64,7 +64,7 @@ def _now() -> datetime:
 def get_dashboard_summary(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("scans", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     """
     8 top metric cards. Data sources:
@@ -226,7 +226,7 @@ def get_dashboard_summary(
 def get_risk_breakdown(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("scans", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -266,7 +266,7 @@ def get_risk_breakdown(
     # TLS issues
     tls_row = (
         db.query(
-            func.count(case((TLSDetail.cert_is_expired == True, 1))).label("expired"),
+            func.count(case((TLSDetail.cert_not_after < utcnow(), 1))).label("expired"),
             func.count(case((TLSDetail.cert_is_self_signed == True, 1))).label("self_signed"),
             func.count(case((TLSDetail.is_weak_cipher == True, 1))).label("weak_cipher"),
             func.count(case((TLSDetail.grade == "F", 1))).label("grade_f"),
@@ -331,7 +331,7 @@ def get_vuln_trends(
     days:   int = Query(30, ge=7, le=90),
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("scans", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org   = _resolve_org(user, org_id)
     since = _now() - timedelta(days=days)
@@ -374,7 +374,7 @@ def get_top_assets(
     limit:  int = Query(10, ge=1, le=50),
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("assets", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
     assets = (
@@ -418,7 +418,7 @@ def get_top_cves(
     severity: Optional[str] = Query(None),
     org_id:   Optional[str] = Query(None),
     db:       Session = Depends(get_db),
-    user:     User    = Depends(require_permission("findings", "read")),
+    user:     User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -478,7 +478,7 @@ def get_top_cves(
 def get_services_exposure(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("assets", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
     HIGH_RISK_PORTS = {21, 23, 69, 110, 111, 139, 445, 512, 513, 514, 3389, 5900, 5985}
@@ -518,7 +518,7 @@ def get_services_exposure(
 def get_tls_health(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("assets", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org    = _resolve_org(user, org_id)
     now    = _now()
@@ -572,7 +572,7 @@ def get_tls_health(
 def get_http_headers(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("assets", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -616,7 +616,7 @@ def get_http_headers(
 def get_compliance(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("reports", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -682,7 +682,7 @@ def get_compliance(
 def get_asset_breakdown(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("assets", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -736,7 +736,7 @@ def get_scan_activity(
     limit:  int = Query(8, ge=1, le=20),
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("scans", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -790,7 +790,7 @@ def get_scan_activity(
 def get_insights(
     org_id: Optional[str] = Query(None),
     db:     Session = Depends(get_db),
-    user:   User    = Depends(require_permission("scans", "read")),
+    user:   User    = Depends(require_permission("dashboard", "read")),
 ):
     org     = _resolve_org(user, org_id)
     now     = _now()

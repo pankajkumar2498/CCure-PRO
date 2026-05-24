@@ -33,23 +33,22 @@ def ensure_scan_schema():
         if dialect == "postgresql":
             conn.execute(text("""
                 WITH existing AS (
-                    SELECT org_id, created_by, COALESCE(MAX(scan_no), 0) AS max_scan_no
+                    SELECT org_id, COALESCE(MAX(scan_no), 0) AS max_scan_no
                     FROM scans
                     WHERE scan_no IS NOT NULL
-                    GROUP BY org_id, created_by
+                    GROUP BY org_id
                 ),
                 numbered AS (
                     SELECT
                         s.id,
                         COALESCE(e.max_scan_no, 0) +
                         ROW_NUMBER() OVER (
-                            PARTITION BY s.org_id, s.created_by
+                            PARTITION BY s.org_id
                             ORDER BY s.created_at ASC, s.id ASC
                         ) AS next_scan_no
                     FROM scans s
                     LEFT JOIN existing e
                       ON e.org_id = s.org_id
-                     AND e.created_by IS NOT DISTINCT FROM s.created_by
                     WHERE s.scan_no IS NULL
                 )
                 UPDATE scans
@@ -57,33 +56,30 @@ def ensure_scan_schema():
                 FROM numbered
                 WHERE scans.id = numbered.id
             """))
+            conn.execute(text("DROP INDEX IF EXISTS uq_scans_org_user_scan_no_idx"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_scans_org_scan_no_idx"))
             conn.execute(text("""
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_user_scan_no_idx
-                ON scans (org_id, created_by, scan_no)
-                WHERE scan_no IS NOT NULL
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS ix_scans_org_scan_no_idx
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_scan_no_idx
                 ON scans (org_id, scan_no)
+                WHERE scan_no IS NOT NULL
             """))
         else:
             rows = conn.execute(text("""
-                SELECT id, org_id, created_by
+                SELECT id, org_id
                 FROM scans
                 WHERE scan_no IS NULL
-                ORDER BY org_id, created_by, created_at ASC, id ASC
+                ORDER BY org_id, created_at ASC, id ASC
             """)).fetchall()
             counters = {}
-            for scan_id, org_id, created_by in rows:
-                key = (str(org_id), str(created_by))
+            for scan_id, org_id in rows:
+                key = str(org_id)
                 if key not in counters:
                     counters[key] = conn.execute(text("""
                         SELECT COALESCE(MAX(scan_no), 0)
                         FROM scans
                         WHERE org_id = :org_id
-                          AND created_by = :created_by
                           AND scan_no IS NOT NULL
-                    """), {"org_id": org_id, "created_by": created_by}).scalar() or 0
+                    """), {"org_id": org_id}).scalar() or 0
                 counters[key] += 1
                 conn.execute(text("""
                     UPDATE scans

@@ -74,6 +74,15 @@ const scanTypeLabel = scan => {
   return String(scan.pipeline_mode || scan.scan_type || "Unknown").replace(/_/g, " ");
 };
 
+const getScanStartedByLabel = (scan, currentUser) => {
+  const startedBy = scan?.started_by;
+  if (!startedBy) return "Unknown";
+  if (startedBy.user_id && currentUser?.id && startedBy.user_id === currentUser.id) {
+    return "You";
+  }
+  return startedBy.display_name || startedBy.username || "Unknown";
+};
+
 const fmtDate = iso =>
   formatDateTime(iso, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -540,6 +549,7 @@ export default function ScanHistory({ mode = "history" }) {
     if (isMonitor) return "running";
     return searchParams.get("status") || "all";
   });
+  const [filterOwner, setFilterOwner] = useState(() => searchParams.get("owner") || "all");
   const [filterDate, setFilterDate] = useState("all");
   const [page, setPage] = useState(1);
   const { preferences } = usePreferences();
@@ -552,7 +562,10 @@ export default function ScanHistory({ mode = "history" }) {
     }
     const status = searchParams.get("status");
     setFilterStatus(status || "all");
+    setFilterOwner(searchParams.get("owner") || "all");
   }, [searchParams, isMonitor]);
+
+  const ownerParam = filterOwner === "mine" ? "me" : undefined;
 
   // Confirm dialog state
   const [dialog, setDialog] = useState(null); // { type, scan, config }
@@ -572,7 +585,7 @@ export default function ScanHistory({ mode = "history" }) {
       setError("");
     }
     try {
-      const { data } = await getScans(0, 200, "active");
+      const { data } = await getScans(0, 200, "active", ownerParam);
       applySnapshot(data);
     } catch {
       if (!quiet) setError("Failed to load scan history.");
@@ -580,7 +593,7 @@ export default function ScanHistory({ mode = "history" }) {
       if (initial) setLoading(false);
       if (!quiet) setRefreshing(false);
     }
-  }, [applySnapshot]);
+  }, [applySnapshot, ownerParam]);
 
   useEffect(() => { load({ initial: true }); }, [load]);
 
@@ -606,6 +619,7 @@ export default function ScanHistory({ mode = "history" }) {
             scope: "active",
             limit: 200,
             interval: 2,
+            created_by: ownerParam,
             signal: controller.signal,
             onEvent: ({ event, data }) => {
               if (stopped) return;
@@ -825,7 +839,14 @@ export default function ScanHistory({ mode = "history" }) {
     // 2. Status tab filtering
     if (filterStatus !== "all" && status !== filterStatus) return false;
 
-    // 3. Date filtering
+    // 3. Owner filtering
+    if (filterOwner === "mine" && user?.id) {
+      if (String(scan.created_by) !== String(user.id) && String(scan?.started_by?.user_id) !== String(user.id)) {
+        return false;
+      }
+    }
+
+    // 4. Date filtering
     if (filterDate !== "all" && now - dateTimeMs(getScanDisplayDate(scan)) > DATE_MS[filterDate]) return false;
 
     return true;
@@ -868,7 +889,7 @@ export default function ScanHistory({ mode = "history" }) {
           <div className="filter-group">
             <label>Status</label>
             <div className="filter-tabs">
-              {(isMonitor ? ["running"] : ["all", "complete", "running", "failed", "cancelled"]).map(s => (
+              {(isMonitor ? ["running"] : ["all", "complete", "failed", "cancelled"]).map(s => (
                 <button
                   key={s}
                   className={`filter-tab ${filterStatus === s ? "filter-tab--active" : ""}`}
@@ -880,6 +901,22 @@ export default function ScanHistory({ mode = "history" }) {
               ))}
             </div>
           </div>
+          {!isMonitor && (
+            <div className="filter-group">
+              <label>Owner</label>
+              <div className="filter-tabs">
+                {["all", "mine"].map(o => (
+                  <button
+                    key={o}
+                    className={`filter-tab ${filterOwner === o ? "filter-tab--active" : ""}`}
+                    onClick={() => setFilterOwner(o)}
+                  >
+                    {o === "all" ? "All scans" : "My scans"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {!isMonitor && (
             <div className="filter-group">
               <label>Time range</label>
@@ -957,6 +994,7 @@ export default function ScanHistory({ mode = "history" }) {
                   <th>Scan No.</th>
                   <th>Target</th>
                   <th>Type</th>
+                  <th>Started By</th>
                   <th>Status</th>
                   <th>Active Hosts</th>
                   <th>Duration</th>
@@ -980,6 +1018,11 @@ export default function ScanHistory({ mode = "history" }) {
                         </span>
                       </td>
                       <td><span className="method-chip">{scanTypeLabel(scan)}</span></td>
+                      <td>
+                        <span style={{ fontFamily: "var(--sans)", fontSize: 13, color: "var(--text)" }}>
+                          {getScanStartedByLabel(scan, user)}
+                        </span>
+                      </td>
                       <td>
                         <div className="history-status-cell">
                           <StatusBadge status={scan.status} />

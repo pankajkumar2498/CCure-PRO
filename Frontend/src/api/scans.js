@@ -4,8 +4,11 @@
  */
 import api, { authSession } from "./axiosInstance";
 
-export const getScans   = (skip = 0, limit = 50, scope = "active") =>
-  api.get("/scans", { params: { skip, limit, scope } });
+export const getScans   = (skip = 0, limit = 50, scope = "active", created_by) => {
+  const params = { skip, limit, scope };
+  if (created_by) params.created_by = created_by;
+  return api.get("/scans", { params });
+};
 
 export const getScan    = (id) =>
   api.get(`/scans/${id}`);
@@ -34,7 +37,7 @@ export const getScanQuota = () =>
 
 
 
-const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2 } = {}) => {
+const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2, created_by } = {}) => {
   const baseURL = api.defaults.baseURL || "";
   const prefix = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
   const params = new URLSearchParams({
@@ -43,6 +46,7 @@ const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2 } = {
     limit: String(limit),
     interval: String(interval),
   });
+  if (created_by) params.set("created_by", created_by);
   return `${prefix}/scans/events?${params.toString()}`;
 };
 

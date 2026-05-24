@@ -54,7 +54,7 @@ const SIDEBAR_SECTIONS = [
   {
     label: "Overview",
     items: [
-      { id: "security-dashboard", label: "Security Dashboard", Icon: IcoDashboard, route: "/" },
+      { id: "security-dashboard", label: "Security Dashboard", Icon: IcoDashboard, route: "/", permission: { resource: "dashboard", action: "read" } },
       { id: "executive-report",   label: "Executive Report",   Icon: IcoFileText,  route: "/reports?tab=executive", permission: { resource: "reports", action: "read" } },
     ],
   },

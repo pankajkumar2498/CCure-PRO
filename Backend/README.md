@@ -124,7 +124,7 @@ CLI / FastAPI / Code   │       HostDiscoveryAPI        │   api/host_discover
                        │       ScanOrchestrator         │   orchestrator/scan_orchestrator.py
                        │  run_host_discovery_only()  (NEW)      │
                        │  run_asset_discovery_only()  (NEW)      │
-                       │  run_advanced_scan_only()  (NEW)      │
+                       │  run_vulnerability_audit_only()  (NEW)      │
                        │  run_phases()       (NEW)      │
                        └──┬────────┬──────────┬────────┘
                           │        │           │
@@ -273,7 +273,7 @@ The API now supports **frontend-orchestrated, phase-selective scanning** — the
 
 orchestrator.run_host_discovery_only(targets, scan_type)          # Discovery only
 orchestrator.run_asset_discovery_only(hosts, intensity)            # Port scan selected hosts
-orchestrator.run_advanced_scan_only(hosts)                         # Vulnerability scan selected hosts
+orchestrator.run_vulnerability_audit_only(hosts)                    # Vulnerability audit selected hosts
 orchestrator.run_phases(targets, phases, scan_type, intensity)     # Flexible combinations
 ```
 
@@ -282,7 +282,7 @@ orchestrator.run_phases(targets, phases, scan_type, intensity)     # Flexible co
 ```
 POST /scan/host-discovery     →  Discovery only
 POST /scan/asset-discovery    →  Port scan (pass hosts from host-discovery output)
-POST /scan/advanced-scan      →  Vulnerability + risk scoring (pass hosts from asset-discovery output)
+POST /scan/vulnerability-audit →  Vulnerability + risk scoring (pass hosts from asset-discovery output)
 POST /scan/phases             →  Flexible: specify "1", "1+2", or "1+2+3+4"
 ```
 
@@ -293,7 +293,7 @@ POST /scan/phases             →  Flexible: specify "1", "1+2", or "1+2+3+4"
    User selects 5 hosts they care about
 2. POST /scan/asset-discovery  →  Open ports on 5 hosts in 10s
    User identifies 1 critical host
-3. POST /scan/advanced-scan  →  CVEs + risk score on 1 host in 45s
+3. POST /scan/vulnerability-audit →  CVEs + risk score on 1 host in 45s
 ```
 
 ### CORS Configuration

@@ -769,7 +769,7 @@ export default function Phase2Results() {
           );
         })}
 
-        {summary && results.length > 0 && pipelineMode !== "advanced" && (
+        {summary && results.length > 0 && pipelineMode !== "advanced" && pipelineMode !== "vulnerability_audit" && (
           <ExportPanel results={results} summary={summary} scanId={scanId} scanNo={scanNo} target={target} />
         )}
 

@@ -7,8 +7,7 @@ Endpoints
 ─────────
   POST /scan/host-discovery   → Phase 1: Host Discovery
   POST /scan/asset-discovery  → Phase 2: Port Scanning & Service Detection
-  POST /scan/advanced-scan    → Phase 3: Vulnerability Audit & Risk Scoring
-  POST /scan/phases           → Convenience: run any combination of phases
+    POST /scan/vulnerability-audit    → Phase 3: Vulnerability Audit & Risk Scoring
 """
 
 import asyncio
@@ -44,7 +43,7 @@ from core.quota import check_scan_quota, get_quota_status
 from core.tasks import (
     run_host_discovery_task,
     run_asset_discovery_task,
-    run_advanced_scan_task,
+    run_vulnerability_audit_task,
     run_traditional_scan_task,
 )
 
@@ -87,9 +86,9 @@ class HostDiscoveryRequest(BaseModel):
     Host Discovery — Phase 1.
 
     `pipeline_mode` tells the backend which pipeline this scan belongs to:
-      "basic"    → only Host Discovery will run; scan is immediately marked complete.
-      "asset"    → Host Discovery then Asset Discovery; scan stays 'running' after host discovery.
-      "advanced" → Full pipeline; scan stays 'running' until advanced scan.
+      "basic"              → only Host Discovery will run; scan is immediately marked complete.
+      "asset"              → Host Discovery then Asset Discovery; scan stays 'running' after host discovery.
+      "vulnerability_audit" → Full pipeline; scan stays 'running' until vulnerability audit.
 
     `phases` is the authoritative list from the frontend (informational / audit).
 
@@ -97,13 +96,13 @@ class HostDiscoveryRequest(BaseModel):
       "light"  → FAST profile only — fastest, may miss firewalled/restricted hosts.
       "normal" → FAST first, BALANCED fallback only for still-inactive IPs (default).
       "deep"   → Full BALANCED — maximum coverage, slower.
-    Ignored for basic and advanced pipelines.
+    Ignored for basic and vulnerability_audit pipelines.
     """
     targets:             List[str]      = Field(..., example=["192.168.1.0/24"])
     scan_type:           str            = Field("adaptive", example="adaptive")
     pipeline_mode:       Optional[str]  = Field("basic",
                                                 example="basic",
-                                                description="basic | asset | advanced")
+                                                description="basic | asset | vulnerability_audit")
     phases:              Optional[List[int]] = Field(None,
                                                      example=[1, 2],
                                                      description="Phase list from frontend (informational)")
@@ -120,28 +119,28 @@ class AssetDiscoveryRequest(BaseModel):
     Asset Discovery — Phase 2.
 
     Must include the same `pipeline_mode` used in the Host Discovery request so the
-    backend can decide whether this is the terminal phase (asset) or not (advanced).
+    backend can decide whether this is the terminal phase (asset) or not (vulnerability_audit).
     """
     hosts:         List[dict]     = Field(..., description="Host dicts from Host Discovery")
     intensity:     str            = Field("normal", example="normal")
     scan_id:       Optional[str]  = Field(None)
     pipeline_mode: Optional[str]  = Field("asset",
                                           example="asset",
-                                          description="basic | asset | advanced")
+                                          description="basic | asset | vulnerability_audit")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
 
 
-class AdvancedScanRequest(BaseModel):
+class VulnerabilityAuditRequest(BaseModel):
     """
-    Advanced Scan — Phase 3.
+    Vulnerability Audit — Phase 3.
 
-    Only reached when pipeline_mode is "advanced". Always marks the scan complete.
+    Only reached when pipeline_mode is "vulnerability_audit". Always marks the scan complete.
     """
     hosts:         List[dict]     = Field(..., description="Host dicts from Asset Discovery")
     scan_id:       Optional[str]  = Field(None)
-    pipeline_mode: Optional[str]  = Field("advanced",
-                                          example="advanced",
-                                          description="basic | asset | advanced")
+    pipeline_mode: Optional[str]  = Field("vulnerability_audit",
+                                          example="vulnerability_audit",
+                                          description="basic | asset | vulnerability_audit")
     vulnerability_profile: Optional[str] = Field("recommended",
                                                  example="recommended",
                                                  description="recommended | conservative | deep")
@@ -283,20 +282,20 @@ async def scan_asset_discovery(
     }
 
 
-@router.post("/scan/advanced-scan")
+@router.post("/scan/vulnerability-audit")
 @limiter.limit("5/minute")
-async def scan_advanced_scan(
+async def scan_vulnerability_audit(
     request: Request,
-    req:  AdvancedScanRequest,
+    req:  VulnerabilityAuditRequest,
     user: User    = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """
-    Advanced Scan: Phase 3 (Trigger and Return Immediately).
+    Vulnerability Audit: Phase 3 (Trigger and Return Immediately).
     """
     mode = resolve_pipeline_mode(req.pipeline_mode)
     if not is_phase_in_pipeline(mode, 3):
-        raise HTTPException(status_code=400, detail=f"Advanced Scan is not part of the '{mode}' pipeline.")
+        raise HTTPException(status_code=400, detail=f"Vulnerability Audit is not part of the '{mode}' pipeline.")
 
     # SaaS Stability: Prevent duplicate phase triggers if the backend is already chaining
     scan = db.query(Scan).filter(Scan.id == req.scan_id).first()
@@ -308,7 +307,7 @@ async def scan_advanced_scan(
             "status": "running"
         }
 
-    task = run_advanced_scan_task.delay(
+    task = run_vulnerability_audit_task.delay(
         user_id       = str(user.id),
         hosts         = req.hosts,
         scan_id       = req.scan_id,

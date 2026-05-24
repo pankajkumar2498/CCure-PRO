@@ -358,13 +358,14 @@ def _get_scan_type_label(scan_type: str) -> str:
     labels = {
         "host_discovery": "Basic Network Scan",
         "asset_discovery": "Asset Discovery Scan",
-        "phase_selective_scan": "Advanced Vulnerability Scan",
-        "advanced": "Advanced Vulnerability Scan",
+        "phase_selective_scan": "Vulnerability Audit",
+        "advanced": "Vulnerability Audit",
+        "vulnerability_audit": "Vulnerability Audit",
         "credentialed_scan": "Credentialed Scan",
         "credentialed": "Credentialed Scan",
         "phase1": "Basic Network Scan",
         "phase2": "Asset Discovery Scan",
-        "phase3": "Advanced Vulnerability Scan",
+        "phase3": "Vulnerability Audit",
     }
     token = str(scan_type or "").strip().lower()
     return labels.get(token, token.replace("_", " ").title() if token else "N/A")

@@ -6,6 +6,7 @@ import { getScans, purgeScan, restoreScan } from "../api/scans";
 import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import { can, denyMessage } from "../auth/permissions";
+import { SCAN_PIPELINES } from "../config/scanConfig";
 
 const STATUS_STYLE = {
   complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
@@ -22,6 +23,14 @@ const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
 const phaseLabel = (scan) =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
+
+const scanTypeLabel = (scan) => {
+  if (!scan) return "Unknown";
+  if (isCred(scan)) return "Credentialed Scan";
+  const mode = scan.pipeline_mode || "basic";
+  const pipeline = SCAN_PIPELINES[mode];
+  return pipeline?.label || String(scan.pipeline_mode || scan.scan_type || "Unknown").replace(/_/g, " ");
+};
 
 const fmtDate = (iso) =>
   formatDateTime(iso, {
@@ -264,7 +273,6 @@ export default function RecycleBin() {
                   <th>Scan No.</th>
                   <th>Target</th>
                   <th>Type</th>
-                  <th>Phase</th>
                   <th>Status</th>
                   <th>Duration</th>
                   <th>Deleted</th>
@@ -283,10 +291,7 @@ export default function RecycleBin() {
                         {scan.target}
                       </span>
                     </td>
-                    <td><span className="method-chip">{scan.scan_type}</span></td>
-                    <td>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{phaseLabel(scan)}</span>
-                    </td>
+                    <td><span className="method-chip">{scanTypeLabel(scan)}</span></td>
                     <td><StatusBadge status={scan.status} /></td>
                     <td>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtDur(scan.scan_duration)}</span>

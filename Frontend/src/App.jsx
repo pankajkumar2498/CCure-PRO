@@ -88,7 +88,8 @@ export default function App() {
           <Route path="/scan/active/:scanId"           element={<NewScan />} />
           <Route path="/scan/host-discovery"           element={<Phase1Results />} />
           <Route path="/scan/asset-discovery"          element={<Phase2Results />} />
-          <Route path="/scan/advanced-scan"            element={<Phase3Results />} />
+          <Route path="/scan/vulnerability-audit"      element={<Phase3Results />} />
+          <Route path="/scan/advanced-scan"            element={<Navigate to="/scan/vulnerability-audit" replace />} />
           <Route path="/scan/credentialed"             element={<CredentialedScan />} />
           <Route path="/scan/credentialed/results"     element={<CredentialedResults />} />
           <Route path="/scan/:scanId/phase1"            element={<Phase1Results />} />

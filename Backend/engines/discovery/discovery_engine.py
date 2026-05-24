@@ -44,6 +44,7 @@ _SCAN_TYPE_TO_PROFILE: Dict[str, DiscoveryProfile] = {
     "asset":      BALANCED,
     "aggressive": AGGRESSIVE,
     "advanced":   AGGRESSIVE,
+    "vulnerability_audit": AGGRESSIVE,
     # Legacy DiscoveryScanType values
     "ping":       BALANCED,    # ICMP → BALANCED covers it
     "arp":        FAST,        # ARP only → FAST is appropriate

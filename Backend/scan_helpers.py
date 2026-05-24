@@ -57,25 +57,35 @@ def get_api() -> HostDiscoveryAPI:
 
 # ─── Pipeline configuration (mirrors src/config/scanConfig.js) ───────────────
 PIPELINE_PHASES: Dict[str, List[int]] = {
-    "basic":    [1],
-    "asset":    [1, 2],
-    "advanced": [1, 2, 3, 4],
+    "basic":            [1],
+    "asset":            [1, 2],
+    "vulnerability_audit": [1, 2, 3, 4],
 }
 
-VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys())
+VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys()) | {"advanced"}
+PIPELINE_MODE_ALIASES = {
+    "advanced": "vulnerability_audit",
+}
+
+
+def _normalize_pipeline_mode(raw: Optional[str]) -> str:
+    token = str(raw or "").strip().lower()
+    if not token:
+        return "basic"
+    return PIPELINE_MODE_ALIASES.get(token, token)
 
 
 def get_terminal_phase(pipeline_mode: str) -> int:
     """Return the last phase number for a given pipeline mode.
-    Note: For 'advanced', the terminal phase is 3 (Vulnerability & Risk), not 4."""
-    if pipeline_mode == "advanced":
-        return 3
+    Note: For 'vulnerability_audit', the terminal phase is 3 (Vulnerability & Risk), not 4."""
+    pipeline_mode = _normalize_pipeline_mode(pipeline_mode)
     phases = PIPELINE_PHASES.get(pipeline_mode, [1])
     return max(phases)
 
 
 def is_phase_in_pipeline(pipeline_mode: str, phase: int) -> bool:
     """Return True if the given phase belongs to the declared pipeline."""
+    pipeline_mode = _normalize_pipeline_mode(pipeline_mode)
     return phase in PIPELINE_PHASES.get(pipeline_mode, [1])
 
 
@@ -84,8 +94,9 @@ def resolve_pipeline_mode(raw: Optional[str]) -> str:
     Normalise and validate the pipeline_mode from a request.
     Falls back to 'basic' for unknown / missing values.
     """
-    if raw and raw.lower() in VALID_PIPELINE_MODES:
-        return raw.lower()
+    token = _normalize_pipeline_mode(raw)
+    if token in VALID_PIPELINE_MODES:
+        return token
     if raw:
         log.warning("Unknown pipeline_mode '%s' — defaulting to 'basic'.", raw)
     return "basic"

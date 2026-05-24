@@ -5,9 +5,9 @@
  *
  * SCAN MODE → PHASE PIPELINE MAPPING
  * ────────────────────────────────────
- *  basic    → Phase 1 only   (Host Discovery, then STOPS)
- *  asset    → Phase 1 → 2    (always re-runs Phase 1 fresh, no cache reuse)
- *  advanced → Phase 1 → 2 → 3 → 4  (full pipeline)
+ *  basic             → Phase 1 only   (Host Discovery, then STOPS)
+ *  asset             → Phase 1 → 2    (always re-runs Phase 1 fresh, no cache reuse)
+ *  vulnerability_audit → Phase 1 → 2 → 3  (full pipeline)
  *
  * The selected mode is stored in ScanContext.pipelineMode so every
  * downstream phase-result page knows whether to show the "Next Phase" CTA.
@@ -78,7 +78,7 @@ const TEMPLATES = [
     color:    "#eab308",
     mapped:   true,
     // badge:    "Full Pipeline",
-    pipelineMode: "advanced",
+    pipelineMode: "vulnerability_audit",
   },
   { id:"network",  title:"Network Based Scanning",     desc:"Test API endpoints and validate response data automatically.",         Icon:IcoNetwork,  bg:"#f5f3ff", color:"#8b5cf6", mapped:false },
 

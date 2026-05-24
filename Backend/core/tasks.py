@@ -447,12 +447,12 @@ def sync_asset_discovery_task(scan_id: str, org_id: str, user_id: Optional[str],
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.sync_advanced_scan_task", queue="scanner")
-def sync_advanced_scan_task(scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
+@celery_app.task(name="ccure.tasks.sync_vulnerability_audit_task", queue="scanner")
+def sync_vulnerability_audit_task(scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     db = SessionLocal()
     try:
-        from scans.asset_syncer import sync_advanced_scan
-        sync_advanced_scan(db, scan_id, org_id, user_id, hosts)
+        from scans.asset_syncer import sync_vulnerability_audit
+        sync_vulnerability_audit(db, scan_id, org_id, user_id, hosts)
     except Exception as exc:
         log.exception("Asset Sync Phase 3 Failed")
     finally:
@@ -667,10 +667,10 @@ def run_asset_discovery_task(
         if not is_final and result.get("success") and result.get("data"):
             active_hosts = [h for h in result["data"] if h.get("is_active")]
             if active_hosts:
-                log.info("[TRACE][TASK][%s] Chaining next phase (Advanced Scan) for scan_id=%s", ts(), scan_id)
-                # Dispatch Phase 3 (Advanced Scan) directly
-                from core.tasks import run_advanced_scan_task
-                next_task = run_advanced_scan_task.delay(
+                log.info("[TRACE][TASK][%s] Chaining next phase (Vulnerability Audit) for scan_id=%s", ts(), scan_id)
+                # Dispatch Phase 3 (Vulnerability Audit) directly
+                from core.tasks import run_vulnerability_audit_task
+                next_task = run_vulnerability_audit_task.delay(
                     user_id=user_id,
                     hosts=active_hosts,
                     scan_id=scan_id,
@@ -715,8 +715,8 @@ def run_asset_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_advanced_scan", queue="scanner", bind=True)
-def run_advanced_scan_task(
+@celery_app.task(name="ccure.tasks.run_vulnerability_audit", queue="scanner", bind=True)
+def run_vulnerability_audit_task(
     self,
     user_id:       str,
     hosts:         List[dict],
@@ -728,19 +728,19 @@ def run_advanced_scan_task(
     try:
         _update_task_id(db, scan_id, self.request.id)
         if _check_cancelled(db, scan_id):
-            log.info("Scan %s cancelled before advanced scan", scan_id)
+            log.info("Scan %s cancelled before vulnerability audit", scan_id)
             return {"success": False, "error": "Scan cancelled"}
 
         mode = resolve_pipeline_mode(pipeline_mode)
         orch = _new_orchestrator()
-        result = orch.run_advanced_scan_only(hosts=hosts, scan_id=scan_id)
+        result = orch.run_vulnerability_audit_only(hosts=hosts, scan_id=scan_id)
 
         if _check_cancelled(db, scan_id):
-            log.info("Scan %s cancelled after advanced scan", scan_id)
+            log.info("Scan %s cancelled after vulnerability audit", scan_id)
             return {"success": False, "error": "Scan cancelled"}
 
         if not result.get("success"):
-            mark_scan_failed(db, scan_id, user_id, result.get("error", "Advanced Scan failed"))
+            mark_scan_failed(db, scan_id, user_id, result.get("error", "Vulnerability Audit failed"))
             return result
 
         result["data"] = _merge_host_identity(result.get("data", []), hosts)
@@ -775,7 +775,7 @@ def run_advanced_scan_task(
 
         return {"success": True, "scan_id": scan_id}
     except Exception as exc:
-        log.exception("Advanced Scan Task Failed")
+        log.exception("Vulnerability Audit Task Failed")
         return {"success": False, "error": str(exc)}
     finally:
         db.close()

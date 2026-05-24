@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from db.models.users import User
 from db.models.rbac import Organization
 from db.models.scans import Scan, ScanPhase
-from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_advanced_scan
+from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_vulnerability_audit
 from core.audit import log_audit_event
 from db.base import utcnow, gen_scan_id, gen_scan_phase_id
 
@@ -301,7 +301,7 @@ def update_scan_phase(
     report_xml_path:  Optional[str] = None,
 ) -> Optional[Scan]:
     """
-    Called after /scan/asset-discovery (phase=2) or /scan/advanced-scan (phase=3).
+    Called after /scan/asset-discovery (phase=2) or /scan/vulnerability-audit (phase=3).
     """
     scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
@@ -435,8 +435,8 @@ def update_scan_phase(
         from core.tasks import sync_asset_discovery_task
         sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
     elif phase >= 3:
-        from core.tasks import sync_advanced_scan_task
-        sync_advanced_scan_task.delay(str(scan.id), org_id, user_id, hosts_data)
+        from core.tasks import sync_vulnerability_audit_task
+        sync_vulnerability_audit_task.delay(str(scan.id), org_id, user_id, hosts_data)
 
     if is_final:
         try:
@@ -549,7 +549,7 @@ def create_completed_scan(
     scan_duration:    Optional[float] = None,
     report_json_path: Optional[str]   = None,
     report_xml_path:  Optional[str]   = None,
-    pipeline_mode:    str             = "advanced",
+    pipeline_mode:    str             = "vulnerability_audit",
     scan_id:          Optional[str]   = None,
     commit:           bool            = True,
 ) -> Scan:
@@ -648,7 +648,7 @@ def create_completed_scan(
         elif phase_order == 2:
             sync_asset_discovery(db, str(scan.id), org_id, user_id, hosts_data)
         elif phase_order >= 3:
-            sync_advanced_scan(db, str(scan.id), org_id, user_id, hosts_data)
+            sync_vulnerability_audit(db, str(scan.id), org_id, user_id, hosts_data)
 
     if commit:
         db.commit()

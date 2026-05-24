@@ -70,9 +70,9 @@ async def pipeline_modes():
                 "phases":         phases,
                 "terminal_phase": max(phases),
                 "description": {
-                    "basic":    "Host Discovery only. Scan is marked complete after Phase 1.",
-                    "asset":    "Host Discovery then Port Scanning. Marked complete after Phase 2.",
-                    "advanced": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
+                    "basic":              "Host Discovery only. Scan is marked complete after Phase 1.",
+                    "asset":              "Host Discovery then Port Scanning. Marked complete after Phase 2.",
+                    "vulnerability_audit": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
                 }[mode],
             }
             for mode, phases in PIPELINE_PHASES.items()
@@ -85,9 +85,9 @@ async def workflow_example():
     return {
         "workflow": "Frontend-Driven Phase Orchestration",
         "pipeline_modes": {
-            "basic":    {"phases": [1], "description": "Host Discovery only"},
-            "asset":    {"phases": [1, 2], "description": "Discovery → Port Scan"},
-            "advanced": {"phases": [1, 2, 3, 4], "description": "Full pipeline"},
+            "basic":              {"phases": [1], "description": "Host Discovery only"},
+            "asset":              {"phases": [1, 2], "description": "Discovery → Port Scan"},
+            "vulnerability_audit": {"phases": [1, 2, 3, 4], "description": "Full pipeline"},
         },
         "note": "Each phase endpoint now validates that the incoming phase is "
                 "part of the declared pipeline_mode.",

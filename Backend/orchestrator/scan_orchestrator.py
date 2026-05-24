@@ -5,7 +5,7 @@ Changes from original:
   1. run_host_discovery_only() now resolves a DiscoveryProfile from pipeline_mode
      and passes it to core.discovery.engine.DiscoveryEngine
   2. run_asset_discovery_only() delegates to PortEngine which uses NmapScanner
-  3. run_advanced_scan_only() passes open_port data to NmapScanner.full_scan()
+  3. run_vulnerability_audit_only() passes open_port data to NmapScanner.full_scan()
      for OS fingerprinting before handing to VulnerabilityEngine
 
 All other methods (scan_single_host, scan_ip_range, scan_subnet,
@@ -93,14 +93,14 @@ class ScanOrchestrator:
     # These methods are called by main.py traditional endpoints (POST /scan/host,
     # /scan/range, /scan/subnet, /scan/subnets, /scan/phases) via HostDiscoveryAPI.
     # They delegate to run_host_discovery_only() which drives the new Scapy pipeline.
-    # The "advanced" pipeline_mode is used so all discovery techniques are active.
+    # The "vulnerability_audit" pipeline_mode is used so all discovery techniques are active.
 
     async def scan_single_host(self, target: str, scan_type: str = "adaptive") -> Dict:
         """Backward-compat: scan a single host using the full discovery pipeline."""
         return await self.run_host_discovery_only(
             targets=[target],
             scan_type=scan_type,
-            pipeline_mode="advanced",
+            pipeline_mode="vulnerability_audit",
         )
 
     async def scan_ip_range(self, target: str, scan_type: str = "adaptive") -> Dict:
@@ -108,7 +108,7 @@ class ScanOrchestrator:
         return await self.run_host_discovery_only(
             targets=[target],
             scan_type=scan_type,
-            pipeline_mode="advanced",
+            pipeline_mode="vulnerability_audit",
         )
 
     async def scan_subnet(self, target: str, scan_type: str = "adaptive") -> Dict:
@@ -116,7 +116,7 @@ class ScanOrchestrator:
         return await self.run_host_discovery_only(
             targets=[target],
             scan_type=scan_type,
-            pipeline_mode="advanced",
+            pipeline_mode="vulnerability_audit",
         )
 
     async def scan_subnets_of_subnet(
@@ -138,7 +138,7 @@ class ScanOrchestrator:
             r = await self.run_host_discovery_only(
                 targets=[subnet],
                 scan_type=scan_type,
-                pipeline_mode="advanced",
+                pipeline_mode="vulnerability_audit",
             )
             results.extend(r.get("data", []))
 
@@ -170,7 +170,7 @@ class ScanOrchestrator:
         phase_nums = {int(p) for p in phases.split("+") if p.strip().isdigit()}
 
         if 3 in phase_nums or 4 in phase_nums:
-            pipeline_mode = "advanced"
+            pipeline_mode = "vulnerability_audit"
         elif 2 in phase_nums:
             pipeline_mode = "asset"
         else:
@@ -199,7 +199,7 @@ class ScanOrchestrator:
 
         # Phase 3: Vulnerability
         hosts = result.get("data", [])
-        return await asyncio.to_thread(self.run_advanced_scan_only, hosts=hosts, scan_id=scan_id)
+        return await asyncio.to_thread(self.run_vulnerability_audit_only, hosts=hosts, scan_id=scan_id)
 
     @staticmethod
     def _err(msg: str) -> Dict:
@@ -222,14 +222,14 @@ class ScanOrchestrator:
 
         pipeline_mode → Profile mapping (unchanged):
           "basic"    → FAST       (ARP + TCP connect only — no fallback chains)
-          "advanced" → AGGRESSIVE (all techniques + enrichment)
+          "vulnerability_audit" → AGGRESSIVE (all techniques + enrichment)
 
         Asset Discovery (pipeline_mode="asset") is now intensity-aware:
           "light"  → FAST only
           "normal" → FAST first, then BALANCED only for IPs still inactive/unresolved
           "deep"   → BALANCED (original Asset Discovery behaviour)
 
-        Basic and Advanced scan behaviour is COMPLETELY UNCHANGED.
+        Basic and Vulnerability Audit scan behaviour is COMPLETELY UNCHANGED.
         scan_type is still accepted for backward-compat with traditional endpoints.
         """
         self._log(
@@ -265,13 +265,13 @@ class ScanOrchestrator:
                     self._format_host(r.get("ip"), r).to_basic_dict()
                     for r in disc_results
                 ]
-            else:  # advanced
+            else:  # vulnerability_audit
                 formatted = [
                     self._format_host(r.get("ip"), r).to_phase1_dict()
                     for r in disc_results
                 ]
 
-            if pipeline_mode == "advanced":
+            if pipeline_mode == "vulnerability_audit":
                 self.asset_engine.register_discovery_results(
                     formatted,
                     discovery_method=scan_type,
@@ -280,7 +280,7 @@ class ScanOrchestrator:
 
             active = sum(1 for h in formatted if h["is_active"])
 
-            if pipeline_mode == "advanced":
+            if pipeline_mode == "vulnerability_audit":
                 summary = {
                     "total_hosts":           len(formatted),
                     "active_hosts":          active,
@@ -599,9 +599,9 @@ class ScanOrchestrator:
                     host["mac_address"] = backup["mac_address"]
                     host["mac"] = backup["mac_address"]
         
-        # ── Also try to get vendor from asset registry (ONLY for Advanced Scan) ────
-        # ONLY for Advanced Scan pipeline (phases 1+2+3)
-        if pipeline_mode == "advanced":
+        # ── Also try to get vendor from asset registry (ONLY for Vulnerability Audit) ────
+        # ONLY for Vulnerability Audit pipeline (phases 1+2+3)
+        if pipeline_mode == "vulnerability_audit":
             self._preserve_vendor_from_registry(active_hosts)
             self.asset_engine.enrich_port_scan_results(active_hosts)
 
@@ -632,9 +632,9 @@ class ScanOrchestrator:
             ),
         }
 
-    # ── PHASE 3: Advanced Scan / Vulnerability + Risk ─────────────────────────
+    # ── PHASE 3: Vulnerability Audit / Vulnerability + Risk ─────────────────
 
-    def run_advanced_scan_only(self, hosts: List[Dict], scan_id: Optional[str] = None) -> Dict:
+    def run_vulnerability_audit_only(self, hosts: List[Dict], scan_id: Optional[str] = None) -> Dict:
         """
         Phase 3+4 — Vulnerability Scanning + Risk Scoring.
 
@@ -646,7 +646,7 @@ class ScanOrchestrator:
 
           The VulnerabilityEngine itself is UNCHANGED.
         """
-        self._log(f"run_advanced_scan_only → {len(hosts)} hosts")
+        self._log(f"run_vulnerability_audit_only → {len(hosts)} hosts")
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         discovery_scan_method = self._infer_discovery_method(hosts)
@@ -689,7 +689,7 @@ class ScanOrchestrator:
             "high_risk_hosts":       high,
             "scan_duration":         duration,
             "phase":                 3,
-            "scan_type":             "advanced",
+            "scan_type":             "vulnerability_audit",
             "discovery_scan_method": discovery_scan_method or "N/A",
         }
         return {
@@ -698,7 +698,7 @@ class ScanOrchestrator:
             "summary":  summary,
             "metadata": {
                 **({} if not target_str else {"target": target_str}),
-                "scan_type":             "advanced",
+                "scan_type":             "vulnerability_audit",
                 **({} if not discovery_scan_method else {"discovery_scan_method": discovery_scan_method}),
             },
         }
@@ -753,6 +753,9 @@ class ScanOrchestrator:
 
         from concurrent.futures import ThreadPoolExecutor
         
+        if not hosts:
+            return
+
         # We cap workers to avoid memory or network exhaustion
         with ThreadPoolExecutor(max_workers=min(len(hosts), 20)) as pool:
             futures = [pool.submit(_enrich_one_host, h) for h in hosts]
@@ -1040,12 +1043,12 @@ class ScanOrchestrator:
                 "total_hosts": len(formatted), "active_hosts": active,
                 "inactive_hosts": inactive, "critical_hosts": 0,
                 "high_risk_hosts": 0, "scan_duration": 0,
-                "phase": 3, "scan_type": "advanced",
+                "phase": 3, "scan_type": "vulnerability_audit",
                 "discovery_scan_method": dsm or "N/A",
             },
             "metadata": {
                 **({} if not target else {"target": target}),
-                "scan_type": "advanced",
+                "scan_type": "vulnerability_audit",
             },
         }
 

@@ -125,7 +125,7 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
   const SCAN_TYPES = [
     { value: "host-discovery", label: "Host Discovery" },
     { value: "asset",          label: "Asset Scan"     },
-    { value: "advanced",       label: "Advanced"       },
+    { value: "vulnerability_audit", label: "Vulnerability Audit" },
     { value: "credentialed",   label: "Credentialed"   },
   ];
 

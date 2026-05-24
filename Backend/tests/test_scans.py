@@ -17,7 +17,7 @@ from auth.jwt_handler import hash_password
 from db.base import utcnow, gen_asset_id
 from routers.findings import StatusUpdate, update_finding_status
 from scans.db_helpers import _phase_summary_payload, _public_phase_summary, create_scan, update_scan_phase1, mark_scan_failed
-from scans.asset_syncer import sync_advanced_scan, sync_asset_discovery, sync_host_discovery
+from scans.asset_syncer import sync_vulnerability_audit, sync_asset_discovery, sync_host_discovery
 
 
 def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
@@ -82,7 +82,7 @@ def test_create_scan_writes_audit_log(db_session: Session):
         target="192.168.1.1",
         targets=["192.168.1.1"],
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     )
 
     audit_entry = (
@@ -94,7 +94,7 @@ def test_create_scan_writes_audit_log(db_session: Session):
     assert audit_entry is not None
     assert audit_entry.user_id == str(user.id)
     assert audit_entry.changes["scan_no"] == scan.scan_no
-    assert audit_entry.changes["pipeline_mode"] == "advanced"
+    assert audit_entry.changes["pipeline_mode"] == "vulnerability_audit"
     assert audit_entry.status == "success"
 
 
@@ -246,7 +246,7 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
         created_by=None,
         target_str="192.168.1.10",
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     )
     db_session.add(scan)
     db_session.commit()
@@ -267,14 +267,14 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
         }
     ]
 
-    sync_advanced_scan(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
 
     finding = db_session.query(AssetVulnerability).filter(AssetVulnerability.asset_id == asset.id).one()
     assert finding.org_id == org.id
     assert finding.scan_id == scan_id
     assert finding.vuln_id == "CVE-9999-0001"
     assert finding.source_family == "network_service"
-    assert finding.evidence_source == "advanced"
+    assert finding.evidence_source == "vulnerability_audit"
 
 
 def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
@@ -312,7 +312,7 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
         created_by=None,
         target_str="192.168.1.10",
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     )
     db_session.add(scan)
     db_session.commit()
@@ -341,7 +341,7 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
         }
     ]
 
-    sync_advanced_scan(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
 
     db_session.refresh(asset)
     assert asset.vuln_counts == {"critical": 0, "high": 1, "medium": 0, "low": 1}
@@ -506,11 +506,11 @@ def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hos
         created_by=None,
         target_str="10.180.6.45",
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     ))
     db_session.commit()
 
-    sync_advanced_scan(
+    sync_vulnerability_audit(
         db_session,
         scan_id=scan_id,
         org_id=org.id,
@@ -625,12 +625,12 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
         hostname="atharv-desktop.blr.cdac.in",
         fqdn="atharv-desktop.blr.cdac.in",
         dns_name="atharv-desktop.blr.cdac.in",
-        discovery_method="advanced",
+        discovery_method="vulnerability_audit",
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "fqdn": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()},
-                "dns_name": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()},
+                "fqdn": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()},
+                "dns_name": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()},
             }
         },
     )
@@ -816,11 +816,11 @@ def test_asset_discovery_does_not_overwrite_advanced_os(db_session: Session):
         org_id=org.id,
         ip_address="192.168.1.21",
         os_name="Ubuntu 24.04.4 LTS",
-        discovery_method="advanced",
+        discovery_method="vulnerability_audit",
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "os_name": {"source": "advanced", "scan_id": "scn_adv", "at": utcnow().isoformat()}
+                "os_name": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()}
             }
         },
     )
@@ -892,7 +892,7 @@ def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Ses
         created_by=None,
         target_str="192.168.1.22",
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     )
     db_session.add(scan)
 
@@ -912,7 +912,7 @@ def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Ses
     db_session.add(finding)
     db_session.commit()
 
-    sync_advanced_scan(
+    sync_vulnerability_audit(
         db_session,
         scan_id=scan_id,
         org_id=org.id,
@@ -971,7 +971,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         created_by=None,
         target_str="192.168.1.11",
         scan_type="adaptive",
-        pipeline_mode="advanced",
+        pipeline_mode="vulnerability_audit",
     )
     db_session.add(scan)
     db_session.commit()
@@ -992,7 +992,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         }
     ]
 
-    sync_advanced_scan(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
     finding = db_session.query(AssetVulnerability).filter(AssetVulnerability.asset_id == asset.id).one()
     assert finding.status == "open"
 

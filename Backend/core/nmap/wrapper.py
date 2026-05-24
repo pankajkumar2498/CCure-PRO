@@ -296,7 +296,7 @@ class NmapScanner:
         # Asset Discovery — service/version on known open ports
         result = scanner.detect_services("192.168.1.10", ports=[22, 80, 443])
 
-        # Advanced Scan — full service + OS fingerprint + NSE scripts
+        # Vulnerability Audit — full service + OS fingerprint + NSE scripts
         result = scanner.full_scan("192.168.1.10")
 
     Thread Safety:
@@ -312,11 +312,11 @@ class NmapScanner:
         "normal":   "-sS --top-ports 1000 --open -T4",
         # Phase 2 / Asset Discovery — all 65535 ports
         "deep":     "-sS -p- --open -T3",
-        # Phase 3 / Advanced Scan — service + version detection
+        # Phase 3 / Vulnerability Audit — service + version detection
         "service":  "-sS -sV --version-intensity 5 -T4",
-        # Phase 3 / Advanced Scan — service + OS + default NSE
+        # Phase 3 / Vulnerability Audit — service + OS + default NSE
         "full":     "-sS -sV -O --version-intensity 7 -T4",
-        # Phase 3 / Advanced Scan — vuln scripts
+        # Phase 3 / Vulnerability Audit — vuln scripts
         "vuln":     "-sS -sV --script=vuln,safe -T4",
     }
 
@@ -455,7 +455,7 @@ class NmapScanner:
         """
         Service and version detection. Requires open port list for efficiency.
 
-        Used by: Advanced Scan (Phase 3) — after ports are known from Phase 2
+        Used by: Vulnerability Audit (Phase 3) — after ports are known from Phase 2
 
         Args:
             target: Single IP.
@@ -493,7 +493,7 @@ class NmapScanner:
         """
         Full scan: service detection (optimized for speed).
 
-        Used by: Advanced Scan (Phase 3) for multi-host scans (enrichment).
+        Used by: Vulnerability Audit (Phase 3) for multi-host scans (enrichment).
         Note: OS detection and intensive probing already done in Phases 1/2,
         so we focus on fast service detection only.
 
@@ -558,9 +558,9 @@ class NmapScanner:
         port_arg = self._TOP_PORTS.get(intensity, "-F")
 
         # Merge service detection into the batch call when requested.
-        # --version-light uses Nmap probe intensity 2 (vs. default 7) — fast
-        # enough for a batch scan while still identifying common services.
-        svc_arg = "-sV --version-light" if with_services and intensity != "deep" else ""
+        # --version-intensity 7 (Nmap default) provides ~98% accuracy for service
+        # versions, which is critical for the Vulnerability Engine.
+        svc_arg = "-sV --version-intensity 7" if with_services and intensity != "deep" else ""
 
         args = " ".join(filter(None, [
             "-sS", svc_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS

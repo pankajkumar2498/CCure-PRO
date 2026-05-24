@@ -28,6 +28,7 @@ SOURCE_PRIORITY = {
     "asset_discovery": 20,
     "fingerprinting": 20,
     "advanced": 30,
+    "vulnerability_audit": 30,
     "scanner": 30,
     "scanner_network": 30,
     "credentialed": 40,
@@ -36,6 +37,7 @@ SOURCE_PRIORITY = {
 
 FINDING_SOURCE_FAMILY = {
     "advanced": "network_service",
+    "vulnerability_audit": "network_service",
     "scanner": "network_service",
     "scanner_network": "network_service",
     "credentialed": "credentialed_package",
@@ -185,8 +187,9 @@ def _normalize_source(source: Optional[str]) -> str:
     return {
         "phase1": "discovery",
         "phase2": "asset_discovery",
-        "phase3": "advanced",
-        "vulnerability_assessment": "advanced",
+        "phase3": "vulnerability_audit",
+        "vulnerability_assessment": "vulnerability_audit",
+        "advanced": "vulnerability_audit",
         "port_scan": "asset_discovery",
     }.get(source, source)
 
@@ -251,13 +254,13 @@ def _finding_family(source: str) -> str:
 def _finding_source_from_record(finding: AssetVulnerability) -> str:
     source_family = getattr(finding, "source_family", None)
     if _has_value(source_family) and source_family != "unknown":
-        return "credentialed_package" if source_family == "credentialed_package" else "advanced"
+        return "credentialed_package" if source_family == "credentialed_package" else "vulnerability_audit"
     text = " ".join(str(v or "") for v in (finding.proof, finding.plugin_output)).lower()
     if "source_family:credentialed_package" in text or "package:" in text:
         return "credentialed_package"
     if "source_family:network_service" in text:
-        return "advanced"
-    return "advanced"
+        return "vulnerability_audit"
+    return "vulnerability_audit"
 
 def _source_specific_finding_id(asset_id: str, cve_id: str, source_family: str) -> str:
     return f"fnd_{asset_id}_{source_family}_{cve_id}"
@@ -461,9 +464,9 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
     db.commit()
 
 
-def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
+def sync_vulnerability_audit(db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]):
     """
-    Called after Phase 3 (Advanced Scan).
+    Called after Phase 3 (Vulnerability Audit).
     Phase 4: Vulnerability Status Auditing (History).
     """
     if not hosts: return
@@ -481,16 +484,16 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
         dns_name, fqdn = _extract_dns_identity(host)
         netbios_name = _extract_netbios_name(host)
 
-        _set_asset_field(db, asset, scan_id, "hostname", host.get("hostname"), "advanced", max_len=255)
-        _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "advanced", max_len=512)
-        _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "advanced", max_len=512)
-        _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "advanced", max_len=255)
-        _set_asset_field(db, asset, scan_id, "os_name", host.get("os_match") or host.get("os_guess"), "advanced", max_len=255)
-        _set_asset_field(db, asset, scan_id, "os_family", host.get("os_family"), "advanced", max_len=100)
-        _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "advanced")
-        _set_asset_field(db, asset, scan_id, "device_category", host.get("device_category"), "advanced", max_len=100)
+        _set_asset_field(db, asset, scan_id, "hostname", host.get("hostname"), "vulnerability_audit", max_len=255)
+        _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "vulnerability_audit", max_len=512)
+        _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "vulnerability_audit", max_len=512)
+        _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "vulnerability_audit", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_name", host.get("os_match") or host.get("os_guess"), "vulnerability_audit", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_family", host.get("os_family"), "vulnerability_audit", max_len=100)
+        _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "vulnerability_audit")
+        _set_asset_field(db, asset, scan_id, "device_category", host.get("device_category"), "vulnerability_audit", max_len=100)
 
-        source_family = _finding_family("advanced")
+        source_family = _finding_family("vulnerability_audit")
         found_in_this_scan = set()
         vulns = host.get("vulnerabilities") or host.get("cves") or []
         for v in vulns:
@@ -519,7 +522,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
                 id=finding_id, org_id=org_id, scan_id=scan_id, asset_id=asset_id, vuln_id=cve_id,
                 severity=str(v.get("severity", "Medium")).title(), cvss_score=float(v.get("cvss", 0.0)),
                 status="open", proof=proof, plugin_output=plugin_output,
-                source_family=source_family, evidence_source="advanced",
+                source_family=source_family, evidence_source="vulnerability_audit",
                 first_found_at=utcnow(), last_found_at=utcnow()
             ).on_conflict_do_update(
                 index_elements=["id", "org_id"],
@@ -530,7 +533,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
                     "severity": str(v.get("severity", "Medium")).title(),
                     "cvss_score": float(v.get("cvss", 0.0)),
                     "source_family": source_family,
-                    "evidence_source": "advanced",
+                    "evidence_source": "vulnerability_audit",
                     "proof": func.coalesce(func.nullif(proof, ""), AssetVulnerability.proof),
                     "plugin_output": func.coalesce(func.nullif(plugin_output or "", ""), AssetVulnerability.plugin_output),
                 }
@@ -552,7 +555,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
         asset.last_scan_id = scan_id
         asset.last_seen_at = utcnow()
         asset.updated_at = utcnow()
-        _set_asset_field(db, asset, scan_id, "discovery_method", "advanced", "advanced", max_len=50)
+        _set_asset_field(db, asset, scan_id, "discovery_method", "vulnerability_audit", "vulnerability_audit", max_len=50)
 
     db.commit()
 
@@ -572,3 +575,7 @@ def sync_advanced_scan(db: Session, scan_id: str, org_id: str, user_id: Optional
         db.commit()
     except Exception:
         db.rollback()
+
+
+# Backward compatibility alias for legacy callers.
+sync_advanced_scan = sync_vulnerability_audit

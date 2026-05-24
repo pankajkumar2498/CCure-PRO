@@ -704,9 +704,9 @@ export default function CredentialedResults() {
           </Section>
         )}
 
-        {/* Advanced Evidence */}
+        {/* Audit Evidence */}
         {hasAdvancedEvidence && (
-          <Section title="Advanced Evidence">
+          <Section title="Audit Evidence">
             <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
               Raw evidence is hidden by default to keep the report readable. Sensitive values are masked.
             </p>

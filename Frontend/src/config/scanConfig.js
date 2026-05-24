@@ -5,9 +5,9 @@
  *
  * SCAN MODES
  * ──────────
- *  basic     → Phase 1 only  (Host Discovery)
- *  asset     → Phase 1 → Phase 2  (always re-runs Phase 1, no stored results)
- *  advanced  → Phase 1 → Phase 2 → Phase 3 (full pipeline)
+ *  basic             → Phase 1 only  (Host Discovery)
+ *  asset             → Phase 1 → Phase 2  (always re-runs Phase 1, no stored results)
+ *  vulnerability_audit → Phase 1 → Phase 2 → Phase 3 (full pipeline)
  *
  * HOW TO USE
  * ──────────
@@ -54,6 +54,14 @@ export const SCAN_PIPELINES = {
    * Full pipeline: Phase 1 → 2 → 3
    * Backend receives: { phases: [1, 2, 3] }
    */
+  vulnerability_audit: {
+    id: "vulnerability_audit",
+    label: "Vulnerability Audit",
+    description: "Full vulnerability audit pipeline with host, port, and risk assessment.",
+    phases: [1, 2, 3],
+    entryRoute: "/scan",
+    badge: "Full Pipeline",
+  },
   advanced: {
     id: "advanced",
     label: "Vulnerability Audit",
@@ -68,7 +76,7 @@ export const SCAN_PIPELINES = {
 
 /**
  * Returns the pipeline config for a given scan mode.
- * @param {"basic" | "asset" | "advanced"} mode
+ * @param {"basic" | "asset" | "advanced" | "vulnerability_audit"} mode
  * @returns {object} pipeline config
  */
 export const PHASES = {
@@ -85,7 +93,7 @@ export const PHASES = {
   3: {
     id: 3,
     label: "Vulnerability Audit",
-    route: "/scan/advanced-scan",
+    route: "/scan/vulnerability-audit",
   },
 };
 
@@ -97,7 +105,7 @@ export function getScanPipeline(mode) {
 
 /**
  * Returns true if the given phaseNumber is part of the pipeline.
- * @param {"basic" | "asset" | "advanced"} mode
+ * @param {"basic" | "asset" | "advanced" | "vulnerability_audit"} mode
  * @param {number} phaseNumber
  */
 export function isPhaseEnabled(mode, phaseNumber) {
@@ -107,7 +115,7 @@ export function isPhaseEnabled(mode, phaseNumber) {
 /**
  * Returns the next phase descriptor after the given phase within the pipeline,
  * or null if the given phase is the last one.
- * @param {"basic" | "asset" | "advanced"} mode
+ * @param {"basic" | "asset" | "advanced" | "vulnerability_audit"} mode
  * @param {number} currentPhase
  */
 export function getNextPhase(mode, currentPhase) {
@@ -121,7 +129,7 @@ export function getNextPhase(mode, currentPhase) {
  * Builds the base payload that should be sent to the backend.
  * The backend uses `phases` to know exactly which phases to execute.
  *
- * @param {"basic" | "asset" | "advanced"} mode
+ * @param {"basic" | "asset" | "advanced" | "vulnerability_audit"} mode
  * @param {object} extra - additional fields merged into the payload
  * @returns {object} payload ready for API
  *

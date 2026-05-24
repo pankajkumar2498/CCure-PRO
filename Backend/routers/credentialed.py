@@ -162,7 +162,7 @@ async def scan_credentialed(
             target=req.ip,
             targets=[req.ip],
             scan_type="credentialed",
-            pipeline_mode="advanced",
+            pipeline_mode="vulnerability_audit",
         )
         scan_id = str(scan.id)
         scan_no = scan.scan_no

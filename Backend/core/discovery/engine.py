@@ -27,7 +27,7 @@ Usage::
     engine = DiscoveryEngine(profile=BALANCED, has_privileges=True)
     hosts  = await engine.run(["192.168.1.0/24"])
 
-    # Advanced Scan (Phase 1 of a 1+2+3 pipeline)
+    # Vulnerability Audit (Phase 1 of a 1+2+3 pipeline)
     engine = DiscoveryEngine(profile=AGGRESSIVE, has_privileges=True)
     hosts  = await engine.run(["192.168.1.0/24"])
 
@@ -143,7 +143,7 @@ class DiscoveryEngine:
     """
     Profile-driven host discovery engine.
 
-    ALL scan modules (Basic, Asset Discovery, Advanced Scan) use this class
+    ALL scan modules (Basic, Asset Discovery, Vulnerability Audit) use this class
     with different DiscoveryProfile instances. This is the SINGLE discovery
     engine in the codebase — there is no separate 'fast scanner' or
     'advanced discovery module'.

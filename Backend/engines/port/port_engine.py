@@ -290,14 +290,15 @@ class PortEngine:
         open_ports = nmap_result.open_ports
         results_map = {}
         
-        def _lookup_task(port_obj):
-            banner = port_obj.banner or port_obj.scripts.get("banner", "")
-            query_str = banner or port_obj.service.lower()
-            return port_obj.port, lookup_cve(query_str)
+        if open_ports:
+            def _lookup_task(port_obj):
+                banner = port_obj.banner or port_obj.scripts.get("banner", "")
+                query_str = banner or port_obj.service.lower()
+                return port_obj.port, lookup_cve(query_str)
 
-        with ThreadPoolExecutor(max_workers=min(len(open_ports), 20)) as pool:
-            for p_num, cves in pool.map(_lookup_task, open_ports):
-                results_map[p_num] = cves
+            with ThreadPoolExecutor(max_workers=min(len(open_ports), 20)) as pool:
+                for p_num, cves in pool.map(_lookup_task, open_ports):
+                    results_map[p_num] = cves
 
         for nmap_port in open_ports:
             if nmap_port.port in existing_ports:

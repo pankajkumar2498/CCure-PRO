@@ -10,7 +10,7 @@ the concrete technique combinations used by DiscoveryEngine.
   ─────────────────────────────────────────────────────────
   FAST        | Basic Network Scan | ARP (LAN) + TCP fallback only
   BALANCED    | Asset Discovery    | ARP + ICMP + TCP SYN + UDP probes
-  AGGRESSIVE  | Advanced Scan      | All techniques + retry logic + NetBIOS
+  AGGRESSIVE  | Vulnerability Audit | All techniques + retry logic + NetBIOS
 
 Each profile specifies:
   - techniques: ordered list of Technique enum values
@@ -114,7 +114,7 @@ BALANCED = DiscoveryProfile(
 AGGRESSIVE = DiscoveryProfile(
     name        = "AGGRESSIVE",
     description = (
-        "Advanced Scan — Phase 1+2+3 pipeline. "
+        "Vulnerability Audit — Phase 1+2+3 pipeline. "
         "Runs all techniques including NetBIOS name resolution and SNMP. "
         "LAN: ARP + ICMP + TCP SYN + UDP + NetBIOS. "
         "Routed: ICMP + TCP SYN (all management ports) + UDP. "
@@ -147,7 +147,8 @@ _PROFILES = {
     # Pipeline mode aliases
     "basic":      FAST,
     "asset":      BALANCED,
-    "advanced":   AGGRESSIVE,
+    "advanced":          AGGRESSIVE,
+    "vulnerability_audit": AGGRESSIVE,
 }
 
 
@@ -156,9 +157,9 @@ def get_profile(name: str) -> DiscoveryProfile:
     Return the DiscoveryProfile for a given name.
 
     Accepts both profile names and pipeline mode aliases:
-      "fast" | "basic"     → FAST
-      "balanced" | "asset" → BALANCED
-      "aggressive" | "advanced" → AGGRESSIVE
+      "fast" | "basic"          → FAST
+      "balanced" | "asset"      → BALANCED
+      "aggressive" | "advanced" | "vulnerability_audit" → AGGRESSIVE
 
     Falls back to BALANCED for unknown names.
     """
@@ -182,8 +183,9 @@ def profile_for_pipeline(pipeline_mode: str) -> DiscoveryProfile:
       "advanced" → AGGRESSIVE (Full pipeline)
     """
     mapping = {
-        "basic":    FAST,
-        "asset":    BALANCED,
-        "advanced": AGGRESSIVE,
+"basic":              FAST,
+    "asset":              BALANCED,
+    "advanced":           AGGRESSIVE,
+    "vulnerability_audit": AGGRESSIVE,
     }
     return mapping.get(pipeline_mode.lower(), BALANCED)

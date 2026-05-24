@@ -40,7 +40,7 @@ src/
 │       ├── NewScan.jsx          # POST /scan/host-discovery
 │       ├── Phase1Results.jsx    # Discovery results + host selection
 │       ├── Phase2Results.jsx    # POST /scan/asset-discovery + port results
-│       ├── Phase3Results.jsx    # POST /scan/advanced-scan + CVE/TLS/SSH/HTTP
+│       ├── Phase3Results.jsx    # POST /scan/vulnerability-audit + CVE/TLS/SSH/HTTP
 │       ├── CredentialedScan.jsx # POST /scan/credentialed (form)
 │       └── CredentialedResults.jsx  # Full SSH scan report
 │
@@ -58,7 +58,7 @@ src/
 | `/auth/refresh` | POST | axiosInstance (auto-refresh) |
 | `/scan/host-discovery` | POST | NewScan.jsx, ScanHistory (re-run) |
 | `/scan/asset-discovery` | POST | Phase2Results.jsx |
-| `/scan/advanced-scan` | POST | Phase3Results.jsx |
+| `/scan/vulnerability-audit` | POST | Phase3Results.jsx |
 | `/scan/credentialed` | POST | CredentialedScan.jsx |
 | `/scans` | GET | ScanHistory.jsx |
 | `/scans/{id}` | GET | ScanHistory modal, CredentialedResults |
@@ -101,7 +101,7 @@ npm run build
 
 ## Scan Wizard Flow
 ```
-/dashboard  →  /scan  →  /scan/host-discovery  →  /scan/asset-discovery  →  /scan/advanced-scan
+/dashboard  →  /scan  →  /scan/host-discovery  →  /scan/asset-discovery  →  /scan/vulnerability-audit
                                                               ↓
                                                           /history
 ```

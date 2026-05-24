@@ -29,9 +29,9 @@ log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
 
 TERMINAL_PHASE_BY_MODE = {
-    "basic": 1,
-    "asset": 2,
-    "advanced": 3,
+    "basic":              1,
+    "asset":              2,
+    "vulnerability_audit": 3,
 }
 
 TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}

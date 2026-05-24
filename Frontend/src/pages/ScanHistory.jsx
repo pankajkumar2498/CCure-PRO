@@ -17,7 +17,7 @@ import { useAuth } from "../context/AuthContext";
 import { useScan } from "../context/ScanContext";
 import { usePreferences } from "../context/PreferencesContext";
 import { getScans, getScan, deleteScan, stopScan, archiveScan, streamScanEvents } from "../api/scans";
-import { buildPhasePayload } from "../config/scanConfig";
+import { buildPhasePayload, SCAN_PIPELINES } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
 import { can, denyMessage } from "../auth/permissions";
@@ -41,7 +41,7 @@ const STATUS_LABELS = {
   canceled: "Cancelled",
   unreachable: "Host Unreachable",
 };
-const TERMINAL_PHASES = { basic: 1, asset: 2, advanced: 3 };
+const TERMINAL_PHASES = { basic: 1, asset: 2, advanced: 3, vulnerability_audit: 3 };
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
 const DATE_MS = { "1h": 3.6e6, "24h": 8.64e7, "7d": 6.048e8, "30d": 2.592e9 };
 const LIVE_LABELS = {
@@ -64,6 +64,15 @@ const isCred = scan => scan.scan_type === "credentialed";
 const scanLabel = scan => `Scan No. ${scan?.scan_no ?? scan?.display_id ?? "-"}`;
 const phaseLabel = scan =>
   isCred(scan) ? "Credentialed Audit" : `P${scan.phase} — ${PHASE_LABELS[scan.phase] || "-"}`;
+
+const scanTypeLabel = scan => {
+  if (!scan) return "Unknown";
+  if (isCred(scan)) return "Credentialed Scan";
+  const mode = scan.pipeline_mode || "basic";
+  const pipeline = SCAN_PIPELINES[mode];
+  if (pipeline?.label) return pipeline.label;
+  return String(scan.pipeline_mode || scan.scan_type || "Unknown").replace(/_/g, " ");
+};
 
 const fmtDate = iso =>
   formatDateTime(iso, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -288,7 +297,7 @@ function DetailModal({ scanId, onClose }) {
               </div>
               <div className="dm-item">
                 <span className="dm-label">Scan Type</span>
-                <span>{detail.scan_type}</span>
+                <span>{scanTypeLabel(detail)}</span>
               </div>
               <div className="dm-item">
                 <span className="dm-label">Phase</span>
@@ -458,7 +467,7 @@ function ScanMonitorCard({ scan, onStop, onView }) {
           </div>
           <div className="monitor-meta-item">
             <span className="label">Type:</span>
-            <span className="value">{scan.scan_type}</span>
+            <span className="value">{scanTypeLabel(scan)}</span>
           </div>
         </div>
 
@@ -659,7 +668,7 @@ export default function ScanHistory({ mode = "history" }) {
         subtitle: "This will start a fresh scan against the same target using the same configuration.",
         meta: [
           ["Target", scan.target],
-          ["Type", scan.scan_type],
+          ["Type", scanTypeLabel(scan)],
           ["Phase", phaseLabel(scan)],
           ["Last run", fmtDate(getScanDisplayDate(scan))],
         ],
@@ -948,7 +957,6 @@ export default function ScanHistory({ mode = "history" }) {
                   <th>Scan No.</th>
                   <th>Target</th>
                   <th>Type</th>
-                  <th>Phase</th>
                   <th>Status</th>
                   <th>Active Hosts</th>
                   <th>Duration</th>
@@ -971,10 +979,7 @@ export default function ScanHistory({ mode = "history" }) {
                           {scan.target}
                         </span>
                       </td>
-                      <td><span className="method-chip">{scan.scan_type}</span></td>
-                      <td>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{phaseLabel(scan)}</span>
-                      </td>
+                      <td><span className="method-chip">{scanTypeLabel(scan)}</span></td>
                       <td>
                         <div className="history-status-cell">
                           <StatusBadge status={scan.status} />

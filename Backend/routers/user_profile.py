@@ -70,7 +70,7 @@ class ChangePasswordRequest(BaseModel):
 class PreferencesRequest(BaseModel):
     """Update user preferences."""
     theme: Optional[str] = None  # "light", "dark"
-    default_scan_type: Optional[str] = None  # "host-discovery", "asset", "advanced", "credentialed"
+    default_scan_type: Optional[str] = None  # "host-discovery", "asset", "vulnerability_audit", "credentialed"
     email_alerts: Optional[bool] = None
     in_app_alerts: Optional[bool] = None
     timezone: Optional[str] = None
@@ -87,7 +87,7 @@ class PreferencesRequest(BaseModel):
     @field_validator("default_scan_type")
     @classmethod
     def validate_scan_type(cls, v):
-        valid_types = ["host-discovery", "asset", "advanced", "credentialed"]
+        valid_types = ["host-discovery", "asset", "vulnerability_audit", "advanced", "credentialed"]
         if v is not None and v not in valid_types:
             raise ValueError(f"Scan type must be one of {valid_types}")
         return v

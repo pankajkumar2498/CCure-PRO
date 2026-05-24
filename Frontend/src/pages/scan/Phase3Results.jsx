@@ -332,7 +332,7 @@ export default function Phase3Results() {
 
       const hostsForAudit = portHosts.length ? portHosts : (safeArr(phase3Results).length ? safeArr(phase3Results) : safeArr(phase2Results));
 
-      const { data: auditDataTrigger } = await api.post("/scan/advanced-scan", {
+      const { data: auditDataTrigger } = await api.post("/scan/vulnerability-audit", {
         hosts: hostsForAudit,
         scan_id: scanId,
         pipeline_mode: pipelineMode,

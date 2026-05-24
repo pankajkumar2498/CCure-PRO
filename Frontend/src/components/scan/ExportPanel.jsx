@@ -37,7 +37,7 @@ export default function ExportPanel({
   const isPhase3 = results.length > 0 && !!results[0].host_risk_level;
   const isPhase2 = results.length > 0 && !results[0].host_risk_level && !!results[0].open_ports;
   const isPhase1 = results.length > 0 && !isPhase2 && !isPhase3;
-  const isFinalAdvancedExport = pipelineMode === "advanced" && isPhase3 && phase1Hosts.length > 0 && phase2Results.length > 0;
+  const isFinalAdvancedExport = (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && isPhase3 && phase1Hosts.length > 0 && phase2Results.length > 0;
 
   /* ── JSON ─────────────────────────────────────────────────────────── */
   const downloadJSON = () => {

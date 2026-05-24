@@ -21,7 +21,8 @@ import "../styles/SecurityReports.css";
 const REPORT_TYPE_LABELS = {
   basic:    "Host Discovery",
   asset:    "Asset Discovery",
-  advanced: "Advanced Vulnerability Audit",
+  advanced: "Vulnerability Audit",
+  vulnerability_audit: "Vulnerability Audit",
   credentialed: "SSH Credentialed Audit"
 };
 
@@ -305,7 +306,7 @@ export default function SecurityReports() {
                   <option value="all">All Report Types</option>
                   <option value="basic">Host Discovery</option>
                   <option value="asset">Asset Discovery</option>
-                  <option value="advanced">Advanced Audits</option>
+                  <option value="vulnerability_audit">Vulnerability Audits</option>
                   <option value="credentialed">Credentialed Audits</option>
                 </select>
               </div>

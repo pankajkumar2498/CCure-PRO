@@ -492,8 +492,8 @@ function ScanActivity({ scans, loading }) {
   }
 
   const scanList = scans || [];
-  const modeIcon = { basic: "📡", asset: "🔍", advanced: "⚡", credentialed: "🔑" };
-  const modeLabel = { basic: "Basic", asset: "Asset", advanced: "Advanced", credentialed: "Credentialed" };
+  const modeIcon = { basic: "📡", asset: "🔍", advanced: "⚡", vulnerability_audit: "⚡", credentialed: "🔑" };
+  const modeLabel = { basic: "Basic", asset: "Asset", advanced: "Vulnerability Audit", vulnerability_audit: "Vulnerability Audit", credentialed: "Credentialed" };
 
   return (
     <div className="db-card">

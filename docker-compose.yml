@@ -80,6 +80,44 @@ services:
     volumes:
       - ./Backend/reports:/app/reports
 
+  # ── Web Application Scan Worker ───────────────────────────────────────────
+  web-worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: ccure-web-worker
+    restart: always
+    profiles: ["container-scanner"]
+    # Run as root for raw socket access and Playwright browser launch
+    user: root
+    command: >
+      celery -A core.celery_app worker --loglevel=info
+      --queues=web_recon,web_crawl,web_dast,web_audit
+      --concurrency=${WEB_WORKER_CONCURRENCY:-4}
+      --prefetch-multiplier=1
+    environment:
+      - TZ=Asia/Kolkata
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@host.docker.internal:5432/${POSTGRES_DB:?Database name must be set}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VULN_DB_HOST=${VULN_DB_HOST:-host.docker.internal}
+      - VULN_DB_PORT=${VULN_DB_PORT:-5432}
+      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
+      - VULN_DB_USER=${VULN_DB_USER:-admin}
+      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - APP_ENV=production
+      - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+      - NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
+      - WEB_SCAN_RATE_LIMIT=${WEB_SCAN_RATE_LIMIT:-10}
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Backend/reports:/app/reports
+
   # ── Frontend ─────────────────────────────────────────────────────────────
   frontend:
     build:

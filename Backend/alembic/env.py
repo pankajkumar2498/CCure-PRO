@@ -36,6 +36,7 @@ from db.models.findings      import (
     VulnerabilityDefinition, AssetVulnerability,
 )
 from db.models.notifications import Notification
+from db.models.web_scans     import WebScan, WebAsset, WebFinding
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

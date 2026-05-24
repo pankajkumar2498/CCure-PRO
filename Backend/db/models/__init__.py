@@ -13,6 +13,7 @@ from .findings   import (
     VulnerabilityDefinition, AssetVulnerability,
 )
 from .notifications import Notification
+from .web_scans  import WebScan, WebAsset, WebFinding
 
 __all__ = [
     # RBAC
@@ -40,4 +41,8 @@ __all__ = [
     "AssetVulnerability",
     # Notifications
     "Notification",
+    # Web Application Scanning (DAST)
+    "WebScan",
+    "WebAsset",
+    "WebFinding",
 ]

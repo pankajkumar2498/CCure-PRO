@@ -45,6 +45,7 @@ from routers.notifications import router as notifications_router
 from routers.dashboard import router as dashboard_router
 from routers.assets    import router as assets_router
 from routers.findings  import router as findings_router
+from routers.web_scans import router as web_scans_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -362,6 +363,7 @@ app.include_router(notifications_router)
 app.include_router(dashboard_router)
 app.include_router(assets_router)
 app.include_router(findings_router)
+app.include_router(web_scans_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

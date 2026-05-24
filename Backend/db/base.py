@@ -188,6 +188,40 @@ def gen_vuln_finding_id(asset_id: str, vuln_id: str) -> str:
     return f"fnd_{asset_id}_{vuln_id}"
 
 
+# ─── Web Scan ID Generators ──────────────────────────────────────────────────
+
+def gen_web_scan_id(org_slug: str) -> str:
+    """
+    Generate a readable WebScan ID.
+    Example: wsc_defa_1a2b3c4d_24may26_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    date_part = datetime.now(timezone.utc).strftime("%d%b%y").lower()
+    return f"wsc_{org_part}_{date_part}_{_rand()}"
+
+
+def gen_web_asset_id(web_scan_id: str, url: str) -> str:
+    """
+    Generate a readable WebAsset ID.
+    Deterministic: same scan + URL always produces the same ID.
+    Example: was_wsc_defa_24may26_a1b2c3d4
+    """
+    url_hash = _stable_hash(url, length=8)
+    # Truncate scan ID to keep asset ID reasonable length
+    scan_short = web_scan_id[:30] if len(web_scan_id) > 30 else web_scan_id
+    return f"was_{scan_short}_{url_hash}"
+
+
+def gen_web_finding_id(web_asset_id: str, finding_type: str) -> str:
+    """
+    Generate a readable WebFinding ID.
+    Example: wfn_was_wsc_defa_xss_k8m2
+    """
+    asset_short = web_asset_id[:40] if len(web_asset_id) > 40 else web_asset_id
+    type_part = _safe_id_part(finding_type, max_len=15)
+    return f"wfn_{asset_short}_{type_part}_{_rand()}"
+
+
 def utcnow() -> datetime:
     """Return the current UTC datetime (timezone-aware)."""
     return datetime.now(timezone.utc)

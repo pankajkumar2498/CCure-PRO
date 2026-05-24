@@ -903,3 +903,262 @@ def get_insights(
         pass
 
     return {"insights": insights}
+
+
+# ── 13. Web Scan Summary ──────────────────────────────────────────────────────
+
+@router.get("/web-scan-summary")
+def get_web_scan_summary(
+    org_id: Optional[str] = Query(None),
+    db:     Session = Depends(get_db),
+    user:   User    = Depends(require_permission("dashboard", "read")),
+):
+    """
+    Aggregate statistics for web application scans.
+    Mirrors the network /summary endpoint but for DAST results.
+    """
+    from db.models.web_scans import WebScan, WebFinding, WebAsset
+
+    org = _resolve_org(user, org_id)
+    now = _now()
+    w24h = now - timedelta(hours=24)
+    w7d  = now - timedelta(days=7)
+
+    # ── Scan counts ────────────────────────────────────────────────────────
+    total_scans = (
+        db.query(func.count(WebScan.id))
+        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
+        .scalar() or 0
+    )
+    running_scans = (
+        db.query(func.count(WebScan.id))
+        .filter(WebScan.org_id == org, WebScan.status == "running", WebScan.is_deleted == False)
+        .scalar() or 0
+    )
+    completed_scans = (
+        db.query(func.count(WebScan.id))
+        .filter(
+            WebScan.org_id == org,
+            WebScan.status == "complete",
+            WebScan.is_deleted == False,
+        )
+        .scalar() or 0
+    )
+    scans_7d = (
+        db.query(func.count(WebScan.id))
+        .filter(WebScan.org_id == org, WebScan.created_at >= w7d, WebScan.is_deleted == False)
+        .scalar() or 0
+    )
+
+    # ── Finding severity counts (open only) ────────────────────────────────
+    sev_rows = (
+        db.query(
+            WebFinding.severity,
+            func.count(WebFinding.id).label("cnt"),
+        )
+        .filter(WebFinding.org_id == org, WebFinding.status == "open")
+        .group_by(WebFinding.severity)
+        .all()
+    )
+    sev_map = {(r.severity or "info").lower(): r.cnt for r in sev_rows}
+
+    # ── Total endpoints discovered ─────────────────────────────────────────
+    total_endpoints = (
+        db.query(func.count(WebAsset.id))
+        .join(WebScan, WebAsset.web_scan_id == WebScan.id)
+        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
+        .scalar() or 0
+    )
+
+    # ── Unique domains scanned ─────────────────────────────────────────────
+    unique_domains = (
+        db.query(func.count(WebScan.target_domain.distinct()))
+        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
+        .scalar() or 0
+    )
+
+    # ── Verified findings count ────────────────────────────────────────────
+    verified = (
+        db.query(func.count(WebFinding.id))
+        .filter(WebFinding.org_id == org, WebFinding.is_verified == True, WebFinding.status == "open")
+        .scalar() or 0
+    )
+
+    # ── Finding status breakdown ───────────────────────────────────────────
+    status_rows = (
+        db.query(WebFinding.status, func.count(WebFinding.id).label("cnt"))
+        .filter(WebFinding.org_id == org)
+        .group_by(WebFinding.status)
+        .all()
+    )
+    status_map = {r.status: r.cnt for r in status_rows}
+
+    # ── Top detected tools ─────────────────────────────────────────────────
+    tool_rows = (
+        db.query(
+            WebFinding.detected_by,
+            func.count(WebFinding.id).label("cnt"),
+        )
+        .filter(WebFinding.org_id == org, WebFinding.status == "open")
+        .group_by(WebFinding.detected_by)
+        .order_by(func.count(WebFinding.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "scans": {
+            "total":     total_scans,
+            "running":   running_scans,
+            "completed": completed_scans,
+            "last_7d":   scans_7d,
+        },
+        "severity": {
+            "critical": sev_map.get("critical", 0),
+            "high":     sev_map.get("high", 0),
+            "medium":   sev_map.get("medium", 0),
+            "low":      sev_map.get("low", 0),
+            "info":     sev_map.get("info", 0),
+            "total":    sum(sev_map.values()),
+        },
+        "endpoints": {
+            "total":          total_endpoints,
+            "unique_domains": unique_domains,
+        },
+        "findings": {
+            "verified":       verified,
+            "open":           status_map.get("open", 0),
+            "false_positive": status_map.get("false_positive", 0),
+            "fixed":          status_map.get("fixed", 0),
+            "accepted_risk":  status_map.get("accepted_risk", 0),
+        },
+        "top_tools": [
+            {"tool": r.detected_by, "count": r.cnt} for r in tool_rows
+        ],
+        "org_id": org,
+    }
+
+
+# ── 14. Web Scan OWASP Scorecard ──────────────────────────────────────────────
+
+@router.get("/web-owasp-scorecard")
+def get_web_owasp_scorecard(
+    org_id: Optional[str] = Query(None),
+    db:     Session = Depends(get_db),
+    user:   User    = Depends(require_permission("dashboard", "read")),
+):
+    """
+    OWASP Top 10 (2021) coverage from web scan findings.
+    Shows how many open findings map to each OWASP category.
+    """
+    from db.models.web_scans import WebFinding
+
+    org = _resolve_org(user, org_id)
+
+    owasp_categories = {
+        "A01": "Broken Access Control",
+        "A02": "Cryptographic Failures",
+        "A03": "Injection",
+        "A04": "Insecure Design",
+        "A05": "Security Misconfiguration",
+        "A06": "Vulnerable and Outdated Components",
+        "A07": "Identification and Authentication Failures",
+        "A08": "Software and Data Integrity Failures",
+        "A09": "Security Logging and Monitoring Failures",
+        "A10": "Server-Side Request Forgery (SSRF)",
+    }
+
+    findings = (
+        db.query(WebFinding.owasp_category, WebFinding.severity)
+        .filter(WebFinding.org_id == org, WebFinding.status == "open")
+        .all()
+    )
+
+    scorecard = {}
+    for code, name in owasp_categories.items():
+        scorecard[code] = {
+            "name": name,
+            "total": 0,
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+        }
+
+    for f in findings:
+        owasp = f.owasp_category or ""
+        code = owasp.split(":")[0] if ":" in owasp else ""
+        if code in scorecard:
+            scorecard[code]["total"] += 1
+            sev = (f.severity or "info").lower()
+            if sev in scorecard[code]:
+                scorecard[code][sev] += 1
+
+    return {
+        "scorecard": [
+            {"code": code, **data}
+            for code, data in scorecard.items()
+        ],
+    }
+
+
+# ── 15. Web Scan Trends ──────────────────────────────────────────────────────
+
+@router.get("/web-scan-trends")
+def get_web_scan_trends(
+    days:   int = Query(30, ge=7, le=90),
+    org_id: Optional[str] = Query(None),
+    db:     Session = Depends(get_db),
+    user:   User    = Depends(require_permission("dashboard", "read")),
+):
+    """
+    Web scan finding trends over time — similar to /vuln-trends but for DAST.
+    Aggregates by scan completion date.
+    """
+    from db.models.web_scans import WebScan
+
+    org   = _resolve_org(user, org_id)
+    since = _now() - timedelta(days=days)
+
+    rows = (
+        db.query(
+            WebScan.completed_at,
+            WebScan.critical_count,
+            WebScan.high_count,
+            WebScan.medium_count,
+            WebScan.low_count,
+            WebScan.info_count,
+            WebScan.total_endpoints,
+        )
+        .filter(
+            WebScan.org_id == org,
+            WebScan.completed_at >= since,
+            WebScan.status == "complete",
+            WebScan.is_deleted == False,
+        )
+        .order_by(WebScan.completed_at.asc())
+        .all()
+    )
+
+    daily: dict = {}
+    for r in rows:
+        if not r.completed_at:
+            continue
+        k = r.completed_at.strftime("%Y-%m-%d")
+        if k not in daily:
+            daily[k] = {
+                "date": k, "critical": 0, "high": 0, "medium": 0,
+                "low": 0, "info": 0, "endpoints": 0, "scans": 0,
+            }
+        daily[k]["critical"]  += r.critical_count or 0
+        daily[k]["high"]      += r.high_count or 0
+        daily[k]["medium"]    += r.medium_count or 0
+        daily[k]["low"]       += r.low_count or 0
+        daily[k]["info"]      += r.info_count or 0
+        daily[k]["endpoints"] += r.total_endpoints or 0
+        daily[k]["scans"]     += 1
+
+    return {
+        "days": days,
+        "data": sorted(daily.values(), key=lambda x: x["date"]),
+    }

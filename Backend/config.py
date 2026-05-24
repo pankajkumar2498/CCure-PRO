@@ -125,6 +125,41 @@ class VulnIntelConfig:
         )
 
 
+class WebScanConfig:
+    """Web Application Scanning (DAST) configuration."""
+
+    # ── External Tool Binaries ────────────────────────────────────────────────
+    NUCLEI_BINARY: str = os.getenv("NUCLEI_BINARY", "nuclei")
+    NUCLEI_TEMPLATES_DIR: str = os.getenv("NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates")
+    SUBFINDER_BINARY: str = os.getenv("SUBFINDER_BINARY", "subfinder")
+    FFUF_BINARY: str = os.getenv("FFUF_BINARY", "ffuf")
+    FFUF_WORDLIST: str = os.getenv("FFUF_WORDLIST", "/opt/wordlists/common.txt")
+    SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
+
+    # ── Playwright / Crawling ─────────────────────────────────────────────────
+    PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "30000"))       # ms
+    MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
+    MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
+    CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "5"))
+
+    # ── Scan Limits ───────────────────────────────────────────────────────────
+    WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))           # 4 hours
+    SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "10"))            # req/sec
+    STEALTH_RATE_LIMIT: int = int(os.getenv("WEB_STEALTH_RATE_LIMIT", "2"))       # req/sec (WAF mode)
+    MAX_RESPONSE_BODY_SIZE: int = int(os.getenv("MAX_RESPONSE_BODY_SIZE", "10240"))  # 10KB evidence cap
+
+    # ── Nuclei Specific ───────────────────────────────────────────────────────
+    NUCLEI_SEVERITY: str = os.getenv("NUCLEI_SEVERITY", "medium,high,critical")
+    NUCLEI_CONCURRENCY: int = int(os.getenv("NUCLEI_CONCURRENCY", "25"))
+    NUCLEI_BULK_SIZE: int = int(os.getenv("NUCLEI_BULK_SIZE", "25"))
+    NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))               # 2 hours
+
+    # ── SQLMap Specific ───────────────────────────────────────────────────────
+    SQLMAP_LEVEL: int = int(os.getenv("SQLMAP_LEVEL", "2"))
+    SQLMAP_RISK: int = int(os.getenv("SQLMAP_RISK", "2"))
+    SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))                 # 10 min per URL
+
+
 class AdminConfig:
     """Default administrator account configuration."""
 

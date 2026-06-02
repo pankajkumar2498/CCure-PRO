@@ -10,6 +10,7 @@ export default defineConfig({
       "/auth":         "http://localhost:8000",
       "/scan":         "http://localhost:8000",
       "/scans":        "http://localhost:8000",
+      "/web-scans":    "http://localhost:8000",
       "/reports":      "http://localhost:8000",
       "/admin":        "http://localhost:8000",
       "/dashboard":    "http://localhost:8000",

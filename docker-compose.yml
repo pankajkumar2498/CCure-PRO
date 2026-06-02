@@ -33,6 +33,7 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
     depends_on:
@@ -67,6 +68,7 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - SCANNER_RUNTIME=container
       - SCANNER_WORKER_CONCURRENCY=${SCANNER_WORKER_CONCURRENCY:-20}

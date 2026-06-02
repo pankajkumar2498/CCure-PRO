@@ -43,6 +43,8 @@ import Phase3Results        from "./pages/scan/Phase3Results";
 import CredentialedScan     from "./pages/scan/CredentialedScan";
 import CredentialedResults  from "./pages/scan/CredentialedResults";
 
+import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
+
 // Admin pages
 import AuditLogs            from "./pages/admin/AuditLogs";
 import UserManagement       from "./pages/admin/UserManagement";
@@ -97,6 +99,9 @@ export default function App() {
           <Route path="/scan/:scanId/phase3"            element={<Phase3Results />} />
         <Route path="/scan/:scanId/credentialed"      element={<CredentialedScan />} />
         <Route path="/scan/:scanId/credentialed-results" element={<CredentialedResults />} />
+
+        {/* Web Application Scanning */}
+        <Route path="/web-scans/*" element={<WebScanningRoutes />} />
 
         {/* Reports */}
         <Route path="/reports" element={<SecurityReports />} />

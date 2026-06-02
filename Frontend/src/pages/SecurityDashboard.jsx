@@ -26,6 +26,7 @@ import {
   getScanActivity, getInsights, getVulnTrends,
 } from "../api/dashboard";
 import { getScanQuota } from "../api/scans";
+import CVELink from "../components/common/CVELink";
 import "../styles/dashboard.css";
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
@@ -513,20 +514,21 @@ function ScanActivity({ scans, loading }) {
       )}
 
       {scanList.map((scan) => {
-        const icon = modeIcon[scan.pipeline_mode] || "📡";
+        const isCredentialed = scan.scan_type === "credentialed";
+        const icon = isCredentialed ? modeIcon.credentialed : (modeIcon[scan.pipeline_mode] || "📡");
         const iconBg = scan.status === "running"
-          ? "rgba(59,130,246,0.1)"
-          : scan.status === "failed"
-            ? "rgba(239,68,68,0.1)"
-            : "rgba(34,197,94,0.08)";
-
-        return (
-          <div key={scan.id} className="db-scan-row">
-            <div className="db-scan-icon" style={{ background: iconBg }}>{icon}</div>
-            <div className="db-scan-body">
-              <div className="db-scan-title">
-                {modeLabel[scan.pipeline_mode] || "Scan"} · {scan.target_str}
-              </div>
+           ? "rgba(59,130,246,0.1)"
+           : scan.status === "failed"
+             ? "rgba(239,68,68,0.1)"
+             : "rgba(34,197,94,0.08)";
+ 
+         return (
+           <div key={scan.id} className="db-scan-row">
+             <div className="db-scan-icon" style={{ background: iconBg }}>{icon}</div>
+             <div className="db-scan-body">
+               <div className="db-scan-title">
+                 {(isCredentialed ? modeLabel.credentialed : modeLabel[scan.pipeline_mode]) || "Scan"} · {scan.target_str}
+               </div>
               <div className="db-scan-sub">
                 {scan.current_phase
                   ? `Phase: ${scan.current_phase.replace(/_/g, " ")} · ${scan.progress_pct || 0}%`
@@ -696,7 +698,7 @@ function TopCVEsTable({ cves, loading, onNavigate }) {
             {(cves || []).map((c) => (
               <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => onNavigate(`/vulnerabilities?search=${c.id}`)}>
                 <td>
-                  <div className="cve-id">{c.id}</div>
+                  <div className="cve-id"><CVELink cveId={c.id} /></div>
                   <div style={{ fontSize: "0.65rem", color: "var(--text-faint)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.title}
                   </div>

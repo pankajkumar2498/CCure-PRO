@@ -5,10 +5,11 @@
  */
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import AppLayout  from "../../components/layout/AppLayout";
-import RiskBadge  from "../../components/scan/RiskBadge";
+import AppLayout from "../../components/layout/AppLayout";
+import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
+import CVELink from "../../components/common/CVELink";
 
 const SEV_COLOR = {
   Critical: "#ff4d4d", High: "#f97316", Medium: "#f59e0b", Low: "#22c55e", Info: "#60a5fa",
@@ -16,10 +17,10 @@ const SEV_COLOR = {
 
 const STAGES = [
   { id: "connecting", label: "Connection", icon: "🔌" },
-  { id: "detection",  label: "OS Detection", icon: "🔍" },
+  { id: "detection", label: "OS Detection", icon: "🔍" },
   { id: "collection", label: "Collection", icon: "📦" },
-  { id: "analysis",   label: "CVE Analysis", icon: "🧠" },
-  { id: "syncing",    label: "Finalizing", icon: "💾" },
+  { id: "analysis", label: "CVE Analysis", icon: "🧠" },
+  { id: "syncing", label: "Finalizing", icon: "💾" },
 ];
 
 /* ── helpers ── */
@@ -28,9 +29,9 @@ function KV({ k, v, danger, warn, mono }) {
     <div className="kv-row">
       <span className="kv-key">{k}</span>
       <span className="kv-val" style={{
-        color:      danger ? "#ff4d4d" : warn ? "#f59e0b" : undefined,
+        color: danger ? "#ff4d4d" : warn ? "#f59e0b" : undefined,
         fontFamily: mono ? "var(--mono)" : undefined,
-        fontSize:   mono ? 12 : undefined,
+        fontSize: mono ? 12 : undefined,
       }}>
         {v}
       </span>
@@ -111,17 +112,18 @@ function hydrateFromHistory(detail) {
 }
 
 export default function CredentialedResults() {
-  const navigate     = useNavigate();
-  const location     = useLocation();
-  const stateResult  = location.state?.result ?? null;
-  const scanIdParam  = new URLSearchParams(location.search).get("scan_id");
-  const hasReport    = Boolean(stateResult?.system_info || stateResult?.cves || stateResult?.packages);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const stateResult = location.state?.result ?? null;
+  const scanIdParam = new URLSearchParams(location.search).get("scan_id");
+  const hasReport = Boolean(stateResult?.system_info || stateResult?.cves || stateResult?.packages);
 
-  const [result,      setResult]      = useState(hasReport ? stateResult : null);
-  const [loading,     setLoading]     = useState(hasReport ? false : !!scanIdParam);
-  const [error,       setError]       = useState("");
-  const [scanStatus,  setScanStatus]  = useState(stateResult?.status || "running");
-  const [cveFilter,   setCveFilter]   = useState("All");
+  const [result, setResult] = useState(hasReport ? stateResult : null);
+  const [loading, setLoading] = useState(hasReport ? false : !!scanIdParam);
+  const [error, setError] = useState("");
+  const [scanStatus, setScanStatus] = useState(stateResult?.status || "running");
+  const [cveFilter, setCveFilter] = useState("All");
+  const [showSystemUsers, setShowSystemUsers] = useState(false);
 
   // Live progress state
   const [progress, setProgress] = useState({
@@ -186,7 +188,7 @@ export default function CredentialedResults() {
         const baseURL = api.defaults.baseURL || "";
         const wsPrefix = baseURL.replace(/^http/, "ws");
         const wsUrl = `${wsPrefix}/scans/${scanIdParam}/progress?ticket=${encodeURIComponent(ticketData.ticket)}`;
-        
+
         ws = new WebSocket(wsUrl);
         ws.onmessage = (event) => {
           if (cancelled) return;
@@ -199,7 +201,7 @@ export default function CredentialedResults() {
               stage: p.stage || prev.stage,
               logs: p.message ? [...prev.logs.slice(-49), { text: p.message, time: new Date().toLocaleTimeString() }] : prev.logs
             }));
-            
+
             if (p.status === "complete") {
               fetchResult();
             } else if (p.status === "failed") {
@@ -281,9 +283,9 @@ export default function CredentialedResults() {
             </div>
 
             <div className="progress-bar progress-bar--pipeline">
-              <div 
-                className="progress-fill progress-fill--animated" 
-                style={{ width: `${progress.percentage}%`, transition: "width 0.5s ease-out" }} 
+              <div
+                className="progress-fill progress-fill--animated"
+                style={{ width: `${progress.percentage}%`, transition: "width 0.5s ease-out" }}
               />
             </div>
 
@@ -303,8 +305,8 @@ export default function CredentialedResults() {
                     }}>
                       {isDone ? "✓" : s.icon}
                     </div>
-                    <span style={{ 
-                      fontSize: 11, fontWeight: isActive ? 700 : 500, 
+                    <span style={{
+                      fontSize: 11, fontWeight: isActive ? 700 : 500,
                       color: isActive ? "var(--accent)" : isDone ? "var(--text)" : "var(--text-faint)",
                       textAlign: "center"
                     }}>
@@ -328,10 +330,10 @@ export default function CredentialedResults() {
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", animation: "pulse 1.5s infinite" }} />
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Live Activity</span>
               </div>
-              <div 
+              <div
                 ref={logRef}
-                style={{ 
-                  background: "#0f172a", color: "#e2e8f0", padding: "12px 16px", borderRadius: 8, 
+                style={{
+                  background: "#0f172a", color: "#e2e8f0", padding: "12px 16px", borderRadius: 8,
                   fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6, maxHeight: 180, overflowY: "auto",
                   border: "1px solid #334155", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)"
                 }}
@@ -370,20 +372,20 @@ export default function CredentialedResults() {
           </div>
 
           {isUnreachable ? (
-             <div style={{
-               margin: "16px 0", padding: "16px 20px", borderRadius: 8,
-               background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
-               display: "flex", alignItems: "center", gap: 16, color: "#92400e"
-             }}>
-               <span style={{ fontSize: 24 }}>⚠️</span>
-               <div>
-                 <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
-                 <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                   The credentialed scan failed because the host could not be reached via SSH. 
-                   Verify the IP address, network connectivity, and firewall rules.
-                 </p>
-               </div>
-             </div>
+            <div style={{
+              margin: "16px 0", padding: "16px 20px", borderRadius: 8,
+              background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
+              display: "flex", alignItems: "center", gap: 16, color: "#92400e"
+            }}>
+              <span style={{ fontSize: 24 }}>⚠️</span>
+              <div>
+                <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+                <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
+                  The credentialed scan failed because the host could not be reached via SSH.
+                  Verify the IP address, network connectivity, and firewall rules.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="alert alert--error">
               <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Scan Failed</div>
@@ -392,13 +394,13 @@ export default function CredentialedResults() {
           )}
 
           <div className="empty-state" style={{ marginTop: 40 }}>
-             <p className="muted">
-                {isUnreachable 
-                  ? "Please ensure the target is powered on and accessible from the scanning engine."
-                  : "Please verify your SSH credentials and ensure the host is reachable."
-                }
-             </p>
-             <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={() => navigate("/scan/credentialed")}>Try Again</button>
+            <p className="muted">
+              {isUnreachable
+                ? "Please ensure the target is powered on and accessible from the scanning engine."
+                : "Please verify your SSH credentials and ensure the host is reachable."
+              }
+            </p>
+            <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={() => navigate("/scan/credentialed")}>Try Again</button>
           </div>
         </div>
       </AppLayout>
@@ -426,24 +428,117 @@ export default function CredentialedResults() {
     cves = [], cve_count = 0, severity_summary = {},
   } = result;
 
-  const osLabel    = detected_os === "windows" ? "Windows" : "Linux";
-  const osIcon     = detected_os === "windows" ? "🪟" : "🐧";
+  // Parse network_interfaces_raw if it is in JSON format
+  const parsedInterfaces = (() => {
+    if (!network_interfaces_raw) return null;
+    try {
+      const data = JSON.parse(network_interfaces_raw);
+      const list = Array.isArray(data) ? data : [data];
+      return list.map(iface => {
+        // Windows parser
+        if ('InterfaceAlias' in iface || 'InterfaceIndex' in iface) {
+          return {
+            name: iface.InterfaceAlias || `Interface ${iface.InterfaceIndex}`,
+            ip: iface.IPAddress || '—',
+            prefix: iface.PrefixLength || '',
+            mac: iface.MacAddress || '—',
+            desc: iface.InterfaceDescription || '—',
+          };
+        }
+        // Linux JSON parser (from ip -j addr)
+        if ('ifname' in iface) {
+          const ipv4 = iface.addr_info?.find(a => a.family === 'inet');
+          return {
+            name: iface.ifname,
+            ip: ipv4?.local || '—',
+            prefix: ipv4?.prefixlen || '',
+            mac: iface.address || '—',
+            desc: iface.operstate ? `State: ${iface.operstate.toUpperCase()}` : '—',
+          };
+        }
+        return null;
+      }).filter(Boolean);
+    } catch (e) {
+      return null;
+    }
+  })();
+
+  const osLabel = detected_os === "windows" ? "Windows" : "Linux";
+  const osIcon = detected_os === "windows" ? "🪟" : "🐧";
   const osBadgeClr = detected_os === "windows" ? "#0078d4" : "#f97316";
 
   const overallRisk = (() => {
     if (severity_summary.Critical > 0) return "Critical";
-    if (severity_summary.High     > 0) return "High";
-    if (severity_summary.Medium   > 0) return "Medium";
-    if (severity_summary.Low      > 0) return "Low";
+    if (severity_summary.High > 0) return "High";
+    if (severity_summary.Medium > 0) return "Medium";
+    if (severity_summary.Low > 0) return "Low";
     return "Info";
   })();
 
-  const SEV_ORDER   = ["All", "Critical", "High", "Medium", "Low", "Info"];
+  const SEV_ORDER = ["All", "Critical", "High", "Medium", "Low", "Info"];
   const filteredCves = cveFilter === "All" ? cves : cves.filter(c => c.severity === cveFilter);
   const vulnerablePackageNames = new Set(
     cves.map(c => String(c.package || "").toLowerCase()).filter(Boolean)
   );
   const packagesWithCves = packages.filter(pkg => vulnerablePackageNames.has(String(pkg.name || "").toLowerCase()));
+  const interactiveUsers = users.filter(u => {
+    if (detected_os === "windows") {
+      const name = String(u.username || "").toLowerCase();
+      const isSystem = ["guest", "defaultaccount", "wdagutilityaccount", "sshd"].includes(name);
+      return !isSystem;
+    }
+    return !u.is_system || u.is_root;
+  });
+  const displayedUsers = showSystemUsers ? users : interactiveUsers;
+
+  const usersTableHead = detected_os === "windows"
+    ? ["Username", "Role / Type", "Status", "Password Required", "Last Logon"]
+    : ["Username", "UID", "Shell", "Home", "Type"];
+
+  const usersTableRows = displayedUsers.map(u => {
+    if (detected_os === "windows") {
+      const isAdmin = u.is_admin === true || String(u.is_admin).toLowerCase() === "true";
+      const isEnabled = String(u.enabled).toLowerCase() === "true";
+      const isPwdRequired = String(u.pwd_required).toLowerCase() === "true";
+      const lastLogon = u.last_logon && u.last_logon !== "None" && u.last_logon !== "null" ? u.last_logon : "—";
+
+      const nameLower = String(u.username || "").toLowerCase();
+      const isSystem = ["guest", "defaultaccount", "wdagutilityaccount", "sshd"].includes(nameLower);
+
+      let typeLabel = "User";
+      let typeStyle = {};
+      if (isAdmin) {
+        typeLabel = "Admin";
+        typeStyle = { color: "#ff4d4d", fontWeight: 600 };
+      } else if (isSystem) {
+        typeLabel = "System";
+        typeStyle = { color: "var(--text-faint)" };
+      }
+
+      return {
+        _style: isAdmin ? { background: "rgba(239, 68, 68, 0.03)" } : {},
+        cells: [
+          { content: <code style={{ fontSize: 12, fontWeight: isAdmin ? 600 : undefined }}>{u.username}</code> },
+          { content: <span style={typeStyle}>{typeLabel}</span> },
+          { content: isEnabled ? <span style={{ color: "var(--ok)", fontWeight: 500 }}>Active</span> : <span className="muted" style={{ textDecoration: "line-through", color: "var(--text-faint)" }}>Disabled</span> },
+          { content: isPwdRequired ? <span>Yes</span> : <span style={{ color: "#f59e0b", fontWeight: 500 }}>⚠ No</span> },
+          { content: <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>{lastLogon}</span> },
+        ]
+      };
+    } else {
+      return {
+        _style: u.is_root ? { color: "#ff4d4d" } : {},
+        cells: [
+          { content: <code style={{ fontSize: 12 }}>{u.username}</code> },
+          { content: u.uid, style: { fontSize: 11 } },
+          { content: u.shell, style: { fontSize: 11, color: "var(--text-muted)" } },
+          { content: u.home, style: { fontSize: 11, color: "var(--text-muted)" } },
+          { content: u.is_root ? "⚠ root" : u.is_system ? "system" : "user", style: { fontSize: 11, color: u.is_system ? "var(--text-faint)" : undefined } },
+        ]
+      };
+    }
+  });
+
   const hasAdvancedEvidence = Boolean(
     sudo_rules_raw ||
     network_interfaces_raw ||
@@ -503,18 +598,18 @@ export default function CredentialedResults() {
         {/* System Info */}
         <Section title="🖥 System Information" defaultOpen>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-            <KV k="OS"          v={system_info.os_name       || "—"} />
-            <KV k="Version"     v={system_info.os_version_id  || "—"} />
-            <KV k="Kernel"      v={system_info.kernel_version || "—"} mono />
-            <KV k="Hostname"    v={system_info.hostname       || "—"} mono />
-            <KV k="CPU"         v={system_info.cpu_model      || "—"} />
-            <KV k="CPU Count"   v={system_info.cpu_count      || "—"} />
-            <KV k="Architecture" v={system_info.cpu_arch     || "—"} />
-            <KV k="Uptime"      v={system_info.uptime         || "—"} />
+            <KV k="OS" v={system_info.os_name || "—"} />
+            <KV k="Version" v={system_info.os_version_id || "—"} />
+            <KV k="Kernel" v={system_info.kernel_version || "—"} mono />
+            <KV k="Hostname" v={system_info.hostname || "—"} mono />
+            <KV k="CPU" v={system_info.cpu_model || "—"} />
+            <KV k="CPU Count" v={system_info.cpu_count || "—"} />
+            <KV k="Architecture" v={system_info.cpu_arch || "—"} />
+            <KV k="Uptime" v={system_info.uptime || "—"} />
             {system_info.memory_summary?.total && (
               <>
                 <KV k="RAM Total" v={system_info.memory_summary.total} />
-                <KV k="RAM Used"  v={system_info.memory_summary.used} />
+                <KV k="RAM Used" v={system_info.memory_summary.used} />
               </>
             )}
           </div>
@@ -575,7 +670,7 @@ export default function CredentialedResults() {
               {filteredCves.map((cve, i) => (
                 <div key={i} className="cve-row" style={{ flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <span className="cve-id" style={{ color: SEV_COLOR[cve.severity] || "#60a5fa" }}>{cve.cve_id}</span>
+                    <CVELink cveId={cve.cve_id} style={{ color: SEV_COLOR[cve.severity] || "#60a5fa" }} />
                     <span className="cve-sev" style={{ color: SEV_COLOR[cve.severity] }}>{cve.severity}</span>
                     {cve.cvss_score && (
                       <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-muted)" }}>CVSS {cve.cvss_score}</span>
@@ -604,10 +699,10 @@ export default function CredentialedResults() {
             </ul>
           )}
           <div className="kv-grid">
-            <KV k="NOPASSWD Sudo"      v={sudo_nopasswd ? "⚠ YES — any command without password" : "No"} danger={sudo_nopasswd} />
-            <KV k="SUID Binaries"      v={`${suid_binaries.length} found`} warn={suid_binaries.length > 15} />
+            <KV k="NOPASSWD Sudo" v={sudo_nopasswd ? "⚠ YES — any command without password" : "No"} danger={sudo_nopasswd} />
+            <KV k="SUID Binaries" v={`${suid_binaries.length} found`} warn={suid_binaries.length > 15} />
             <KV k="World-Writable Dirs" v={`${world_writable_dirs.length} found`} warn={world_writable_dirs.length > 0} />
-            <KV k="Failed Logins"      v={`${failed_login_count}${brute_force_warning ? " ⚠ possible brute force" : ""}`} danger={brute_force_warning} />
+            <KV k="Failed Logins" v={`${failed_login_count}${brute_force_warning ? " ⚠ possible brute force" : ""}`} danger={brute_force_warning} />
           </div>
           {suid_binaries.length > 0 && (
             <div style={{ marginTop: 12 }}>
@@ -654,20 +749,36 @@ export default function CredentialedResults() {
 
         {/* Packages */}
         {packagesWithCves.length > 0 && (
-          <Section title={`Packages with CVE Matches (${packagesWithCves.length})`}>
+          <Section title={`Packages with Vulnerabilities (${packagesWithCves.length})`}>
             <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
               Showing only packages that match vulnerability findings.
             </p>
             <CredTable
-              head={["Package", "Version", "Manager", "CVE?"]}
+              head={["Affected Packages", "Version", "Manager", "CVE"]}
               rows={packagesWithCves.map(pkg => {
+                const pkgCves = cves.filter(c => String(c.package || "").toLowerCase() === String(pkg.name || "").toLowerCase());
+                const uniqueCveIds = Array.from(new Set(pkgCves.map(c => c.cve_id))).filter(Boolean);
+
                 return {
                   _style: { background: "rgba(249,115,22,0.07)" },
                   cells: [
-                    { content: <span style={{ color: "#f97316" }}>{pkg.name}<span style={{ marginLeft: 6, fontSize: 10, color: "#f97316" }}>match</span></span> },
+                    { content: <span style={{ fontWeight: 600, color: "#f97316" }}>{pkg.name}</span> },
                     { content: <code style={{ fontSize: 11 }}>{pkg.version}</code> },
                     { content: pkg.manager, style: { fontSize: 11, color: "var(--text-muted)" } },
-                    { content: "CVE match", style: { fontSize: 11, color: "#f97316" } },
+                    {
+                      content: uniqueCveIds.length > 0 ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
+                          {uniqueCveIds.map((cveId, idx) => (
+                            <span key={cveId} style={{ display: "inline-flex", alignItems: "center" }}>
+                              <CVELink cveId={cveId} style={{ color: "#f97316", fontWeight: 600, fontSize: "0.82rem" }} />
+                              {idx < uniqueCveIds.length - 1 && <span style={{ color: "var(--text-faint)", marginLeft: 4 }}>,</span>}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: "var(--text-faint)" }}>—</span>
+                      )
+                    },
                   ],
                 };
               })}
@@ -677,19 +788,21 @@ export default function CredentialedResults() {
 
         {/* Users */}
         {users.length > 0 && (
-          <Section title={`👤 Users (${users.length})`}>
+          <Section title={`👤 Users (${displayedUsers.length})`}>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.8rem", color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  checked={showSystemUsers}
+                  onChange={(e) => setShowSystemUsers(e.target.checked)}
+                  style={{ cursor: "pointer" }}
+                />
+                Show system & service accounts
+              </label>
+            </div>
             <CredTable
-              head={["Username", "UID", "Shell", "Home", "Type"]}
-              rows={users.filter(u => !u.is_system || u.is_root).map(u => ({
-                _style: u.is_root ? { color: "#ff4d4d" } : {},
-                cells: [
-                  { content: <code style={{ fontSize: 12 }}>{u.username}</code> },
-                  { content: u.uid, style: { fontSize: 11 } },
-                  { content: u.shell, style: { fontSize: 11, color: "var(--text-muted)" } },
-                  { content: u.home,  style: { fontSize: 11, color: "var(--text-muted)" } },
-                  { content: u.is_root ? "⚠ root" : "user", style: { fontSize: 11 } },
-                ],
-              }))}
+              head={usersTableHead}
+              rows={usersTableRows}
             />
           </Section>
         )}
@@ -698,8 +811,8 @@ export default function CredentialedResults() {
         {failed_login_count > 0 && (
           <Section title="📋 Login History">
             <div className="kv-grid">
-              <KV k="Failed Logins"    v={String(failed_login_count)}               danger={brute_force_warning} />
-              <KV k="Brute Force Alert" v={brute_force_warning ? "⚠ YES" : "No"}    danger={brute_force_warning} />
+              <KV k="Failed Logins" v={String(failed_login_count)} danger={brute_force_warning} />
+              <KV k="Brute Force Alert" v={brute_force_warning ? "⚠ YES" : "No"} danger={brute_force_warning} />
             </div>
           </Section>
         )}
@@ -727,12 +840,46 @@ export default function CredentialedResults() {
               </div>
             )}
             {network_interfaces_raw && (
-              <>
+              <div style={{ marginTop: 14 }}>
                 <h4 className="section-title">Network Interfaces</h4>
-                <pre style={{ background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 12, maxHeight: 180, overflowY: "auto" }}>
-                  {network_interfaces_raw}
-                </pre>
-              </>
+                {parsedInterfaces && parsedInterfaces.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <CredTable
+                      head={["Interface Name", "IP Address", "Subnet Mask / Prefix", "MAC Address", "Description"]}
+                      rows={parsedInterfaces.map(iface => ({
+                        cells: [
+                          { content: <span style={{ fontWeight: 600, color: "var(--text)" }}>{iface.name}</span> },
+                          { content: <code style={{ fontSize: 11, fontFamily: "var(--mono)" }}>{iface.ip}</code> },
+                          { content: iface.prefix ? <span className="muted" style={{ fontFamily: "var(--mono)" }}>/{iface.prefix}</span> : "—" },
+                          { content: <code style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-muted)" }}>{iface.mac}</code> },
+                          { content: <span style={{ fontSize: 11, color: "var(--text-faint)" }}>{iface.desc}</span> },
+                        ],
+                      }))}
+                    />
+                    <details style={{ marginTop: 4 }}>
+                      <summary style={{ fontSize: 11, color: "var(--text-faint)", cursor: "pointer", userSelect: "none" }}>
+                        Show Raw Evidence JSON
+                      </summary>
+                      <pre style={{
+                        background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6,
+                        padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-mid)",
+                        maxHeight: 140, overflowY: "auto", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-all"
+                      }}>
+                        {JSON.stringify(JSON.parse(network_interfaces_raw), null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                ) : (
+                  /* Fallback for raw text output (Linux fallback) */
+                  <pre style={{
+                    background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6,
+                    padding: "10px 12px", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-mid)",
+                    maxHeight: 180, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all"
+                  }}>
+                    {network_interfaces_raw}
+                  </pre>
+                )}
+              </div>
             )}
             {env_vars_flagged.length > 0 && (
               <div style={{ marginTop: 12 }}>

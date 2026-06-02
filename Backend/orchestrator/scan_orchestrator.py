@@ -16,6 +16,7 @@ The public API surface (method names + return format) is preserved.
 """
 
 import asyncio
+import os
 import ipaddress
 import logging
 import platform
@@ -61,7 +62,7 @@ class ScanOrchestrator:
     def __init__(
         self,
         silent:       bool  = True,
-        reports_dir:  str   = "reports",
+        reports_dir:  Optional[str] = None,
         intensity:    str   = "normal",
         rate_limit:   float = 200.0,
         stealth_mode: bool  = False,
@@ -79,6 +80,10 @@ class ScanOrchestrator:
             self.intensity = ScanIntensity(intensity.lower())
         except ValueError:
             self.intensity = ScanIntensity.NORMAL
+
+        if reports_dir is None or reports_dir == "reports":
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            reports_dir = os.path.join(backend_dir, "reports")
 
         self._pdf = (
             ScanReportGenerator(output_dir=reports_dir) if PDF_AVAILABLE else None

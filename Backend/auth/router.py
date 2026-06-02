@@ -40,7 +40,7 @@ from scan_helpers import limiter
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
 REFRESH_COOKIE_NAME = os.getenv("REFRESH_COOKIE_NAME", "ccure_refresh_token")
-REFRESH_COOKIE_PATH = os.getenv("REFRESH_COOKIE_PATH", "/auth")
+REFRESH_COOKIE_PATH = os.getenv("REFRESH_COOKIE_PATH", "/")
 REFRESH_COOKIE_SAMESITE = os.getenv("REFRESH_COOKIE_SAMESITE", "lax")
 REFRESH_COOKIE_SECURE = os.getenv("REFRESH_COOKIE_SECURE", "false").lower() == "true"
 REFRESH_COOKIE_DOMAIN = os.getenv("REFRESH_COOKIE_DOMAIN") or None
@@ -156,6 +156,14 @@ def _clear_refresh_cookie(response: Response) -> None:
         samesite=REFRESH_COOKIE_SAMESITE,
         secure=REFRESH_COOKIE_SECURE,
     )
+    if REFRESH_COOKIE_PATH != "/auth":
+        response.delete_cookie(
+            key=REFRESH_COOKIE_NAME,
+            path="/auth",
+            domain=REFRESH_COOKIE_DOMAIN,
+            samesite=REFRESH_COOKIE_SAMESITE,
+            secure=REFRESH_COOKIE_SECURE,
+        )
 
 
 def _resolve_refresh_token(request: Request, token_from_body: Optional[str]) -> Optional[str]:

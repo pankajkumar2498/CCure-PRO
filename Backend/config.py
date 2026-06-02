@@ -137,14 +137,14 @@ class WebScanConfig:
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────
-    PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "30000"))       # ms
+    PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "60000"))       # ms
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
     MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
-    CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "5"))
+    CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "3"))
 
     # ── Scan Limits ───────────────────────────────────────────────────────────
     WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))           # 4 hours
-    SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "10"))            # req/sec
+    SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "5"))            # req/sec
     STEALTH_RATE_LIMIT: int = int(os.getenv("WEB_STEALTH_RATE_LIMIT", "2"))       # req/sec (WAF mode)
     MAX_RESPONSE_BODY_SIZE: int = int(os.getenv("MAX_RESPONSE_BODY_SIZE", "10240"))  # 10KB evidence cap
 

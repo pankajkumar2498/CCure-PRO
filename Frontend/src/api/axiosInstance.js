@@ -28,6 +28,12 @@ const notifyRefreshSubscribers = (newAccessToken) => {
 };
 
 const forceLogout = (reason = "expired") => {
+  if (reason === "expired" && window.location.pathname !== "/login") {
+    sessionStorage.setItem(
+      "postLoginRedirect",
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
+    );
+  }
   clearAuthTokens();
   window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason } }));
 };

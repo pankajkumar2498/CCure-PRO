@@ -73,16 +73,27 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     else:
         return {}
 
-    if not payload.get("data"):
+    if not payload.get("data") and not (key == "credentialed" and payload.get("report")):
         return {}
 
     payload_data = payload.get("data", [])
+    if key == "credentialed" and payload.get("report"):
+        payload_data = {"credentialed": {"report": payload.get("report")}}
+
     payload_meta = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
+    
+    hosts_list = []
+    if isinstance(payload_data, list):
+        hosts_list = payload_data
+    elif isinstance(payload_data, dict) and "credentialed" in payload_data:
+        rep = payload_data["credentialed"].get("report", {})
+        hosts_list = [{"ip_address": rep.get("target")}] if rep.get("target") else []
+
     context_meta = resolve_report_context(
         db,
         str(scan.created_by),
         scan_id=scan.id,
-        hosts=payload_data if isinstance(payload_data, list) else [],
+        hosts=hosts_list,
     )
 
     result = {

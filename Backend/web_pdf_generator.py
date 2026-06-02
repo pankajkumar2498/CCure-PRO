@@ -34,6 +34,7 @@ from reportlab.platypus          import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, PageBreak, KeepTogether
 )
+from scan_helpers import make_pdf_cve_paragraph
 
 # ── Reuse brand palette from pdf_generator ────────────────────────────────────
 
@@ -369,7 +370,7 @@ def _build_web_scan_story(scan: dict, findings: list, assets: list, styles: dict
             if f.get("owasp_category"):
                 detail_rows.append(("OWASP", f["owasp_category"]))
             if f.get("cve_id"):
-                detail_rows.append(("CVE", f["cve_id"]))
+                detail_rows.append(("CVE", make_pdf_cve_paragraph(f["cve_id"], styles["value"])))
             if f.get("compliance_tags"):
                 tags = f["compliance_tags"]
                 if isinstance(tags, list):
@@ -474,7 +475,10 @@ class WebScanReportGenerator:
         path = gen.generate(scan_dict, findings_list, assets_list)
     """
 
-    def __init__(self, output_dir: str = "reports"):
+    def __init__(self, output_dir: Optional[str] = None):
+        if output_dir is None or output_dir == "reports":
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            output_dir = os.path.join(backend_dir, "reports")
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         self.styles = _build_styles()

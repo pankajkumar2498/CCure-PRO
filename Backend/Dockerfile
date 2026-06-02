@@ -70,6 +70,9 @@ RUN mkdir -p /opt/wordlists && \
     wget -q "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" \
     -O /opt/wordlists/common.txt || echo "Wordlist download skipped"
 
+# Install sqlmap
+RUN apt-get update && apt-get install -y --no-install-recommends sqlmap && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # ── Final Runtime Image ────────────────────────────────────────────────────
 FROM base AS runtime
 
@@ -85,6 +88,16 @@ COPY --from=tools /usr/local/bin/nuclei /usr/local/bin/nuclei
 COPY --from=tools /usr/local/bin/subfinder /usr/local/bin/subfinder
 COPY --from=tools /usr/local/bin/ffuf /usr/local/bin/ffuf
 COPY --from=tools /opt/wordlists /opt/wordlists
+
+# Install Playwright browsers in the runtime image (critical for ccure-web-worker)
+# We set the path explicitly so they are installed where the app expects them
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN mkdir -p /opt/playwright && chown ccure:ccure /opt/playwright
+# Switch to ccure user to install playwright browsers to ensure correct ownership
+USER ccure
+RUN /home/ccure/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright install skipped"
+USER root
+
 # Copy nuclei templates (may be in /root or /home)
 COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
 

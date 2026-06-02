@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentUser,
   login as loginRequest,
@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [authState, setAuthState] = useState("loading");
   const [authMessage, setAuthMessage] = useState("");
+  const lastSessionRefreshRef = useRef(0);
 
   const syncCurrentUser = useCallback(async () => {
     const hadAccessToken = !!authSession.getAccessToken();
@@ -38,6 +39,7 @@ export const AuthProvider = ({ children }) => {
       setUser(currentUser);
       setAuthState("authenticated");
       setAuthMessage("");
+      lastSessionRefreshRef.current = Date.now();
       return currentUser;
     } catch (error) {
       authSession.clear();
@@ -78,11 +80,43 @@ export const AuthProvider = ({ children }) => {
     };
   }, [syncCurrentUser]);
 
+  useEffect(() => {
+    if (authState !== "authenticated") return undefined;
+
+    const refreshActiveSession = async () => {
+      try {
+        await refreshSession();
+        lastSessionRefreshRef.current = Date.now();
+      } catch {
+        // The axios interceptor owns forced logout when the refresh token is no longer valid.
+      }
+    };
+
+    const intervalId = window.setInterval(refreshActiveSession, 20 * 60 * 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const elapsedSinceRefresh = Date.now() - lastSessionRefreshRef.current;
+        if (elapsedSinceRefresh > 10 * 60 * 1000) {
+          refreshActiveSession();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authState]);
+
   const login = useCallback(async (credentials) => {
     const data = await loginRequest(credentials);
     setUser(data.user || null);
     setAuthState("authenticated");
     setAuthMessage("");
+    lastSessionRefreshRef.current = Date.now();
     return data;
   }, []);
 
@@ -91,6 +125,7 @@ export const AuthProvider = ({ children }) => {
     setUser(data.user || null);
     setAuthState("authenticated");
     setAuthMessage("");
+    lastSessionRefreshRef.current = Date.now();
     return data;
   }, []);
 

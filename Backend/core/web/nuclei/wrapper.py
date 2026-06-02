@@ -201,7 +201,7 @@ class NucleiWrapper(ToolWrapper):
         args.extend(["-o", output_file])
 
         try:
-            self._run_subprocess(args, timeout=120)
+            self._run_subprocess(args, timeout=300)
 
             with open(output_file, "r", encoding="utf-8", errors="replace") as f:
                 raw_output = f.read()
@@ -240,7 +240,7 @@ class NucleiWrapper(ToolWrapper):
         ]
 
         try:
-            result = self._run_subprocess(args, timeout=60)
+            result = self._run_subprocess(args, timeout=120)
             findings = self._parse_jsonl(result.stdout or "")
             for f in findings:
                 info = f.get("info", {})

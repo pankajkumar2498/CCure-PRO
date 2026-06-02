@@ -4,30 +4,37 @@ routers/web_scans.py
 FastAPI endpoints for Web Application Scanning (DAST).
 
 Endpoints:
-  POST   /api/web-scans                     — Start a new web scan
-  GET    /api/web-scans                     — List web scans (org-scoped)
-  GET    /api/web-scans/{id}                — Get scan details + progress
-  GET    /api/web-scans/{id}/findings       — Get findings (filterable)
-  GET    /api/web-scans/{id}/assets         — Get discovered endpoints
-  POST   /api/web-scans/{id}/cancel         — Cancel a running scan
-  PATCH  /api/web-scans/{id}/findings/{fid} — Triage a finding
+  POST   /web-scans                     — Start a new web scan
+  GET    /web-scans                     — List web scans (org-scoped)
+  GET    /web-scans/{id}                — Get scan details + progress
+  GET    /web-scans/{id}/findings       — Get findings (filterable)
+  GET    /web-scans/{id}/assets         — Get discovered endpoints
+  POST   /web-scans/{id}/cancel         — Cancel a running scan
+  PATCH  /web-scans/{id}/findings/{fid} — Triage a finding
 """
 
+import asyncio
+import json
 import logging
+from datetime import timedelta
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user
-from db.base import get_db, gen_web_scan_id, utcnow
+from auth.jwt_handler import decode_token
+from db.base import SessionLocal, get_db, gen_web_scan_id, utcnow
 from db.models import User
 from db.models.web_scans import WebScan, WebAsset, WebFinding
 
 log = logging.getLogger("ccure.routers.web_scans")
 
-router = APIRouter(prefix="/api/web-scans", tags=["Web Scans"])
+router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
+
+IDEMPOTENCY_WINDOW = timedelta(minutes=10)
+ACTIVE_SCAN_STATUSES = {"queued", "pending", "running"}
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -80,6 +87,7 @@ class TriageFindingRequest(BaseModel):
 @router.post("", status_code=201)
 def start_web_scan(
     body: StartWebScanRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -99,7 +107,12 @@ def start_web_scan(
         )
 
     # ── Validate target URL ──────────────────────────────────────────────
+    # Robust cleanup: strip whitespace, hidden Unicode, and non-printable chars
+    import re
     target_url = body.target_url.strip()
+    # Remove control characters and non-printable Unicode (like zero-width space/joiner)
+    target_url = re.sub(r'[\x00-\x1F\x7F-\x9F\u2000-\u200F\u2028-\u202F\u205F-\u206F]', '', target_url)
+    
     if not target_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=422, detail="target_url must start with http:// or https://")
 
@@ -110,9 +123,30 @@ def start_web_scan(
         raise HTTPException(status_code=422, detail="Invalid target URL — could not extract domain")
 
     # ── Org context ──────────────────────────────────────────────────────
+    idempotency_key = _normalize_idempotency_key(idempotency_key)
+
     from db.models.rbac import Organization
     org = db.query(Organization).filter(Organization.id == str(user.org_id)).first()
     org_slug = org.slug if org else str(user.org_id)
+
+    duplicate_scan = _find_duplicate_web_scan(
+        db=db,
+        user=user,
+        target_url=target_url,
+        idempotency_key=idempotency_key,
+    )
+    if duplicate_scan:
+        log.info(
+            "Web scan duplicate launch collapsed: %s -> %s (user=%s)",
+            target_url,
+            duplicate_scan.id,
+            user.id,
+        )
+        return _start_scan_response(
+            duplicate_scan,
+            duplicate=True,
+            message="Existing web scan returned for this launch request.",
+        )
 
     # ── Create WebScan record ────────────────────────────────────────────
     scan_id = gen_web_scan_id(org_slug)
@@ -126,7 +160,14 @@ def start_web_scan(
         target_domain=target_domain,
         scan_scope=body.scan_scope.model_dump(),
         auth_config=body.auth.model_dump(exclude_none=True),
-        options=body.options.model_dump(),
+        options={
+            **body.options.model_dump(),
+            "_launch": {
+                "idempotency_key": idempotency_key,
+                "requested_by": str(user.id),
+                "requested_at": utcnow().isoformat(),
+            },
+        },
         rate_limit=body.options.rate_limit,
         authorization_confirmed=True,
         status="queued",
@@ -152,16 +193,13 @@ def start_web_scan(
         "status": "running",
     })
     db.commit()
+    db.refresh(scan)
 
-    log.info("Web scan started: %s → %s (user=%s)", scan_id, target_url, user.id)
-
-    return {
-        "success": True,
-        "web_scan_id": scan_id,
-        "task_id": task.id,
-        "target_url": target_url,
-        "message": "Web scan queued successfully. Pipeline: RECON → CRAWL → DETECT → AUDIT",
-    }
+    return _start_scan_response(
+        scan,
+        task_id=task.id,
+        message="Web scan queued successfully. Pipeline: RECON -> CRAWL -> DETECT -> AUDIT",
+    )
 
 
 @router.get("")
@@ -457,7 +495,7 @@ def download_web_scan_report(
     assets_list = [_asset_detail(a) for a in assets]
 
     from web_pdf_generator import WebScanReportGenerator
-    gen = WebScanReportGenerator(output_dir="reports")
+    gen = WebScanReportGenerator()
     pdf_path = gen.generate(scan_dict, findings_list, assets_list)
 
     if not os.path.exists(pdf_path):
@@ -471,6 +509,190 @@ def download_web_scan_report(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+@router.websocket("/{scan_id}/progress")
+async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
+    """
+    Real-time web scan progress over Redis PubSub.
+    Sends a DB snapshot first so clients do not miss early progress events.
+    """
+    try:
+        current_user = _get_websocket_user(websocket)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+
+    db = SessionLocal()
+    try:
+        scan = db.query(WebScan).filter(
+            WebScan.id == scan_id,
+            WebScan.org_id == str(current_user.org_id),
+            WebScan.is_deleted == False,
+        ).first()
+
+        if not scan:
+            await websocket.send_json({
+                "scan_id": scan_id,
+                "scan_type": "web",
+                "phase": "not_found",
+                "progress": {"status": "not_found", "message": "Web scan not found."},
+            })
+            await websocket.close(code=1008)
+            return
+
+        await websocket.send_json({
+            "scan_id": scan_id,
+            "scan_type": "web",
+            "phase": scan.pipeline_phase,
+            "progress": _web_scan_progress_snapshot(scan),
+            "scan": _scan_summary(scan),
+        })
+    finally:
+        db.close()
+
+    from core.redis_client import redis_client
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe(f"scan_progress:{scan_id}")
+
+    try:
+        while True:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.5)
+            if message:
+                payload = json.loads(message["data"])
+                await websocket.send_json(payload)
+            else:
+                await asyncio.sleep(0.05)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        log.error("Web scan progress WebSocket error for %s: %s", scan_id, exc)
+        await websocket.close(code=1011)
+    finally:
+        await pubsub.unsubscribe(f"scan_progress:{scan_id}")
+        await pubsub.close()
+
+
+def _get_websocket_user(websocket: WebSocket) -> User:
+    ticket = websocket.query_params.get("ticket")
+    if not ticket:
+        raise HTTPException(status_code=401, detail="Authentication ticket is required.")
+
+    payload = decode_token(ticket)
+    if not payload or payload.get("type") != "ticket" or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication.")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == str(payload["sub"])).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+        if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
+            raise HTTPException(status_code=403, detail="User is not active.")
+        db.expunge(user)
+        return user
+    finally:
+        db.close()
+
+
+def _web_scan_progress_snapshot(scan: WebScan) -> Dict:
+    status = str(scan.status or "unknown").lower()
+    phase = scan.pipeline_phase or "queued"
+    phase_order = {"queued": 0, "recon": 1, "crawl": 2, "detect": 3, "audit": 4, "complete": 4}
+    percentage = 100 if status in {"complete", "completed"} else min(95, phase_order.get(phase, 0) * 25)
+
+    return {
+        "status": scan.status,
+        "phase": phase,
+        "percentage": percentage,
+        "message": _web_scan_status_message(scan),
+        "total_endpoints": scan.total_endpoints,
+        "total_findings": scan.total_findings,
+        "updated_at": _iso(scan.updated_at),
+    }
+
+
+def _web_scan_status_message(scan: WebScan) -> str:
+    phase = str(scan.pipeline_phase or "queued").lower()
+    if scan.status == "queued":
+        return "Scan queued and waiting for a worker."
+    if scan.status == "failed":
+        return scan.failure_reason or "Scan failed."
+    if scan.status == "cancelled":
+        return "Scan cancelled."
+    if scan.status in {"complete", "completed"}:
+        return "Web application scan complete."
+    messages = {
+        "recon": "Running reconnaissance.",
+        "crawl": "Crawling web application.",
+        "detect": "Scanning for vulnerabilities.",
+        "audit": "Running final audit and report preparation.",
+    }
+    return messages.get(phase, "Initializing web scan.")
+
+
+def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:128]
+
+
+def _find_duplicate_web_scan(
+    db: Session,
+    user: User,
+    target_url: str,
+    idempotency_key: Optional[str],
+) -> Optional[WebScan]:
+    cutoff = utcnow() - IDEMPOTENCY_WINDOW
+    recent_scans = (
+        db.query(WebScan)
+        .filter(
+            WebScan.org_id == str(user.org_id),
+            WebScan.created_by == user.id,
+            WebScan.target_url == target_url,
+            WebScan.is_deleted == False,
+            WebScan.created_at >= cutoff,
+        )
+        .order_by(WebScan.created_at.desc())
+        .limit(25)
+        .all()
+    )
+
+    if idempotency_key:
+        for scan in recent_scans:
+            launch = (scan.options or {}).get("_launch", {})
+            if launch.get("idempotency_key") == idempotency_key:
+                return scan
+
+    for scan in recent_scans:
+        if str(scan.status or "").lower() in ACTIVE_SCAN_STATUSES:
+            return scan
+
+    return None
+
+
+def _start_scan_response(
+    scan: WebScan,
+    task_id: Optional[str] = None,
+    duplicate: bool = False,
+    message: str = "Web scan queued successfully.",
+) -> Dict:
+    return {
+        "success": True,
+        "duplicate": duplicate,
+        "id": scan.id,
+        "web_scan_id": scan.id,
+        "task_id": task_id or scan.current_task_id,
+        "target_url": scan.target_url,
+        "status": scan.status,
+        "pipeline_phase": scan.pipeline_phase,
+        "message": message,
+    }
+
 
 def _get_scan_or_404(db: Session, scan_id: str, user: User) -> WebScan:
     scan = db.query(WebScan).filter(

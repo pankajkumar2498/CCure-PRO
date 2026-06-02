@@ -11,7 +11,11 @@ export default function Login() {
   const { login, authMessage } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const from = location.state?.from?.pathname || "/dashboard";
+  const fromLocation = location.state?.from;
+  const savedRedirect = location.state?.reason === "expired" ? sessionStorage.getItem("postLoginRedirect") : "";
+  const from = fromLocation
+    ? `${fromLocation.pathname || "/dashboard"}${fromLocation.search || ""}${fromLocation.hash || ""}`
+    : savedRedirect || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,6 +33,7 @@ export default function Login() {
 
     try {
       await login({ email: email.trim().toLowerCase(), password });
+      sessionStorage.removeItem("postLoginRedirect");
       navigate(from, { replace: true });
     } catch (err) {
       let errMsg = "Login failed. Check your credentials.";

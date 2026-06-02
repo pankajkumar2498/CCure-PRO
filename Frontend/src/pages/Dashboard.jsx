@@ -85,7 +85,7 @@ const TEMPLATES = [
   // Row 2
   { id:"malware",  title:"Malware Scan",               desc:"Perform rapid connectivity checks and network availability tests.",    Icon:IcoShield,   bg:"#fff1f2", color:"#ef4444", mapped:false },
   { id:"active",   title:"Active Directory Scan",      desc:"Analyze network traffic suitable for any size infrastructure.",        Icon:IcoDir,      bg:"#eff6ff", color:"#3b82f6", mapped:false },
-  { id:"webapp",   title:"Web Application Scanning",   desc:"Configure custom parameters using advanced rule settings.",            Icon:IcoWebApp,   bg:"#fff7ed", color:"#f97316", mapped:false },
+  { id:"webapp",   title:"Web Application Scanning",   desc:"Configure custom parameters using advanced rule settings.",            Icon:IcoWebApp,   bg:"#fff7ed", color:"#f97316", mapped:true, directRoute: "/web-scans/dashboard" },
   { id:"cloud",    title:"Cloud Scanning",             desc:"Verify that code meets quality standards and best practices.",         Icon:IcoCloud,    bg:"#f0f9ff", color:"#0ea5e9", mapped:false },
 
   // Row 3

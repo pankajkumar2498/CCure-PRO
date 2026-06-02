@@ -24,6 +24,7 @@ import {
   removeAssetTag, addAssetNote,
 } from "../api/assets";
 import { updateFindingStatus } from "../api/findings";
+import CVELink from "../components/common/CVELink";
 import "../styles/dashboard.css";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -264,7 +265,7 @@ function VulnerabilitiesTab({ assetId, canUpdate }) {
               )}
               {!loading && findings.map((f) => (
                 <tr key={f.id}>
-                  <td><span className="cve-id">{f.vuln_id}</span></td>
+                  <td><CVELink cveId={f.vuln_id} /></td>
                   <td style={{ maxWidth: 240 }}>
                     <div style={{ fontSize: "0.72rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
                     {f.in_kev && <span style={{ fontSize: "0.58rem", fontWeight: 700, background: "rgba(239,68,68,0.12)", color: "#f87171", padding: "1px 4px", borderRadius: 3 }}>KEV</span>}

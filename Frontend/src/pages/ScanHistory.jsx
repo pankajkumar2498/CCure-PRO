@@ -21,6 +21,7 @@ import { buildPhasePayload, SCAN_PIPELINES } from "../config/scanConfig";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
 import { can, denyMessage } from "../auth/permissions";
+import CVELink from "../components/common/CVELink";
 
 /* ── constants ── */
 const STATUS_STYLE = {
@@ -389,7 +390,7 @@ function DetailModal({ scanId, onClose }) {
                             const cve = normCve(rawCve);
                             return (
                               <div key={i} className="cve-row">
-                                <span className="cve-id">{cve.cve_id}</span>
+                                <CVELink cveId={cve.cve_id} />
                                 <span className="cve-sev">{cve.severity}</span>
                                 <span className="cve-desc">{cve.description}</span>
                               </div>

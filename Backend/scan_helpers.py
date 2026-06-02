@@ -291,3 +291,30 @@ def finish_progress(scan_id: str, db: Session = None):
             _db_finish_progress(session, scan_id)
         finally:
             session.close()
+
+
+def get_cve_redirection_url(cve_id: str) -> str:
+    """Return the authoritative NIST NVD URL for a CVE ID."""
+    clean_id = str(cve_id).strip()
+    return f"https://nvd.nist.gov/vuln/detail/{clean_id.upper()}"
+
+
+def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":
+    """
+    Constructs a ReportLab Paragraph containing a secure, clickable hyperlink
+    directing the user to the NVD reference page for the specified CVE.
+    """
+    from reportlab.platypus import Paragraph
+    import html
+
+    clean_id = str(cve_id).strip()
+    # Guard check: if it's not a valid CVE ID, return plain styled Paragraph
+    if not clean_id.upper().startswith("CVE-"):
+        return Paragraph(html.escape(clean_id), style)
+
+    safe_id = html.escape(clean_id.upper())
+    url = f"https://nvd.nist.gov/vuln/detail/{safe_id}"
+    
+    # Branded blue link markup
+    link_html = f'<a href="{url}" color="#0066CC"><b>{safe_id}</b></a>'
+    return Paragraph(link_html, style)

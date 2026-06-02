@@ -12,6 +12,7 @@ import logging
 import os
 import socket
 
+from typing import Optional
 from core.constants import SCAPY_AVAILABLE, PDF_AVAILABLE
 from core.models import ScanIntensity, DiscoveryScanType
 from core.utils import PrivilegeManager
@@ -34,13 +35,17 @@ class HostDiscoveryAPI:
     def __init__(
         self,
         silent:       bool  = True,
-        reports_dir:  str   = "reports",
+        reports_dir:  Optional[str] = None,
         intensity:    str   = "normal",
         rate_limit:   float = 200.0,
         stealth_mode: bool  = False,
     ):
         if not SCAPY_AVAILABLE:
             log.warning("Scapy not found. Raw-socket scans disabled. TCP-only mode.")
+
+        if reports_dir is None or reports_dir == "reports":
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            reports_dir = os.path.join(backend_dir, "reports")
 
         self._orch = ScanOrchestrator(
             silent       = silent,

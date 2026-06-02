@@ -34,10 +34,38 @@ export default function ExportPanel({
   const fileNo = scanNo ?? Date.now();
 
   // Detect if this is Phase 1 (discovery), Phase 2 (port scan), or Phase 3 (vulnerability) data
-  const isPhase3 = results.length > 0 && !!results[0].host_risk_level;
-  const isPhase2 = results.length > 0 && !results[0].host_risk_level && !!results[0].open_ports;
-  const isPhase1 = results.length > 0 && !isPhase2 && !isPhase3;
+  const isPhase3 = pipelineMode
+    ? (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit")
+    : (results.length > 0 && !!results[0].host_risk_level && results[0].host_risk_score !== undefined && results[0].host_risk_score > 0);
+  const isPhase2 = pipelineMode
+    ? (pipelineMode === "asset")
+    : (results.length > 0 && !isPhase3 && !!results[0].open_ports);
+  const isPhase1 = pipelineMode
+    ? (pipelineMode === "basic")
+    : (results.length > 0 && !isPhase2 && !isPhase3);
   const isFinalAdvancedExport = (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && isPhase3 && phase1Hosts.length > 0 && phase2Results.length > 0;
+
+  // Resolve descriptive scan type for client-side downloads
+  const getDescriptiveScanType = () => {
+    if (isPhase3 || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") {
+      return "vulnerability_audit";
+    }
+    if (isPhase2 || pipelineMode === "asset") {
+      return "asset_discovery";
+    }
+    return "host_discovery";
+  };
+
+  // Generate descriptive timestamped filename
+  const getExportFilename = (ext) => {
+    const scanType = getDescriptiveScanType();
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateStr = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}`;
+    const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    
+    return `${scanType}_scan-${fileNo}_${dateStr}_${timeStr}.${ext}`;
+  };
 
   /* ── JSON ─────────────────────────────────────────────────────────── */
   const downloadJSON = () => {
@@ -66,7 +94,7 @@ export default function ExportPanel({
       },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    trigger(blob, `ccure-scan-${fileNo}.json`);
+    trigger(blob, getExportFilename("json"));
   };
 
   /* ── CSV ──────────────────────────────────────────────────────────── */
@@ -184,7 +212,7 @@ export default function ExportPanel({
     }
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    trigger(new Blob([csv], { type: "text/csv" }), `ccure-scan-${fileNo}.csv`);
+    trigger(new Blob([csv], { type: "text/csv" }), getExportFilename("csv"));
   };
 
   /* ── PDF (backend) ────────────────────────────────────────────────── */
@@ -225,6 +253,13 @@ export default function ExportPanel({
       setTimeout(() => setPdfError(""), 3000);
       return;
     }
+    console.log("copySummary debug:", {
+      pipelineMode,
+      isPhase1,
+      isPhase2,
+      isPhase3,
+      results: results.slice(0, 1)
+    });
     let lines;
     if (isPhase1) {
       // Phase 1 summary
@@ -249,21 +284,53 @@ export default function ExportPanel({
         }),
       ];
     } else if (isPhase2) {
+      // Calculate risk counts across ports/services for Phase 2 (Asset Discovery)
+      let criticalPorts = 0;
+      let highPorts = 0;
+      let mediumPorts = 0;
+      let lowPorts = 0;
+      let totalCves = 0;
+
+      results.filter(h => h.is_active).forEach(h => {
+        const ports = h.open_ports || [];
+        const udps = h.udp_services || [];
+        [...ports, ...udps].forEach(p => {
+          const r = (p.risk || "Info").toLowerCase();
+          if (r === "critical") criticalPorts++;
+          else if (r === "high") highPorts++;
+          else if (r === "medium") mediumPorts++;
+          else if (r === "low") lowPorts++;
+        });
+        totalCves += (h.cves || []).length;
+      });
+
       lines = [
-        "CCure Audit PRO — Port Scan Results",
+        "CCure Audit PRO — Asset Discovery Report",
         `Target:   ${target}`,
         `Scan No:  ${displayNo}`,
         `Date:     ${new Date().toLocaleString()}`,
         "",
         "── Summary ──────────────────────────",
-        `Hosts scanned: ${summary?.total_hosts ?? "—"}`,
+        `Total hosts:           ${summary?.total_hosts ?? "—"}`,
         `Hosts with open ports: ${summary?.hosts_with_ports ?? "—"}`,
-        `Duration: ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
+        `Critical risks:        ${criticalPorts}`,
+        `High risk:             ${highPorts}`,
+        `Medium risk:           ${mediumPorts}`,
+        `Low risk:              ${lowPorts}`,
+        `Total CVEs:            ${totalCves}`,
+        `Duration:              ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
         "",
-        "── Open Hosts ───────────────────────",
-        ...results.filter(h => h.is_active).map(h =>
-          `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} Type: ${(h.device_category || "—").padEnd(12)} Open ports: ${(h.open_ports || []).map(p => `${p.port}/${p.service}`).join(", ")}`
-        ),
+        "── Host Risk Overview ────────────────",
+        ...results.filter(h => h.is_active).map(h => {
+          const ports = h.open_ports || [];
+          const udps = h.udp_services || [];
+          const hostCrit = ports.filter(p => (p.risk || "").toLowerCase() === "critical").length + udps.filter(p => (p.risk || "").toLowerCase() === "critical").length;
+          const hostHigh = ports.filter(p => (p.risk || "").toLowerCase() === "high").length + udps.filter(p => (p.risk || "").toLowerCase() === "high").length;
+          const cveCount = (h.cves || []).length;
+          const portsStr = ports.map(p => `${p.port}/${p.service}`).join(", ");
+          
+          return `${h.ip_address.padEnd(16)} ${(h.device_category || h.snmp_device_type || "Info").padEnd(10)} CVEs: ${cveCount.toString().padEnd(4)} Critical: ${hostCrit.toString().padEnd(2)} High: ${hostHigh.toString().padEnd(2)} Ports: ${portsStr}`;
+        }),
       ];
     } else {
       // Phase 3 summary

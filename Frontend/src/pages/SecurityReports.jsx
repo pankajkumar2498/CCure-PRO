@@ -388,8 +388,9 @@ export default function SecurityReports() {
 }
 
 function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteReports }) {
-  const typeLabel = REPORT_TYPE_LABELS[scan.pipeline_mode] || 
-                   (scan.scan_type === "credentialed" ? REPORT_TYPE_LABELS.credentialed : "Security Audit");
+  const typeLabel = (scan.scan_type === "credentialed" ? REPORT_TYPE_LABELS.credentialed : null) || 
+                    REPORT_TYPE_LABELS[scan.pipeline_mode] || 
+                    "Security Audit";
 
   return (
     <div className="report-card">

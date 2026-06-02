@@ -766,6 +766,7 @@ def get_scan_activity(
             "id":            s.id,
             "scan_name":     s.scan_name,
             "target_str":    s.target_str,
+            "scan_type":     s.scan_type,
             "pipeline_mode": s.pipeline_mode,
             "intensity":     s.intensity,
             "status":        s.status,

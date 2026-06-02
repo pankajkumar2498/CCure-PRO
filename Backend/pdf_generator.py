@@ -37,6 +37,7 @@ from reportlab.platypus                  import (
     HRFlowable, PageBreak, KeepTogether
 )
 from reportlab.platypus.flowables        import Flowable
+from scan_helpers                        import make_pdf_cve_paragraph
 
 
 # -----------------------------------------------------------------------------
@@ -176,7 +177,8 @@ def _draw_header_footer(canvas, doc):
 
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#AACCEE"))
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10 * mm, "Host Discovery Report")
+    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10 * mm,
+                           getattr(doc, "report_running_header", "Security Audit Report"))
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm,
                            f"Generated: {report_ts}")
 
@@ -351,6 +353,42 @@ def _resolve_pdf_cve_description(cve: dict) -> str:
 
 def _section_header(title: str, styles: dict) -> Paragraph:
     return Paragraph(f"&nbsp; {title}", styles["section"])
+
+
+def _resolve_report_title(scan_type: str) -> str:
+    """Resolve user-friendly executive report titles based on scan type."""
+    mapping = {
+        "host_discovery": "Host Discovery Scan Report",
+        "asset_discovery": "Asset Discovery Scan Report",
+        "phase_selective_scan": "Vulnerability Audit Report",
+        "advanced": "Vulnerability Audit Report",
+        "vulnerability_audit": "Vulnerability Audit Report",
+        "credentialed_scan": "SSH Credentialed Audit Report",
+        "credentialed": "SSH Credentialed Audit Report",
+        "phase1": "Host Discovery Scan Report",
+        "phase2": "Asset Discovery Scan Report",
+        "phase3": "Vulnerability Audit Report",
+    }
+    token = str(scan_type or "").strip().lower()
+    return mapping.get(token, "Security Audit Report")
+
+
+def _resolve_running_header(scan_type: str) -> str:
+    """Resolve running page header labels based on scan type."""
+    mapping = {
+        "host_discovery": "Host Discovery Report",
+        "asset_discovery": "Asset Discovery Report",
+        "phase_selective_scan": "Vulnerability Audit Report",
+        "advanced": "Vulnerability Audit Report",
+        "vulnerability_audit": "Vulnerability Audit Report",
+        "credentialed_scan": "SSH Credentialed Audit Report",
+        "credentialed": "SSH Credentialed Audit Report",
+        "phase1": "Host Discovery Report",
+        "phase2": "Asset Discovery Report",
+        "phase3": "Vulnerability Audit Report",
+    }
+    token = str(scan_type or "").strip().lower()
+    return mapping.get(token, "Security Audit Report")
 
 
 def _get_scan_type_label(scan_type: str) -> str:
@@ -655,7 +693,7 @@ def _build_json_story(result: dict, scan_type: str,
 
     # -- Cover / Title --------------------------------------------------------
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("Host Discovery Scan Report", styles["title"]))
+    story.append(Paragraph(_resolve_report_title(scan_type), styles["title"]))
     story.append(Paragraph("Network Visibility &amp; Audit Summary", styles["subtitle"]))
     story.append(Spacer(1, 3 * mm))
     story.append(HRFlowable(width=W, thickness=1.5,
@@ -985,7 +1023,7 @@ def _build_json_story(result: dict, scan_type: str,
                 "SevCell", fontName="Helvetica-Bold", fontSize=8, textColor=sev_color))
             cve_table_data.append([
                 Paragraph(str(ip),    styles["value"]),
-                Paragraph(str(cve_id), styles["value"]),
+                make_pdf_cve_paragraph(cve_id, styles["value"]),
                 sev_p,
                 Paragraph(str(pkg),   styles["value"]),
                 Paragraph(str(desc),  styles["value"]),
@@ -1055,7 +1093,7 @@ def _xml_to_story(xml_str: str, scan_type: str,
 
     # Title
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("Host Discovery Scan Report", styles["title"]))
+    story.append(Paragraph(_resolve_report_title(scan_type), styles["title"]))
     story.append(Paragraph("Raw XML Data Export", styles["subtitle"]))
     story.append(Spacer(1, 3 * mm))
     story.append(HRFlowable(width=W, thickness=1.5,
@@ -1136,7 +1174,10 @@ class ScanReportGenerator:
         output_dir: Directory where PDFs are saved (created if missing).
     """
 
-    def __init__(self, output_dir: str = "reports"):
+    def __init__(self, output_dir: Optional[str] = None):
+        if output_dir is None or output_dir == "reports":
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            output_dir = os.path.join(backend_dir, "reports")
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         self.styles = _build_styles()
@@ -1147,13 +1188,32 @@ class ScanReportGenerator:
     def _make_filename(scan_type: str, fmt: str) -> str:
         """
         Pattern: {scan_type}_{YYYY-MM-DD}_{HH-MM-SS}_{FMT}.pdf
-        e.g.    scan_host_2026-03-27_14-30-05_JSON.pdf
+        e.g.    host_discovery_01-06-2026_14-28-58_JSON.pdf
         """
+        # Map raw technical keys to standard descriptive conventions
+        mapping = {
+            "phase1": "host_discovery",
+            "host_discovery": "host_discovery",
+            
+            "phase2": "asset_discovery",
+            "asset_discovery": "asset_discovery",
+            
+            "phase3": "vulnerability_audit",
+            "phase_selective_scan": "vulnerability_audit",
+            "advanced": "vulnerability_audit",
+            "vulnerability_audit": "vulnerability_audit",
+            
+            "credentialed": "credentialed",
+            "credentialed_scan": "credentialed",
+        }
+        
+        normalized_type = str(scan_type or "").strip().lower()
+        mapped_type = mapping.get(normalized_type, normalized_type)
+        
         now   = datetime.now()
-        # date  = now.strftime("%Y-%m-%d")
         date  = now.strftime("%d-%m-%Y")
         time_ = now.strftime("%H-%M-%S")
-        safe  = scan_type.lower().replace(" ", "_")
+        safe  = mapped_type.replace(" ", "_")
         return f"{safe}_{date}_{time_}_{fmt}.pdf"
 
     # -- JSON PDF --------------------------------------------------------------
@@ -1170,9 +1230,9 @@ class ScanReportGenerator:
             rightMargin  = MARGIN,
             topMargin    = 28 * mm,   # space for header
             bottomMargin = 18 * mm,   # space for footer
-            title        = "CDAC Host Discovery Report",
+            title        = _resolve_report_title(scan_type),
             author       = "CDAC Bangalore RTSG Team ",
-            subject      = f"Host Discovery: {scan_type}",
+            subject      = f"Security Audit: {scan_type}",
         )
 
         # Attach timestamp to doc so _draw_header_footer can access it
@@ -1182,6 +1242,8 @@ class ScanReportGenerator:
         except Exception:
             doc.scan_timestamp = timestamp
 
+        doc.report_running_header = _resolve_running_header(scan_type)
+
         story = _build_json_story(result, scan_type, timestamp, self.styles)
         doc.build(story, onFirstPage=_draw_header_footer,
                          onLaterPages=_draw_header_footer)
@@ -1190,7 +1252,7 @@ class ScanReportGenerator:
     # -- XML PDF ---------------------------------------------------------------
 
     def _generate_xml_pdf(self, result: dict, scan_type: str,
-                          timestamp: str) -> str:
+                           timestamp: str) -> str:
         filename = os.path.join(
             self.output_dir, self._make_filename(scan_type, "XML"))
 
@@ -1205,9 +1267,9 @@ class ScanReportGenerator:
             rightMargin  = MARGIN,
             topMargin    = 28 * mm,
             bottomMargin = 18 * mm,
-            title        = "CDAC Host Discovery Report - XML Format",
+            title        = f"{_resolve_report_title(scan_type)} - XML Format",
             author       = "CDAC Bangalore RTSG",
-            subject      = f"Host Discovery: {scan_type}",
+            subject      = f"Security Audit: {scan_type}",
         )
 
         # Attach timestamp to doc so _draw_header_footer can access it
@@ -1216,6 +1278,8 @@ class ScanReportGenerator:
             doc.scan_timestamp = dt.strftime("%d %b %Y  %H:%M:%S")
         except Exception:
             doc.scan_timestamp = timestamp
+
+        doc.report_running_header = _resolve_running_header(scan_type)
 
         story = _xml_to_story(xml_str, scan_type, timestamp, self.styles, result)
         doc.build(story, onFirstPage=_draw_header_footer,

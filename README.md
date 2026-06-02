@@ -12,10 +12,12 @@ pip install -r requirements.txt
 
 
 
-# Run Project
-.\start_host_scan_stack.ps1
+# Run all containers/Project
+.\scripts\start_host_scan_stack.ps1
 
-docker compose down
+# Stop all containers
+ .\scripts\stop_host_scan_stack.ps1
+
 
 # For Running Worker for Nmap Scans locally
 .\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker 

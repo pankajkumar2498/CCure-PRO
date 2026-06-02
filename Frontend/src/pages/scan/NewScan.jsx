@@ -386,24 +386,132 @@ export default function NewScan() {
     });
   }, [wsPrefix]);
 
+  /* ── Strict Target Validation Helpers ──────────────────────────────────────── */
+
+  const isValidIPv4 = (ip) => {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(p => {
+      const num = Number(p);
+      return p !== '' && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p;
+    });
+  };
+
+  const isValidIPv6 = (ip) => {
+    if (!ip.includes(':')) return false;
+    return /^[0-9a-fA-F:]+$/.test(ip) && !ip.includes(':::') && (ip.match(/:/g) || []).length <= 7;
+  };
+
+  const isValidCIDR = (cidr) => {
+    if (!cidr.includes('/')) return false;
+    const parts = cidr.split('/');
+    if (parts.length !== 2) return false;
+    const [ip, maskStr] = parts;
+    const mask = Number(maskStr);
+    if (isNaN(mask) || maskStr === '') return false;
+    if (isValidIPv4(ip)) return mask >= 0 && mask <= 32;
+    if (isValidIPv6(ip)) return mask >= 0 && mask <= 128;
+    return false;
+  };
+
+  const ipToLong = (ip) => {
+    return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0;
+  };
+
+  const isValidRange = (range) => {
+    if (!range.includes('-')) return false;
+    const parts = range.split('-');
+    if (parts.length !== 2) return false;
+    const [start, end] = parts.map(p => p.trim());
+    if (!isValidIPv4(start)) return false;
+    if (isValidIPv4(end)) {
+      return ipToLong(start) <= ipToLong(end);
+    } else if (/^\d+$/.test(end)) {
+      const endOctet = Number(end);
+      const startParts = start.split('.');
+      const startOctet = Number(startParts[3]);
+      return endOctet >= startOctet && endOctet <= 255;
+    }
+    return false;
+  };
+
+  const isValidHostname = (host) => {
+    if (host.length > 253) return false;
+    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(host);
+  };
+
   const detectTargetType = (val) => {
-    if (val.includes('/')) return 'CIDR';
-    if (val.includes('-')) { const parts = val.split('-'); if (parts.length === 2) { const left = parts[0].trim(), right = parts[1].trim(); if (/^[0-9.]+$/.test(left) && left.includes('.') && /^[0-9.]+$/.test(right)) return 'Range'; } }
-    if (/^[0-9a-fA-F:.]+$/.test(val) && (val.includes('.') || val.includes(':'))) return 'IP';
-    return 'Hostname';
+    if (isValidCIDR(val)) return 'CIDR';
+    if (isValidRange(val)) return 'Range';
+    if (isValidIPv4(val) || isValidIPv6(val)) return 'IP';
+    if (isValidHostname(val)) return 'Hostname';
+    return null;
   };
 
   const processFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      const rawTokens = event.target.result.replace(/\s*-\s*/g, "-").split(/[,\s;]+/).map(t => t.trim()).filter(Boolean);
-      const valid = [], inv = [], seen = new Set(); let dups = 0;
-      rawTokens.forEach(t => { const clean = t.replace(/[^\w.\-:/\[\]]/g, ""); if (!clean || clean.toLowerCase() === "target") return; if (seen.has(clean)) { dups++; return; } if (/^[\w.\-:/\[\]]+$/.test(clean)) { valid.push({ value: clean, type: detectTargetType(clean) }); seen.add(clean); } else inv.push(clean); });
-      if (valid.length > 0) { setTarget(valid.map(r => r.value).join(", ")); setParsedTargets(valid); setUploadSummary({ total: valid.length + inv.length + dups, valid: valid.length, invalid: inv.length, invalidEntries: inv, duplicates: dups, show: true }); }
-      else setError("No valid targets found.");
+      const rawTokens = event.target.result
+        .replace(/\s*-\s*/g, "-")
+        .split(/[,\s;]+/)
+        .map(t => t.trim())
+        .filter(Boolean);
+
+      const valid = [];
+      const inv = [];
+      const seen = new Set();
+      let dups = 0;
+
+      rawTokens.forEach(t => {
+        const clean = t.replace(/[^\w.\-:/\[\]]/g, "");
+        if (!clean || clean.toLowerCase() === "target" || clean.toLowerCase() === "ipaddress") return;
+        if (seen.has(clean)) { dups++; return; }
+
+        const type = detectTargetType(clean);
+        if (type) {
+          valid.push({ value: clean, type });
+          seen.add(clean);
+        } else {
+          inv.push(clean);
+        }
+      });
+
+      if (valid.length > 0) {
+        setTarget(valid.map(r => r.value).join(", "));
+        setParsedTargets(valid);
+        setUploadSummary({
+          total: valid.length + inv.length + dups,
+          valid: valid.length,
+          invalid: inv.length,
+          invalidEntries: inv,
+          duplicates: dups,
+          show: true
+        });
+      } else {
+        setError("No valid targets found.");
+      }
     };
     reader.readAsText(file);
+  };
+ 
+  const handleRemoveTarget = (indexToRemove) => {
+    const updatedParsed = parsedTargets.filter((_, idx) => idx !== indexToRemove);
+    setParsedTargets(updatedParsed);
+
+    const updatedTargetString = updatedParsed.map(pt => pt.value).join(", ");
+    setTarget(updatedTargetString);
+
+    setUploadSummary(prev => {
+      const newValid = Math.max(0, prev.valid - 1);
+      const newTotal = Math.max(0, prev.total - 1);
+      return {
+        ...prev,
+        total: newTotal,
+        valid: newValid,
+        show: newValid > 0
+      };
+    });
   };
 
   const handleScan = async () => {
@@ -520,7 +628,111 @@ export default function NewScan() {
                 <button className="ns-browse-btn" onClick={() => fileInputRef.current.click()} disabled={loading || !canExecuteScans}>📂 Upload File</button>
               </div>
             </div>
-            {uploadSummary.show && <div className="ns-upload-summary"><div className="ns-summary-content"><div className="ns-summary-main"><span>Total: <strong>{uploadSummary.total}</strong></span><span className="ns-stat--valid">Valid: <strong>{uploadSummary.valid}</strong></span></div></div><button className="ns-summary-close" onClick={() => { setUploadSummary(p => ({ ...p, show: false })); setParsedTargets([]); }}>×</button></div>}
+            {uploadSummary.show && (
+              <div className="ns-upload-summary">
+                <div className="ns-summary-content">
+                  <div className="ns-summary-main">
+                    <span className="ns-summary-stat">Total: <strong>{uploadSummary.total}</strong></span>
+                    <span className="ns-summary-stat ns-stat--valid">Valid: <strong>{uploadSummary.valid}</strong></span>
+                    {uploadSummary.invalid > 0 && (
+                      <span className="ns-summary-stat ns-stat--invalid">Invalid: <strong>{uploadSummary.invalid}</strong></span>
+                    )}
+                    {uploadSummary.duplicates > 0 && (
+                      <span className="ns-summary-stat ns-stat--dup">Duplicates: <strong>{uploadSummary.duplicates}</strong></span>
+                    )}
+                  </div>
+                  {uploadSummary.invalid > 0 && (
+                    <p className="ns-summary-hint">
+                      Some invalid entries were ignored.
+                      <button 
+                        className="ns-export-btn"
+                        onClick={() => {
+                          const blob = new Blob([uploadSummary.invalidEntries.join("\n")], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "invalid_targets.txt";
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        📥 Export Invalid
+                      </button>
+                    </p>
+                  )}
+                </div>
+                <button className="ns-summary-close" onClick={() => { setUploadSummary(p => ({ ...p, show: false })); setParsedTargets([]); }}>×</button>
+              </div>
+            )}
+
+            {/* Target List Preview Grid */}
+            {parsedTargets.length > 0 && (
+              <div className="ns-preview-section">
+                <div className="ns-preview-header">
+                  <span className="ns-label">Target List Preview</span>
+                  <button 
+                    className="ns-preview-clear" 
+                    onClick={() => {
+                      setParsedTargets([]);
+                      setTarget("");
+                      setUploadSummary(p => ({ ...p, show: false }));
+                    }}
+                  >
+                    Clear Targets
+                  </button>
+                </div>
+                <div className="ns-preview-table-wrap">
+                  <table className="ns-preview-table">
+                    <thead>
+                      <tr>
+                        <th className="ns-pt-idx">#</th>
+                        <th>Target Value</th>
+                        <th>Type</th>
+                        <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedTargets.map((pt, idx) => (
+                        <tr key={idx}>
+                          <td className="ns-pt-idx">{idx + 1}</td>
+                          <td className="ns-pt-val">{pt.value}</td>
+                          <td>
+                            <span className={`ns-pt-badge ns-pt-badge--${pt.type.toLowerCase()}`}>
+                              {pt.type}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right", paddingRight: "10px" }}>
+                            <button 
+                              type="button"
+                              onClick={() => handleRemoveTarget(idx)}
+                              title="Remove target"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "#ef4444",
+                                cursor: "pointer",
+                                fontSize: "0.78rem",
+                                fontWeight: "600",
+                                padding: "4px 10px",
+                                borderRadius: "6px",
+                                transition: "all 0.15s ease",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)"; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                            >
+                              ❌ Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             <div className="ns-chips"><span className="ns-chips-label">Quick:</span>{QUICK_TARGETS.map(t => <button key={t} className="ns-chip" onClick={() => setTarget(t)} disabled={loading || !canExecuteScans}>{t}</button>)}</div>
           </div>
           {pipelineMode === "asset" && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Discovery Intensity</div><div className="ns-intensity-grid">{DISCOVERY_INTENSITIES.map(di => <button key={di.value} className={`ns-int-card ${discoveryIntensity === di.value ? "ns-int-card--active" : ""}`} onClick={() => setDiscoveryIntensity(di.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{di.icon}</span><span className="ns-int-name">{di.label}</span></button>)}</div></div></>)}

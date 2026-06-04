@@ -174,6 +174,76 @@ def _confidence_to_percent(value) -> Optional[int]:
     except ValueError:
         return {"high": 90, "medium": 60, "low": 30, "n/a": None}.get(label)
 
+
+# OS guess → (os_family, manufacturer) lookup table.
+# Keys are lowercase substrings; evaluated in order, first match wins.
+_OS_GUESS_META: list = [
+    # (substring_match,       os_family,       manufacturer)
+    ("windows server 2022",   "Windows Server", "Microsoft Corporation"),
+    ("windows server 2019",   "Windows Server", "Microsoft Corporation"),
+    ("windows server 2016",   "Windows Server", "Microsoft Corporation"),
+    ("windows server 2012",   "Windows Server", "Microsoft Corporation"),
+    ("windows server 2008",   "Windows Server", "Microsoft Corporation"),
+    ("windows server",        "Windows Server", "Microsoft Corporation"),
+    ("windows 11",            "Windows",        "Microsoft Corporation"),
+    ("windows 10",            "Windows",        "Microsoft Corporation"),
+    ("windows 8",             "Windows",        "Microsoft Corporation"),
+    ("windows 7",             "Windows",        "Microsoft Corporation"),
+    ("windows xp",            "Windows",        "Microsoft Corporation"),   
+    ("windows vista",         "Windows",        "Microsoft Corporation"),
+    ("windows (winrm)",       "Windows",        "Microsoft Corporation"),
+    ("windows (iis)",         "Windows",        "Microsoft Corporation"),
+    ("windows (service fingerprint)", "Windows", "Microsoft Corporation"),
+    ("windows",               "Windows",        "Microsoft Corporation"),
+    ("ubuntu",                "Linux",          "Canonical"),
+    ("debian",                "Linux",          "Debian Project"),
+    ("centos",                "Linux",          "Red Hat / CentOS"),
+    ("red hat",               "Linux",          "Red Hat"),
+    ("rhel",                  "Linux",          "Red Hat"),
+    ("rocky linux",           "Linux",          "Rocky Enterprise Software Foundation"),
+    ("alma linux",            "Linux",          "AlmaLinux OS Foundation"),
+    ("alpine",                "Linux",          "Alpine Linux"),
+    ("arch linux",            "Linux",          "Arch Linux"),
+    ("fedora",                "Linux",          "Red Hat"),
+    ("suse",                  "Linux",          "SUSE"),
+    ("opensuse",              "Linux",          "SUSE"),
+    ("linux/unix (service fingerprint)", "Linux", None),
+    ("linux",                 "Linux",          None),
+    ("freebsd",               "BSD",            "FreeBSD Project"),
+    ("openbsd",               "BSD",            "OpenBSD Project"),
+    ("netbsd",                "BSD",            "NetBSD Foundation"),
+    ("bsd/macos (service fingerprint)", "macOS / BSD", None),
+    ("macos",                 "macOS",          "Apple"),
+    ("mac os x",              "macOS",          "Apple"),
+    ("darwin",                "macOS",          "Apple"),
+    ("cisco ios",             "Cisco IOS",      "Cisco"),
+    ("cisco",                 "Cisco IOS",      "Cisco"),
+    ("junos",                 "Junos OS",       "Juniper Networks"),
+    ("fortios",               "FortiOS",        "Fortinet"),
+    ("routeros",              "RouterOS",       "MikroTik"),
+    ("network appliance (service fingerprint)", "Network OS", None),
+]
+
+
+def _derive_os_meta(os_guess: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """
+    Derive (os_family, manufacturer) from a raw os_guess string.
+
+    Returns (None, None) if os_guess is empty or "Unknown".
+    This is intentionally conservative — only returns values when confidence
+    is high enough to avoid misleading the analyst.
+    """
+    if not os_guess or str(os_guess).strip().lower() in ("unknown", "n/a", ""):
+        return None, None
+    needle = os_guess.lower()
+    for substr, family, manufacturer in _OS_GUESS_META:
+        if substr in needle:
+            return family, manufacturer
+    # Generic fallback: if the guess text is non-trivial but unrecognized,
+    # still don't make up a manufacturer — just skip both.
+    return None, None
+
+
 def _to_int(value) -> Optional[int]:
     if value in (None, ""):
         return None
@@ -435,7 +505,10 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
             db.execute(insert(Service).values(
                 id=service_id, asset_id=asset_id, scan_id=scan_id,
                 port=int(port_num), protocol=proto, state="open",
-                service_name=p.get("service") or "unknown", banner=p.get("banner"),
+                service_name=p.get("service") or "unknown",
+                service_product=p.get("product") or None,
+                service_version=p.get("version") or None,
+                banner=p.get("banner"),
                 created_at=utcnow(), updated_at=utcnow()
             ).on_conflict_do_update(
                 index_elements=["id"],
@@ -448,18 +521,41 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
                         func.nullif(p.get("service") or "", ""),
                         Service.service_name,
                     ),
+                    # Preserve richer data on conflict — never overwrite a non-null value with null
+                    "service_product": func.coalesce(
+                        Service.service_product,
+                        func.nullif(p.get("product") or "", ""),
+                    ),
+                    "service_version": func.coalesce(
+                        Service.service_version,
+                        func.nullif(p.get("version") or "", ""),
+                    ),
                     "banner": func.coalesce(Service.banner, func.nullif(p.get("banner") or "", "")),
                 }
             ))
 
         os_match = host.get("os_match") or host.get("os_guess")
-        _set_asset_field(db, asset, scan_id, "hostname", host.get("hostname"), "asset_discovery", max_len=255)
-        _set_asset_field(db, asset, scan_id, "fqdn", fqdn, "asset_discovery", max_len=512)
-        _set_asset_field(db, asset, scan_id, "dns_name", dns_name, "asset_discovery", max_len=512)
-        _set_asset_field(db, asset, scan_id, "netbios_name", netbios_name, "asset_discovery", max_len=255)
-        _set_asset_field(db, asset, scan_id, "os_name", os_match, "asset_discovery", max_len=255)
-        _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "asset_discovery")
-        _set_asset_field(db, asset, scan_id, "discovery_method", "asset_discovery", "asset_discovery", max_len=50)
+
+        # Derive os_family and manufacturer from the os_guess string so that the
+        # Asset Registry can display these fields after an Asset Discovery scan,
+        # without waiting for a full Vulnerability Audit or Credentialed scan.
+        derived_os_family, derived_manufacturer = _derive_os_meta(os_match)
+
+        # Prefer explicitly provided values (e.g. from Nmap -O) over derived ones.
+        os_family_val     = host.get("os_family")   or derived_os_family
+        manufacturer_val  = host.get("manufacturer") or derived_manufacturer
+        device_category   = host.get("device_category")
+
+        _set_asset_field(db, asset, scan_id, "hostname",         host.get("hostname"),   "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "fqdn",             fqdn,                   "asset_discovery", max_len=512)
+        _set_asset_field(db, asset, scan_id, "dns_name",         dns_name,               "asset_discovery", max_len=512)
+        _set_asset_field(db, asset, scan_id, "netbios_name",     netbios_name,           "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_name",          os_match,               "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "os_family",        os_family_val,          "asset_discovery", max_len=100)
+        _set_asset_field(db, asset, scan_id, "manufacturer",     manufacturer_val,       "asset_discovery", max_len=255)
+        _set_asset_field(db, asset, scan_id, "device_category",  device_category,        "asset_discovery", max_len=100)
+        _set_asset_field(db, asset, scan_id, "os_confidence",    _confidence_to_percent(host.get("os_confidence")), "asset_discovery")
+        _set_asset_field(db, asset, scan_id, "discovery_method", "asset_discovery",      "asset_discovery", max_len=50)
 
     db.commit()
 

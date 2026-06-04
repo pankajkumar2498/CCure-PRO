@@ -7,7 +7,9 @@
     - Downloads Nginx stable for Windows from nginx.org
     - Extracts to C:\nginx
     - Copies the custom CCure proxy config
-    - Starts Nginx
+    - Downloads NSSM and registers Nginx as a Windows Service
+    - Service auto-starts on boot and auto-restarts on crash
+    - Stops and disables IIS to prevent port 80 conflicts on reboot
 
 .NOTES
     Run this script with Administrator privileges.
@@ -35,17 +37,32 @@ if (-not $isAdmin) {
     exit 1
 }
 
-# ── Check port 80 ─────────────────────────────────────────────────────────────
-Write-Step "Checking if port 80 is available..."
+# ── Stop IIS if it is holding port 80 ────────────────────────────────────────
+Write-Step "Checking for IIS on port 80..."
+$iisRunning = Get-Service -Name "W3SVC" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" }
+if ($iisRunning) {
+    Write-Warn "IIS (W3SVC) is running and likely owns port 80. Stopping it now..."
+    Stop-Service -Name "WAS"  -Force -ErrorAction SilentlyContinue
+    Stop-Service -Name "W3SVC" -Force -ErrorAction SilentlyContinue
+    # Disable IIS autostart so it does not reclaim port 80 on next reboot
+    Set-Service -Name "W3SVC" -StartupType Disabled -ErrorAction SilentlyContinue
+    Set-Service -Name "WAS"   -StartupType Disabled -ErrorAction SilentlyContinue
+    Write-Ok "IIS stopped and disabled from autostart."
+} else {
+    Write-Ok "IIS is not running."
+}
+
+# ── Final port 80 check ───────────────────────────────────────────────────────
+Start-Sleep -Seconds 1
 $port80 = Get-NetTCPConnection -LocalPort 80 -ErrorAction SilentlyContinue
 if ($port80) {
-    $pid80 = $port80 | Select-Object -First 1 -ExpandProperty OwningProcess
+    $pid80  = $port80 | Select-Object -First 1 -ExpandProperty OwningProcess
     $proc80 = Get-Process -Id $pid80 -ErrorAction SilentlyContinue
-    Write-Err "Port 80 is already in use by: $($proc80.ProcessName) (PID: $pid80)"
-    Write-Host "Stop that process first, or change the listen port in nginx-host.conf."
+    Write-Err "Port 80 is still in use by: $($proc80.ProcessName) (PID: $pid80)"
+    Write-Host "Please stop that process manually, then re-run this script."
     exit 1
 }
-Write-Ok "Port 80 is available"
+Write-Ok "Port 80 is available."
 
 # ── Download Nginx ────────────────────────────────────────────────────────────
 $zipUrl  = "http://nginx.org/download/nginx-$NginxVersion.zip"
@@ -103,37 +120,110 @@ if (-not (Test-Path $logsDir)) {
     New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
 }
 
-# ── Test config ───────────────────────────────────────────────────────────────
+# ── Test Nginx config ─────────────────────────────────────────────────────────
 Write-Step "Testing Nginx configuration..."
-try {
-    $oldPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    $testResult = & "$InstallDir\nginx.exe" -t -p "$InstallDir" -c "$configDest" 2>&1
-} finally {
-    $ErrorActionPreference = $oldPreference
-}
+$oldPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$testResult = & "$InstallDir\nginx.exe" -t -p "$InstallDir" -c "$configDest" 2>&1
+$ErrorActionPreference = $oldPreference
 
 if ($LASTEXITCODE -ne 0) {
     Write-Err "Nginx config test failed:"
     Write-Host $testResult
     exit 1
 }
-Write-Ok "Config test passed"
+Write-Ok "Config test passed."
 
-# ── Start Nginx ───────────────────────────────────────────────────────────────
-Write-Step "Starting Nginx..."
-Push-Location $InstallDir
-Start-Process -FilePath "$InstallDir\nginx.exe" -WindowStyle Hidden
-Pop-Location
+# ── Download NSSM (Windows Service Manager) ───────────────────────────────────
+# NSSM allows any .exe to run as a proper Windows Service with auto-restart
+# and boot-time start — the standard approach on Windows servers.
+$nssmDir  = "C:\nssm"
+$nssmExe  = "$nssmDir\nssm.exe"
+$nssmUrl  = "https://nssm.cc/release/nssm-2.24.zip"
+$nssmZip  = "$env:TEMP\nssm.zip"
 
-Start-Sleep -Seconds 2
-
-# Verify it's running
-$nginxProc = Get-Process -Name "nginx" -ErrorAction SilentlyContinue
-if ($nginxProc) {
-    Write-Ok "Nginx is running (PID: $($nginxProc.Id -join ', '))"
+if (Test-Path $nssmExe) {
+    Write-Warn "NSSM already present at $nssmExe. Skipping download."
 } else {
-    Write-Err "Nginx failed to start. Check $InstallDir\logs\error.log"
+    Write-Step "Downloading NSSM (Windows Service Manager)..."
+    try {
+        Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
+    } catch {
+        Write-Err "Failed to download NSSM: $_"
+        Write-Host "Download manually from https://nssm.cc and place nssm.exe at $nssmExe"
+        exit 1
+    }
+
+    $nssmExtract = "$env:TEMP\nssm-extract"
+    if (Test-Path $nssmExtract) { Remove-Item $nssmExtract -Recurse -Force }
+    Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
+
+    # NSSM zip contains win32 and win64 folders — prefer win64
+    $nssmBin = Get-ChildItem "$nssmExtract" -Recurse -Filter "nssm.exe" |
+               Where-Object { $_.FullName -match "win64" } |
+               Select-Object -First 1
+
+    if (-not $nssmBin) {
+        $nssmBin = Get-ChildItem "$nssmExtract" -Recurse -Filter "nssm.exe" | Select-Object -First 1
+    }
+
+    if (-not (Test-Path $nssmDir)) { New-Item -ItemType Directory -Path $nssmDir | Out-Null }
+    Copy-Item $nssmBin.FullName $nssmExe -Force
+    Remove-Item $nssmZip -Force -ErrorAction SilentlyContinue
+    Remove-Item $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Ok "NSSM installed to $nssmExe"
+}
+
+# ── Register Nginx as a Windows Service via NSSM ─────────────────────────────
+$serviceName = "CCureNginx"
+
+Write-Step "Registering Nginx as Windows Service '$serviceName'..."
+
+# Remove existing service registration for a clean reinstall
+$existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($existingService) {
+    Write-Warn "Service '$serviceName' already exists. Removing old registration..."
+    if ($existingService.Status -eq "Running") {
+        & $nssmExe stop $serviceName | Out-Null
+        Start-Sleep -Seconds 2
+    }
+    & $nssmExe remove $serviceName confirm | Out-Null
+    Write-Ok "Old service removed."
+}
+
+# Register Nginx as a service
+& $nssmExe install $serviceName "$InstallDir\nginx.exe"
+
+# Set working directory — Nginx resolves relative paths (logs/, conf/) from here
+& $nssmExe set $serviceName AppDirectory $InstallDir
+
+# Crash recovery: restart Nginx automatically after a 3-second delay
+& $nssmExe set $serviceName AppExit Default Restart
+& $nssmExe set $serviceName AppRestartDelay 3000
+
+# Route stdout/stderr to log files for diagnostics
+& $nssmExe set $serviceName AppStdout "$InstallDir\logs\service-stdout.log"
+& $nssmExe set $serviceName AppStderr "$InstallDir\logs\service-stderr.log"
+& $nssmExe set $serviceName AppRotateFiles 1
+& $nssmExe set $serviceName AppRotateOnline 1
+& $nssmExe set $serviceName AppRotateBytes 10485760   # Rotate at 10 MB
+
+# Ensure the service starts automatically at boot
+Set-Service -Name $serviceName -StartupType Automatic
+
+Write-Ok "Nginx registered as Windows Service '$serviceName' (Startup: Automatic)."
+
+# ── Start the service ─────────────────────────────────────────────────────────
+Write-Step "Starting $serviceName service..."
+Start-Service -Name $serviceName
+Start-Sleep -Seconds 3
+
+$svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($svc -and $svc.Status -eq "Running") {
+    Write-Ok "Service is RUNNING."
+} else {
+    Write-Err "Service failed to start. Check logs at $InstallDir\logs\"
+    Write-Host "Run: Get-EventLog -LogName System -Source $serviceName -Newest 5"
     exit 1
 }
 

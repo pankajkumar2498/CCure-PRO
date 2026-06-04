@@ -326,6 +326,7 @@ class PortEngine:
                 state   = nmap_port.state,
                 banner  = banner[:500] if banner else "",
                 version = version_str[:200] if version_str else "",
+                product = nmap_port.product[:255] if nmap_port.product else "",
                 risk    = meta.get("risk", "Info"),
                 cves    = cves,
             )
@@ -346,7 +347,7 @@ class PortEngine:
 
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 
-    async def _scan_fallback(self, hosts: List[Dict]) -> None:
+    async def _scan_fallback(self, hosts: List[Dict], scan_id: Optional[str] = None) -> None:
         """
         Original async TCP connect + Scapy UDP implementation.
         Used when nmap is not installed.

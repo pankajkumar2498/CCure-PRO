@@ -308,8 +308,8 @@ class DiscoveryEngine:
                 )
                 self.stealth_mode = True
 
-        # ── Post-scan enrichment (AGGRESSIVE profile only) ─────────────────
-        if self.profile.enrichment and self.has_priv and SCAPY_AVAILABLE:
+        # ── Post-scan enrichment (when enrichment enabled in profile) ──────
+        if self.profile.enrichment:
             active_ips = [ip for ip, r in results.items() if r["is_active"]]
             if active_ips:
                 await self._enrich_active(active_ips, results)
@@ -425,12 +425,6 @@ class DiscoveryEngine:
                         timeout=max(timeout, 2.0),
                     )
 
-        # ── NetBIOS — Any active host (useful for Windows computer names/MACs) ───
-        if Technique.NBNS in techniques:
-            active_nbns = [ip for ip in batch if results[ip]["is_active"]]
-            if active_nbns:
-                await asyncio.to_thread(nbns.probe, active_nbns, results)
-
         # ── TCP connect — final fallback for everything still inactive ─────
         if Technique.TCP_CONN in techniques:
             inactive = [ip for ip in batch if not results[ip]["is_active"]]
@@ -443,6 +437,12 @@ class DiscoveryEngine:
                     concurrency=self.concurrency_override or self.rate_limit or self.profile.concurrency,
                     retries=self.profile.retries,
                 )
+
+        # ── NetBIOS — Any active host (useful for Windows computer names/MACs) ───
+        if Technique.NBNS in techniques:
+            active_nbns = [ip for ip in batch if results[ip]["is_active"]]
+            if active_nbns:
+                await asyncio.to_thread(nbns.probe, active_nbns, results)
 
         # ── ARP Cache Fallback — Best effort for MACs without root ─────────
         active_ips = [ip for ip in batch if results[ip]["is_active"]]

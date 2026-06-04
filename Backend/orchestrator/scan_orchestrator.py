@@ -744,6 +744,10 @@ class ScanOrchestrator:
                         if existing["port"] == nmap_port.port:
                             if nmap_port.full_version:
                                 existing["version"] = nmap_port.full_version[:200]
+                            # Always preserve product separately from service name so
+                            # asset_syncer can write it to the service_product DB column.
+                            if nmap_port.product:
+                                existing["product"] = nmap_port.product[:255]
                             if nmap_port.product and not existing.get("service"):
                                 existing["service"] = nmap_port.product
                             if nmap_port.scripts and not existing.get("banner"):

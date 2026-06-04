@@ -185,7 +185,7 @@ def _sync_credentialed_asset_identity(
     if credentialed_response_time and not _has_value(asset.response_time_ms):
         _set_asset_field(db, asset, scan_id, "response_time_ms", credentialed_response_time, "credentialed")
 
-    _sync_credentialed_services(db, asset, scan_id, stored_report.get("open_ports_credentialed", []))
+    _sync_credentialed_services(db, asset, scan_id, stored_report.get("open_ports_credentialed", []), stored_report.get("packages", []))
 
     # 1. Sync Vulnerabilities (Marks as open/reopened)
     _sync_credentialed_vulnerabilities(db, asset, str(user.org_id), scan_id, cve_list)
@@ -335,7 +335,8 @@ def _port_int(value) -> Optional[int]:
     return None
 
 
-def _sync_credentialed_services(db, asset: Asset, scan_id: str, ports: List[Dict]) -> None:
+def _sync_credentialed_services(db, asset: Asset, scan_id: str, ports: List[Dict], packages: List[Dict] = None) -> None:
+    import re
     # De-duplicate ports by ID
     unique_ports = {}
     for port_data in ports or []:
@@ -349,13 +350,55 @@ def _sync_credentialed_services(db, asset: Asset, scan_id: str, ports: List[Dict
     for service_id, (port, protocol, port_data) in unique_ports.items():
         state = _clean_text(port_data.get("state") or "open").lower()
         state = "open" if state in {"listen", "listening"} else state[:20]
-        service_name = _clean_text(port_data.get("service") or port_data.get("name") or port_data.get("process") or "unknown")[:100]
+        
+        raw_process = port_data.get("process") or ""
+        service_name = _clean_text(port_data.get("service") or port_data.get("name") or raw_process or "unknown")[:100]
         banner = _clean_text(port_data.get("banner")) or None
+
+        # Extract product & version from process name & packages if possible
+        service_product = None
+        service_version = None
+
+        process_name = ""
+        if raw_process:
+            raw_process = raw_process.strip()
+            # Linux ss -tlnp: users:(("sshd",pid=1142,fd=3))
+            match = re.search(r'"([^"]+)"', raw_process)
+            if match:
+                process_name = match.group(1).split("/")[-1].split("\\")[-1]
+            elif not raw_process.upper().startswith("PID "):
+                process_name = raw_process.split("/")[-1].split("\\")[-1].split()[0].strip("(),;\"'")
+
+        if process_name:
+            service_product = process_name
+            proc_lower = process_name.lower()
+            if packages:
+                # 1. Exact match
+                for pkg in packages:
+                    pkg_name = pkg.get("name", "").lower()
+                    if pkg_name == proc_lower:
+                        service_product = pkg.get("name")
+                        service_version = pkg.get("version")
+                        break
+                else:
+                    # 2. Fuzzy match
+                    best_match = None
+                    for pkg in packages:
+                        pkg_name = pkg.get("name", "").lower()
+                        if proc_lower in pkg_name or pkg_name in proc_lower:
+                            if not best_match or len(pkg_name) < len(best_match.get("name", "")):
+                                best_match = pkg
+                    if best_match:
+                        service_product = best_match.get("name")
+                        service_version = best_match.get("version")
 
         svc_insert = insert(Service).values(
             id=service_id, asset_id=asset.id, scan_id=scan_id,
             port=port, protocol=protocol, state=state,
-            service_name=service_name, banner=banner,
+            service_name=service_name,
+            service_product=service_product,
+            service_version=service_version,
+            banner=banner,
             created_at=utcnow(), updated_at=utcnow()
         )
 
@@ -368,6 +411,14 @@ def _sync_credentialed_services(db, asset: Asset, scan_id: str, ports: List[Dict
                     func.nullif(Service.service_name, "unknown"),
                     func.nullif(service_name, ""),
                     Service.service_name,
+                ),
+                "service_product": func.coalesce(
+                    Service.service_product,
+                    func.nullif(service_product or "", ""),
+                ),
+                "service_version": func.coalesce(
+                    Service.service_version,
+                    func.nullif(service_version or "", ""),
                 ),
                 "banner": func.coalesce(Service.banner, func.nullif(banner, "")),
             }

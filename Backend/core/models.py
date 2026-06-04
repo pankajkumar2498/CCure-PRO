@@ -41,6 +41,7 @@ class PortResult:
     state:   str  = "open"
     banner:  str  = ""
     version: str  = ""
+    product: str  = ""
     risk:    str  = "Info"
     cves:    list = field(default_factory=list)
 

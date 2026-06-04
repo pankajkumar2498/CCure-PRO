@@ -937,7 +937,7 @@ export default function Phase3Results() {
               border: "1px solid rgba(255, 109, 0, 0.2)",
               borderRadius: "8px"
             }}>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Critical Issues</span>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Critical Risk Hosts</span>
               <p style={{ margin: "8px 0 0", fontSize: "2rem", fontWeight: 700, color: "#ff6d00" }}>
                 {localVulnResults.filter(h => (h.host_risk_level || "").toLowerCase() === "critical").length}
               </p>

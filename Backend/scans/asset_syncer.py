@@ -501,9 +501,49 @@ def sync_vulnerability_audit(db: Session, scan_id: str, org_id: str, user_id: Op
             if not cve_id: continue
             found_in_this_scan.add(cve_id)
 
+            # Get enriched details from local CVE database if available
+            description = None
+            cvss_vector = None
+            cwe_ids = []
+            references = []
+            published_at = None
+            
+            try:
+                from core.cve_database import get_cve_database
+                cve_db = get_cve_database()
+                if cve_db.db_available:
+                    details = cve_db.get_cve_details(cve_id)
+                    if details:
+                        description = details.get("description")
+                        cvss_vector = details.get("cvss_vector") or details.get("cvss_v3_vector")
+                        cwe_ids = details.get("cwe_ids") or []
+                        
+                        raw_refs = details.get("references") or []
+                        clean_refs = []
+                        for ref in raw_refs:
+                            if isinstance(ref, str):
+                                clean_refs.append(ref)
+                            elif isinstance(ref, dict) and ref.get("url"):
+                                clean_refs.append(ref["url"])
+                        references = clean_refs
+
+                        from datetime import datetime, date
+                        pub = details.get("published")
+                        if isinstance(pub, str):
+                            try:
+                                published_at = datetime.fromisoformat(pub).date()
+                            except ValueError:
+                                pass
+                        elif isinstance(pub, (datetime, date)):
+                            published_at = pub
+            except Exception as e:
+                logger.warning("Failed to lookup CVE details for %s during sync: %s", cve_id, e)
+
             # UPSERT Catalog
             db.execute(insert(VulnerabilityDefinition).values(
                 id=cve_id, cve_id=cve_id, title=v.get("title", f"Vuln {cve_id}"),
+                description=description, cvss_vector=cvss_vector,
+                cwe_ids=cwe_ids, references=references, published_at=published_at,
                 severity=str(v.get("severity", "Medium")).title(), cvss_v3_score=float(v.get("cvss", 0.0)),
                 source="scanner", created_at=utcnow(), updated_at=utcnow()
             ).on_conflict_do_nothing(index_elements=["id"]))

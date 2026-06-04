@@ -17,6 +17,8 @@ export default function AuditLogs() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const [newEventsCount, setNewEventsCount] = useState(0);
+  const [latestLogTime, setLatestLogTime] = useState(null);
 
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -30,6 +32,12 @@ export default function AuditLogs() {
       const data = await listAuditLogs(params);
       setLogs(data.logs);
       setTotal(data.total);
+      if (data.logs && data.logs.length > 0) {
+        setLatestLogTime(data.logs[0].created_at);
+      } else {
+        setLatestLogTime(null);
+      }
+      setNewEventsCount(0);
     } catch (err) {
       setError("Failed to load audit logs.");
       pushToast(err.response?.data?.detail || "Unable to refresh audit logs.", "error");
@@ -43,24 +51,167 @@ export default function AuditLogs() {
     loadData();
   }, [loadData]);
 
+  // Background auto-refresh polling for new events
+  // Background auto-refresh polling for new events
+  useEffect(() => {
+    if (!latestLogTime || loading) return;
+
+    const action = filters.action;
+    const resource_type = filters.resource_type;
+    const status = filters.status;
+
+    const checkNewLogs = async () => {
+      try {
+        const params = {
+          skip: 0,
+          limit: 10,
+          ...(action ? { action } : {}),
+          ...(resource_type ? { resource_type } : {}),
+          ...(status ? { status } : {})
+        };
+        const data = await listAuditLogs(params);
+        if (data && data.logs && data.logs.length > 0) {
+          const newestTime = new Date(latestLogTime).getTime();
+          const newLogs = data.logs.filter(log => new Date(log.created_at).getTime() > newestTime);
+          if (newLogs.length > 0) {
+            setNewEventsCount(newLogs.length);
+          }
+        }
+      } catch (err) {
+        // Silent catch for background polling errors
+      }
+    };
+
+    const interval = setInterval(checkNewLogs, 5000); // Poll every 5 seconds for snappy feedback
+
+    return () => clearInterval(interval);
+  }, [latestLogTime, filters.action, filters.resource_type, filters.status, loading]);
+
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
   };
 
-  const displayResource = (log) => {
-    if (log.resource_type) return log.resource_type;
-    if (String(log.action || "").includes("session")) return "session";
-    if (String(log.action || "").startsWith("user.")) return "user";
-    if (String(log.action || "").startsWith("organization.")) return "organization";
-    if (String(log.action || "").startsWith("scan.")) return "scan";
-    return "event";
+  const renderAffectedObject = (log) => {
+    const resType = String(log.resource_type || "").toLowerCase() ||
+      (String(log.action || "").includes("session") ? "session" :
+        (String(log.action || "").startsWith("user.") ? "user" :
+          (String(log.action || "").startsWith("organization.") ? "organization" :
+            (String(log.action || "").startsWith("scan.") ? "scan" : "event"))));
+
+    let targetVal = log.resource_id || log.user_id;
+    if (!targetVal && log.changes?.session_id) {
+      targetVal = String(log.changes.session_id);
+    }
+    if (!targetVal) {
+      targetVal = log.id || "—";
+    }
+
+    if (resType === "session") {
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14 }}>🎫</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Session #{targetVal}</span>
+        </div>
+      );
+    }
+
+    if (resType === "user") {
+      if (log.user_id && targetVal === log.user_id) {
+        return (
+          <span style={{ color: "var(--text-faint)", fontSize: 13 }}>Self Account</span>
+        );
+      }
+      const cleanTarget = targetVal.split("_").slice(-2, -1)[0] || targetVal;
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14 }}>👤</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>User: {cleanTarget}</span>
+        </div>
+      );
+    }
+
+    if (resType === "scan") {
+      const displayId = targetVal.includes("_") ? targetVal.split("_").pop() : targetVal;
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14 }}>📡</span>
+          <span style={{ fontSize: 13, fontWeight: 500, fontFamily: "monospace" }}>Scan #{displayId.slice(-6)}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 14 }}>📌</span>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{resType.charAt(0).toUpperCase() + resType.slice(1)}</span>
+      </div>
+    );
   };
 
-  const displayTargetId = (log) => {
-    if (log.resource_id) return log.resource_id;
-    if (log.user_id) return log.user_id;
-    if (log.changes?.session_id) return String(log.changes.session_id);
-    return log.id || "unknown";
+  const getActorDisplay = (log) => {
+    if (log.username) return log.username;
+    if (log.user_email) return log.user_email.split("@")[0];
+    if (log.user_id) {
+      const parts = log.user_id.split("_");
+      if (parts.length >= 3) {
+        return parts[parts.length - 2];
+      }
+      return log.user_id;
+    }
+    return "System";
+  };
+
+  const parseUserAgent = (ua) => {
+    if (!ua) return "";
+    const uaStr = String(ua);
+    let os = "Unknown OS";
+    let browser = "Unknown Browser";
+
+    if (uaStr.includes("Windows NT 10.0")) os = "Windows 10/11";
+    else if (uaStr.includes("Windows NT 6.3")) os = "Windows 8.1";
+    else if (uaStr.includes("Windows NT 6.2")) os = "Windows 8";
+    else if (uaStr.includes("Windows NT 6.1")) os = "Windows 7";
+    else if (uaStr.includes("Macintosh") || uaStr.includes("Mac OS")) os = "macOS";
+    else if (uaStr.includes("Linux")) os = "Linux";
+    else if (uaStr.includes("Android")) os = "Android";
+    else if (uaStr.includes("iPhone") || uaStr.includes("iPad")) os = "iOS";
+
+    if (uaStr.includes("Edg/")) browser = "Edge";
+    else if (uaStr.includes("Chrome/") && uaStr.includes("Safari/")) browser = "Chrome";
+    else if (uaStr.includes("Firefox/")) browser = "Firefox";
+    else if (uaStr.includes("Safari/") && !uaStr.includes("Chrome/")) browser = "Safari";
+    else if (uaStr.includes("Trident/") || uaStr.includes("MSIE")) browser = "IE";
+
+    return `${browser} on ${os}`;
+  };
+
+  const getActionDisplay = (action) => {
+    const act = String(action || "").toLowerCase();
+    const config = {
+      "user.login": { label: "Logged In", icon: "🔑", color: "var(--ok)" },
+      "user.login_failed": { label: "Failed Login", icon: "⚠️", color: "var(--danger)" },
+      "user.logout": { label: "Logged Out", icon: "🚪", color: "var(--accent)" },
+      "user.created": { label: "User Created", icon: "👤", color: "var(--primary)" },
+      "user.updated": { label: "User Updated", icon: "⚙️", color: "var(--warning)" },
+      "user.deleted": { label: "User Deleted", icon: "🗑️", color: "var(--danger)" },
+      "scan.created": { label: "Scan Started", icon: "📡", color: "var(--primary)" },
+      "scan.completed": { label: "Scan Completed", icon: "✅", color: "var(--ok)" },
+      "scan.failed": { label: "Scan Failed", icon: "❌", color: "var(--danger)" },
+    };
+
+    if (config[act]) {
+      return config[act];
+    }
+
+    const cleanLabel = act
+      .replace(/_/g, " ")
+      .split(".")
+      .pop()
+      .split(" ")
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+    return { label: cleanLabel, icon: "📌", color: "var(--text)" };
   };
 
   if (loading) {
@@ -81,9 +232,45 @@ export default function AuditLogs() {
             <h2 className="page-title">Audit Logs</h2>
             <p className="page-subtitle">Immutable trail of system activities and user actions</p>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing}>
-            {refreshing ? "Syncing..." : "Sync Logs"}
-          </Button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {newEventsCount > 0 && (
+              <div
+                onClick={() => loadData(true)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "rgba(96, 165, 250, 0.15)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  border: "1px solid rgba(96, 165, 250, 0.3)",
+                  color: "#60a5fa",
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  cursor: "pointer",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
+                  transition: "all 0.2s ease-in-out"
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = "rgba(96, 165, 250, 0.22)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(96, 165, 250, 0.2)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = "rgba(96, 165, 250, 0.15)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.2)";
+                }}
+              >
+                <span>💬 {newEventsCount} new event{newEventsCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+            <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing}>
+              {refreshing ? "Syncing..." : "Sync Logs"}
+            </Button>
+          </div>
         </div>
 
         {error && <div className="alert alert--error">{error}</div>}
@@ -138,55 +325,85 @@ export default function AuditLogs() {
           </FormField>
         </div>
 
+
+
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Timestamp</th>
+                <th>User</th>
                 <th>Action</th>
-                <th>Resource</th>
-                <th>Target ID</th>
+                <th>Target Resource</th>
                 <th>Status</th>
-                <th>IP Address</th>
+                <th>IP &amp; Device</th>
                 <th>Changes</th>
               </tr>
             </thead>
             <tbody>
-              {logs.map(log => (
-                <tr key={log.id}>
-                  <td style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    {formatDateTime(log.created_at)}
-                  </td>
-                  <td><strong style={{ fontSize: 13 }}>{log.action}</strong></td>
-                  <td><span className="method-chip" style={{ fontSize: 11 }}>{displayResource(log)}</span></td>
-                  <td><code style={{ fontSize: 11 }}>{displayTargetId(log)}</code></td>
-                  <td>
-                    <span style={{ 
-                      color: log.status === 'success' ? 'var(--ok)' : 'var(--danger)',
-                      fontSize: 12,
-                      fontWeight: 600
-                    }}>
-                      {log.status.toUpperCase()}
-                    </span>
-                  </td>
-                  <td><code style={{ fontSize: 12 }}>{log.ip_address || "—"}</code></td>
-                  <td>
-                    {log.changes ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedLog(log);
-                          setDetailsOpen(true);
-                        }}
-                      >
-                        View Changes
-                      </Button>
-                    ) : "—"}
-                  </td>
-                </tr>
-              ))}
+              {logs.map(log => {
+                const actInfo = getActionDisplay(log.action);
+                return (
+                  <tr key={log.id}>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                      {formatDateTime(log.created_at)}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{getActorDisplay(log)}</span>
+                        {log.user_email && (
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-faint)" }}>{log.user_email}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 14 }}>{actInfo.icon}</span>
+                        <strong style={{ fontSize: 13, color: actInfo.color }}>
+                          {actInfo.label}
+                        </strong>
+                      </div>
+                    </td>
+                    <td>
+                      {renderAffectedObject(log)}
+                    </td>
+                    <td>
+                      <span style={{
+                        color: log.status === 'success' ? 'var(--ok)' : 'var(--danger)',
+                        fontSize: 12,
+                        fontWeight: 600
+                      }}>
+                        {log.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <code style={{ fontSize: 12, fontWeight: 600 }}>{log.ip_address || "—"}</code>
+                        {log.user_agent && (
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-faint)", marginTop: 2 }}>
+                            {parseUserAgent(log.user_agent)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {log.changes ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedLog(log);
+                            setDetailsOpen(true);
+                          }}
+                        >
+                          View Changes
+                        </Button>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
               {logs.length === 0 && (
                 <tr>
                   <td colSpan="7" style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
@@ -198,9 +415,9 @@ export default function AuditLogs() {
           </table>
         </div>
         {logs.length > 0 && (
-           <p className="muted" style={{ textAlign: "center", marginTop: 16, fontSize: 12 }}>
-             Showing latest {logs.length} of {total} events
-           </p>
+          <p className="muted" style={{ textAlign: "center", marginTop: 16, fontSize: 12 }}>
+            Showing latest {logs.length} of {total} events
+          </p>
         )}
       </div>
 

@@ -399,11 +399,39 @@ def _sync_credentialed_vulnerabilities(
         proof = _clean_text(f"Source_Family:credentialed_package\nPackage: {package_name} {installed_ver}".strip())
         plugin_output = _clean_text(f"{description}\nFixed version: {fixed_ver or 'N/A'}\nPriority: {vuln.get('priority_level') or 'N/A'} ({vuln.get('priority_score') or 0})")
 
+        # Get enriched details from local CVE database if available
+        cvss_vector = vuln.get("cvss_vector")
+        cwe_ids = []
+        references = []
+        
+        try:
+            from core.cve_database import get_cve_database
+            cve_db = get_cve_database()
+            if cve_db.db_available:
+                details = cve_db.get_cve_details(cve_id)
+                if details:
+                    description = details.get("description") or description
+                    cvss_vector = details.get("cvss_vector") or details.get("cvss_v3_vector") or cvss_vector
+                    cwe_ids = details.get("cwe_ids") or []
+                    
+                    raw_refs = details.get("references") or []
+                    clean_refs = []
+                    for ref in raw_refs:
+                        if isinstance(ref, str):
+                            clean_refs.append(ref)
+                        elif isinstance(ref, dict) and ref.get("url"):
+                            clean_refs.append(ref["url"])
+                    references = clean_refs
+        except Exception as e:
+            log.warning("Failed to lookup CVE details for %s during credentialed sync: %s", cve_id, e)
+
         # 1. UPSERT CVE Definition
         cve_insert = insert(VulnerabilityDefinition).values(
             id=cve_id, cve_id=cve_id,
             title=f"{cve_id} in {package_name}" if package_name else f"Vulnerability {cve_id}",
-            description=description, severity=severity, cvss_v3_score=cvss,
+            description=description, cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids, references=references,
+            severity=severity, cvss_v3_score=cvss,
             source="credentialed", created_at=utcnow(), updated_at=utcnow()
         )
         db.execute(cve_insert.on_conflict_do_nothing(index_elements=["id"]))

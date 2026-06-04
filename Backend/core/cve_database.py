@@ -52,7 +52,10 @@ class CVEDatabase:
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            db_path = Path(__file__).parent.parent / "cves.db"
+            # Check db/cves.db first, then fall back to cves.db at the backend root
+            db_path = Path(__file__).parent.parent / "db" / "cves.db"
+            if not db_path.exists():
+                db_path = Path(__file__).parent.parent / "cves.db"
 
         self.db_path = Path(db_path)
         self.sqlite_available = self.db_path.exists()

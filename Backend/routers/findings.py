@@ -176,12 +176,70 @@ def get_finding(
         raise HTTPException(status_code=404, detail="Finding not found")
 
     finding, vuln, asset = row
+
+    # Enrich vulnerability definition details if they are missing in the postgres/main database
+    if not vuln.description or not vuln.cvss_vector:
+        try:
+            from core.cve_database import get_cve_database
+            cve_db = get_cve_database()
+            if cve_db.db_available:
+                details = cve_db.get_cve_details(vuln.id)
+                if details:
+                    vuln.description = details.get("description") or vuln.description
+                    if not vuln.cvss_vector:
+                        vuln.cvss_vector = details.get("cvss_vector") or details.get("cvss_v3_vector")
+                    
+                    if details.get("cwe_ids"):
+                        vuln.cwe_ids = details.get("cwe_ids")
+                    
+                    if details.get("references"):
+                        raw_refs = details.get("references")
+                        clean_refs = []
+                        for ref in raw_refs:
+                            if isinstance(ref, str):
+                                clean_refs.append(ref)
+                            elif isinstance(ref, dict) and ref.get("url"):
+                                clean_refs.append(ref["url"])
+                        vuln.references = clean_refs
+
+                    if details.get("published") and not vuln.published_at:
+                        from datetime import datetime, date
+                        pub = details.get("published")
+                        if isinstance(pub, str):
+                            try:
+                                vuln.published_at = datetime.fromisoformat(pub).date()
+                            except ValueError:
+                                pass
+                        elif isinstance(pub, (datetime, date)):
+                            vuln.published_at = pub
+                    db.commit()
+        except Exception as e:
+            log.warning("Failed to enrich vulnerability details for %s: %s", vuln.id, e)
+            db.rollback()
+
+    # Default values
     is_kev = (vuln.source == "kev")
+    epss_score = 0.0
+    has_exploit = False
+
+    # Fetch live intelligence details (EPSS, KEV, Exploits)
+    try:
+        from core.cve_database import get_cve_database
+        cve_db = get_cve_database()
+        if cve_db.db_available:
+            details = cve_db.get_cve_details(vuln.id)
+            if details:
+                epss_score = float(details.get("epss_score") or 0.0)
+                is_kev = bool(details.get("in_kev") or is_kev)
+                has_exploit = bool(details.get("has_exploit") or has_exploit)
+    except Exception as e:
+        log.warning("Failed to lookup real-time CVE intelligence details for %s: %s", vuln.id, e)
+
     ps, pl = compute_priority(
         cvss_score=float(vuln.cvss_v3_score or 0),
-        epss_score=0.0,
+        epss_score=epss_score,
         in_kev=is_kev,
-        has_exploit=False,
+        has_exploit=has_exploit,
     )
 
     return {
@@ -203,9 +261,9 @@ def get_finding(
             "cvss_v3_score": float(vuln.cvss_v3_score or 0),
             "cvss_v3_vector": vuln.cvss_vector,       # field is cvss_vector not cvss_v3_vector
             "cvss_v2_score": float(vuln.cvss_v2_score or 0) if vuln.cvss_v2_score else None,
-            "epss_score":    0.0,
+            "epss_score":    epss_score,
             "in_kev":        is_kev,
-            "has_exploit":   False,
+            "has_exploit":   has_exploit,
             "priority_score": ps,
             "priority_label": pl,
             "cwe_ids":       vuln.cwe_ids or [],

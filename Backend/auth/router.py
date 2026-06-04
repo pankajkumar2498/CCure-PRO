@@ -261,7 +261,7 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
     )
     db.commit()
 
-    refresh_token = create_refresh_token(user.id, db)
+    refresh_token = create_refresh_token(user.id, db, request=request)
     _set_refresh_cookie(response, refresh_token)
 
     return {
@@ -379,7 +379,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     log_audit_event(db, user, "user.login", "user", str(user.id), request=request, status="success")
     db.commit()
 
-    refresh_token = create_refresh_token(user.id, db)
+    refresh_token = create_refresh_token(user.id, db, request=request)
     _set_refresh_cookie(response, refresh_token)
 
     return {
@@ -505,7 +505,7 @@ def refresh(
             detail="Invalid or expired refresh token",
         )
 
-    token_bundle = refresh_access_token(refresh_token, db)
+    token_bundle = refresh_access_token(refresh_token, db, request=request)
     if not token_bundle:
         _clear_refresh_cookie(response)
         raise HTTPException(

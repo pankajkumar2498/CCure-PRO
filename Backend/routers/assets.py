@@ -58,6 +58,17 @@ def _asset_or_404(db: Session, asset_id: str, org_id: str) -> Asset:
 
 def _serialize_asset(a: Asset) -> dict:
     vc = a.vuln_counts or {}
+
+    # Hide/nullify os_confidence if OS details are blank or unknown
+    has_os = False
+    for val in (a.os_name, a.os_family):
+        if val is not None:
+            normalized = str(val).strip().lower()
+            if normalized not in ("", "unknown", "n/a", "none", "—"):
+                has_os = True
+                break
+    os_confidence = a.os_confidence if has_os else None
+
     return {
         "id":              a.id,
         "ip_address":      str(a.ip_address),
@@ -68,7 +79,7 @@ def _serialize_asset(a: Asset) -> dict:
         "os_name":         a.os_name,
         "os_family":       a.os_family,
         "os_version":      getattr(a, "os_version", None),
-        "os_confidence":   a.os_confidence,
+        "os_confidence":   os_confidence,
         "device_category": a.device_category,
         "vendor":          a.vendor,
         "manufacturer":    getattr(a, "manufacturer", None),
@@ -93,8 +104,6 @@ def _serialize_asset(a: Asset) -> dict:
         "last_seen_at":   a.last_seen_at.isoformat() if a.last_seen_at else None,
     }
 
-
-# ── List Assets ───────────────────────────────────────────────────────────────
 
 @router.get("")
 @router.get("/")

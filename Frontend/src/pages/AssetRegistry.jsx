@@ -232,7 +232,7 @@ export default function AssetRegistry() {
                           </td>
                           <td>
                             <span className="db-tag">{a.os_name || a.os_family || "Unknown"}</span>
-                            {a.os_confidence && (
+                            {(a.os_name || a.os_family) && a.os_confidence && (
                               <div style={{ fontSize: "0.6rem", color: "var(--text-faint)", marginTop: 2 }}>
                                 Conf: {a.os_confidence}%
                               </div>

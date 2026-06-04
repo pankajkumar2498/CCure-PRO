@@ -2,6 +2,7 @@ import logging
 from fastapi import Request
 from sqlalchemy.orm import Session
 from db.models import AuditLog, User
+from core.ip_resolver import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,7 @@ def log_audit_event(
     user_agent = None
     
     if request:
-        if request.client:
-            ip_address = request.client.host
+        ip_address = get_client_ip(request)
         user_agent = request.headers.get("user-agent")
         
     try:

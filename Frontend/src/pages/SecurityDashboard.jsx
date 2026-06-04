@@ -994,7 +994,7 @@ function AuditTimeline({ onNavigate }) {
           <div className="db-scan-body">
             <div className="db-scan-title">{log.action?.replace(/_/g, " ")}</div>
             <div className="db-scan-sub">
-              {log.user_id ? `uid:...${log.user_id.slice(-6)} · ` : ''}{log.resource_type} · {log.status}
+              {log.username ? `${log.username} · ` : (log.user_id ? `uid:...${log.user_id.slice(-6)} · ` : '')}{log.resource_type} · {log.status}
             </div>
           </div>
           <div className="db-scan-time">{ago(log.created_at)}</div>

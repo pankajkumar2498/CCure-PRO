@@ -110,8 +110,8 @@ function OverviewTab({ asset, loading, canUpdate, onToggleManaged }) {
         <InfoRow label="Hostname"      value={asset.hostname} />
         <InfoRow label="FQDN"          value={asset.fqdn} mono />
         <InfoRow label="NetBIOS Name"  value={asset.netbios_name} />
-        <InfoRow label="Subnet"        value={asset.subnet} mono />
-        <InfoRow label="VLAN"          value={asset.vlan_id} />
+        {asset.subnet && <InfoRow label="Subnet"        value={asset.subnet} mono />}
+        {asset.vlan_id !== null && asset.vlan_id !== undefined && <InfoRow label="VLAN"          value={asset.vlan_id} />}
         <InfoRow label="Vendor"        value={asset.vendor} />
         <InfoRow label="Response Time" value={asset.response_time_ms ? `${asset.response_time_ms}ms` : null} />
         <InfoRow label="Discovery"     value={asset.discovery_method} />
@@ -158,7 +158,9 @@ function OverviewTab({ asset, loading, canUpdate, onToggleManaged }) {
           <InfoRow label="OS Name"     value={asset.os_name} />
           <InfoRow label="OS Family"   value={asset.os_family} />
           <InfoRow label="OS Version"  value={asset.os_version} />
-          <InfoRow label="Confidence"  value={asset.os_confidence ? `${asset.os_confidence}%` : null} />
+          {(asset.os_name || asset.os_family) && asset.os_confidence && (
+            <InfoRow label="Confidence"  value={`${asset.os_confidence}%`} />
+          )}
           <InfoRow label="Category"    value={asset.device_category} />
           <InfoRow label="Manufacturer" value={asset.manufacturer} />
         </div>

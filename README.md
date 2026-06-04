@@ -64,7 +64,7 @@ Restart-Computer
 # Wait 10 minutes for restart
 
 # From scanner machine
-.\Verify-WindowsScanReadiness.ps1 -TargetComputer 10.180.5.109
+.\Verify-WindowsScanReadiness.ps1 -TargetComputer 10.180.6.14
 # Check: All tests pass ✓
 
 

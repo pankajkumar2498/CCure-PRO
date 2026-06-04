@@ -11,7 +11,7 @@ RUN npm install
 COPY . .
 
 # Set API URL for Vite build process
-ARG VITE_API_BASE_URL=http://localhost:8000
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build

@@ -172,6 +172,15 @@ class AppConfig:
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # Trusted proxies for client IP resolution (prevents IP spoofing)
+    TRUSTED_PROXIES: list = [
+        ip.strip() for ip in os.getenv(
+            "TRUSTED_PROXIES",
+            "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        ).split(",")
+        if ip.strip()
+    ]
+
     # Database
     DATABASE_URL = DatabaseConfig.DATABASE_URL
     DATABASE_ENGINE_KWARGS = DatabaseConfig.get_engine_kwargs()

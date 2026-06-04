@@ -5,7 +5,7 @@ services:
     container_name: ccure-redis
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     environment:
       - TZ=Asia/Kolkata
     healthcheck:
@@ -42,7 +42,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./Backend/reports:/app/reports
 
@@ -126,13 +126,30 @@ services:
       context: ./Frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: ccure-frontend
     restart: always
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     environment:
       - TZ=Asia/Kolkata
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}
     depends_on:
       - api
+
+  # ── Reverse Proxy Gateway ──────────────────────────────────────────────────
+  # Single entry point: captures real client IPs for audit logging.
+  # Access the application at http://<server-ip>:${GATEWAY_PORT:-80}
+  gateway:
+    image: nginx:stable-alpine
+    container_name: ccure-gateway
+    restart: always
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-80}:80"
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - frontend
+    environment:
+      - TZ=Asia/Kolkata

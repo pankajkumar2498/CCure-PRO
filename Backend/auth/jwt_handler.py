@@ -10,6 +10,8 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from fastapi import Request
+from core.ip_resolver import get_client_ip
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -122,7 +124,7 @@ def create_download_ticket(user_id: str, username: str) -> str:
     )
 
 
-def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
+def create_refresh_token(user_id, db: Optional[Session] = None, request: Optional[Request] = None) -> str:
     """
     Create a new refresh token for a user.
     
@@ -159,6 +161,7 @@ def create_refresh_token(user_id, db: Optional[Session] = None) -> str:
             token_jti=jti,
             token_hash=_hash_token(token),
             expires_at=expires_at,
+            ip_address=get_client_ip(request) if request else None,
         )
         db.add(session_row)
         db.commit()
@@ -234,7 +237,7 @@ def revoke_refresh_token(refresh_token: str, db: Optional[Session] = None) -> bo
             db.close()
 
 
-def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Optional[dict]:
+def refresh_access_token(refresh_token: str, db: Optional[Session] = None, request: Optional[Request] = None) -> Optional[dict]:
     """
     Given a valid refresh token, rotate it and return fresh access/refresh tokens.
     Returns None if the refresh token is invalid, expired, revoked, unknown, or from a deactivated org.
@@ -276,6 +279,7 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None) -> Op
             token_jti=new_jti,
             token_hash=_hash_token(new_refresh_token),
             expires_at=_utcnow() + REFRESH_TOKEN_EXPIRE,
+            ip_address=get_client_ip(request) if request else None,
         )
 
         session_row.revoked_at = _utcnow()

@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime
 
 from auth.rbac import require_permission
@@ -26,7 +26,7 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("audit", "read"))
 ):
-    query = db.query(AuditLog)
+    query = db.query(AuditLog).options(joinedload(AuditLog.user))
 
     if not _is_superadmin(current_user):
         query = (
@@ -58,6 +58,9 @@ def list_audit_logs(
             {
                 "id": str(log.id),
                 "user_id": str(log.user_id) if log.user_id else None,
+                "username": log.user.username if log.user else None,
+                "user_email": log.user.email if log.user else None,
+                "user_agent": log.user_agent,
                 "action": log.action,
                 "resource_type": log.resource_type,
                 "resource_id": log.resource_id,

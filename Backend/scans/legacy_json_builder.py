@@ -19,7 +19,7 @@ from db.models.findings import Service, AssetVulnerability, VulnerabilityDefinit
 from db.models.scans import Scan, ScanPhase
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).absolute().parents[1]
 
 from typing import Optional, List, Tuple, Dict
 

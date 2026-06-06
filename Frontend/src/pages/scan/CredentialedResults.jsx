@@ -602,6 +602,8 @@ export default function CredentialedResults() {
             <KV k="Version" v={system_info.os_version_id || "—"} />
             <KV k="Kernel" v={system_info.kernel_version || "—"} mono />
             <KV k="Hostname" v={system_info.hostname || "—"} mono />
+            <KV k="Manufacturer" v={system_info.manufacturer || "—"} />
+            <KV k="Model" v={system_info.hardware_model || "—"} />
             <KV k="CPU" v={system_info.cpu_model || "—"} />
             <KV k="CPU Count" v={system_info.cpu_count || "—"} />
             <KV k="Architecture" v={system_info.cpu_arch || "—"} />

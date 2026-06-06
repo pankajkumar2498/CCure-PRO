@@ -417,6 +417,11 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
         response_time = _to_int(host.get("response_time_ms") or host.get("response_time"))
         os_confidence = _confidence_to_percent(host.get("os_confidence") or host.get("confidence"))
 
+        os_match = host.get("os_match") or host.get("os_guess")
+        derived_os_family, derived_manufacturer = _derive_os_meta(os_match)
+        os_family_val     = host.get("os_family")   or derived_os_family
+        device_category   = host.get("device_category")
+
         asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
         asset = existing.get(asset_id) or existing_by_ip.get(ip)
         if asset:
@@ -432,6 +437,9 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             _set_asset_field(db, asset, scan_id, "mac_address", mac, "discovery")
             _set_asset_field(db, asset, scan_id, "response_time_ms", response_time, "discovery")
             _set_asset_field(db, asset, scan_id, "os_confidence", os_confidence, "discovery")
+            _set_asset_field(db, asset, scan_id, "os_name", os_match, "discovery", max_len=255)
+            _set_asset_field(db, asset, scan_id, "os_family", os_family_val, "discovery", max_len=100)
+            _set_asset_field(db, asset, scan_id, "device_category", device_category, "discovery", max_len=100)
             _set_asset_field(db, asset, scan_id, "discovery_method", "discovery", "discovery", max_len=50)
 
             if asset.ip_address != ip and ip != "0.0.0.0":
@@ -449,7 +457,8 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
                 mac_address=mac, hostname=hostname, vendor=vendor if vendor != "Unknown" else None,
                 response_time_ms=response_time, os_confidence=os_confidence,
                 is_active=True, discovery_method="discovery",
-                last_scan_id=scan_id, last_seen_at=utcnow(), created_at=utcnow(), updated_at=utcnow()
+                last_scan_id=scan_id, last_seen_at=utcnow(), created_at=utcnow(), updated_at=utcnow(),
+                os_name=os_match, os_family=os_family_val, device_category=device_category
             )
             db.add(new_asset)
             if _has_value(hostname):
@@ -462,6 +471,12 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
                 _update_provenance(new_asset, "response_time_ms", "discovery", scan_id)
             if _has_value(os_confidence):
                 _update_provenance(new_asset, "os_confidence", "discovery", scan_id)
+            if _has_value(os_match):
+                _update_provenance(new_asset, "os_name", "discovery", scan_id)
+            if _has_value(os_family_val):
+                _update_provenance(new_asset, "os_family", "discovery", scan_id)
+            if _has_value(device_category):
+                _update_provenance(new_asset, "device_category", "discovery", scan_id)
             if _looks_like_fqdn(str(fqdn)):
                 new_asset.fqdn = str(fqdn)[:512]
                 _update_provenance(new_asset, "fqdn", "discovery", scan_id)

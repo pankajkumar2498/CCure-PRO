@@ -152,6 +152,10 @@ _VENDOR_DEVICE_MAP: Dict[str, str] = {
     "qnap":            "storage",
     "netapp":          "storage",
     "drobo":           "storage",
+    "vmware":          "virtual_machine",
+    "xen":             "virtual_machine",
+    "hyperv":          "virtual_machine",
+    "hyper-v":         "virtual_machine",
 }
 
 
@@ -165,8 +169,61 @@ def _classify_from_vendor(vendor: Optional[str]) -> Optional[str]:
     return None
 
 
+_VENDOR_OS_MAP: Dict[str, str] = {
+    "cisco":       "Cisco IOS",
+    "juniper":     "Junos OS",
+    "fortinet":    "FortiOS",
+    "mikrotik":    "RouterOS",
+    "vmware":      "ESXi",
+    "apple":       "macOS",
+    "microsoft":   "Windows",
+}
+
+
+def _os_from_vendor(vendor: Optional[str]) -> Optional[str]:
+    if not vendor:
+        return None
+    v = vendor.lower()
+    for kw, os_fam in _VENDOR_OS_MAP.items():
+        if kw in v:
+            return os_fam
+    return None
+
+
+def _classify_from_netbios(host: Dict) -> Optional[str]:
+    names = host.get("netbios_names")
+    if not names:
+        return None
+
+    types = {n.get("type") for n in names if isinstance(n, dict) and "type" in n}
+
+    # 0x1D = Master Browser, 0x1B = Domain Master Browser, 0x1C = Domain Controller
+    if {0x1D, 0x1B, 0x1C} & types:
+        return "server"
+    if 0x20 in types:  # Server Service
+        return "server"
+    if 0x00 in types:  # Workstation Service
+        return "endpoint"
+
+    return None
+
+
+def _classify_from_mdns(host: Dict) -> Optional[str]:
+    mdns_services = host.get("mdns_services")
+    if not mdns_services:
+        return None
+
+    services_set = set(mdns_services)
+    if {"_printer._tcp.local", "_ipp._tcp.local"} & services_set:
+        return "printer"
+    if {"_ssh._tcp.local", "_workstation._tcp.local"} & services_set:
+        return "endpoint"
+
+    return None
+
+
 # ---------------------------------------------------------------------------
-# Signal 3 — Open port profile
+# Signal 4 — Open port profile
 # ---------------------------------------------------------------------------
 
 _PORT_PROFILE_RULES: List[Dict] = [
@@ -308,18 +365,20 @@ def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
 
 def classify_device(host: Dict) -> str:
     """
-    Run all five classification signals and return the winning category.
+    Run all seven classification signals and return the winning category.
 
     Also writes the result back to ``host["device_category"]`` so callers
     don't need to handle the return value separately.
 
     Decision priority (highest first):
         1. SNMP OID result (most reliable)
-        2. Port profile (more reliable than vendor alone)
-        3. Banner keywords (service detection)
-        4. OUI vendor (ambiguous for multi-product vendors like HP)
-        5. TTL
-        6. Fallback → "unknown"
+        2. mDNS service records (high confidence)
+        3. NetBIOS suffix roles (high confidence)
+        4. Port profile (more reliable than vendor alone)
+        5. Banner keywords (service detection)
+        6. OUI vendor (ambiguous for multi-product vendors like HP)
+        7. TTL
+        8. Fallback → "unknown"
     """
     # Signal 1: SNMP (highest confidence - active device interrogation)
     category = _classify_from_snmp(host.get("snmp_info", {}))
@@ -327,24 +386,50 @@ def classify_device(host: Dict) -> str:
         _write(host, category, "snmp")
         return category
 
-    # Signal 2: Port profile (high confidence - ports reveal device type)
-    # Moved BEFORE vendor because ports are more reliable than OUI
-    # (e.g., HP makes both printers and servers, but ports distinguish them)
+    # Signal 2: mDNS services (high confidence)
+    category = _classify_from_mdns(host)
+    if category:
+        _write(host, category, "mdns")
+        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
+        if not host.get("os_family") or host.get("os_family") == "Unknown":
+            mdns_services = set(host.get("mdns_services", []))
+            if {"_printer._tcp.local", "_ipp._tcp.local"} & mdns_services:
+                host["os_family"] = "Embedded"
+                host["os_confidence"] = "High"
+            else:
+                vendor = (host.get("vendor") or host.get("mac_vendor") or "").lower()
+                host["os_family"] = "macOS" if "apple" in vendor else "Linux"
+                host["os_confidence"] = "Medium"
+        return category
+
+    # Signal 3: NetBIOS suffix roles (high confidence)
+    category = _classify_from_netbios(host)
+    if category:
+        _write(host, category, "netbios")
+        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
+        if not host.get("os_family") or host.get("os_family") == "Unknown":
+            host["os_family"] = "Windows"
+            types = {n.get("type") for n in host.get("netbios_names", []) if isinstance(n, dict) and "type" in n}
+            if {0x1D, 0x1B, 0x1C} & types:
+                host["os_confidence"] = "High"
+            else:
+                host["os_confidence"] = "Medium"
+        return category
+
+    # Signal 4: Port profile (high confidence - ports reveal device type)
     open_ports = [p["port"] for p in host.get("open_ports", [])]
     category = _classify_from_ports(open_ports)
     if category:
         _write(host, category, "port_profile")
         return category
 
-    # Signal 3: Banner keywords (medium confidence - service/OS detection)
+    # Signal 5: Banner keywords (medium confidence - service/OS detection)
     category = _classify_from_banners(host)
     if category:
         _write(host, category, "banner")
         return category
 
-    # Signal 4: OUI vendor (medium confidence - ambiguous for multi-product vendors)
-    # Moved AFTER ports because vendor-only classification is unreliable
-    # (HP Inc. could be printer OR desktop/server)
+    # Signal 6: OUI vendor (medium confidence - ambiguous for multi-product vendors)
     vendor = host.get("vendor") or host.get("mac_vendor")
     if not vendor:
         from core.oui_lookup import lookup_vendor
@@ -352,9 +437,15 @@ def classify_device(host: Dict) -> str:
     category = _classify_from_vendor(vendor)
     if category:
         _write(host, category, "oui")
+        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
+        if not host.get("os_family") or host.get("os_family") == "Unknown":
+            os_fam = _os_from_vendor(vendor)
+            if os_fam:
+                host["os_family"] = os_fam
+                host["os_confidence"] = "Medium"
         return category
 
-    # Signal 5: TTL (low confidence - OS family hint only)
+    # Signal 7: TTL (low confidence - OS family hint only)
     ttl = host.get("tcp_fingerprint", {}).get("ttl") or _extract_ttl(host)
     category = _classify_from_ttl(ttl)
     if category:

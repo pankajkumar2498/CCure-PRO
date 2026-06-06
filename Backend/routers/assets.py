@@ -76,6 +76,7 @@ def _serialize_asset(a: Asset) -> dict:
         "hostname":        a.hostname,
         "fqdn":            a.fqdn,
         "netbios_name":    a.netbios_name,
+        "dns_name":        a.dns_name,
         "os_name":         a.os_name,
         "os_family":       a.os_family,
         "os_version":      getattr(a, "os_version", None),

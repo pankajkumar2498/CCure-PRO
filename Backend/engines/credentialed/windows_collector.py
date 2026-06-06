@@ -224,6 +224,7 @@ class WindowsCollector:
             tasks.append(("ports", self._collect_open_ports))
         if run_all or "users" in sections:
             tasks.append(("users", self._collect_users))
+            tasks.append(("local_groups", self._collect_local_groups))
         if run_all or "security" in sections:
             tasks.append(("security", self._collect_security))
         if run_all or "network" in sections:
@@ -242,7 +243,6 @@ class WindowsCollector:
                     data = future.result()
                     if on_section_complete:
                         on_section_complete(name)
-                        
                     # Flat-merge sections that return dicts
                     if name in ("system_info", "security", "network", "history"):
                         result.update(data)
@@ -254,6 +254,8 @@ class WindowsCollector:
                         result["open_ports_credentialed"] = data
                     elif name == "users":
                         result["users"] = data
+                    elif name == "local_groups":
+                        result["local_groups"] = data
                 except Exception as exc:
                     log.warning("Windows section '%s' collection failed: %s", name, exc)
 
@@ -267,6 +269,7 @@ class WindowsCollector:
         data["os_name"]       = os_raw.get("Caption", "Windows")
         data["os_version_id"] = os_raw.get("Version", "")
         data["os_build"]      = os_raw.get("BuildNumber", "")
+        data["kernel_version"] = os_raw.get("Version", "")
         data["cpu_arch"]      = os_raw.get("OSArchitecture", "")
         data["os_family"]     = "Windows"
         data["os_confidence"] = 100
@@ -289,6 +292,16 @@ class WindowsCollector:
         else:
             data["hostname_fqdn"] = self._run("hostname")
         data["uptime"]        = self._run("uptime")
+
+        bios_raw = self._run_json("bios")
+        if isinstance(bios_raw, list):
+            bios_raw = bios_raw[0] if bios_raw else {}
+        if isinstance(bios_raw, dict):
+            data["serial_number"] = (bios_raw.get("SerialNumber") or "").strip()
+            data["bios_version"]  = (bios_raw.get("SMBIOSBIOSVersion") or "").strip()
+        else:
+            data["serial_number"] = ""
+            data["bios_version"]  = ""
 
         cpu_raw = self._run_json("cpu")
         if isinstance(cpu_raw, list):
@@ -462,6 +475,30 @@ class WindowsCollector:
             "failed_login_count":    len(failed_list),
             "brute_force_warning":   len(failed_list) >= 10,
         }
+
+    def _collect_local_groups(self) -> List[Dict[str, Any]]:
+        admins_raw = self._run_json("local_admins")
+        admin_names = []
+        if isinstance(admins_raw, list):
+            for a in admins_raw:
+                name = a.get("Name", "")
+                if name:
+                    if "\\" in name:
+                        name = name.split("\\")[-1]
+                    admin_names.append(name)
+        elif isinstance(admins_raw, dict):
+            name = admins_raw.get("Name", "")
+            if name:
+                if "\\" in name:
+                    name = name.split("\\")[-1]
+                admin_names.append(name)
+        
+        return [
+            {
+                "name": "Administrators",
+                "members": admin_names
+            }
+        ]
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 

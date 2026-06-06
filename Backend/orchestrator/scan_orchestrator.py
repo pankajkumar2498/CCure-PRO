@@ -265,6 +265,9 @@ class ScanOrchestrator:
             disc_results: List[Dict] = await discovery.run(all_ips, scan_id=scan_id)
             duration = time.time() - t0
 
+            # Trigger classification and OS inference on the discovered hosts
+            self._apply_os_inference(disc_results)
+
             if pipeline_mode == "basic":
                 formatted = [
                     self._format_host(r.get("ip"), r).to_basic_dict()

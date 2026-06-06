@@ -48,6 +48,22 @@ const formatTime = (iso) => {
   });
 };
 
+const combineTime = (iso) => {
+  if (!iso) return "—";
+  const relative = ago(iso);
+  const absolute = formatTime(iso);
+  if (relative === "—" || absolute === "—") return "—";
+  return `${relative} (${absolute})`;
+};
+
+const cleanVendorName = (name) => {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .replace(/(inc|incorporated|corp|corporation|ltd|limited|co|company|systems|hardware)$/g, "");
+};
+
 const SEV_CLASS = {
   Critical: "db-sev-badge--critical",
   High: "db-sev-badge--high",
@@ -83,12 +99,12 @@ function SidebarRow({ label, value, mono = false, isTag = false, noBorder = fals
 
 // ── Vulnerability Drawer component (similar to VulnerabilityBrowser's finding drawer) ──
 function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
-  const [detail, setDetail]   = useState(null);
+  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [action, setAction]   = useState(null);
-  const [reason, setReason]   = useState("");
-  const [notes,  setNotes]    = useState("");
-  const [saving, setSaving]   = useState(false);
+  const [action, setAction] = useState(null);
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
   useEffect(() => {
@@ -96,7 +112,7 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
     setLoading(true);
     getFinding(findingId)
       .then(r => setDetail(r.data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [findingId]);
 
@@ -431,18 +447,18 @@ export default function AssetDetail() {
   const { user } = useAuth();
   const canUpdate = canPermission(user, { resource: "assets", action: "update" });
 
-  const [asset,     setAsset]     = useState(null);
-  const [services,  setServices]  = useState([]);
-  const [findings,  setFindings]  = useState([]);
+  const [asset, setAsset] = useState(null);
+  const [services, setServices] = useState([]);
+  const [findings, setFindings] = useState([]);
   const [changelog, setChangelog] = useState([]);
-  
+
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("vulnerabilities");
 
   // Notes and tag state
   const [newNote, setNewNote] = useState("");
-  const [newTag,  setNewTag]  = useState("");
+  const [newTag, setNewTag] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [editingOwner, setEditingOwner] = useState(false);
 
@@ -705,10 +721,10 @@ export default function AssetDetail() {
 
         {/* Main Content Grid */}
         <div className="db-section" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-          
+
           {/* Left Column: Tab Data */}
           <div>
-            
+
             {/* Tab: Vulnerabilities */}
             {activeTab === "vulnerabilities" && (
               <div className="db-card" style={{ padding: 0 }}>
@@ -780,8 +796,8 @@ export default function AssetDetail() {
                                     f.cvss_v3_score >= 9
                                       ? "#f87171"
                                       : f.cvss_v3_score >= 7
-                                      ? "#fb923c"
-                                      : "#fbbf24",
+                                        ? "#fb923c"
+                                        : "#fbbf24",
                                 }}
                               >
                                 {f.cvss_v3_score ? f.cvss_v3_score.toFixed(1) : "0.0"}
@@ -804,10 +820,10 @@ export default function AssetDetail() {
                                   f.status === "open"
                                     ? { color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.06)" }
                                     : f.status === "accepted"
-                                    ? { color: "#fbbf24", borderColor: "rgba(234,179,8,0.2)", background: "rgba(234,179,8,0.06)" }
-                                    : f.status === "fixed"
-                                    ? { color: "#4ade80", borderColor: "rgba(34,197,94,0.2)", background: "rgba(34,197,94,0.06)" }
-                                    : {}
+                                      ? { color: "#fbbf24", borderColor: "rgba(234,179,8,0.2)", background: "rgba(234,179,8,0.06)" }
+                                      : f.status === "fixed"
+                                        ? { color: "#4ade80", borderColor: "rgba(34,197,94,0.2)", background: "rgba(34,197,94,0.06)" }
+                                        : {}
                                 }
                               >
                                 {f.status}
@@ -829,9 +845,9 @@ export default function AssetDetail() {
             {activeTab === "services" && (() => {
               // ── Compute column visibility from actual data ──────────────────
               const showProduct = services.some(s => s.service_product);
-              const showBanner  = services.some(s => s.banner);
-              const showAudits  = services.some(s => s.tls || s.http);
-              const colCount    = 3 + (showProduct ? 1 : 0) + (showBanner ? 1 : 0) + (showAudits ? 1 : 0);
+              const showBanner = services.some(s => s.banner);
+              const showAudits = services.some(s => s.tls || s.http);
+              const colCount = 3 + (showProduct ? 1 : 0) + (showBanner ? 1 : 0) + (showAudits ? 1 : 0);
               const missingEnrichment = !showProduct && !showBanner && !showAudits;
 
               return (
@@ -881,8 +897,8 @@ export default function AssetDetail() {
                           <th>Service Name</th>
                           <th>State</th>
                           {showProduct && <th>Product &amp; Version</th>}
-                          {showBanner  && <th>Banner</th>}
-                          {showAudits  && <th>Audits</th>}
+                          {showBanner && <th>Banner</th>}
+                          {showAudits && <th>Audits</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -967,7 +983,7 @@ export default function AssetDetail() {
 
           {/* Right Column: Sidebar Panels */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            
+
             {/* Panel: System Details */}
             <div className="db-card">
               <h4 className="db-card-title">System Information</h4>
@@ -975,26 +991,45 @@ export default function AssetDetail() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: "0.72rem" }}>
                 {/* ── Network Identity ─────────────────────────────── */}
-                <SidebarRow label="IP Address:"    value={asset.ip_address} mono />
+                <SidebarRow label="IP Address:" value={asset.ip_address} mono />
+                <SidebarRow label="MAC Address:" value={asset.mac_address} mono />
+                <SidebarRow label="Subnet:" value={asset.subnet} mono />
                 <SidebarRow label="Hostname:"      value={asset.hostname} mono />
-                <SidebarRow label="FQDN:"          value={asset.fqdn} mono />
-                <SidebarRow label="DNS Name:"      value={asset.dns_name} mono />
-                <SidebarRow label="NetBIOS Name:"  value={asset.netbios_name} mono />
+                {asset.fqdn && asset.fqdn !== asset.hostname && (
+                  <SidebarRow label="FQDN:"          value={asset.fqdn} mono />
+                )}
+                {asset.dns_name && asset.dns_name !== asset.hostname && asset.dns_name !== asset.fqdn && (
+                  <SidebarRow label="DNS Name:"      value={asset.dns_name} mono />
+                )}
+                <SidebarRow label="NetBIOS Name:" value={asset.netbios_name} mono />
+                <SidebarRow label="Domain:" value={asset.custom_attributes?.credentialed_system_info?.domain} mono />
                 {/* ── OS / Hardware ────────────────────────────────── */}
                 <SidebarRow label="OS Family:" value={asset.os_family} mono />
                 <SidebarRow label="OS Name:" value={asset.os_name} />
+                <SidebarRow label="OS Version:" value={asset.os_version} mono />
+                <SidebarRow label="OS Build:" value={asset.custom_attributes?.credentialed_system_info?.os_build} mono />
+                <SidebarRow label="Kernel Version:" value={asset.custom_attributes?.credentialed_system_info?.kernel_version} mono />
                 {(asset.os_name || asset.os_family) && asset.os_confidence && (
                   <SidebarRow label="OS Confidence:" value={`${asset.os_confidence}%`} mono />
                 )}
                 <SidebarRow label="Device Category:" value={asset.device_category} />
-                <SidebarRow label="MAC Address:" value={asset.mac_address} mono />
                 <SidebarRow label="Vendor:" value={asset.vendor} />
-                <SidebarRow label="Manufacturer:" value={asset.manufacturer} />
-                <SidebarRow label="Subnet:" value={asset.subnet} mono />
+                {asset.manufacturer && cleanVendorName(asset.manufacturer) !== cleanVendorName(asset.vendor) && (
+                  <SidebarRow label="Manufacturer:" value={asset.manufacturer} />
+                )}
+                <SidebarRow label="Hardware Model:" value={asset.custom_attributes?.credentialed_system_info?.hardware_model} />
+                <SidebarRow label="CPU Model:" value={asset.custom_attributes?.credentialed_system_info?.cpu_model} />
+                <SidebarRow label="CPU Cores:" value={asset.custom_attributes?.credentialed_system_info?.cpu_count} mono />
                 <SidebarRow label="VLAN ID:" value={asset.vlan_id} mono />
                 <SidebarRow label="Discovery Method:" value={asset.discovery_method || "active"} isTag />
-                <SidebarRow label="First Discovered:" value={formatTime(asset.first_seen_at)} />
-                <SidebarRow label="Last Activity:" value={ago(asset.last_seen_at)} noBorder />
+                <SidebarRow label="First Discovered:" value={combineTime(asset.first_seen_at)} />
+                <SidebarRow label="Last Activity:" value={combineTime(asset.last_seen_at)} />
+                <SidebarRow label="System Uptime:" value={asset.custom_attributes?.credentialed_system_info?.uptime} />
+                {asset.response_time_ms !== null && asset.response_time_ms !== undefined && (
+                  <SidebarRow label="Response Time:" value={`${asset.response_time_ms} ms`} mono />
+                )}
+                <SidebarRow label="Last Scan ID:" value={asset.last_scan_id} mono />
+                <SidebarRow label="Asset ID:" value={asset.id} mono noBorder />
               </div>
             </div>
 

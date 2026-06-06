@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
-BACKEND_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = Path(__file__).absolute().parent
 DEFAULT_SQLITE_DB = BACKEND_DIR / "ccure_users.db"
 
 

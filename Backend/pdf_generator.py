@@ -417,6 +417,7 @@ _SCAN_STRATEGY_LABELS = {
     "FULL": "Full Network Sweep",
     "ADAPTIVE": "Adaptive Scan",
     "STEALTH": "Stealth Scan",
+    "CREDENTIALED": "Credentialed Scan",
 }
 
 
@@ -495,6 +496,22 @@ def _resolve_target(meta: dict, summary: dict) -> str:
 
 
 def _collect_hosts(result: dict) -> List[dict]:
+    meta = result.get("metadata", {})
+    summary = result.get("summary", {})
+    timestamp = (
+        meta.get("timestamp") or 
+        meta.get("completed_at") or 
+        summary.get("completed_at") or 
+        summary.get("timestamp") or 
+        summary.get("started_at") or 
+        datetime.now().isoformat()
+    )
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        friendly_ts = dt.strftime("%d %b %Y  %H:%M:%S")
+    except Exception:
+        friendly_ts = timestamp
+
     hosts: List[dict] = []
     data = result.get("data", [])
     if isinstance(data, dict):
@@ -531,6 +548,18 @@ def _collect_hosts(result: dict) -> List[dict]:
         status_text = str(host.get("status", "")).strip()
         if not status_text or status_text.lower() == "unknown":
             host["status"] = "Active" if host.get("is_active") else "Inactive"
+
+        # Flatten credentialed system info to host root for standard tables & reports
+        sys_info = host.get("system_info")
+        if sys_info and isinstance(sys_info, dict):
+            host["hostname"] = sys_info.get("hostname") or sys_info.get("hostname_short") or host.get("hostname") or "Unknown"
+            host["mac_address"] = sys_info.get("mac_address") or host.get("mac_address") or "N/A"
+            if not host.get("response_time_ms") or host.get("response_time_ms") == "N/A":
+                host["response_time_ms"] = sys_info.get("credentialed_response_time_ms") or "N/A"
+            if not host.get("scan_method") or host.get("scan_method") == "N/A":
+                host["scan_method"] = "Credentialed"
+            if not host.get("scan_timestamp") or host.get("scan_timestamp") == "N/A":
+                host["scan_timestamp"] = friendly_ts
 
     return hosts
 
@@ -584,7 +613,7 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
     W = PAGE_W - 2 * MARGIN
 
     def mk_header(title):
-        return Paragraph(f"<b>{title}</b>", ParagraphStyle("s", parent=styles["normal"], fontSize=10, textColor=CDAC_BLUE, spaceBefore=6, spaceAfter=4))
+        return Paragraph(f"<b>{title}</b>", ParagraphStyle("s", parent=styles["normal"], fontSize=10, textColor=CDAC_BLUE, spaceBefore=10, spaceAfter=4))
     
     def mk_table(headers, rows, widths=None):
         header_row = [Paragraph(h, ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, textColor=WHITE)) for h in headers]
@@ -599,86 +628,195 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
             *[("BACKGROUND", (0, i), (-1, i), CDAC_ACCENT if i % 2 == 0 else WHITE) for i in range(1, len(data))],
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
         return tbl
 
     sys_info = host.get("system_info")
-    if sys_info and isinstance(sys_info, dict) and sys_info.get("os_name"):
-        story.append(mk_header("System Information (Credentialed)"))
-        rows = [
-            ("OS", sys_info.get("os_name", "N/A")),
-            ("Version", sys_info.get("os_version_id", "N/A")),
-            ("Kernel / Build", sys_info.get("kernel_version", sys_info.get("os_build", "N/A"))),
-            ("Hostname", sys_info.get("hostname", "N/A")),
-            ("CPU", sys_info.get("cpu_model", "N/A")),
-            ("Arch", sys_info.get("cpu_arch", "N/A")),
+    if not sys_info or not isinstance(sys_info, dict):
+        return story
+
+    # 1. System Identity & OS details
+    story.append(mk_header("System Identity & Operating System (Credentialed)"))
+    ip_addr = host.get("ip_address") or host.get("target") or "N/A"
+    clean_ip = str(ip_addr).replace(".", "_")
+    asset_id = f"ast_cdac_{clean_ip}"
+    
+    os_confidence = sys_info.get("os_confidence", "100")
+    if str(os_confidence).isdigit():
+        os_conf_str = f"{os_confidence}%"
+    else:
+        os_conf_str = str(os_confidence)
+
+    id_rows = [
+        ("Asset ID", asset_id),
+        ("IP Address", ip_addr),
+        ("MAC Address", host.get("mac_address") or sys_info.get("mac_address") or "N/A"),
+        ("Subnet", sys_info.get("subnet") or "N/A"),
+        ("Hostname", sys_info.get("hostname") or host.get("hostname") or "Unknown"),
+        ("FQDN", sys_info.get("fqdn") or "N/A"),
+        ("Domain", sys_info.get("domain") or "N/A"),
+        ("OS Family", sys_info.get("os_family") or "N/A"),
+        ("OS Name", sys_info.get("os_name") or "N/A"),
+        ("OS Version", sys_info.get("os_version_id") or "N/A"),
+        ("OS Build", sys_info.get("os_build") or "N/A"),
+        ("Kernel Version", sys_info.get("kernel_version") or "N/A"),
+        ("OS Confidence", os_conf_str),
+        ("Device Category", host.get("device_category") or "endpoint"),
+    ]
+    story.append(mk_table(["Property", "Value"], id_rows, [50*mm, W - 50*mm]))
+    story.append(Spacer(1, 3 * mm))
+
+    # 2. Hardware Specifications
+    story.append(mk_header("Hardware Specifications"))
+    hw_rows = [
+        ("Vendor / Manufacturer", sys_info.get("manufacturer") or sys_info.get("mac_vendor") or sys_info.get("vendor") or "N/A"),
+        ("Hardware Model", sys_info.get("hardware_model") or "N/A"),
+        ("CPU Model", sys_info.get("cpu_model") or "N/A"),
+        ("CPU Cores / Threads", sys_info.get("cpu_count") or "N/A"),
+        ("BIOS Version", sys_info.get("bios_version") or "N/A"),
+        ("Serial Number", sys_info.get("serial_number") or "N/A"),
+    ]
+    story.append(mk_table(["Property", "Value"], hw_rows, [50*mm, W - 50*mm]))
+    story.append(Spacer(1, 3 * mm))
+
+    # 3. Memory Summary
+    mem = sys_info.get("memory_summary", {})
+    if mem and isinstance(mem, dict) and mem.get("total"):
+        story.append(mk_header("Memory Summary"))
+        mem_rows = [
+            ("Total Memory", mem.get("total", "N/A")),
+            ("Used Memory", mem.get("used", "N/A")),
+            ("Free Memory", mem.get("free", "N/A")),
+            ("Available Memory", mem.get("available", "N/A")),
         ]
-        story.append(mk_table(["Property", "Value"], rows, [50*mm, W - 50*mm]))
-        story.append(Spacer(1, 4 * mm))
+        story.append(mk_table(["Property", "Value"], mem_rows, [50*mm, W - 50*mm]))
+        story.append(Spacer(1, 3 * mm))
 
+    # 4. Disk Storage Inventory
+    disk_usage = sys_info.get("disk_usage", [])
+    if disk_usage:
+        story.append(mk_header(f"Disk Storage Inventory ({len(disk_usage)} drive(s))"))
+        disk_rows = []
+        is_windows = str(sys_info.get("os_family", "")).lower() == "windows"
+        
+        if is_windows:
+            headers = ["Drive Letter", "Used Space", "Available Space"]
+            col_widths = [40*mm, 65*mm, 65*mm]
+            for d in disk_usage:
+                disk_rows.append([
+                    d.get("filesystem", d.get("Name", "N/A")),
+                    d.get("used", "N/A"),
+                    d.get("available", "N/A")
+                ])
+        else:
+            headers = ["Mount Point", "Total Size", "Used", "Available", "Use %"]
+            col_widths = [50*mm, 30*mm, 30*mm, 30*mm, 30*mm]
+            for d in disk_usage:
+                disk_rows.append([
+                    d.get("mounted_on", d.get("filesystem", "N/A")),
+                    d.get("size", "N/A"),
+                    d.get("used", "N/A"),
+                    d.get("available", "N/A"),
+                    d.get("use_pct", "N/A")
+                ])
+        story.append(mk_table(headers, disk_rows, col_widths))
+        story.append(Spacer(1, 3 * mm))
+
+    # 5. Network Sockets & Open Ports
+    open_ports = host.get("open_ports_credentialed", [])
+    if open_ports:
+        story.append(mk_header(f"Open Socket Connections ({len(open_ports)} listening)"))
+        port_rows = []
+        for p in open_ports[:20]:
+            port_rows.append([
+                p.get("port", "N/A"),
+                p.get("state", "LISTEN"),
+                p.get("process") or "Unknown",
+                p.get("local_addr") or "N/A"
+            ])
+        story.append(mk_table(["Port", "State", "Process / PID", "Binding Address"], port_rows, [25*mm, 25*mm, 70*mm, 50*mm]))
+        if len(open_ports) > 20:
+            story.append(Paragraph(f"... and {len(open_ports)-20} more listening ports", styles["small"]))
+        story.append(Spacer(1, 3 * mm))
+
+    # 6. Users & Access Controls
     users = host.get("users", [])
+    local_groups = host.get("local_groups", [])
     if users:
-        story.append(mk_header(f"System Users ({len(users)})"))
+        story.append(mk_header(f"Local User Accounts ({len(users)})"))
         u_rows = []
-        for u in users[:20]:
-            if u.get("is_root") or not u.get("is_system"):
-                u_type = "Root/Admin" if u.get("is_root") else "User"
-                u_rows.append([u.get("username", "N/A"), str(u.get("uid", "")), u.get("shell", "N/A"), u_type])
+        is_windows = str(sys_info.get("os_family", "")).lower() == "windows"
+        if is_windows:
+            headers = ["Username", "Enabled", "Is Admin", "Last Logon", "Password Required"]
+            col_widths = [40*mm, 25*mm, 25*mm, 45*mm, 35*mm]
+            for u in users[:15]:
+                u_rows.append([
+                    u.get("username", "N/A"),
+                    str(u.get("enabled", "N/A")),
+                    "Yes" if u.get("is_admin") else "No",
+                    u.get("last_logon", "N/A")[:20],
+                    str(u.get("pwd_required", "N/A"))
+                ])
+        else:
+            headers = ["Username", "UID", "Shell", "Role / Type"]
+            col_widths = [50*mm, 25*mm, W - 110*mm, 35*mm]
+            for u in users[:15]:
+                if u.get("is_root") or not u.get("is_system"):
+                    u_type = "Root/Admin" if u.get("is_root") else "User"
+                    u_rows.append([
+                        u.get("username", "N/A"),
+                        str(u.get("uid", "")),
+                        u.get("shell", "N/A"),
+                        u_type
+                    ])
         if u_rows:
-            story.append(mk_table(["Username", "UID", "Shell", "Type"], u_rows, [50*mm, 20*mm, 70*mm, 30*mm]))
-            story.append(Spacer(1, 4 * mm))
+            story.append(mk_table(headers, u_rows, col_widths))
+            if len(users) > 15:
+                story.append(Paragraph(f"... and {len(users)-15} more local user accounts", styles["small"]))
+            story.append(Spacer(1, 3 * mm))
 
-    svcs = host.get("running_services", [])
-    if svcs:
-        story.append(mk_header(f"Running Services ({len(svcs)})"))
-        s_rows = []
-        for s in svcs[:20]:
-            s_rows.append([s.get("name", "N/A"), s.get("sub_state", "running"), s.get("description", "")[:60]])
-        story.append(mk_table(["Service", "Status", "Description"], s_rows, [50*mm, 25*mm, W - 75*mm]))
-        if len(svcs) > 20:
-             story.append(Paragraph(f"... and {len(svcs)-20} more services", styles["small"]))
-        story.append(Spacer(1, 4 * mm))
+    if local_groups:
+        story.append(mk_header(f"Local User Groups ({len(local_groups)})"))
+        g_rows = []
+        for g in local_groups[:10]:
+            members = g.get("members", [])
+            members_str = ", ".join(members[:8])
+            if len(members) > 8:
+                members_str += f" (+{len(members)-8} more)"
+            g_rows.append([
+                g.get("name", "N/A"),
+                str(g.get("gid") or "N/A"),
+                members_str or "No members"
+            ])
+        story.append(mk_table(["Group Name", "GID", "Members"], g_rows, [50*mm, 25*mm, W - 75*mm]))
+        story.append(Spacer(1, 3 * mm))
 
-    pkgs = host.get("packages", [])
-    if pkgs:
-        story.append(mk_header(f"Installed Packages ({len(pkgs)})"))
-        pkg_rows = []
-        cve_pkgs = {
-            _resolve_pdf_cve_package(c).lower()
-            for c in host.get("cves", [])
-            if _resolve_pdf_cve_package(c) != "N/A"
-        }
-        for p in pkgs[:30]:
-            is_vuln = p.get("name", "").lower() in cve_pkgs
-            v_str = "YES" if is_vuln else "No"
-            pkg_rows.append([p.get("name", "N/A"), p.get("version", "N/A"), v_str])
-        story.append(mk_table(["Package", "Version", "Has CVE"], pkg_rows, [70*mm, 70*mm, 30*mm]))
-        if len(pkgs) > 30:
-             story.append(Paragraph(f"... and {len(pkgs)-30} more packages", styles["small"]))
-        story.append(Spacer(1, 4 * mm))
-
-    # CVE table is rendered once at the end of the report (after all host cards).
-    # Do not render it here per-host.
-
+    # 7. System Audit Findings
     sec_issues = host.get("security_issues", [])
     suid = host.get("suid_binaries", [])
-    if sec_issues or host.get("sudo_nopasswd") or host.get("failed_login_count"):
+    ww_dirs = host.get("world_writable_dirs", [])
+    
+    if sec_issues or host.get("sudo_nopasswd") or host.get("failed_login_count") or suid or ww_dirs:
         story.append(mk_header("Security Audit Findings"))
         iss_rows = []
         if host.get("sudo_nopasswd"):
-             iss_rows.append(["NOPASSWD Sudo", "Enabled (High Risk)"])
+            iss_rows.append(["NOPASSWD Sudo", "Enabled (High Risk — user can run sudo without password)"])
         for iss in sec_issues:
-             iss_rows.append(["Misconfiguration", iss])
+            iss_rows.append(["Misconfiguration", iss])
         if suid:
-             iss_rows.append(["SUID Binaries", f"{len(suid)} found"])
+            iss_rows.append(["SUID Binaries", f"{len(suid)} binary files with SUID bit set"])
+        if ww_dirs:
+            iss_rows.append(["Writable Directories", f"{len(ww_dirs)} world-writable folders found"])
         if host.get("failed_login_count"):
-             iss_rows.append(["Failed Logins", f"{host.get('failed_login_count')} attempts"])
-        story.append(mk_table(["Finding Type", "Detail"], iss_rows, [50*mm, W - 50*mm]))
-        story.append(Spacer(1, 4 * mm))
+            iss_rows.append(["Failed Login Events", f"{host.get('failed_login_count')} failed login attempts detected"])
+            
+        if iss_rows:
+            story.append(mk_table(["Finding Type", "Detail"], iss_rows, [50*mm, W - 50*mm]))
+            story.append(Spacer(1, 3 * mm))
 
     return story
 

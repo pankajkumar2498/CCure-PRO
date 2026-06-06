@@ -64,6 +64,8 @@ COMMANDS: Dict[str, str] = {
     "login_history":   "last -n 20 2>/dev/null",
     "failed_logins":   "lastb -n 20 2>/dev/null || journalctl _COMM=sshd -n 30 --no-pager 2>/dev/null",
     "env_vars":        "env 2>/dev/null",
+    "bios_version":    "cat /sys/class/dmi/id/bios_version 2>/dev/null",
+    "local_groups":    "cat /etc/group 2>/dev/null",
 }
 
 
@@ -100,6 +102,7 @@ class LinuxCollector:
             tasks.append(("ports", self._collect_open_ports))
         if run_all or "users" in sections:
             tasks.append(("users", self._collect_users))
+            tasks.append(("local_groups", self._collect_local_groups))
         if run_all or "security" in sections:
             tasks.append(("security", self._collect_security_audit))
         if run_all or "network" in sections:
@@ -130,6 +133,8 @@ class LinuxCollector:
                         result["open_ports_credentialed"] = data
                     elif name == "users":
                         result["users"] = data
+                    elif name == "local_groups":
+                        result["local_groups"] = data
                 except Exception as exc:
                     log.warning("Section '%s' collection failed: %s", name, exc)
 
@@ -166,6 +171,10 @@ class LinuxCollector:
 
         # Uptime
         data["uptime"] = self._run("uptime")
+        
+        # BIOS/Serial Number
+        data["serial_number"] = self._run("dmi_serial")
+        data["bios_version"]  = self._run("bios_version")
 
         # CPU
         cpu_raw = self._run("cpu")
@@ -251,6 +260,26 @@ class LinuxCollector:
                 "is_root":     uid == 0,
             })
         return users
+
+    # ── Local groups ───────────────────────────────────────────────────────
+
+    def _collect_local_groups(self) -> List[Dict[str, Any]]:
+        raw = self._run("local_groups")
+        groups = []
+        for line in raw.splitlines():
+            parts = line.strip().split(":")
+            if len(parts) < 3:
+                continue
+            name = parts[0]
+            gid = parts[2]
+            members_str = parts[3] if len(parts) > 3 else ""
+            members = [m.strip() for m in members_str.split(",") if m.strip()]
+            groups.append({
+                "name": name,
+                "gid": gid,
+                "members": members
+            })
+        return groups
 
     # ── Security audit ─────────────────────────────────────────────────────
 

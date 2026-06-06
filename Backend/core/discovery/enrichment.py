@@ -60,7 +60,7 @@ def enrich_host(ip: str, result: Dict) -> None:
         ip:     Target IP address string.
         result: Host result dict from DiscoveryEngine — mutated in place.
     """
-    for fn in (_ptr_lookup, _mdns_query, _netbios_query, _os_probe_full):
+    for fn in (_ptr_lookup, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
         try:
             fn(ip, result)
         except Exception as exc:
@@ -110,6 +110,36 @@ def _mdns_query(ip: str, result: Dict) -> None:
                 result["mdns_name"] = name
     except Exception as exc:
         log.debug("_mdns_query(%s) error: %s", ip, exc)
+
+
+def _mdns_service_query(ip: str, result: Dict) -> None:
+    """
+    Send target-specific unicast mDNS queries for common service records
+    (e.g., _printer, _ipp, _ssh, _workstation) to identify device types passively.
+    """
+    if not SCAPY_AVAILABLE:
+        return
+    try:
+        from scapy.all import sr1, IP, UDP, DNS, DNSQR
+        services = [
+            "_printer._tcp.local",
+            "_ipp._tcp.local",
+            "_ssh._tcp.local",
+            "_workstation._tcp.local",
+        ]
+        found = []
+        for svc in services:
+            pkt = IP(dst=ip) / UDP(dport=5353) / DNS(
+                rd=0, qd=DNSQR(qname=svc + ".", qtype="PTR")
+            )
+            # Use 0.4s timeout per query to stay extremely lightweight and fast
+            resp = sr1(pkt, timeout=0.4, verbose=0)
+            if resp and resp.haslayer(DNS) and resp[DNS].ancount > 0:
+                found.append(svc)
+        if found:
+            result["mdns_services"] = found
+    except Exception as exc:
+        log.debug("_mdns_service_query(%s) error: %s", ip, exc)
 
 
 def _netbios_query(ip: str, result: Dict) -> None:

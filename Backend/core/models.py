@@ -161,6 +161,9 @@ class HostResult:
             "vendor": self.vendor,
             "response_time_ms": self.response_time_ms,
             "confidence": self.confidence,
+            "device_category": self.device_category,
+            "os_guess": self.os_guess,
+            "os_confidence": self.os_confidence,
         }
 
     def to_phase3_dict(self) -> Dict:

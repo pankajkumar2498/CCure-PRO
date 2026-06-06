@@ -274,6 +274,10 @@ VENDOR_DEVICE_MAP: Dict[str, str] = {
     "hp":          "printer_or_server",
     "raspberry":   "iot_device",
     "espressif":   "iot_device",
+    "vmware":      "virtual_machine",
+    "xen":         "virtual_machine",
+    "hyper-v":     "virtual_machine",
+    "hyperv":      "virtual_machine",
 }
 
 

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from auth.rbac import require_permission
 from db.base import get_db
-from db.models import User
+from db.models import User, AuditLog
 from db.models.assets import Asset, AssetTag, AssetNote, AssetChangeLog
 from db.models.findings import (
     Service, TLSDetail, HttpSecurityDetail,
@@ -310,16 +310,22 @@ def get_asset_findings(
     return {"findings": result}
 
 
-# ── Asset Changelog ───────────────────────────────────────────────────────────
+# ── Asset Changelog (Modernized Timeline) ─────────────────────────────────────
 
 @router.get("/{asset_id}/changelog")
 def get_asset_changelog(
     asset_id: str,
-    limit:    int           = Query(50, ge=1, le=200),
+    limit:    int           = Query(100, ge=1, le=500),
+    category: Optional[str] = Query(None, description="Filter by event category"),
+    severity: Optional[str] = Query(None, description="Minimum severity filter"),
+    view:     str           = Query("timeline", description="'timeline' (grouped) or 'raw'"),
     org_id:   Optional[str] = Query(None),
     db:       Session       = Depends(get_db),
     user:     User          = Depends(require_permission("assets", "read")),
 ):
+    from db.models.scans import Scan as ScanModel
+    from core.audit_event_translator import translate_and_group_changelog
+
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
 
@@ -330,20 +336,81 @@ def get_asset_changelog(
         .limit(limit)
         .all()
     )
-    return {
-        "changelog": [
-            {
-                "id":          e.id,
-                "change_type": e.change_type,
-                "field_name":  e.field_name,
-                "old_value":   _display_json_value(e.old_value),
-                "new_value":   _display_json_value(e.new_value),
-                "scan_id":     e.scan_id,
-                "detected_at": e.detected_at.isoformat() if e.detected_at else None,
-            }
-            for e in entries
+
+    # Serialize raw entries
+    raw_changelog = [
+        {
+            "id":          e.id,
+            "change_type": e.change_type,
+            "field_name":  e.field_name,
+            "old_value":   _display_json_value(e.old_value),
+            "new_value":   _display_json_value(e.new_value),
+            "scan_id":     e.scan_id,
+            "detected_at": e.detected_at.isoformat() if e.detected_at else None,
+        }
+        for e in entries
+    ]
+
+    # Build scan_type lookup for accurate group labels
+    scan_ids = list({e.scan_id for e in entries if e.scan_id})
+    scan_type_map = {}
+    if scan_ids:
+        scan_rows = (
+            db.query(ScanModel.id, ScanModel.pipeline_mode)
+            .filter(ScanModel.id.in_(scan_ids))
+            .all()
+        )
+        for s in scan_rows:
+            scan_type_map[s.id] = s.pipeline_mode or "scan"
+
+    # Translate and group
+    result = translate_and_group_changelog(raw_changelog, scan_type_map)
+
+    # Apply category filter
+    if category:
+        cats = [c.strip().lower() for c in category.split(",")]
+        result["timeline"] = [
+            {**g, "events": [e for e in g["events"] if e.get("category") in cats]}
+            for g in result["timeline"]
         ]
-    }
+        result["timeline"] = [g for g in result["timeline"] if g["events"]]
+
+    # Apply severity filter
+    if severity:
+        from core.audit_event_translator import SEVERITY_RANK
+        min_rank = SEVERITY_RANK.get(severity.upper(), 0)
+        result["timeline"] = [
+            {**g, "events": [e for e in g["events"] if SEVERITY_RANK.get(e.get("severity", "INFO"), 0) >= min_rank]}
+            for g in result["timeline"]
+        ]
+        result["timeline"] = [g for g in result["timeline"] if g["events"]]
+
+    # Include legacy format for backward compatibility
+    result["changelog"] = raw_changelog
+
+    # Fetch administrative audit logs for this asset
+    admin_logs_query = (
+        db.query(AuditLog)
+        .options(joinedload(AuditLog.user))
+        .filter(AuditLog.resource_type == "asset")
+        .filter(AuditLog.resource_id == asset_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    result["admin_logs"] = [
+        {
+            "id": str(log.id),
+            "user_email": log.user.email if log.user else "System",
+            "action": log.action,
+            "status": log.status,
+            "changes": log.changes,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in admin_logs_query
+    ]
+
+    return result
 
 
 # ── Patch Asset ───────────────────────────────────────────────────────────────

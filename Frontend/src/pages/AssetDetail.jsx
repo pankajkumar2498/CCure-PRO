@@ -30,6 +30,7 @@ import {
   updateFindingNotes,
 } from "../api/findings";
 import CVELink from "../components/common/CVELink";
+import AuditTimeline from "../components/assets/AuditTimeline";
 import "../styles/dashboard.css";
 
 const ago = (iso) => {
@@ -329,14 +330,15 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
 // ── Service Detail Sub-panel component (collapsible details for services) ──
 function ServiceDetailRow({ svc, showProduct, showBanner, showAudits, colSpan }) {
   const [expanded, setExpanded] = useState(false);
+  const hasDetails = !!svc.tls || !!svc.http;
 
   return (
     <>
-      <tr onClick={() => setExpanded(!expanded)} style={{ cursor: "pointer" }}>
+      <tr onClick={() => hasDetails && setExpanded(!expanded)} style={{ cursor: hasDetails ? "pointer" : "default" }}>
         <td>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: "0.65rem", color: "var(--text-faint)" }}>
-              {expanded ? "▼" : "▶"}
+            <span style={{ fontSize: "0.65rem", color: "var(--text-faint)", width: "12px", display: "inline-block" }}>
+              {hasDetails ? (expanded ? "▼" : "▶") : ""}
             </span>
             <span className="mono" style={{ fontWeight: 700 }}>
               {svc.port} / {svc.protocol}
@@ -375,12 +377,12 @@ function ServiceDetailRow({ svc, showProduct, showBanner, showAudits, colSpan })
           </td>
         )}
       </tr>
-      {expanded && (
+      {expanded && hasDetails && (
         <tr>
           <td colSpan={colSpan} style={{ background: "rgba(255,255,255,0.01)", padding: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: svc.tls && svc.http ? "1fr 1fr" : "1fr", gap: 20 }}>
               {/* TLS Details */}
-              {svc.tls ? (
+              {svc.tls && (
                 <div style={{ borderLeft: "2px solid #a855f7", paddingLeft: 12 }}>
                   <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#c084fc", marginBottom: 6 }}>🔐 TLS Details</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem" }}>
@@ -402,12 +404,10 @@ function ServiceDetailRow({ svc, showProduct, showBanner, showAudits, colSpan })
                     )}
                   </div>
                 </div>
-              ) : (
-                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>No TLS information available on this port.</div>
               )}
 
               {/* HTTP Details */}
-              {svc.http ? (
+              {svc.http && (
                 <div style={{ borderLeft: "2px solid #2dd4bf", paddingLeft: 12 }}>
                   <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#2dd4bf", marginBottom: 6 }}>🌐 HTTP Details</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem" }}>
@@ -427,8 +427,6 @@ function ServiceDetailRow({ svc, showProduct, showBanner, showAudits, colSpan })
                     )}
                   </div>
                 </div>
-              ) : (
-                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>No HTTP inspection records on this port.</div>
               )}
             </div>
           </td>
@@ -450,7 +448,7 @@ export default function AssetDetail() {
   const [asset, setAsset] = useState(null);
   const [services, setServices] = useState([]);
   const [findings, setFindings] = useState([]);
-  const [changelog, setChangelog] = useState([]);
+  const [changelogData, setChangelogData] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -480,7 +478,7 @@ export default function AssetDetail() {
       setOwnerName(assetRes.data?.owner || "");
       setServices(servicesRes.data?.services || []);
       setFindings(findingsRes.data?.findings || []);
-      setChangelog(changelogRes.data?.changelog || []);
+      setChangelogData(changelogRes.data || null);
     } catch {
       setError("Failed to load asset details.");
     } finally {
@@ -715,7 +713,7 @@ export default function AssetDetail() {
             className={`db-tab ${activeTab === "changelog" ? "active" : ""}`}
             onClick={() => setActiveTab("changelog")}
           >
-            Audit & Changelog ({changelog.length})
+            Audit & Changelog ({changelogData?.stats?.total_events || 0})
           </button>
         </div>
 
@@ -929,54 +927,8 @@ export default function AssetDetail() {
 
             {/* Tab: Changelog */}
             {activeTab === "changelog" && (
-              <div className="db-card">
-                <h4 style={{ margin: "0 0 16px 0", fontSize: "0.85rem", color: "var(--text)" }}>Host Audit Trail</h4>
-                {changelog.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: 32, color: "var(--text-muted)", fontSize: "0.78rem" }}>
-                    No audit logs recorded for this asset yet.
-                  </div>
-                ) : (
-                  <div style={{ position: "relative", paddingLeft: 20, borderLeft: "2px solid var(--border)" }}>
-                    {changelog.map((log_entry) => (
-                      <div key={log_entry.id} style={{ marginBottom: 20, position: "relative" }}>
-                        {/* Timeline dot */}
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: -27,
-                            top: 2,
-                            width: 12,
-                            height: 12,
-                            borderRadius: "50%",
-                            background: "var(--accent)",
-                            border: "3px solid var(--bg-white)",
-                          }}
-                        />
-                        <div style={{ fontSize: "0.65rem", color: "var(--text-faint)", marginBottom: 4 }}>
-                          {formatTime(log_entry.detected_at)}
-                        </div>
-                        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text)" }}>
-                          {log_entry.change_type} · <span className="mono">{log_entry.field_name || "Asset"}</span>
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 4 }}>
-                          {log_entry.field_name ? (
-                            <>
-                              Changed from <span className="mono" style={{ color: "#ef4444" }}>"{log_entry.old_value || "None"}"</span> to{" "}
-                              <span className="mono" style={{ color: "#22c55e" }}>"{log_entry.new_value || "None"}"</span>
-                            </>
-                          ) : (
-                            "Host registry record updated."
-                          )}
-                        </div>
-                        {log_entry.scan_id && (
-                          <div style={{ fontSize: "0.62rem", color: "var(--text-faint)", marginTop: 2 }}>
-                            Source Scan ID: <span className="mono">{log_entry.scan_id}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="db-card" style={{ padding: 0 }}>
+                <AuditTimeline changelogData={changelogData} />
               </div>
             )}
           </div>

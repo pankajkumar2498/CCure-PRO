@@ -387,13 +387,19 @@ export default function AuditLogs() {
                       </div>
                     </td>
                     <td>
-                      {log.changes ? (
+                      {log.changes && Object.keys(log.changes).length > 0 && !["user.login", "user.login_failed", "user.logout", "scan.started", "scan.created", "scan.completed", "scan.failed"].includes(log.action) ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setSelectedLog(log);
+                            setSelectedLog({
+                              ...log,
+                              _displayActor: getActorDisplay(log),
+                              _displayTarget: renderAffectedObject(log),
+                              _displayAction: actInfo.label,
+                              _displayTime: formatDateTime(log.created_at)
+                            });
                             setDetailsOpen(true);
                           }}
                         >

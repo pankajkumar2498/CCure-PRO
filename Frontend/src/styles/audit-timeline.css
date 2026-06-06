@@ -1,0 +1,404 @@
+/* ============================================================================
+   audit-timeline.css — CCure Audit PRO
+   Dedicated styles for the modern Asset Activity Timeline
+   ============================================================================ */
+
+/* ── Container & Layout ─────────────────────────────────────────────────── */
+.audit-timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Header & Filter Bar ────────────────────────────────────────────────── */
+.audit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+
+.audit-title-block h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.audit-title-block p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.audit-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Category Filters ───────────────────────────────────────────────────── */
+.audit-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.audit-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.audit-filter-pill:hover {
+  border-color: var(--border-dark);
+  color: var(--text);
+}
+
+.audit-filter-pill.active {
+  background: var(--bg-dark);
+  border-color: var(--bg-dark);
+  color: var(--text-white);
+}
+
+.audit-filter-icon {
+  font-size: 0.9rem;
+}
+
+/* ── Scan Group Cards ───────────────────────────────────────────────────── */
+.audit-group-card {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  transition: box-shadow 0.2s ease;
+}
+
+.audit-group-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Dynamic Left Border based on severity */
+.audit-group-card { border-left-width: 4px; }
+.audit-group-card--info     { border-left-color: var(--info); }
+.audit-group-card--low      { border-left-color: var(--ok); }
+.audit-group-card--medium   { border-left-color: var(--warn); }
+.audit-group-card--high     { border-left-color: #f97316; } /* Tailwind orange-500 */
+.audit-group-card--critical { border-left-color: var(--danger); }
+
+/* Card Header (Clickable) */
+.audit-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-white);
+  transition: background 0.15s ease;
+}
+
+.audit-group-header:hover {
+  background: var(--bg-app);
+}
+
+.audit-group-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.audit-group-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-app);
+  border-radius: 8px;
+  font-size: 1.25rem;
+  border: 1px solid var(--border);
+}
+
+.audit-group-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.audit-group-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.audit-group-meta {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.audit-group-time {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audit-group-chevron {
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+}
+
+.audit-group-card.expanded .audit-group-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Events List ────────────────────────────────────────────────────────── */
+.audit-group-body {
+  border-top: 1px solid var(--border);
+  background: #fafbfc;
+  padding: 0;
+}
+
+.audit-event-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+
+.audit-event-row:last-child {
+  border-bottom: none;
+}
+
+.audit-event-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.audit-event-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.audit-event-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 12px;
+}
+
+.audit-event-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-mid);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audit-event-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Severity Badges (Extending db-sev-badge from dashboard.css) */
+.audit-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.audit-sev-badge--critical { background: rgba(239,68,68,0.1); color: #ef4444; }
+.audit-sev-badge--high     { background: rgba(249,115,22,0.1); color: #f97316; }
+.audit-sev-badge--medium   { background: rgba(234,179,8,0.1); color: #eab308; }
+.audit-sev-badge--low      { background: rgba(34,197,94,0.1); color: #22c55e; }
+.audit-sev-badge--info     { background: rgba(99,102,241,0.1); color: #6366f1; }
+
+.audit-category-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── Change Display ─────────────────────────────────────────────────────── */
+.audit-change-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8rem;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.audit-value-box {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  color: var(--text-mid);
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.audit-value-box--old {
+  background: #fdf2f8; /* very light pink */
+  border-color: #fbcfe8;
+  color: #9d174d;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.audit-value-box--new {
+  background: #f0fdf4; /* very light green */
+  border-color: #bbf7d0;
+  color: #166534;
+  font-weight: 500;
+}
+
+.audit-change-arrow {
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.audit-discovery-text {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+/* ── Technical Details Toggle ───────────────────────────────────────────── */
+.audit-tech-toggle {
+  margin-top: 12px;
+}
+
+.audit-tech-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+
+.audit-tech-btn:hover {
+  text-decoration: underline;
+}
+
+.audit-tech-panel {
+  margin-top: 8px;
+  background: var(--bg-dark);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.audit-tech-panel pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-white);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Empty State ────────────────────────────────────────────────────────── */
+.audit-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  background: var(--bg-white);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.audit-empty-icon {
+  font-size: 2.5rem;
+  opacity: 0.5;
+  margin-bottom: 16px;
+}
+
+.audit-empty-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+}
+
+.audit-empty-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 400px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .audit-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .audit-group-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .audit-group-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .audit-event-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -23,6 +23,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import Modal from "../../components/layout/Modal";
+import CVELink from "../../components/common/CVELink";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api from "../../api/axiosInstance";
 import { stopScan } from "../../api/scans";
@@ -1300,7 +1301,7 @@ export default function Phase3Results() {
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                         <code style={{ fontFamily: "var(--mono)", fontSize: "0.85rem", fontWeight: 700, color: "#2563eb" }}>
-                          {cve.cve_id || "Unknown CVE"}
+                          <CVELink cveId={cve.cve_id || "Unknown CVE"} />
                         </code>
                         <span style={{
                           display: "inline-block", padding: "4px 10px", borderRadius: "4px",

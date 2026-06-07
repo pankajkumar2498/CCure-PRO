@@ -6,7 +6,7 @@ into their respective normalized PostgreSQL rows (assets, services, findings).
 """
 
 import logging
-from typing import Optional, Any, List
+from typing import Dict, Optional, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import func, text
@@ -19,6 +19,49 @@ from db.models.rbac import Organization
 from db.base import utcnow, gen_asset_id, gen_service_id
 
 logger = logging.getLogger(__name__)
+
+# Signal priority for device_classifier — used to prevent low-confidence
+# classifications from overwriting high-confidence ones.
+# Matches the priority chain in core/device_classifier.py classify_device():
+#   1. snmp       (highest — active OID interrogation)
+#   2. mdns       (high — mDNS service records)
+#   3. netbios    (high — NetBIOS suffix roles)
+#   4. port_profile (medium-high — port set hints)
+#   5. banner     (medium — service banner keywords)
+#   6. oui        (medium — vendor substring match)
+#   7. ttl        (low — OS family heuristic)
+#   8. none       (fallback — unknown)
+_DEVICE_SIGNAL_PRIORITY = {
+    "snmp": 100,
+    "mdns": 90,
+    "netbios": 85,
+    "port_profile": 70,
+    "banner": 50,
+    "oui": 40,
+    "ttl": 20,
+    "none": 0,
+}
+
+
+def _get_device_signal_priority(host: Dict) -> int:
+    """
+    Extract the device classification signal from a host dict and return its
+    numeric priority.  Higher = more reliable (e.g. SNMP OID).
+    """
+    signal = host.get("device_category_signal") or "none"
+    return _DEVICE_SIGNAL_PRIORITY.get(signal, 0)
+
+
+def _get_stored_device_signal(asset: Asset) -> Optional[str]:
+    """
+    Read the stored device classification signal from the asset's custom_attributes.
+    Returns None if no previous classification exists.
+    """
+    attrs = dict(asset.custom_attributes or {})
+    provenance = dict(attrs.get("provenance") or {})
+    dev_prov = provenance.get("device_category") or {}
+    return dev_prov.get("signal")
+
 
 SOURCE_PRIORITY = {
     "legacy": 5,
@@ -550,6 +593,7 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
             ))
 
         os_match = host.get("os_match") or host.get("os_guess")
+        incoming_os_confidence = _confidence_to_percent(host.get("os_confidence"))
 
         # Derive os_family and manufacturer from the os_guess string so that the
         # Asset Registry can display these fields after an Asset Discovery scan,
@@ -561,6 +605,35 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
         manufacturer_val  = host.get("manufacturer") or derived_manufacturer
         device_category   = host.get("device_category")
 
+        # ── Confidence-aware OS field merge ─────────────────────────────────
+        # AssetCorrelationEngine cross-phase principle: if Phase 2 produced a
+        # high-confidence OS detection (e.g. from Nmap -O at ≥90% accuracy), but
+        # Phase 3 later provides a lower-confidence guess (e.g. from banner/TTL
+        # heuristics at ≤30%), we should keep the Phase 2 value.
+        #
+        # The _can_update_field() check already handles source priority (asset_discovery
+        # priority=20, vulnerability_audit=30). However when both come from the same
+        # phase, we use the OS confidence score as a tiebreaker so that a well-detected
+        # Nmap fingerprint is not overwritten by a poorer detection later.
+        current_os_confidence = _confidence_to_percent(asset.os_confidence)
+        if incoming_os_confidence is not None and current_os_confidence is not None:
+            # Read the current os_name to decide whether to keep or replace
+            current_os_name = getattr(asset, "os_name", None)
+            if _has_value(current_os_name) and incoming_os_confidence < current_os_confidence:
+                # Incoming OS data is lower confidence — skip os_name and os_family
+                # but still write manufacturer and device_category.
+                _set_asset_field(db, asset, scan_id, "hostname",         host.get("hostname"),   "asset_discovery", max_len=255)
+                _set_asset_field(db, asset, scan_id, "fqdn",             fqdn,                   "asset_discovery", max_len=512)
+                _set_asset_field(db, asset, scan_id, "dns_name",         dns_name,               "asset_discovery", max_len=512)
+                _set_asset_field(db, asset, scan_id, "netbios_name",     netbios_name,           "asset_discovery", max_len=255)
+                _set_asset_field(db, asset, scan_id, "manufacturer",     manufacturer_val,       "asset_discovery", max_len=255)
+                _set_asset_field(db, asset, scan_id, "device_category",  device_category,        "asset_discovery", max_len=100)
+                _set_asset_field(db, asset, scan_id, "os_confidence",    incoming_os_confidence,  "asset_discovery")
+                _set_asset_field(db, asset, scan_id, "discovery_method", "asset_discovery",      "asset_discovery", max_len=50)
+                # Skip os_name and os_family — preserve the higher-confidence value
+                db.commit()
+                continue
+
         _set_asset_field(db, asset, scan_id, "hostname",         host.get("hostname"),   "asset_discovery", max_len=255)
         _set_asset_field(db, asset, scan_id, "fqdn",             fqdn,                   "asset_discovery", max_len=512)
         _set_asset_field(db, asset, scan_id, "dns_name",         dns_name,               "asset_discovery", max_len=512)
@@ -569,7 +642,7 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
         _set_asset_field(db, asset, scan_id, "os_family",        os_family_val,          "asset_discovery", max_len=100)
         _set_asset_field(db, asset, scan_id, "manufacturer",     manufacturer_val,       "asset_discovery", max_len=255)
         _set_asset_field(db, asset, scan_id, "device_category",  device_category,        "asset_discovery", max_len=100)
-        _set_asset_field(db, asset, scan_id, "os_confidence",    _confidence_to_percent(host.get("os_confidence")), "asset_discovery")
+        _set_asset_field(db, asset, scan_id, "os_confidence",    incoming_os_confidence,  "asset_discovery")
         _set_asset_field(db, asset, scan_id, "discovery_method", "asset_discovery",      "asset_discovery", max_len=50)
 
     db.commit()
@@ -602,7 +675,36 @@ def sync_vulnerability_audit(db: Session, scan_id: str, org_id: str, user_id: Op
         _set_asset_field(db, asset, scan_id, "os_name", host.get("os_match") or host.get("os_guess"), "vulnerability_audit", max_len=255)
         _set_asset_field(db, asset, scan_id, "os_family", host.get("os_family"), "vulnerability_audit", max_len=100)
         _set_asset_field(db, asset, scan_id, "os_confidence", _confidence_to_percent(host.get("os_confidence")), "vulnerability_audit")
-        _set_asset_field(db, asset, scan_id, "device_category", host.get("device_category"), "vulnerability_audit", max_len=100)
+
+        # ── Device classification signal priority check ────────────────────
+        # Prevents a low-confidence classification (e.g. TTL heuristic at
+        # priority=20) from overwriting a high-confidence one (e.g. SNMP OID
+        # at priority=100) across scan phases.
+        incoming_device_cat = host.get("device_category")
+        if _has_value(incoming_device_cat):
+            incoming_signal = host.get("device_category_signal") or "none"
+            incoming_priority = _DEVICE_SIGNAL_PRIORITY.get(incoming_signal, 0)
+            stored_signal = _get_stored_device_signal(asset)
+            stored_priority = _DEVICE_SIGNAL_PRIORITY.get(stored_signal or "none", 0)
+            if stored_signal is not None and incoming_priority < stored_priority:
+                # Incoming signal is weaker — preserve the stored classification
+                logger.debug(
+                    "Skipping device_category update for %s: stored signal '%s' (pri=%d) "
+                    "> incoming '%s' (pri=%d)",
+                    _resolve_ip(host), stored_signal, stored_priority,
+                    incoming_signal, incoming_priority,
+                )
+            else:
+                _set_asset_field(db, asset, scan_id, "device_category", incoming_device_cat, "vulnerability_audit", max_len=100)
+                # Also store the signal name in provenance for future comparisons
+                attrs = dict(asset.custom_attributes or {})
+                prov = dict(attrs.get("provenance") or {})
+                dev_prov = dict(prov.get("device_category") or {})
+                dev_prov["signal"] = incoming_signal
+                prov["device_category"] = dev_prov
+                attrs["provenance"] = prov
+                asset.custom_attributes = attrs
+        # If no incoming device_category, don't overwrite anything
 
         source_family = _finding_family("vulnerability_audit")
         found_in_this_scan = set()

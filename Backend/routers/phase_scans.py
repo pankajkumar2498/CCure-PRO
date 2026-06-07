@@ -109,6 +109,11 @@ class HostDiscoveryRequest(BaseModel):
     discovery_intensity: Optional[str]  = Field("normal",
                                                 example="normal",
                                                 description="light | normal | deep (asset pipeline only)")
+    port_scan_intensity: Optional[str]  = Field("normal",
+                                                example="normal",
+                                                description="light | normal | deep — intensity for Phase 2 port scan (asset pipeline only)")
+    os_detection:        bool           = Field(True, description="Enable Nmap -O OS fingerprinting in Phase 2 (passed through auto-chained task)")
+    execution_mode:      Optional[str]  = Field("automatic", description="automatic | interactive")
     rate_limit:          Optional[float] = Field(None, description="Optional rate limit for probes per second (PPS).")
     max_concurrency:     Optional[int]   = Field(None, description="Max concurrent threads (e.g. TCP connect probes).")
     wait:                bool            = Field(False, description="If true, wait for task completion (up to 300s) before returning.")
@@ -127,6 +132,7 @@ class AssetDiscoveryRequest(BaseModel):
     pipeline_mode: Optional[str]  = Field("asset",
                                           example="asset",
                                           description="basic | asset | vulnerability_audit")
+    os_detection:  bool           = Field(True, description="Enable Nmap -O OS fingerprinting during port scan")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
 
 
@@ -172,9 +178,11 @@ async def scan_host_discovery(
     Quota enforcement runs BEFORE the scan row is created, so rejected
     requests never produce orphaned DB rows.
     """
-    validate_total_targets(req.targets)
-    raw_intensity = (req.discovery_intensity or "normal").strip().lower()
-    discovery_intensity = raw_intensity if raw_intensity in ("light", "normal", "deep") else "normal"
+    # Normalise intensities
+    raw_disc_intensity = (req.discovery_intensity or "normal").strip().lower()
+    discovery_intensity = raw_disc_intensity if raw_disc_intensity in ("light", "normal", "deep") else "normal"
+    raw_port_intensity = (req.port_scan_intensity or "normal").strip().lower()
+    port_scan_intensity = raw_port_intensity if raw_port_intensity in ("light", "normal", "deep") else "normal"
 
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
     check_scan_quota(db, org_id=str(user.org_id), targets=req.targets)
@@ -187,6 +195,8 @@ async def scan_host_discovery(
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
     )
+    scan.options = {**(scan.options or {}), "execution_mode": req.execution_mode or "automatic"}
+    db.commit()
     scan_id = str(scan.id)
     scan_no = scan.scan_no
 
@@ -200,6 +210,8 @@ async def scan_host_discovery(
         scan_id             = scan_id,
         rate_limit          = req.rate_limit,
         max_concurrency     = req.max_concurrency,
+        os_detection        = req.os_detection,
+        port_scan_intensity = port_scan_intensity,
     )
 
     # Store the task ID so it can be revoked if needed
@@ -268,11 +280,15 @@ async def scan_asset_discovery(
         intensity     = req.intensity,
         scan_id       = req.scan_id,
         pipeline_mode = req.pipeline_mode,
+        os_detection  = req.os_detection,
     )
 
     # Track active task for termination
     if req.scan_id:
-        db.query(Scan).filter(Scan.id == req.scan_id).update({"current_task_id": task.id})
+        db.query(Scan).filter(Scan.id == req.scan_id).update({
+            "current_task_id": task.id,
+            "status": "running"
+        })
         db.commit()
 
     return {
@@ -316,7 +332,10 @@ async def scan_vulnerability_audit(
 
     # Track active task for termination
     if req.scan_id:
-        db.query(Scan).filter(Scan.id == req.scan_id).update({"current_task_id": task.id})
+        db.query(Scan).filter(Scan.id == req.scan_id).update({
+            "current_task_id": task.id,
+            "status": "running"
+        })
         db.commit()
 
     return {

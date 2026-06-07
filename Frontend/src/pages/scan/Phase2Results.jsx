@@ -1,11 +1,16 @@
 /**
  * src/pages/scan/Phase2Results.jsx
  *
- * Updated flow: host selection + intensity selection happen on the same Port Scan page.
- * The page now directly executes Asset Discovery when the user clicks Run Port Scan,
- * and shows final Phase 2 results in-place after completion.
+ * Pattern B — Pure Reporting Screen
+ *
+ * Port scan results are produced by the backend auto-chain (Phase 1 → Phase 2).
+ * All configuration (intensity, OS detection) was captured upfront on NewScan.jsx.
+ * This page only loads and displays already-computed Phase 2 data.
+ *
+ * The "Proceed to Vulnerability Audit" action is preserved — it passes scan results
+ * forward to Phase 3 and is a result-review action, not a scan trigger.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
@@ -13,11 +18,9 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
-import { stopScan } from "../../api/scans";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
-const INTENSITIES = ["light", "normal", "deep"];
 const VULN_PROFILES = [
   { value: "recommended", label: "Recommended", desc: "Service-aware checks for discovered open ports" },
   { value: "conservative", label: "Conservative", desc: "Lower-impact checks for fragile or OT systems" },
@@ -61,35 +64,129 @@ export default function Phase2Results() {
     target,
     pipelineMode,
     saveStatus,
-    intensity,
-    setIntensity,
     setSaveStatus,
-    setPhase2Hosts,
-    setPhase2Summary,
     setPhase2Results,
+    setPhase2Summary,
     setPhase3Results,
     setPipelineState,
+    executionMode,
   } = useScan();
   const [filter, setFilter] = useState("active");
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [selected, setSelected] = useState(() => new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
+  const [results, setResults] = useState(() => phase2Results.length ? phase2Results : []);
+  const [summary, setSummary] = useState(() => phase2Summary || null);
   const [vulnProfile, setVulnProfile] = useState("recommended");
   const [expanded, setExpanded] = useState(new Set());
   const [error, setError] = useState("");
-  const [hasScanned, setHasScanned] = useState(false);
+  // phase2Running = true while port scan is still in progress (no results yet)
+  const [phase2Running, setPhase2Running] = useState(phase2Results.length === 0);
+  const [phase2Polling, setPhase2Polling] = useState(false);
+  const hasResults = results.length > 0;
 
+  const [selected, setSelected] = useState(() => new Set());
+  const selectionInitialized = useRef(false);
+
+  const showCheckboxes = executionMode === "interactive";
+  const finalSelectedHosts = showCheckboxes
+    ? results.filter(h => h.is_active && selected.has(h.ip_address))
+    : results.filter(h => h.is_active && hasDetectedServices(h));
+  const selectedCount = finalSelectedHosts.length;
+
+  const toggleHost = (ip) => {
+    const next = new Set(selected);
+    next.has(ip) ? next.delete(ip) : next.add(ip);
+    setSelected(next);
+  };
+
+  // Initialize selected hosts when results are loaded
+  useEffect(() => {
+    if (results.length > 0) {
+      if (!selectionInitialized.current) {
+        const defaultSelected = results
+          .filter(h => h.is_active && hasDetectedServices(h))
+          .map(h => h.ip_address);
+        setSelected(new Set(defaultSelected));
+        selectionInitialized.current = true;
+      }
+    } else {
+      selectionInitialized.current = false;
+    }
+  }, [results]);
+
+  // Auto-redirect in Automatic mode to Phase 3 if enabled
+  useEffect(() => {
+    if (hasResults && executionMode === "automatic" && isPhaseEnabled(pipelineMode, 3)) {
+      const autoQueue = results.filter(h => h.is_active && hasDetectedServices(h));
+      setPhase3Results(autoQueue);
+      navigate("/scan/vulnerability-audit");
+    }
+  }, [hasResults, executionMode, pipelineMode, results, navigate, setPhase3Results]);
+
+  // ── Sync from context whenever Phase1Results polling saves data ──────────────
   useEffect(() => {
     if (phase2Results.length) {
       setResults(phase2Results);
-      setHasScanned(true);
-      setSelected(new Set(phase2Results.filter(hasDetectedServices).map(h => h.ip_address)));
+      setPhase2Running(false);
+      setPhase2Polling(false);
     }
-    if (phase2Summary) {
-      setSummary(phase2Summary);
-    }
+    if (phase2Summary) setSummary(phase2Summary);
   }, [phase2Results, phase2Summary]);
+
+  // ── Update pipeline state in context to drive the stepper ──────────────────
+  useEffect(() => {
+    if (phase2Running) {
+      setPipelineState(PIPELINE_STATES.PORT_SCAN);
+    } else if (hasResults) {
+      const hasPhase3 = isPhaseEnabled(pipelineMode, 3);
+      setPipelineState(hasPhase3 ? PIPELINE_STATES.IDLE : PIPELINE_STATES.COMPLETE);
+    }
+  }, [phase2Running, hasResults, pipelineMode, setPipelineState]);
+
+  // ── Polling loop — runs while phase2Running and scanId is known ────────────
+  // Handles first load when Phase 2 is still executing and direct navigation.
+  useEffect(() => {
+    if (!scanId || !phase2Running) return;
+    let stopped = false;
+    setPhase2Polling(true);
+
+    const applyResults = (p2Data, p2Sum) => {
+      setResults(p2Data); setPhase2Results(p2Data);
+      if (p2Sum) { setSummary(p2Sum); setPhase2Summary(p2Sum); }
+      setPhase2Running(false); setPhase2Polling(false);
+    };
+
+    const poll = async () => {
+      // Immediate first check on mount
+      try {
+        const { data: scan } = await api.get(`/scans/${scanId}`);
+        if (stopped) return;
+        const d = scan?.results?.phase2?.data;
+        if (Array.isArray(d) && d.length > 0) { applyResults(d, scan?.results?.phase2?.summary); return; }
+      } catch { /* ignore */ }
+
+      // Then poll every 4s
+      while (!stopped) {
+        await new Promise(r => setTimeout(r, 4000));
+        if (stopped) break;
+        try {
+          const { data: scan } = await api.get(`/scans/${scanId}`);
+          const d = scan?.results?.phase2?.data;
+          const s = scan?.results?.phase2?.summary;
+          if (Array.isArray(d) && d.length > 0) { applyResults(d, s); break; }
+          if (scan?.status === "complete" || scan?.status === "failed") {
+            setPhase2Running(false); setPhase2Polling(false);
+            if (scan?.status === "failed") {
+              setError("Port scan failed on the backend.");
+              setPipelineState(PIPELINE_STATES.ERROR);
+            }
+            break;
+          }
+        } catch { /* ignore transient errors */ }
+      }
+    };
+
+    poll();
+    return () => { stopped = true; };
+  }, [scanId, phase2Running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!phase1Hosts.length) {
@@ -97,142 +194,12 @@ export default function Phase2Results() {
     }
   }, [phase1Hosts.length, navigate]);
 
-  useEffect(() => {
-    if (!hasScanned) {
-      setSelected(new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
-    }
-  }, [phase1Hosts, hasScanned]);
-
   const discoveredHosts = phase1Hosts;
   const activeHosts = discoveredHosts.filter(h => h.is_active);
   const displayHosts = filter === "active" ? activeHosts : discoveredHosts;
-  const selectedHosts = discoveredHosts.filter(h => selected.has(h.ip_address) && h.is_active);
-  const selectedCount = selectedHosts.length;
 
   const canProceedToPhase3 = isPhaseEnabled(pipelineMode, 3);
   const nextPhase = getNextPhase(pipelineMode, 2);
-
-  const toggleHost = (ip) => {
-    if (!activeHosts.some(h => h.ip_address === ip)) return;
-    const next = new Set(selected);
-    next.has(ip) ? next.delete(ip) : next.add(ip);
-    setSelected(next);
-  };
-
-  const toggleAll = () => {
-    const next = selectedCount === activeHosts.length
-      ? new Set()
-      : new Set(activeHosts.map(h => h.ip_address));
-    setSelected(next);
-  };
-
-  const [scanProgress, setScanProgress] = useState(null);
-  const baseURL = api.defaults.baseURL || "";
-  const wsPrefix = baseURL.replace(/^http/, "ws");
-  const buildScanProgressUrl = (scanId, ticket) => {
-    return `${wsPrefix}/scans/${scanId}/progress?ticket=${encodeURIComponent(ticket)}`;
-  };
-
-  const waitForPhase = async (scanId, phase) => {
-    const { data } = await api.post("/auth/ticket");
-    const ticket = data.ticket;
-
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(buildScanProgressUrl(scanId, ticket));
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.phase === phase) {
-          setScanProgress(data.progress);
-          if (data.progress?.status === "complete" || data.progress?.status === "failed") {
-            ws.close();
-            resolve(data.progress);
-          }
-        }
-      };
-      ws.onerror = () => {
-        ws.close();
-        reject(new Error(`Phase ${phase} WebSocket failed`));
-      };
-      setTimeout(() => {
-        ws.close();
-        reject(new Error(`Phase ${phase} timed out`));
-      }, 600000); // 10 mins
-    });
-  };
-
-  const runScan = async () => {
-    if (!canExecuteScans) {
-      setError(denyMessage);
-      return;
-    }
-    if (!selectedCount) {
-      setError("Select at least one active host before running Port Scan.");
-      return;
-    }
-    if (!intensity) {
-      setError("Choose a scan intensity before running Port Scan.");
-      return;
-    }
-
-    const payloadHosts = discoveredHosts.filter(h => selected.has(h.ip_address));
-    setPhase2Hosts(payloadHosts);
-
-    setLoading(true);
-    setError("");
-    setResults([]);
-    setSummary(null);
-    setHasScanned(false);
-    setExpanded(new Set());
-    setSaveStatus("saving");
-
-    try {
-      const { data } = await api.post("/scan/asset-discovery", {
-        hosts: payloadHosts,
-        intensity,
-        scan_id: scanId,
-        pipeline_mode: pipelineMode,
-        phases: [1, 2],
-      });
-
-      if (!data.success) throw new Error(data.error || "Phase 2 trigger failed");
-
-      const pResult = await waitForPhase(scanId, 2);
-      if (pResult?.status === "failed") {
-         throw new Error("Phase 2 background task failed.");
-      }
-
-      const { data: fullScan } = await api.get(`/scans/${scanId}`);
-      
-      setResults(fullScan?.results?.phase2?.data || []);
-      setSummary(fullScan?.results?.phase2?.summary || {});
-      setPhase2Summary(fullScan?.results?.phase2?.summary || {});
-      setPhase2Results(fullScan?.results?.phase2?.data || []);
-      setSelected(new Set((fullScan?.results?.phase2?.data || []).filter(hasDetectedServices).map(h => h.ip_address)));
-      setHasScanned(true);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 3000);
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Phase 2 failed");
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus(""), 4000);
-    } finally {
-      setLoading(false);
-      setScanProgress(null);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (loading && scanId) {
-      try {
-        await stopScan(scanId);
-      } catch (err) {
-        console.error("Failed to stop scan in backend:", err);
-      }
-    }
-    setLoading(false);
-    setScanProgress(null);
-    setError("Scan cancelled by user.");
-  };
 
   const toggleExpand = (ip) => {
     const next = new Set(expanded);
@@ -247,10 +214,10 @@ export default function Phase2Results() {
     }
     if (!canProceedToPhase3 || !nextPhase) return;
     if (!selectedCount) {
-      setError("Select at least one host with approved scope before running Vulnerability Audit.");
+      setError("No active hosts with open ports selected to run Vulnerability Audit.");
       return;
     }
-    setPhase3Results(results.filter(h => selected.has(h.ip_address)));
+    setPhase3Results(finalSelectedHosts);
     setPipelineState(PIPELINE_STATES.IDLE);
     navigate(nextPhase.route, {
       state: {
@@ -264,50 +231,24 @@ export default function Phase2Results() {
 
   if (!phase1Hosts.length) return null;
 
+  // Stepper advances: step 2 = port scan active, step 3 = port scan complete
+  const stepperCurrent = hasResults ? 3 : 2;
+
   return (
-    <AppLayout pageTitle="Port Scan" saveStatus={saveStatus}>
-      <ScanStepper current={2} />
+    <AppLayout pageTitle="Port Scan Results" saveStatus={saveStatus}>
+      <ScanStepper current={stepperCurrent} />
 
       <div className="page-inner">
 
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Port Scan</h2>
+            <h2 className="page-title">Port Scan Results</h2>
             <p className="page-subtitle">
-              Choose hosts and intensity, then run port scanning directly.
+              Target: <code className="ip-code">{target}</code>
+              {scanId && <span className="muted"> · Scan No. {scanNo ?? "—"}</span>}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>Intensity</span>
-              <div className="filter-tabs">
-                {INTENSITIES.map(i => (
-                  <button
-                    key={i}
-                    className={`filter-tab ${intensity === i ? "filter-tab--active" : ""}`}
-                    onClick={() => setIntensity(i)}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    {i}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
-
-            {loading && (
-              <button className="btn btn--cancel" onClick={handleCancel}>
-                ✕ Cancel Scan
-              </button>
-            )}
-
-            {!hasScanned && (
-              <button className="btn btn--primary" onClick={runScan} disabled={loading || selectedCount === 0 || !intensity || !canExecuteScans}>
-                {loading ? <><span className="btn-spinner" /> Scanning…</> : "▶ Run Port Scan"}
-              </button>
-            )}
-          </div>
+          <button className="btn btn--ghost" onClick={() => navigate("/scan/host-discovery")}>← Back</button>
         </div>
 
         {/* PHASE 4: Unreachable Banner */}
@@ -328,12 +269,36 @@ export default function Phase2Results() {
           </div>
         )}
 
-        <div className="summary-bar" style={{ marginTop: 16 }}>
-          <span className="summary-item"><b>{activeHosts.length}</b> Active hosts available</span>
-          <span className="summary-item"><b>{selectedCount}</b> selected</span>
-          <span className="summary-item"><b>{intensity || "Choose"}</b> intensity</span>
-          <span className="summary-item"><b>{filter === "active" ? activeHosts.length : discoveredHosts.length}</b> shown</span>
-        </div>
+        {/* ── Port Scan Running: progress banner ─────────────────────────── */}
+        {phase2Running && (
+          <div className="pipeline-progress-card" style={{ marginTop: 16, marginBottom: 8 }}>
+            <div className="pipeline-progress-header">
+              <div className="pipeline-pulse" />
+              <div>
+                <h3 className="pipeline-progress-title">Port Scan Running…</h3>
+                <p className="pipeline-progress-desc">
+                  Probing TCP/UDP services on discovered hosts — results will appear automatically when complete.
+                </p>
+              </div>
+            </div>
+            <div className="progress-bar progress-bar--pipeline">
+              <div className="progress-fill progress-fill--animated" />
+            </div>
+            {/* Shimmer skeleton */}
+            <div className="shimmer-table">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="shimmer-row">
+                  <div className="shimmer-cell shimmer-cell--short" />
+                  <div className="shimmer-cell shimmer-cell--medium" />
+                  <div className="shimmer-cell shimmer-cell--long" />
+                  <div className="shimmer-cell shimmer-cell--short" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
           <div className="filter-tabs">
@@ -350,16 +315,29 @@ export default function Phase2Results() {
               </button>
             ))}
           </div>
-          <button className="btn btn--ghost btn--sm" onClick={toggleAll} disabled={loading || !activeHosts.length || !canExecuteScans}>
-            {selectedCount === activeHosts.length ? "Deselect all" : "Select all active"}
-          </button>
         </div>
 
         <div className="results-table-wrap">
           <table className="results-table">
             <thead>
               <tr>
-                <th style={{ width: 36 }} />
+                {showCheckboxes && (
+                  <th style={{ width: 40, paddingRight: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={activeHosts.length > 0 && activeHosts.every(h => selected.has(h.ip_address))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelected(new Set(activeHosts.map(h => h.ip_address)));
+                        } else {
+                          setSelected(new Set());
+                        }
+                      }}
+                      disabled={!canExecuteScans}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </th>
+                )}
                 <th>IP Address</th>
                 <th>Hostname</th>
                 <th>MAC</th>
@@ -380,19 +358,18 @@ export default function Phase2Results() {
                   <tr
                     key={host.ip_address}
                     className={host.is_active ? "row--active" : "row--inactive"}
-                    onClick={() => host.is_active && toggleHost(host.ip_address)}
-                    style={{ cursor: host.is_active ? "pointer" : "default" }}
                   >
-                    <td>
-                      {host.is_active && (
+                    {showCheckboxes && (
+                      <td style={{ paddingRight: 0 }}>
                         <input
                           type="checkbox"
                           checked={selected.has(host.ip_address)}
                           onChange={() => toggleHost(host.ip_address)}
-                          onClick={e => e.stopPropagation()}
+                          disabled={!host.is_active || !canExecuteScans}
+                          style={{ cursor: "pointer" }}
                         />
-                      )}
-                    </td>
+                      </td>
+                    )}
                     <td><code className="ip-code">{host.ip_address}</code></td>
                     <td>{textValue(displayHost, <span className="muted">—</span>)}</td>
                     <td>{textValue(host.mac_address, <span className="muted">—</span>)}</td>
@@ -414,28 +391,13 @@ export default function Phase2Results() {
             <span className="summary-item"><b>{summary.total_hosts}</b> Hosts scanned</span>
             <span className="summary-item summary-item--active"><b>{summary.hosts_with_ports}</b> Have open ports</span>
             <span className="summary-item"><b>{fmtNumber(summary.scan_duration)}s</b> Duration</span>
-            <span className="summary-item summary-item--sel"><b>{selectedCount}</b> selected</span>
-          </div>
-        )}
-
-        {loading && (
-          <div className="progress-wrap">
-            <div className="progress-bar"><div className="progress-fill" /></div>
-            <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Probing TCP services — takes 5–30 seconds depending on intensity…
-            </p>
+            <span className="summary-item summary-item--sel"><b>{selectedCount}</b> queued for audit</span>
           </div>
         )}
 
         {error && <div className="alert alert--error">⚠ {error}</div>}
 
-        {hasScanned && !canProceedToPhase3 && (
-          <div className="alert alert--info" style={{ marginBottom: 16 }}>
-            ℹ Asset Discovery complete. Port Scanning is the final phase for this scan type.
-          </div>
-        )}
-
-        {hasScanned && activeResults.length === 0 && (
+        {hasResults && activeResults.length === 0 && (
           <div className="empty-state">
             <span className="empty-state-icon">🔍</span>
             <p className="empty-state-title">No active hosts returned open ports</p>
@@ -446,18 +408,24 @@ export default function Phase2Results() {
           const portCount = host.open_ports?.length || 0;
           const critPorts = host.open_ports?.filter(p => p.risk === "Critical").length || 0;
           const isExpanded = expanded.has(host.ip_address);
-          const isSelected = selected.has(host.ip_address);
 
           return (
-            <div key={host.ip_address} className={`host-card ${isSelected ? "host-card--selected" : ""}`}>
-              <div className="host-card-header" onClick={() => toggleHost(host.ip_address)}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleHost(host.ip_address)}
-                  onClick={e => e.stopPropagation()}
-                />
-
+            <div key={host.ip_address} className="host-card">
+              <div
+                className="host-card-header"
+                onClick={() => toggleExpand(host.ip_address)}
+                style={{ cursor: "pointer" }}
+              >
+                {showCheckboxes && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(host.ip_address)}
+                    onChange={() => toggleHost(host.ip_address)}
+                    onClick={(e) => e.stopPropagation()}
+                    disabled={!canExecuteScans}
+                    style={{ marginRight: 8, cursor: "pointer" }}
+                  />
+                )}
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <code className="ip-code" style={{ fontSize: "0.9rem", fontWeight: 700 }}>{host.ip_address}</code>
                   {(() => {
@@ -773,12 +741,12 @@ export default function Phase2Results() {
           <ExportPanel results={results} summary={summary} scanId={scanId} scanNo={scanNo} target={target} pipelineMode={pipelineMode} />
         )}
 
-        {hasScanned && canProceedToPhase3 && (
+        {hasResults && canProceedToPhase3 && (
           <div className="phase-footer">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <p className="muted" style={{ fontSize: 13, margin: 0 }}>
                 {selectedCount === 0
-                  ? "Select hosts with approved scope before running a vulnerability audit."
+                  ? "No active hosts with open ports found to run vulnerability audit."
                   : `${selectedCount} host${selectedCount > 1 ? "s" : ""} queued for vulnerability audit.`}
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

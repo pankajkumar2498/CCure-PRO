@@ -17,7 +17,6 @@ const ALL_STEPS = [
 
 /** Maps pipeline state → active step number */
 const STATE_TO_STEP = {
-  [PIPELINE_STATES.IDLE]:         0,
   [PIPELINE_STATES.DISCOVERY]:    1,
   [PIPELINE_STATES.PORT_SCAN]:    2,
   [PIPELINE_STATES.VULN_SCAN]:    3,

@@ -533,6 +533,7 @@ class NmapScanner:
         targets: List[str],
         intensity: str = "basic",
         with_services: bool = False,
+        with_os: bool = False,
     ) -> Dict[str, NmapScanResult]:
         """
         Batch port scan for multiple hosts.
@@ -547,10 +548,13 @@ class NmapScanner:
                            single batch call so callers can skip the expensive
                            per-host service-enrichment pass entirely.
                            Not used for "deep" (handled separately).
+            with_os:       When True, appends ``-O`` for active OS fingerprinting
+                           so Phase 2 Asset Discovery produces OS classification
+                           consistent with Phase 3 Vulnerability Audit.
 
         Returns:
             Dict mapping IP → NmapScanResult (ports include service/version
-            when with_services=True).
+            when with_services=True, plus OS matches when with_os=True).
         """
         if not NMAP_AVAILABLE or not targets:
             return {ip: self._unavailable_result(ip) for ip in targets}
@@ -562,8 +566,11 @@ class NmapScanner:
         # versions, which is critical for the Vulnerability Engine.
         svc_arg = "-sV --version-intensity 7" if with_services and intensity != "deep" else ""
 
+        # Append -O when OS fingerprinting is requested
+        os_arg = "-O" if with_os else ""
+
         args = " ".join(filter(None, [
-            "-sS", svc_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS
+            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS
         ]))
 
         log.debug("scan_hosts args: %s", args)

@@ -568,6 +568,8 @@ def run_host_discovery_task(
     scan_id:             str,
     rate_limit:          Optional[float] = None,
     max_concurrency:     Optional[int]   = None,
+    os_detection:        bool            = True,
+    port_scan_intensity: str             = "normal",
 ):
     """Phase 1 Background Task."""
     import datetime
@@ -584,7 +586,14 @@ def run_host_discovery_task(
         from scans.db_helpers import update_scan_phase1
         mode = resolve_pipeline_mode(pipeline_mode)
         terminal = get_terminal_phase(mode)
-        is_final = (terminal == 1)
+        
+        # Check if execution mode is interactive
+        scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
+        is_interactive = False
+        if scan_row and scan_row.options:
+            is_interactive = (scan_row.options.get("execution_mode") == "interactive")
+            
+        is_final = (terminal == 1) or is_interactive
 
         # 1. Run Discovery
         log.info("[TRACE][ENGINE][%s] Calling run_host_discovery_only", ts())
@@ -636,9 +645,10 @@ def run_host_discovery_task(
                 next_task = run_asset_discovery_task.delay(
                     user_id=user_id,
                     hosts=active_hosts,
-                    intensity=discovery_intensity,  # Use same intensity or default
+                    intensity=port_scan_intensity,  # Dedicated port scan intensity (separate from discovery intensity)
                     scan_id=scan_id,
-                    pipeline_mode=pipeline_mode
+                    pipeline_mode=pipeline_mode,
+                    os_detection=os_detection,      # Forward os_detection from the original request
                 )
                 db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
                 db.commit()
@@ -695,6 +705,7 @@ def run_asset_discovery_task(
     intensity:     str,
     scan_id:       str,
     pipeline_mode: str,
+    os_detection:  bool = True,
 ):
     """Phase 2 Background Task."""
     import datetime
@@ -708,11 +719,19 @@ def run_asset_discovery_task(
             return {"success": False, "error": "Scan cancelled"}
 
         mode = resolve_pipeline_mode(pipeline_mode)
-        is_final = (get_terminal_phase(mode) == 2)
+        
+        # Check if execution mode is interactive
+        scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
+        is_interactive = False
+        if scan_row and scan_row.options:
+            is_interactive = (scan_row.options.get("execution_mode") == "interactive")
+            
+        is_final = (get_terminal_phase(mode) == 2) or is_interactive
 
         orch = _new_orchestrator()
         result = _run_async(orch.run_asset_discovery_only(
-            hosts=hosts, intensity=intensity, pipeline_mode=mode, scan_id=scan_id
+            hosts=hosts, intensity=intensity, pipeline_mode=mode,
+            scan_id=scan_id, os_detection=os_detection
         ))
 
         if _check_cancelled(db, scan_id):

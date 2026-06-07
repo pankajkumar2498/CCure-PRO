@@ -60,8 +60,10 @@ class PortEngine:
         self,
         intensity: ScanIntensity = ScanIntensity.NORMAL,
         nmap_scanner: Optional[NmapScanner] = None,
+        os_detection: bool = False,
     ):
         self.intensity = intensity
+        self.os_detection = os_detection
         # Use injected scanner (testable) or default singleton
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows" and nmap_scanner is None
@@ -113,6 +115,11 @@ class PortEngine:
         DEEP — two-pass:
           Pass 1: full port discovery (-p- all 65 535 ports)
           Pass 2: service detect on open ports only (8 concurrent workers)
+
+        When os_detection=True (set via constructor), passes with_os=True to
+        NmapScanner for active OS fingerprinting (-O flag).  This brings Phase 2
+        OS classification in line with Phase 3 (Vulnerability Audit) and prevents
+        asymmetric OS detection across scan types.
         """
         intensity_map = {
             ScanIntensity.LIGHT:  "basic",
@@ -123,7 +130,8 @@ class PortEngine:
         ips = [self._ip(h) for h in hosts if self._ip(h)]
 
         loop = asyncio.get_event_loop()
-        log.info("Nmap port scan: %d hosts, intensity=%s", len(ips), nmap_intensity)
+        log.info("Nmap port scan: %d hosts, intensity=%s, os_detection=%s",
+                 len(ips), nmap_intensity, self.os_detection)
         t0 = time.time()
 
         from core.redis_client import publish_progress
@@ -147,6 +155,7 @@ class PortEngine:
                     ips,
                     intensity=nmap_intensity,
                     with_services=include_svc,
+                    with_os=self.os_detection,
                 ),
             )
             log.info(
@@ -181,7 +190,7 @@ class PortEngine:
 
             nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
-                lambda: self._nmap.scan_hosts(ips, intensity="deep"),
+                lambda: self._nmap.scan_hosts(ips, intensity="deep", with_os=self.os_detection),
             )
             log.info(
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",

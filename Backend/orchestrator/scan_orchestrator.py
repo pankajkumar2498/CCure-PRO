@@ -547,6 +547,7 @@ class ScanOrchestrator:
         intensity: str = "normal",
         scan_id: Optional[str] = None,
         pipeline_mode: str = "asset",
+        os_detection: bool = True,
     ) -> Dict:
         """
         Phase 2 — Port Scanning.
@@ -555,8 +556,16 @@ class ScanOrchestrator:
           PortEngine now routes to NmapScanner when nmap is available,
           falling back to async TCP connect when not.
           The return format is IDENTICAL to the original.
+
+        Args:
+            hosts:         Host dicts from Phase 1.
+            intensity:     Scan intensity (light/normal/deep).
+            scan_id:       Optional scan ID for progress tracking.
+            pipeline_mode: Pipeline context (basic/asset/vulnerability_audit).
+            os_detection:  When True (default), passes -O to Nmap for active
+                           OS fingerprinting during port scan.
         """
-        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}")
+        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}")
 
         try:
             intensity_enum = ScanIntensity(intensity.lower())
@@ -590,7 +599,10 @@ class ScanOrchestrator:
                 }
 
         # ── PortEngine now uses NmapScanner internally ────────────────────
-        port_engine = PortEngine(intensity=intensity_enum)
+        # os_detection enables Nmap -O in Phase 2, producing consistent
+        # OS classification with Phase 3 (Vulnerability Audit).
+        # User can toggle this via the API's os_detection field (default True).
+        port_engine = PortEngine(intensity=intensity_enum, os_detection=os_detection)
         await port_engine.run(active_hosts, scan_id=scan_id)   # mutates in-place
         self._apply_os_inference(active_hosts)
         
@@ -672,9 +684,18 @@ class ScanOrchestrator:
 
         t0 = time.time()
 
-        # ── Nmap OS fingerprint + service upgrade in parallel with vulnerability scanning ─────
-        # This overlaps Phase 3 Nmap enrichment and plugin execution to reduce overall scan time.
-        self._run_nmap_and_vuln_parallel(active_hosts, scan_id=scan_id)
+        # ── FIX: Run Nmap enrichment SEQUENTIALLY BEFORE vulnerability scanning ─────
+        # Previously these ran in parallel (ThreadPoolExecutor), creating a race
+        # condition where vulnerability plugins would probe ports before Nmap had
+        # finished writing service/version/banner data — causing empty Product,
+        # Version, and Banner fields in results.
+        #
+        # Nmap runs first to populate host["open_ports"] with accurate service
+        # metadata; then VulnerabilityEngine reads that enriched data for
+        # reliable CVE correlation.
+        self._nmap_pre_enrich(active_hosts)
+        vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
+        vuln_engine.run(active_hosts, scan_id=scan_id)
         self._apply_os_inference(active_hosts)
         
         # ── Enrich asset registry with vulnerability findings ───────────────
@@ -777,23 +798,9 @@ class ScanOrchestrator:
                 except Exception as exc:
                     log.debug("_nmap_pre_enrich error: %s", exc)
 
-    def _run_nmap_and_vuln_parallel(self, active_hosts: List[Dict], scan_id: Optional[str] = None) -> None:
-        """Run Nmap enrichment and vulnerability scanning in parallel."""
-        vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-
-        futures = {}
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures[executor.submit(self._nmap_pre_enrich, active_hosts)] = "nmap"
-            futures[executor.submit(vuln_engine.run, active_hosts, scan_id)] = "vuln"
-
-            for future in as_completed(futures):
-                role = futures[future]
-                try:
-                    future.result()
-                    log.debug("Phase 3 %s task completed", role)
-                except Exception as exc:
-                    log.exception("Phase 3 %s task failed", role)
-                    raise
+    # _run_nmap_and_vuln_parallel removed — replaced by sequential execution
+    # in run_vulnerability_audit_only() to eliminate the race condition
+    # where vulnerability plugins read empty open_ports before Nmap enrichment completes.
 
     # ── Preserve vendor from unified asset registry ─────────────────────────
 

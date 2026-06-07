@@ -2268,4 +2268,44 @@
   }
 }
 
+/* ── OS Detection Toggle ── */
+.ns-toggle-group {
+  display: flex;
+  gap: 12px;
+}
+
+.ns-toggle-btn {
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ns-toggle-btn:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+:root[data-theme="dark"] .ns-toggle-btn:hover:not(:disabled) {
+  border-color: #475569;
+  background: #1e293b;
+}
+
+.ns-toggle-btn--active {
+  border-color: var(--accent);
+  background: rgba(14, 165, 233, 0.04);
+  color: var(--accent);
+}
+
+.ns-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
 

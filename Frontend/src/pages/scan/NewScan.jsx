@@ -49,6 +49,12 @@ const SCAN_INTENSITIES = [
   { value: "deep", label: "Deep", icon: "🔭", desc: "Full port range scan" },
 ];
 
+const PORT_SCAN_INTENSITIES = [
+  { value: "light",  label: "Light",  icon: "⚡", desc: "Quick top-ports only" },
+  { value: "normal", label: "Normal", icon: "⚖", desc: "Balanced port coverage" },
+  { value: "deep",   label: "Deep",   icon: "🔭", desc: "Full port range — comprehensive" },
+];
+
 const QUICK_TARGETS = ["192.168.1.0/24", "10.0.0.0/24", "172.16.0.0/24", "192.168.1.1"];
 
 const PIPELINE_BADGE = {
@@ -282,10 +288,13 @@ export default function NewScan() {
 
   const {
     target, setTarget, pipelineMode, intensity, setIntensity, discoveryIntensity, setDiscoveryIntensity,
+    osDetection, setOsDetection,
+    portScanIntensity, setPortScanIntensity,
     setPhase1Hosts, setPhase1Summary, setPhase2Hosts, setPhase2Summary, setPhase2Results,
     setPhase3Results, setPhase3Summary, setPhase3AuditResults,
     setScanId, setScanNo, setSaveStatus, setPipelineState, setPipelineMode,
     autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget, ctxScanNo,
+    executionMode, setExecutionMode,
   } = useScan();
 
   const isActiveRoute = !!urlScanId;
@@ -521,7 +530,15 @@ export default function NewScan() {
     setMissionState({ status: "running", progress: 5, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null });
     setView("mission"); setLoading(true); setPipelineState(PIPELINE_STATES.DISCOVERY);
     try {
-      const payload = buildPhasePayload(pipelineMode || "basic", { targets: trimmedTarget.split(",").map(t => t.trim()).filter(Boolean), scan_type: "adaptive", ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}), ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}) });
+      const payload = buildPhasePayload(pipelineMode || "basic", {
+        targets: trimmedTarget.split(",").map(t => t.trim()).filter(Boolean),
+        scan_type: "adaptive",
+        execution_mode: executionMode,
+        ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}),
+        ...(pipelineMode === "asset" ? { port_scan_intensity: portScanIntensity } : {}),
+        ...((pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? { os_detection: osDetection } : {}),
+        ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {})
+      });
       const { data } = await api.post("/scan/host-discovery", payload); if (!data.success) throw new Error(data.error);
       const sid = data.scan_id, sno = data.scan_no ?? data.display_id;
       
@@ -540,10 +557,14 @@ export default function NewScan() {
 
   const handleRunInBackground = useCallback(() => navigate("/scan-history"), [navigate]);
   const handleViewResults = useCallback(() => {
+    if (executionMode === "interactive") {
+      navigate("/scan/host-discovery");
+      return;
+    }
     if (pipelineMode === "asset") { navigate("/scan/asset-discovery"); return; }
     if ((pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && autoRunAdvancedSingleTarget) { navigate("/scan/vulnerability-audit", { state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } }); return; }
     navigate((pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? "/scan/vulnerability-audit" : "/scan/host-discovery");
-  }, [navigate, pipelineMode, autoRunAdvancedSingleTarget]);
+  }, [navigate, pipelineMode, autoRunAdvancedSingleTarget, executionMode]);
 
   const handleNewScan = useCallback(() => { 
     stopHostPolling(); 
@@ -587,7 +608,13 @@ export default function NewScan() {
           setMissionState(prev => ({ ...prev, status: fs, progress: (fs === "failed" || fs === "unreachable") ? prev.progress : 100, discovered: active.length, discoveredHosts: active }));
           if (fs !== "failed" && fs !== "unreachable" && (rm || f?.pipeline_mode) !== "basic") {
             if (((rm || f?.pipeline_mode) === "advanced" || (rm || f?.pipeline_mode) === "vulnerability_audit") && active.length === 1) navigate("/scan/vulnerability-audit", { replace: true, state: { autoRunAdvancedSingleTarget: true, startPhase: "PORT_SCAN" } });
-            else navigate("/scan/asset-discovery", { replace: true });
+            else {
+              if (executionMode === "interactive") {
+                navigate("/scan/host-discovery", { replace: true });
+              } else {
+                navigate("/scan/asset-discovery", { replace: true });
+              }
+            }
           }
         });
       });
@@ -736,7 +763,56 @@ export default function NewScan() {
             <div className="ns-chips"><span className="ns-chips-label">Quick:</span>{QUICK_TARGETS.map(t => <button key={t} className="ns-chip" onClick={() => setTarget(t)} disabled={loading || !canExecuteScans}>{t}</button>)}</div>
           </div>
           {pipelineMode === "asset" && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Discovery Intensity</div><div className="ns-intensity-grid">{DISCOVERY_INTENSITIES.map(di => <button key={di.value} className={`ns-int-card ${discoveryIntensity === di.value ? "ns-int-card--active" : ""}`} onClick={() => setDiscoveryIntensity(di.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{di.icon}</span><span className="ns-int-name">{di.label}</span></button>)}</div></div></>)}
+          {pipelineMode === "asset" && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Port Scan Intensity <span className="ns-label-hint">depth of Phase 2 port scan</span></div><div className="ns-intensity-grid">{PORT_SCAN_INTENSITIES.map(pi => <button key={pi.value} className={`ns-int-card ${portScanIntensity === pi.value ? "ns-int-card--active" : ""}`} onClick={() => setPortScanIntensity(pi.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{pi.icon}</span><span className="ns-int-name">{pi.label}</span></button>)}</div></div></>)}
           {(pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Scan Intensity</div><div className="ns-intensity-grid">{SCAN_INTENSITIES.map(si => <button key={si.value} className={`ns-int-card ${intensity === si.value ? "ns-int-card--active" : ""}`} onClick={() => setIntensity(si.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{si.icon}</span><span className="ns-int-name">{si.label}</span></button>)}</div></div></>)}
+          {(pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
+            <>
+              <div className="ns-divider" />
+              <div className="ns-section">
+                <div className="ns-label">OS Detection</div>
+                <div className="ns-toggle-group">
+                  <button
+                    type="button"
+                    className={`ns-toggle-btn ${osDetection ? "ns-toggle-btn--active" : ""}`}
+                    onClick={() => setOsDetection(true)}
+                    disabled={loading || !canExecuteScans}
+                  >
+                    ON (Fingerprint OS)
+                  </button>
+                  <button
+                    type="button"
+                    className={`ns-toggle-btn ${!osDetection ? "ns-toggle-btn--active" : ""}`}
+                    onClick={() => setOsDetection(false)}
+                    disabled={loading || !canExecuteScans}
+                  >
+                    OFF (Faster Scan)
+                  </button>
+                </div>
+              </div>
+              <div className="ns-divider" />
+              <div className="ns-section">
+                <div className="ns-label">Execution Mode <span className="ns-label-hint">automatic vs interactive approval</span></div>
+                <div className="ns-toggle-group">
+                  <button
+                    type="button"
+                    className={`ns-toggle-btn ${executionMode === "automatic" ? "ns-toggle-btn--active" : ""}`}
+                    onClick={() => setExecutionMode("automatic")}
+                    disabled={loading || !canExecuteScans}
+                  >
+                    Automatic (Full Chain)
+                  </button>
+                  <button
+                    type="button"
+                    className={`ns-toggle-btn ${executionMode === "interactive" ? "ns-toggle-btn--active" : ""}`}
+                    onClick={() => setExecutionMode("interactive")}
+                    disabled={loading || !canExecuteScans}
+                  >
+                    Interactive (Vetted Steps)
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
           <div className="ns-divider" /><div className="ns-section"><div className="ns-label">Rate Limit (PPS)</div><div className="ns-input-wrap"><span className="ns-input-icon">⏱</span><input type="number" className="ns-input" value={rateLimit} onChange={e => setRateLimit(e.target.value)} placeholder="e.g. 500" disabled={loading || !canExecuteScans} /></div></div>
           {error && <div className="ns-error">⚠ {error}</div>}
           <div className="ns-divider" /><button id="ns-start-btn" className="ns-start-btn" onClick={handleScan} disabled={loading || !target.trim() || !canExecuteScans || quotaBlocked}>{btnLabel} →</button>

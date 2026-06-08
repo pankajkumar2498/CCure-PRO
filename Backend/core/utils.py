@@ -170,6 +170,54 @@ class InputValidator:
             return InputValidator.expand_ip_range(target)
         return [res["resolved"]]
 
+    @staticmethod
+    def parse_custom_ports(ports_str: str) -> List[int]:
+        if not ports_str or not ports_str.strip():
+            raise ValueError("Port input cannot be empty.")
+
+        BLACKLISTED_PORTS = {2375, 2376, 6443, 10250}
+        seen_ports = set()
+        ports_list = []
+        tokens = [t.strip() for t in ports_str.split(",")]
+
+        for token in tokens:
+            if not token:
+                raise ValueError("Malformed input: empty token in port list (check for consecutive or trailing commas).")
+
+            # Check if it's a range
+            if "-" in token:
+                range_match = re.match(r"^(\d+)-(\d+)$", token)
+                if not range_match:
+                    raise ValueError(f"Malformed port range: '{token}'. Use format 'start-end' (e.g. 80-90).")
+                start_p, end_p = int(range_match.group(1)), int(range_match.group(2))
+                if not (1 <= start_p <= 65535) or not (1 <= end_p <= 65535):
+                    raise ValueError(f"Port numbers in range '{token}' must be between 1 and 65535.")
+                if start_p > end_p:
+                    raise ValueError(f"Invalid range '{token}': start port {start_p} is greater than end port {end_p}.")
+
+                for p in range(start_p, end_p + 1):
+                    if p in BLACKLISTED_PORTS:
+                        raise ValueError(f"Port {p} is restricted for security reasons.")
+                    if p in seen_ports:
+                        raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                    seen_ports.add(p)
+                    ports_list.append(p)
+            else:
+                if not token.isdigit():
+                    raise ValueError(f"Malformed port: '{token}'. Must be a number between 1 and 65535.")
+                p = int(token)
+                if not (1 <= p <= 65535):
+                    raise ValueError(f"Port '{token}' must be between 1 and 65535.")
+                if p in BLACKLISTED_PORTS:
+                    raise ValueError(f"Port {p} is restricted for security reasons.")
+                if p in seen_ports:
+                    raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                seen_ports.add(p)
+                ports_list.append(p)
+
+        return sorted(ports_list)
+
+
 
 # =============================================================================
 # Token-Bucket Rate Limiter  (prevents IDS triggers)

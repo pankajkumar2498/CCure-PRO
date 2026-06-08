@@ -560,18 +560,18 @@ export default function Phase3Results() {
 
         {/* ── Active Phase Progress ───────────────────────────────────────── */}
         {isScanning && activeMsg && (
-          <div className="pipeline-progress-card">
-            <div className="pipeline-progress-header">
+          <div className="pipeline-progress-card" style={{ padding: "16px 20px" }}>
+            <div className="pipeline-progress-header" style={{ marginBottom: 12 }}>
               <div className="pipeline-pulse" />
               <div>
-                <h3 className="pipeline-progress-title">{activeMsg.title}</h3>
-                <p className="pipeline-progress-desc">{activeMsg.desc}</p>
+                <h3 className="pipeline-progress-title" style={{ fontSize: "0.95rem" }}>{activeMsg.title}</h3>
+                <p className="pipeline-progress-desc" style={{ fontSize: "0.8rem", marginTop: 2 }}>{activeMsg.desc}</p>
               </div>
             </div>
-            <div className="progress-bar progress-bar--pipeline">
+            <div className="progress-bar progress-bar--pipeline" style={{ height: 4 }}>
               <div className="progress-fill progress-fill--animated" />
             </div>
-            <div className="pipeline-progress-meta">
+            <div className="pipeline-progress-meta" style={{ marginTop: 10 }}>
               {pipelineState === PIPELINE_STATES.PORT_SCAN && (
                 <span className="muted" style={{ fontSize: 12 }}>
                   Phase 2 of 3 · Intensity: <strong>{intensity}</strong>

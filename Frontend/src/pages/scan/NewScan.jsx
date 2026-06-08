@@ -295,11 +295,14 @@ export default function NewScan() {
     setScanId, setScanNo, setSaveStatus, setPipelineState, setPipelineMode,
     autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget, ctxScanNo,
     executionMode, setExecutionMode,
+    portScanMode, setPortScanMode,
+    customPorts, setCustomPorts,
   } = useScan();
 
   const isActiveRoute = !!urlScanId;
   const [view, setView] = useState(isActiveRoute ? "mission" : "setup");
   const [loading, setLoading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState("");
   const [rateLimit, setRateLimit] = useState("");
   const [quotaBlocked, setQuotaBlocked] = useState(false);
@@ -307,6 +310,90 @@ export default function NewScan() {
   const [isDragging, setIsDragging] = useState(false);
   const [parsedTargets, setParsedTargets] = useState([]);
   const [uploadSummary, setUploadSummary] = useState({ total: 0, valid: 0, invalid: 0, invalidEntries: [], duplicates: 0, show: false });
+  const [customPortsError, setCustomPortsError] = useState("");
+  const [parsedCustomPortsCount, setParsedCustomPortsCount] = useState(0);
+
+  const BLACKLISTED_PORTS = [2375, 2376, 6443, 10250];
+
+  const parseCustomPortsJS = (portsStr) => {
+    if (!portsStr || !portsStr.trim()) {
+      return { ports: [], error: "" };
+    }
+    const clean = portsStr.replace(/\s+/g, "");
+    if (!/^[0-9,\-]+$/.test(clean)) {
+      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed." };
+    }
+    const tokens = clean.split(",");
+    const portsSet = new Set();
+    
+    for (const token of tokens) {
+      if (!token) continue;
+      if (token.includes("-")) {
+        const rangeParts = token.split("-");
+        if (rangeParts.length !== 2) {
+          return { ports: [], error: `Invalid range format: "${token}"` };
+        }
+        const start = parseInt(rangeParts[0], 10);
+        const end = parseInt(rangeParts[1], 10);
+        if (isNaN(start) || isNaN(end)) {
+          return { ports: [], error: `Invalid range bounds: "${token}"` };
+        }
+        if (start > end) {
+          return { ports: [], error: `Range start must be <= end: "${token}"` };
+        }
+        if (start < 1 || end > 65535) {
+          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"` };
+        }
+        for (let p = start; p <= end; p++) {
+          if (portsSet.has(p)) {
+            return { ports: [], error: `Duplicate port detected: ${p}` };
+          }
+          portsSet.add(p);
+        }
+      } else {
+        const p = parseInt(token, 10);
+        if (isNaN(p)) {
+          return { ports: [], error: `Invalid port number: "${token}"` };
+        }
+        if (p < 1 || p > 65535) {
+          return { ports: [], error: `Port must be between 1 and 65535: ${p}` };
+        }
+        if (portsSet.has(p)) {
+          return { ports: [], error: `Duplicate port detected: ${p}` };
+        }
+        portsSet.add(p);
+      }
+    }
+    
+    const portsArray = Array.from(portsSet);
+    const blacklistedFound = portsArray.filter(p => BLACKLISTED_PORTS.includes(p));
+    if (blacklistedFound.length > 0) {
+      return {
+        ports: [],
+        error: `Security violation: Restricted ports cannot be scanned (${blacklistedFound.join(", ")}).`
+      };
+    }
+    
+    return { ports: portsArray, error: "" };
+  };
+
+  const handleCustomPortsChange = (val) => {
+    setCustomPorts(val);
+    const { ports, error } = parseCustomPortsJS(val);
+    setCustomPortsError(error);
+    setParsedCustomPortsCount(ports.length);
+  };
+
+  useEffect(() => {
+    if (customPorts) {
+      const { ports, error } = parseCustomPortsJS(customPorts);
+      setCustomPortsError(error);
+      setParsedCustomPortsCount(ports.length);
+    } else {
+      setCustomPortsError("");
+      setParsedCustomPortsCount(0);
+    }
+  }, [customPorts]);
 
   const [missionState, setMissionState] = useState({
     status: "running", progress: 0, discovered: 0, totalIps: 0,
@@ -526,6 +613,19 @@ export default function NewScan() {
   const handleScan = async () => {
     if (!canExecuteScans || !target.trim()) return;
     const trimmedTarget = target.trim();
+    
+    if (pipelineMode === "asset" && portScanMode === "custom") {
+      if (!customPorts || !customPorts.trim()) {
+        setError("Custom ports list cannot be empty when custom ports mode is active.");
+        return;
+      }
+      const { error } = parseCustomPortsJS(customPorts);
+      if (error) {
+        setError(error);
+        return;
+      }
+    }
+
     hostFirstSeenRef.current = new Map(); latestDiscoveredHostsRef.current = [];
     setMissionState({ status: "running", progress: 5, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null });
     setView("mission"); setLoading(true); setPipelineState(PIPELINE_STATES.DISCOVERY);
@@ -535,7 +635,10 @@ export default function NewScan() {
         scan_type: "adaptive",
         execution_mode: executionMode,
         ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}),
-        ...(pipelineMode === "asset" ? { port_scan_intensity: portScanIntensity } : {}),
+        ...(pipelineMode === "asset" ? { 
+          port_scan_intensity: portScanMode === "custom" ? "custom" : portScanIntensity,
+          ...(portScanMode === "custom" ? { custom_ports: customPorts } : {})
+        } : {}),
         ...((pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? { os_detection: osDetection } : {}),
         ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {})
       });
@@ -573,6 +676,16 @@ export default function NewScan() {
     setMissionState({ status: "running", progress: 0, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null }); 
     setLoading(false); 
   }, [stopHostPolling, navigate]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setShowAdvanced(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const hasAutoRunRef = useRef(false);
   useEffect(() => {
@@ -762,60 +875,298 @@ export default function NewScan() {
             )}
             <div className="ns-chips"><span className="ns-chips-label">Quick:</span>{QUICK_TARGETS.map(t => <button key={t} className="ns-chip" onClick={() => setTarget(t)} disabled={loading || !canExecuteScans}>{t}</button>)}</div>
           </div>
-          {pipelineMode === "asset" && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Discovery Intensity</div><div className="ns-intensity-grid">{DISCOVERY_INTENSITIES.map(di => <button key={di.value} className={`ns-int-card ${discoveryIntensity === di.value ? "ns-int-card--active" : ""}`} onClick={() => setDiscoveryIntensity(di.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{di.icon}</span><span className="ns-int-name">{di.label}</span></button>)}</div></div></>)}
-          {pipelineMode === "asset" && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Port Scan Intensity <span className="ns-label-hint">depth of Phase 2 port scan</span></div><div className="ns-intensity-grid">{PORT_SCAN_INTENSITIES.map(pi => <button key={pi.value} className={`ns-int-card ${portScanIntensity === pi.value ? "ns-int-card--active" : ""}`} onClick={() => setPortScanIntensity(pi.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{pi.icon}</span><span className="ns-int-name">{pi.label}</span></button>)}</div></div></>)}
-          {(pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (<><div className="ns-divider" /><div className="ns-section"><div className="ns-label">Scan Intensity</div><div className="ns-intensity-grid">{SCAN_INTENSITIES.map(si => <button key={si.value} className={`ns-int-card ${intensity === si.value ? "ns-int-card--active" : ""}`} onClick={() => setIntensity(si.value)} disabled={loading || !canExecuteScans}><span className="ns-int-icon">{si.icon}</span><span className="ns-int-name">{si.label}</span></button>)}</div></div></>)}
-          {(pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
+          {pipelineMode === "asset" && (
             <>
               <div className="ns-divider" />
               <div className="ns-section">
-                <div className="ns-label">OS Detection</div>
-                <div className="ns-toggle-group">
-                  <button
-                    type="button"
-                    className={`ns-toggle-btn ${osDetection ? "ns-toggle-btn--active" : ""}`}
-                    onClick={() => setOsDetection(true)}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    ON (Fingerprint OS)
-                  </button>
-                  <button
-                    type="button"
-                    className={`ns-toggle-btn ${!osDetection ? "ns-toggle-btn--active" : ""}`}
-                    onClick={() => setOsDetection(false)}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    OFF (Faster Scan)
-                  </button>
+                <div className="ns-label">Discovery Profile</div>
+                <div className="ns-segmented-control">
+                  {DISCOVERY_INTENSITIES.map(di => (
+                    <button
+                      key={di.value}
+                      type="button"
+                      className={`ns-segmented-btn ${discoveryIntensity === di.value ? "ns-segmented-btn--active" : ""}`}
+                      onClick={() => setDiscoveryIntensity(di.value)}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      <span className="ns-segmented-icon">{di.icon}</span>
+                      {di.label}
+                    </button>
+                  ))}
                 </div>
-              </div>
-              <div className="ns-divider" />
-              <div className="ns-section">
-                <div className="ns-label">Execution Mode <span className="ns-label-hint">automatic vs interactive approval</span></div>
-                <div className="ns-toggle-group">
-                  <button
-                    type="button"
-                    className={`ns-toggle-btn ${executionMode === "automatic" ? "ns-toggle-btn--active" : ""}`}
-                    onClick={() => setExecutionMode("automatic")}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    Automatic (Full Chain)
-                  </button>
-                  <button
-                    type="button"
-                    className={`ns-toggle-btn ${executionMode === "interactive" ? "ns-toggle-btn--active" : ""}`}
-                    onClick={() => setExecutionMode("interactive")}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    Interactive (Vetted Steps)
-                  </button>
-                </div>
+                {(() => {
+                  const activeDi = DISCOVERY_INTENSITIES.find(di => di.value === discoveryIntensity);
+                  return activeDi ? (
+                    <div className="ns-segmented-desc">
+                      {activeDi.desc}
+                      {activeDi.badge && (
+                        <span className="ns-desc-badge" style={activeDi.badgeStyle}>
+                          {activeDi.badge}
+                        </span>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </>
           )}
-          <div className="ns-divider" /><div className="ns-section"><div className="ns-label">Rate Limit (PPS)</div><div className="ns-input-wrap"><span className="ns-input-icon">⏱</span><input type="number" className="ns-input" value={rateLimit} onChange={e => setRateLimit(e.target.value)} placeholder="e.g. 500" disabled={loading || !canExecuteScans} /></div></div>
+
+          {(pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
+            <>
+              <div className="ns-divider" />
+              <div className="ns-section">
+                <div className="ns-label">Scan Profile</div>
+                <div className="ns-segmented-control">
+                  {SCAN_INTENSITIES.map(si => (
+                    <button
+                      key={si.value}
+                      type="button"
+                      className={`ns-segmented-btn ${intensity === si.value ? "ns-segmented-btn--active" : ""}`}
+                      onClick={() => setIntensity(si.value)}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      <span className="ns-segmented-icon">{si.icon}</span>
+                      {si.label}
+                    </button>
+                  ))}
+                </div>
+                {(() => {
+                  const activeSi = SCAN_INTENSITIES.find(si => si.value === intensity);
+                  return activeSi ? (
+                    <div className="ns-segmented-desc">
+                      {activeSi.desc}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            </>
+          )}
+
+          {/* Advanced Settings Trigger Button */}
+          <button
+            type="button"
+            className="ns-drawer-trigger-btn"
+            onClick={() => setShowAdvanced(true)}
+            disabled={loading}
+          >
+            ⚙️ Configure Advanced Settings
+          </button>
+
           {error && <div className="ns-error">⚠ {error}</div>}
-          <div className="ns-divider" /><button id="ns-start-btn" className="ns-start-btn" onClick={handleScan} disabled={loading || !target.trim() || !canExecuteScans || quotaBlocked}>{btnLabel} →</button>
+          <div className="ns-divider" />
+          <button id="ns-start-btn" className="ns-start-btn" onClick={handleScan} disabled={loading || !target.trim() || !canExecuteScans || quotaBlocked}>{btnLabel} →</button>
+        </div>
+      </div>
+
+      {/* Slide-out Drawer for Advanced Settings */}
+      <div 
+        className={`ns-drawer-backdrop ${showAdvanced ? "ns-drawer-backdrop--open" : ""}`}
+        onClick={() => setShowAdvanced(false)}
+      />
+      <div className={`ns-drawer ${showAdvanced ? "ns-drawer--open" : ""}`}>
+        <div className="ns-drawer-header">
+          <div className="ns-drawer-title-wrap">
+            <span className="ns-drawer-icon">⚙️</span>
+            <span className="ns-drawer-title">Advanced Settings</span>
+          </div>
+          <button 
+            type="button" 
+            className="ns-drawer-close"
+            onClick={() => setShowAdvanced(false)}
+            title="Close Settings (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+        
+        <div className="ns-drawer-body">
+          {/* 1. Port Scan Configuration (Asset Discovery Mode Only) */}
+          {pipelineMode === "asset" && (
+            <div className="ns-adv-section">
+              <div className="ns-label">Port Scan Mode</div>
+              <div className="ns-segmented-control">
+                <button
+                  type="button"
+                  className={`ns-segmented-btn ${portScanMode === "intensity" ? "ns-segmented-btn--active" : ""}`}
+                  onClick={() => setPortScanMode("intensity")}
+                  disabled={loading || !canExecuteScans}
+                >
+                  Scan by Intensity
+                </button>
+                <button
+                  type="button"
+                  className={`ns-segmented-btn ${portScanMode === "custom" ? "ns-segmented-btn--active" : ""}`}
+                  onClick={() => setPortScanMode("custom")}
+                  disabled={loading || !canExecuteScans}
+                >
+                  Scan by Custom Ports
+                </button>
+              </div>
+              
+              {portScanMode === "intensity" ? (
+                <div style={{ marginTop: "12px" }}>
+                  <div className="ns-label" style={{ marginBottom: "8px" }}>
+                    Port Scan Intensity <span className="ns-label-hint">depth of Phase 2 port scan</span>
+                  </div>
+                  <div className="ns-segmented-control">
+                    {PORT_SCAN_INTENSITIES.map(pi => (
+                      <button
+                        key={pi.value}
+                        type="button"
+                        className={`ns-segmented-btn ${portScanIntensity === pi.value ? "ns-segmented-btn--active" : ""}`}
+                        onClick={() => setPortScanIntensity(pi.value)}
+                        disabled={loading || !canExecuteScans}
+                      >
+                        <span className="ns-segmented-icon">{pi.icon}</span>
+                        {pi.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const activePi = PORT_SCAN_INTENSITIES.find(pi => pi.value === portScanIntensity);
+                    return activePi ? (
+                      <div className="ns-segmented-desc">
+                        {activePi.desc}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              ) : (
+                <div style={{ marginTop: "12px" }}>
+                  <div className="ns-label" style={{ marginBottom: "8px" }}>
+                    Custom Ports / Ranges <span className="ns-label-hint">e.g. 22, 80, 443, 8080-8090</span>
+                  </div>
+                  <div className="ns-input-wrap">
+                    <span className="ns-input-icon">🔌</span>
+                    <input
+                      type="text"
+                      className="ns-input"
+                      value={customPorts}
+                      onChange={e => handleCustomPortsChange(e.target.value)}
+                      placeholder="e.g. 22,80,443,8000-8100"
+                      disabled={loading || !canExecuteScans}
+                    />
+                  </div>
+                  
+                  <div className="ns-chips" style={{ marginTop: "10px" }}>
+                    <span className="ns-chips-label">Presets:</span>
+                    <button
+                      type="button"
+                      className="ns-chip"
+                      onClick={() => handleCustomPortsChange("80,443,8080,8443")}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      Web (80,443...)
+                    </button>
+                    <button
+                      type="button"
+                      className="ns-chip"
+                      onClick={() => handleCustomPortsChange("1433,1521,3306,5432,27017")}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      Database (3306,5432...)
+                    </button>
+                    <button
+                      type="button"
+                      className="ns-chip"
+                      onClick={() => handleCustomPortsChange("22,23,3389,5900")}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      Remote (22,3389...)
+                    </button>
+                  </div>
+
+                  {customPortsError && (
+                    <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                      ⚠ {customPortsError}
+                    </div>
+                  )}
+
+                  {!customPortsError && parsedCustomPortsCount > 0 && (
+                    <div className="ns-estimation-banner" style={{ marginTop: "12px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)", color: "#4ade80", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                      <div style={{ fontWeight: "600", marginBottom: "4px", color: "#22c55e" }}>⚡ Scan Estimation</div>
+                      <div style={{ color: "#a3a3a3", display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
+                        <span>Unique ports:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount}</strong>
+                        <span>Est. packets per host:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount} packets</strong>
+                        <span>Est. duration per host:</span> <strong style={{ color: "#e5e5e5" }}>{Math.max(1, Math.round(parsedCustomPortsCount / 50))} - {Math.max(2, Math.round(parsedCustomPortsCount / 10))} seconds</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 2. OS Detection (shown for asset / advanced / vulnerability_audit) */}
+          {(pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
+            <div className="ns-inline-row">
+              <div className="ns-inline-label">
+                <span className="ns-label-main">OS Detection</span>
+                <span className="ns-label-hint">Fingerprint target operating systems</span>
+              </div>
+              <div className="ns-switch-wrapper">
+                <label className="ns-switch">
+                  <input
+                    type="checkbox"
+                    checked={osDetection}
+                    onChange={e => setOsDetection(e.target.checked)}
+                    disabled={loading || !canExecuteScans}
+                  />
+                  <span className="ns-slider round"></span>
+                </label>
+                <span className="ns-switch-status-text">
+                  {osDetection ? "ON (Fingerprint)" : "OFF (Faster Scan)"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 3. Execution Mode (shown for asset / advanced / vulnerability_audit) */}
+          {(pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
+            <div className="ns-inline-row">
+              <div className="ns-inline-label">
+                <span className="ns-label-main">Execution Mode</span>
+                <span className="ns-label-hint">Automatic full chain vs interactive vetting</span>
+              </div>
+              <div className="ns-select-wrap">
+                <select
+                  className="ns-select"
+                  value={executionMode}
+                  onChange={e => setExecutionMode(e.target.value)}
+                  disabled={loading || !canExecuteScans}
+                >
+                  <option value="automatic">Automatic (Full Chain)</option>
+                  <option value="interactive">Interactive (Vetted Steps)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Rate Limit (PPS) */}
+          <div className="ns-adv-section">
+            <div className="ns-label">Rate Limit (PPS) <span className="ns-label-hint">limit packets per second</span></div>
+            <div className="ns-input-wrap">
+              <span className="ns-input-icon">⏱</span>
+              <input
+                type="number"
+                className="ns-input"
+                value={rateLimit}
+                onChange={e => setRateLimit(e.target.value)}
+                placeholder="e.g. 500"
+                disabled={loading || !canExecuteScans}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="ns-drawer-footer">
+          <button 
+            type="button" 
+            className="ns-drawer-save-btn"
+            onClick={() => setShowAdvanced(false)}
+          >
+            Save & Close
+          </button>
         </div>
       </div>
     </AppLayout>

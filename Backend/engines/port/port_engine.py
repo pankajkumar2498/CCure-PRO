@@ -61,9 +61,11 @@ class PortEngine:
         intensity: ScanIntensity = ScanIntensity.NORMAL,
         nmap_scanner: Optional[NmapScanner] = None,
         os_detection: bool = False,
+        custom_ports: Optional[List[int]] = None,
     ):
         self.intensity = intensity
         self.os_detection = os_detection
+        self.custom_ports = custom_ports
         # Use injected scanner (testable) or default singleton
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows" and nmap_scanner is None
@@ -136,13 +138,13 @@ class PortEngine:
 
         from core.redis_client import publish_progress
 
-        if self.intensity != ScanIntensity.DEEP:
+        if self.custom_ports or self.intensity != ScanIntensity.DEEP:
             # ──────────────────────────────────────────────────────────
-            # LIGHT / NORMAL: single batch call — port states + service info
+            # LIGHT / NORMAL / Custom Ports: single batch call — port states + service info
             # in one Nmap invocation.  Saves the entire _enrich_services() loop
             # (≈65 separate Nmap processes at 4 workers = the ~400 s bottleneck).
             # ──────────────────────────────────────────────────────────
-            include_svc = (self.intensity == ScanIntensity.NORMAL)
+            include_svc = (self.intensity == ScanIntensity.NORMAL) or bool(self.custom_ports)
             if scan_id:
                 await publish_progress(scan_id, 2, {
                     "total_hosts": len(ips),
@@ -156,6 +158,7 @@ class PortEngine:
                     intensity=nmap_intensity,
                     with_services=include_svc,
                     with_os=self.os_detection,
+                    ports=self.custom_ports,
                 ),
             )
             log.info(
@@ -504,6 +507,8 @@ class PortEngine:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _port_list(self) -> List[int]:
+        if self.custom_ports:
+            return self.custom_ports
         if self.intensity == ScanIntensity.LIGHT:
             return SCAN_PORTS_QUICK
         return SCAN_PORTS_FULL

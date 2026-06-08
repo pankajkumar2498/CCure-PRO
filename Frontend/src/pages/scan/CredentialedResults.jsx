@@ -266,12 +266,12 @@ export default function CredentialedResults() {
             </div>
           </div>
 
-          <div className="pipeline-progress-card" style={{ marginTop: 20 }}>
-            <div className="pipeline-progress-header">
+          <div className="pipeline-progress-card" style={{ marginTop: 20, padding: "16px 20px" }}>
+            <div className="pipeline-progress-header" style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
               <div className="pipeline-pulse" />
               <div style={{ flex: 1 }}>
-                <h3 className="pipeline-progress-title">{progress.message}</h3>
-                <p className="pipeline-progress-desc">
+                <h3 className="pipeline-progress-title" style={{ fontSize: "0.95rem" }}>{progress.message}</h3>
+                <p className="pipeline-progress-desc" style={{ fontSize: "0.8rem", marginTop: 2 }}>
                   Performing authenticated system inspection via SSH. This typically takes 30-90 seconds.
                 </p>
               </div>
@@ -282,7 +282,7 @@ export default function CredentialedResults() {
               </div>
             </div>
 
-            <div className="progress-bar progress-bar--pipeline">
+            <div className="progress-bar progress-bar--pipeline" style={{ height: 4 }}>
               <div
                 className="progress-fill progress-fill--animated"
                 style={{ width: `${progress.percentage}%`, transition: "width 0.5s ease-out" }}

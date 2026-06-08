@@ -31,7 +31,8 @@ const SS_KEYS = [
   "cc_discoveryIntensity",
   "cc_portScanIntensity",
   "cc_autoRunAdvancedSingleTarget",
-  "cc_executionMode",
+  "cc_portScanMode",
+  "cc_customPorts",
 ];
 
 /* ── Session storage helpers ─────────────────────────────────────────────── */
@@ -88,6 +89,8 @@ export function ScanProvider({ children }) {
   const [portScanIntensity,   setPortScanIntensityRaw]   = useState(() => ssGet("cc_portScanIntensity",   "normal"));
   const [autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTargetRaw] = useState(() => ssGet("cc_autoRunAdvancedSingleTarget", false));
   const [executionMode,       setExecutionModeRaw]       = useState(() => ssGet("cc_executionMode",       "automatic"));
+  const [portScanMode,        setPortScanModeRaw]        = useState(() => ssGet("cc_portScanMode",        "intensity"));
+  const [customPorts,         setCustomPortsRaw]         = useState(() => ssGet("cc_customPorts",         ""));
 
   // Pipeline state machine
   const [pipelineState,       setPipelineStateRaw]       = useState(() => ssGet("cc_pipelineState",      PIPELINE_STATES.IDLE));
@@ -119,6 +122,8 @@ export function ScanProvider({ children }) {
   const setPortScanIntensity  = mk("cc_portScanIntensity",  setPortScanIntensityRaw);
   const setAutoRunAdvancedSingleTarget = mk("cc_autoRunAdvancedSingleTarget", setAutoRunAdvancedSingleTargetRaw);
   const setExecutionMode      = mk("cc_executionMode",      setExecutionModeRaw);
+  const setPortScanMode       = mk("cc_portScanMode",       setPortScanModeRaw);
+  const setCustomPorts        = mk("cc_customPorts",        setCustomPortsRaw);
   const setPipelineState      = mk("cc_pipelineState",      setPipelineStateRaw);
   const setPipelineError      = mk("cc_pipelineError",      setPipelineErrorRaw);
   const setPipelinePhaseTimings = mk("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw);
@@ -154,6 +159,8 @@ export function ScanProvider({ children }) {
     setPortScanIntensityRaw("normal");
     setAutoRunAdvancedSingleTargetRaw(false);
     setExecutionModeRaw("automatic");
+    setPortScanModeRaw("intensity");
+    setCustomPortsRaw("");
     setPipelineStateRaw(PIPELINE_STATES.IDLE);
     setPipelineErrorRaw(null);
     setPipelinePhaseTimingsRaw({});
@@ -181,6 +188,8 @@ export function ScanProvider({ children }) {
       portScanIntensity, setPortScanIntensity,
       autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget,
       executionMode, setExecutionMode,
+      portScanMode, setPortScanMode,
+      customPorts, setCustomPorts,
       pipelineState, setPipelineState,
       pipelineError, setPipelineError,
       pipelinePhaseTimings, setPipelinePhaseTimings,

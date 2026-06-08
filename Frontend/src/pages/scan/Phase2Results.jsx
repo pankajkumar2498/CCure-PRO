@@ -271,29 +271,18 @@ export default function Phase2Results() {
 
         {/* ── Port Scan Running: progress banner ─────────────────────────── */}
         {phase2Running && (
-          <div className="pipeline-progress-card" style={{ marginTop: 16, marginBottom: 8 }}>
-            <div className="pipeline-progress-header">
+          <div className="pipeline-progress-card" style={{ marginTop: 16, marginBottom: 8, padding: "16px 20px" }}>
+            <div className="pipeline-progress-header" style={{ marginBottom: 12 }}>
               <div className="pipeline-pulse" />
               <div>
-                <h3 className="pipeline-progress-title">Port Scan Running…</h3>
-                <p className="pipeline-progress-desc">
+                <h3 className="pipeline-progress-title" style={{ fontSize: "0.95rem" }}>Port Scan Running…</h3>
+                <p className="pipeline-progress-desc" style={{ fontSize: "0.8rem", marginTop: 2 }}>
                   Probing TCP/UDP services on discovered hosts — results will appear automatically when complete.
                 </p>
               </div>
             </div>
-            <div className="progress-bar progress-bar--pipeline">
+            <div className="progress-bar progress-bar--pipeline" style={{ height: 4 }}>
               <div className="progress-fill progress-fill--animated" />
-            </div>
-            {/* Shimmer skeleton */}
-            <div className="shimmer-table">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="shimmer-row">
-                  <div className="shimmer-cell shimmer-cell--short" />
-                  <div className="shimmer-cell shimmer-cell--medium" />
-                  <div className="shimmer-cell shimmer-cell--long" />
-                  <div className="shimmer-cell shimmer-cell--short" />
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -387,11 +376,16 @@ export default function Phase2Results() {
         </div>
 
         {summary && (
-          <div className="summary-bar" style={{ marginTop: 16 }}>
+          <div className="summary-bar" style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: "10px" }}>
             <span className="summary-item"><b>{summary.total_hosts}</b> Hosts scanned</span>
             <span className="summary-item summary-item--active"><b>{summary.hosts_with_ports}</b> Have open ports</span>
             <span className="summary-item"><b>{fmtNumber(summary.scan_duration)}s</b> Duration</span>
             <span className="summary-item summary-item--sel"><b>{selectedCount}</b> queued for audit</span>
+            {summary.custom_ports && (
+              <span className="summary-item" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.25)", padding: "2px 8px", borderRadius: "4px" }} title={summary.custom_ports}>
+                🔌 Custom Ports: <b>{summary.custom_ports.length > 25 ? summary.custom_ports.substring(0, 22) + "..." : summary.custom_ports}</b>
+              </span>
+            )}
           </div>
         )}
 

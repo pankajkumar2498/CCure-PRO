@@ -43,17 +43,17 @@ log = logging.getLogger("ccure.quota")
 # ─────────────────────────────────────────────────────────────────────────────
 
 _PLAN_LIMITS = {
-    # plan         max_scans_per_day  max_concurrent  max_prefix  max_ips_per_scan
-    "community":  (5,                1,              24,         254),
-    "pro":        (50,               5,              16,         65_534),
-    "enterprise": (None,             20,             8,          16_777_214),
+    # plan         max_scans_per_day  max_concurrent  max_prefix  max_ips_per_scan  max_ports
+    "community":  (5,                1,              24,         254,              100),
+    "pro":        (50,               5,              16,         65_534,           1000),
+    "enterprise": (None,             20,             8,          16_777_214,       65535),
 }
 
 _DEFAULT_PLAN = "community"
 
 
 def _limits(plan: str) -> tuple:
-    """Return (max_day, max_concurrent, max_prefix, max_ips) for a plan."""
+    """Return (max_day, max_concurrent, max_prefix, max_ips, max_ports) for a plan."""
     return _PLAN_LIMITS.get((plan or "").lower(), _PLAN_LIMITS[_DEFAULT_PLAN])
 
 
@@ -167,6 +167,7 @@ def check_scan_quota(
     db: Session,
     org_id: str,
     targets: Optional[List[str]] = None,
+    custom_ports: Optional[str] = None,
 ) -> None:
     """
     Enforce plan-based scan quotas.  Raises HTTPException on violation.
@@ -185,20 +186,39 @@ def check_scan_quota(
         org_id:  Organization ID of the user initiating the scan.
         targets: List of target strings (IPs / CIDRs / ranges).  Pass None
                  to skip the per-scan IP-size check (e.g. Phase 2 / 3 only).
+        custom_ports: Custom ports list (if any) to validate port limits.
 
     Raises:
-        HTTPException 400 — target subnet exceeds plan limit.
+        HTTPException 400 — target subnet exceeds plan limit or custom ports limit.
         HTTPException 429 — concurrent or daily quota exceeded.
     """
     org = _get_org(db, org_id)
     plan = (org.plan or _DEFAULT_PLAN) if org else _DEFAULT_PLAN
-    max_day, max_concurrent, max_prefix, max_ips = _limits(plan)
+    max_day, max_concurrent, max_prefix, max_ips, max_ports = _limits(plan)
 
     # Per-org overrides (superadmin can raise/lower limits per org)
     if org and getattr(org, "max_scans_per_day", None) is not None:
         max_day = org.max_scans_per_day
     if org and getattr(org, "max_concurrent_scans", None) is not None:
         max_concurrent = org.max_concurrent_scans
+
+    # ── 1b. Custom Ports limit check ──────────────────────────────────────────
+    if custom_ports:
+        from core.utils import InputValidator
+        try:
+            parsed_ports = InputValidator.parse_custom_ports(custom_ports)
+            ports_count = len(parsed_ports)
+            if ports_count > max_ports:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Your '{plan}' plan allows a maximum of {max_ports:,} ports per custom scan. "
+                        f"The requested scan contains {ports_count:,} ports. "
+                        f"Please reduce the number of ports or upgrade your plan."
+                    )
+                )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     # ── 1. Target size check ──────────────────────────────────────────────────
     if targets:
@@ -280,7 +300,7 @@ def get_quota_status(db: Session, org_id: str) -> dict:
     """
     try:
         plan = _get_org_plan(db, org_id)
-        max_day, max_concurrent, max_prefix, max_ips = _limits(plan)
+        max_day, max_concurrent, max_prefix, max_ips, max_ports = _limits(plan)
 
         used_day = _scans_in_last_24h(db, org_id)
         running  = _running_scans(db, org_id)
@@ -293,6 +313,7 @@ def get_quota_status(db: Session, org_id: str) -> dict:
             "concurrent_limit":    max_concurrent,
             "max_ips_per_scan":    max_ips,
             "max_subnet_prefix":   max_prefix,
+            "max_ports_per_scan":  max_ports,
             "quota_exceeded":      (max_day is not None and used_day >= max_day),
             "concurrent_exceeded": (running >= max_concurrent),
         }

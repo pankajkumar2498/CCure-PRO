@@ -390,21 +390,31 @@ def update_scan_phase(
         db.commit()
 
     if is_final:
-        # Update denormalized vuln counts on Scan row for dashboard performance
-        all_vulns = []
-        for h in hosts_data:
-            all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+        from scan_helpers import resolve_pipeline_mode
+        current_mode = resolve_pipeline_mode(pipeline_mode or scan.pipeline_mode)
 
-        critical_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical")
-        high_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "high")
-        medium_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium")
-        low_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "low")
-        
-        scan.critical_count = critical_count
-        scan.high_count = high_count
-        scan.medium_count = medium_count
-        scan.low_count = low_count
-        scan.total_vulns = critical_count + high_count + medium_count + low_count
+        if current_mode == "vulnerability_audit":
+            # Update denormalized vuln counts on Scan row for dashboard performance
+            all_vulns = []
+            for h in hosts_data:
+                all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+
+            critical_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical")
+            high_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "high")
+            medium_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium")
+            low_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "low")
+            
+            scan.critical_count = critical_count
+            scan.high_count = high_count
+            scan.medium_count = medium_count
+            scan.low_count = low_count
+            scan.total_vulns = critical_count + high_count + medium_count + low_count
+        else:
+            scan.critical_count = 0
+            scan.high_count = 0
+            scan.medium_count = 0
+            scan.low_count = 0
+            scan.total_vulns = 0
 
         # ENTERPRISE FIX: Do not overwrite 'unreachable' status with 'complete'
         if scan.status != "unreachable":

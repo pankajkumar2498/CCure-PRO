@@ -117,6 +117,7 @@ class HostDiscoveryRequest(BaseModel):
     rate_limit:          Optional[float] = Field(None, description="Optional rate limit for probes per second (PPS).")
     max_concurrency:     Optional[int]   = Field(None, description="Max concurrent threads (e.g. TCP connect probes).")
     wait:                bool            = Field(False, description="If true, wait for task completion (up to 300s) before returning.")
+    custom_ports:        Optional[str]   = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
 
 
 class AssetDiscoveryRequest(BaseModel):
@@ -134,6 +135,7 @@ class AssetDiscoveryRequest(BaseModel):
                                           description="basic | asset | vulnerability_audit")
     os_detection:  bool           = Field(True, description="Enable Nmap -O OS fingerprinting during port scan")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
+    custom_ports:  Optional[str]  = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
 
 
 class VulnerabilityAuditRequest(BaseModel):
@@ -185,7 +187,7 @@ async def scan_host_discovery(
     port_scan_intensity = raw_port_intensity if raw_port_intensity in ("light", "normal", "deep") else "normal"
 
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
-    check_scan_quota(db, org_id=str(user.org_id), targets=req.targets)
+    check_scan_quota(db, org_id=str(user.org_id), targets=req.targets, custom_ports=req.custom_ports)
 
     scan = create_scan(
         db=db,
@@ -195,7 +197,11 @@ async def scan_host_discovery(
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
     )
-    scan.options = {**(scan.options or {}), "execution_mode": req.execution_mode or "automatic"}
+    scan.options = {
+        **(scan.options or {}),
+        "execution_mode": req.execution_mode or "automatic",
+        **({"custom_ports": req.custom_ports} if req.custom_ports else {})
+    }
     db.commit()
     scan_id = str(scan.id)
     scan_no = scan.scan_no
@@ -212,6 +218,7 @@ async def scan_host_discovery(
         max_concurrency     = req.max_concurrency,
         os_detection        = req.os_detection,
         port_scan_intensity = port_scan_intensity,
+        custom_ports        = req.custom_ports,
     )
 
     # Store the task ID so it can be revoked if needed
@@ -274,6 +281,10 @@ async def scan_asset_discovery(
             "status": "running"
         }
 
+    # ── Quota gate for custom ports (Phase 2 manually triggered) ──────────────
+    if req.custom_ports:
+        check_scan_quota(db, org_id=str(user.org_id), custom_ports=req.custom_ports)
+
     task = run_asset_discovery_task.delay(
         user_id       = str(user.id),
         hosts         = req.hosts,
@@ -281,14 +292,17 @@ async def scan_asset_discovery(
         scan_id       = req.scan_id,
         pipeline_mode = req.pipeline_mode,
         os_detection  = req.os_detection,
+        custom_ports  = req.custom_ports,
     )
 
     # Track active task for termination
-    if req.scan_id:
-        db.query(Scan).filter(Scan.id == req.scan_id).update({
-            "current_task_id": task.id,
-            "status": "running"
-        })
+    if req.scan_id and scan:
+        options = dict(scan.options or {})
+        if req.custom_ports:
+            options["custom_ports"] = req.custom_ports
+        scan.current_task_id = task.id
+        scan.status = "running"
+        scan.options = options
         db.commit()
 
     return {

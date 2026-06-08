@@ -55,6 +55,8 @@ export default function Phase1Results() {
     executionMode,
     portScanIntensity,
     osDetection,
+    portScanMode, setPortScanMode,
+    customPorts, setCustomPorts,
   } = useScan();
 
   const [filter, setFilter] = useState("active");
@@ -64,6 +66,79 @@ export default function Phase1Results() {
   const [selected, setSelected] = useState(() => new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
   const [assetLoading, setAssetLoading] = useState(false);
   const [error, setError] = useState("");
+  const [customPortsError, setCustomPortsError] = useState("");
+
+  const BLACKLISTED_PORTS = [2375, 2376, 6443, 10250];
+
+  const parseCustomPortsJS = (portsStr) => {
+    if (!portsStr || !portsStr.trim()) {
+      return { ports: [], error: "" };
+    }
+    const clean = portsStr.replace(/\s+/g, "");
+    if (!/^[0-9,\-]+$/.test(clean)) {
+      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed." };
+    }
+    const tokens = clean.split(",");
+    const portsSet = new Set();
+    
+    for (const token of tokens) {
+      if (!token) continue;
+      if (token.includes("-")) {
+        const rangeParts = token.split("-");
+        if (rangeParts.length !== 2) {
+          return { ports: [], error: `Invalid range format: "${token}"` };
+        }
+        const start = parseInt(rangeParts[0], 10);
+        const end = parseInt(rangeParts[1], 10);
+        if (isNaN(start) || isNaN(end)) {
+          return { ports: [], error: `Invalid range bounds: "${token}"` };
+        }
+        if (start > end) {
+          return { ports: [], error: `Range start must be <= end: "${token}"` };
+        }
+        if (start < 1 || end > 65535) {
+          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"` };
+        }
+        for (let p = start; p <= end; p++) {
+          if (portsSet.has(p)) {
+            return { ports: [], error: `Duplicate port detected: ${p}` };
+          }
+          portsSet.add(p);
+        }
+      } else {
+        const p = parseInt(token, 10);
+        if (isNaN(p)) {
+          return { ports: [], error: `Invalid port number: "${token}"` };
+        }
+        if (p < 1 || p > 65535) {
+          return { ports: [], error: `Port must be between 1 and 65535: ${p}` };
+        }
+        if (portsSet.has(p)) {
+          return { ports: [], error: `Duplicate port detected: ${p}` };
+        }
+        portsSet.add(p);
+      }
+    }
+    
+    const portsArray = Array.from(portsSet);
+    const blacklistedFound = portsArray.filter(p => BLACKLISTED_PORTS.includes(p));
+    if (blacklistedFound.length > 0) {
+      return {
+        ports: [],
+        error: `Security violation: Restricted ports cannot be scanned (${blacklistedFound.join(", ")}).`
+      };
+    }
+    
+    return { ports: portsArray, error: "" };
+  };
+
+  // Run initial validation on mount if customPorts has a value
+  useEffect(() => {
+    if (portScanMode === "custom" && customPorts) {
+      const { error: portErr } = parseCustomPortsJS(customPorts);
+      setCustomPortsError(portErr);
+    }
+  }, [portScanMode, customPorts]);
 
   const hasPhase2 = isPhaseEnabled(pipelineMode, 2);
   const showCheckboxes = executionMode === "interactive" && pipelineMode !== "basic";
@@ -84,17 +159,31 @@ export default function Phase1Results() {
       setError("Select at least one host to port scan.");
       return;
     }
+
+    if (portScanMode === "custom") {
+      if (!customPorts || !customPorts.trim()) {
+        setError("Custom ports list cannot be empty when custom ports mode is active.");
+        return;
+      }
+      const { error: portErr } = parseCustomPortsJS(customPorts);
+      if (portErr) {
+        setError(portErr);
+        return;
+      }
+    }
+
     setAssetLoading(true);
     setError("");
     setSaveStatus("saving");
     try {
       const { data } = await api.post("/scan/asset-discovery", {
         hosts: selectedHosts,
-        intensity: portScanIntensity || "normal",
+        intensity: portScanMode === "custom" ? "custom" : (portScanIntensity || "normal"),
         scan_id: scanId,
         pipeline_mode: pipelineMode,
         os_detection: osDetection,
         phases: [1, 2],
+        ...(portScanMode === "custom" ? { custom_ports: customPorts } : {}),
       });
       if (!data.success) throw new Error(data.error || "Port scan failed to start.");
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
@@ -293,38 +382,154 @@ export default function Phase1Results() {
               </div>
             ) : executionMode === "interactive" ? (
               <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 14,
-                padding: "14px 20px",
-                borderRadius: 8,
+                padding: "20px", borderRadius: 8,
                 background: "var(--bg-card)",
                 border: "1px solid var(--border)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 16
               }}>
-                <div>
-                  <strong style={{ display: "block", color: "var(--text)" }}>Run Port Scan</strong>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    Select hosts below to probe TCP/UDP services. <b>{selected.size}</b> host{selected.size !== 1 ? "s" : ""} selected.
-                  </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                  <div>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: "1.1rem" }}>Configure & Run Port Scan</strong>
+                    <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                      Select hosts below to probe TCP/UDP services. <b>{selected.size}</b> host{selected.size !== 1 ? "s" : ""} selected.
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn--primary"
+                    onClick={runPortScan}
+                    disabled={selected.size === 0 || assetLoading || !canExecuteScans || (portScanMode === "custom" && !!customPortsError)}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    {assetLoading ? (
+                      <>
+                        <span className="btn-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        Starting Port Scan...
+                      </>
+                    ) : (
+                      <>
+                        Run Port Scan on Selected Hosts →
+                      </>
+                    )}
+                  </button>
                 </div>
-                <button
-                  className="btn btn--primary"
-                  onClick={runPortScan}
-                  disabled={selected.size === 0 || assetLoading || !canExecuteScans}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  {assetLoading ? (
-                    <>
-                      <span className="btn-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                      Starting Port Scan...
-                    </>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <span style={{ fontSize: 13, fontWeight: "600", color: "var(--text)" }}>Port Scan Mode:</span>
+                    <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: "6px", padding: "2px" }}>
+                      <button
+                        type="button"
+                        onClick={() => { setPortScanMode("intensity"); setCustomPortsError(""); }}
+                        style={{
+                          background: portScanMode === "intensity" ? "var(--btn-primary-bg, #3b82f6)" : "transparent",
+                          color: portScanMode === "intensity" ? "#ffffff" : "var(--text-muted)",
+                          border: "none",
+                          borderRadius: "4px",
+                          padding: "4px 12px",
+                          fontSize: "0.8rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        Intensity Profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setPortScanMode("custom"); setCustomPortsError(""); }}
+                        style={{
+                          background: portScanMode === "custom" ? "var(--btn-primary-bg, #3b82f6)" : "transparent",
+                          color: portScanMode === "custom" ? "#ffffff" : "var(--text-muted)",
+                          border: "none",
+                          borderRadius: "4px",
+                          padding: "4px 12px",
+                          fontSize: "0.8rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        Custom Ports
+                      </button>
+                    </div>
+                  </div>
+
+                  {portScanMode === "intensity" ? (
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", background: "rgba(255,255,255,0.02)", padding: "10px 14px", borderRadius: "6px", border: "1px dashed var(--border)" }}>
+                      Selected intensity: <span style={{ fontWeight: "700", color: "var(--text)" }}>{portScanIntensity?.toUpperCase() || "NORMAL"}</span> (change on setup screen)
+                    </div>
                   ) : (
-                    <>
-                      Run Port Scan on Selected Hosts →
-                    </>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <input
+                          type="text"
+                          className="ns-input"
+                          style={{
+                            flex: 1,
+                            padding: "8px 12px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border)",
+                            background: "rgba(0,0,0,0.2)",
+                            color: "var(--text)",
+                            fontSize: "0.88rem"
+                          }}
+                          value={customPorts || ""}
+                          onChange={e => {
+                            setCustomPorts(e.target.value);
+                            const { error: portErr } = parseCustomPortsJS(e.target.value);
+                            setCustomPortsError(portErr);
+                          }}
+                          placeholder="e.g. 22,80,443,8000-8100"
+                        />
+                      </div>
+                      
+                      <div className="ns-chips" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 4 }}>Quick Select:</span>
+                        <button
+                          type="button"
+                          className="ns-chip"
+                          onClick={() => {
+                            setCustomPorts("80,443,8080,8443");
+                            setCustomPortsError("");
+                          }}
+                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                        >
+                          Web
+                        </button>
+                        <button
+                          type="button"
+                          className="ns-chip"
+                          onClick={() => {
+                            setCustomPorts("1433,1521,3306,5432,27017");
+                            setCustomPortsError("");
+                          }}
+                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                        >
+                          Database
+                        </button>
+                        <button
+                          type="button"
+                          className="ns-chip"
+                          onClick={() => {
+                            setCustomPorts("22,23,3389,5900");
+                            setCustomPortsError("");
+                          }}
+                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                        >
+                          Remote
+                        </button>
+                      </div>
+
+                      {customPortsError && (
+                        <div style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: 4 }}>
+                          ⚠ {customPortsError}
+                        </div>
+                      )}
+                    </div>
                   )}
-                </button>
+                </div>
               </div>
             ) : (
               <div style={{

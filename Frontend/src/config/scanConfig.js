@@ -27,7 +27,7 @@ export const SCAN_PIPELINES = {
   basic: {
     id: "basic",
     label: "Basic Network Scan",
-    description: "Identifies only the live hosts on the network.",
+    description: "Identifies the live hosts in the network.",
     phases: [1],
     entryRoute: "/scan",
     badge: "Phase 1 Only",
@@ -42,7 +42,7 @@ export const SCAN_PIPELINES = {
   asset: {
     id: "asset",
     label: "Asset Discovery",
-    description: "Identifies Assets in the Network with Basic Information.",
+    description: "Identifies Assets in the Network with Open Ports Information.",
     phases: [1, 2],
     entryRoute: "/scan",           // always starts at /scan, not /scan/asset-discovery
     badge: "Phase 1 → 2",

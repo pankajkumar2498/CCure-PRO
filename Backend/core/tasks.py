@@ -570,6 +570,7 @@ def run_host_discovery_task(
     max_concurrency:     Optional[int]   = None,
     os_detection:        bool            = True,
     port_scan_intensity: str             = "normal",
+    custom_ports:        Optional[str]   = None,
 ):
     """Phase 1 Background Task."""
     import datetime
@@ -640,6 +641,12 @@ def run_host_discovery_task(
             active_hosts = [h for h in result["data"] if h.get("is_active")]
             if active_hosts:
                 log.info("[TRACE][TASK][%s] Chaining next phase (Asset Discovery) for scan_id=%s", ts(), scan_id)
+                
+                # Fetch custom ports from the scan row if not explicitly passed
+                resolved_custom_ports = custom_ports
+                if not resolved_custom_ports and scan_row and scan_row.options:
+                    resolved_custom_ports = scan_row.options.get("custom_ports")
+
                 # Dispatch Phase 2 (Asset Discovery) directly
                 from core.tasks import run_asset_discovery_task
                 next_task = run_asset_discovery_task.delay(
@@ -649,6 +656,7 @@ def run_host_discovery_task(
                     scan_id=scan_id,
                     pipeline_mode=pipeline_mode,
                     os_detection=os_detection,      # Forward os_detection from the original request
+                    custom_ports=resolved_custom_ports,  # Forward custom_ports
                 )
                 db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
                 db.commit()
@@ -706,6 +714,7 @@ def run_asset_discovery_task(
     scan_id:       str,
     pipeline_mode: str,
     os_detection:  bool = True,
+    custom_ports:  Optional[str] = None,
 ):
     """Phase 2 Background Task."""
     import datetime
@@ -728,10 +737,16 @@ def run_asset_discovery_task(
             
         is_final = (get_terminal_phase(mode) == 2) or is_interactive
 
+        # Fetch custom ports from the scan row options if not explicitly passed as task parameter
+        resolved_custom_ports = custom_ports
+        if not resolved_custom_ports and scan_row and scan_row.options:
+            resolved_custom_ports = scan_row.options.get("custom_ports")
+
         orch = _new_orchestrator()
         result = _run_async(orch.run_asset_discovery_only(
             hosts=hosts, intensity=intensity, pipeline_mode=mode,
-            scan_id=scan_id, os_detection=os_detection
+            scan_id=scan_id, os_detection=os_detection,
+            custom_ports=resolved_custom_ports
         ))
 
         if _check_cancelled(db, scan_id):
@@ -1101,13 +1116,17 @@ def run_credentialed_scan_task(
         return {"success": True, "scan_id": str(scan.id)}
     except Exception as exc:
         db.rollback() # Rollback everything if any step fails
-        log.exception("Credentialed Scan Task Failed")
 
-        # ENTERPRISE FIX: Categorize network errors as 'unreachable' vs 'failed'
         reason = str(exc)
         status = "failed"
         if any(msg in reason.lower() for msg in ["reach", "timeout", "no route", "connection refused", "down"]):
             status = "unreachable"
+
+        # Suppress stack trace for expected network/credentials errors
+        if "ssh authentication failed" in reason.lower() or "cannot reach" in reason.lower() or "ssh connection error" in reason.lower():
+            log.error(f"Credentialed Scan Task Failed: {reason}")
+        else:
+            log.exception("Credentialed Scan Task Failed")
 
         emit(status, f"Scan {status}: {reason}", 0, "error")
         if scan_id:

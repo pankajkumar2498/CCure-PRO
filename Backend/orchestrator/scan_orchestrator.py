@@ -548,6 +548,7 @@ class ScanOrchestrator:
         scan_id: Optional[str] = None,
         pipeline_mode: str = "asset",
         os_detection: bool = True,
+        custom_ports: Optional[str] = None,
     ) -> Dict:
         """
         Phase 2 — Port Scanning.
@@ -564,13 +565,22 @@ class ScanOrchestrator:
             pipeline_mode: Pipeline context (basic/asset/vulnerability_audit).
             os_detection:  When True (default), passes -O to Nmap for active
                            OS fingerprinting during port scan.
+            custom_ports:  Optional custom ports or ranges to scan (e.g. '22,80,443').
         """
-        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}")
+        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}, custom_ports={custom_ports}")
 
         try:
             intensity_enum = ScanIntensity(intensity.lower())
         except ValueError:
             intensity_enum = ScanIntensity.NORMAL
+
+        parsed_custom_ports = None
+        if custom_ports:
+            try:
+                from core.utils import InputValidator
+                parsed_custom_ports = InputValidator.parse_custom_ports(custom_ports)
+            except ValueError as e:
+                log.warning("Failed parsing custom ports in orchestrator: %s", e)
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         discovery_scan_method = self._infer_discovery_method(hosts)
@@ -602,7 +612,7 @@ class ScanOrchestrator:
         # os_detection enables Nmap -O in Phase 2, producing consistent
         # OS classification with Phase 3 (Vulnerability Audit).
         # User can toggle this via the API's os_detection field (default True).
-        port_engine = PortEngine(intensity=intensity_enum, os_detection=os_detection)
+        port_engine = PortEngine(intensity=intensity_enum, os_detection=os_detection, custom_ports=parsed_custom_ports)
         await port_engine.run(active_hosts, scan_id=scan_id)   # mutates in-place
         self._apply_os_inference(active_hosts)
         
@@ -643,6 +653,9 @@ class ScanOrchestrator:
             "scan_type":              intensity_enum.value.upper(),
             "discovery_scan_method":  discovery_scan_method or "N/A",
         }
+        if custom_ports:
+            summary["custom_ports"] = custom_ports
+
         return {
             "success":  True,
             "data":     formatted,

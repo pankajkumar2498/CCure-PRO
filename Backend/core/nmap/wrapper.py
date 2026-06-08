@@ -534,6 +534,7 @@ class NmapScanner:
         intensity: str = "basic",
         with_services: bool = False,
         with_os: bool = False,
+        ports: Optional[List[int]] = None,
     ) -> Dict[str, NmapScanResult]:
         """
         Batch port scan for multiple hosts.
@@ -551,6 +552,7 @@ class NmapScanner:
             with_os:       When True, appends ``-O`` for active OS fingerprinting
                            so Phase 2 Asset Discovery produces OS classification
                            consistent with Phase 3 Vulnerability Audit.
+            ports:         Optional custom list of ports to scan.
 
         Returns:
             Dict mapping IP → NmapScanResult (ports include service/version
@@ -559,7 +561,10 @@ class NmapScanner:
         if not NMAP_AVAILABLE or not targets:
             return {ip: self._unavailable_result(ip) for ip in targets}
 
-        port_arg = self._TOP_PORTS.get(intensity, "-F")
+        if ports:
+            port_arg = self._port_arg(ports, intensity)
+        else:
+            port_arg = self._TOP_PORTS.get(intensity, "-F")
 
         # Merge service detection into the batch call when requested.
         # --version-intensity 7 (Nmap default) provides ~98% accuracy for service
@@ -575,6 +580,7 @@ class NmapScanner:
 
         log.debug("scan_hosts args: %s", args)
         return self._run_multi(targets, args)
+
 
     # ── Internal execution engine ─────────────────────────────────────────────
 

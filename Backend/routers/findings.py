@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, String
 from sqlalchemy.orm import Session, joinedload
 
 from auth.rbac import require_permission
@@ -95,6 +95,7 @@ def list_findings(
             or_(
                 VulnerabilityDefinition.id.ilike(f"%{search}%"),
                 VulnerabilityDefinition.title.ilike(f"%{search}%"),
+                func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
             )
         )
 

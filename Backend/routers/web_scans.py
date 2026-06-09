@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, HttpUrl
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from auth.dependencies import get_current_user
 from auth.jwt_handler import decode_token
@@ -32,6 +32,19 @@ from db.models.web_scans import WebScan, WebAsset, WebFinding
 log = logging.getLogger("ccure.routers.web_scans")
 
 router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _is_superadmin(user: User) -> bool:
+    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+
+
+def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+    if _is_superadmin(user) and requested_org:
+        return requested_org
+    return str(user.org_id)
+
 
 IDEMPOTENCY_WINDOW = timedelta(minutes=10)
 ACTIVE_SCAN_STATUSES = {"queued", "pending", "running"}
@@ -88,6 +101,7 @@ class TriageFindingRequest(BaseModel):
 def start_web_scan(
     body: StartWebScanRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -124,14 +138,16 @@ def start_web_scan(
 
     # ── Org context ──────────────────────────────────────────────────────
     idempotency_key = _normalize_idempotency_key(idempotency_key)
+    target_org_id = _resolve_org(user, org_id)
 
     from db.models.rbac import Organization
-    org = db.query(Organization).filter(Organization.id == str(user.org_id)).first()
-    org_slug = org.slug if org else str(user.org_id)
+    org = db.query(Organization).filter(Organization.id == target_org_id).first()
+    org_slug = org.slug if org else target_org_id
 
     duplicate_scan = _find_duplicate_web_scan(
         db=db,
         user=user,
+        org_id=target_org_id,
         target_url=target_url,
         idempotency_key=idempotency_key,
     )
@@ -153,7 +169,7 @@ def start_web_scan(
 
     scan = WebScan(
         id=scan_id,
-        org_id=str(user.org_id),
+        org_id=target_org_id,
         created_by=user.id,
         scan_name=body.scan_name or f"Web Scan: {target_domain}",
         target_url=target_url,
@@ -207,12 +223,14 @@ def list_web_scans(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """List web scans for the current user's organization."""
+    """List web scans for the resolved organization."""
+    target_org_id = _resolve_org(user, org_id)
     query = db.query(WebScan).filter(
-        WebScan.org_id == str(user.org_id),
+        WebScan.org_id == target_org_id,
         WebScan.is_deleted == False,
     )
 
@@ -243,11 +261,12 @@ def list_web_scans(
 @router.get("/{scan_id}")
 def get_web_scan(
     scan_id: str,
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get detailed web scan information including phase progress."""
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     return {
         "success": True,
@@ -293,11 +312,12 @@ def get_web_scan_findings(
     detected_by: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get findings for a web scan with filtering and pagination."""
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     query = db.query(WebFinding).filter(WebFinding.web_scan_id == scan_id)
 
@@ -341,11 +361,12 @@ def get_web_scan_assets(
     source: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get discovered web assets/endpoints for a scan."""
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     query = db.query(WebAsset).filter(WebAsset.web_scan_id == scan_id)
     if source:
@@ -375,11 +396,12 @@ def get_web_scan_assets(
 @router.post("/{scan_id}/cancel")
 def cancel_web_scan(
     scan_id: str,
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Cancel a running web scan."""
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     if scan.status in ("complete", "cancelled", "failed"):
         raise HTTPException(
@@ -411,11 +433,12 @@ def triage_finding(
     scan_id: str,
     finding_id: str,
     body: TriageFindingRequest,
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     finding = db.query(WebFinding).filter(
         WebFinding.id == finding_id,
@@ -457,6 +480,7 @@ def triage_finding(
 @router.get("/{scan_id}/report")
 def download_web_scan_report(
     scan_id: str,
+    org_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -472,7 +496,7 @@ def download_web_scan_report(
     import os
     from fastapi.responses import FileResponse
 
-    scan = _get_scan_or_404(db, scan_id, user)
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
 
     if scan.status not in ("complete", "failed"):
         raise HTTPException(
@@ -526,11 +550,13 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
 
     db = SessionLocal()
     try:
-        scan = db.query(WebScan).filter(
+        query = db.query(WebScan).filter(
             WebScan.id == scan_id,
-            WebScan.org_id == str(current_user.org_id),
             WebScan.is_deleted == False,
-        ).first()
+        )
+        if getattr(getattr(current_user, "role", None), "name", "").lower() != "superadmin":
+            query = query.filter(WebScan.org_id == str(current_user.org_id))
+        scan = query.first()
 
         if not scan:
             await websocket.send_json({
@@ -585,7 +611,12 @@ def _get_websocket_user(websocket: WebSocket) -> User:
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == str(payload["sub"])).first()
+        user = (
+            db.query(User)
+            .options(joinedload(User.role))
+            .filter(User.id == str(payload["sub"]))
+            .first()
+        )
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
@@ -644,6 +675,7 @@ def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
 def _find_duplicate_web_scan(
     db: Session,
     user: User,
+    org_id: str,
     target_url: str,
     idempotency_key: Optional[str],
 ) -> Optional[WebScan]:
@@ -651,7 +683,7 @@ def _find_duplicate_web_scan(
     recent_scans = (
         db.query(WebScan)
         .filter(
-            WebScan.org_id == str(user.org_id),
+            WebScan.org_id == org_id,
             WebScan.created_by == user.id,
             WebScan.target_url == target_url,
             WebScan.is_deleted == False,
@@ -694,10 +726,11 @@ def _start_scan_response(
     }
 
 
-def _get_scan_or_404(db: Session, scan_id: str, user: User) -> WebScan:
+def _get_scan_or_404(db: Session, scan_id: str, user: User, org_id: Optional[str] = None) -> WebScan:
+    target_org_id = _resolve_org(user, org_id)
     scan = db.query(WebScan).filter(
         WebScan.id == scan_id,
-        WebScan.org_id == str(user.org_id),
+        WebScan.org_id == target_org_id,
         WebScan.is_deleted == False,
     ).first()
     if not scan:

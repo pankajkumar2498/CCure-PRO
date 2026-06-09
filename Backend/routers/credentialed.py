@@ -35,8 +35,8 @@ router = APIRouter(tags=["Credentialed Scans"])
 # ── Request model ─────────────────────────────────────────────────────────────
 
 class CredentialedScanRequest(BaseModel):
-    ip:          str                 = Field(..., example="192.168.1.10")
-    username:    str                 = Field(..., example="root")
+    ip:          str                 = Field(..., examples=["192.168.1.10"])
+    username:    str                 = Field(..., examples=["root"])
     password:    Optional[SecretStr] = Field(None)
     key_path:    Optional[str]       = Field(None)
     port:        int                 = Field(22, ge=1, le=65535)

@@ -35,6 +35,7 @@ const forceLogout = (reason = "expired") => {
     );
   }
   clearAuthTokens();
+  localStorage.removeItem("activeOrgId");
   window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason } }));
 };
 
@@ -45,6 +46,14 @@ axiosInstance.interceptors.request.use(
     if (token) {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const activeOrgId = localStorage.getItem("activeOrgId");
+    if (activeOrgId) {
+      config.params = config.params || {};
+      if (config.params.org_id === undefined) {
+        config.params.org_id = activeOrgId;
+      }
     }
 
     return config;

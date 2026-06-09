@@ -45,6 +45,7 @@ export default function AssetRegistry() {
   const [error, setError] = useState(null);
 
   // Filters
+  const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [riskLevel, setRiskLevel] = useState(searchParams.get("risk_level") || "");
   const [osFamily, setOsFamily] = useState(searchParams.get("os_family") || "");
@@ -53,6 +54,13 @@ export default function AssetRegistry() {
   const [sortDir, setSortDir] = useState("desc");
   const [skip, setSkip] = useState(0);
   const LIMIT = 50;
+
+  // Sync search input and query when URL params change
+  useEffect(() => {
+    const s = searchParams.get("search") || "";
+    setSearchInput(s);
+    setSearch(s);
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,7 +89,8 @@ export default function AssetRegistry() {
 
   // Search debounce
   const searchTimer = useRef(null);
-  const handleSearch = (v) => {
+  const handleSearchChange = (v) => {
+    setSearchInput(v);
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => { setSearch(v); setSkip(0); }, 350);
   };
@@ -153,8 +162,8 @@ export default function AssetRegistry() {
               <input
                 type="text"
                 placeholder="Search IP, hostname, FQDN…"
-                defaultValue={search}
-                onChange={e => handleSearch(e.target.value)}
+                value={searchInput}
+                onChange={e => handleSearchChange(e.target.value)}
                 style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.78rem", width: 220, color: "var(--text)", background: "var(--bg-white)" }}
               />
               <select value={riskLevel} onChange={e => { setRiskLevel(e.target.value); setSkip(0); }}

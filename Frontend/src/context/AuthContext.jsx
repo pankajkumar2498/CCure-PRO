@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getCurrentUser,
   login as loginRequest,
@@ -10,7 +11,27 @@ import { authSession } from "../api/axiosInstance";
 
 const AuthContext = createContext(null);
 
+const syncActiveOrgId = (user) => {
+  if (!user) {
+    localStorage.removeItem("activeOrgId");
+    return;
+  }
+  const roleName = (user.role?.name || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (roleName === "superadmin") {
+    if (!localStorage.getItem("activeOrgId") && user.org_id) {
+      localStorage.setItem("activeOrgId", user.org_id);
+    }
+  } else {
+    if (user.org_id) {
+      localStorage.setItem("activeOrgId", user.org_id);
+    } else {
+      localStorage.removeItem("activeOrgId");
+    }
+  }
+};
+
 export const AuthProvider = ({ children }) => {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [authState, setAuthState] = useState("loading");
   const [authMessage, setAuthMessage] = useState("");
@@ -36,6 +57,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const currentUser = await getCurrentUser();
+      syncActiveOrgId(currentUser);
       setUser(currentUser);
       setAuthState("authenticated");
       setAuthMessage("");
@@ -61,6 +83,7 @@ export const AuthProvider = ({ children }) => {
     syncCurrentUser();
 
     const handleForcedLogout = (event) => {
+      localStorage.removeItem("activeOrgId");
       setUser(null);
 
       if (event?.detail?.reason === "expired") {
@@ -113,6 +136,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (credentials) => {
     const data = await loginRequest(credentials);
+    if (data.user) {
+      syncActiveOrgId(data.user);
+    }
     setUser(data.user || null);
     setAuthState("authenticated");
     setAuthMessage("");
@@ -122,6 +148,9 @@ export const AuthProvider = ({ children }) => {
 
   const register = useCallback(async (payload) => {
     const data = await registerRequest(payload);
+    if (data.user) {
+      syncActiveOrgId(data.user);
+    }
     setUser(data.user || null);
     setAuthState("authenticated");
     setAuthMessage("");
@@ -133,11 +162,14 @@ export const AuthProvider = ({ children }) => {
     try {
       await logoutRequest();
     } finally {
+      localStorage.removeItem("activeOrgId");
+      sessionStorage.removeItem("postLoginRedirect");
+      navigate("/login", { replace: true });
       setUser(null);
       setAuthState("anonymous");
       setAuthMessage("");
     }
-  }, []);
+  }, [navigate]);
 
   const value = useMemo(
     () => ({

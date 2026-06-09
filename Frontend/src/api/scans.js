@@ -4,13 +4,13 @@
  */
 import api, { authSession } from "./axiosInstance";
 
-export const getScans   = (skip = 0, limit = 50, scope = "active", created_by) => {
+export const getScans = (skip = 0, limit = 50, scope = "active", created_by) => {
   const params = { skip, limit, scope };
   if (created_by) params.created_by = created_by;
   return api.get("/scans", { params });
 };
 
-export const getScan    = (id) =>
+export const getScan = (id) =>
   api.get(`/scans/${id}`);
 
 export const deleteScan = (id) =>
@@ -25,7 +25,7 @@ export const stopScan = (id) =>
 export const restoreScan = (id) =>
   api.post(`/scans/${id}/restore`);
 
-export const purgeScan  = (id) =>
+export const purgeScan = (id) =>
   api.delete(`/scans/${id}/purge`);
 
 export const deleteReport = (id) =>
@@ -47,6 +47,10 @@ const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2, crea
     interval: String(interval),
   });
   if (created_by) params.set("created_by", created_by);
+
+  const activeOrgId = localStorage.getItem("activeOrgId");
+  if (activeOrgId) params.set("org_id", activeOrgId);
+
   return `${prefix}/scans/events?${params.toString()}`;
 };
 

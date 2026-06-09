@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, String
 from sqlalchemy.orm import Session, joinedload
 
 from auth.rbac import require_permission
@@ -132,6 +132,7 @@ def list_assets(
                 Asset.hostname.ilike(f"%{search}%"),
                 Asset.fqdn.ilike(f"%{search}%"),
                 Asset.netbios_name.ilike(f"%{search}%"),
+                func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
             )
         )
     if risk_level:

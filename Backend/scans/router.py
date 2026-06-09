@@ -39,6 +39,16 @@ TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _is_superadmin(user: User) -> bool:
+    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+
+
+def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+    if _is_superadmin(user) and requested_org:
+        return requested_org
+    return str(user.org_id)
+
+
 def _as_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     """Return a UTC ISO-8601 timestamp with trailing Z for correct client parsing."""
     if not dt:
@@ -133,8 +143,9 @@ def _user_can_read_all_scans(user: User, db: Session) -> bool:
     ) is not None
 
 
-def _get_scan_or_404(scan_id: str, user: User, db: Session) -> Scan:
-    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.id == scan_id, Scan.org_id == user.org_id)
+def _get_scan_or_404(scan_id: str, user: User, db: Session, org_id: Optional[str] = None) -> Scan:
+    target_org_id = _resolve_org(user, org_id)
+    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.id == scan_id, Scan.org_id == target_org_id)
     if not _user_can_read_all_scans(user, db):
         query = query.filter(Scan.created_by == str(user.id))
 
@@ -163,8 +174,8 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, user: User, scope: str, created_by: Optional[str] = None):
-    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.org_id == user.org_id)
+def _build_scans_query(db: Session, user: User, org_id: str, scope: str, created_by: Optional[str] = None):
+    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.org_id == org_id)
 
     if created_by:
         if created_by == "me":
@@ -194,8 +205,8 @@ def _build_scans_query(db: Session, user: User, scope: str, created_by: Optional
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, user: User, scope: str, skip: int, limit: int, created_by: Optional[str] = None) -> dict:
-    query, order_by = _build_scans_query(db, user, scope, created_by)
+def _scan_history_snapshot(db: Session, user: User, org_id: str, scope: str, skip: int, limit: int, created_by: Optional[str] = None) -> dict:
+    query, order_by = _build_scans_query(db, user, org_id, scope, created_by)
     scans = (
         query
         .order_by(*order_by)
@@ -282,6 +293,7 @@ def list_scans(
     limit:      int = Query(50, ge=1, le=200),
     scope:      str = Query("active"),
     created_by: Optional[str] = Query(None),
+    org_id:     Optional[str] = Query(None),
     db:         Session = Depends(get_db),
     user:       User    = Depends(require_permission("scans", "read")),
 ):
@@ -289,7 +301,8 @@ def list_scans(
     Return the current user's scan history, archived scans, or recycle-bin entries.
     Does NOT include full results blob (use GET /scans/{id} for that).
     """
-    return _scan_history_snapshot(db, user, scope, skip, limit, created_by)
+    org = _resolve_org(user, org_id)
+    return _scan_history_snapshot(db, user, org, scope, skip, limit, created_by)
 
 
 @router.get("/events")
@@ -300,6 +313,7 @@ async def stream_scan_history(
     limit: int = Query(200, ge=1, le=200),
     interval: float = Query(2.0, ge=0.5, le=15.0),
     created_by: Optional[str] = Query(None),
+    org_id:     Optional[str] = Query(None),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
@@ -309,7 +323,7 @@ async def stream_scan_history(
     if scope not in {"active", "archived", "deleted", "all"}:
         raise HTTPException(status_code=400, detail="Invalid scope. Use active, archived, deleted, or all.")
 
-    org_id = user.org_id
+    org = _resolve_org(user, org_id)
 
     async def event_generator():
         last_version = None
@@ -318,7 +332,7 @@ async def stream_scan_history(
         while not await request.is_disconnected():
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, scope, skip, limit, created_by)
+                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, org, scope, skip, limit, created_by)
             finally:
                 db.close()
 
@@ -361,9 +375,11 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     # 1. Send current status from DB immediately
     db = SessionLocal()
     try:
-        query = db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == current_user.org_id)
-        if not _user_can_read_all_scans(current_user, db):
-            query = query.filter(Scan.created_by == str(current_user.id))
+        query = db.query(Scan).filter(Scan.id == scan_id)
+        if getattr(current_user.role, "name", "").lower() != "superadmin":
+            query = query.filter(Scan.org_id == current_user.org_id)
+            if not _user_can_read_all_scans(current_user, db):
+                query = query.filter(Scan.created_by == str(current_user.id))
 
         scan = query.first()
         if scan and scan.phases:
@@ -410,22 +426,24 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
 @router.get("/{scan_id}")
 def get_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "read")),
 ):
     """Return full detail of one scan including all phase results."""
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     return _scan_to_dict(scan, db=db, include_results=True)
 
 
 @router.post("/{scan_id}/archive")
 def archive_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "archive")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.is_deleted:
         raise HTTPException(status_code=400, detail="Cannot archive a scan from the recycle bin.")
     if scan.is_archived:
@@ -448,6 +466,7 @@ def archive_scan(
 @router.post("/{scan_id}/stop")
 def stop_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "execute")),
 ):
@@ -456,7 +475,7 @@ def stop_scan(
     Marks the scan and any active phases as 'cancelled'.
     Also revokes the active Celery task.
     """
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.status in TERMINAL_STATUSES:
         return {"detail": f"Scan {scan_id} is already in a terminal state ({scan.status})", "stopped": False}
 
@@ -491,11 +510,12 @@ def stop_scan(
 @router.post("/{scan_id}/restore")
 def restore_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "restore")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.is_deleted:
         scan.is_deleted = False
         scan.deleted_at = None
@@ -531,11 +551,12 @@ def restore_scan(
 @router.delete("/{scan_id}")
 def delete_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "recycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.is_deleted:
         return {
             "detail": f"Scan {scan_id} is already in the recycle bin",
@@ -556,11 +577,12 @@ def delete_scan(
 @router.delete("/{scan_id}/purge")
 def purge_scan(
     scan_id: str,
+    org_id:  Optional[str] = Query(None),
     db:   Session = Depends(get_db),
     user: User    = Depends(require_permission("scans", "purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
-    scan = _get_scan_or_404(scan_id, user, db)
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
     if not scan.is_deleted:
         raise HTTPException(
             status_code=400,

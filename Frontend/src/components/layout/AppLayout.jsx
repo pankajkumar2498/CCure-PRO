@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { canAny, canPermission } from "../../auth/permissions";
+import { canAny, canPermission, isSuperAdmin } from "../../auth/permissions";
 import { getUnreadCount, streamNotificationEvents } from "../../api/notifications";
 import { usePreferences } from "../../context/PreferencesContext";
 import api from "../../api/axiosInstance";
+import { listOrganizations } from "../../api/admin";
 import ProfileModal from "./ProfileModal";
 import SettingsDrawer from "./SettingsDrawer";
 import NotificationsPanel, { NotificationBell } from "./NotificationsPanel";
@@ -142,6 +143,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const location = useLocation();
   const { pathname, search } = location;
   const { user, logout } = useAuth();
+  const isSuperadmin = isSuperAdmin(user);
   const canStartScans = hasPermission(user, { resource: "scans", action: "execute" });
 
   const [profileOpen, setProfileOpen] = useState(false);
@@ -154,7 +156,68 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationEvent, setNotificationEvent] = useState(null);
-  
+
+  const [orgs, setOrgs] = useState([]);
+  const [loadingOrgs, setLoadingOrgs] = useState(false);
+
+  useEffect(() => {
+    if (user && isSuperAdmin(user)) {
+      setLoadingOrgs(true);
+      listOrganizations()
+        .then((data) => {
+          if (data && data.organizations) {
+            setOrgs(data.organizations);
+            const activeOrgId = localStorage.getItem("activeOrgId");
+            if (activeOrgId) {
+              const activeOrg = data.organizations.find(o => o.id === activeOrgId);
+              if (activeOrg) {
+                setSelectedOrg(activeOrg.name);
+              }
+            } else if (user.org_id) {
+              const userOrg = data.organizations.find(o => o.id === user.org_id);
+              if (userOrg) {
+                setSelectedOrg(userOrg.name);
+                localStorage.setItem("activeOrgId", user.org_id);
+              }
+            }
+          }
+        })
+        .catch(() => { /* silent */ })
+        .finally(() => setLoadingOrgs(false));
+    }
+  }, [user]);
+
+  const handleOrgSwitch = (org) => {
+    localStorage.setItem("activeOrgId", org.id);
+    setSelectedOrg(org.name);
+    setShowOrgDropdown(false);
+    window.location.reload();
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Enter") {
+      const q = searchQuery.trim();
+      if (!q) return;
+      if (/^cve-\d{4}-\d{4,}/i.test(q)) {
+        navigate(`/vulnerabilities?search=${encodeURIComponent(q)}`);
+      } else {
+        navigate(`/assets?search=${encodeURIComponent(q)}`);
+      }
+    }
+  };
+
+  const searchInputRef = useRef(null);
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
   const { preferences, updateLocalPreferences } = usePreferences();
   const [localCollapsed, setLocalCollapsed] = useState(() => localStorage.getItem("sidebarCollapsed") === "true");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -399,48 +462,60 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
               <IcoMenu />
             </button>
             
-            <div style={{ position: "relative" }}>
-              <div 
-                className="org-dropdown" 
-                onClick={() => { closeAll(); setShowOrgDropdown(s => !s); }}
-                style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)", fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", transition: "background 0.2s" }}
-              >
-                <span>{selectedOrg}</span>
-                <span style={{ fontSize: "0.6rem", background: "var(--accent)", color: "#fff", padding: "2px 4px", borderRadius: 4 }}>ENTERPRISE</span>
-                <span style={{ marginLeft: 4, color: "var(--text-muted)", fontSize: "0.6rem" }}>▼</span>
-              </div>
-              {showOrgDropdown && (
-                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, width: 220, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,0.5)", zIndex: 9999, overflow: "hidden" }}>
-                  <div style={{ padding: "8px 12px", fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>Switch Organization</div>
-                  {["CDAC RTSG Bangalore", "Global Cyber Command", "Demo Organization"].map(org => (
-                    <button 
-                      key={org}
-                      onClick={() => { setSelectedOrg(org); setShowOrgDropdown(false); }}
-                      style={{ width: "100%", padding: "10px 12px", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.82rem", color: org === selectedOrg ? "var(--accent)" : "var(--text)", display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      {org === selectedOrg ? <span style={{ width: 14 }}>✓</span> : <span style={{ width: 14 }} />}
-                      {org}
-                    </button>
-                  ))}
+            {isSuperadmin && (
+              <div style={{ position: "relative" }}>
+                <div 
+                  className="org-dropdown" 
+                  onClick={() => { closeAll(); setShowOrgDropdown(s => !s); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)", fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", transition: "background 0.2s" }}
+                >
+                  <span>{selectedOrg}</span>
+                  <span style={{ fontSize: "0.6rem", background: "var(--accent)", color: "#fff", padding: "2px 4px", borderRadius: 4 }}>ENTERPRISE</span>
+                  <span style={{ marginLeft: 4, color: "var(--text-muted)", fontSize: "0.6rem" }}>▼</span>
                 </div>
-              )}
-            </div>
+                {showOrgDropdown && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, width: 220, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,0.5)", zIndex: 9999, overflow: "hidden" }}>
+                    <div style={{ padding: "8px 12px", fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>Switch Organization</div>
+                    {loadingOrgs ? (
+                      <div style={{ padding: "10px 12px", fontSize: "0.82rem", color: "var(--text-muted)" }}>Loading...</div>
+                    ) : orgs.length === 0 ? (
+                      <div style={{ padding: "10px 12px", fontSize: "0.82rem", color: "var(--text-muted)" }}>No organizations found</div>
+                    ) : (
+                      orgs.map(org => (
+                        <button 
+                          key={org.id}
+                          onClick={() => handleOrgSwitch(org)}
+                          style={{ width: "100%", padding: "10px 12px", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.82rem", color: org.name === selectedOrg ? "var(--accent)" : "var(--text)", display: "flex", alignItems: "center", gap: 8 }}
+                        >
+                          {org.name === selectedOrg ? <span style={{ width: 14 }}>✓</span> : <span style={{ width: 14 }} />}
+                          {org.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             
-            <div className="global-search" style={{ position: "relative", width: "300px" }}>
-              <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            {isSuperadmin && (
+              <div className="global-search" style={{ position: "relative", width: "300px" }}>
+                <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </div>
+                <input 
+                  ref={searchInputRef}
+                  type="text" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search assets, CVEs, scans..." 
+                  style={{ width: "100%", background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 12px 8px 32px", fontSize: "0.82rem", color: "var(--text)", outline: "none", transition: "border-color 0.2s" }} 
+                />
+                <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontSize: "0.7rem", background: "var(--border)", padding: "2px 4px", borderRadius: 4 }}>
+                  ⌘K
+                </div>
               </div>
-              <input 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search assets, CVEs, scans..." 
-                style={{ width: "100%", background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 12px 8px 32px", fontSize: "0.82rem", color: "var(--text)", outline: "none", transition: "border-color 0.2s" }} 
-              />
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontSize: "0.7rem", background: "var(--border)", padding: "2px 4px", borderRadius: 4 }}>
-                ⌘K
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="header-actions">

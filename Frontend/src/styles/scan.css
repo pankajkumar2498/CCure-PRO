@@ -1681,8 +1681,6 @@
 }
 
 .modal-panel {
-  width: min(1150px, 100%);
-  height: min(94vh, 100%);
   background: var(--bg-white);
   border-radius: 28px;
   overflow: hidden;
@@ -1692,6 +1690,23 @@
   transform: translateY(24px) scale(0.97);
   opacity: 0;
   animation: panelRise 340ms ease-out forwards;
+}
+
+.modal-panel--large {
+  width: min(1150px, 100%);
+  height: min(94vh, 100%);
+}
+
+.modal-panel--medium {
+  width: min(650px, 100%);
+  height: auto;
+  max-height: min(90vh, 100%);
+}
+
+.modal-panel--small {
+  width: min(480px, 100%);
+  height: auto;
+  max-height: min(90vh, 100%);
 }
 
 .modal-panel-header {

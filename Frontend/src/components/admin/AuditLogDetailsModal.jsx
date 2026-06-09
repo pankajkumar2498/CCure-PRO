@@ -34,7 +34,7 @@ export default function AuditLogDetailsModal({ isOpen, onClose, log }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Audit log details">
+    <Modal isOpen={isOpen} onClose={onClose} title="Audit log details" size="medium">
       <section className="stack gap-16">
         <div className="detail-grid" style={{
           display: "grid",

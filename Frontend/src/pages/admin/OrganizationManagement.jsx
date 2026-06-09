@@ -312,6 +312,7 @@ export default function OrganizationManagement() {
         <Modal
           isOpen={isCreateModalOpen}
           title="Provision New Organization"
+          size="medium"
           onClose={() => setIsCreateModalOpen(false)}
         >
           <OrganizationForm
@@ -329,6 +330,7 @@ export default function OrganizationManagement() {
         <Modal
           isOpen={isEditModalOpen}
           title={selectedOrg ? `Edit ${selectedOrg.name}` : "Edit organization"}
+          size="medium"
           onClose={() => setIsEditModalOpen(false)}
         >
           <OrganizationForm

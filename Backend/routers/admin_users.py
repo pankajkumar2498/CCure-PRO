@@ -1,7 +1,7 @@
 from typing import Optional
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -99,6 +99,23 @@ class UserStatusUpdateSchema(BaseModel):
 
     is_active: Optional[bool] = None
     locked_until: Optional[datetime] = None
+
+class UserResetPasswordSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError("Password must be at least 12 characters")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        if not any(not c.isalnum() for c in v):
+            raise ValueError("Password must contain at least one special character")
+        return v
 
 @router.get("")
 @router.get("/")
@@ -561,3 +578,42 @@ def purge_user(
     db.delete(user)
     db.commit()
     return {"detail": "User permanently deleted"}
+
+
+@router.post("/{user_id}/reset-password")
+@router.post("/{user_id}/reset-password/")
+def reset_password(
+    user_id: str,
+    body: UserResetPasswordSchema,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "update")),
+):
+    """
+    Reset a user's password.
+    Only users with 'users:update' permission can call this.
+    Org admins can only reset users in their own organization.
+    All active refresh tokens/sessions for the user are deleted immediately.
+    """
+    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update password hash
+    user.password_hash = hash_password(body.password)
+
+    # Invalidate all active sessions for that user
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+
+    log_audit_event(
+        db=db,
+        user=current_user,
+        action="user.password_reset",
+        resource_type="user",
+        resource_id=str(user.id),
+        changes={"password_hash": "modified"},
+        request=request,
+    )
+    db.commit()
+
+    return {"detail": "Password reset successfully"}

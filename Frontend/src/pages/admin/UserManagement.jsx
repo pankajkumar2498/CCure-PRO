@@ -12,6 +12,7 @@ import {
   changeUserStatus,
   deleteUser,
   moveUserOrganization,
+  resetUserPassword,
 } from "../../api/admin";
 import Button from "../../components/common/Button";
 import Modal from "../../components/layout/Modal";
@@ -49,6 +50,9 @@ export default function UserManagement() {
   const [modalMode, setModalMode] = useState("create");
   const [selectedUser, setSelectedUser] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [userToReset, setUserToReset] = useState(null);
+  const [newPassword, setNewPassword] = useState("");
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const isSuperadmin = isSuperAdmin(currentUser);
@@ -255,6 +259,41 @@ export default function UserManagement() {
     }
   };
 
+  const handleOpenResetModal = (user) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
+    setUserToReset(user);
+    setNewPassword("");
+    setResetModalOpen(true);
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!newPassword.trim() || !userToReset) return;
+    setBusy(true);
+    try {
+      await resetUserPassword(userToReset.id, newPassword);
+      pushToast(`Password reset successfully for ${userToReset.username}.`, "success");
+      if (currentUser && String(currentUser.id) === String(userToReset.id)) {
+        pushToast("You reset your own password. Please log in again using the new password.", "warning");
+      }
+      setResetModalOpen(false);
+      setUserToReset(null);
+      setNewPassword("");
+    } catch (err) {
+      let errMsg = "Failed to reset password.";
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+      }
+      pushToast(errMsg, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDeleteUser = (user) => {
     if (!canDeleteUsers) {
       pushToast(denyMessage, "error");
@@ -369,6 +408,7 @@ export default function UserManagement() {
           totalCount={totalCount}
           currentUser={currentUser}
           onEdit={openEditModal}
+          onResetPassword={handleOpenResetModal}
           onToggleStatus={handleToggleStatus}
           onUnlock={handleUnlockUser}
           onDelete={handleDeleteUser}
@@ -380,6 +420,7 @@ export default function UserManagement() {
       <Modal
         isOpen={modalOpen}
         title={modalMode === "create" ? "Create new user" : selectedUser ? `Edit ${selectedUser.username}` : "Edit user"}
+        size="medium"
         onClose={closeModal}
       >
         <UserForm
@@ -392,6 +433,76 @@ export default function UserManagement() {
           onCancel={closeModal}
           busy={busy}
         />
+      </Modal>
+
+      <Modal
+        isOpen={resetModalOpen}
+        title={`Reset Password for ${userToReset?.username || ""}`}
+        size="small"
+        onClose={() => {
+          setResetModalOpen(false);
+          setUserToReset(null);
+          setNewPassword("");
+        }}
+      >
+        <div className="card card--admin-form" style={{ background: "transparent", border: "none", padding: 0, boxShadow: "none" }}>
+          <div className="form-card-header" style={{ padding: 0, marginBottom: 20 }}>
+            <div>
+              <h3 className="card-title">Reset User Password</h3>
+              <p className="card-subtitle">
+                Enter a new secure password for <strong>{userToReset?.username}</strong>.
+              </p>
+            </div>
+          </div>
+
+          <form className="form-horizontal" onSubmit={handleResetPasswordSubmit}>
+            <div className="alert alert--warning" style={{ marginBottom: 16 }}>
+              ⚠️ Resetting the password will immediately terminate all active sessions for this user.
+            </div>
+
+            <div className="field">
+              <label htmlFor="reset-new-password">New Password</label>
+              <input
+                id="reset-new-password"
+                className="field-input"
+                type="password"
+                placeholder="Enter new secure password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                disabled={busy}
+                required
+              />
+              <span className="field-hint">
+                Must be at least 12 characters and contain uppercase, lowercase, numbers, and special characters.
+              </span>
+            </div>
+
+            <div className="form-action-row" style={{ marginTop: 24 }}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                onClick={() => {
+                  setResetModalOpen(false);
+                  setUserToReset(null);
+                  setNewPassword("");
+                }}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                loading={busy}
+                disabled={busy || !newPassword.trim()}
+              >
+                Reset Password
+              </Button>
+            </div>
+          </form>
+        </div>
       </Modal>
 
       <ConfirmDialog

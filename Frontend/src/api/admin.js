@@ -51,6 +51,11 @@ export const purgeUser = async (userId) => {
   return response.data;
 };
 
+export const resetUserPassword = async (userId, password) => {
+  const response = await axiosInstance.post(`/admin/users/${userId}/reset-password/`, { password });
+  return response.data;
+};
+
 export const listRoles = async () => {
   const response = await axiosInstance.get("/admin/roles/");
   return response.data;

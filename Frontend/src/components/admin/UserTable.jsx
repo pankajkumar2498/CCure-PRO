@@ -8,7 +8,7 @@ const statusConfig = {
   locked: { label: "Locked", className: "chip chip--danger" },
 };
 
-function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onToggleStatus, onUnlock, onDelete, canUpdateUsers, canDeleteUsers }) {
+function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onResetPassword, onToggleStatus, onUnlock, onDelete, canUpdateUsers, canDeleteUsers }) {
   const isLocked = user.locked_until && new Date(user.locked_until) > new Date();
   const status = isLocked ? statusConfig.locked : user.is_active ? statusConfig.active : statusConfig.inactive;
   const isSelf = currentUser && String(currentUser.id) === String(user.id);
@@ -38,6 +38,15 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
             onClick={() => onEdit(user)}
           >
             ✏️ Edit
+          </Button>}
+          {canUpdateUsers && <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            title="Reset password"
+            onClick={() => onResetPassword(user)}
+          >
+            🔑 Reset
           </Button>}
           {isLocked && canUpdateUsers && (
             <Button
@@ -93,6 +102,7 @@ export default function UserTable({
   totalCount,
   currentUser,
   onEdit,
+  onResetPassword,
   onToggleStatus,
   onUnlock,
   onDelete,
@@ -169,6 +179,7 @@ export default function UserTable({
                       showOrganizationColumn={showOrganizationColumn}
                       currentUser={currentUser}
                       onEdit={onEdit}
+                      onResetPassword={onResetPassword}
                       onToggleStatus={onToggleStatus}
                       onUnlock={onUnlock}
                       onDelete={onDelete}

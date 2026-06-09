@@ -184,6 +184,31 @@ class AuditLog(Base):
         return f"<AuditLog {self.id!r} action={self.action!r}>"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Password Reset Token
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PasswordResetToken(Base):
+    """
+    Stores cryptographically secure hashes of active password reset tokens.
+    Tokens are single-use and expire after 15 minutes.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id     = Column(String(150), ForeignKey("users.id",
+                          ondelete="CASCADE", onupdate="CASCADE"),
+                          nullable=False, index=True)
+    token_hash  = Column(String(255), nullable=False, unique=True, index=True)
+    created_at  = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    expires_at  = Column(TIMESTAMPTZ, nullable=False)
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<PasswordResetToken id={self.id} user_id={self.user_id!r}>"
+
+
 def ensure_user_schema():
     """
     Additive migration for the users table so existing databases gain the

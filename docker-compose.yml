@@ -36,6 +36,14 @@ services:
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-False}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
     depends_on:
       redis:
         condition: service_healthy
@@ -70,6 +78,14 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-False}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
       - SCANNER_RUNTIME=container
       - SCANNER_WORKER_CONCURRENCY=${SCANNER_WORKER_CONCURRENCY:-20}
       - MAX_NMAP_PROCESSES=${MAX_NMAP_PROCESSES:-20}
@@ -110,6 +126,14 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       - APP_ENV=production
       - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-False}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
       - NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
       - WEB_SCAN_RATE_LIMIT=${WEB_SCAN_RATE_LIMIT:-10}
     depends_on:
@@ -145,7 +169,7 @@ services:
     container_name: ccure-gateway
     restart: always
     ports:
-      - "127.0.0.1:${GATEWAY_PORT:-80}:80"
+      - "${GATEWAY_PORT:-80}:80"
     volumes:
       - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

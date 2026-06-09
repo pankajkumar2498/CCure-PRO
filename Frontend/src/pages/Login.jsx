@@ -26,6 +26,8 @@ export default function Login() {
     return location.state?.message || authMessage || "";
   }, [location.state, authMessage]);
 
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -102,15 +104,22 @@ export default function Login() {
 
           <div className="field">
             <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="........"
-              required
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="........"
+                required
+              />
+              <div style={{ textAlign: "right" }}>
+                <Link to="/forgot-password" style={{ fontSize: "12px", color: "#818cf8", textDecoration: "none", fontWeight: 500 }}>
+                  Forgot password?
+                </Link>
+              </div>
+            </div>
           </div>
 
           <button type="submit" className="auth-btn" disabled={loading}>

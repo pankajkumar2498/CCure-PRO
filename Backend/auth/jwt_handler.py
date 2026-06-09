@@ -60,6 +60,25 @@ argon2_hasher = PasswordHasher()
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
+def validate_password_strength(password: str) -> str:
+    """
+    Validate that the password meets complexity requirements:
+    - At least 12 characters
+    - At least one uppercase letter
+    - At least one digit
+    - At least one special character
+    """
+    if len(password) < 12:
+        raise ValueError("Password must be at least 12 characters")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one digit")
+    if not any(not c.isalnum() for c in password):
+        raise ValueError("Password must contain at least one special character")
+    return password
+
+
 def hash_password(plain: str) -> str:
     """Hash password using argon2 (recommended) or bcrypt fallback."""
     try:

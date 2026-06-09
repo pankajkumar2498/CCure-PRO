@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from celery import Celery
 from kombu import Queue
 from config import AppConfig
@@ -17,6 +18,7 @@ celery_app = Celery(
 
 # Optional but recommended configuration for security and stability
 celery_app.conf.update(
+    task_always_eager=os.getenv("CELERY_TASK_ALWAYS_EAGER", "False").lower() == "true",
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",

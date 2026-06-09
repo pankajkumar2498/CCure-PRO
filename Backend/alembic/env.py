@@ -28,7 +28,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 # Import models for autogenerate
 from db.base import Base
 from db.models.rbac          import Organization, Role, Permission, RolePermission
-from db.models.users         import User, RefreshTokenSession, AuditLog
+from db.models.users         import User, RefreshTokenSession, AuditLog, PasswordResetToken
 from db.models.assets        import Asset, AssetTag, AssetNote, AssetChangeLog
 from db.models.scans         import Scan, ScanPhase
 from db.models.findings      import (

@@ -5,7 +5,7 @@ Exports all production-grade ORM models in dependency order.
 """
 
 from .rbac       import Organization, Role, Permission, RolePermission
-from .users      import User, RefreshTokenSession, AuditLog
+from .users      import User, RefreshTokenSession, AuditLog, PasswordResetToken
 from .assets     import Asset, AssetTag, AssetNote, AssetChangeLog
 from .scans      import Scan, ScanPhase
 from .findings   import (
@@ -25,6 +25,7 @@ __all__ = [
     "User",
     "RefreshTokenSession",
     "AuditLog",
+    "PasswordResetToken",
     # Assets
     "Asset",
     "AssetTag",

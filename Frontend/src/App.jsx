@@ -29,6 +29,8 @@ import VulnerabilityBrowser from "./pages/VulnerabilityBrowser";
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
 import Login                from "./pages/Login";
 import Register             from "./pages/Register";
+import ForgotPassword      from "./pages/ForgotPassword";
+import ResetPassword       from "./pages/ResetPassword";
 import Dashboard            from "./pages/Dashboard";        // scan launcher → /scan
 import ScanHistory          from "./pages/ScanHistory";
 import ArchivedScans        from "./pages/ArchivedScans";
@@ -59,6 +61,8 @@ export default function App() {
       {/* ── Public ── */}
       <Route path="/login"    element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password"  element={<ResetPassword />} />
 
       {/* ── Protected ── */}
       <Route element={<PrivateRoute />}>

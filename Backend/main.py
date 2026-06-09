@@ -168,6 +168,26 @@ async def lifespan(app: FastAPI):
                 await asyncio.to_thread(cleanup_old_reports, 7)
             except Exception as e:
                 log.error("Report cleanup failed: %s", e)
+
+            try:
+                from db.base import SessionLocal
+                from db.models import PasswordResetToken
+                from datetime import datetime, timezone
+                db = SessionLocal()
+                try:
+                    now = datetime.now(timezone.utc)
+                    deleted_count = db.query(PasswordResetToken).filter(PasswordResetToken.expires_at <= now).delete()
+                    if deleted_count > 0:
+                        db.commit()
+                        log.info(f"Purged {deleted_count} expired password reset tokens.")
+                except Exception as db_exc:
+                    db.rollback()
+                    log.error("Failed to prune expired password reset tokens: %s", db_exc)
+                finally:
+                    db.close()
+            except Exception as e:
+                log.error("Password reset token cleanup failed: %s", e)
+
             await asyncio.sleep(86400)  # 24 hours
             
     cleanup_task = asyncio.create_task(cleanup_loop())

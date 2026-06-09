@@ -32,6 +32,7 @@ from auth.jwt_handler import (
     refresh_access_token,
     revoke_refresh_token,
     verify_password,
+    validate_password_strength,
 )
 from db.base import get_db, gen_org_id, gen_user_id
 from db.models import User, Organization, Role, RefreshTokenSession
@@ -63,20 +64,26 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters")
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        if not any(not c.isalnum() for c in v):
-            raise ValueError("Password must contain at least one special character")
-        return v
+        return validate_password_strength(v)
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class RefreshRequest(BaseModel):
@@ -91,9 +98,11 @@ class PermissionOut(BaseModel):
     resource: str
     action: str
 
+
 class RoleOut(BaseModel):
     name: str
     permissions: List[PermissionOut]
+
 
 class OrganizationOut(BaseModel):
     id: Union[str, UUID, int]
@@ -101,6 +110,7 @@ class OrganizationOut(BaseModel):
     slug: str
 
     model_config = {"from_attributes": True}
+
 
 class UserOut(BaseModel):
     id: Union[str, UUID, int]
@@ -126,8 +136,6 @@ class RefreshResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/ticket")
 def generate_ws_download_ticket(current_user: User = Depends(get_current_user)):
@@ -517,3 +525,141 @@ def refresh(
     token_bundle["refresh_token"] = None
     return token_bundle
 
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute")
+def forgot_password(
+    req: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Submits a password reset request.
+    Generates a secure token, hashes it, saves it to the database,
+    and dispatches a Celery task to send the email.
+    
+    Always returns 200 OK to prevent account enumeration.
+    """
+    import secrets
+    import hashlib
+    from datetime import datetime, timezone, timedelta
+    from core.tasks import send_password_reset_email_task
+    from core.audit import log_audit_event
+    from db.models import PasswordResetToken
+    from config import AppConfig
+
+    email = normalize_email(req.email)
+    logger.info("Forgot password requested for: %s", email)
+
+    user = db.query(User).filter(email_matches(User.email, email)).first()
+
+    if not user:
+        logger.info("Email '%s' is not registered in the database.", email)
+    else:
+        logger.info("Found registered user: %s (ID: %s)", user.username, user.id)
+
+    if user:
+        # Generate token
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        # Store in db
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        db.add(reset_token)
+
+        # Log audit trail
+        log_audit_event(
+            db=db,
+            user=user,
+            action="user.forgot_password_requested",
+            resource_type="user",
+            resource_id=str(user.id),
+            request=request,
+            status="success",
+        )
+        db.commit()
+
+        # Build reset link using configuration frontend URL
+        reset_link = f"{AppConfig.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
+
+        # Trigger background task
+        send_password_reset_email_task.delay(user.email, user.username, reset_link)
+
+    return {"detail": "If this email is registered, you will receive a reset link shortly."}
+
+
+@router.post("/reset-password")
+def reset_password_endpoint(
+    req: ResetPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Resets the user's password using the secure token.
+    Validates token presence, expiration, updates the user's password,
+    invalidates all current user sessions, and revokes the token.
+    """
+    import hashlib
+    from datetime import datetime, timezone
+    from core.audit import log_audit_event
+    from db.models import PasswordResetToken, RefreshTokenSession
+    from auth.jwt_handler import hash_password
+
+    token_hash = hashlib.sha256(req.token.encode("utf-8")).hexdigest()
+
+    # Find the token in the database
+    reset_token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+
+    # Check expiration
+    if reset_token.expires_at <= datetime.now(timezone.utc):
+        db.delete(reset_token)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+
+    # Fetch user
+    user = db.query(User).filter(User.id == reset_token.user_id).first()
+    if not user:
+        db.delete(reset_token)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User not found.",
+        )
+
+    # Update user password
+    user.password_hash = hash_password(req.password)
+
+    # Invalidate all active sessions for the user
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+
+    # Delete the reset token (single-use constraint)
+    db.delete(reset_token)
+
+    # Log audit trail
+    log_audit_event(
+        db=db,
+        user=user,
+        action="user.password_reset_completed",
+        resource_type="user",
+        resource_id=str(user.id),
+        changes={"password_hash": "modified"},
+        request=request,
+        status="success",
+    )
+
+    db.commit()
+
+    return {"detail": "Your password has been reset successfully."}

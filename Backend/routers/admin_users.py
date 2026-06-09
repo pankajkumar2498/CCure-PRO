@@ -7,7 +7,7 @@ from datetime import datetime
 
 from auth.rbac import require_permission
 from auth.email_utils import email_matches, normalize_email
-from auth.jwt_handler import hash_password
+from auth.jwt_handler import hash_password, validate_password_strength
 from db.base import get_db, utcnow, gen_user_id
 from db.models import (
     AssetNote,
@@ -107,15 +107,7 @@ class UserResetPasswordSchema(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters")
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        if not any(not c.isalnum() for c in v):
-            raise ValueError("Password must contain at least one special character")
-        return v
+        return validate_password_strength(v)
 
 @router.get("")
 @router.get("/")

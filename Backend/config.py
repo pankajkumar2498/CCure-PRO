@@ -24,11 +24,8 @@ def _selected_env_file() -> Path:
 
 ENV_FILE = _selected_env_file()
 
-# Load the selected Backend env file so database switching is controlled
-# from one place even when the app is launched outside the Backend folder.
-# Skip if running in tests to allow conftest.py to control environment.
 if not os.getenv("SKIP_DOTENV_LOAD"):
-    load_dotenv(dotenv_path=ENV_FILE)
+    load_dotenv(dotenv_path=ENV_FILE, override=True)
 
 
 def _normalize_database_url(database_url: str) -> str:
@@ -167,6 +164,18 @@ class AdminConfig:
     PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
 
 
+class EmailConfig:
+    """SMTP and password reset email configuration."""
+
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025"))
+    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None) or None
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None) or None
+    SMTP_SECURE: bool = os.getenv("SMTP_SECURE", "False").lower() == "true"
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@ccureaudit.pro")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -215,6 +224,15 @@ class AppConfig:
     # Initial Admin Seed
     DEFAULT_ADMIN_EMAIL = AdminConfig.EMAIL
     DEFAULT_ADMIN_PASSWORD = AdminConfig.PASSWORD
+
+    # Email / SMTP Config
+    SMTP_HOST = EmailConfig.SMTP_HOST
+    SMTP_PORT = EmailConfig.SMTP_PORT
+    SMTP_USER = EmailConfig.SMTP_USER
+    SMTP_PASSWORD = EmailConfig.SMTP_PASSWORD
+    SMTP_SECURE = EmailConfig.SMTP_SECURE
+    SMTP_FROM_EMAIL = EmailConfig.SMTP_FROM_EMAIL
+    FRONTEND_URL = EmailConfig.FRONTEND_URL
 
     @staticmethod
     def is_sqlite() -> bool:

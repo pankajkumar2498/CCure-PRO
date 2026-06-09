@@ -49,3 +49,18 @@ export const checkEmail = async (email) => {
   const response = await axiosInstance.get(`/auth/check-email?q=${encodeURIComponent(normalizeEmail(email))}`);
   return response.data;
 };
+
+export const forgotPassword = async (email) => {
+  const response = await axiosInstance.post("/auth/forgot-password", {
+    email: normalizeEmail(email),
+  });
+  return response.data;
+};
+
+export const resetPassword = async (token, password) => {
+  const response = await axiosInstance.post("/auth/reset-password", {
+    token,
+    password,
+  });
+  return response.data;
+};

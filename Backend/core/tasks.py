@@ -1135,3 +1135,10 @@ def run_credentialed_scan_task(
     finally:
         db.close()
 
+
+@celery_app.task(name="ccure.tasks.send_password_reset_email", queue="default")
+def send_password_reset_email_task(email_to: str, username: str, reset_link: str) -> None:
+    """Async background task to dispatch password reset emails."""
+    from auth.mail_service import send_password_reset_email as _send
+    _send(email_to, username, reset_link)
+

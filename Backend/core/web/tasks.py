@@ -29,8 +29,31 @@ log = logging.getLogger("ccure.web.tasks")
 
 
 def _run_async(coro):
-    """Run async code safely from Celery worker threads."""
-    return asyncio.run(coro)
+    """Run async code safely from Celery worker threads or eager contexts."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import threading
+        from concurrent.futures import Future
+
+        future = Future()
+
+        def run_in_thread():
+            try:
+                result = asyncio.run(coro)
+                future.set_result(result)
+            except BaseException as e:
+                future.set_exception(e)
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        return future.result()
+    else:
+        return asyncio.run(coro)
+
 
 
 def _check_cancelled(db, web_scan_id: str) -> bool:

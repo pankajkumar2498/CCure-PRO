@@ -114,6 +114,7 @@ class Asset(Base):
     owner             = Column(String(255), nullable=True)
     notes_summary     = Column(Text, nullable=True)
     custom_attributes = Column(JSONB, nullable=False, default=dict)
+    provenance        = Column(JSONB, nullable=False, default=dict)
 
     # ── Audit ─────────────────────────────────────────────────────────────────
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)

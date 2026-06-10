@@ -79,6 +79,18 @@ def _blank_result(ip: str) -> Dict:
     }
 
 
+def _first_netbios_name(r: Dict) -> str:
+    """Safely extract the first NetBIOS name as a string to prevent rendering raw objects."""
+    names = r.get("netbios_names")
+    if names and isinstance(names, list) and len(names) > 0:
+        first = names[0]
+        if isinstance(first, dict):
+            return first.get("name") or ""
+        return str(first)
+    return ""
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Batch sizing (matches existing production logic)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +249,7 @@ class DiscoveryEngine:
                                 "hostname":     (
                                     r.get("hostname")
                                     or r.get("mdns_name")
-                                    or (r.get("netbios_names") or [""])[0]
+                                    or _first_netbios_name(r)
                                     or ""
                                 ),
                                 "mac_address":  r.get("mac") or r.get("mac_address") or "",
@@ -275,7 +287,7 @@ class DiscoveryEngine:
                     "hostname":     (
                         r.get("hostname")
                         or r.get("mdns_name")
-                        or (r.get("netbios_names") or [""])[0]
+                        or _first_netbios_name(r)
                         or ""
                     ),
                     "mac_address":  r.get("mac") or r.get("mac_address") or "",
@@ -322,7 +334,7 @@ class DiscoveryEngine:
                 return (
                     r.get("hostname")
                     or r.get("mdns_name")
-                    or (r.get("netbios_names") or [""])[0]
+                    or _first_netbios_name(r)
                     or ""
                 )
             enriched_snapshot = [

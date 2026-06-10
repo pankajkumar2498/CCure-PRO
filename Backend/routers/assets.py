@@ -13,14 +13,14 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import or_, func, String
 from sqlalchemy.orm import Session, joinedload
 
 from auth.rbac import require_permission
 from db.base import get_db
-from db.models import User, AuditLog
+from db.models import User, AuditLog, AMTInventoryRecord
 from db.models.assets import Asset, AssetTag, AssetNote, AssetChangeLog
 from db.models.findings import (
     Service, TLSDetail, HttpSecurityDetail,
@@ -91,6 +91,8 @@ def _serialize_asset(a: Asset) -> dict:
         "is_managed":      a.is_managed,
         "is_active":       a.is_active,
         "owner":           a.owner,
+        "emp_id":          (a.custom_attributes or {}).get("owner_employee_id"),
+        "serial":          (a.custom_attributes or {}).get("serial_number"),
         "discovery_method": a.discovery_method,
         "response_time_ms": a.response_time_ms,
         "last_scan_id":    a.last_scan_id,
@@ -103,6 +105,7 @@ def _serialize_asset(a: Asset) -> dict:
         "tags":           [t.tag for t in (a.tags or [])],
         "first_seen_at":  a.first_seen_at.isoformat() if a.first_seen_at else None,
         "last_seen_at":   a.last_seen_at.isoformat() if a.last_seen_at else None,
+        "provenance":     getattr(a, "provenance", None) or {},
     }
 
 
@@ -163,8 +166,384 @@ def list_assets(
         "assets": [_serialize_asset(a) for a in assets],
     }
 
+# ── Debug AMT Reconciliation ──────────────────────────────────────────────────
 
-# ── Asset Detail ──────────────────────────────────────────────────────────────
+@router.get("/debug-reconcile")
+def debug_reconcile(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("assets", "read")),
+):
+    from core.amt_reconciliation import reconcile_amt_inventory
+    from core.utils import normalize_mac
+
+    # Fetch scanned assets with MACs (global / all orgs to see if there is an org mismatch)
+    scanned_assets = db.query(Asset).filter(
+        Asset.mac_address != None
+    ).all()
+
+    scanned_details = []
+    for a in scanned_assets:
+        scanned_details.append({
+            "id": a.id,
+            "org_id": a.org_id,
+            "ip": str(a.ip_address),
+            "mac": str(a.mac_address) if a.mac_address else None,
+            "norm_mac": normalize_mac(str(a.mac_address)) if a.mac_address else None,
+            "owner": a.owner,
+        })
+
+    # Fetch AMT records (global / all orgs)
+    amt_records = db.query(AMTInventoryRecord).all()
+
+    amt_details = []
+    for r in amt_records:
+        amt_details.append({
+            "id": r.id,
+            "org_id": r.org_id,
+            "mac1": str(r.mac_address_1) if r.mac_address_1 else None,
+            "norm_mac1": normalize_mac(str(r.mac_address_1)) if r.mac_address_1 else None,
+            "mac2": str(r.mac_address_2) if r.mac_address_2 else None,
+            "norm_mac2": normalize_mac(str(r.mac_address_2)) if r.mac_address_2 else None,
+            "asset_user": r.asset_user,
+        })
+
+    # Run the current reconciliation engine to see what it outputs for the user's org
+    stats = reconcile_amt_inventory(db, user.org_id)
+
+    return {
+        "user_logged_in_org_id": user.org_id,
+        "scanned_count_total": len(scanned_assets),
+        "amt_count_total": len(amt_records),
+        "scanned_assets": scanned_details,
+        "amt_records": amt_details,
+        "reconciliation_stats": stats,
+    }
+
+
+# ── Global TLS/Certificates Inventory ──────────────────────────────────────────
+
+@router.get("/certificates")
+def list_global_certificates(
+    search:   Optional[str] = Query(None),
+    sort_by:  str           = Query("expiration"),
+    sort_dir: str           = Query("asc"),
+    skip:     int           = Query(0, ge=0),
+    limit:    int           = Query(50, ge=1, le=500),
+    org_id:   Optional[str] = Query(None),
+    db:       Session       = Depends(get_db),
+    user:     User          = Depends(require_permission("assets", "read")),
+):
+    """
+    Retrieve a centralized inventory of all TLS/SSL certificates and configurations
+    across the entire organization infrastructure.
+    """
+    org = _resolve_org(user, org_id)
+
+    # Base query joining TLSDetail, Service, and Asset to enforce org-level isolation
+    q = db.query(TLSDetail).join(Service).join(Asset).filter(Asset.org_id == org)
+
+    if search:
+        search_filter = or_(
+            TLSDetail.grade.ilike(f"%{search}%"),
+            TLSDetail.protocol_version.ilike(f"%{search}%"),
+            TLSDetail.cipher_suite.ilike(f"%{search}%"),
+            func.cast(Service.port, String).ilike(f"%{search}%"),
+            Asset.hostname.ilike(f"%{search}%"),
+            func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
+            func.cast(TLSDetail.cert_subject, String).ilike(f"%{search}%"),
+            func.cast(TLSDetail.cert_issuer, String).ilike(f"%{search}%"),
+        )
+        q = q.filter(search_filter)
+
+    total = q.count()
+
+    # Column mapping for sorting
+    col_map = {
+        "grade":        TLSDetail.grade,
+        "expiration":   TLSDetail.cert_not_after,
+        "port":         Service.port,
+        "ip_address":   Asset.ip_address,
+        "hostname":     Asset.hostname,
+    }
+    sort_col = col_map.get(sort_by, TLSDetail.cert_not_after)
+    q = q.order_by(sort_col.desc() if sort_dir == "desc" else sort_col.asc())
+
+    certs = q.options(
+        joinedload(TLSDetail.service).joinedload(Service.asset)
+    ).offset(skip).limit(limit).all()
+
+    result = []
+    for c in certs:
+        result.append({
+            "id":                  c.id,
+            "service_id":          c.service_id,
+            "port":                c.service.port if c.service else None,
+            "protocol":            c.service.protocol if c.service else "tcp",
+            "protocol_version":    c.protocol_version,
+            "cipher_suite":        c.cipher_suite,
+            "grade":               c.grade or "N/A",
+            "is_weak_cipher":      c.is_weak_cipher,
+            "cert_is_expired":     c.cert_is_expired,
+            "cert_is_self_signed": c.cert_is_self_signed,
+            "cert_not_after":      c.cert_not_after.isoformat() if c.cert_not_after else None,
+            "cert_subject":        c.cert_subject,
+            "cert_issuer":         c.cert_issuer,
+            "issues":              c.issues or [],
+            "asset_id":            c.service.asset_id if c.service else None,
+            "asset_ip":            str(c.service.asset.ip_address) if (c.service and c.service.asset) else None,
+            "asset_hostname":      c.service.asset.hostname if (c.service and c.service.asset) else None,
+        })
+
+    return {
+        "total": total, "skip": skip, "limit": limit,
+        "certificates": result,
+    }
+
+
+# ── Global Services Inventory ──────────────────────────────────────────────────
+
+_TARGETED_SERVICES = {
+    21:   {"risk_level": "Medium", "reason": "FTP (Plaintext Credentials)"},
+    22:   {"risk_level": "Medium", "reason": "SSH Remote Access"},
+    23:   {"risk_level": "Critical", "reason": "Telnet (Unencrypted Remote Shell)"},
+    139:  {"risk_level": "High", "reason": "NetBIOS Session Service"},
+    445:  {"risk_level": "Critical", "reason": "Microsoft SMB (Active Attack Target)"},
+    1433: {"risk_level": "High", "reason": "Microsoft SQL Server"},
+    1521: {"risk_level": "High", "reason": "Oracle TNS Listener"},
+    3306: {"risk_level": "Medium", "reason": "MySQL Database Server"},
+    3389: {"risk_level": "Critical", "reason": "Remote Desktop Protocol (RDP)"},
+    5432: {"risk_level": "Medium", "reason": "PostgreSQL Database Server"},
+    5900: {"risk_level": "High", "reason": "VNC Remote Desktop"},
+}
+
+@router.get("/services")
+def list_global_services(
+    search:     Optional[str] = Query(None),
+    port:       Optional[int] = Query(None),
+    protocol:   Optional[str] = Query(None),
+    asset_type: Optional[str] = Query(None),
+    subnet:     Optional[str] = Query(None),
+    sort_by:    str           = Query("asset_count"),
+    sort_dir:   str           = Query("desc"),
+    skip:       int           = Query(0, ge=0),
+    limit:      int           = Query(50, ge=1, le=500),
+    org_id:     Optional[str] = Query(None),
+    db:         Session       = Depends(get_db),
+    user:       User          = Depends(require_permission("assets", "read")),
+):
+    """
+    Retrieve an aggregated centralized inventory of all discovered services and open ports
+    across the entire organization infrastructure.
+    """
+    org = _resolve_org(user, org_id)
+
+    service_name_expr = func.coalesce(func.nullif(Service.service_name, ''), 'unknown')
+
+    # Base query joining Service and Asset to enforce org-level isolation and support filters
+    q = db.query(
+        service_name_expr.label("service_name"),
+        Service.port.label("port"),
+        Service.protocol.label("protocol"),
+        func.count(func.distinct(Service.asset_id)).label("asset_count"),
+        func.max(Service.updated_at).label("last_seen")
+    ).join(Asset).filter(Asset.org_id == org)
+
+    # Apply filters
+    if search:
+        search_filter = or_(
+            Service.service_name.ilike(f"%{search}%"),
+            Service.service_product.ilike(f"%{search}%"),
+            func.cast(Service.port, String).ilike(f"%{search}%"),
+        )
+        q = q.filter(search_filter)
+
+    if port is not None:
+        q = q.filter(Service.port == port)
+    if protocol:
+        q = q.filter(Service.protocol.ilike(protocol))
+    if asset_type:
+        q = q.filter(Asset.device_category.ilike(f"%{asset_type}%"))
+    if subnet:
+        q = q.filter(Asset.subnet.ilike(f"%{subnet}%"))
+
+    q = q.group_by(service_name_expr, Service.port, Service.protocol)
+
+    # Sorting
+    if sort_by == "port":
+        sort_col = Service.port
+    elif sort_by == "protocol":
+        sort_col = Service.protocol
+    elif sort_by == "service_name":
+        sort_col = service_name_expr
+    elif sort_by == "last_seen":
+        sort_col = func.max(Service.updated_at)
+    else: # asset_count (default)
+        sort_col = func.count(func.distinct(Service.asset_id))
+
+    q = q.order_by(sort_col.desc() if sort_dir == "desc" else sort_col.asc())
+
+    # Get total count of aggregates by evaluating subquery count
+    total = db.query(func.count()).select_from(q.subquery()).scalar()
+
+    records = q.offset(skip).limit(limit).all()
+
+    result = []
+    for rec in records:
+        port_num = rec.port
+        risk_info = _TARGETED_SERVICES.get(port_num, {"risk_level": "None", "reason": "Standard Service"})
+        result.append({
+            "service_name":    rec.service_name,
+            "port":            rec.port,
+            "protocol":        rec.protocol,
+            "asset_count":     rec.asset_count,
+            "last_seen":       rec.last_seen.isoformat() if rec.last_seen else None,
+            "risk_level":      risk_info["risk_level"],
+            "risk_reason":     risk_info["reason"],
+        })
+
+    return {
+        "total": total, "skip": skip, "limit": limit,
+        "services": result,
+    }
+
+
+@router.get("/services/assets")
+def list_service_assets(
+    service_name: str           = Query(...),
+    port:         int           = Query(...),
+    protocol:     str           = Query(...),
+    search:       Optional[str] = Query(None),
+    skip:         int           = Query(0, ge=0),
+    limit:        int           = Query(50, ge=1, le=500),
+    org_id:       Optional[str] = Query(None),
+    db:           Session       = Depends(get_db),
+    user:         User          = Depends(require_permission("assets", "read")),
+):
+    """
+    Retrieve all assets running a specific service-port-protocol signature.
+    Supports internal searching by IP/hostname.
+    """
+    org = _resolve_org(user, org_id)
+
+    q = db.query(Service).join(Asset).filter(
+        Asset.org_id == org,
+        Service.port == port,
+        Service.protocol.ilike(protocol),
+    )
+
+    if service_name and service_name != "unknown":
+        q = q.filter(Service.service_name.ilike(service_name))
+    else:
+        q = q.filter(or_(Service.service_name == None, Service.service_name == ""))
+
+    if search:
+        search_filter = or_(
+            Asset.hostname.ilike(f"%{search}%"),
+            func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
+        )
+        q = q.filter(search_filter)
+
+    total = q.count()
+
+    services = q.options(joinedload(Service.asset)).offset(skip).limit(limit).all()
+
+    result = []
+    for svc in services:
+        result.append({
+            "asset_id":        svc.asset_id,
+            "asset_hostname":  svc.asset.hostname or "—",
+            "asset_ip":        str(svc.asset.ip_address) if svc.asset.ip_address else "—",
+            "asset_type":      svc.asset.device_category or "—",
+            "state":           svc.state,
+            "service_version": svc.service_version or "—",
+            "service_product": svc.service_product or "—",
+            "last_scan_time":  svc.updated_at.isoformat() if svc.updated_at else None,
+        })
+
+    return {
+        "total": total, "skip": skip, "limit": limit,
+        "assets": result,
+    }
+
+
+@router.get("/coverage-stats")
+def get_coverage_stats(
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("assets", "read")),
+):
+    """
+    Retrieve coverage and gap statistics between scanned assets and corporate AMT inventory.
+    """
+    org = _resolve_org(user, org_id)
+
+    # Get scanned assets counts
+    total_scanned = db.query(Asset).filter(
+        Asset.org_id == org,
+        Asset.mac_address != None
+    ).count()
+
+    # Get inventory reference counts (global across database)
+    total_inventory = db.query(AMTInventoryRecord).count()
+
+    if total_inventory == 0:
+        return {
+            "configured": False,
+            "total_scanned": total_scanned,
+            "total_inventory": 0,
+            "fully_audited": 0,
+            "shadow_it": total_scanned,
+            "coverage_gap": 0,
+            "coverage_percentage": 0.0
+        }
+
+    # Query matching active assets (Fully Audited)
+    scanned_macs_query = db.query(Asset.mac_address).filter(
+        Asset.org_id == org,
+        Asset.mac_address != None
+    )
+
+    fully_audited = db.query(AMTInventoryRecord).filter(
+        or_(
+            AMTInventoryRecord.mac_address_1.in_(scanned_macs_query),
+            AMTInventoryRecord.mac_address_2.in_(scanned_macs_query)
+        )
+    ).count()
+
+    # Shadow IT: Scanned assets that do NOT match any AMT inventory MAC globally
+    amt_mac1_query = db.query(AMTInventoryRecord.mac_address_1)
+    amt_mac2_query = db.query(AMTInventoryRecord.mac_address_2).filter(AMTInventoryRecord.mac_address_2 != None)
+
+    shadow_it = db.query(Asset).filter(
+        Asset.org_id == org,
+        Asset.mac_address != None,
+        ~Asset.mac_address.in_(amt_mac1_query),
+        ~Asset.mac_address.in_(amt_mac2_query)
+    ).count()
+
+    # Coverage Gap: Inventory records that are not present in scanned assets MACs
+    coverage_gap = db.query(AMTInventoryRecord).filter(
+        ~AMTInventoryRecord.mac_address_1.in_(scanned_macs_query),
+        or_(
+            AMTInventoryRecord.mac_address_2 == None,
+            ~AMTInventoryRecord.mac_address_2.in_(scanned_macs_query)
+        )
+    ).count()
+
+    coverage_percentage = round((fully_audited / total_inventory) * 100, 2) if total_inventory > 0 else 0.0
+
+    return {
+        "configured": True,
+        "total_scanned": total_scanned,
+        "total_inventory": total_inventory,
+        "fully_audited": fully_audited,
+        "shadow_it": shadow_it,
+        "coverage_gap": coverage_gap,
+        "coverage_percentage": coverage_percentage
+    }
+
+
+# ── Asset Detail ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/{asset_id}")
 def get_asset(
@@ -437,6 +816,14 @@ def update_asset(
         asset.is_managed = body.is_managed
     if body.owner is not None:
         asset.owner = body.owner
+        import datetime
+        prov = dict(asset.provenance or {})
+        prov["owner"] = {
+            "source": "analyst",
+            "user_id": str(user.id),
+            "updated_at": datetime.datetime.utcnow().isoformat()
+        }
+        asset.provenance = prov
     if body.custom_attributes is not None:
         asset.custom_attributes = body.custom_attributes
 
@@ -528,3 +915,169 @@ def add_note(
     db.add(note)
     db.commit()
     return {"success": True, "id": note.id}
+
+
+# ── AMT Inventory Import & Coverage Stats ───────────────────────────────────
+
+def resolve_duplicate_amt_record(old_item: dict, new_item: dict) -> dict:
+    """
+    Decide which of the two duplicate AMT records to keep.
+    Prefers:
+    1. Active status over inactive/undeployed/ready to deploy.
+    2. Non-empty asset_user over empty/null.
+    3. Larger/newer asset_tag sequence.
+    """
+    def status_score(status_str: str) -> int:
+        if not status_str:
+            return 0
+        s = status_str.lower()
+        if any(w in s for w in ("in use", "deployed", "active", "in-use")):
+            return 2
+        if any(w in s for w in ("ready", "deploy", "spare")):
+            return 1
+        return -1
+
+    score_old = status_score(old_item.get("status"))
+    score_new = status_score(new_item.get("status"))
+
+    if score_new > score_old:
+        return new_item
+    if score_old > score_new:
+        return old_item
+
+    # 2. Compare user assignment (prefer having a user assigned)
+    user_old = bool(old_item.get("asset_user") and str(old_item.get("asset_user")).strip())
+    user_new = bool(new_item.get("asset_user") and str(new_item.get("asset_user")).strip())
+
+    if user_new and not user_old:
+        return new_item
+    if user_old and not user_new:
+        return old_item
+
+    # 3. Compare asset tag as sequential indicator
+    tag_old = str(old_item.get("asset_tag") or "")
+    tag_new = str(new_item.get("asset_tag") or "")
+
+    # Extract digits to compare sequentially
+    try:
+        num_old = int("".join(c for c in tag_old if c.isdigit()))
+        num_new = int("".join(c for c in tag_new if c.isdigit()))
+        if num_new > num_old:
+            return new_item
+        if num_old > num_new:
+            return old_item
+    except ValueError:
+        if tag_new > tag_old:
+            return new_item
+
+    # Default fallback: keep the new one (last one wins)
+    return new_item
+
+
+@router.post("/import-amt")
+def import_amt_inventory(
+    file: UploadFile = File(...),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings", "update")),
+):
+    """
+    Upload an assets.json file to overwrite organization's AMT inventory reference data
+    and trigger an async background reconciliation.
+    """
+    org = _resolve_org(user, org_id)
+
+    try:
+        content = file.file.read()
+        data = json.loads(content.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file format: {str(exc)}"
+        )
+
+    # Validate JSON structure (must have data array or be a list)
+    records = []
+    if isinstance(data, dict) and "data" in data:
+        records = data["data"]
+    elif isinstance(data, list):
+        records = data
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="JSON file must be a list of asset records or contain a 'data' array."
+        )
+
+    # 1. Clear out old inventory records for this org
+    db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org).delete()
+
+    from core.utils import normalize_mac
+
+    # 2. Reconcile duplicates and filter unique records using smart heuristics
+    unique_records = {}
+    for item in records:
+        mac1 = normalize_mac(item.get("mac_address_1"))
+        if not mac1:
+            continue  # primary MAC is required for correlation reference
+
+        if mac1 in unique_records:
+            existing = unique_records[mac1]
+            chosen = resolve_duplicate_amt_record(existing, item)
+            if chosen is item:
+                log.info(
+                    "Duplicate MAC %s: kept new record (Tag: %s) over old record (Tag: %s) based on heuristics.",
+                    mac1, item.get("asset_tag"), existing.get("asset_tag")
+                )
+            else:
+                log.info(
+                    "Duplicate MAC %s: kept old record (Tag: %s) over new record (Tag: %s) based on heuristics.",
+                    mac1, existing.get("asset_tag"), item.get("asset_tag")
+                )
+            unique_records[mac1] = chosen
+        else:
+            unique_records[mac1] = item
+
+    # 3. Insert resolved unique records
+    inserted_count = 0
+    for mac1, item in unique_records.items():
+        mac2 = normalize_mac(item.get("mac_address_2"))
+        db_record = AMTInventoryRecord(
+            org_id=org,
+            mac_address_1=mac1,
+            mac_address_2=mac2,
+            asset_tag=item.get("asset_tag"),
+            asset_name=item.get("asset_name"),
+            serial=item.get("serial"),
+            vendor=item.get("vendor"),
+            asset_type=item.get("asset_type"),
+            asset_user=item.get("asset_user"),
+            emp_id=item.get("emp_id"),
+            status=item.get("status"),
+            location=item.get("location"),
+            location_id=item.get("location_id"),
+            company_name=item.get("company_name"),
+        )
+        db.add(db_record)
+        inserted_count += 1
+
+    db.commit()
+
+    # 4. Dispatch background task for reconciliation
+    from core.tasks import reconcile_amt_inventory_task
+    task = reconcile_amt_inventory_task.delay(org_id=org)
+
+    # 5. Audit Log
+    log_audit_event(
+        db=db, user=user,
+        action="amt_inventory_imported",
+        resource_type="asset",
+        resource_id=org,
+        status="success",
+    )
+
+    return {
+        "success": True,
+        "records_imported": inserted_count,
+        "task_id": task.id
+    }
+

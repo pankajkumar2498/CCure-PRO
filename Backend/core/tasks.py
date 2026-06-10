@@ -41,8 +41,31 @@ def _new_orchestrator() -> ScanOrchestrator:
 
 
 def _run_async(coro):
-    """Run async scanner code safely from Celery worker threads."""
-    return asyncio.run(coro)
+    """Run async scanner code safely from Celery worker threads or eager contexts."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import threading
+        from concurrent.futures import Future
+
+        future = Future()
+
+        def run_in_thread():
+            try:
+                result = asyncio.run(coro)
+                future.set_result(result)
+            except BaseException as e:
+                future.set_exception(e)
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        return future.result()
+    else:
+        return asyncio.run(coro)
+
 
 
 def _check_cancelled(db: SessionLocal, scan_id: str) -> bool:
@@ -527,6 +550,14 @@ def sync_asset_discovery_task(scan_id: str, org_id: str, user_id: Optional[str],
     try:
         from scans.asset_syncer import sync_asset_discovery
         sync_asset_discovery(db, scan_id, org_id, user_id, hosts)
+        # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
+        try:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if scan and scan.pipeline_mode == "asset_discovery":
+                from core.amt_reconciliation import reconcile_amt_inventory
+                reconcile_amt_inventory(db, org_id)
+        except Exception as amt_exc:
+            log.warning("Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc)
     except Exception as exc:
         log.exception("Asset Sync Phase 2 Failed")
     finally:
@@ -551,6 +582,14 @@ def sync_host_discovery_task(scan_id: str, org_id: str, user_id: Optional[str], 
     try:
         from scans.asset_syncer import sync_host_discovery
         sync_host_discovery(db, scan_id, org_id, user_id, hosts)
+        # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
+        try:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if scan and scan.pipeline_mode == "host_discovery":
+                from core.amt_reconciliation import reconcile_amt_inventory
+                reconcile_amt_inventory(db, org_id)
+        except Exception as amt_exc:
+            log.warning("Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc)
     except Exception as exc:
         log.exception("Asset Sync Phase 1 Failed")
     finally:
@@ -1141,4 +1180,19 @@ def send_password_reset_email_task(email_to: str, username: str, reset_link: str
     """Async background task to dispatch password reset emails."""
     from auth.mail_service import send_password_reset_email as _send
     _send(email_to, username, reset_link)
+
+
+@celery_app.task(name="ccure.tasks.reconcile_amt_inventory_task", queue="scanner")
+def reconcile_amt_inventory_task(org_id: str) -> dict:
+    """Async background task to run AMT reconciliation for an organization."""
+    db = SessionLocal()
+    try:
+        from core.amt_reconciliation import reconcile_amt_inventory
+        return reconcile_amt_inventory(db, org_id)
+    except Exception as exc:
+        log.exception(f"AMT Reconciliation background task failed for org {org_id}")
+        return {"success": False, "error": str(exc)}
+    finally:
+        db.close()
+
 

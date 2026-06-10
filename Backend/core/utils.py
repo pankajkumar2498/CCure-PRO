@@ -422,3 +422,19 @@ def get_mac_from_arp_cache(ip: str) -> str:
         pass
 
     return "N/A"
+
+
+def normalize_mac(mac: str) -> Optional[str]:
+    """
+    Standardize a MAC address into uppercase colon-separated format (AA:BB:CC:DD:EE:FF).
+    Returns None if the format is invalid or has incorrect length.
+    """
+    if not mac:
+        return None
+    # Remove all non-hex characters
+    clean = "".join(c for c in mac if c.lower() in "0123456789abcdef")
+    if len(clean) != 12:
+        return None
+    # Standardize to uppercase with colons
+    return ":".join(clean[i:i+2].upper() for i in range(0, 12, 2))
+

@@ -14,6 +14,7 @@ from .findings   import (
 )
 from .notifications import Notification
 from .web_scans  import WebScan, WebAsset, WebFinding
+from .amt        import AMTInventoryRecord
 
 __all__ = [
     # RBAC
@@ -46,4 +47,6 @@ __all__ = [
     "WebScan",
     "WebAsset",
     "WebFinding",
+    # AMT Inventory
+    "AMTInventoryRecord",
 ]

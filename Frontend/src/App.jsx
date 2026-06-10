@@ -53,6 +53,7 @@ import UserManagement       from "./pages/admin/UserManagement";
 import OrganizationManagement from "./pages/admin/OrganizationManagement";
 import RoleManagement       from "./pages/admin/RoleManagement";
 import DeletedUsers         from "./pages/admin/DeletedUsers";
+import AMTIntegration       from "./pages/admin/AMTIntegration";
 
 export default function App() {
   return (
@@ -113,6 +114,9 @@ export default function App() {
         {/* Admin — RBAC-gated */}
         <Route element={<PrivateRoute requiredPermission={{ resource: "audit", action: "read" }} />}>
           <Route path="/admin/audit-logs" element={<AuditLogs />} />
+        </Route>
+        <Route element={<PrivateRoute requiredPermission={{ resource: "assets", action: "update" }} />}>
+          <Route path="/admin/amt" element={<AMTIntegration />} />
         </Route>
         <Route element={<PrivateRoute requiredPermission={{ resource: "users", action: "read" }} />}>
           <Route path="/admin/users"         element={<UserManagement />} />

@@ -93,6 +93,7 @@ const SIDEBAR_SECTIONS = [
       { id: "deleted-users",   label: "Deleted Users",   Icon: IcoTrash,     route: "/admin/users/deleted", permission: { resource: "users", action: "read" } },
       { id: "organizations",   label: "Organizations",   Icon: IcoOrg,       route: "/admin/organizations", permission: { resource: "organizations", action: "read" } },
       { id: "roles-perms",     label: "Roles & Permissions",Icon: IcoShieldKey,route: "/admin/roles", permission: { resource: "roles", action: "read" } },
+      { id: "amt-integration", label: "AMT Integration", Icon: IcoSettings,  route: "/admin/amt", permission: { resource: "settings", action: "update" } },
       { id: "audit-logs",      label: "Audit Logs",      Icon: IcoList,      route: "/admin/audit-logs", permission: { resource: "audit", action: "read" } },
     ],
   },
@@ -345,6 +346,7 @@ export default function AppLayout({ children, pageTitle = "", saveStatus = "", o
     if (pathname.startsWith("/admin/users")) return "user-management";
     if (pathname.startsWith("/admin/roles")) return "roles-perms";
     if (pathname.startsWith("/admin/organizations")) return "organizations";
+    if (pathname.startsWith("/admin/amt")) return "amt-integration";
     if (pathname.startsWith("/admin/audit-logs")) return "audit-logs";
     return "";
   })();

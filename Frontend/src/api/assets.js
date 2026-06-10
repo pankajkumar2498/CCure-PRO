@@ -22,6 +22,38 @@ export const getAssets = ({
     },
   });
 
+export const getGlobalServices = ({ search, port, protocol, asset_type, subnet, sort_by = "asset_count", sort_dir = "desc", skip = 0, limit = 50, org_id } = {}) =>
+  api.get("/assets/services", {
+    params: {
+      ...(search     ? { search } : {}),
+      ...(port       ? { port } : {}),
+      ...(protocol   ? { protocol } : {}),
+      ...(asset_type ? { asset_type } : {}),
+      ...(subnet     ? { subnet } : {}),
+      sort_by, sort_dir, skip, limit,
+      ...(org_id ? { org_id } : {}),
+    },
+  });
+
+export const getServiceAssets = ({ service_name, port, protocol, search, skip = 0, limit = 50, org_id } = {}) =>
+  api.get("/assets/services/assets", {
+    params: {
+      service_name, port, protocol,
+      ...(search ? { search } : {}),
+      skip, limit,
+      ...(org_id ? { org_id } : {}),
+    },
+  });
+
+export const getGlobalCertificates = ({ search, sort_by = "expiration", sort_dir = "asc", skip = 0, limit = 50, org_id } = {}) =>
+  api.get("/assets/certificates", {
+    params: {
+      ...(search ? { search } : {}),
+      sort_by, sort_dir, skip, limit,
+      ...(org_id ? { org_id } : {}),
+    },
+  });
+
 export const getAsset = (id, orgId) =>
   api.get(`/assets/${id}`, { params: orgId ? { org_id: orgId } : {} });
 
@@ -40,3 +72,13 @@ export const updateAsset = (id, body) =>
 export const addAssetTag    = (id, tag)      => api.post(`/assets/${id}/tags`, { tag });
 export const removeAssetTag = (id, tag)      => api.delete(`/assets/${id}/tags/${encodeURIComponent(tag)}`);
 export const addAssetNote   = (id, content)  => api.post(`/assets/${id}/notes`, { content });
+
+export const importAmtInventory = (formData, orgId) =>
+  api.post("/assets/import-amt", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    params: orgId ? { org_id: orgId } : {},
+  });
+
+export const getCoverageStats = (orgId) =>
+  api.get("/assets/coverage-stats", { params: orgId ? { org_id: orgId } : {} });
+

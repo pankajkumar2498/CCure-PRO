@@ -181,8 +181,22 @@ def _extract_netbios_name(host_data: dict) -> Optional[str]:
     if netbios_name:
         return netbios_name
     for entry in host_data.get("netbios_names") or []:
-        if isinstance(entry, dict) and entry.get("suffix") in ("00", "20") and entry.get("name"):
-            return str(entry.get("name")).strip()
+        if isinstance(entry, dict) and entry.get("name"):
+            t = entry.get("type")
+            s = entry.get("suffix")
+            if t is not None:
+                if t in (0, 32):  # 0x00 / 0x20
+                    return str(entry.get("name")).strip()
+            elif s is not None:
+                if s in ("00", "20"):
+                    return str(entry.get("name")).strip()
+            else:
+                flags = entry.get("flags")
+                if flags is not None:
+                    if not (flags & 0x8000):
+                        return str(entry.get("name")).strip()
+                else:
+                    return str(entry.get("name")).strip()
     return None
 
 def _extract_dns_identity(host_data: dict) -> tuple[Optional[str], Optional[str]]:
@@ -809,6 +823,72 @@ def sync_vulnerability_audit(db: Session, scan_id: str, org_id: str, user_id: Op
         asset.last_seen_at = utcnow()
         asset.updated_at = utcnow()
         _set_asset_field(db, asset, scan_id, "discovery_method", "vulnerability_audit", "vulnerability_audit", max_len=50)
+
+        # Upsert TLS Details if present
+        tls_info = host.get("tls_info")
+        if tls_info and tls_info.get("enabled"):
+            open_ports = [p.get("port") for p in host.get("open_ports", []) if p.get("port")]
+            tls_port = None
+            for p in [443, 8443, 465, 993, 995]:
+                if p in open_ports:
+                    tls_port = p
+                    break
+            
+            if tls_port:
+                service_id = gen_service_id(asset.id, tls_port, "tcp")
+                
+                # Parse expiration datetime
+                cert_expiry_raw = tls_info.get("cert_expiry")
+                cert_not_after = None
+                if cert_expiry_raw:
+                    try:
+                        from datetime import datetime, timezone
+                        clean_expiry = " ".join(cert_expiry_raw.split())
+                        cert_not_after = datetime.strptime(clean_expiry, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+                    except Exception:
+                        try:
+                            # Fallback if cert_expiry is written in ISO format or another standard format
+                            cert_not_after = datetime.fromisoformat(cert_expiry_raw.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+                
+                cert_subject = {"common_name": tls_info.get("cert_subject") or ""}
+                cert_issuer = {"common_name": tls_info.get("cert_issuer") or ""}
+
+                from db.models.findings import TLSDetail
+                
+                tls_insert = insert(TLSDetail).values(
+                    service_id=service_id,
+                    is_enabled=True,
+                    protocol_version=tls_info.get("version"),
+                    cipher_suite=tls_info.get("cipher"),
+                    grade=tls_info.get("score") or "N/A",
+                    is_weak_cipher=tls_info.get("weak_cipher") or False,
+                    cert_is_expired=tls_info.get("cert_expired") or False,
+                    cert_is_self_signed=tls_info.get("cert_self_signed") or False,
+                    cert_not_after=cert_not_after,
+                    cert_subject=cert_subject,
+                    cert_issuer=cert_issuer,
+                    issues=tls_info.get("issues") or [],
+                    created_at=utcnow(),
+                )
+                
+                tls_upsert = tls_insert.on_conflict_do_update(
+                    index_elements=["service_id"],
+                    set_={
+                        "protocol_version": tls_info.get("version"),
+                        "cipher_suite": tls_info.get("cipher"),
+                        "grade": tls_info.get("score") or "N/A",
+                        "is_weak_cipher": tls_info.get("weak_cipher") or False,
+                        "cert_is_expired": tls_info.get("cert_expired") or False,
+                        "cert_is_self_signed": tls_info.get("cert_self_signed") or False,
+                        "cert_not_after": cert_not_after,
+                        "cert_subject": cert_subject,
+                        "cert_issuer": cert_issuer,
+                        "issues": tls_info.get("issues") or [],
+                    }
+                )
+                db.execute(tls_upsert)
 
     db.commit()
 

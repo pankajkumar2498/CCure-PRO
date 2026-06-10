@@ -738,4 +738,12 @@ def create_completed_scan(
     except Exception:
         pass
 
+    # Automatically reconcile newly synced scan discoveries against AMT inventory
+    try:
+        from core.amt_reconciliation import reconcile_amt_inventory
+        reconcile_amt_inventory(db, org_id)
+    except Exception as amt_exc:
+        import logging
+        logging.getLogger("ccure.scans.db_helpers").warning("Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc)
+
     return scan

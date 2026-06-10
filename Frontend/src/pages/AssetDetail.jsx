@@ -98,6 +98,20 @@ function SidebarRow({ label, value, mono = false, isTag = false, noBorder = fals
   );
 }
 
+function InfoField({ label, value, mono = false, isTag = false }) {
+  if (value === null || value === undefined || value === "" || value === "—" || value === "Unknown" || value === "unknown") return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: "rgba(255,255,255,0.015)", border: "1px solid var(--border)", borderRadius: 6 }}>
+      <span style={{ color: "var(--text-faint)", fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.03em" }}>{label}</span>
+      {isTag ? (
+        <div><span className="db-tag" style={{ margin: 0 }}>{value}</span></div>
+      ) : (
+        <span className={mono ? "mono" : ""} style={{ fontWeight: 600, fontSize: "0.8rem", color: "var(--text)", wordBreak: "break-all" }}>{value}</span>
+      )}
+    </div>
+  );
+}
+
 // ── Vulnerability Drawer component (similar to VulnerabilityBrowser's finding drawer) ──
 function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
   const [detail, setDetail] = useState(null);
@@ -452,7 +466,7 @@ export default function AssetDetail() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("vulnerabilities");
+  const [activeTab, setActiveTab] = useState("system_info");
 
   // Notes and tag state
   const [newNote, setNewNote] = useState("");
@@ -654,6 +668,21 @@ export default function AssetDetail() {
               >
                 {asset.is_managed ? "✔ Managed Asset" : "✗ Unmanaged Asset"}
               </button>
+
+              <span
+                className="db-tag"
+                style={{
+                  background: "rgba(59,130,246,0.08)",
+                  color: "#60a5fa",
+                  borderColor: "rgba(59,130,246,0.2)",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4
+                }}
+              >
+                👤 Owner: {asset.owner || "Unassigned"}
+              </span>
             </div>
           </div>
 
@@ -697,28 +726,39 @@ export default function AssetDetail() {
 
         {/* Tab Selector */}
         <div className="db-tab-bar" style={{ marginTop: 8 }}>
+
           <button
-            className={`db-tab ${activeTab === "vulnerabilities" ? "active" : ""}`}
-            onClick={() => setActiveTab("vulnerabilities")}
+            className={`db-tab ${activeTab === "system_info" ? "active" : ""}`}
+            onClick={() => setActiveTab("system_info")}
           >
-            Vulnerabilities ({findings.length})
+            Asset Information
           </button>
+
           <button
             className={`db-tab ${activeTab === "services" ? "active" : ""}`}
             onClick={() => setActiveTab("services")}
           >
             Services & Ports ({services.length})
           </button>
+
+          <button
+            className={`db-tab ${activeTab === "vulnerabilities" ? "active" : ""}`}
+            onClick={() => setActiveTab("vulnerabilities")}
+          >
+            Vulnerabilities ({findings.length})
+          </button>
+
           <button
             className={`db-tab ${activeTab === "changelog" ? "active" : ""}`}
             onClick={() => setActiveTab("changelog")}
           >
             Audit & Changelog ({changelogData?.stats?.total_events || 0})
           </button>
+
         </div>
 
         {/* Main Content Grid */}
-        <div className="db-section" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+        <div className="db-section" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, height: "calc(100vh - 250px)", minHeight: "450px" }}>
 
           {/* Left Column: Tab Data */}
           <div>
@@ -744,8 +784,13 @@ export default function AssetDetail() {
                     <tbody>
                       {findings.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
-                            No vulnerabilities identified on this asset. Good work!
+                          <td colSpan={6} style={{ textAlign: "center", padding: "48px 20px" }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, marginBottom: 6 }}>
+                              No vulnerabilities identified on this asset.
+                            </div>
+                            <div style={{ color: "var(--text-faint)", fontSize: "0.72rem", maxWidth: 480, margin: "0 auto", lineHeight: 1.5 }}>
+                              To scan for vulnerabilities, run a <strong>Vulnerability Audit Scan</strong> on this host.
+                            </div>
                           </td>
                         </tr>
                       ) : (
@@ -902,8 +947,13 @@ export default function AssetDetail() {
                       <tbody>
                         {services.length === 0 ? (
                           <tr>
-                            <td colSpan={colCount} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
-                              No open ports detected on this host.
+                            <td colSpan={colCount} style={{ textAlign: "center", padding: "48px 20px" }}>
+                              <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, marginBottom: 6 }}>
+                                No open ports detected on this host.
+                              </div>
+                              <div style={{ color: "var(--text-faint)", fontSize: "0.72rem", maxWidth: 480, margin: "0 auto", lineHeight: 1.5 }}>
+                                To discover active running services, run a <strong>Asset Discovery (Port Scan)</strong> or <strong>Service Fingerprinting Scan</strong> on this host.
+                              </div>
                             </td>
                           </tr>
                         ) : (
@@ -931,90 +981,134 @@ export default function AssetDetail() {
                 <AuditTimeline changelogData={changelogData} />
               </div>
             )}
+
+            {/* Tab: System Info */}
+            {activeTab === "system_info" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                {/* Panel: Owner Details */}
+                <div className="db-card">
+                  <h4 className="db-card-title">Assignee / Owner</h4>
+                  <div className="db-card-sub">Assign accountability for security remediation</div>
+
+                  {!editingOwner ? (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: asset.owner ? "var(--text)" : "var(--text-faint)", display: "flex", alignItems: "center", gap: 6 }}>
+                          👤 {asset.owner || "No owner assigned"}
+                          {asset.provenance?.owner?.source === "analyst" && (
+                            <span style={{ fontSize: "0.58rem", background: "rgba(14,165,233,0.12)", color: "var(--accent)", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }} title="Manually set by security analyst. Protected from overwrite.">
+                              OVERRIDE
+                            </span>
+                          )}
+                          {asset.provenance?.owner?.source === "amt_import" && (
+                            <span style={{ fontSize: "0.58rem", background: "rgba(34,197,94,0.12)", color: "#10b981", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }} title="Verified via AMT inventory synchronization.">
+                              ✔ Ccure VERIFIED
+                            </span>
+                          )}
+                        </span>
+                        {asset.custom_attributes?.owner_employee_id && (
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", paddingLeft: 16 }}>
+                            Employee ID: {asset.custom_attributes.owner_employee_id}
+                          </span>
+                        )}
+                      </div>
+                      {canUpdate && (
+                        <button onClick={() => setEditingOwner(true)} className="db-btn db-btn--ghost" style={{ padding: "3px 6px", fontSize: "0.65rem" }}>
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={ownerName}
+                        onChange={(e) => setOwnerName(e.target.value)}
+                        placeholder="Enter owner name…"
+                        style={{ flex: 1, padding: "4px 8px", fontSize: "0.72rem", border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-white)", color: "var(--text)" }}
+                      />
+                      <button onClick={handleSaveOwner} className="db-btn db-btn--primary" style={{ padding: "4px 8px" }}>Save</button>
+                      <button onClick={() => { setOwnerName(asset.owner || ""); setEditingOwner(false); }} className="db-btn db-btn--ghost" style={{ padding: "4px 8px" }}>Cancel</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Panel: Network & Identity */}
+                <div className="db-card">
+                  <h4 className="db-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: "1.1rem" }}>🌐</span> Network & Identity</h4>
+                  <div className="db-card-sub">IP details, MAC, hostname, and DNS settings</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                    <InfoField label="IP Address" value={asset.ip_address} mono />
+                    <InfoField label="MAC Address" value={asset.mac_address} mono />
+                    <InfoField label="Subnet" value={asset.subnet} mono />
+                    <InfoField label="Hostname" value={asset.hostname} mono />
+                    {asset.fqdn && asset.fqdn !== asset.hostname && <InfoField label="FQDN" value={asset.fqdn} mono />}
+                    {asset.dns_name && asset.dns_name !== asset.hostname && asset.dns_name !== asset.fqdn && <InfoField label="DNS Name" value={asset.dns_name} mono />}
+                    <InfoField label="NetBIOS Name" value={asset.netbios_name} mono />
+                    <InfoField label="Domain" value={asset.custom_attributes?.credentialed_system_info?.domain} mono />
+                    <InfoField label="VLAN ID" value={asset.vlan_id} mono />
+                  </div>
+                </div>
+
+                {/* Panel: OS & Hardware */}
+                <div className="db-card">
+                  <h4 className="db-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: "1.1rem" }}>🖥️</span> Operating System & Hardware</h4>
+                  <div className="db-card-sub">Device category, manufacturer, CPU, and kernel details</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                    <InfoField label="OS Family" value={asset.os_family} mono />
+                    <InfoField label="OS Name" value={asset.os_name} />
+                    <InfoField label="OS Version" value={asset.os_version} mono />
+                    <InfoField label="OS Build" value={asset.custom_attributes?.credentialed_system_info?.os_build} mono />
+                    <InfoField label="Kernel Version" value={asset.custom_attributes?.credentialed_system_info?.kernel_version} mono />
+                    {(asset.os_name || asset.os_family) && asset.os_confidence && <InfoField label="OS Confidence" value={`${asset.os_confidence}%`} mono />}
+                    <InfoField label="Device Category" value={asset.device_category} />
+                    <InfoField label="Vendor" value={asset.vendor} />
+                    {asset.manufacturer && cleanVendorName(asset.manufacturer) !== cleanVendorName(asset.vendor) && <InfoField label="Manufacturer" value={asset.manufacturer} />}
+                    <InfoField label="Hardware Model" value={asset.custom_attributes?.credentialed_system_info?.hardware_model} />
+                    <InfoField label="CPU Model" value={asset.custom_attributes?.credentialed_system_info?.cpu_model} />
+                    <InfoField label="CPU Cores" value={asset.custom_attributes?.credentialed_system_info?.cpu_count} mono />
+                    <InfoField label="System Uptime" value={asset.custom_attributes?.credentialed_system_info?.uptime} />
+                  </div>
+                </div>
+
+                {/* Panel: CCure AMT Reference */}
+                {(asset.custom_attributes?.amt_asset_tag || asset.custom_attributes?.amt_asset_name || asset.custom_attributes?.serial_number) && (
+                  <div className="db-card">
+                    <h4 className="db-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: "1.1rem" }}>🏢</span> Corporate (Assets) Details</h4>
+                    <div className="db-card-sub">Verified Asset</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                      {/* <InfoField label="Asset Tag" value={asset.custom_attributes?.amt_asset_tag} mono /> */}
+                      <InfoField label="Asset Name" value={asset.custom_attributes?.amt_asset_name} />
+                      <InfoField label="Serial Number" value={asset.custom_attributes?.serial_number} mono />
+                      <InfoField label="Asset Type" value={asset.custom_attributes?.amt_asset_type} />
+                      <InfoField label="Company" value={asset.custom_attributes?.amt_company_name} />
+                      <InfoField label="Office Location" value={asset.custom_attributes?.amt_location} />
+                      {/* <InfoField label="Corporate Status" value={asset.custom_attributes?.amt_status} isTag /> */}
+                    </div>
+                  </div>
+                )}
+
+                {/* Panel: Scan & Discovery */}
+                <div className="db-card">
+                  <h4 className="db-card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: "1.1rem" }}>🔬</span> Discovery & Scan Metadata</h4>
+                  <div className="db-card-sub">Scan identification, activity times, and audit details</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                    <InfoField label="Discovery Method" value={asset.discovery_method || "active"} isTag />
+                    <InfoField label="First Discovered" value={combineTime(asset.first_seen_at)} />
+                    <InfoField label="Last Activity" value={combineTime(asset.last_seen_at)} />
+                    {asset.response_time_ms !== null && asset.response_time_ms !== undefined && <InfoField label="Response Time" value={`${asset.response_time_ms} ms`} mono />}
+                    <InfoField label="Last Scan ID" value={asset.last_scan_id} mono />
+                    <InfoField label="Asset ID" value={asset.id} mono />
+                  </div>
+                </div>
+
+              </div>
+            )}
           </div>
 
           {/* Right Column: Sidebar Panels */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-            {/* Panel: System Details */}
-            <div className="db-card">
-              <h4 className="db-card-title">System Information</h4>
-              <div className="db-card-sub">Hardware & OS fingerprint profiles</div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: "0.72rem" }}>
-                {/* ── Network Identity ─────────────────────────────── */}
-                <SidebarRow label="IP Address:" value={asset.ip_address} mono />
-                <SidebarRow label="MAC Address:" value={asset.mac_address} mono />
-                <SidebarRow label="Subnet:" value={asset.subnet} mono />
-                <SidebarRow label="Hostname:"      value={asset.hostname} mono />
-                {asset.fqdn && asset.fqdn !== asset.hostname && (
-                  <SidebarRow label="FQDN:"          value={asset.fqdn} mono />
-                )}
-                {asset.dns_name && asset.dns_name !== asset.hostname && asset.dns_name !== asset.fqdn && (
-                  <SidebarRow label="DNS Name:"      value={asset.dns_name} mono />
-                )}
-                <SidebarRow label="NetBIOS Name:" value={asset.netbios_name} mono />
-                <SidebarRow label="Domain:" value={asset.custom_attributes?.credentialed_system_info?.domain} mono />
-                {/* ── OS / Hardware ────────────────────────────────── */}
-                <SidebarRow label="OS Family:" value={asset.os_family} mono />
-                <SidebarRow label="OS Name:" value={asset.os_name} />
-                <SidebarRow label="OS Version:" value={asset.os_version} mono />
-                <SidebarRow label="OS Build:" value={asset.custom_attributes?.credentialed_system_info?.os_build} mono />
-                <SidebarRow label="Kernel Version:" value={asset.custom_attributes?.credentialed_system_info?.kernel_version} mono />
-                {(asset.os_name || asset.os_family) && asset.os_confidence && (
-                  <SidebarRow label="OS Confidence:" value={`${asset.os_confidence}%`} mono />
-                )}
-                <SidebarRow label="Device Category:" value={asset.device_category} />
-                <SidebarRow label="Vendor:" value={asset.vendor} />
-                {asset.manufacturer && cleanVendorName(asset.manufacturer) !== cleanVendorName(asset.vendor) && (
-                  <SidebarRow label="Manufacturer:" value={asset.manufacturer} />
-                )}
-                <SidebarRow label="Hardware Model:" value={asset.custom_attributes?.credentialed_system_info?.hardware_model} />
-                <SidebarRow label="CPU Model:" value={asset.custom_attributes?.credentialed_system_info?.cpu_model} />
-                <SidebarRow label="CPU Cores:" value={asset.custom_attributes?.credentialed_system_info?.cpu_count} mono />
-                <SidebarRow label="VLAN ID:" value={asset.vlan_id} mono />
-                <SidebarRow label="Discovery Method:" value={asset.discovery_method || "active"} isTag />
-                <SidebarRow label="First Discovered:" value={combineTime(asset.first_seen_at)} />
-                <SidebarRow label="Last Activity:" value={combineTime(asset.last_seen_at)} />
-                <SidebarRow label="System Uptime:" value={asset.custom_attributes?.credentialed_system_info?.uptime} />
-                {asset.response_time_ms !== null && asset.response_time_ms !== undefined && (
-                  <SidebarRow label="Response Time:" value={`${asset.response_time_ms} ms`} mono />
-                )}
-                <SidebarRow label="Last Scan ID:" value={asset.last_scan_id} mono />
-                <SidebarRow label="Asset ID:" value={asset.id} mono noBorder />
-              </div>
-            </div>
-
-            {/* Panel: Owner Details */}
-            <div className="db-card">
-              <h4 className="db-card-title">Assignee / Owner</h4>
-              <div className="db-card-sub">Assign accountability for security remediation</div>
-
-              {!editingOwner ? (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: asset.owner ? "var(--text)" : "var(--text-faint)" }}>
-                    👤 {asset.owner || "No owner assigned"}
-                  </span>
-                  {canUpdate && (
-                    <button onClick={() => setEditingOwner(true)} className="db-btn db-btn--ghost" style={{ padding: "3px 6px", fontSize: "0.65rem" }}>
-                      Edit
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input
-                    type="text"
-                    value={ownerName}
-                    onChange={(e) => setOwnerName(e.target.value)}
-                    placeholder="Enter owner name…"
-                    style={{ flex: 1, padding: "4px 8px", fontSize: "0.72rem", border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-white)", color: "var(--text)" }}
-                  />
-                  <button onClick={handleSaveOwner} className="db-btn db-btn--primary" style={{ padding: "4px 8px" }}>Save</button>
-                  <button onClick={() => { setOwnerName(asset.owner || ""); setEditingOwner(false); }} className="db-btn db-btn--ghost" style={{ padding: "4px 8px" }}>Cancel</button>
-                </div>
-              )}
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, height: "100%", overflowY: "auto", paddingRight: 4 }}>
 
             {/* Panel: Tags Manager */}
             <div className="db-card">

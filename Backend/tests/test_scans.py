@@ -1279,3 +1279,97 @@ def test_scan_progress_requires_scan_read_permission(client: TestClient, db_sess
 
     assert progress_response.status_code == 403
     assert "scans:read" in progress_response.json()["detail"]
+
+
+def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
+    import uuid
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset = Asset(
+        id=f"ast_{org_id}_192_168_1_10",
+        org_id=org.id,
+        ip_address="192.168.1.10",
+        mac_address="AA:BB:CC:DD:EE:FF",
+        hostname="test-host",
+        last_seen_at=utcnow(),
+    )
+    db_session.add(asset)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    scan = Scan(
+        id=scan_id,
+        org_id=org.id,
+        created_by=None,
+        target_str="192.168.1.10",
+        scan_type="adaptive",
+        pipeline_mode="vulnerability_audit",
+    )
+    db_session.add(scan)
+    db_session.commit()
+
+    from db.models.findings import Service, TLSDetail
+    from db.base import gen_service_id
+    service_id = gen_service_id(asset.id, 443, "tcp")
+    service = Service(
+        id=service_id,
+        scan_id=scan_id,
+        asset_id=asset.id,
+        port=443,
+        protocol="tcp",
+        state="open",
+        service_name="https",
+    )
+    db_session.add(service)
+    db_session.commit()
+
+    hosts = [
+        {
+            "ip_address": "192.168.1.10",
+            "open_ports": [
+                {
+                    "port": 443,
+                    "protocol": "tcp",
+                    "state": "open",
+                    "service": "https",
+                }
+            ],
+            "tls_info": {
+                "enabled": True,
+                "version": "TLSv1.3",
+                "cipher": "TLS_AES_256_GCM_SHA384",
+                "cert_subject": "google.com",
+                "cert_issuer": "GTS CA 1C3",
+                "cert_expiry": "Jun 10 17:30:00 2026 GMT",
+                "cert_expired": False,
+                "cert_self_signed": False,
+                "weak_cipher": False,
+                "score": "A",
+                "issues": [],
+            }
+        }
+    ]
+
+    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+
+    tls_entry = db_session.query(TLSDetail).filter(TLSDetail.service_id == service_id).first()
+    assert tls_entry is not None
+    assert tls_entry.is_enabled is True
+    assert tls_entry.protocol_version == "TLSv1.3"
+    assert tls_entry.cipher_suite == "TLS_AES_256_GCM_SHA384"
+    assert tls_entry.grade == "A"
+    assert tls_entry.cert_subject == {"common_name": "google.com"}
+    assert tls_entry.cert_issuer == {"common_name": "GTS CA 1C3"}
+    assert tls_entry.cert_is_expired is False
+    assert tls_entry.cert_is_self_signed is False
+

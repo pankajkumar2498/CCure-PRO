@@ -125,9 +125,7 @@ EXPOSE 8000
 # Use ccure user by default (overridden for worker in docker-compose)
 USER ccure
 
-# Ensure start.sh has executable permissions
-# We do this as root before switching user if we were copying it later,
-# but since it's copied earlier with the app code and chowned, we just chmod it here.
-RUN chmod +x /app/start.sh
+# Ensure start.sh has executable permissions and LF line endings
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 CMD ["/app/start.sh"]

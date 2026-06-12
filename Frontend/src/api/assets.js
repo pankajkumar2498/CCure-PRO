@@ -5,18 +5,19 @@
 import api from "./axiosInstance";
 
 export const getAssets = ({
-  search, risk_level, os_family, is_managed, is_active,
+  search, risk_level, os_family, verification_status, is_managed, is_active,
   subnet, sort_by = "risk_score", sort_dir = "desc",
   skip = 0, limit = 50, org_id,
 } = {}) =>
   api.get("/assets", {
     params: {
-      ...(search      ? { search }      : {}),
-      ...(risk_level  ? { risk_level }  : {}),
-      ...(os_family   ? { os_family }   : {}),
-      ...(is_managed  !== undefined ? { is_managed } : {}),
-      ...(is_active   !== undefined ? { is_active }  : {}),
-      ...(subnet      ? { subnet }      : {}),
+      ...(search              ? { search }              : {}),
+      ...(risk_level          ? { risk_level }          : {}),
+      ...(os_family           ? { os_family }           : {}),
+      ...(verification_status ? { verification_status } : {}),
+      ...(is_managed          !== undefined ? { is_managed } : {}),
+      ...(is_active           !== undefined ? { is_active }  : {}),
+      ...(subnet              ? { subnet }              : {}),
       sort_by, sort_dir, skip, limit,
       ...(org_id ? { org_id } : {}),
     },

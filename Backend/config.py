@@ -15,9 +15,20 @@ DEFAULT_SQLITE_DB = BACKEND_DIR / "ccure_users.db"
 
 
 def _selected_env_file() -> Path:
-    """Use test/dev config by default; use main config in production."""
+    """
+    Select the environment file to load.
+    Prioritizes .env if it exists, falling back to .env.test.
+    If explicitly in a test environment, checks for .env.test first.
+    """
     app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))).lower()
-    if app_env in {"production", "prod"}:
+    
+    if app_env in {"test", "testing"}:
+        test_env = BACKEND_DIR / ".env.test"
+        if test_env.exists():
+            return test_env
+            
+    # Default to .env if it exists, otherwise fall back to .env.test
+    if (BACKEND_DIR / ".env").exists():
         return BACKEND_DIR / ".env"
     return BACKEND_DIR / ".env.test"
 
@@ -25,7 +36,7 @@ def _selected_env_file() -> Path:
 ENV_FILE = _selected_env_file()
 
 if not os.getenv("SKIP_DOTENV_LOAD"):
-    load_dotenv(dotenv_path=ENV_FILE, override=True)
+    load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 
 def _normalize_database_url(database_url: str) -> str:

@@ -49,6 +49,7 @@ export default function AssetRegistry() {
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [riskLevel, setRiskLevel] = useState(searchParams.get("risk_level") || "");
   const [osFamily, setOsFamily] = useState(searchParams.get("os_family") || "");
+  const [verificationStatus, setVerificationStatus] = useState(searchParams.get("verification_status") || "");
   const [managed, setManaged] = useState(searchParams.get("is_managed") || "");
   const [sortBy, setSortBy] = useState("risk_score");
   const [sortDir, setSortDir] = useState("desc");
@@ -65,7 +66,7 @@ export default function AssetRegistry() {
   const [servicesSortBy, setServicesSortBy] = useState("asset_count");
   const [servicesSortDir, setServicesSortDir] = useState("desc");
   const [servicesSkip, setServicesSkip] = useState(0);
-  
+
   // Services Filter State
   const [servicesPort, setServicesPort] = useState("");
   const [servicesProtocol, setServicesProtocol] = useState("");
@@ -111,6 +112,7 @@ export default function AssetRegistry() {
         search: search || undefined,
         risk_level: riskLevel || undefined,
         os_family: osFamily || undefined,
+        verification_status: verificationStatus || undefined,
         is_managed: managed === "" ? undefined : managed === "true",
         sort_by: sortBy,
         sort_dir: sortDir,
@@ -124,7 +126,7 @@ export default function AssetRegistry() {
     } finally {
       setLoading(false);
     }
-  }, [search, riskLevel, osFamily, managed, sortBy, sortDir, skip, currentTab]);
+  }, [search, riskLevel, osFamily, verificationStatus, managed, sortBy, sortDir, skip, currentTab]);
 
   const loadServices = useCallback(async () => {
     if (currentTab !== "services") return;
@@ -263,15 +265,15 @@ export default function AssetRegistry() {
         <div className="db-page-header">
           <div>
             <div className="db-page-title">
-              {currentTab === "services" 
-                ? "Services & Ports Inventory" 
-                : currentTab === "tls" 
-                  ? "TLS / Certificates Inventory" 
+              {currentTab === "services"
+                ? "Services & Ports Inventory"
+                : currentTab === "tls"
+                  ? "TLS / Certificates Inventory"
                   : "Asset Registry"
               }
             </div>
             <div className="db-page-subtitle">
-              {currentTab === "services" 
+              {currentTab === "services"
                 ? `${servicesTotal.toLocaleString()} services discovered · Global View`
                 : currentTab === "tls"
                   ? `${certsTotal.toLocaleString()} certificates discovered · Global View`
@@ -281,10 +283,10 @@ export default function AssetRegistry() {
           </div>
           <div className="db-header-actions">
             <button className="db-btn db-btn--ghost" onClick={
-              currentTab === "tls" 
-                ? loadCertificates 
-                : currentTab === "services" 
-                  ? loadServices 
+              currentTab === "tls"
+                ? loadCertificates
+                : currentTab === "services"
+                  ? loadServices
                   : load
             }>↻ Refresh</button>
             <button className="db-btn db-btn--primary" onClick={() => navigate("/scan")}>+ New Scan</button>
@@ -353,6 +355,13 @@ export default function AssetRegistry() {
                 <option value="">All Assets</option>
                 <option value="true">Managed Only</option>
                 <option value="false">Unmanaged Only</option>
+              </select>
+              <select value={verificationStatus} onChange={e => { setVerificationStatus(e.target.value); setSkip(0); }}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", fontSize: "0.78rem", color: "var(--text)", background: "var(--bg-white)" }}>
+                <option value="">Verification Status</option>
+                <option value="verified">Verified</option>
+                <option value="unverified">Unverified</option>
+                <option value="pending">Pending</option>
               </select>
               <div style={{ marginLeft: "auto", fontSize: "0.72rem", color: "var(--text-muted)" }}>
                 {total.toLocaleString()} assets · Page {Math.floor(skip / LIMIT) + 1} of {Math.ceil(total / LIMIT) || 1}
@@ -602,7 +611,7 @@ export default function AssetRegistry() {
                       )}
                       {!servicesLoading && services.map((s, idx) => {
                         // Risk Level badge styling
-                        const rc = s.risk_level === "Critical" 
+                        const rc = s.risk_level === "Critical"
                           ? { bg: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)", text: "CRITICAL EXPOSURE" }
                           : s.risk_level === "High"
                             ? { bg: "rgba(249,115,22,0.12)", color: "#fb923c", border: "1px solid rgba(249,115,22,0.25)", text: "HIGH EXPOSURE" }
@@ -739,7 +748,7 @@ export default function AssetRegistry() {
                       {!certsLoading && certs.map((c) => {
                         const cn = c.cert_subject?.common_name || c.cert_subject || "—";
                         const issuerCn = c.cert_issuer?.common_name || c.cert_issuer || "—";
-                        
+
                         // Grade colors mapping
                         const gradeColors = {
                           "A": { bg: "rgba(34,197,94,0.1)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" },
@@ -902,7 +911,7 @@ export default function AssetRegistry() {
                         const productText = [asset.service_product, asset.service_version]
                           .filter(Boolean)
                           .join(" ") || "—";
-                        
+
                         return (
                           <tr key={idx}>
                             <td>

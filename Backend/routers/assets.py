@@ -112,19 +112,20 @@ def _serialize_asset(a: Asset) -> dict:
 @router.get("")
 @router.get("/")
 def list_assets(
-    search:     Optional[str]  = Query(None),
-    risk_level: Optional[str]  = Query(None),
-    os_family:  Optional[str]  = Query(None),
-    is_managed: Optional[bool] = Query(None),
-    is_active:  Optional[bool] = Query(None),
-    subnet:     Optional[str]  = Query(None),
-    sort_by:    str            = Query("risk_score"),
-    sort_dir:   str            = Query("desc"),
-    skip:       int            = Query(0, ge=0),
-    limit:      int            = Query(50, ge=1, le=500),
-    org_id:     Optional[str]  = Query(None),
-    db:         Session        = Depends(get_db),
-    user:       User           = Depends(require_permission("assets", "read")),
+    search:              Optional[str]  = Query(None),
+    risk_level:          Optional[str]  = Query(None),
+    os_family:           Optional[str]  = Query(None),
+    verification_status: Optional[str]  = Query(None),
+    is_managed:          Optional[bool] = Query(None),
+    is_active:           Optional[bool] = Query(None),
+    subnet:              Optional[str]  = Query(None),
+    sort_by:             str            = Query("risk_score"),
+    sort_dir:            str            = Query("desc"),
+    skip:                int            = Query(0, ge=0),
+    limit:               int            = Query(50, ge=1, le=500),
+    org_id:              Optional[str]  = Query(None),
+    db:                  Session        = Depends(get_db),
+    user:                User           = Depends(require_permission("assets", "read")),
 ):
     org = _resolve_org(user, org_id)
     q = db.query(Asset).filter(Asset.org_id == org)
@@ -136,13 +137,58 @@ def list_assets(
                 Asset.fqdn.ilike(f"%{search}%"),
                 Asset.netbios_name.ilike(f"%{search}%"),
                 func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
+                Asset.owner.ilike(f"%{search}%"),
+                Asset.custom_attributes["serial_number"].astext.ilike(f"%{search}%"),
+                Asset.custom_attributes["owner_employee_id"].astext.ilike(f"%{search}%"),
             )
         )
     if risk_level:
         levels = [r.strip().lower() for r in risk_level.split(",")]
         q = q.filter(func.lower(Asset.risk_level).in_(levels))
     if os_family:
-        q = q.filter(Asset.os_family.ilike(f"%{os_family}%"))
+        if os_family.lower() == "unknown":
+            q = q.filter(
+                or_(Asset.os_family.is_(None), Asset.os_family == "", Asset.os_family.ilike("%unknown%"))
+            ).filter(
+                or_(Asset.os_name.is_(None), Asset.os_name == "", Asset.os_name.ilike("%unknown%"))
+            )
+        else:
+            q = q.filter(
+                or_(
+                    Asset.os_family.ilike(f"%{os_family}%"),
+                    Asset.os_name.ilike(f"%{os_family}%")
+                )
+            )
+    if verification_status:
+        v_status = verification_status.lower()
+        if v_status == "verified":
+            q = q.filter(
+                or_(
+                    Asset.custom_attributes["correlation"]["status"].astext == "active",
+                    Asset.provenance["owner"]["source"].astext == "amt_import",
+                    Asset.custom_attributes["amt_asset_tag"].astext.isnot(None)
+                )
+            )
+        elif v_status == "unverified":
+            q = q.filter(
+                Asset.mac_address.isnot(None)
+            ).filter(
+                or_(
+                    Asset.custom_attributes["correlation"]["status"].astext != "active",
+                    Asset.custom_attributes["correlation"].is_(None)
+                )
+            ).filter(
+                or_(
+                    Asset.provenance["owner"]["source"].astext != "amt_import",
+                    Asset.provenance["owner"].is_(None)
+                )
+            ).filter(
+                Asset.custom_attributes["amt_asset_tag"].is_(None)
+            )
+        elif v_status == "pending":
+            q = q.filter(
+                Asset.mac_address.is_(None)
+            )
     if is_managed is not None:
         q = q.filter(Asset.is_managed == is_managed)
     if is_active is not None:

@@ -208,6 +208,28 @@ def _sync_credentialed_asset_identity(
     if credentialed_response_time and not _has_value(asset.response_time_ms):
         _set_asset_field(db, asset, scan_id, "response_time_ms", credentialed_response_time, "credentialed")
 
+    # Classify device category using the credentialed OS/identity details
+    from core.device_classifier import classify_device
+    c_host = {
+        "discovery_method": "credentialed",
+        "os_name": os_name,
+        "os_family": os_family,
+        "hostname": hostname,
+        "vendor": vendor,
+        "custom_attributes": asset.custom_attributes or {}
+    }
+    category = classify_device(c_host)
+    _set_asset_field(db, asset, scan_id, "device_category", category, "credentialed", max_len=100)
+
+    # Store the signal name ("credentialed") in provenance for future priority comparisons
+    attrs = dict(asset.custom_attributes or {})
+    prov = dict(attrs.get("provenance") or {})
+    dev_prov = dict(prov.get("device_category") or {})
+    dev_prov["signal"] = "credentialed"
+    prov["device_category"] = dev_prov
+    attrs["provenance"] = prov
+    asset.custom_attributes = attrs
+
     _sync_credentialed_services(db, asset, scan_id, stored_report.get("open_ports_credentialed", []), stored_report.get("packages", []))
 
     # 1. Sync Vulnerabilities (Marks as open/reopened)

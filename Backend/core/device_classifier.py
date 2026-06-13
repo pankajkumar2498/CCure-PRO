@@ -137,10 +137,17 @@ _VENDOR_DEVICE_MAP: Dict[str, str] = {
     "espressif":       "iot",
     "particle":        "iot",
     "arduino":         "iot",
-    "siemens":         "iot",
-    "schneider":       "iot",
-    "honeywell":       "iot",
-    "rockwell":        "iot",
+    # SCADA / ICS / OT Devices
+    "siemens":         "scada_ics",
+    "schneider":       "scada_ics",
+    "honeywell":       "scada_ics",
+    "rockwell":        "scada_ics",
+    "yokogawa":        "scada_ics",
+    "beckhoff":        "scada_ics",
+    "omron":           "scada_ics",
+    "abb":             "scada_ics",
+    "wago":            "scada_ics",
+    "moxa":            "scada_ics",
     # VoIP
     "yealink":         "voip",
     "polycom":         "voip",
@@ -253,10 +260,12 @@ _PORT_PROFILE_RULES: List[Dict] = [
     {"ports": {2049},                            "category": "storage"},   # NFS
     {"ports": {3260},                            "category": "storage"},   # iSCSI
     {"ports": {6000},                            "category": "endpoint"},  # X11
-    {"ports": {502},                             "category": "iot"},       # Modbus
-    {"ports": {102},                             "category": "iot"},       # S7comm
-    {"ports": {20000},                           "category": "iot"},       # DNP3
-    {"ports": {44818},                           "category": "iot"},       # EtherNet/IP
+    {"ports": {502},                             "category": "scada_ics"}, # Modbus
+    {"ports": {102},                             "category": "scada_ics"}, # S7comm
+    {"ports": {20000},                           "category": "scada_ics"}, # DNP3
+    {"ports": {44818},                           "category": "scada_ics"}, # EtherNet/IP
+    {"ports": {47808},                           "category": "scada_ics"}, # BACnet/IP
+    {"ports": {4840},                            "category": "scada_ics"}, # OPC UA
 ]
 
 
@@ -311,11 +320,16 @@ _BANNER_KEYWORDS: Dict[str, str] = {
     "qnap":            "storage",
     "truenas":         "storage",
     "freenas":         "storage",
-    "siemens":         "iot",
-    "s7-":             "iot",
-    "plc":             "iot",
-    "scada":           "iot",
-    "modbus":          "iot",
+    "siemens":         "scada_ics",
+    "s7-":             "scada_ics",
+    "plc":             "scada_ics",
+    "scada":           "scada_ics",
+    "modbus":          "scada_ics",
+    "bacnet":          "scada_ics",
+    "opc ua":          "scada_ics",
+    "opcua":           "scada_ics",
+    "dnp3":            "scada_ics",
+    "ethernet/ip":     "scada_ics",
     "printer":         "printer",
     "laserjet":        "printer",
     "jetdirect":       "printer",
@@ -360,100 +374,258 @@ def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Signal 7 — Nmap CPE mapping
+# ---------------------------------------------------------------------------
+
+def _classify_from_cpe(os_cpe: Optional[List[str]]) -> Optional[str]:
+    if not os_cpe:
+        return None
+    for item in os_cpe:
+        cpe = str(item).lower()
+        if "cpe:/o:cisco:ios" in cpe or "cpe:/o:juniper:junos" in cpe or "cpe:/o:mikrotik:routeros" in cpe:
+            return "router"
+        if "cpe:/o:fortinet:fortios" in cpe or "cpe:/h:paloalto:" in cpe:
+            return "firewall"
+        if "cpe:/h:hp:procurve" in cpe:
+            return "switch"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Master classifier
 # ---------------------------------------------------------------------------
 
 def classify_device(host: Dict) -> str:
     """
-    Run all seven classification signals and return the winning category.
+    Run all evidence signals through a weighted scoring matrix and return the winning category.
 
-    Also writes the result back to ``host["device_category"]`` so callers
-    don't need to handle the return value separately.
-
-    Decision priority (highest first):
-        1. SNMP OID result (most reliable)
-        2. mDNS service records (high confidence)
-        3. NetBIOS suffix roles (high confidence)
-        4. Port profile (more reliable than vendor alone)
-        5. Banner keywords (service detection)
-        6. OUI vendor (ambiguous for multi-product vendors like HP)
-        7. TTL
-        8. Fallback → "unknown"
+    Also writes the result back to ``host["device_category"]`` and ``host["device_category_signal"]``
+    so callers don't need to handle the return value separately.
     """
-    # Signal 1: SNMP (highest confidence - active device interrogation)
-    category = _classify_from_snmp(host.get("snmp_info", {}))
-    if category:
-        _write(host, category, "snmp")
-        return category
-
-    # Signal 2: mDNS services (high confidence)
-    category = _classify_from_mdns(host)
-    if category:
-        _write(host, category, "mdns")
-        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
-        if not host.get("os_family") or host.get("os_family") == "Unknown":
-            mdns_services = set(host.get("mdns_services", []))
-            if {"_printer._tcp.local", "_ipp._tcp.local"} & mdns_services:
-                host["os_family"] = "Embedded"
-                host["os_confidence"] = "High"
+    # 1. Check for Credentialed override first (100% trusted local OS query)
+    is_credentialed = host.get("discovery_method") == "credentialed" or "credentialed_system_info" in host.get("custom_attributes", {})
+    if is_credentialed:
+        os_fam = host.get("os_family") or ""
+        os_n = (host.get("os_name") or "").lower()
+        hostname = (host.get("hostname") or "").lower()
+        
+        if "windows server" in os_fam.lower() or "windows server" in os_n:
+            category = "server"
+        elif "windows" in os_fam.lower() or "windows" in os_n:
+            category = "endpoint"
+        elif "esxi" in os_fam.lower() or "esxi" in os_n:
+            category = "virtual_machine"
+        elif "cisco ios" in os_fam.lower() or "cisco" in os_n:
+            category = "router"
+        elif "junos" in os_fam.lower() or "juniper" in os_n:
+            category = "router"
+        elif "fortios" in os_fam.lower() or "fortinet" in os_n:
+            category = "firewall"
+        else:
+            # Linux or other OS family
+            if any(k in hostname for k in ["desktop", "laptop", "workstation", "pc-", "client"]):
+                category = "endpoint"
             else:
-                vendor = (host.get("vendor") or host.get("mac_vendor") or "").lower()
-                host["os_family"] = "macOS" if "apple" in vendor else "Linux"
-                host["os_confidence"] = "Medium"
+                category = "server"
+        
+        _write(host, category, "credentialed")
         return category
 
-    # Signal 3: NetBIOS suffix roles (high confidence)
-    category = _classify_from_netbios(host)
-    if category:
-        _write(host, category, "netbios")
-        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
-        if not host.get("os_family") or host.get("os_family") == "Unknown":
-            host["os_family"] = "Windows"
-            types = {n.get("type") for n in host.get("netbios_names", []) if isinstance(n, dict) and "type" in n}
-            if {0x1D, 0x1B, 0x1C} & types:
-                host["os_confidence"] = "High"
-            else:
-                host["os_confidence"] = "Medium"
-        return category
+    # Initialize weighted scoring matrix
+    CATEGORIES = [
+        "router", "switch", "firewall", "wireless_ap", "printer", "iot",
+        "server", "endpoint", "voip", "storage", "network_appliance",
+        "scada_ics", "virtual_machine"
+    ]
+    scores = {cat: 0 for cat in CATEGORIES}
+    contributions = {cat: ("none", 0) for cat in CATEGORIES}
 
-    # Signal 4: Port profile (high confidence - ports reveal device type)
+    def add_score(category: str, weight: int, signal: str):
+        if category in scores:
+            scores[category] += weight
+            sig_name, sig_w = contributions[category]
+            if weight > sig_w:
+                contributions[category] = (signal, weight)
+
+    # Signal A: Hostname Heuristics
+    hostname = (host.get("hostname") or "").lower()
+    if hostname:
+        if any(k in hostname for k in ["desktop", "laptop", "workstation", "pc-", "client"]):
+            add_score("endpoint", 100, "hostname")
+            add_score("router", -60, "hostname")
+            add_score("switch", -60, "hostname")
+            add_score("firewall", -60, "hostname")
+            add_score("server", -30, "hostname")
+        elif any(k in hostname for k in ["server", "srv-", "srv", "web", "db-", "sql", "mail"]):
+            add_score("server", 100, "hostname")
+            add_score("endpoint", -50, "hostname")
+            add_score("router", -50, "hostname")
+        elif any(k in hostname for k in ["router", "rtr-", "rtr", "gateway", "gw-", "gw"]):
+            add_score("router", 100, "hostname")
+            add_score("endpoint", -60, "hostname")
+            add_score("server", -60, "hostname")
+        elif any(k in hostname for k in ["switch", "sw-", "sw"]):
+            add_score("switch", 100, "hostname")
+            add_score("endpoint", -60, "hostname")
+            add_score("server", -60, "hostname")
+        elif any(k in hostname for k in ["firewall", "fw-", "fw"]):
+            add_score("firewall", 100, "hostname")
+            add_score("endpoint", -60, "hostname")
+            add_score("server", -60, "hostname")
+        elif any(k in hostname for k in ["plc", "scada", "rtu", "modbus"]):
+            add_score("scada_ics", 100, "hostname")
+            add_score("endpoint", -50, "hostname")
+
+    # Signal 1: SNMP
+    snmp = host.get("snmp_info", {})
+    if snmp and snmp.get("open"):
+        sys_descr = str(snmp.get("sys_descr", "")).lower()
+        is_pc_os = False
+        
+        # Deep sysDescr parsing (case-insensitive checks) to extract PC operating systems
+        if any(k in sys_descr for k in ["ubuntu", "debian", "red hat", "centos", "gentoo", "fedora", "suse", "generic", "windows 10", "windows 11"]):
+            is_pc_os = True
+            add_score("endpoint", 80, "snmp")
+            add_score("server", 40, "snmp")
+            add_score("router", -80, "snmp")
+            add_score("switch", -80, "snmp")
+            add_score("firewall", -80, "snmp")
+        elif any(k in sys_descr for k in ["cisco ios", "cisco catalyst", "cisco nexus", "routeros", "junos"]):
+            add_score("router", 95, "snmp")
+            add_score("endpoint", -80, "snmp")
+            add_score("server", -80, "snmp")
+
+        # If not a standard PC OS (or if no explicit PC OS keyword), process forwarding OIDs
+        if not is_pc_os:
+            if snmp.get("ip_forwarding") == 1:
+                add_score("router", 90, "snmp")
+                add_score("endpoint", -50, "snmp")
+                add_score("server", -50, "snmp")
+            if snmp.get("bridge_mib"):
+                add_score("switch", 95, "snmp")
+                add_score("endpoint", -50, "snmp")
+            if snmp.get("if_count", 0) > 4 and snmp.get("ip_forwarding") == 2:
+                add_score("switch", 75, "snmp")
+
+    # Signal 2: mDNS services
+    mdns_services = host.get("mdns_services", [])
+    if mdns_services:
+        services_set = set(mdns_services)
+        if {"_printer._tcp.local", "_ipp._tcp.local"} & services_set:
+            add_score("printer", 95, "mdns")
+        if {"_ssh._tcp.local", "_workstation._tcp.local"} & services_set:
+            add_score("endpoint", 80, "mdns")
+
+    # Signal 3: NetBIOS suffix roles
+    netbios_names = host.get("netbios_names", [])
+    if netbios_names:
+        types = {n.get("type") for n in netbios_names if isinstance(n, dict) and "type" in n}
+        if {0x1D, 0x1B, 0x1C} & types:
+            add_score("server", 95, "netbios")
+        elif 0x20 in types:
+            add_score("server", 90, "netbios")
+        elif 0x00 in types:
+            add_score("endpoint", 80, "netbios")
+
+    # Signal 3.5: Nmap CPE
+    os_cpe = host.get("os_cpe", [])
+    if os_cpe:
+        for item in os_cpe:
+            cpe = str(item).lower()
+            if "cpe:/o:cisco:ios" in cpe or "cpe:/o:juniper:junos" in cpe or "cpe:/o:mikrotik:routeros" in cpe:
+                add_score("router", 95, "nmap_cpe")
+            elif "cpe:/o:fortinet:fortios" in cpe or "cpe:/h:paloalto:" in cpe:
+                add_score("firewall", 95, "nmap_cpe")
+            elif "cpe:/h:hp:procurve" in cpe:
+                add_score("switch", 95, "nmap_cpe")
+
+    # Signal 4: Port Profile
     open_ports = [p["port"] for p in host.get("open_ports", [])]
-    category = _classify_from_ports(open_ports)
-    if category:
-        _write(host, category, "port_profile")
-        return category
+    if open_ports:
+        port_set = set(open_ports)
+        for rule in _PORT_PROFILE_RULES:
+            required = rule.get("ports", set())
+            optional = rule.get("any", set())
+            if required.issubset(port_set):
+                if not optional or optional & port_set:
+                    add_score(rule["category"], 85, "port_profile")
 
-    # Signal 5: Banner keywords (medium confidence - service/OS detection)
-    category = _classify_from_banners(host)
-    if category:
-        _write(host, category, "banner")
-        return category
+    # Signal 5: Banner keywords
+    texts = []
+    snmp_inf = host.get("snmp_info", {})
+    if snmp_inf:
+        texts.append(snmp_inf.get("sys_descr", ""))
+    for port_rec in host.get("open_ports", []):
+        texts.append(port_rec.get("banner", ""))
+        texts.append(port_rec.get("version", ""))
+        texts.append(port_rec.get("service", ""))
+    texts.append(host.get("os_guess", ""))
+    combined_text = " ".join(str(t) for t in texts if t).lower()
+    
+    for kw, cat in _BANNER_KEYWORDS.items():
+        if kw in combined_text:
+            add_score(cat, 60, "banner")
 
-    # Signal 6: OUI vendor (medium confidence - ambiguous for multi-product vendors)
+    # Signal 6: OUI Vendor
     vendor = host.get("vendor") or host.get("mac_vendor")
     if not vendor:
         from core.oui_lookup import lookup_vendor
         vendor = lookup_vendor(host.get("mac", "")) or ""
-    category = _classify_from_vendor(vendor)
-    if category:
-        _write(host, category, "oui")
-        # Ensure os_family and os_confidence are set if os_family is empty/Unknown
-        if not host.get("os_family") or host.get("os_family") == "Unknown":
-            os_fam = _os_from_vendor(vendor)
-            if os_fam:
-                host["os_family"] = os_fam
-                host["os_confidence"] = "Medium"
-        return category
+    if vendor:
+        category_from_oui = _classify_from_vendor(vendor)
+        if category_from_oui:
+            add_score(category_from_oui, 50, "oui")
 
-    # Signal 7: TTL (low confidence - OS family hint only)
+    # Signal 7: TTL
     ttl = host.get("tcp_fingerprint", {}).get("ttl") or _extract_ttl(host)
-    category = _classify_from_ttl(ttl)
-    if category:
-        _write(host, category, "ttl")
-        return category
+    if ttl is not None:
+        category_from_ttl = _classify_from_ttl(ttl)
+        if category_from_ttl:
+            add_score(category_from_ttl, 30, "ttl")
 
-    _write(host, "unknown", "none")
-    return "unknown"
+    # Select category with highest score
+    winner = "unknown"
+    max_score = 0
+    for cat, score in scores.items():
+        if score > max_score:
+            max_score = score
+            winner = cat
+
+    # Gating threshold: must be >= 40 to avoid weak-signal hallucinations
+    if max_score < 40:
+        winner = "unknown"
+        winning_signal = "none"
+    else:
+        winning_signal = contributions[winner][0]
+
+    _write(host, winner, winning_signal)
+
+    # Set os_family/os_confidence overrides if needed
+    if winner != "unknown":
+        if not host.get("os_family") or host.get("os_family") == "Unknown":
+            if winning_signal == "mdns":
+                mdns_services = set(host.get("mdns_services", []))
+                if {"_printer._tcp.local", "_ipp._tcp.local"} & mdns_services:
+                    host["os_family"] = "Embedded"
+                    host["os_confidence"] = "High"
+                else:
+                    v_name = (host.get("vendor") or host.get("mac_vendor") or "").lower()
+                    host["os_family"] = "macOS" if "apple" in v_name else "Linux"
+                    host["os_confidence"] = "Medium"
+            elif winning_signal == "netbios":
+                host["os_family"] = "Windows"
+                types = {n.get("type") for n in host.get("netbios_names", []) if isinstance(n, dict) and "type" in n}
+                if {0x1D, 0x1B, 0x1C} & types:
+                    host["os_confidence"] = "High"
+                else:
+                    host["os_confidence"] = "Medium"
+            elif winning_signal == "oui" and vendor:
+                os_fam = _os_from_vendor(vendor)
+                if os_fam:
+                    host["os_family"] = os_fam
+                    host["os_confidence"] = "Medium"
+
+    return winner
 
 
 def _write(host: Dict, category: str, signal: str) -> None:

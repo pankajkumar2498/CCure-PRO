@@ -326,6 +326,28 @@ class DiscoveryEngine:
             if active_ips:
                 await self._enrich_active(active_ips, results)
 
+        # ── Passive L2 Sniffing (BALANCED and AGGRESSIVE profiles) ──────────
+        if self.profile.name in ("BALANCED", "AGGRESSIVE") and self.has_priv and SCAPY_AVAILABLE:
+            try:
+                from engines.discovery.l2_sniffer import sniff_l2_infrastructure
+                l2_devices = await asyncio.to_thread(sniff_l2_infrastructure, timeout=3.0)
+                for dev in l2_devices:
+                    mac_clean = dev["mac"].lower()
+                    for ip, host in results.items():
+                        h_mac = str(host.get("mac", "")).lower()
+                        if h_mac == mac_clean:
+                            host["device_category"] = dev["device_category"]
+                            host["device_category_signal"] = "l2_sniffer"
+                            if dev.get("hostname") and host.get("hostname") in ("Unknown", "", None):
+                                host["hostname"] = dev["hostname"]
+                            if "L2_Sniff" not in host["confirmations"]:
+                                host["confirmations"].append("L2_Sniff")
+                            host["is_active"] = True
+                            if host["method"] == "N/A":
+                                host["method"] = "L2_Sniff"
+            except Exception as exc:
+                log.debug("L2 sniffer failed during discovery: %s", exc)
+
         # ── Final enrichment publish: send complete hostname/vendor data ─────
         # This fires once after all probing + enrichment, ensuring the frontend
         # receives updated hostnames (netbios/mdns resolved) for every host.

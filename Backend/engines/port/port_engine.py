@@ -102,6 +102,9 @@ class PortEngine:
             )
             await self._scan_fallback(active, scan_id=scan_id)
 
+        # After port scanning, perform a lightweight SNMP check on active hosts
+        await self._lightweight_snmp_check(active)
+
         return hosts
 
 
@@ -356,6 +359,47 @@ class PortEngine:
             )
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
+
+    async def _lightweight_snmp_check(self, hosts: List[Dict]) -> None:
+        """
+        Check if port 161 (SNMP) is open on active hosts, and perform a lightweight
+        community query to get classification parameters.
+        """
+        from core.discovery.enrichment import _snmp_lightweight_probe
+        
+        def _check_host(host: Dict):
+            ip = host.get("ip_address") or host.get("ip")
+            if not ip:
+                return
+            
+            # Check if port 161 is open in open_ports
+            is_161_open = False
+            for p in host.get("open_ports", []):
+                if p.get("port") == 161:
+                    is_161_open = True
+                    break
+            
+            # Also check if it's in port_states
+            if not is_161_open:
+                port_states = host.get("port_states", {})
+                if port_states.get(161) == "open" or port_states.get("161") == "open":
+                    is_161_open = True
+                    
+            if not is_161_open:
+                # If Nmap didn't scan UDP, we might not know if 161 is open.
+                # Only check if it's not explicitly closed to avoid useless timeouts.
+                port_states = host.get("port_states", {})
+                if port_states.get(161) == "closed" or port_states.get("161") == "closed":
+                    return
+            
+            # Run the lightweight probe
+            _snmp_lightweight_probe(ip, host)
+            
+        loop = asyncio.get_running_loop()
+        await asyncio.gather(*[
+            loop.run_in_executor(None, _check_host, h)
+            for h in hosts
+        ])
 
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 

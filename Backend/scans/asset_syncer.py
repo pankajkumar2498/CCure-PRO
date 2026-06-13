@@ -24,17 +24,22 @@ logger = logging.getLogger(__name__)
 # classifications from overwriting high-confidence ones.
 # Matches the priority chain in core/device_classifier.py classify_device():
 #   1. snmp       (highest — active OID interrogation)
-#   2. mdns       (high — mDNS service records)
-#   3. netbios    (high — NetBIOS suffix roles)
-#   4. port_profile (medium-high — port set hints)
-#   5. banner     (medium — service banner keywords)
-#   6. oui        (medium — vendor substring match)
-#   7. ttl        (low — OS family heuristic)
-#   8. none       (fallback — unknown)
+#   2. l2_sniffer (high — passive CDP/LLDP/STP multicast)
+#   3. mdns       (high — mDNS service records)
+#   4. netbios    (high — NetBIOS suffix roles)
+#   5. nmap_cpe   (medium-high — active OS stack detection)
+#   6. port_profile (medium-high — port set hints)
+#   7. banner     (medium — service banner keywords)
+#   8. oui        (medium — vendor substring match)
+#   9. ttl        (low — OS family heuristic)
+#   10. none      (fallback — unknown)
 _DEVICE_SIGNAL_PRIORITY = {
+    "credentialed": 110,
     "snmp": 100,
+    "l2_sniffer": 95,
     "mdns": 90,
     "netbios": 85,
+    "nmap_cpe": 80,
     "port_profile": 70,
     "banner": 50,
     "oui": 40,

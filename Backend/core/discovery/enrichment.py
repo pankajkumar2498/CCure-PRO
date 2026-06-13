@@ -60,7 +60,7 @@ def enrich_host(ip: str, result: Dict) -> None:
         ip:     Target IP address string.
         result: Host result dict from DiscoveryEngine — mutated in place.
     """
-    for fn in (_ptr_lookup, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
+    for fn in (_ptr_lookup, _snmp_lightweight_probe, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
         try:
             fn(ip, result)
         except Exception as exc:
@@ -70,6 +70,90 @@ def enrich_host(ip: str, result: Dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Individual probe functions
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
+    """
+    Query port 161 (SNMP) using community 'public' for system details to identify
+    network devices early in discovery or port scanning.
+    """
+    # Only probe if SNMP UDP port 161 is open or likely open (not explicitly closed)
+    port_states = result.get("port_states", {})
+    if port_states and port_states.get(161) not in ("open", "open|filtered", None) and port_states.get("161") not in ("open", "open|filtered", None):
+        return
+
+    try:
+        from engines.vulnerability.plugins.snmp_probe import (
+            _snmp_get_raw, _extract_oid_value, _extract_string, _extract_integer,
+            _OID_SYS_OBJ_ID, _OID_SYS_DESCR, _OID_IP_FORWARD, _OID_IF_NUMBER, _OID_BRIDGE_ADDR,
+            _ENTERPRISE_VENDORS
+        )
+        
+        # Query sysObjectID using community 'public'
+        data = _snmp_get_raw(ip, "public", _OID_SYS_OBJ_ID, timeout=1.0)
+        if not data:
+            return
+            
+        sys_obj = _extract_oid_value(data)
+        if not sys_obj:
+            return
+            
+        snmp_info = {
+            "open": True,
+            "community": "public",
+            "sys_descr": "",
+            "sys_name": "",
+            "sys_location": "",
+            "sys_contact": "",
+            "sys_uptime_s": None,
+            "vendor": "",
+            "vendor_device": "",
+            "enterprise_id": None,
+            "version": "SNMPv1/v2c",
+            "ip_forwarding": None,
+            "if_count": 0,
+            "bridge_mib": False,
+            "interfaces": [],
+            "ip_addresses": [],
+        }
+        
+        # Get sysDescr
+        descr_data = _snmp_get_raw(ip, "public", _OID_SYS_DESCR, timeout=1.0)
+        if descr_data:
+            snmp_info["sys_descr"] = _extract_string(descr_data)
+            
+        # Parse sysObjectID to get enterprise ID and vendor/vendor_device
+        parts = sys_obj.split(".")
+        prefix = ".".join(parts[:6])
+        if prefix == "1.3.6.1.4.1" and len(parts) > 6:
+            try:
+                enterprise = int(parts[6])
+                snmp_info["enterprise_id"] = enterprise
+                vendor_info = _ENTERPRISE_VENDORS.get(enterprise)
+                if vendor_info:
+                    snmp_info["vendor"] = vendor_info[0]
+                    snmp_info["vendor_device"] = vendor_info[1]
+            except ValueError:
+                pass
+                
+        # Parse device-type OIDs
+        fwd_data = _snmp_get_raw(ip, "public", _OID_IP_FORWARD, timeout=1.0)
+        if fwd_data:
+            snmp_info["ip_forwarding"] = _extract_integer(fwd_data)
+            
+        ifn_data = _snmp_get_raw(ip, "public", _OID_IF_NUMBER, timeout=1.0)
+        if ifn_data:
+            snmp_info["if_count"] = _extract_integer(ifn_data) or 0
+            
+        bridge_data = _snmp_get_raw(ip, "public", _OID_BRIDGE_ADDR, timeout=1.0)
+        if bridge_data:
+            idx = bridge_data.rfind(b"\x04")
+            snmp_info["bridge_mib"] = idx != -1 and len(bridge_data) > idx + 2
+            
+        result["snmp_info"] = snmp_info
+        
+    except Exception as exc:
+        log.debug("_snmp_lightweight_probe(%s) error: %s", ip, exc)
+
 
 def _ptr_lookup(ip: str, result: Dict) -> None:
     """

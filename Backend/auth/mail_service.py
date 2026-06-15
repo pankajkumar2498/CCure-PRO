@@ -93,7 +93,7 @@ CCure Audit PRO Team
             server = smtplib.SMTP(host, port, timeout=10)
             # Try to upgrade the connection to secure if supported
             server.ehlo()
-            if server.has_ext("STARTTLS"):
+            if server.has_extn("STARTTLS"):
                 try:
                     server.starttls()
                     server.ehlo()

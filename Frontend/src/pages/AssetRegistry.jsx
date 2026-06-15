@@ -405,9 +405,16 @@ export default function AssetRegistry() {
                         </tr>
                       ))}
                       {!loading && assets.length === 0 && (
-                        <tr><td colSpan={13} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
-                          No assets match your filters. Run a scan to populate the registry.
-                        </td></tr>
+                        <tr>
+                          <td colSpan={13} style={{ textAlign: "center", padding: "48px 20px" }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, marginBottom: 6 }}>
+                              No assets discovered in the registry.
+                            </div>
+                            <div style={{ color: "var(--text-faint)", fontSize: "0.72rem", maxWidth: 520, margin: "0 auto", lineHeight: 1.5 }}>
+                              Run a <strong>Basic Network Scan</strong>on your target subnets or IP ranges to discover live network assets and populate the inventory.
+                            </div>
+                          </td>
+                        </tr>
                       )}
                       {!loading && assets.map((a) => (
                         <tr key={a.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/assets/${a.id}`)}>
@@ -605,9 +612,16 @@ export default function AssetRegistry() {
                         </tr>
                       ))}
                       {!servicesLoading && services.length === 0 && (
-                        <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
-                          No services found. Run a scan to populate the inventory.
-                        </td></tr>
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: "center", padding: "48px 20px" }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, marginBottom: 6 }}>
+                              No network services or open ports discovered yet.
+                            </div>
+                            <div style={{ color: "var(--text-faint)", fontSize: "0.72rem", maxWidth: 520, margin: "0 auto", lineHeight: 1.5 }}>
+                              Run an <strong>Asset Discovery Scan</strong> on active targets to perform port scanning, banner grabbing, and service identification.
+                            </div>
+                          </td>
+                        </tr>
                       )}
                       {!servicesLoading && services.map((s, idx) => {
                         // Risk Level badge styling
@@ -741,13 +755,20 @@ export default function AssetRegistry() {
                         </tr>
                       ))}
                       {!certsLoading && certs.length === 0 && (
-                        <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
-                          No certificates found. Run a scan to populate the inventory.
-                        </td></tr>
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: "center", padding: "48px 20px" }}>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, marginBottom: 6 }}>
+                              No TLS certificates discovered in the inventory.
+                            </div>
+                            <div style={{ color: "var(--text-faint)", fontSize: "0.72rem", maxWidth: 520, margin: "0 auto", lineHeight: 1.5 }}>
+                              TLS audits run during vulnerability scans. Run a <strong>Vulnerability Audit Scan</strong> on hosts with open SSL/TLS ports (such as HTTPS 443, SMTPS 465, or IMAPS 993) to populate the certificates registry.
+                            </div>
+                          </td>
+                        </tr>
                       )}
                       {!certsLoading && certs.map((c) => {
-                        const cn = c.cert_subject?.common_name || c.cert_subject || "—";
-                        const issuerCn = c.cert_issuer?.common_name || c.cert_issuer || "—";
+                        const cn = (typeof c.cert_subject === "object" ? c.cert_subject?.common_name : c.cert_subject) || "—";
+                        const issuerCn = (typeof c.cert_issuer === "object" ? c.cert_issuer?.common_name : c.cert_issuer) || "—";
 
                         // Grade colors mapping
                         const gradeColors = {

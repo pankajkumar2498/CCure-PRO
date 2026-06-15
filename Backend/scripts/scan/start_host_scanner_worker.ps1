@@ -33,7 +33,7 @@ Write-Host "MAX_NMAP_PROCESSES=$env:MAX_NMAP_PROCESSES"
 
 Push-Location $backendDir
 try {
-    & $venvPython -m celery -A core.celery_app worker --loglevel=info --queues=scanner --pool=threads --concurrency=$env:SCANNER_WORKER_CONCURRENCY --prefetch-multiplier=1
+    & $venvPython -m celery -A core.celery_app worker --loglevel=info --queues=scanner,default --pool=threads --concurrency=$env:SCANNER_WORKER_CONCURRENCY --prefetch-multiplier=1
 }
 finally {
     Pop-Location

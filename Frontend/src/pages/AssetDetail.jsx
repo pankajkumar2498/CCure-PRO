@@ -408,7 +408,7 @@ function ServiceDetailRow({ svc, showProduct, showBanner, showAudits, colSpan })
                     <div><strong>Grade:</strong> <span style={{ fontWeight: 800, color: svc.tls.grade === "A" ? "#22c55e" : "#ef4444" }}>{svc.tls.grade || "Unknown"}</span></div>
                     <div><strong>Protocol:</strong> <span className="mono">{svc.tls.protocol_version}</span></div>
                     <div><strong>Cipher:</strong> <span className="mono" style={{ fontSize: "0.68rem" }}>{svc.tls.cipher_suite}</span></div>
-                    <div><strong>Subject:</strong> <span className="mono" style={{ fontSize: "0.68rem" }}>{svc.tls.cert_subject}</span></div>
+                    <div><strong>Subject:</strong> <span className="mono" style={{ fontSize: "0.68rem" }}>{typeof svc.tls.cert_subject === "object" ? (svc.tls.cert_subject?.common_name || "—") : (svc.tls.cert_subject || "—")}</span></div>
                     <div><strong>Expires:</strong> {svc.tls.cert_not_after ? formatTime(svc.tls.cert_not_after) : "—"}</div>
                     {svc.tls.cert_is_expired && <span style={{ color: "#ef4444", fontWeight: 700 }}>⚠ Certificate Expired</span>}
                     {svc.tls.cert_is_self_signed && <span style={{ color: "#eab308", fontWeight: 700 }}>⚠ Self-Signed Certificate</span>}

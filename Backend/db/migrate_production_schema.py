@@ -520,6 +520,16 @@ def run_migration():
     # Step 1: Run Alembic migrations
     run_alembic_migrations()
 
+    # Step 1.5: Run additive migrations
+    try:
+        from db.models.users import ensure_user_schema
+        from scans.models import ensure_scan_schema
+        ensure_user_schema()
+        ensure_scan_schema()
+        print("  ✓ User and scan schemas verified and migrated")
+    except Exception as e:
+        print(f"  ✗ Failed to run additive schema updates: {e}")
+
     # Step 2 & 3: Seed RBAC and default org in a transaction
     with engine.begin() as conn:
         seed_rbac(conn)

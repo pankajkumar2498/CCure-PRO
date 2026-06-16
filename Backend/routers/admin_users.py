@@ -44,6 +44,7 @@ def _serialize_user(user: User) -> dict:
         "last_login_at": user.last_login_at,
         "deleted_at": getattr(user, "deleted_at", None),
         "created_at": user.created_at,
+        "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
     }
 
 
@@ -609,3 +610,47 @@ def reset_password(
     db.commit()
 
     return {"detail": "Password reset successfully"}
+
+
+@router.post("/{user_id}/reset-mfa")
+@router.post("/{user_id}/reset-mfa/")
+def reset_mfa(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "update")),
+):
+    """
+    Reset a user's Multi-Factor Authentication.
+    Only users with 'users:update' permission can call this.
+    Org admins can only reset users in their own organization.
+    All active refresh tokens/sessions for the user are deleted immediately.
+    """
+    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Clear MFA configuration
+    user.totp_secret = None
+    user.mfa_enabled = False
+    user.mfa_backup_codes = None
+
+    # Invalidate all active sessions for that user
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+
+    log_audit_event(
+        db=db,
+        user=current_user,
+        action="user.mfa_reset_by_admin",
+        resource_type="user",
+        resource_id=str(user.id),
+        changes={
+            "mfa_enabled": {"old": True, "new": False},
+            "totp_secret": "cleared",
+            "mfa_backup_codes": "cleared"
+        },
+        request=request,
+    )
+    db.commit()
+
+    return {"detail": "Multi-Factor Authentication reset successfully"}

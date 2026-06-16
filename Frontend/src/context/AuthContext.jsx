@@ -37,11 +37,13 @@ export const AuthProvider = ({ children }) => {
   const [authMessage, setAuthMessage] = useState("");
   const lastSessionRefreshRef = useRef(0);
 
-  const syncCurrentUser = useCallback(async () => {
+  const syncCurrentUser = useCallback(async (quiet = false) => {
     const hadAccessToken = !!authSession.getAccessToken();
     let hadRecoverableSession = hadAccessToken;
 
-    setAuthState("loading");
+    if (!quiet) {
+      setAuthState("loading");
+    }
 
     if (!hadAccessToken) {
       try {
@@ -136,6 +138,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (credentials) => {
     const data = await loginRequest(credentials);
+    if (data?.status === "mfa_required") {
+      return data;
+    }
     if (data.user) {
       syncActiveOrgId(data.user);
     }

@@ -10,6 +10,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { getProfile, updateProfile, getSessions, revokeSession } from "../../api/user";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { useAuth } from "../../context/AuthContext";
+import { enableMfa as enableMfaApi, confirmMfa as confirmMfaApi, disableMfa as disableMfaApi } from "../../api/auth";
+
 
 /* ── Icons ───────────────────────────────────────────────────────────────── */
 const Icon = ({ d, size = 16 }) => (
@@ -179,10 +182,28 @@ function ProfileTab({ profile, onProfileUpdated }) {
 
 /* ── Security Tab ────────────────────────────────────────────────────────── */
 function SecurityTab({ onOpenChangePassword }) {
+  const { user, refreshUser } = useAuth();
+  const mfaEnabled = !!user?.mfa_enabled;
+
   const [sessions, setSessions]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [revoking, setRevoking]   = useState(null);
   const [error, setError]         = useState("");
+
+  // MFA states
+  const [wizardStep, setWizardStep] = useState(0); // 0 = closed, 1 = qr code scanning, 2 = recovery codes
+  const [qrCode, setQrCode] = useState("");
+  const [secret, setSecret] = useState("");
+  const [confirmCode, setConfirmCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState([]);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState("");
+
+  const [showDisableForm, setShowDisableForm] = useState(false);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [disableLoading, setDisableLoading] = useState(false);
+  const [disableError, setDisableError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -204,6 +225,166 @@ function SecurityTab({ onOpenChangePassword }) {
     }
   };
 
+  const handleStartMfaSetup = async () => {
+    setSetupLoading(true);
+    setSetupError("");
+    try {
+      const res = await enableMfaApi();
+      setQrCode(res.qr_code);
+      setSecret(res.secret);
+      setWizardStep(1);
+      setConfirmCode("");
+    } catch (err) {
+      setSetupError(err.response?.data?.detail || "Failed to initiate MFA setup");
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const handleConfirmMfa = async () => {
+    if (!confirmCode.trim()) return;
+    setSetupLoading(true);
+    setSetupError("");
+    try {
+      const res = await confirmMfaApi(confirmCode.trim());
+      setBackupCodes(res.backup_codes || []);
+      setWizardStep(2);
+      await refreshUser(true);
+      setSessions(prev => prev.filter(s => s.is_current));
+    } catch (err) {
+      setSetupError(err.response?.data?.detail || "Invalid code. Please try again.");
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!disablePassword) return;
+    setDisableLoading(true);
+    setDisableError("");
+    try {
+      await disableMfaApi(disablePassword);
+      setShowDisableForm(false);
+      setDisablePassword("");
+      await refreshUser(true);
+      setSessions(prev => prev.filter(s => s.is_current));
+    } catch (err) {
+      setDisableError(err.response?.data?.detail || "Failed to disable MFA. Verify password.");
+    } finally {
+      setDisableLoading(false);
+    }
+  };
+
+  const handleCopyBackupCodes = () => {
+    const text = backupCodes.join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleToggleChange = async (e) => {
+    const checked = e.target.checked;
+    if (checked) {
+      await handleStartMfaSetup();
+    } else {
+      setShowDisableForm(true);
+    }
+  };
+
+  if (wizardStep > 0) {
+    return (
+      <div className="pm-tab-content">
+        {/* Step Indicator */}
+        <div className="pm-mfa-steps">
+          <div className={`pm-mfa-step-item ${wizardStep === 1 ? "pm-mfa-step-item--active" : ""}`}>
+            <span className="pm-mfa-step-num">1</span>
+            <span>Scan QR Code</span>
+          </div>
+          <div className="pm-mfa-step-line" />
+          <div className={`pm-mfa-step-item ${wizardStep === 2 ? "pm-mfa-step-item--active" : ""}`}>
+            <span className="pm-mfa-step-num">2</span>
+            <span>Recovery Codes</span>
+          </div>
+        </div>
+
+        {wizardStep === 1 && (
+          <div style={{
+            background: "linear-gradient(135deg, rgba(79, 70, 229, 0.06), rgba(79, 70, 229, 0.02))",
+            border: "1px solid rgba(79, 70, 229, 0.18)",
+            padding: "20px",
+            borderRadius: "10px"
+          }}>
+            <h5 style={{ margin: "0 0 12px 0", fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>MFA Setup Wizard</h5>
+            
+            {setupError && <div className="pm-alert pm-alert--error" style={{ marginBottom: "12px" }}>{setupError}</div>}
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center" }}>
+              {qrCode && (
+                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", display: "inline-block" }}>
+                  <img src={qrCode} alt="Scan QR Code" style={{ width: "150px", height: "150px", display: "block" }} />
+                </div>
+              )}
+              <div style={{ flex: 1, fontSize: "13px", color: "var(--text-mid)" }}>
+                <ol style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.6 }}>
+                  <li>Scan the QR code with an authenticator app (like Google Authenticator, Authy, or Duo).</li>
+                  <li style={{ marginTop: "4px" }}>Alternatively, enter the secret code manually: <code style={{ color: "var(--accent)", background: "rgba(14, 165, 233, 0.1)", border: "1px solid rgba(14, 165, 233, 0.2)", padding: "3px 8px", borderRadius: "4px", fontSize: "12px", wordBreak: "break-all", display: "block", marginTop: "6px", fontFamily: "monospace", fontWeight: "600" }}>{secret}</code></li>
+                  <li style={{ marginTop: "8px" }}>Enter the 6-digit code generated by your app below to verify.</li>
+                </ol>
+
+                <div style={{ display: "flex", gap: "8px", marginTop: "16px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    className="pm-input"
+                    placeholder="6-digit code"
+                    value={confirmCode}
+                    onChange={(e) => setConfirmCode(e.target.value)}
+                    maxLength={8}
+                    style={{ width: "120px", height: "36px", textAlign: "center", letterSpacing: "2px", fontWeight: "bold" }}
+                  />
+                  <button className="pm-btn pm-btn--primary" onClick={handleConfirmMfa} disabled={setupLoading} style={{ height: "36px" }}>
+                    {setupLoading ? "Verifying..." : "Verify & Enable"}
+                  </button>
+                  <button className="pm-btn pm-btn--ghost" onClick={() => setWizardStep(0)} style={{ height: "36px" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {wizardStep === 2 && (
+          <div style={{
+            background: "linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02))",
+            border: "1px solid rgba(16, 185, 129, 0.18)",
+            padding: "20px",
+            borderRadius: "10px"
+          }}>
+            <h5 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: 700, color: "#16a34a" }}>🎉 Multi-Factor Authentication Enabled!</h5>
+            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "var(--text-mid)" }}>Save these backup recovery codes. You can use them to sign in if you lose access to your authenticator device. Each code is single-use.</p>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "16px" }}>
+              {backupCodes.map((c, idx) => (
+                <div key={idx} style={{ fontFamily: "monospace", fontSize: "14px", background: "var(--bg-white)", border: "1px solid var(--border)", padding: "6px 10px", borderRadius: "6px", textAlign: "center", color: "var(--text)", fontWeight: 700 }}>
+                  {c}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button className="pm-btn pm-btn--outline" onClick={handleCopyBackupCodes} style={{ flex: 1 }}>
+                {copied ? "Copied! ✓" : "Copy Codes"}
+              </button>
+              <button className="pm-btn pm-btn--primary" onClick={() => setWizardStep(0)} style={{ flex: 1 }}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="pm-tab-content">
       {/* Password section */}
@@ -215,6 +396,90 @@ function SecurityTab({ onOpenChangePassword }) {
         <button className="pm-btn pm-btn--outline" onClick={onOpenChangePassword}>
           🔐 Change Password
         </button>
+      </div>
+
+      <div className="pm-divider" />
+
+      {/* MFA Section */}
+      <div className="pm-mfa-card">
+        <div className="pm-mfa-header-row">
+          <div className="pm-mfa-title-block">
+            <h4 className="pm-section-title" style={{ margin: 0 }}>Multi-Factor Authentication (MFA)</h4>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+              {mfaEnabled ? (
+                <span className="pm-glass-badge pm-glass-badge--enabled">
+                  <span className="pm-dot-green" />
+                  Enabled
+                </span>
+              ) : (
+                <span className="pm-glass-badge pm-glass-badge--disabled">
+                  <span className="pm-pulse-amber-dot" />
+                  Disabled
+                </span>
+              )}
+              <span style={{ fontSize: "13px", color: "var(--text-muted)", fontWeight: "500" }}>
+                TOTP / Authenticator & Email Fallback
+              </span>
+            </div>
+          </div>
+          
+          <label className="pm-switch">
+            <input
+              type="checkbox"
+              className="pm-switch-input"
+              checked={mfaEnabled}
+              onChange={handleToggleChange}
+              disabled={setupLoading || disableLoading || showDisableForm}
+            />
+            <span className="pm-switch-track">
+              <span className="pm-switch-thumb" />
+            </span>
+          </label>
+        </div>
+
+        <p className="pm-section-desc font-normal" style={{ margin: "8px 0 0 0" }}>
+          Add an extra layer of security to your account using TOTP and email fallback OTP.
+        </p>
+
+        {mfaEnabled && !showDisableForm && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "8px 0 0 0", fontStyle: "italic" }}>
+            To reconfigure, toggle off (requires password confirmation) and enable again.
+          </p>
+        )}
+
+        {showDisableForm && (
+          <div style={{
+            background: "linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(239, 68, 68, 0.02))",
+            border: "1px solid rgba(239, 68, 68, 0.18)",
+            padding: "16px",
+            borderRadius: "8px",
+            marginTop: "16px"
+          }}>
+            <h5 style={{ margin: "0 0 8px 0", color: "#dc2626", fontSize: "14px", fontWeight: 700 }}>Confirm Disabling MFA</h5>
+            <p style={{ margin: "0 0 12px 0", fontSize: "12.5px", color: "var(--text-mid)" }}>Enter your account password to confirm disabling Multi-Factor Authentication.</p>
+            
+            {disableError && <div className="pm-alert pm-alert--error" style={{ marginBottom: "12px" }}>{disableError}</div>}
+            
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div className="pm-field" style={{ flex: 1, margin: 0 }}>
+                <input
+                  type="password"
+                  className="pm-input"
+                  placeholder="Confirm with your password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  style={{ height: "36px" }}
+                />
+              </div>
+              <button className="pm-btn pm-btn--ghost" onClick={() => { setShowDisableForm(false); setDisablePassword(""); setDisableError(""); }} style={{ height: "36px", padding: "0 14px" }}>
+                Cancel
+              </button>
+              <button className="pm-btn pm-btn--primary" onClick={handleDisableMfa} disabled={disableLoading} style={{ background: "#dc2626", border: "none", height: "36px", padding: "0 14px", color: "white" }}>
+                {disableLoading ? "Confirming..." : "Disable"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="pm-divider" />

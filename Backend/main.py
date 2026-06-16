@@ -100,6 +100,14 @@ async def lifespan(app: FastAPI):
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         log.info("Database connection verified")
+        
+        # Run additive migrations
+        try:
+            ensure_user_schema()
+            ensure_scan_schema()
+            log.info("User and scan schemas verified and migrated")
+        except Exception as e:
+            log.error(f"Failed to execute additive schema updates: {e}")
     except OperationalError as e:
         log.error(f"Database connection failed. Is the database running? Error: {e}")
         # We no longer raise RuntimeError to allow the container to start.

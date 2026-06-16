@@ -8,7 +8,7 @@ const statusConfig = {
   locked: { label: "Locked", className: "chip chip--danger" },
 };
 
-function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onResetPassword, onToggleStatus, onUnlock, onDelete, canUpdateUsers, canDeleteUsers }) {
+function TableRow({ user, currentUser, roleName, organizationName, showOrganizationColumn, onEdit, onResetPassword, onResetMfa, onToggleStatus, onUnlock, onDelete, canUpdateUsers, canDeleteUsers }) {
   const isLocked = user.locked_until && new Date(user.locked_until) > new Date();
   const status = isLocked ? statusConfig.locked : user.is_active ? statusConfig.active : statusConfig.inactive;
   const isSelf = currentUser && String(currentUser.id) === String(user.id);
@@ -48,6 +48,17 @@ function TableRow({ user, currentUser, roleName, organizationName, showOrganizat
           >
             🔑 Reset
           </Button>}
+          {canUpdateUsers && user.mfa_enabled && !isSelf && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Reset MFA"
+              onClick={() => onResetMfa(user)}
+            >
+              🛡️ Reset MFA
+            </Button>
+          )}
           {isLocked && canUpdateUsers && (
             <Button
               type="button"
@@ -103,6 +114,7 @@ export default function UserTable({
   currentUser,
   onEdit,
   onResetPassword,
+  onResetMfa,
   onToggleStatus,
   onUnlock,
   onDelete,
@@ -180,6 +192,7 @@ export default function UserTable({
                       currentUser={currentUser}
                       onEdit={onEdit}
                       onResetPassword={onResetPassword}
+                      onResetMfa={onResetMfa}
                       onToggleStatus={onToggleStatus}
                       onUnlock={onUnlock}
                       onDelete={onDelete}

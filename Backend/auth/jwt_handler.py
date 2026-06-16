@@ -9,7 +9,7 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Union
 from fastapi import Request
 from core.ip_resolver import get_client_ip
 
@@ -132,6 +132,24 @@ def create_access_token(user_id: int, username: str, role: Optional[str] = None,
         payload,
         ACCESS_TOKEN_EXPIRE,
     )
+
+
+def create_mfa_challenge_token(user_id: Union[str, int], username: str, role: Optional[str] = None, org_id: Optional[str] = None) -> str:
+    """Create a short-lived (5 minutes) challenge token for multi-factor authentication step-up."""
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "type": "mfa_challenge"
+    }
+    if role is not None:
+        payload["role"] = role
+    if org_id is not None:
+        payload["org_id"] = str(org_id)
+    return _create_token(
+        payload,
+        timedelta(minutes=5),
+    )
+
 
 
 def create_download_ticket(user_id: str, username: str) -> str:

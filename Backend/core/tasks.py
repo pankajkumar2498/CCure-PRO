@@ -1204,6 +1204,17 @@ def send_password_reset_email_task(email_to: str, username: str, reset_link: str
     _send(email_to, username, reset_link)
 
 
+@celery_app.task(name="ccure.tasks.send_mfa_otp", queue="default")
+def send_mfa_otp_task(email_to: str, username: str, code: str) -> None:
+    """Async background task to dispatch MFA OTP emails."""
+    try:
+        from auth.mail_service import send_mfa_otp_email as _send
+        _send(email_to, username, code)
+    except Exception as exc:
+        log.error(f"Failed to dispatch MFA OTP email to {email_to}: {exc}", exc_info=True)
+
+
+
 @celery_app.task(name="ccure.tasks.reconcile_amt_inventory_task", queue="scanner")
 def reconcile_amt_inventory_task(org_id: str) -> dict:
     """Async background task to run AMT reconciliation for an organization."""

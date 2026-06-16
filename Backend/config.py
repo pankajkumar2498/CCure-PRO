@@ -91,6 +91,8 @@ class JWTConfig:
     )
     ACCESS_TOKEN_EXPIRES_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30"))
     REFRESH_TOKEN_EXPIRES_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7"))
+    MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", SECRET_KEY)
+
 
 
 class ScanConfig:
@@ -209,6 +211,16 @@ class AppConfig:
     JWT_SECRET_KEY = JWTConfig.SECRET_KEY
     ACCESS_TOKEN_EXPIRES_MINUTES = JWTConfig.ACCESS_TOKEN_EXPIRES_MINUTES
     REFRESH_TOKEN_EXPIRES_DAYS = JWTConfig.REFRESH_TOKEN_EXPIRES_DAYS
+    MFA_ENCRYPTION_KEY = JWTConfig.MFA_ENCRYPTION_KEY
+
+    # Derived Fernet key (32 bytes urlsafe base64 encoded)
+    MFA_KEY: bytes = (lambda key=JWTConfig.MFA_ENCRYPTION_KEY: (
+        __import__("base64").urlsafe_b64encode(
+            __import__("hashlib").sha256(key.encode()).digest()
+        )
+    ))()
+
+
 
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT

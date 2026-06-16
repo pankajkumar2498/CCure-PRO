@@ -56,6 +56,11 @@ export const resetUserPassword = async (userId, password) => {
   return response.data;
 };
 
+export const resetUserMfa = async (userId) => {
+  const response = await axiosInstance.post(`/admin/users/${userId}/reset-mfa/`);
+  return response.data;
+};
+
 export const listRoles = async () => {
   const response = await axiosInstance.get("/admin/roles/");
   return response.data;

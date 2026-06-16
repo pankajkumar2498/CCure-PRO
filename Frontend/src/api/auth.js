@@ -7,9 +7,49 @@ export const login = async (credentials) => {
     ...credentials,
     email: normalizeEmail(credentials?.email),
   });
-  authSession.setTokens(response.data || {});
+  if (response.data?.access_token) {
+    authSession.setTokens(response.data || {});
+  }
   return response.data;
 };
+
+export const verifyMfa = async (mfaToken, code) => {
+  const response = await axiosInstance.post("/auth/login/verify-mfa", {
+    mfa_token: mfaToken,
+    code,
+  });
+  if (response.data?.access_token) {
+    authSession.setTokens(response.data || {});
+  }
+  return response.data;
+};
+
+export const sendEmailOtp = async (mfaToken) => {
+  const response = await axiosInstance.post("/auth/login/send-email-otp", {
+    mfa_token: mfaToken,
+  });
+  return response.data;
+};
+
+export const enableMfa = async () => {
+  const response = await axiosInstance.post("/auth/mfa/enable");
+  return response.data;
+};
+
+export const confirmMfa = async (code) => {
+  const response = await axiosInstance.post("/auth/mfa/confirm", {
+    code,
+  });
+  return response.data;
+};
+
+export const disableMfa = async (password) => {
+  const response = await axiosInstance.post("/auth/mfa/disable", {
+    password,
+  });
+  return response.data;
+};
+
 
 export const register = async (userData) => {
   const response = await axiosInstance.post("/auth/register", {

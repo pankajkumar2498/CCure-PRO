@@ -33,6 +33,10 @@ alembic>=1.13.0                    # Database migrations
 psycopg2-binary==2.9.9             # PostgreSQL adapter for SQLAlchemy
 python-dotenv==1.0.0               # Load environment variables from .env
 python-multipart==0.0.9            # form body parsing
+pyotp==2.9.0
+qrcode==7.4.2
+pillow==10.3.0
+
 
 # ── Network scanning ──────────────────────────────────────────────────────────
 # Scapy: used ONLY for Phase 1 host discovery

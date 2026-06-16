@@ -118,6 +118,7 @@ class UserOut(BaseModel):
     username: str
     email: str
     created_at: str
+    mfa_enabled: bool = False
     role: Optional[RoleOut] = None
     organization: Optional[OrganizationOut] = None
 
@@ -135,6 +136,29 @@ class RefreshResponse(BaseModel):
     access_token: str
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
+
+
+class MfaChallengeResponse(BaseModel):
+    status: str = "mfa_required"
+    mfa_token: str
+
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+class MfaEmailRequest(BaseModel):
+    mfa_token: str
+
+
+class MfaConfirmRequest(BaseModel):
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    password: str
+
 
 
 @router.post("/ticket")
@@ -285,6 +309,7 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
+            "mfa_enabled": user.mfa_enabled,
             "role": {
                 "name": user.role.name,
                 "permissions": [
@@ -296,7 +321,7 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
     }
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=Union[TokenResponse, MfaChallengeResponse])
 @limiter.limit("10/minute")
 def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
@@ -383,6 +408,22 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     # Success
     user.failed_login_count = 0
     user.locked_until = None
+
+    if user.mfa_enabled:
+        from auth.jwt_handler import create_mfa_challenge_token
+        mfa_token = create_mfa_challenge_token(
+            user_id=user.id,
+            username=user.username,
+            role=getattr(user.role, "name", None),
+            org_id=user.org_id,
+        )
+        log_audit_event(db, user, "user.mfa_challenge_issued", "user", str(user.id), request=request, status="success")
+        db.commit()
+        return {
+            "status": "mfa_required",
+            "mfa_token": mfa_token
+        }
+
     user.last_login_at = utcnow()
     log_audit_event(db, user, "user.login", "user", str(user.id), request=request, status="success")
     db.commit()
@@ -403,6 +444,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
             "username": user.username,
             "email": user.email,
             "created_at": user.created_at.isoformat(),
+            "mfa_enabled": user.mfa_enabled,
             "role": {
                 "name": user.role.name,
                 "permissions": [
@@ -412,6 +454,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
             } if user.role else None
         },
     }
+
 
 
 @router.post("/logout")
@@ -480,6 +523,7 @@ def me(current_user: User = Depends(get_current_user)):
         "username": current_user.username,
         "email": current_user.email,
         "created_at": current_user.created_at.isoformat(),
+        "mfa_enabled": current_user.mfa_enabled,
         "role": {
             "name": current_user.role.name,
             "permissions": [
@@ -663,3 +707,347 @@ def reset_password_endpoint(
     db.commit()
 
     return {"detail": "Your password has been reset successfully."}
+
+
+# ── MFA Helper Cryptographic Functions ────────────────────────────────────────
+
+def encrypt_secret(plain_secret: str) -> str:
+    """Symmetrically encrypt the secret key using Fernet."""
+    from cryptography.fernet import Fernet
+    from config import AppConfig
+    f = Fernet(AppConfig.MFA_KEY)
+    return f.encrypt(plain_secret.encode()).decode()
+
+
+def decrypt_secret(encrypted_secret: str) -> str:
+    """Symmetrically decrypt the secret key using Fernet."""
+    from cryptography.fernet import Fernet
+    from config import AppConfig
+    f = Fernet(AppConfig.MFA_KEY)
+    return f.decrypt(encrypted_secret.encode()).decode()
+
+
+# ── MFA Endpoints ────────────────────────────────────────────────────────────
+
+@router.post("/login/send-email-otp")
+@limiter.limit("5/minute")
+def send_email_otp(req: MfaEmailRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Generate and email a 6-digit verification code fallback.
+    Rate limited to 5 requests/minute.
+    """
+    import secrets
+    from datetime import timedelta
+    from db.base import utcnow
+    from core.tasks import send_mfa_otp_task
+    
+    payload = decode_token(req.mfa_token)
+    if not payload or payload.get("type") != "mfa_challenge":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired challenge token.",
+        )
+    
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or getattr(user, "is_deleted", False) or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired challenge token.",
+        )
+        
+    # Generate 6-digit random code
+    code = f"{secrets.randbelow(1000000):06d}"
+    
+    # Save hashed code to database
+    user.email_otp_hash = hash_password(code)
+    user.email_otp_expires_at = utcnow() + timedelta(minutes=5)
+    db.commit()
+    
+    # Dispatch Celery task to send email
+    send_mfa_otp_task.delay(user.email, user.username, code)
+    
+    return {"success": True}
+
+
+@router.post("/login/verify-mfa", response_model=TokenResponse)
+@limiter.limit("5/minute")
+def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    """
+    Verify the MFA code (App TOTP, Email OTP, or Recovery Backup Code).
+    Rate limited to 5 requests/minute.
+    """
+    from db.base import utcnow
+    from core.audit import log_audit_event
+    
+    payload = decode_token(req.mfa_token)
+    if not payload or payload.get("type") != "mfa_challenge":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired challenge token.",
+        )
+        
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or getattr(user, "is_deleted", False) or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired challenge token.",
+        )
+
+    # Stateless security clearance: fetch temporary Email OTP hash and clear immediately
+    temp_hash = user.email_otp_hash
+    temp_expires = user.email_otp_expires_at
+    user.email_otp_hash = None
+    user.email_otp_expires_at = None
+    db.commit()
+
+    code = req.code.strip()
+    verified = False
+    verification_method = None
+
+    # 1. Try Authenticator App TOTP
+    if user.totp_secret:
+        try:
+            import pyotp
+            decrypted = decrypt_secret(user.totp_secret)
+            totp = pyotp.TOTP(decrypted)
+            # valid_window=1 allows codes from previous or next 30-sec interval to combat clock drift
+            if totp.verify(code, valid_window=1):
+                verified = True
+                verification_method = "totp"
+        except Exception as e:
+            logger.error(f"Error during TOTP verification for user {user.id}: {e}", exc_info=True)
+
+    # 2. Try Email OTP
+    if not verified and temp_hash and temp_expires:
+        if temp_expires > utcnow():
+            if verify_password(code, temp_hash):
+                verified = True
+                verification_method = "email_otp"
+
+    # 3. Try Backup Recovery Code
+    if not verified and user.mfa_backup_codes:
+        # User backup codes list is stored as JSON list of hashes
+        matched_hash = None
+        for h in user.mfa_backup_codes:
+            if verify_password(code, h):
+                matched_hash = h
+                break
+        
+        if matched_hash:
+            # Code matched! Remove it from list (single-use constraint)
+            codes = list(user.mfa_backup_codes)
+            codes.remove(matched_hash)
+            user.mfa_backup_codes = codes
+            verified = True
+            verification_method = "backup_code"
+            log_audit_event(
+                db=db,
+                user=user,
+                action="user.mfa_recovery_used",
+                resource_type="user",
+                resource_id=str(user.id),
+                request=request,
+                status="success"
+            )
+            db.commit()
+
+    if not verified:
+        log_audit_event(
+            db=db,
+            user=user,
+            action="user.mfa_failed",
+            resource_type="user",
+            resource_id=str(user.id),
+            request=request,
+            status="failure"
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid verification code",
+        )
+
+    # Login succeeded! Complete session establishment
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.last_login_at = utcnow()
+    log_audit_event(
+        db=db,
+        user=user,
+        action="user.login",
+        resource_type="user",
+        resource_id=str(user.id),
+        request=request,
+        status="success",
+        changes={"mfa_method": verification_method}
+    )
+    db.commit()
+
+    refresh_token = create_refresh_token(user.id, db, request=request)
+    _set_refresh_cookie(response, refresh_token)
+
+    return {
+        "access_token": create_access_token(
+            str(user.id),
+            user.username,
+            role=getattr(user.role, "name", None),
+            org_id=user.org_id,
+        ),
+        "user": {
+            "id": str(user.id),
+            "org_id": str(user.org_id),
+            "username": user.username,
+            "email": user.email,
+            "created_at": user.created_at.isoformat(),
+            "mfa_enabled": user.mfa_enabled,
+            "role": {
+                "name": user.role.name,
+                "permissions": [
+                    {"resource": rp.permission.resource, "action": rp.permission.action}
+                    for rp in user.role.permissions
+                ]
+            } if user.role else None
+        },
+    }
+
+
+@router.post("/mfa/enable")
+def enable_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Initiates MFA setup by generating a TOTP secret and rendering it as a QR code.
+    Accessible only to authenticated users. If MFA is already active, returns 400.
+    """
+    import pyotp
+    import qrcode
+    import io
+    import base64
+
+    if current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is already enabled",
+        )
+
+    secret = pyotp.random_base32()
+    encrypted_secret = encrypt_secret(secret)
+    current_user.totp_secret = encrypted_secret
+    db.commit()
+
+    provisioning_url = pyotp.TOTP(secret).provisioning_uri(
+        name=current_user.email,
+        issuer_name="CCure Audit PRO"
+    )
+
+    # Generate QR Code as Base64 Data URI
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(provisioning_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    qr_base64 = base64.b64encode(buffered.getvalue()).decode()
+    qr_data_uri = f"data:image/png;base64,{qr_base64}"
+
+    return {
+        "secret": secret,
+        "qr_code": qr_data_uri
+    }
+
+
+@router.post("/mfa/confirm")
+def confirm_mfa(req: MfaConfirmRequest, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Confirms the setup code and enables MFA for the user.
+    Generates backup codes and revokes other sessions.
+    """
+    import secrets
+    import pyotp
+    from core.audit import log_audit_event
+
+    if not current_user.totp_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA setup has not been initiated",
+        )
+
+    try:
+        decrypted = decrypt_secret(current_user.totp_secret)
+        totp = pyotp.TOTP(decrypted)
+        is_valid = totp.verify(req.code.strip(), valid_window=1)
+    except Exception:
+        is_valid = False
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code",
+        )
+
+    # Generate 8 recovery codes
+    plain_backups = [secrets.token_hex(4).upper() for _ in range(8)]
+    hashed_backups = [hash_password(code) for code in plain_backups]
+
+    current_user.mfa_enabled = True
+    current_user.mfa_backup_codes = hashed_backups
+    
+    # Revoke all other active sessions for user (session isolation)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == current_user.id).delete(synchronize_session=False)
+
+    log_audit_event(
+        db=db,
+        user=current_user,
+        action="user.mfa_enabled",
+        resource_type="user",
+        resource_id=str(current_user.id),
+        request=request,
+        status="success"
+    )
+    db.commit()
+
+    return {"backup_codes": plain_backups}
+
+
+@router.post("/mfa/disable")
+def disable_mfa(req: MfaDisableRequest, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Disable MFA. Requires password validation for safety.
+    """
+    from core.audit import log_audit_event
+
+    if not current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is not enabled",
+        )
+
+    if not verify_password(req.password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password",
+        )
+
+    current_user.mfa_enabled = False
+    current_user.totp_secret = None
+    current_user.mfa_backup_codes = []
+    current_user.email_otp_hash = None
+    current_user.email_otp_expires_at = None
+
+    # Revoke all active sessions for user
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == current_user.id).delete(synchronize_session=False)
+
+    log_audit_event(
+        db=db,
+        user=current_user,
+        action="user.mfa_disabled",
+        resource_type="user",
+        resource_id=str(current_user.id),
+        request=request,
+        status="success"
+    )
+    db.commit()
+
+    return {"success": True}
+

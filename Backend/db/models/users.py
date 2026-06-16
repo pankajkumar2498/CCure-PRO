@@ -63,6 +63,11 @@ class User(Base):
     email           = Column(String(320), nullable=False, unique=True, index=True)
     full_name       = Column(String(255), nullable=True)
     password_hash   = Column(String(255), nullable=False)
+    totp_secret     = Column(String(255), nullable=True)
+    mfa_enabled     = Column(Boolean, nullable=False, default=False)
+    mfa_backup_codes = Column(JSONB, nullable=False, default=list)
+    email_otp_hash  = Column(String(255), nullable=True)
+    email_otp_expires_at = Column(TIMESTAMPTZ, nullable=True)
 
     # ── Account State ─────────────────────────────────────────────────────────
     is_active        = Column(Boolean, nullable=False, default=True)
@@ -239,3 +244,27 @@ def ensure_user_schema():
             else:
                 conn.execute(text("ALTER TABLE users ADD COLUMN deleted_at DATETIME"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)"))
+
+        if "totp_secret" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(255)"))
+
+        if "mfa_enabled" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT 0"))
+
+        if "mfa_backup_codes" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN mfa_backup_codes JSONB NOT NULL DEFAULT '[]'::jsonb"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN mfa_backup_codes TEXT NOT NULL DEFAULT '[]'"))
+
+        if "email_otp_hash" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email_otp_hash VARCHAR(255)"))
+
+        if "email_otp_expires_at" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN email_otp_expires_at TIMESTAMPTZ"))
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN email_otp_expires_at DATETIME"))

@@ -13,6 +13,7 @@ import {
   deleteUser,
   moveUserOrganization,
   resetUserPassword,
+  resetUserMfa,
 } from "../../api/admin";
 import Button from "../../components/common/Button";
 import Modal from "../../components/layout/Modal";
@@ -259,6 +260,40 @@ export default function UserManagement() {
     }
   };
 
+  const handleResetMfa = (user) => {
+    if (!canUpdateUsers) {
+      pushToast(denyMessage, "error");
+      return;
+    }
+    setConfirmConfig({
+      title: `Reset MFA for ${user.username}`,
+      subtitle: `This will completely disable Multi-Factor Authentication for ${user.username}.`,
+      warning: "This action will immediately terminate all active sessions for this user.",
+      confirmLabel: "Reset MFA",
+      confirmType: "danger",
+      icon: "🛡️",
+      iconClass: "danger",
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await resetUserMfa(user.id);
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === user.id ? { ...u, mfa_enabled: false } : u
+            )
+          );
+          pushToast(`MFA reset successfully for ${user.username}.`, "success");
+        } catch (err) {
+          pushToast(err?.response?.data?.detail || "Failed to reset MFA.", "error");
+        } finally {
+          setBusy(false);
+          setConfirmConfig(null);
+        }
+      },
+      onCancel: () => setConfirmConfig(null),
+    });
+  };
+
   const handleOpenResetModal = (user) => {
     if (!canUpdateUsers) {
       pushToast(denyMessage, "error");
@@ -409,6 +444,7 @@ export default function UserManagement() {
           currentUser={currentUser}
           onEdit={openEditModal}
           onResetPassword={handleOpenResetModal}
+          onResetMfa={handleResetMfa}
           onToggleStatus={handleToggleStatus}
           onUnlock={handleUnlockUser}
           onDelete={handleDeleteUser}

@@ -472,6 +472,7 @@ def print_summary(conn):
         ("http_security_details",  "HTTP security header assessment"),
         ("vulnerability_definitions", "CVE/vuln catalog"),
         ("asset_vulnerabilities",  "Findings (asset × cve per scan)"),
+        ("mac_vendor_cache",       "MAC address OUI vendor cache"),
         ("notifications",          "User notification inbox"),
     ]
 
@@ -521,14 +522,29 @@ def run_migration():
     run_alembic_migrations()
 
     # Step 1.5: Run additive migrations
+    # 1. Users schema
     try:
         from db.models.users import ensure_user_schema
-        from scans.models import ensure_scan_schema
         ensure_user_schema()
-        ensure_scan_schema()
-        print("  ✓ User and scan schemas verified and migrated")
+        print("  ✓ User schema verified and migrated")
     except Exception as e:
-        print(f"  ✗ Failed to run additive schema updates: {e}")
+        print(f"  ✗ Failed to run additive User schema updates: {e}")
+
+    # 2. Assets (OUI Cache) schema
+    try:
+        from db.models.assets import ensure_mac_vendor_schema
+        ensure_mac_vendor_schema()
+        print("  ✓ MAC OUI cache schema verified and migrated")
+    except Exception as e:
+        print(f"  ✗ Failed to run additive MAC OUI cache schema updates: {e}")
+
+    # 3. Scans schema (might fail on Windows permission issues with scapy)
+    try:
+        from scans.models import ensure_scan_schema
+        ensure_scan_schema()
+        print("  ✓ Scan schema verified and migrated")
+    except Exception as e:
+        print(f"  ✗ Failed to run additive Scan schema updates: {e}")
 
     # Step 2 & 3: Seed RBAC and default org in a transaction
     with engine.begin() as conn:

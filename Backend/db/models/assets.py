@@ -223,3 +223,59 @@ class AssetChangeLog(Base):
 
     def __repr__(self):
         return f"<AssetChangeLog {self.change_type!r} asset={self.asset_id!r}>"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAC Vendor Cache
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MacVendorCache(Base):
+    """
+    Cache table to store resolved MAC address vendor names dynamically.
+    Shares cache across all scanning workers to avoid rate limiting and speed up scans.
+    """
+    __tablename__ = "mac_vendor_cache"
+
+    mac_prefix   = Column(String(6), primary_key=True)  # Normalized 6-char hex OUI (e.g. "00000c")
+    vendor_name  = Column(String(255), nullable=False)
+    created_at   = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
+    updated_at   = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    def __repr__(self):
+        return f"<MacVendorCache prefix={self.mac_prefix!r} vendor={self.vendor_name!r}>"
+
+
+def ensure_mac_vendor_schema():
+    """
+    Additive schema migration to create the mac_vendor_cache table.
+    """
+    from db.base import engine
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "mac_vendor_cache" in inspector.get_table_names():
+        return
+
+    dialect = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS mac_vendor_cache (
+                    mac_prefix VARCHAR(6) PRIMARY KEY,
+                    vendor_name VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mac_vendor_cache_created_at ON mac_vendor_cache (created_at)"))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS mac_vendor_cache (
+                    mac_prefix VARCHAR(6) PRIMARY KEY,
+                    vendor_name VARCHAR(255) NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mac_vendor_cache_created_at ON mac_vendor_cache (created_at)"))
+

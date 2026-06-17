@@ -206,6 +206,16 @@ export default function NotificationsPanel({ onClose, onUnreadChange, liveEvent 
 
   const unread = items.filter(n => !n.is_read).length;
 
+  const getEmptyMessage = () => {
+    if (category === "all") {
+      return "No notifications available.";
+    }
+    const catObj = CATEGORIES.find(c => c.id === category);
+    const label = catObj ? catObj.label : category;
+    const displayLabel = label.endsWith("s") ? label.slice(0, -1) : label;
+    return `No ${displayLabel} notifications found.`;
+  };
+
   return (
     <div className="np-panel" ref={panelRef} role="dialog" aria-label="Notifications">
       {/* Header */}
@@ -248,7 +258,7 @@ export default function NotificationsPanel({ onClose, onUnreadChange, liveEvent 
         ) : items.length === 0 ? (
           <div className="np-empty">
             <div className="np-empty-icon">🔔</div>
-            <p>No notifications yet</p>
+            <p>{getEmptyMessage()}</p>
           </div>
         ) : (
           <div className="np-list">

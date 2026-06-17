@@ -1229,3 +1229,58 @@ def reconcile_amt_inventory_task(org_id: str) -> dict:
         db.close()
 
 
+@celery_app.task(name="ccure.tasks.update_mac_vendor_registry", queue="default")
+def update_mac_vendor_registry_task() -> dict:
+    """
+    Downloads the latest raw OUI manufacturer registry from Wireshark
+    and updates the local manuf.txt file.
+    """
+    import requests
+    from core.oui_lookup import get_oui_db
+
+    url = "https://www.wireshark.org/download/automated/data/manuf"
+    log.info("Starting MAC vendor registry update from %s", url)
+
+    try:
+        db_path = get_oui_db().db_path
+        if not db_path:
+            log.warning("OUI database path is not defined. Skipping registry update.")
+            return {"success": False, "error": "No database path configured"}
+
+        # 1. Fetch from URL with a reasonable timeout
+        response = requests.get(url, timeout=30.0)
+        if response.status_code != 200:
+            log.warning("Failed to fetch OUI registry. HTTP Status: %d", response.status_code)
+            return {"success": False, "error": f"HTTP status {response.status_code}"}
+
+        content = response.text
+
+        # 2. Basic validation: ensure the file contains comments and some common MAC prefixes
+        if not content.startswith("#") or "00:00:00" not in content:
+            log.warning("Fetched OUI registry failed validation checks. Update aborted.")
+            return {"success": False, "error": "Invalid file format"}
+
+        # 3. Write to a temporary file first to prevent corruption on write failure
+        temp_path = db_path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        # 4. Safely rename/overwrite target file
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        os.rename(temp_path, db_path)
+
+        # 5. Reload the OUIDatabase mapping dict in memory
+        get_oui_db()._loaded = False
+        get_oui_db()._database.clear()
+        get_oui_db()._load()
+
+        log.info("MAC vendor registry updated successfully. Loaded %d entries.", len(get_oui_db()._database))
+        return {"success": True, "entries": len(get_oui_db()._database)}
+
+    except Exception as exc:
+        log.exception("MAC vendor registry background update task failed")
+        return {"success": False, "error": str(exc)}
+
+
+

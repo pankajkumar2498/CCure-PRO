@@ -6,7 +6,7 @@ Exports all production-grade ORM models in dependency order.
 
 from .rbac       import Organization, Role, Permission, RolePermission
 from .users      import User, RefreshTokenSession, AuditLog, PasswordResetToken
-from .assets     import Asset, AssetTag, AssetNote, AssetChangeLog
+from .assets     import Asset, AssetTag, AssetNote, AssetChangeLog, MacVendorCache, ensure_mac_vendor_schema
 from .scans      import Scan, ScanPhase
 from .findings   import (
     Service, TLSDetail, HttpSecurityDetail,
@@ -32,6 +32,8 @@ __all__ = [
     "AssetTag",
     "AssetNote",
     "AssetChangeLog",
+    "MacVendorCache",
+    "ensure_mac_vendor_schema",
     # Scans
     "Scan",
     "ScanPhase",

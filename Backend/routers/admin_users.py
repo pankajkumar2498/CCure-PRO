@@ -74,6 +74,76 @@ def _resolve_target_org_id(db: Session, current_user: User, requested_org_id: Op
 
     return str(org.id)
 
+
+def _notify_user_admin_action(
+    db: Session,
+    current_user: User,
+    target_user: User,
+    action_title: str,
+    action_message: str,
+    fan_out_message: str,
+):
+    """
+    Centralized helper to dispatch notifications for user administration actions.
+    Dispatches:
+      1. Personal receipt to the acting admin.
+      2. Fan-out to admins in the target user's organization.
+      3. Fan-out to admins in the acting admin's organization (if different).
+    """
+    try:
+        from routers.notifications import (
+            NotificationCategory,
+            NotificationType,
+            create_notification,
+            fan_out_notification,
+        )
+
+        # 1. Personal receipt for the admin who performed the action
+        create_notification(
+            db=db,
+            user_id=str(current_user.id),
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title=action_title,
+            message=action_message,
+        )
+
+        # 2. AUDIT TRANSPARENCY: Fan out to admins in the target organization
+        fan_out_notification(
+            db=db,
+            org_id=str(target_user.org_id),
+            target_roles=["superadmin", "org_admin"],
+            notification_type=NotificationType.ADMIN_NOTICE,
+            category=NotificationCategory.ADMIN,
+            title=action_title,
+            message=fan_out_message,
+            exclude_user_id=str(current_user.id),
+        )
+
+        # 3. CROSS-ORG VISIBILITY: If acting admin is from a different org (e.g. Superadmin),
+        #    notify admins in their own organization as well.
+        if str(current_user.org_id) != str(target_user.org_id):
+            fan_out_notification(
+                db=db,
+                org_id=str(current_user.org_id),
+                target_roles=["superadmin", "org_admin"],
+                notification_type=NotificationType.ADMIN_NOTICE,
+                category=NotificationCategory.ADMIN,
+                title=action_title,
+                message=fan_out_message,
+                exclude_user_id=str(current_user.id),
+            )
+    except Exception as _notif_exc:
+        log.warning(
+            "Notification dispatch failed for user administration action "
+            "[action=%s, target_user=%s, acting_admin=%s]: %s",
+            action_title,
+            target_user.username,
+            current_user.username,
+            _notif_exc,
+            exc_info=True,
+        )
+
 class UserCreateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -207,39 +277,14 @@ def create_user(
     db.commit()
     db.refresh(new_user)
     
-    try:
-        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
-        
-        # 1. Personal receipt for the admin who created it
-        create_notification(
-            db=db,
-            user_id=str(current_user.id),
-            notification_type=NotificationType.ADMIN_NOTICE,
-            category=NotificationCategory.ADMIN,
-            title="User Created",
-            message=f"Successfully created new user account: {new_user.username}",
-        )
-        
-        # 2. AUDIT TRANSPARENCY: Fan out to other admins
-        fan_out_notification(
-            db=db,
-            org_id=str(current_user.org_id),
-            target_roles=["superadmin", "org_admin"],
-            notification_type=NotificationType.ADMIN_NOTICE,
-            category=NotificationCategory.ADMIN,
-            title="New User Created",
-            message=f"Admin {current_user.username} created new user account: {new_user.username}",
-            exclude_user_id=str(current_user.id)
-        )
-    except Exception as _notif_exc:
-        log.warning(
-            "Notification dispatch failed after user creation "
-            "[created_user=%s, acting_admin=%s]: %s",
-            new_user.username,
-            current_user.username,
-            _notif_exc,
-            exc_info=True,
-        )
+    _notify_user_admin_action(
+        db=db,
+        current_user=current_user,
+        target_user=new_user,
+        action_title="User Created",
+        action_message=f"Successfully created new user account: {new_user.username}",
+        fan_out_message=f"Admin {current_user.username} created new user account: {new_user.username}",
+    )
 
     return {"id": str(new_user.id), "username": new_user.username, "organization_id": str(new_user.org_id)}
 
@@ -425,6 +470,18 @@ def change_status(
     if changes:
         log_audit_event(db, current_user, "user.status_changed", "user", str(user.id), changes, request)
         db.commit()
+
+        if "is_active" in changes:
+            action = "Enabled" if user.is_active else "Disabled"
+            _notify_user_admin_action(
+                db=db,
+                current_user=current_user,
+                target_user=user,
+                action_title=f"User {action}",
+                action_message=f"Successfully {action.lower()} user account: {user.username}",
+                fan_out_message=f"Admin {current_user.username} {action.lower()} user account: {user.username}",
+            )
+
     return {"detail": "User status updated successfully"}
 
 @router.delete("/{user_id}")
@@ -470,39 +527,14 @@ def delete_user(
     )
     db.commit()
     
-    try:
-        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
-        
-        # 1. Personal receipt
-        create_notification(
-            db=db,
-            user_id=str(current_user.id),
-            notification_type=NotificationType.ADMIN_NOTICE,
-            category=NotificationCategory.ADMIN,
-            title="User Suspended",
-            message=f"User {user.username} has been moved to Deleted Users.",
-        )
-        
-        # 2. AUDIT TRANSPARENCY: Fan out
-        fan_out_notification(
-            db=db,
-            org_id=str(current_user.org_id),
-            target_roles=["superadmin", "org_admin"],
-            notification_type=NotificationType.ADMIN_NOTICE,
-            category=NotificationCategory.ADMIN,
-            title="User Suspended",
-            message=f"Admin {current_user.username} suspended user account: {user.username}.",
-            exclude_user_id=str(current_user.id)
-        )
-    except Exception as _notif_exc:
-        log.warning(
-            "Notification dispatch failed after user deletion "
-            "[deleted_user=%s, acting_admin=%s]: %s",
-            user.username,
-            current_user.username,
-            _notif_exc,
-            exc_info=True,
-        )
+    _notify_user_admin_action(
+        db=db,
+        current_user=current_user,
+        target_user=user,
+        action_title="User Suspended",
+        action_message=f"User {user.username} has been moved to Deleted Users.",
+        fan_out_message=f"Admin {current_user.username} suspended user account: {user.username}.",
+    )
 
     return {
         "detail": "User moved to Deleted Users",
@@ -541,6 +573,16 @@ def restore_user(
         request,
     )
     db.commit()
+
+    _notify_user_admin_action(
+        db=db,
+        current_user=current_user,
+        target_user=user,
+        action_title="User Restored",
+        action_message=f"Successfully restored user account: {user.username}",
+        fan_out_message=f"Admin {current_user.username} restored user account: {user.username}",
+    )
+
     return {"detail": "User restored. The account remains inactive until explicitly reactivated."}
 
 

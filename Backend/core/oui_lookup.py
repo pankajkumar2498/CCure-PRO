@@ -78,16 +78,26 @@ class OUIDatabase:
                     if not line or line.startswith('#'):
                         continue
 
-                    parts = line.split('\t', 1)
-                    if len(parts) < 2:
+                    # Support tab separation (Assignment \t ShortName \t FullName)
+                    parts = [p.strip() for p in line.split('\t') if p.strip()]
+                    if not parts:
                         continue
 
-                    oui_str = parts[0].strip()
-                    vendor = parts[1].strip()
-                    oui_normalized = oui_str.replace('-', '').replace(' ', '').lower()
+                    oui_str = parts[0]
+                    # Normalize MAC Prefix (strip colons, hyphens, spaces)
+                    oui_normalized = oui_str.replace(':', '').replace('-', '').replace(' ', '').lower()
 
                     if len(oui_normalized) >= 6:
                         oui_normalized = oui_normalized[:6]
+                        
+                        # Grab full vendor name (last column) if available, else short name
+                        if len(parts) >= 3:
+                            vendor = parts[2]
+                        elif len(parts) >= 2:
+                            vendor = parts[1]
+                        else:
+                            continue
+
                         self._database[oui_normalized] = vendor
 
             log.info("OUI database loaded: %d entries", len(self._database))
@@ -97,33 +107,12 @@ class OUIDatabase:
             self._loaded = True
 
     def _load_cache(self):
-        """Load cached vendor lookups from disk."""
-        if not self.cache_path:
-            return
-
-        try:
-            if os.path.exists(self.cache_path):
-                with open(self.cache_path, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                    if isinstance(cache_data, dict):
-                        with self._cache_lock:
-                            self._cache = {k.lower(): str(v) for k, v in cache_data.items()}
-                log.info("Vendor cache loaded: %d entries", len(self._cache))
-        except Exception as e:
-            log.warning("Failed to load vendor cache %s: %s", self.cache_path, e)
+        """Placeholder for disk cache load (disabled in favor of PostgreSQL cache)."""
+        pass
 
     def _save_cache(self):
-        """Save cached vendor lookups to disk."""
-        if not self.cache_path:
-            return
-
-        try:
-            with self._cache_lock:
-                cache_data = dict(self._cache)
-            with open(self.cache_path, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, indent=2)
-        except Exception as e:
-            log.warning("Failed to save vendor cache %s: %s", self.cache_path, e)
+        """Placeholder for disk cache save (disabled in favor of PostgreSQL cache)."""
+        pass
 
     def _normalize_mac(self, mac_address: str) -> Optional[str]:
         if not mac_address:
@@ -137,7 +126,7 @@ class OUIDatabase:
 
         url = self.api_url.rstrip('/') + '/' + mac_address
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=2.0)
             if response.status_code != 200:
                 return None
 
@@ -156,26 +145,64 @@ class OUIDatabase:
             if not vendor:
                 return
 
-            with self._cache_lock:
-                self._cache[mac_address] = vendor
-            self._save_cache()
-            log.info("Cached vendor lookup for %s -> %s", mac_address, vendor)
+            oui = mac_address[:6]
+            try:
+                from db.base import SessionLocal
+                from db.models import MacVendorCache
+                from sqlalchemy.dialects.postgresql import insert
+
+                db = SessionLocal()
+                try:
+                    stmt = insert(MacVendorCache).values(
+                        mac_prefix=oui,
+                        vendor_name=vendor
+                    ).on_conflict_do_update(
+                        index_elements=["mac_prefix"],
+                        set_={"vendor_name": vendor}
+                    )
+                    db.execute(stmt)
+                    db.commit()
+                    log.info("Cached background vendor lookup to DB for OUI %s -> %s", oui, vendor)
+                finally:
+                    db.close()
+            except Exception as e:
+                log.warning("Failed to save background vendor to DB cache: %s", e)
         finally:
             with self._cache_lock:
                 self._pending_fetches.discard(mac_address)
 
     def _schedule_api_fetch(self, mac_address: str) -> None:
+        # Check database cache first to avoid scheduling redundant calls
+        mac_clean = self._normalize_mac(mac_address)
+        if not mac_clean:
+            return
+
+        oui = mac_clean[:6]
+        try:
+            from db.base import SessionLocal
+            from db.models import MacVendorCache
+
+            db = SessionLocal()
+            try:
+                cached_entry = db.query(MacVendorCache).filter(MacVendorCache.mac_prefix == oui).first()
+                if cached_entry:
+                    return
+            finally:
+                db.close()
+        except Exception:
+            pass
+
         with self._cache_lock:
-            if mac_address in self._pending_fetches or mac_address in self._cache:
+            if mac_clean in self._pending_fetches:
                 return
-            self._pending_fetches.add(mac_address)
+            self._pending_fetches.add(mac_clean)
 
         try:
-            self._executor.submit(self._fetch_and_cache, mac_address)
+            self._executor.submit(self._fetch_and_cache, mac_clean)
         except Exception as exc:
-            log.debug("Failed to schedule vendor API fetch for %s: %s", mac_address, exc)
+            log.debug("Failed to schedule vendor API fetch for %s: %s", mac_clean, exc)
             with self._cache_lock:
-                self._pending_fetches.discard(mac_address)
+                self._pending_fetches.discard(mac_clean)
 
     def lookup(self, mac_address: str) -> Optional[str]:
         """
@@ -198,20 +225,33 @@ class OUIDatabase:
             return None
 
         oui = mac_clean[:6]
+        
+        # 1. Primary path: Local offline file registry
         vendor = self._database.get(oui)
         if vendor:
             return vendor
 
-        with self._cache_lock:
-            vendor = self._cache.get(mac_clean)
-        if vendor:
-            return vendor
+        # 2. Secondary path: Shared database cache table
+        try:
+            from db.base import SessionLocal
+            from db.models import MacVendorCache
 
+            db = SessionLocal()
+            try:
+                cached_entry = db.query(MacVendorCache).filter(MacVendorCache.mac_prefix == oui).first()
+                if cached_entry:
+                    return cached_entry.vendor_name
+            finally:
+                db.close()
+        except Exception as e:
+            log.warning("Database OUI cache lookup failed: %s", e)
+
+        # 3. Tertiary path: Schedule async web request to fetch and save to cache
         self._schedule_api_fetch(mac_clean)
         return None
 
     def lookup_sync(self, mac_address: str) -> Optional[str]:
-        """Synchronous vendor lookup using API fallback for tests or one-off queries."""
+        """Synchronous vendor lookup using API fallback."""
         vendor = self.lookup(mac_address)
         if vendor:
             return vendor
@@ -220,11 +260,31 @@ class OUIDatabase:
         if not mac_clean:
             return None
 
+        # Fetch directly from API
         vendor = self._query_vendor_api(mac_clean)
         if vendor:
-            with self._cache_lock:
-                self._cache[mac_clean] = vendor
-            self._save_cache()
+            oui = mac_clean[:6]
+            try:
+                from db.base import SessionLocal
+                from db.models import MacVendorCache
+                from sqlalchemy.dialects.postgresql import insert
+
+                db = SessionLocal()
+                try:
+                    stmt = insert(MacVendorCache).values(
+                        mac_prefix=oui,
+                        vendor_name=vendor
+                    ).on_conflict_do_update(
+                        index_elements=["mac_prefix"],
+                        set_={"vendor_name": vendor}
+                    )
+                    db.execute(stmt)
+                    db.commit()
+                finally:
+                    db.close()
+            except Exception as e:
+                log.warning("Failed to save vendor to DB cache synchronously: %s", e)
+
         return vendor
 
 

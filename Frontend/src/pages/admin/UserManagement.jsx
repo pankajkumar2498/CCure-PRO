@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
@@ -38,13 +38,34 @@ export default function UserManagement() {
 
   // UI state
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const isFirstLoad = useRef(true);
+  const searchTimer = useRef(null);
 
   // Filters — initialise org from URL param if Superadmin linked here from Orgs page
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedOrgId, setSelectedOrgId] = useState(searchParams.get("org_id") || "");
   const [page, setPage] = useState(1);
+
+  const handleSearchChange = (val) => {
+    setSearchInput(val);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setSearch(val);
+      setPage(1);
+    }, 350);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+      }
+    };
+  }, []);
 
   // Modals
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,8 +92,9 @@ export default function UserManagement() {
   }, [roles, isSuperadmin]);
 
   // ── Data loading (server-side) ────────────────────────────────────────────
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
+  const loadUsers = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    else setRefreshing(true);
     setError("");
     try {
       const data = await listUsers({
@@ -87,6 +109,7 @@ export default function UserManagement() {
       setError("Unable to load users. Please try again.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [page, search, selectedOrgId, isSuperadmin]);
 
@@ -111,13 +134,15 @@ export default function UserManagement() {
 
   // Reload users when filters/page change
   useEffect(() => {
-    loadUsers();
+    if (isFirstLoad.current) {
+      loadUsers(false);
+      isFirstLoad.current = false;
+    } else {
+      loadUsers(true);
+    }
   }, [loadUsers]);
 
-  // Reset to page 1 when search or org filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [search, selectedOrgId]);
+
 
   // Resolve the display name of the currently filtered org
   const filteredOrgName = selectedOrgId
@@ -161,7 +186,7 @@ export default function UserManagement() {
       await createUser(data);
       pushToast("User created successfully.", "success");
       closeModal();
-      await loadUsers();
+      await loadUsers(true);
     } catch (err) {
       pushToast(err?.response?.data?.detail || "Failed to create user.", "error");
     } finally {
@@ -198,7 +223,7 @@ export default function UserManagement() {
 
       pushToast("User updated successfully.", "success");
       closeModal();
-      await loadUsers();
+      await loadUsers(true);
     } catch (err) {
       pushToast(err?.response?.data?.detail || "Failed to update user.", "error");
     } finally {
@@ -367,6 +392,10 @@ export default function UserManagement() {
       : `${totalCount} total users across all organizations`
     : `${totalCount} user${totalCount !== 1 ? "s" : ""} in your organization`;
 
+  const startIndex = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const endIndex = Math.min(startIndex + users.length - 1, totalCount);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout pageTitle="User Management">
@@ -388,8 +417,8 @@ export default function UserManagement() {
                 Deleted users
               </Button>
             )}
-            <Button type="button" variant="ghost" size="sm" onClick={loadUsers} disabled={loading || busy}>
-              {loading ? "Refreshing..." : "Refresh"}
+            <Button type="button" variant="ghost" size="sm" onClick={() => loadUsers(true)} disabled={loading || refreshing || busy}>
+              {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
             {canCreateUsers && (
               <Button type="button" variant="primary" size="sm" onClick={openCreateModal} disabled={busy}>
@@ -408,8 +437,8 @@ export default function UserManagement() {
             <input
               type="text"
               placeholder="Search by username, email or name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="search-input"
             />
           </div>
@@ -417,7 +446,10 @@ export default function UserManagement() {
             <select
               className="org-filter-select"
               value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
+              onChange={(e) => {
+                setSelectedOrgId(e.target.value);
+                setPage(1);
+              }}
               title="Filter by organization"
             >
               <option value="">All Organizations</option>
@@ -428,6 +460,25 @@ export default function UserManagement() {
           )}
         </div>
 
+        {totalCount > 0 && (
+          <div className="pagination-row" style={{ marginBottom: 16 }}>
+            <div className="pagination-summary">
+              Showing {startIndex}–{endIndex} of {totalCount} users
+            </div>
+            <div className="pagination-controls">
+              <Button type="button" variant="ghost" size="sm" disabled={page <= 1 || refreshing} onClick={() => setPage(page - 1)}>
+                Prev
+              </Button>
+              <span className="pagination-page">
+                Page {page} of {totalPages}
+              </span>
+              <Button type="button" variant="ghost" size="sm" disabled={page >= totalPages || refreshing} onClick={() => setPage(page + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Table — server-side data, no client-side slicing */}
         <UserTable
           users={users}
@@ -435,12 +486,7 @@ export default function UserManagement() {
           organizations={organizations}
           showOrganizationColumn={!orgAdmin}
           loading={loading}
-          search={search}
-          onSearch={setSearch}
-          page={page}
-          pageSize={PAGE_SIZE}
-          onPageChange={setPage}
-          totalCount={totalCount}
+          refreshing={refreshing}
           currentUser={currentUser}
           onEdit={openEditModal}
           onResetPassword={handleOpenResetModal}

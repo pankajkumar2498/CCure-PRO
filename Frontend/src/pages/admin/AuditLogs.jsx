@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import { listAuditLogs } from "../../api/admin";
 import { formatDateTime } from "../../utils/date";
@@ -19,23 +19,28 @@ export default function AuditLogs() {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const [newEventsCount, setNewEventsCount] = useState(0);
   const [latestLogTime, setLatestLogTime] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const isFirstLoad = useRef(true);
 
-  const loadData = useCallback(async (quiet = false) => {
+  const loadData = useCallback(async (quiet = false, targetPage = page) => {
     if (!quiet) setLoading(true);
     else setRefreshing(true);
     try {
       const params = {
-        skip: 0,
-        limit: 100,
+        skip: (targetPage - 1) * pageSize,
+        limit: pageSize,
         ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ""))
       };
       const data = await listAuditLogs(params);
       setLogs(data.logs);
       setTotal(data.total);
-      if (data.logs && data.logs.length > 0) {
-        setLatestLogTime(data.logs[0].created_at);
-      } else {
-        setLatestLogTime(null);
+      if (targetPage === 1) {
+        if (data.logs && data.logs.length > 0) {
+          setLatestLogTime(data.logs[0].created_at);
+        } else {
+          setLatestLogTime(null);
+        }
       }
       setNewEventsCount(0);
     } catch (err) {
@@ -45,11 +50,18 @@ export default function AuditLogs() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filters, pushToast]);
+  }, [filters, pageSize, pushToast]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    // Only show full-page loading spinner on initial mount when logs are empty.
+    // Subsequent page navigations or refreshes load "quietly" (with table opacity indicator).
+    if (isFirstLoad.current) {
+      loadData(false, page);
+      isFirstLoad.current = false;
+    } else {
+      loadData(true, page);
+    }
+  }, [loadData, page]);
 
   // Background auto-refresh polling for new events
   // Background auto-refresh polling for new events
@@ -89,6 +101,7 @@ export default function AuditLogs() {
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
+    setPage(1);
   };
 
   const renderAffectedObject = (log) => {
@@ -235,7 +248,10 @@ export default function AuditLogs() {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {newEventsCount > 0 && (
               <div
-                onClick={() => loadData(true)}
+                onClick={() => {
+                  setPage(1);
+                  loadData(true, 1);
+                }}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -267,7 +283,16 @@ export default function AuditLogs() {
                 <span>💬 {newEventsCount} new event{newEventsCount > 1 ? 's' : ''}</span>
               </div>
             )}
-            <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setPage(1);
+                loadData(true, 1);
+              }}
+              disabled={refreshing}
+            >
               {refreshing ? "Syncing..." : "Sync Logs"}
             </Button>
           </div>
@@ -325,9 +350,74 @@ export default function AuditLogs() {
           </FormField>
         </div>
 
+        {total > 0 && (
+          <div className="pagination-row" style={{ marginBottom: 16 }}>
+            <div className="pagination-summary">
+              Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} of {total} events
+            </div>
+            <div className="pagination-controls" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginRight: 12 }}>
+                <span className="text-muted">Show</span>
+                <select
+                  className="field-input"
+                  style={{ width: 70, height: 28, padding: "0 4px", fontSize: 12 }}
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  disabled={refreshing}
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                </select>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page <= 1 || refreshing}
+                onClick={() => setPage(1)}
+              >
+                {"<<"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page <= 1 || refreshing}
+                onClick={() => setPage(page - 1)}
+              >
+                Prev
+              </Button>
+              <span className="pagination-page" style={{ fontSize: 12 }}>
+                Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page >= Math.ceil(total / pageSize) || refreshing}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page >= Math.ceil(total / pageSize) || refreshing}
+                onClick={() => setPage(Math.max(1, Math.ceil(total / pageSize)))}
+              >
+                {">>"}
+              </Button>
+            </div>
+          </div>
+        )}
 
-
-        <div className="table-wrap">
+        <div className="table-wrap" style={{ opacity: refreshing ? 0.6 : 1, transition: "opacity 0.15s ease-in-out" }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -420,11 +510,6 @@ export default function AuditLogs() {
             </tbody>
           </table>
         </div>
-        {logs.length > 0 && (
-          <p className="muted" style={{ textAlign: "center", marginTop: 16, fontSize: 12 }}>
-            Showing latest {logs.length} of {total} events
-          </p>
-        )}
       </div>
 
       <AuditLogDetailsModal isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} log={selectedLog} />

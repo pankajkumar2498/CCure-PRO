@@ -105,12 +105,7 @@ export default function UserTable({
   organizations,
   showOrganizationColumn = true,
   loading,
-  search,
-  onSearch,
-  page,
-  pageSize,
-  onPageChange,
-  totalCount,
+  refreshing = false,
   currentUser,
   onEdit,
   onResetPassword,
@@ -121,9 +116,6 @@ export default function UserTable({
   canUpdateUsers = false,
   canDeleteUsers = false,
 }) {
-  const startIndex = Math.min((page - 1) * pageSize + 1, totalCount);
-  const endIndex = Math.min(startIndex + users.length - 1, totalCount);
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div className="card card--admin-table">
@@ -131,22 +123,6 @@ export default function UserTable({
         <div>
           <h3 className="card-title">Users</h3>
           <p className="card-subtitle">Review users, role assignment, account status, and organization.</p>
-        </div>
-        <div className="table-controls">
-          <label className="field-label" htmlFor="user-search">
-            Search users
-          </label>
-          <div className="search-field">
-            <span className="search-icon">🔍</span>
-            <input
-              id="user-search"
-              className="field-input"
-              type="search"
-              placeholder="Search by name, username, email, or organization"
-              value={search}
-              onChange={(event) => onSearch(event.target.value)}
-            />
-          </div>
         </div>
       </div>
 
@@ -161,7 +137,7 @@ export default function UserTable({
           description="Try a different search term or add a new user to get started."
         />
       ) : (
-        <>
+        <div style={{ opacity: refreshing ? 0.6 : 1, transition: "opacity 0.15s ease-in-out" }}>
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -204,24 +180,7 @@ export default function UserTable({
               </tbody>
             </table>
           </div>
-
-          <div className="pagination-row">
-            <div className="pagination-summary">
-              Showing {startIndex}–{endIndex} of {totalCount} users
-            </div>
-            <div className="pagination-controls">
-              <Button type="button" variant="ghost" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                Prev
-              </Button>
-              <span className="pagination-page">
-                Page {page} of {totalPages}
-              </span>
-              <Button type="button" variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );

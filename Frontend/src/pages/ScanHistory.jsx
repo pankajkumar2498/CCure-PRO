@@ -501,7 +501,7 @@ function ScanMonitorCard({ scan, onStop, onView }) {
               <span className="stat-label">Active Hosts</span>
             </div>
             {summary.vulnerabilities !== undefined && (
-               <div className="monitor-stat">
+              <div className="monitor-stat">
                 <span className="stat-value" style={{ color: "#ef4444" }}>{summary.vulnerabilities}</span>
                 <span className="stat-label">Findings</span>
               </div>
@@ -529,7 +529,7 @@ export default function ScanHistory({ mode = "history" }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isMonitor = mode === "monitor";
-  
+
   const { user } = useAuth();
   const { setTarget, setScanType, setPipelineMode, setPhase1Hosts, setPhase1Summary, setScanId, setScanNo, resetScan } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
@@ -742,14 +742,14 @@ export default function ScanHistory({ mode = "history" }) {
       setDialog(null);
 
       // Navigate to the "Active Scan" view and tell it to show the mission for this scan
-      navigate(`/scan/active/${data.scan_id}`, { 
-        state: { 
+      navigate(`/scan/active/${data.scan_id}`, {
+        state: {
           missionMode: true,
           scanId: data.scan_id,
           scanNo: data.scan_no ?? data.display_id,
           target: target,
           pipelineMode: pipelineMode
-        } 
+        }
       });
 
       pushToast(`Initiating re-run for ${target}`, "success");
@@ -948,8 +948,8 @@ export default function ScanHistory({ mode = "history" }) {
           <div className="empty-state">
             <span className="empty-state-icon">{isMonitor ? "📡" : "📋"}</span>
             <p className="empty-state-title">
-              {isMonitor 
-                ? "No active scans running right now." 
+              {isMonitor
+                ? "No active scans running right now."
                 : (filterStatus !== "all" || filterDate !== "all" ? "No scans match your filters." : "No scans yet.")
               }
             </p>
@@ -962,9 +962,9 @@ export default function ScanHistory({ mode = "history" }) {
         {!loading && visible.length > 0 && isMonitor && (
           <div className="monitor-grid">
             {visible.map(scan => (
-              <ScanMonitorCard 
-                key={scan.id} 
-                scan={scan} 
+              <ScanMonitorCard
+                key={scan.id}
+                scan={scan}
                 onView={handleView}
                 onStop={(s) => {
                   setDialog({
@@ -1097,16 +1097,16 @@ export default function ScanHistory({ mode = "history" }) {
                 })}
               </tbody>
             </table>
-            
+
             {totalPages > 1 && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                   Showing {(page - 1) * rowsPerPage + 1} to {Math.min(page * rowsPerPage, visible.length)} of {visible.length}
                 </span>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button 
-                    className="btn btn--ghost" 
-                    disabled={page === 1} 
+                  <button
+                    className="btn btn--ghost"
+                    disabled={page === 1}
                     onClick={() => setPage(p => p - 1)}
                     style={{ padding: "4px 10px" }}
                   >
@@ -1115,9 +1115,9 @@ export default function ScanHistory({ mode = "history" }) {
                   <span style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", padding: "0 8px" }}>
                     Page {page} of {totalPages}
                   </span>
-                  <button 
-                    className="btn btn--ghost" 
-                    disabled={page === totalPages} 
+                  <button
+                    className="btn btn--ghost"
+                    disabled={page === totalPages}
                     onClick={() => setPage(p => p + 1)}
                     style={{ padding: "4px 10px" }}
                   >

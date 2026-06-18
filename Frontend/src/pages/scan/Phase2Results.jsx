@@ -51,6 +51,26 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
 const hasDetectedServices = (host) =>
   (host?.open_ports?.length || 0) > 0 || (host?.udp_services?.length || 0) > 0;
 
+const getCategoryLabel = (cat) => {
+  const labels = {
+    router: "Router",
+    switch: "Switch",
+    firewall: "Firewall",
+    wireless_ap: "Wireless AP",
+    printer: "Printer",
+    iot: "IoT/ICS",
+    server: "Server",
+    endpoint: "Endpoint",
+    voip: "VoIP",
+    storage: "Storage",
+    network_appliance: "Net Appliance",
+    scada_ics: "Industrial/OT",
+    virtual_machine: "Virtual Machine",
+    unknown: "Unknown"
+  };
+  return labels[cat] || cat;
+};
+
 export default function Phase2Results() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -543,7 +563,7 @@ export default function Phase2Results() {
                           )}
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                             <span className="muted">Device Type:</span>
-                            <span>{textValue(host.snmp_device_type || host.device_category)}</span>
+                            <span>{textValue(host.snmp_device_type || getCategoryLabel(host.device_category))}</span>
                           </div>
                           {host.snmp_info?.sys_name && (
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>

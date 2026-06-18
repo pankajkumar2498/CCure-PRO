@@ -33,6 +33,26 @@ const SEV_CLASS = {
   Medium: "db-sev-badge--medium", Low: "db-sev-badge--low", Info: "db-sev-badge--info"
 };
 
+const getCategoryLabel = (cat) => {
+  const labels = {
+    router: "Router",
+    switch: "Switch",
+    firewall: "Firewall",
+    wireless_ap: "Wireless AP",
+    printer: "Printer",
+    iot: "IoT/ICS",
+    server: "Server",
+    endpoint: "Endpoint",
+    voip: "VoIP",
+    storage: "Storage",
+    network_appliance: "Net Appliance",
+    scada_ics: "Industrial/OT",
+    virtual_machine: "Virtual Machine",
+    unknown: "Unknown"
+  };
+  return labels[cat] || cat || "—";
+};
+
 export default function AssetRegistry() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -432,7 +452,7 @@ export default function AssetRegistry() {
                             )}
                           </td>
                           <td style={{ color: "var(--text-muted)", fontSize: "0.72rem" }}>
-                            {a.device_category || "—"}
+                            {getCategoryLabel(a.device_category)}
                           </td>
                           <td>
                             <span style={{ fontWeight: 600, color: a.owner ? "var(--text)" : "var(--text-faint)" }}>

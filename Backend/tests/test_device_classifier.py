@@ -204,11 +204,12 @@ def test_priority_netbios_over_cpe_over_ports():
 def test_classify_scada_ics():
     """Verify that Modbus/S7comm ports, Siemens vendor name, and scada keywords map to scada_ics category."""
     # Test port profile
-    host_port = {
-        "open_ports": [{"port": 502}]
-    }
-    assert classify_device(host_port) == "scada_ics"
-    assert host_port["device_category_signal"] == "port_profile"
+    for p in (502, 102, 20000, 44818, 47808, 4840, 2404, 18245, 9600, 5007, 2455):
+        host_port = {
+            "open_ports": [{"port": p}]
+        }
+        assert classify_device(host_port) == "scada_ics"
+        assert host_port["device_category_signal"] == "port_profile"
 
     # Test vendor OUI classification
     host_vendor = {
@@ -272,6 +273,24 @@ def test_credentialed_classification_override():
     assert host["device_category_signal"] == "credentialed"
 
 
+def test_classify_ot_info_override():
+    """Verify that OT info dict structures map immediately to scada_ics with high confidence."""
+    host = {
+        "ot_info": {
+            "protocol": "modbus",
+            "vendor": "Schneider Electric",
+            "model": "Modicon M221"
+        },
+        "open_ports": [{"port": 80}]  # Usually maps to server
+    }
+    category = classify_device(host)
+    assert category == "scada_ics"
+    assert host["device_category_signal"] == "modbus"
+    assert host["vendor"] == "Schneider Electric"
+    assert host["os_family"] == "Embedded"
+    assert host["os_confidence"] == "High"
+
+
 if __name__ == "__main__":
     test_classify_vmware_oui()
     test_classify_netbios_server_service()
@@ -288,4 +307,6 @@ if __name__ == "__main__":
     test_docker_host_ip_forwarding_not_router()
     test_weak_signals_remain_unknown()
     test_credentialed_classification_override()
+    test_classify_ot_info_override()
     print("All device classifier tests passed successfully!")
+

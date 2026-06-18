@@ -28,6 +28,9 @@ from core.constants import SCAPY_AVAILABLE
 
 log = logging.getLogger("ccure.discovery.enrichment")
 
+from concurrent.futures import ThreadPoolExecutor
+_OT_POOL = ThreadPoolExecutor(max_workers=128)
+
 # SNMP OIDs for device classification
 _SNMP_OIDS = {
     "ip_forwarding": "1.3.6.1.2.1.4.1.0",     # 1=router, 2=host
@@ -60,11 +63,137 @@ def enrich_host(ip: str, result: Dict) -> None:
         ip:     Target IP address string.
         result: Host result dict from DiscoveryEngine — mutated in place.
     """
-    for fn in (_ptr_lookup, _snmp_lightweight_probe, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
+    for fn in (_ptr_lookup, _snmp_lightweight_probe, _ot_protocol_probes, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
         try:
             fn(ip, result)
         except Exception as exc:
             log.debug("enrich_host(%s) %s error: %s", ip, fn.__name__, exc)
+
+
+def _is_port_connectable(ip: str, port: int, timeout: float = 1.0) -> bool:
+    """Perform a fast non-blocking TCP socket connection check."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _ot_protocol_probes(ip: str, result: Dict) -> None:
+    """
+    Perform parallel, safe OT protocol fingerprinting on port-gating targets.
+    Utilizes a shared module-level thread pool, smart connection checks, and sequences port 102.
+    """
+    from core.discovery.techniques.ot_probes import (
+        probe_modbus, probe_s7, probe_ethernetip, probe_bacnet, probe_dnp3,
+        probe_opcua, probe_iec104, probe_ge_srtp, probe_fins, probe_melsec,
+        probe_codesys, probe_mms
+    )
+    from concurrent.futures import as_completed
+
+    # Port mapping for each protocol (MMS and S7 both share port 102, so handled separately)
+    port_map = {
+        "modbus": (502, True),       # (port, is_tcp)
+        "ethernetip": (44818, False), # UDP
+        "bacnet": (47808, False),    # UDP
+        "dnp3": (20000, True),       # TCP (fallback to UDP inside probe)
+        "opcua": (4840, True),
+        "iec104": (2404, True),
+        "ge_srtp": (18245, True),
+        "fins": (9600, True),
+        "melsec": (5007, True),
+        "codesys": (2455, True),
+    }
+
+    port_states = result.get("port_states", {})
+
+    # Pre-filter: determine which protocols we should actually probe
+    candidate_probes = []
+    
+    # 1. Check TCP / UDP mapped probes
+    for name, (port, is_tcp) in port_map.items():
+        state = port_states.get(port) or port_states.get(str(port))
+        if state not in ("open", "open|filtered", "filtered", None):
+            continue
+            
+        # Fast TCP pre-connection check
+        if is_tcp and state is None:
+            if not _is_port_connectable(ip, port, timeout=1.0):
+                continue
+                
+        # If UDP, or TCP connection succeeded, or port state already confirmed open, add to candidates
+        if name == "modbus":
+            candidate_probes.append((name, probe_modbus))
+        elif name == "ethernetip":
+            candidate_probes.append((name, probe_ethernetip))
+        elif name == "bacnet":
+            candidate_probes.append((name, probe_bacnet))
+        elif name == "dnp3":
+            candidate_probes.append((name, probe_dnp3))
+        elif name == "opcua":
+            candidate_probes.append((name, probe_opcua))
+        elif name == "iec104":
+            candidate_probes.append((name, probe_iec104))
+        elif name == "ge_srtp":
+            candidate_probes.append((name, probe_ge_srtp))
+        elif name == "fins":
+            candidate_probes.append((name, probe_fins))
+        elif name == "melsec":
+            candidate_probes.append((name, probe_melsec))
+        elif name == "codesys":
+            candidate_probes.append((name, probe_codesys))
+
+    # 2. Handle Port 102 (S7 & MMS) sequencing:
+    state_102 = port_states.get(102) or port_states.get("102")
+    is_102_candidate = state_102 in ("open", "open|filtered", "filtered", None)
+    if is_102_candidate and state_102 is None:
+        is_102_candidate = _is_port_connectable(ip, 102, timeout=1.0)
+
+    def sequenced_port_102_probe(ip_addr: str, timeout: float = 1.0) -> Optional[dict]:
+        """Sequence Siemens S7 comm first, fallback to MMS on port 102 to avoid collision."""
+        s7_info = probe_s7(ip_addr, timeout)
+        if s7_info:
+            return s7_info
+        return probe_mms(ip_addr, timeout)
+
+    if is_102_candidate:
+        candidate_probes.append(("s7_or_mms", sequenced_port_102_probe))
+
+    if not candidate_probes:
+        return
+
+    # Submit candidates to the shared OT Pool
+    futures = {_OT_POOL.submit(func, ip, 1.0): name for name, func in candidate_probes}
+    for future in as_completed(futures):
+        name = futures[future]
+        try:
+            info = future.result()
+            if info:
+                result["ot_info"] = info
+                result["device_category"] = "scada_ics"
+                if "vendor" in info:
+                    result["vendor"] = info["vendor"]
+                if "model" in info:
+                    result["hostname"] = info["model"]
+                    vendor_part = info.get("vendor", "")
+                    proto_part = info.get("protocol", "").upper()
+                    import re
+                    norm_vendor = re.sub(r"[^a-zA-Z0-9]", "", vendor_part.lower())
+                    norm_proto = re.sub(r"[^a-zA-Z0-9]", "", proto_part.lower())
+                    if norm_proto in norm_vendor or norm_vendor in norm_proto:
+                        result["os_guess"] = vendor_part
+                    else:
+                        result["os_guess"] = f"{vendor_part} {proto_part} Device"
+                    result["os_family"] = "Embedded"
+                    result["os_confidence"] = "High"
+                
+                proto_label = info["protocol"].upper()
+                if proto_label not in result["confirmations"]:
+                    result["confirmations"].append(proto_label)
+                result["method"] = proto_label
+                break
+        except Exception as exc:
+            log.debug("OT probe %s failed for %s: %s", name, ip, exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

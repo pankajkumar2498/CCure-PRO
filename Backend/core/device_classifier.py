@@ -266,6 +266,11 @@ _PORT_PROFILE_RULES: List[Dict] = [
     {"ports": {44818},                           "category": "scada_ics"}, # EtherNet/IP
     {"ports": {47808},                           "category": "scada_ics"}, # BACnet/IP
     {"ports": {4840},                            "category": "scada_ics"}, # OPC UA
+    {"ports": {2404},                            "category": "scada_ics"}, # IEC-104
+    {"ports": {18245},                           "category": "scada_ics"}, # GE SRTP
+    {"ports": {9600},                            "category": "scada_ics"}, # Omron FINS
+    {"ports": {5007},                            "category": "scada_ics"}, # Mitsubishi MELSEC
+    {"ports": {2455},                            "category": "scada_ics"}, # CoDeSys
 ]
 
 
@@ -402,6 +407,18 @@ def classify_device(host: Dict) -> str:
     Also writes the result back to ``host["device_category"]`` and ``host["device_category_signal"]``
     so callers don't need to handle the return value separately.
     """
+    # 0. Check for OT Info (Modbus/S7/CIP/etc.) first (high-confidence active query)
+    ot_info = host.get("ot_info")
+    if ot_info:
+        category = "scada_ics"
+        _write(host, category, ot_info.get("protocol", "ot_probe"))
+        if "vendor" in ot_info:
+            host["vendor"] = ot_info["vendor"]
+        if "model" in ot_info:
+            host["os_family"] = "Embedded"
+            host["os_confidence"] = "High"
+        return category
+
     # 1. Check for Credentialed override first (100% trusted local OS query)
     is_credentialed = host.get("discovery_method") == "credentialed" or "credentialed_system_info" in host.get("custom_attributes", {})
     if is_credentialed:

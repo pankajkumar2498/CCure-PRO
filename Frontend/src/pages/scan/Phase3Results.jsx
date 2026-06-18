@@ -64,6 +64,8 @@ const DEVICE_CAT_META = {
   voip: { icon: "📞", color: "#f472b6", label: "VoIP" },
   storage: { icon: "💾", color: "#fbbf24", label: "Storage" },
   network_appliance: { icon: "🔌", color: "#64748b", label: "Net Appliance" },
+  scada_ics: { icon: "🏭", color: "#f43f5e", label: "Industrial/OT" },
+  virtual_machine: { icon: "🌐", color: "#a855f7", label: "Virtual Machine" },
   unknown: { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
 };
 

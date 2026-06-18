@@ -447,6 +447,9 @@ class ScanOrchestrator:
 
         duration = time.time() - t0
 
+        # Trigger classification and OS inference on the discovered hosts
+        self._apply_os_inference(raw_results)
+
         # Format using the same to_basic_dict() path as the original asset flow
         formatted = [
             self._format_host(r.get("ip"), r).to_basic_dict()
@@ -1031,6 +1034,22 @@ class ScanOrchestrator:
     def _apply_os_inference(hosts: List[Dict]) -> None:
         from core.risk import infer_os_from_host
         from core.device_classifier import classify_device
+        from core.discovery.enrichment import _ot_protocol_probes
+        from concurrent.futures import ThreadPoolExecutor
+
+        active_hosts = [h for h in hosts if h.get("is_active")]
+        if active_hosts:
+            def _probe_host(host: Dict) -> None:
+                ip = host.get("ip_address") or host.get("ip")
+                if ip:
+                    try:
+                        _ot_protocol_probes(ip, host)
+                    except Exception:
+                        pass
+
+            with ThreadPoolExecutor(max_workers=min(len(active_hosts), 20)) as pool:
+                pool.map(_probe_host, active_hosts)
+
         for host in hosts:
             guess, conf = infer_os_from_host(host)
             if host.get("os_guess", "Unknown") == "Unknown":

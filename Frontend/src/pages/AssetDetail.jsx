@@ -70,6 +70,26 @@ const cleanVendorName = (name) => {
     .replace(/(inc|incorporated|corp|corporation|ltd|limited|co|company|systems|hardware)$/g, "");
 };
 
+const getCategoryLabel = (cat) => {
+  const labels = {
+    router: "Router",
+    switch: "Switch",
+    firewall: "Firewall",
+    wireless_ap: "Wireless AP",
+    printer: "Printer",
+    iot: "IoT/ICS",
+    server: "Server",
+    endpoint: "Endpoint",
+    voip: "VoIP",
+    storage: "Storage",
+    network_appliance: "Net Appliance",
+    scada_ics: "Industrial/OT",
+    virtual_machine: "Virtual Machine",
+    unknown: "Unknown"
+  };
+  return labels[cat] || cat || "—";
+};
+
 const SEV_CLASS = {
   Critical: "db-sev-badge--critical",
   High: "db-sev-badge--high",
@@ -1067,7 +1087,7 @@ export default function AssetDetail() {
                     <InfoField label="OS Build" value={asset.custom_attributes?.credentialed_system_info?.os_build} mono />
                     <InfoField label="Kernel Version" value={asset.custom_attributes?.credentialed_system_info?.kernel_version} mono />
                     {(asset.os_name || asset.os_family) && asset.os_confidence && <InfoField label="OS Confidence" value={`${asset.os_confidence}%`} mono />}
-                    <InfoField label="Device Category" value={asset.device_category} />
+                    <InfoField label="Device Category" value={getCategoryLabel(asset.device_category)} />
                     <InfoField label="Vendor" value={asset.vendor} />
                     {asset.manufacturer && cleanVendorName(asset.manufacturer) !== cleanVendorName(asset.vendor) && <InfoField label="Manufacturer" value={asset.manufacturer} />}
                     <InfoField label="Hardware Model" value={asset.custom_attributes?.credentialed_system_info?.hardware_model} />

@@ -95,6 +95,11 @@ export const PHASES = {
     label: "Vulnerability Audit",
     route: "/scan/vulnerability-audit",
   },
+  4: {
+    id: 4,
+    label: "Network Topology",
+    route: "/scan/topology-map",
+  },
 };
 
 export function getScanPipeline(mode) {

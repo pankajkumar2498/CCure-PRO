@@ -17,6 +17,7 @@ export default defineConfig({
       "/assets":       "http://localhost:8000",
       "/findings":     "http://localhost:8000",
       "/notifications":"http://localhost:8000",
+      "/topology":     "http://localhost:8000",
     },
   },
   test: {

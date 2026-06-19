@@ -43,9 +43,10 @@ os.environ["SKIP_DOTENV_LOAD"] = "1"
 # Require PostgreSQL for pytest
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
-    raise RuntimeError(
-        "DATABASE_URL must be set for pytest. Use a PostgreSQL URL like postgresql://user:pass@host:port/dbname"
-    )
+    # Set default local test database URL fallback for convenience
+    database_url = "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_test"
+    os.environ["DATABASE_URL"] = database_url
+
 if not database_url.startswith("postgresql"):
     raise RuntimeError(
         "Tests must run against PostgreSQL. Set DATABASE_URL to a postgresql:// URL instead of sqlite:///."

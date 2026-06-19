@@ -21,6 +21,7 @@ services:
       dockerfile: Dockerfile
     container_name: ccure-api
     restart: always
+    command: ["sh", "-c", "tr -d '\\r' < /app/start.sh > /tmp/start.sh && chmod +x /tmp/start.sh && /tmp/start.sh"]
     environment:
       - TZ=Asia/Kolkata
       # host.docker.internal allows the container to reach the PostgreSQL on your local Windows machine
@@ -44,6 +45,7 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
+      - RELOAD=true
     depends_on:
       redis:
         condition: service_healthy
@@ -52,6 +54,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
+      - ./Backend:/app
+      - /app/.venv
       - ./Backend/reports:/app/reports
 
   # ── Background Worker ────────────────────────────────────────────────────
@@ -96,6 +100,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      - ./Backend:/app
+      - /app/.venv
       - ./Backend/reports:/app/reports
 
   # ── Web Application Scan Worker ───────────────────────────────────────────
@@ -142,6 +148,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      - ./Backend:/app
+      - /app/.venv
       - ./Backend/reports:/app/reports
 
   # ── Frontend ─────────────────────────────────────────────────────────────

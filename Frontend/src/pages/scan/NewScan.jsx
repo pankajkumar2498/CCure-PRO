@@ -313,6 +313,17 @@ export default function NewScan() {
   const [customPortsError, setCustomPortsError] = useState("");
   const [parsedCustomPortsCount, setParsedCustomPortsCount] = useState(0);
 
+  // SNMP settings for topology mapping (optional)
+  const [snmpEnabled, setSnmpEnabled] = useState(false);
+  const [snmpVersion, setSnmpVersion] = useState("v2c");
+  const [snmpCommunity, setSnmpCommunity] = useState("public");
+  const [snmpUsername, setSnmpUsername] = useState("");
+  const [snmpAuthProtocol, setSnmpAuthProtocol] = useState("SHA");
+  const [snmpAuthPassphrase, setSnmpAuthPassphrase] = useState("");
+  const [snmpPrivProtocol, setSnmpPrivProtocol] = useState("");
+  const [snmpPrivPassphrase, setSnmpPrivPassphrase] = useState("");
+  const [snmpContextName, setSnmpContextName] = useState("");
+
   const BLACKLISTED_PORTS = [2375, 2376, 6443, 10250];
 
   const parseCustomPortsJS = (portsStr) => {
@@ -640,7 +651,22 @@ export default function NewScan() {
           ...(portScanMode === "custom" ? { custom_ports: customPorts } : {})
         } : {}),
         ...((pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? { os_detection: osDetection } : {}),
-        ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {})
+        ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}),
+        ...(snmpEnabled ? {
+          options: {
+            snmp: {
+              version: snmpVersion,
+              ...(snmpVersion !== "v3" ? { community: snmpCommunity } : {}),
+              ...(snmpVersion === "v3" ? {
+                username: snmpUsername,
+                auth_protocol: snmpAuthProtocol,
+                auth_passphrase: snmpAuthPassphrase,
+                ...(snmpPrivProtocol ? { priv_protocol: snmpPrivProtocol, priv_passphrase: snmpPrivPassphrase } : {}),
+                ...(snmpContextName ? { context_name: snmpContextName } : {}),
+              } : {}),
+            },
+          },
+        } : {}),
       });
       const { data } = await api.post("/scan/host-discovery", payload); if (!data.success) throw new Error(data.error);
       const sid = data.scan_id, sno = data.scan_no ?? data.display_id;
@@ -1156,6 +1182,104 @@ export default function NewScan() {
                 disabled={loading || !canExecuteScans}
               />
             </div>
+          </div>
+
+          {/* 5. SNMP / Network Topology (optional, all modes) */}
+          <div className="ns-adv-section">
+            <div className="ns-inline-row">
+              <div className="ns-inline-label">
+                <span className="ns-label-main">🗺️ Network Topology (SNMP)</span>
+                <span className="ns-label-hint">Enable SNMP to discover network connections</span>
+              </div>
+              <label className="ns-toggle">
+                <input
+                  type="checkbox"
+                  checked={snmpEnabled}
+                  onChange={e => setSnmpEnabled(e.target.checked)}
+                  disabled={loading || !canExecuteScans}
+                />
+                <span className="ns-toggle-slider" />
+              </label>
+            </div>
+
+            {snmpEnabled && (
+              <div className="ns-snmp-settings" style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div className="ns-inline-row">
+                  <div className="ns-inline-label"><span className="ns-label-main">SNMP Version</span></div>
+                  <div className="ns-select-wrap">
+                    <select className="ns-select" value={snmpVersion} onChange={e => setSnmpVersion(e.target.value)} disabled={loading}>
+                      <option value="v1">v1</option>
+                      <option value="v2c">v2c</option>
+                      <option value="v3">v3</option>
+                    </select>
+                  </div>
+                </div>
+
+                {snmpVersion !== "v3" ? (
+                  <div className="ns-adv-section">
+                    <div className="ns-label">Community String</div>
+                    <div className="ns-input-wrap">
+                      <span className="ns-input-icon">🔑</span>
+                      <input type="text" className="ns-input" value={snmpCommunity} onChange={e => setSnmpCommunity(e.target.value)} placeholder="public" disabled={loading} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="ns-adv-section">
+                      <div className="ns-label">Username</div>
+                      <div className="ns-input-wrap">
+                        <span className="ns-input-icon">👤</span>
+                        <input type="text" className="ns-input" value={snmpUsername} onChange={e => setSnmpUsername(e.target.value)} placeholder="SNMPv3 username" disabled={loading} />
+                      </div>
+                    </div>
+                    <div className="ns-inline-row">
+                      <div className="ns-inline-label"><span className="ns-label-main">Auth Protocol</span></div>
+                      <div className="ns-select-wrap">
+                        <select className="ns-select" value={snmpAuthProtocol} onChange={e => setSnmpAuthProtocol(e.target.value)} disabled={loading}>
+                          <option value="MD5">MD5</option>
+                          <option value="SHA">SHA</option>
+                          <option value="SHA256">SHA-256</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="ns-adv-section">
+                      <div className="ns-label">Auth Passphrase</div>
+                      <div className="ns-input-wrap">
+                        <span className="ns-input-icon">🔐</span>
+                        <input type="password" className="ns-input" value={snmpAuthPassphrase} onChange={e => setSnmpAuthPassphrase(e.target.value)} placeholder="Auth passphrase" disabled={loading} />
+                      </div>
+                    </div>
+                    <div className="ns-inline-row">
+                      <div className="ns-inline-label"><span className="ns-label-main">Privacy Protocol</span><span className="ns-label-hint">optional</span></div>
+                      <div className="ns-select-wrap">
+                        <select className="ns-select" value={snmpPrivProtocol} onChange={e => setSnmpPrivProtocol(e.target.value)} disabled={loading}>
+                          <option value="">None (authNoPriv)</option>
+                          <option value="DES">DES</option>
+                          <option value="AES128">AES-128</option>
+                          <option value="AES256">AES-256</option>
+                        </select>
+                      </div>
+                    </div>
+                    {snmpPrivProtocol && (
+                      <div className="ns-adv-section">
+                        <div className="ns-label">Privacy Passphrase</div>
+                        <div className="ns-input-wrap">
+                          <span className="ns-input-icon">🔒</span>
+                          <input type="password" className="ns-input" value={snmpPrivPassphrase} onChange={e => setSnmpPrivPassphrase(e.target.value)} placeholder="Privacy passphrase" disabled={loading} />
+                        </div>
+                      </div>
+                    )}
+                    <div className="ns-adv-section">
+                      <div className="ns-label">Context Name <span className="ns-label-hint">optional, VLAN-aware switches</span></div>
+                      <div className="ns-input-wrap">
+                        <span className="ns-input-icon">📋</span>
+                        <input type="text" className="ns-input" value={snmpContextName} onChange={e => setSnmpContextName(e.target.value)} placeholder="e.g. vlan-100" disabled={loading} />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

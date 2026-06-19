@@ -15,6 +15,7 @@ from .findings   import (
 from .notifications import Notification
 from .web_scans  import WebScan, WebAsset, WebFinding
 from .amt        import AMTInventoryRecord
+from .topology   import NetworkLink, ensure_topology_schema
 
 __all__ = [
     # RBAC
@@ -51,4 +52,7 @@ __all__ = [
     "WebFinding",
     # AMT Inventory
     "AMTInventoryRecord",
+    # Network Topology
+    "NetworkLink",
+    "ensure_topology_schema",
 ]

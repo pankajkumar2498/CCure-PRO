@@ -60,7 +60,7 @@ describe("NewScan Component", () => {
 
   it("shows an error state if API request fails", async () => {
     api.post.mockRejectedValueOnce({
-      response: { data: { detail: "Invalid target specified" } }
+      message: "Invalid target specified"
     });
 
     renderComponent();
@@ -72,7 +72,7 @@ describe("NewScan Component", () => {
     fireEvent.click(startButton);
     
     await waitFor(() => {
-      expect(screen.getByText("Invalid target specified")).toBeInTheDocument();
+      expect(screen.getByText(/Invalid target specified/i)).toBeInTheDocument();
     });
   });
 

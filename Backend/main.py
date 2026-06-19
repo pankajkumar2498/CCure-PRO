@@ -46,6 +46,7 @@ from routers.dashboard import router as dashboard_router
 from routers.assets    import router as assets_router
 from routers.findings  import router as findings_router
 from routers.web_scans import router as web_scans_router
+from routers.topology  import router as topology_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -105,7 +106,13 @@ async def lifespan(app: FastAPI):
         try:
             ensure_user_schema()
             ensure_scan_schema()
-            log.info("User and scan schemas verified and migrated")
+            
+            from db.models.topology import ensure_topology_schema
+            from db.models.assets import ensure_mac_vendor_schema
+            ensure_topology_schema()
+            ensure_mac_vendor_schema()
+            
+            log.info("User, scan, topology, and mac vendor schemas verified and migrated")
         except Exception as e:
             log.error(f"Failed to execute additive schema updates: {e}")
     except OperationalError as e:
@@ -392,6 +399,7 @@ app.include_router(dashboard_router)
 app.include_router(assets_router)
 app.include_router(findings_router)
 app.include_router(web_scans_router)
+app.include_router(topology_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

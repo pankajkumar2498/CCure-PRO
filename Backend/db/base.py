@@ -222,6 +222,22 @@ def gen_web_finding_id(web_asset_id: str, finding_type: str) -> str:
     return f"wfn_{asset_short}_{type_part}_{_rand()}"
 
 
+def gen_network_link_id(org_slug: str, src_mac: str, dst_mac: str) -> str:
+    """
+    Generate a readable, unique NetworkLink ID.
+    Example: lnk_defa_1a2b3c4d_001122334455_66778899aabb
+
+    MACs are sorted alphabetically before hashing to ensure that a link
+    between the same two devices always has the same ID (undirected determinism).
+    """
+    org_part = gen_org_token(org_slug)
+    # Sort MACs alphabetically to enforce undirected link determinism
+    macs = sorted([src_mac.lower(), dst_mac.lower()])
+    clean_src = re.sub(r"[^a-f0-9]+", "", macs[0])
+    clean_dst = re.sub(r"[^a-f0-9]+", "", macs[1])
+    return f"lnk_{org_part}_{clean_src}_{clean_dst}"
+
+
 def utcnow() -> datetime:
     """Return the current UTC datetime (timezone-aware)."""
     return datetime.now(timezone.utc)

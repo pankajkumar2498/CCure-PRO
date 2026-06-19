@@ -70,7 +70,18 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error.response.status !== 401 || originalRequest._retry) {
+    // Do not attempt automatic token refresh for login, refresh, registration, or password reset endpoints.
+    // If these return a 401 Unauthorized, we should propagate the error directly to display the correct message.
+    const bypassUrls = [
+      "/auth/login",
+      "/auth/refresh",
+      "/auth/register",
+      "/auth/forgot-password",
+      "/auth/reset-password"
+    ];
+    const isBypassUrl = bypassUrls.some((url) => originalRequest.url?.includes(url));
+
+    if (error.response.status !== 401 || originalRequest._retry || isBypassUrl) {
       return Promise.reject(error);
     }
 

@@ -49,6 +49,7 @@ const IcoPlus = () => (
   </svg>
 );
 const IcoInfo = () => <Icon d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />;
+const IcoTopology = () => <Icon d="M12 2a3 3 0 0 0-3 3c0 1.1.6 2 1.5 2.6L9 10l-4 2-2.5-1.5A3 3 0 0 0 0 13a3 3 0 0 0 5 2.2l4-2L12 15l3-1.8 4 2A3 3 0 0 0 24 13a3 3 0 0 0-2.5-2.5L19 12l-4-2-1.5-2.4A3 3 0 0 0 15 5a3 3 0 0 0-3-3z" />;
 
 // ── Sidebar Definition ───────────────────────────────────────────────────────
 const SIDEBAR_SECTIONS = [
@@ -75,7 +76,8 @@ const SIDEBAR_SECTIONS = [
       { id: "vulnerabilities", label: "Vulnerabilities", Icon: IcoAlert,   route: "/vulnerabilities", permission: { resource: "findings", action: "read" }, badgeKey: "criticalCount", badgeColor: "danger" },
       { id: "asset-registry",  label: "Asset Registry",  Icon: IcoMonitor, route: "/assets", permission: { resource: "assets", action: "read" } },
       { id: "services-ports",  label: "Services & Ports",Icon: IcoServer,  route: "/assets?tab=services", permission: { resource: "assets", action: "read" } },
-      { id: "tls-certs",       label: "TLS / Certificates",Icon: IcoLock,  route: "/assets?tab=tls", permission: { resource: "assets", action: "read" } },
+      { id: "tls-certs",       label: "TLS / Certificates",Icon: IcoLock,     route: "/assets?tab=tls", permission: { resource: "assets", action: "read" } },
+      { id: "network-topology", label: "Network Topology",   Icon: IcoTopology, route: "/topology", permission: { resource: "scans", action: "read" } },
     ],
   },
   {

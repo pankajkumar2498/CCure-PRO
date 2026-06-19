@@ -546,6 +546,14 @@ def run_migration():
     except Exception as e:
         print(f"  ✗ Failed to run additive Scan schema updates: {e}")
 
+    # 4. Network Topology schema
+    try:
+        from db.models.topology import ensure_topology_schema
+        ensure_topology_schema()
+        print("  ✓ Network Topology schema verified and migrated")
+    except Exception as e:
+        print(f"  ✗ Failed to run additive Topology schema updates: {e}")
+
     # Step 2 & 3: Seed RBAC and default org in a transaction
     with engine.begin() as conn:
         seed_rbac(conn)

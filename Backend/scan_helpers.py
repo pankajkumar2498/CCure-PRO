@@ -56,9 +56,11 @@ def get_api() -> HostDiscoveryAPI:
 
 
 # ─── Pipeline configuration (mirrors src/config/scanConfig.js) ───────────────
+# Phase 4 (topology_mapping) is eligible to run at the end of any pipeline.
+# It is only executed if SNMP credentials are provided in scan.options.
 PIPELINE_PHASES: Dict[str, List[int]] = {
-    "basic":            [1],
-    "asset":            [1, 2],
+    "basic":               [1, 4],
+    "asset":               [1, 2, 4],
     "vulnerability_audit": [1, 2, 3, 4],
 }
 
@@ -76,11 +78,14 @@ def _normalize_pipeline_mode(raw: Optional[str]) -> str:
 
 
 def get_terminal_phase(pipeline_mode: str) -> int:
-    """Return the last phase number for a given pipeline mode.
-    Note: For 'vulnerability_audit', the terminal phase is 3 (Vulnerability & Risk), not 4."""
+    """Return the last *core* phase number for a given pipeline mode.
+    Phase 4 (topology_mapping) is an optional bolt-on and does NOT
+    count as the terminal phase for scan completion logic."""
     pipeline_mode = _normalize_pipeline_mode(pipeline_mode)
     phases = PIPELINE_PHASES.get(pipeline_mode, [1])
-    return max(phases)
+    # Exclude Phase 4 (topology) — it's an optional add-on, not core pipeline
+    core_phases = [p for p in phases if p != 4]
+    return max(core_phases) if core_phases else max(phases)
 
 
 def is_phase_in_pipeline(pipeline_mode: str, phase: int) -> bool:

@@ -9,10 +9,10 @@ import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { getScanPipeline } from "../../config/scanConfig";
 
 const ALL_STEPS = [
-  { n: 1, label: "Discovery",     sub: "Find live hosts",   stateKey: "DISCOVERY"   },
-  { n: 2, label: "Port Scan",     sub: "Map open services", stateKey: "PORT_SCAN"   },
-  { n: 3, label: "Vulnerability", sub: "CVE & risk audit",  stateKey: "VULN_SCAN"   },
-  { n: 4, label: "Risk Report",   sub: "Full assessment",   stateKey: "REPORT_READY"},
+  { n: 1, label: "Discovery",     sub: "Find live hosts",      stateKey: "DISCOVERY"    },
+  { n: 2, label: "Port Scan",     sub: "Map open services",    stateKey: "PORT_SCAN"    },
+  { n: 3, label: "Vulnerability", sub: "CVE & risk audit",     stateKey: "VULN_SCAN"    },
+  { n: 4, label: "Topology",      sub: "Network map (SNMP)",   stateKey: "TOPOLOGY_MAP" },
 ];
 
 /** Maps pipeline state → active step number */
@@ -20,7 +20,8 @@ const STATE_TO_STEP = {
   [PIPELINE_STATES.DISCOVERY]:    1,
   [PIPELINE_STATES.PORT_SCAN]:    2,
   [PIPELINE_STATES.VULN_SCAN]:    3,
-  [PIPELINE_STATES.REPORT_READY]: 5,  // Report step (4) is marked as done
+  [PIPELINE_STATES.TOPOLOGY_MAP]: 4,
+  [PIPELINE_STATES.REPORT_READY]: 5,  // All steps done
   [PIPELINE_STATES.COMPLETE]:     5,
 };
 
@@ -28,7 +29,15 @@ export default function ScanStepper({ current }) {
   const { scanId, scanNo, pipelineMode, pipelineState, pipelineError } = useScan();
 
   const pipeline = getScanPipeline(pipelineMode || "basic");
-  const steps    = ALL_STEPS.filter(s => pipeline.phases.includes(s.n));
+  
+  // Phase 4 (topology) is only shown if it's currently active or completed
+  const showTopology = pipelineState === PIPELINE_STATES.TOPOLOGY_MAP
+    || (STATE_TO_STEP[pipelineState] || 0) > 4;
+  
+  const steps = ALL_STEPS.filter(s => {
+    if (s.n === 4) return showTopology;  // Only show topology step when relevant
+    return pipeline.phases.includes(s.n);
+  });
 
   // Use pipeline state to derive step status, fall back to `current` prop
   const activeStep = STATE_TO_STEP[pipelineState] ?? current ?? 0;
@@ -36,6 +45,7 @@ export default function ScanStepper({ current }) {
     PIPELINE_STATES.DISCOVERY,
     PIPELINE_STATES.PORT_SCAN,
     PIPELINE_STATES.VULN_SCAN,
+    PIPELINE_STATES.TOPOLOGY_MAP,
   ].includes(pipelineState);
 
   return (

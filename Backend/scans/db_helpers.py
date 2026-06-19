@@ -329,10 +329,12 @@ def update_scan_phase(
             scan.status = "complete"
         scan.completed_at = utcnow()
     else:
-        scan.status = "running"
+        # Do not revert a terminal scan status (complete, unreachable, failed, cancelled) back to running
+        if scan.status not in ("complete", "unreachable", "failed", "cancelled"):
+            scan.status = "running"
 
     # Track phase
-    phase_key_map = {2: "asset_discovery", 3: "vulnerability_assessment", 4: "credentialed"}
+    phase_key_map = {2: "asset_discovery", 3: "vulnerability_assessment", 4: "topology_mapping", 5: "credentialed"}
     phase_key = phase_key_map.get(phase, f"phase{phase}")
 
     # Embed raw data into summary to ensure 100% historical fidelity without schema changes

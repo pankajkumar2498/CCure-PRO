@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ── Base Image ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS base
 
@@ -6,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/home/ccure/.local/bin:${PATH}"
 ENV PYTHONPATH="/home/ccure/.local/lib/python3.11/site-packages:${PYTHONPATH}"
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
 # Install system dependencies
 # - nmap: essential for network scanning
@@ -33,10 +35,12 @@ FROM base AS builder
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user -r requirements.txt
 
 # Install Playwright browsers (Chromium only)
-RUN /root/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright browser install skipped"
+RUN --mount=type=cache,target=/root/.cache/ms-playwright \
+    /root/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright browser install skipped"
 
 # ── Security Tools Stage ──────────────────────────────────────────────────
 FROM base AS tools
@@ -89,14 +93,9 @@ COPY --from=tools /usr/local/bin/subfinder /usr/local/bin/subfinder
 COPY --from=tools /usr/local/bin/ffuf /usr/local/bin/ffuf
 COPY --from=tools /opt/wordlists /opt/wordlists
 
-# Install Playwright browsers in the runtime image (critical for ccure-web-worker)
-# We set the path explicitly so they are installed where the app expects them
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN mkdir -p /opt/playwright && chown ccure:ccure /opt/playwright
-# Switch to ccure user to install playwright browsers to ensure correct ownership
-USER ccure
-RUN /home/ccure/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright install skipped"
-USER root
+# Copy Playwright browsers from builder
+COPY --from=builder /opt/playwright /opt/playwright
+RUN chown -R ccure:ccure /opt/playwright
 
 # Copy nuclei templates (may be in /root or /home)
 COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
@@ -116,7 +115,6 @@ RUN mkdir -p /app/reports && chown -R ccure:ccure /app/reports
 # Default environment variables
 ENV ENV=production
 ENV PORT=8000
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 ENV NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
 
 # Entrypoint script will handle switching between API and Worker roles

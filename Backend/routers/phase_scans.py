@@ -132,6 +132,7 @@ class HostDiscoveryRequest(BaseModel):
     max_concurrency:     Optional[int]   = Field(None, description="Max concurrent threads (e.g. TCP connect probes).")
     wait:                bool            = Field(False, description="If true, wait for task completion (up to 300s) before returning.")
     custom_ports:        Optional[str]   = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
+    options:             Optional[dict]  = Field(None, description="Additional scan configurations including SNMP credentials for topology mapping")
 
 
 class AssetDiscoveryRequest(BaseModel):
@@ -214,7 +215,8 @@ async def scan_host_discovery(
     scan.options = {
         **(scan.options or {}),
         "execution_mode": req.execution_mode or "automatic",
-        **({"custom_ports": req.custom_ports} if req.custom_ports else {})
+        **({"custom_ports": req.custom_ports} if req.custom_ports else {}),
+        **(req.options or {}),
     }
     db.commit()
     scan_id = str(scan.id)

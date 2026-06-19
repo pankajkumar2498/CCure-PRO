@@ -44,6 +44,7 @@ import Phase2Results        from "./pages/scan/Phase2Results";
 import Phase3Results        from "./pages/scan/Phase3Results";
 import CredentialedScan     from "./pages/scan/CredentialedScan";
 import CredentialedResults  from "./pages/scan/CredentialedResults";
+import NetworkMap           from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 
@@ -104,6 +105,11 @@ export default function App() {
           <Route path="/scan/:scanId/phase3"            element={<Phase3Results />} />
         <Route path="/scan/:scanId/credentialed"      element={<CredentialedScan />} />
         <Route path="/scan/:scanId/credentialed-results" element={<CredentialedResults />} />
+
+          {/* Network Topology Map */}
+          <Route path="/scan/topology-map"              element={<NetworkMap />} />
+          <Route path="/scan/:scanId/topology-map"      element={<NetworkMap />} />
+          <Route path="/topology"                        element={<NetworkMap />} />
 
         {/* Web Application Scanning */}
         <Route path="/web-scans/*" element={<WebScanningRoutes />} />

@@ -48,6 +48,11 @@ scapy>=2.5.1
 # Requires: nmap binary installed on the system (see header above)
 python-nmap>=0.7.1
 
+# SNMP ARP Harvesting & Topology Discovery (v1/v2c/v3)
+# Used for ARP table collection, LLDP/CDP neighbor discovery, and FDB walks
+pysnmp-lextudio==6.1.2
+pyasn1>=0.4.8,<0.6.0               # pyasn1.compat.octets compatibility for pysnmp-lextudio
+
 # Network interface enumeration (local subnet detection, MAC lookup)
 psutil>=5.9.0
 

@@ -72,7 +72,7 @@ class Asset(Base):
                      nullable=False, index=True)
 
     # ── Network Identity ──────────────────────────────────────────────────────
-    ip_address       = Column(INET,       nullable=False)
+    ip_address       = Column(INET,       nullable=True)
     mac_address      = Column(MACADDR,    nullable=True)
     hostname         = Column(String(255), nullable=True)
     dns_name         = Column(String(512), nullable=True)

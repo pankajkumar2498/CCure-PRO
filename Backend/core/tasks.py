@@ -151,12 +151,38 @@ def _sync_credentialed_asset_identity(
         log.warning("Credentialed asset sync skipped: user %s not found", user_id)
         return
 
-    asset = (
-        db.query(Asset)
-        .filter(Asset.org_id == str(user.org_id), Asset.ip_address == ip)
-        .first()
-    )
+    mac_address = _normalize_mac(system_data.get("mac_address"))
+    asset = None
+    if mac_address:
+        asset = (
+            db.query(Asset)
+            .filter(Asset.org_id == str(user.org_id), Asset.mac_address == mac_address)
+            .first()
+        )
     if not asset:
+        asset = (
+            db.query(Asset)
+            .filter(Asset.org_id == str(user.org_id), Asset.ip_address == ip)
+            .first()
+        )
+
+    if asset:
+        if asset.ip_address != ip and ip != "0.0.0.0":
+            # Release IP from any other asset currently claiming it (IP Hijacking protection)
+            other_asset = (
+                db.query(Asset)
+                .filter(Asset.org_id == str(user.org_id), Asset.ip_address == ip)
+                .first()
+            )
+            if other_asset and other_asset.id != asset.id:
+                other_asset.ip_address = None
+                other_asset.is_active = False
+                _record_asset_change(db, other_asset.id, scan_id, "ip_address", ip, None)
+                db.flush()
+
+            _record_asset_change(db, asset.id, scan_id, "ip_address", str(asset.ip_address), ip)
+            asset.ip_address = ip
+    else:
         log.info("Asset not found for ip=%s. Bootstrapping new asset record.", ip)
         org = db.query(Organization).filter(Organization.id == str(user.org_id)).first()
         org_slug = org.slug if org else str(user.org_id)
@@ -184,7 +210,7 @@ def _sync_credentialed_asset_identity(
     netbios_name = _clean_text(system_data.get("netbios_name") or system_data.get("netbios_computer"))
     normalized_os_type = _clean_text(system_data.get("detected_os") or os_type).lower()
     manufacturer = _clean_text(system_data.get("manufacturer"))
-    mac_address = _normalize_mac(system_data.get("mac_address"))
+    # mac_address resolved above
     mac_vendor = _clean_text(system_data.get("mac_vendor") or (lookup_vendor(mac_address) if mac_address else ""))
     vendor = mac_vendor or (manufacturer if not _has_value(asset.vendor) else "")
     os_family = _clean_text(system_data.get("os_family") or ("Windows" if normalized_os_type == "windows" else "Linux" if normalized_os_type == "linux" else ""))

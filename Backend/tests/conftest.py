@@ -181,7 +181,16 @@ from db.models.scans import Scan, ScanPhase
 
 @pytest.fixture(scope="function")
 def test_org(db_session: Session) -> Organization:
-    org = Organization(name="Test Org", slug="test-org", max_assets=100, max_users=10, is_active=True)
+    import uuid
+    uid = uuid.uuid4().hex[:8]
+    org = Organization(
+        id=f"org_{uid}",
+        name=f"Test Org {uid}",
+        slug=f"test-org-{uid}",
+        max_assets=100,
+        max_users=10,
+        is_active=True
+    )
     db_session.add(org)
     db_session.commit()
     db_session.refresh(org)

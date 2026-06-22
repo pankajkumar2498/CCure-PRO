@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Optional, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import func, text
+from sqlalchemy import func, text, or_
 
 from db.models import (
     Asset, AssetChangeLog,
@@ -111,11 +111,22 @@ def _existing_assets_for_hosts(db: Session, org_id: str, hosts: List[dict]):
         for h in hosts
     ]
     batch_ips = [_resolve_ip(h) for h in hosts if _resolve_ip(h) != "0.0.0.0"]
+    batch_macs = [_resolve_mac(h) for h in hosts if _resolve_mac(h)]
+    
     query = db.query(Asset).filter(Asset.org_id == org_id)
-    assets = query.filter((Asset.id.in_(batch_ids)) | (Asset.ip_address.in_(batch_ips))).all()
+    
+    filters = [Asset.id.in_(batch_ids)]
+    if batch_ips:
+        filters.append(Asset.ip_address.in_(batch_ips))
+    if batch_macs:
+        normalized_macs = [m.lower().replace("-", ":") for m in batch_macs]
+        filters.append(Asset.mac_address.in_(normalized_macs))
+        
+    assets = query.filter(or_(*filters)).all()
     return (
         {a.id: a for a in assets},
         {str(a.ip_address): a for a in assets if a.ip_address},
+        {str(a.mac_address).lower().replace("-", ":"): a for a in assets if a.mac_address},
     )
 
 def _should_update(current, incoming) -> bool:
@@ -466,7 +477,7 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
     logger.info(f"Syncing {len(hosts)} hosts with Phase 4 Change Auditing")
 
     # Pre-fetch existing assets for comparison (Selective Select-then-Update for Change Log accuracy)
-    existing, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
+    existing, existing_by_ip, existing_by_mac = _existing_assets_for_hosts(db, org_id, hosts)
 
     for host in hosts:
         ip = _resolve_ip(host)
@@ -484,10 +495,18 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
         os_family_val     = host.get("os_family")   or derived_os_family
         device_category   = host.get("device_category")
 
-        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
-        asset = existing.get(asset_id) or existing_by_ip.get(ip)
-        if asset:
-            asset_id = asset.id
+        # 3-Tiered Reconciliation
+        asset = None
+        if mac:
+            asset = existing_by_mac.get(mac.lower().replace("-", ":"))
+        if not asset and ip != "0.0.0.0" and hostname:
+            potential_asset = existing_by_ip.get(ip)
+            if potential_asset and potential_asset.hostname and potential_asset.hostname.lower() == hostname.lower():
+                asset = potential_asset
+        if not asset and ip != "0.0.0.0":
+            asset = existing_by_ip.get(ip)
+            
+        asset_id = asset.id if asset else gen_asset_id(org_id, ip if ip != "0.0.0.0" else (mac or "unknown"))
 
         if asset:
             # PHASE 4: CHANGE AUDITING
@@ -505,6 +524,14 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
             _set_asset_field(db, asset, scan_id, "discovery_method", "discovery", "discovery", max_len=50)
 
             if asset.ip_address != ip and ip != "0.0.0.0":
+                # Release IP from any other asset currently claiming it (IP Hijacking protection)
+                other_asset = existing_by_ip.get(ip)
+                if other_asset and other_asset.id != asset.id:
+                    other_asset.ip_address = None
+                    other_asset.is_active = False
+                    _record_asset_change(db, other_asset.id, scan_id, "ip_address", ip, None)
+                    db.flush()
+                    
                 _record_asset_change(db, asset_id, scan_id, "ip_address", str(asset.ip_address), ip)
                 asset.ip_address = ip
 
@@ -560,12 +587,24 @@ def sync_asset_discovery(db: Session, scan_id: str, org_id: str, user_id: Option
     """
     if not hosts: return
 
-    existing, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
+    existing, existing_by_ip, existing_by_mac = _existing_assets_for_hosts(db, org_id, hosts)
 
     for host in hosts:
         ip = _resolve_ip(host)
-        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (_resolve_mac(host) or "unknown"))
-        asset = existing.get(asset_id) or existing_by_ip.get(ip)
+        mac = _resolve_mac(host)
+        hostname = (host.get("hostname") or host.get("hostnames", [None])[0]) if isinstance(host.get("hostnames"), list) else host.get("hostname")
+        
+        # 3-Tiered Reconciliation
+        asset = None
+        if mac:
+            asset = existing_by_mac.get(mac.lower().replace("-", ":"))
+        if not asset and ip != "0.0.0.0" and hostname:
+            potential_asset = existing_by_ip.get(ip)
+            if potential_asset and potential_asset.hostname and potential_asset.hostname.lower() == hostname.lower():
+                asset = potential_asset
+        if not asset and ip != "0.0.0.0":
+            asset = existing_by_ip.get(ip)
+            
         if not asset: continue
         asset_id = asset.id
         dns_name, fqdn = _extract_dns_identity(host)
@@ -674,13 +713,25 @@ def sync_vulnerability_audit(db: Session, scan_id: str, org_id: str, user_id: Op
     """
     if not hosts: return
 
-    existing_assets, existing_by_ip = _existing_assets_for_hosts(db, org_id, hosts)
+    existing_assets, existing_by_ip, existing_by_mac = _existing_assets_for_hosts(db, org_id, hosts)
 
     touched_asset_ids = set()
     for host in hosts:
         ip = _resolve_ip(host)
-        asset_id = gen_asset_id(org_id, ip if ip != "0.0.0.0" else (_resolve_mac(host) or "unknown"))
-        asset = existing_assets.get(asset_id) or existing_by_ip.get(ip)
+        mac = _resolve_mac(host)
+        hostname = host.get("hostname")
+        
+        # 3-Tiered Reconciliation
+        asset = None
+        if mac:
+            asset = existing_by_mac.get(mac.lower().replace("-", ":"))
+        if not asset and ip != "0.0.0.0" and hostname:
+            potential_asset = existing_by_ip.get(ip)
+            if potential_asset and potential_asset.hostname and potential_asset.hostname.lower() == hostname.lower():
+                asset = potential_asset
+        if not asset and ip != "0.0.0.0":
+            asset = existing_by_ip.get(ip)
+            
         if not asset: continue
         asset_id = asset.id
         touched_asset_ids.add(asset_id)

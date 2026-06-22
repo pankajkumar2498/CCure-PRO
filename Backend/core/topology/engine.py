@@ -83,6 +83,42 @@ def _find_asset_by_mac(db: Session, org_id: str, mac: str) -> Optional[Asset]:
     )
 
 
+def _reconcile_target_asset(
+    db: Session,
+    org_id: str,
+    ip: Optional[str],
+    mac: str,
+    hostname: Optional[str] = None
+) -> Optional[Asset]:
+    """
+    3-Tiered Reconciliation Rule for Target Endpoints.
+    1. Match by MAC Address (highly authoritative L2 identity).
+    2. Match by IP + Hostname (context correlation).
+    3. Fallback to IP Address only.
+    """
+    # 1. Tier 1: MAC-First (if not a placeholder like sw: or cdp:)
+    clean_mac = None
+    if mac and not mac.startswith(("sw:", "cdp:")):
+        clean_mac = mac.lower().replace("-", ":")
+    
+    if clean_mac:
+        asset = _find_asset_by_mac(db, org_id, clean_mac)
+        if asset:
+            return asset
+            
+    # 2. Tier 2: IP + Hostname
+    if ip and ip != "0.0.0.0" and hostname:
+        asset = _find_asset_by_ip(db, org_id, ip)
+        if asset and asset.hostname and asset.hostname.lower() == hostname.lower():
+            return asset
+            
+    # 3. Tier 3: IP Fallback
+    if ip and ip != "0.0.0.0":
+        return _find_asset_by_ip(db, org_id, ip)
+        
+    return None
+
+
 def run_topology_mapping(
     db: Session,
     scan_id: str,
@@ -297,9 +333,16 @@ def run_topology_mapping(
     for link_data in unique_links.values():
         # Try to resolve asset IDs
         source_asset = _find_asset_by_mac(db, org_id, link_data["source_mac"])
-        target_asset = (
-            _find_asset_by_ip(db, org_id, link_data.get("target_ip") or "")
-            or _find_asset_by_mac(db, org_id, link_data["target_mac"])
+        if not source_asset and link_data["source_mac"].startswith("sw:"):
+            # Extract IP from placeholder: sw:10:180:4:1 -> 10.180.4.1
+            ip_str = link_data["source_mac"].replace("sw:", "").replace(":", ".")
+            source_asset = _find_asset_by_ip(db, org_id, ip_str)
+        target_asset = _reconcile_target_asset(
+            db,
+            org_id,
+            link_data.get("target_ip"),
+            link_data["target_mac"],
+            link_data.get("target_hostname")
         )
 
         # Sync/Create placeholder assets for LLDP/CDP neighbors
@@ -356,6 +399,7 @@ def run_topology_mapping(
             "target_asset_id": target_asset.id if target_asset else None,
             "created_at": utcnow(),
         }
+        values.pop("target_hostname", None)
 
         stmt = insert(NetworkLink).values(**values)
         stmt = stmt.on_conflict_do_update(
@@ -509,10 +553,10 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
         
         # If target has a defined asset, we can check if it is infrastructure
         is_target_infra = False
-        tgt_group = "host"
+        tgt_group = "endpoint"
         if tgt_asset:
             tgt_group = _classify_node_group(link, tgt_asset)
-            if tgt_group in ("switch", "router"):
+            if tgt_group in ("switch", "router", "gateway", "firewall", "wireless_ap", "load_balancer", "modem"):
                 is_target_infra = True
         elif link.link_type in ("lldp", "cdp") or tgt.startswith("sw:"):
             tgt_group = "switch"
@@ -593,7 +637,7 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
             host_nodes[tgt] = {
                 "id": tgt,
                 "label": label,
-                "group": "host",
+                "group": tgt_group,
                 "tier": "host",
                 "ip": tgt_ip,
                 "mac": tgt,
@@ -743,26 +787,97 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
     """Classify a node into a visual group for the frontend graph."""
     if asset:
         cat = (asset.device_category or "").lower()
-        if "router" in cat or "gateway" in cat or "firewall" in cat:
-            return "router"
-        if "switch" in cat:
-            return "switch"
-        if "server" in cat:
-            return "server"
-        if "printer" in cat:
-            return "printer"
-        if "iot" in cat or "camera" in cat:
-            return "iot"
-        
-        # Try hostname/IP heuristics
         host = (asset.hostname or "").lower()
-        if "switch" in host or "sw" in host:
-            return "switch"
-        if "router" in host or "rt" in host or "gw" in host:
+        os_name = (getattr(asset, "os_name", None) or "").lower()
+        vendor = (getattr(asset, "vendor", None) or getattr(asset, "manufacturer", None) or "").lower()
+
+        # 1. Check direct match or sub-classify
+        if cat == "router" or "router" in cat:
             return "router"
+        if cat == "gateway" or "gateway" in cat:
+            return "gateway"
+        if cat == "firewall" or "firewall" in cat:
+            return "firewall"
+        if cat in ("switch", "switchport"):
+            return "switch"
+        if cat in ("wireless_ap", "wireless_access_point", "wap") or "access point" in cat:
+            return "wireless_ap"
+        if cat == "server" or "server" in cat:
+            return "server"
+        if cat in ("storage", "nas", "san") or "storage" in cat or "nas" in cat:
+            return "storage"
+        if cat in ("virtual_machine", "vm") or "virtual machine" in cat or "vm" in cat:
+            return "virtual_machine"
+        if cat == "load_balancer" or "load balancer" in cat:
+            return "load_balancer"
+        if cat == "modem" or "modem" in cat:
+            return "modem"
+        if cat == "printer" or "printer" in cat:
+            return "printer"
+
+        # Sub-classify generic Endpoints based on hostname/OS hints
+        if cat in ("endpoint", "workstation", "desktop", "laptop", "pc", "host", "client"):
+            if any(k in host or k in os_name for k in ("laptop", "notebook")):
+                return "laptop"
+            if any(k in host or k in os_name for k in ("desktop", "pc-")):
+                return "desktop"
+            if any(k in host or k in os_name for k in ("workstation", "client")):
+                return "workstation"
+            return "endpoint"
+
+        # Sub-classify OT/ICS
+        if cat in ("scada_ics", "plc", "rtu"):
+            if "rtu" in host or "rtu" in os_name:
+                return "rtu"
+            return "plc"
+
+        # Sub-classify IoT / Embedded
+        if cat in ("iot", "camera", "ip_camera", "smart"):
+            if any(k in host or k in os_name or "camera" in vendor for k in ("camera", "cam", "cctv")):
+                return "camera"
+            return "iot"
+
+        # 2. Hostname / OS / Vendor heuristics fallback
+        all_hints = f"{host} {os_name} {vendor}".lower()
+        if "switch" in all_hints or "sw-" in all_hints:
+            return "switch"
+        if "router" in all_hints or "rtr-" in all_hints:
+            return "router"
+        if "gateway" in all_hints or "gw-" in all_hints:
+            return "gateway"
+        if "firewall" in all_hints or "fw-" in all_hints:
+            return "firewall"
+        if "access point" in all_hints or "ap-" in all_hints or "wap" in all_hints:
+            return "wireless_ap"
+        if "server" in all_hints or "srv-" in all_hints or "esxi" in all_hints:
+            return "server"
+        if "printer" in all_hints or "prn-" in all_hints:
+            return "printer"
+        if "camera" in all_hints or "cam" in all_hints or "cctv" in all_hints:
+            return "camera"
+        if "plc" in all_hints:
+            return "plc"
+        if "rtu" in all_hints:
+            return "rtu"
+        if "nas" in all_hints or "synology" in all_hints or "qnap" in all_hints:
+            return "storage"
+        if "vm" in all_hints or "virtualbox" in all_hints:
+            return "virtual_machine"
+        if "loadbalancer" in all_hints or "lb-" in all_hints:
+            return "load_balancer"
+        if "modem" in all_hints:
+            return "modem"
+        if "laptop" in all_hints:
+            return "laptop"
+        if "desktop" in all_hints:
+            return "desktop"
+        if "workstation" in all_hints:
+            return "workstation"
+        if "phone" in all_hints or "mobile" in all_hints or "android" in all_hints or "iphone" in all_hints:
+            return "mobile"
 
     # Infer from link type
     if link.link_type in ("lldp", "cdp"):
         return "switch"
         
-    return "host"
+    return "endpoint"

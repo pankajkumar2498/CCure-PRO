@@ -28,11 +28,15 @@ def make_link(**overrides):
         "scan_id": "scan-1",
         "source_mac": "sw:10:180:4:1",
         "source_port": "port:12",
+        "source_port_desc": "",
         "source_asset": None,
         "target_mac": "00:11:22:33:44:55",
         "target_port": "",
+        "target_port_desc": "",
         "target_ip": None,
         "target_asset": None,
+        "vlan_id": None,
+        "speed_bps": None,
         "link_type": "fdb",
     }
     data.update(overrides)

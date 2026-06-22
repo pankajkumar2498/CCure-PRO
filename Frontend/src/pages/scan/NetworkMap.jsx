@@ -22,24 +22,31 @@ import "../../styles/NetworkMap.css";
 
 /* ── Node/Link configurations ────────────────────────────────────────────────── */
 const GROUP_COLORS = {
-  router:  { background: "#ef4444", border: "#dc2626", font: "#fff" },
-  switch:  { background: "#3b82f6", border: "#2563eb", font: "#fff" },
-  server:  { background: "#8b5cf6", border: "#7c3aed", font: "#fff" },
-  host:    { background: "#06b6d4", border: "#0891b2", font: "#fff" },
-  printer: { background: "#f59e0b", border: "#d97706", font: "#fff" },
-  iot:     { background: "#10b981", border: "#059669", font: "#fff" },
+  router:          { background: "#f87171", border: "#ef4444", font: "#fff" },
+  switch:          { background: "#60a5fa", border: "#3b82f6", font: "#fff" },
+  gateway:         { background: "#fca5a5", border: "#f87171", font: "#fff" },
+  firewall:        { background: "#fb923c", border: "#f97316", font: "#fff" },
+  wireless_ap:     { background: "#2dd4bf", border: "#14b8a6", font: "#fff" },
+  server:          { background: "#c084fc", border: "#a855f7", font: "#fff" },
+  workstation:     { background: "#818cf8", border: "#6366f1", font: "#fff" },
+  desktop:         { background: "#93c5fd", border: "#3b82f6", font: "#fff" },
+  laptop:          { background: "#f472b6", border: "#ec4899", font: "#fff" },
+  endpoint:        { background: "#a78bfa", border: "#8b5cf6", font: "#fff" },
+  printer:         { background: "#fbbf24", border: "#f59e0b", font: "#fff" },
+  camera:          { background: "#34d399", border: "#10b981", font: "#fff" },
+  iot:             { background: "#a3e635", border: "#84cc16", font: "#fff" },
+  plc:             { background: "#4ade80", border: "#22c55e", font: "#fff" },
+  rtu:             { background: "#a7f3d0", border: "#34d399", font: "#fff" },
+  storage:         { background: "#94a3b8", border: "#64748b", font: "#fff" },
+  virtual_machine: { background: "#e879f9", border: "#d946ef", font: "#fff" },
+  mobile:          { background: "#6ee7b7", border: "#10b981", font: "#fff" },
+  load_balancer:   { background: "#fda4af", border: "#f43f5e", font: "#fff" },
+  modem:           { background: "#22d3ee", border: "#06b6d4", font: "#fff" },
+  unknown:         { background: "#cbd5e1", border: "#94a3b8", font: "#fff" },
+  subnet:          { background: "#22d3ee", border: "#0891b2", font: "#fff" },
 };
 
-const GROUP_SHAPES = {
-  router:  "diamond",
-  switch:  "square",
-  server:  "box",
-  host:    "dot",
-  printer: "triangle",
-  iot:     "hexagon",
-};
-
-// Stable SVG template strings to avoid hardcoded Base64 typos
+// Stable SVG template strings for all 21 device categories
 const ROUTER_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
@@ -77,6 +84,266 @@ const SWITCH_SVG = `
   <circle cx="52" cy="21" r="1.5" fill="#22c55e" />
 </svg>`;
 
+const GATEWAY_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="gwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fca5a5" />
+      <stop offset="100%" stop-color="#f87171" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="40" rx="8" fill="#1e1b4b" stroke="url(#gwGrad)" stroke-width="2.5" />
+  <path d="M22 28v14M32 22v20M42 28v14" stroke="#fca5a5" stroke-width="2.5" stroke-linecap="round" />
+  <path d="M14 44h36" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" />
+</svg>`;
+
+const FIREWALL_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="fwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb923c" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+  </defs>
+  <path d="M12 8h40v12H12zm0 16h40v12H12zm0 16h40v12H12z" fill="#1e1b4b" stroke="url(#fwGrad)" stroke-width="2" />
+  <path d="M22 8v48M42 8v48" stroke="url(#fwGrad)" stroke-width="2" />
+  <path d="M12 20h40M12 36h40" stroke="#1e1b4b" stroke-width="2.5" />
+</svg>`;
+
+const WIRELESS_AP_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="apGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2dd4bf" />
+      <stop offset="100%" stop-color="#14b8a6" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="46" r="8" fill="#115e59" stroke="url(#apGrad)" stroke-width="2" />
+  <path d="M32 38v-24M24 24a12 12 0 0 1 16 0M16 16a24 24 0 0 1 32 0M8 8a36 36 0 0 1 48 0" fill="none" stroke="url(#apGrad)" stroke-width="2.5" stroke-linecap="round" />
+</svg>`;
+
+const SERVER_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="srvGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="8" width="44" height="48" rx="4" fill="#2e1065" stroke="url(#srvGrad)" stroke-width="2.5" />
+  <rect x="14" y="14" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
+  <rect x="14" y="28" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
+  <rect x="14" y="42" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
+  <circle cx="18" cy="18" r="2" fill="#22c55e" />
+  <circle cx="18" cy="32" r="2" fill="#22c55e" />
+  <circle cx="18" cy="46" r="2" fill="#22c55e" />
+</svg>`;
+
+const WORKSTATION_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="wsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="12" width="34" height="24" rx="2" fill="#1e1b4b" stroke="url(#wsGrad)" stroke-width="2.5" />
+  <path d="M12 36v8M8 44h18" stroke="url(#wsGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="44" y="8" width="16" height="40" rx="3" fill="#1e1b4b" stroke="url(#wsGrad)" stroke-width="2" />
+  <rect x="48" y="42" width="8" height="2" fill="#818cf8" />
+</svg>`;
+
+const DESKTOP_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="dtGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#93c5fd" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="14" width="38" height="26" rx="2" fill="#172554" stroke="url(#dtGrad)" stroke-width="2.5" />
+  <path d="M18 40v8M12 48h22" stroke="url(#dtGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="50" y="14" width="6" height="34" rx="1" fill="#172554" stroke="url(#dtGrad)" stroke-width="1.5" />
+</svg>`;
+
+const LAPTOP_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="ltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+  </defs>
+  <rect x="12" y="16" width="40" height="26" rx="3" fill="#1e1b4b" stroke="url(#ltGrad)" stroke-width="2.5" />
+  <path d="M4 46h56l-4-6H8z" fill="#0f172a" stroke="url(#ltGrad)" stroke-width="2.5" stroke-linejoin="round" />
+</svg>`;
+
+const ENDPOINT_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="epGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <rect x="14" y="16" width="36" height="24" rx="2" fill="#1e1b4b" stroke="url(#epGrad)" stroke-width="2.5" />
+  <path d="M22 40v8M18 48h28" stroke="url(#epGrad)" stroke-width="2.5" stroke-linecap="round" />
+</svg>`;
+
+const PRINTER_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="prGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <path d="M16 26h32v24H16z" fill="#78350f" stroke="url(#prGrad)" stroke-width="2.5" />
+  <path d="M20 26v-12h24v12" fill="none" stroke="url(#prGrad)" stroke-width="2" />
+  <path d="M12 36h40" stroke="url(#prGrad)" stroke-width="2.5" />
+  <path d="M24 42h16M24 46h12" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" />
+</svg>`;
+
+const CAMERA_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="camGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+  <path d="M32 10a18 18 0 0 0-18 18v8h36v-8a18 18 0 0 0-18-18z" fill="#064e3b" stroke="url(#camGrad)" stroke-width="2.5" />
+  <circle cx="32" cy="28" r="8" fill="#022c22" stroke="url(#camGrad)" stroke-width="2" />
+  <circle cx="32" cy="28" r="3" fill="#10b981" />
+  <path d="M10 40h44v6H10z" fill="url(#camGrad)" />
+</svg>`;
+
+const IOT_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="iotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a3e635" />
+      <stop offset="100%" stop-color="#84cc16" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="32" height="32" rx="4" fill="#3f6212" stroke="url(#iotGrad)" stroke-width="2.5" />
+  <path d="M32 8v8M32 48v8M8 32h8M48 32h8" stroke="url(#iotGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="32" cy="32" r="6" fill="#84cc16" />
+</svg>`;
+
+const PLC_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="plcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80" />
+      <stop offset="100%" stop-color="#22c55e" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="10" width="48" height="44" rx="4" fill="#14532d" stroke="url(#plcGrad)" stroke-width="2.5" />
+  <path d="M20 10v44M32 10v44M44 10v44" stroke="url(#plcGrad)" stroke-width="2" />
+  <circle cx="14" cy="20" r="2" fill="#22c55e" />
+  <circle cx="14" cy="28" r="2" fill="#22c55e" />
+  <circle cx="26" cy="20" r="2" fill="#ef4444" />
+  <circle cx="38" cy="20" r="2" fill="#22c55e" />
+</svg>`;
+
+const RTU_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="rtuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a7f3d0" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="14" width="44" height="38" rx="6" fill="#064e3b" stroke="url(#rtuGrad)" stroke-width="2.5" />
+  <path d="M22 6v8M42 6v8M18 24h28M18 32h28" stroke="url(#rtuGrad)" stroke-width="2" stroke-linecap="round" />
+  <circle cx="32" cy="42" r="3" fill="#34d399" />
+</svg>`;
+
+const STORAGE_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="stGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+  </defs>
+  <rect x="12" y="8" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
+  <rect x="12" y="26" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
+  <rect x="12" y="44" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
+  <circle cx="18" cy="14" r="1.5" fill="#38bdf8" />
+  <circle cx="18" cy="32" r="1.5" fill="#38bdf8" />
+  <circle cx="18" cy="50" r="1.5" fill="#38bdf8" />
+  <path d="M42 14h6M42 32h6M42 50h6" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" />
+</svg>`;
+
+const VIRTUAL_MACHINE_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="vmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e879f9" />
+      <stop offset="100%" stop-color="#d946ef" />
+    </linearGradient>
+  </defs>
+  <rect x="6" y="24" width="24" height="24" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
+  <rect x="34" y="24" width="24" height="24" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
+  <rect x="20" y="8" width="24" height="12" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
+  <path d="M32 20v4M18 36h4M46 36h4" stroke="url(#vmGrad)" stroke-width="2" />
+</svg>`;
+
+const MOBILE_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="mobGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6ee7b7" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+  <rect x="18" y="8" width="28" height="48" rx="6" fill="#064e3b" stroke="url(#mobGrad)" stroke-width="2.5" />
+  <circle cx="32" cy="50" r="3" fill="#10b981" />
+  <rect x="28" y="12" width="8" height="2" rx="1" fill="#6ee7b7" />
+</svg>`;
+
+const LOAD_BALANCER_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="lbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fda4af" />
+      <stop offset="100%" stop-color="#f43f5e" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="26" fill="#4c0519" stroke="url(#lbGrad)" stroke-width="2.5" />
+  <path d="M16 32h10M38 24l8-6M38 40l8 6" stroke="url(#lbGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <path d="M46 14v4h-4M46 50v-4h-4" fill="none" stroke="url(#lbGrad)" stroke-width="2.5" stroke-linejoin="round" />
+</svg>`;
+
+const MODEM_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="modGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="24" width="44" height="24" rx="4" fill="#083344" stroke="url(#modGrad)" stroke-width="2.5" />
+  <path d="M16 10v14M48 6v18" stroke="url(#modGrad)" stroke-width="2" stroke-linecap="round" />
+  <circle cx="20" cy="36" r="2" fill="#22d3ee" />
+  <circle cx="28" cy="36" r="2" fill="#22d3ee" />
+  <circle cx="36" cy="36" r="2" fill="#22d3ee" />
+</svg>`;
+
+const UNKNOWN_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="unkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="26" fill="#1e293b" stroke="url(#unkGrad)" stroke-width="2" />
+  <text x="32" y="42" font-family="'Inter', sans-serif" font-size="28" font-weight="bold" fill="#cbd5e1" text-anchor="middle">?</text>
+</svg>`;
+
 const SUBNET_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
@@ -91,20 +358,58 @@ const SUBNET_SVG = `
   <path d="M26 30v4c0 1.38 2.68 2.5 6 2.5s6-1.12 6-2.5v-4" fill="none" stroke="#22d3ee" stroke-width="1.5" />
 </svg>`;
 
-const HOST_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="hostGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#c084fc" />
-      <stop offset="100%" stop-color="#8b5cf6" />
-    </linearGradient>
-  </defs>
-  <rect x="12" y="16" width="40" height="26" rx="3" fill="#1e1b4b" stroke="url(#hostGrad)" stroke-width="2.5" />
-  <path d="M4 46h56l-4-6H8z" fill="#0f172a" stroke="url(#hostGrad)" stroke-width="2.5" stroke-linejoin="round" />
-  <circle cx="32" cy="29" r="3" fill="#c084fc" opacity="0.8" />
-</svg>`;
+// Map of category ID to premium SVG string
+const CATEGORY_SVGS = {
+  router:          ROUTER_SVG,
+  switch:          SWITCH_SVG,
+  gateway:         GATEWAY_SVG,
+  firewall:        FIREWALL_SVG,
+  wireless_ap:     WIRELESS_AP_SVG,
+  server:          SERVER_SVG,
+  workstation:     WORKSTATION_SVG,
+  desktop:         DESKTOP_SVG,
+  laptop:          LAPTOP_SVG,
+  endpoint:        ENDPOINT_SVG,
+  printer:         PRINTER_SVG,
+  camera:          CAMERA_SVG,
+  iot:             IOT_SVG,
+  plc:             PLC_SVG,
+  rtu:             RTU_SVG,
+  storage:         STORAGE_SVG,
+  virtual_machine: VIRTUAL_MACHINE_SVG,
+  mobile:          MOBILE_SVG,
+  load_balancer:   LOAD_BALANCER_SVG,
+  modem:           MODEM_SVG,
+  unknown:         UNKNOWN_SVG,
+  subnet:          SUBNET_SVG,
+};
 
 const getSvgDataUrl = (svgStr) => `data:image/svg+xml;base64,${window.btoa(svgStr.trim())}`;
+
+const CATEGORY_LABELS = {
+  router:          "Router",
+  switch:          "Switch",
+  gateway:         "Gateway",
+  firewall:        "Firewall",
+  wireless_ap:     "Wireless AP",
+  server:          "Server",
+  workstation:     "Workstation",
+  desktop:         "Desktop PC",
+  laptop:          "Laptop",
+  endpoint:        "Endpoint",
+  printer:         "Printer",
+  camera:          "IP Camera",
+  iot:             "IoT Device",
+  plc:             "PLC",
+  rtu:             "RTU",
+  storage:         "NAS / Storage",
+  virtual_machine: "Virtual Machine",
+  mobile:          "Mobile Device",
+  load_balancer:   "Load Balancer",
+  modem:           "Modem",
+  unknown:         "Unknown Device",
+  host:            "Host",
+};
 
 /** Format bits-per-second into a human-readable speed string. */
 const formatSpeed = (bps) => {
@@ -342,32 +647,47 @@ export default function NetworkMap() {
       };
     }
 
+    const group = n.group || "unknown";
+    const nodeImage = getSvgDataUrl(CATEGORY_SVGS[group] || CATEGORY_SVGS.unknown);
+    const themeColor = GROUP_COLORS[group]?.border || "#cbd5e1";
+
     if (n.tier === "host") {
       return {
         id: n.id,
         label: n.label || n.ip || n.id,
         shape: "image",
-        image: getSvgDataUrl(HOST_SVG),
+        image: nodeImage,
         size: 26,
         font: { color: "#cbd5e1", size: 9, face: "Inter, sans-serif", strokeWidth: 2, strokeColor: "#0f172a", vadjust: 26 },
         level: 3,
-        title: `Host: ${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nSubnet: ${n.subnet || "—"}`,
+        title: `Host: ${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nSubnet: ${n.subnet || "—"}\nType: ${group}`,
         _data: n,
       };
     }
 
-    // Infrastructure node (router/switch/gateway)
-    const group = n.group || "switch";
-    const nodeImage = group === "router" ? getSvgDataUrl(ROUTER_SVG) : getSvgDataUrl(SWITCH_SVG);
+    // Dynamic infrastructure node formatting (routers, switches, gateways, firewalls, etc.)
+    let nodeSize = 34;
+    let nodeLevel = 1;
+
+    if (group === "router" || group === "gateway") {
+      nodeSize = 42;
+      nodeLevel = 0;
+    } else if (group === "switch" || group === "firewall" || group === "load_balancer" || group === "modem") {
+      nodeSize = 38;
+      nodeLevel = 1;
+    } else {
+      nodeSize = 34;
+      nodeLevel = 2; // servers / storage / virtual machines / etc.
+    }
 
     return {
       id: n.id,
       label: n.label || n.ip || n.mac,
       shape: "image",
       image: nodeImage,
-      font: { color: group === "router" ? "#f87171" : "#60a5fa", size: 13, bold: true, face: "Inter, sans-serif", strokeWidth: 3, strokeColor: "#0f172a", vadjust: 36 },
-      size: group === "router" ? 42 : 38,
-      level: group === "router" ? 0 : 1,
+      font: { color: themeColor, size: 13, bold: true, face: "Inter, sans-serif", strokeWidth: 3, strokeColor: "#0f172a", vadjust: 36 },
+      size: nodeSize,
+      level: nodeLevel,
       title: `${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nType: ${group}`,
       _data: n,
     };
@@ -715,12 +1035,20 @@ export default function NetworkMap() {
     syncGraphView();
   };
 
-  const legendItems = [
-    { group: "router",  label: "Gateway / Router" },
-    { group: "switch",  label: "Switch" },
-    { group: "server",  label: "Server" },
-    { group: "host",    label: "Host / Endpoint" },
-  ];
+  const legendItems = useMemo(() => {
+    const activeGroups = new Set();
+    allNodesRef.current.forEach(node => {
+      if (node.tier === "infra" || node.tier === "host") {
+        activeGroups.add(node.group || "endpoint");
+      }
+    });
+    return Array.from(activeGroups)
+      .map(g => ({
+        group: g,
+        label: CATEGORY_LABELS[g] || g.charAt(0).toUpperCase() + g.slice(1)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allNodesRef.current]);
 
   return (
     <AppLayout>

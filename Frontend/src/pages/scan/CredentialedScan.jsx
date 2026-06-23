@@ -11,35 +11,35 @@ import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
 const SECTIONS = [
-  { key: "system_info", label: "System Info",       icon: "🖥",  desc: "OS, kernel/build, CPU, RAM, disk"       },
-  { key: "packages",    label: "Packages",           icon: "📦",  desc: "Installed software (dpkg/rpm/registry)"  },
-  { key: "services",    label: "Running Services",   icon: "⚙️",  desc: "Active services / systemd units"         },
-  { key: "ports",       label: "Open Ports",         icon: "🔌",  desc: "Live socket table (ss / netstat)"        },
-  { key: "users",       label: "Users",              icon: "👤",  desc: "User accounts & admin analysis"         },
-  { key: "security",    label: "Security Audit",     icon: "🔒",  desc: "Firewall, shares, SUID, sudo, RDP"      },
-  { key: "network",     label: "Network",            icon: "🌐",  desc: "Interfaces, ARP, env vars"              },
-  { key: "history",     label: "Login History",      icon: "📋",  desc: "Recent logins & failures"               },
+  { key: "system_info", label: "System Info", icon: "🖥", desc: "OS, kernel/build, CPU, RAM, disk" },
+  { key: "packages", label: "Packages", icon: "📦", desc: "Installed software (dpkg/rpm/registry)" },
+  { key: "services", label: "Running Services", icon: "⚙️", desc: "Active services / systemd units" },
+  { key: "ports", label: "Open Ports", icon: "🔌", desc: "Live socket table (ss / netstat)" },
+  { key: "users", label: "Users", icon: "👤", desc: "User accounts & admin analysis" },
+  { key: "security", label: "Security Audit", icon: "🔒", desc: "Firewall, shares, SUID, sudo, RDP" },
+  { key: "network", label: "Network", icon: "🌐", desc: "Interfaces, ARP, env vars" },
+  { key: "history", label: "Login History", icon: "📋", desc: "Recent logins & failures" },
 ];
 
 export default function CredentialedScan() {
-  const location   = useLocation();
-  const navigate   = useNavigate();
-  const { user }   = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const canExecuteScans = can(user, "scans", "execute");
-  const prefillIp  = location.state?.prefill?.ip ?? "";
+  const prefillIp = location.state?.prefill?.ip ?? "";
 
-  const [ip,         setIp]         = useState(prefillIp);
-  const [username,   setUsername]   = useState("");
-  const [password,   setPassword]   = useState("");
-  const [keyPath,    setKeyPath]    = useState("");
-  const [port,       setPort]       = useState("22");
+  const [ip, setIp] = useState(prefillIp);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [keyPath, setKeyPath] = useState("");
+  const [port, setPort] = useState("22");
   const [authMethod, setAuthMethod] = useState("password");
-  const [osType,     setOsType]     = useState("auto");
-  const [showPass,   setShowPass]   = useState(false);
-  const [sections,   setSections]   = useState(new Set(SECTIONS.map(s => s.key)));
-  const [loading,    setLoading]    = useState(false);
-  const [loadPhase,  setLoadPhase]  = useState("");  // "detecting" | "collecting"
-  const [error,      setError]      = useState("");
+  const [osType, setOsType] = useState("auto");
+  const [showPass, setShowPass] = useState(false);
+  const [sections, setSections] = useState(new Set(SECTIONS.map(s => s.key)));
+  const [loading, setLoading] = useState(false);
+  const [loadPhase, setLoadPhase] = useState("");  // "detecting" | "collecting"
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (prefillIp) { setIp(prefillIp); setPassword(""); setKeyPath(""); setError(""); }
@@ -51,17 +51,17 @@ export default function CredentialedScan() {
     setSections(n);
   };
 
-  const allSelected  = sections.size === SECTIONS.length;
+  const allSelected = sections.size === SECTIONS.length;
   const noneSelected = sections.size === 0;
-  const toggleAll    = () => setSections(allSelected ? new Set() : new Set(SECTIONS.map(s => s.key)));
+  const toggleAll = () => setSections(allSelected ? new Set() : new Set(SECTIONS.map(s => s.key)));
 
   const handleSubmit = async () => {
     setError("");
     if (!canExecuteScans) return setError(denyMessage);
-    if (!ip.trim())       return setError("Please enter a target IP or hostname.");
+    if (!ip.trim()) return setError("Please enter a target IP or hostname.");
     if (!username.trim()) return setError("Please enter an SSH username.");
     if (authMethod === "password" && !password) return setError("Please enter a password.");
-    if (authMethod === "key"      && !keyPath)  return setError("Please enter the SSH key path.");
+    if (authMethod === "key" && !keyPath) return setError("Please enter the SSH key path.");
     if (noneSelected) return setError("Select at least one data category to collect.");
 
     setLoading(true);
@@ -73,11 +73,11 @@ export default function CredentialedScan() {
       const { data } = await runCredentialedScan({
         ip: ip.trim(),
         username: username.trim(),
-        password:   authMethod === "password" ? password  : undefined,
-        keyPath:    authMethod === "key"      ? keyPath.trim() : undefined,
-        port:       parseInt(port, 10) || 22,
+        password: authMethod === "password" ? password : undefined,
+        keyPath: authMethod === "key" ? keyPath.trim() : undefined,
+        port: parseInt(port, 10) || 22,
         authMethod,
-        sections:   allSelected ? null : Array.from(sections),
+        sections: allSelected ? null : Array.from(sections),
         osType,
       });
 
@@ -99,10 +99,10 @@ export default function CredentialedScan() {
   };
 
   const isUnreachableError = error && (
-    error.toLowerCase().includes("reach") || 
-    error.toLowerCase().includes("timeout") || 
-    error.toLowerCase().includes("route") || 
-    error.toLowerCase().includes("refused") || 
+    error.toLowerCase().includes("reach") ||
+    error.toLowerCase().includes("timeout") ||
+    error.toLowerCase().includes("route") ||
+    error.toLowerCase().includes("refused") ||
     error.toLowerCase().includes("down")
   );
 
@@ -111,7 +111,7 @@ export default function CredentialedScan() {
       <div className="page-inner cred-page-inner">
 
         <div className="cred-back-row">
-          <button className="btn btn--ghost cred-back-btn" onClick={() => navigate("/dashboard") }>
+          <button className="btn btn--ghost cred-back-btn" onClick={() => navigate("/dashboard")}>
             ← Back
           </button>
         </div>
@@ -128,7 +128,7 @@ export default function CredentialedScan() {
               <div className="cred-field cred-field--wide">
                 <label className="field-label">IP / Hostname</label>
                 <input className="field-input" type="text"
-                  placeholder="192.168.1.10 or server.local"
+                  placeholder="10.180.6.140 or server.local"
                   value={ip} onChange={e => setIp(e.target.value)}
                   disabled={loading || !canExecuteScans} autoComplete="off"
                 />
@@ -269,7 +269,7 @@ export default function CredentialedScan() {
               <div>
                 <strong style={{ display: "block", fontSize: 16 }}>Host is unreachable or down</strong>
                 <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                  The scanner could not establish an SSH connection to <code>{ip}</code>. 
+                  The scanner could not establish an SSH connection to <code>{ip}</code>.
                   Verify the IP address, SSH service status, and firewall rules.
                 </p>
               </div>

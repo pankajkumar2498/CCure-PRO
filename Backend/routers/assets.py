@@ -529,8 +529,8 @@ def get_coverage_stats(
         Asset.mac_address != None
     ).count()
 
-    # Get inventory reference counts (global across database)
-    total_inventory = db.query(AMTInventoryRecord).count()
+    # Get inventory reference counts (isolated to current tenant)
+    total_inventory = db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org).count()
 
     if total_inventory == 0:
         return {
@@ -550,15 +550,19 @@ def get_coverage_stats(
     )
 
     fully_audited = db.query(AMTInventoryRecord).filter(
+        AMTInventoryRecord.org_id == org,
         or_(
             AMTInventoryRecord.mac_address_1.in_(scanned_macs_query),
             AMTInventoryRecord.mac_address_2.in_(scanned_macs_query)
         )
     ).count()
 
-    # Shadow IT: Scanned assets that do NOT match any AMT inventory MAC globally
-    amt_mac1_query = db.query(AMTInventoryRecord.mac_address_1)
-    amt_mac2_query = db.query(AMTInventoryRecord.mac_address_2).filter(AMTInventoryRecord.mac_address_2 != None)
+    # Shadow IT: Scanned assets that do NOT match any AMT inventory MAC for this org
+    amt_mac1_query = db.query(AMTInventoryRecord.mac_address_1).filter(AMTInventoryRecord.org_id == org)
+    amt_mac2_query = db.query(AMTInventoryRecord.mac_address_2).filter(
+        AMTInventoryRecord.org_id == org,
+        AMTInventoryRecord.mac_address_2 != None
+    )
 
     shadow_it = db.query(Asset).filter(
         Asset.org_id == org,
@@ -569,6 +573,7 @@ def get_coverage_stats(
 
     # Coverage Gap: Inventory records that are not present in scanned assets MACs
     coverage_gap = db.query(AMTInventoryRecord).filter(
+        AMTInventoryRecord.org_id == org,
         ~AMTInventoryRecord.mac_address_1.in_(scanned_macs_query),
         or_(
             AMTInventoryRecord.mac_address_2 == None,
@@ -587,6 +592,246 @@ def get_coverage_stats(
         "coverage_gap": coverage_gap,
         "coverage_percentage": coverage_percentage
     }
+
+
+@router.get("/reconciliation/drilldown")
+def get_reconciliation_drilldown(
+    category: str = Query(...),
+    search: Optional[str] = Query(None),
+    owner: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: str = Query("desc"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    org_id: Optional[str] = Query(None),
+    export: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("assets", "read")),
+):
+    """
+    Retrieve paginated lists of assets or inventory records for reconciliation drilldown categories:
+    - scanned: All scanned assets with MAC address
+    - inventory: All imported inventory records
+    - matched: Reconciled assets that match inventory MAC addresses
+    - shadow_it: Scanned assets with MAC addresses that do not exist in inventory
+    - coverage_gap: Inventory records with MAC addresses that do not exist in scanned assets
+    """
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    org = _resolve_org(user, org_id)
+
+    # 1. Base queries matching coverage-stats definitions
+    if category in ("scanned", "matched", "shadow_it"):
+        # We query the Asset model
+        q = db.query(Asset).filter(Asset.org_id == org, Asset.mac_address != None)
+        
+        # Apply matched / shadow IT subqueries
+        amt_mac1 = db.query(AMTInventoryRecord.mac_address_1).filter(AMTInventoryRecord.org_id == org)
+        amt_mac2 = db.query(AMTInventoryRecord.mac_address_2).filter(
+            AMTInventoryRecord.org_id == org,
+            AMTInventoryRecord.mac_address_2 != None
+        )
+
+        if category == "matched":
+            q = q.filter(
+                or_(
+                    Asset.mac_address.in_(amt_mac1),
+                    Asset.mac_address.in_(amt_mac2)
+                )
+            )
+        elif category == "shadow_it":
+            q = q.filter(
+                ~Asset.mac_address.in_(amt_mac1),
+                ~Asset.mac_address.in_(amt_mac2)
+            )
+
+        # Apply searching
+        if search:
+            q = q.filter(
+                or_(
+                    Asset.hostname.ilike(f"%{search}%"),
+                    Asset.fqdn.ilike(f"%{search}%"),
+                    Asset.netbios_name.ilike(f"%{search}%"),
+                    func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
+                    func.cast(Asset.mac_address, String).ilike(f"%{search}%"),
+                    Asset.owner.ilike(f"%{search}%"),
+                    Asset.vendor.ilike(f"%{search}%"),
+                )
+            )
+
+        # Apply filters
+        if owner:
+            q = q.filter(Asset.owner.ilike(f"%{owner}%"))
+        if department:
+            q = q.filter(
+                or_(
+                    Asset.custom_attributes["amt_company_name"].astext.ilike(f"%{department}%"),
+                    Asset.vendor.ilike(f"%{department}%")
+                )
+            )
+        if location:
+            q = q.filter(Asset.custom_attributes["amt_location"].astext.ilike(f"%{location}%"))
+
+        # Sorting mapping
+        col_map = {
+            "hostname": Asset.hostname,
+            "ip_address": Asset.ip_address,
+            "mac_address": Asset.mac_address,
+            "risk_score": Asset.risk_score,
+            "first_seen_at": Asset.first_seen_at,
+            "last_seen_at": Asset.last_seen_at,
+            "owner": Asset.owner,
+        }
+        sort_col = col_map.get(sort_by, Asset.last_seen_at)
+        q = q.order_by(sort_col.desc() if sort_dir == "desc" else sort_col.asc())
+
+    elif category in ("inventory", "coverage_gap"):
+        # We query the AMTInventoryRecord model
+        q = db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org)
+
+        # Apply coverage gap subquery
+        if category == "coverage_gap":
+            scanned_macs = db.query(Asset.mac_address).filter(Asset.org_id == org, Asset.mac_address != None)
+            q = q.filter(
+                ~AMTInventoryRecord.mac_address_1.in_(scanned_macs),
+                or_(
+                    AMTInventoryRecord.mac_address_2 == None,
+                    ~AMTInventoryRecord.mac_address_2.in_(scanned_macs)
+                )
+            )
+
+        # Apply searching
+        if search:
+            q = q.filter(
+                or_(
+                    AMTInventoryRecord.asset_name.ilike(f"%{search}%"),
+                    AMTInventoryRecord.asset_tag.ilike(f"%{search}%"),
+                    AMTInventoryRecord.serial.ilike(f"%{search}%"),
+                    AMTInventoryRecord.vendor.ilike(f"%{search}%"),
+                    AMTInventoryRecord.asset_user.ilike(f"%{search}%"),
+                    AMTInventoryRecord.emp_id.ilike(f"%{search}%"),
+                    func.cast(AMTInventoryRecord.mac_address_1, String).ilike(f"%{search}%"),
+                    func.cast(AMTInventoryRecord.mac_address_2, String).ilike(f"%{search}%"),
+                )
+            )
+
+        # Apply filters
+        if owner:
+            q = q.filter(AMTInventoryRecord.asset_user.ilike(f"%{owner}%"))
+        if department:
+            q = q.filter(
+                or_(
+                    AMTInventoryRecord.company_name.ilike(f"%{department}%"),
+                    AMTInventoryRecord.asset_type.ilike(f"%{department}%")
+                )
+            )
+        if location:
+            q = q.filter(AMTInventoryRecord.location.ilike(f"%{location}%"))
+
+        # Sorting mapping
+        col_map = {
+            "asset_tag": AMTInventoryRecord.asset_tag,
+            "asset_name": AMTInventoryRecord.asset_name,
+            "serial": AMTInventoryRecord.serial,
+            "asset_user": AMTInventoryRecord.asset_user,
+            "status": AMTInventoryRecord.status,
+            "location": AMTInventoryRecord.location,
+            "company_name": AMTInventoryRecord.company_name,
+        }
+        sort_col = col_map.get(sort_by, AMTInventoryRecord.asset_tag)
+        q = q.order_by(sort_col.desc() if sort_dir == "desc" else sort_col.asc())
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category: '{category}'. Valid options are: scanned, inventory, matched, shadow_it, coverage_gap."
+        )
+
+    # 2. Export handling
+    if export:
+        # Fetch all results, bypassing pagination
+        results = q.all()
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        if category in ("scanned", "matched", "shadow_it"):
+            writer.writerow([
+                "ID", "Hostname", "IP Address", "MAC Address", "Device Category",
+                "OS Family", "OS Name", "Vendor", "Owner", "Is Managed",
+                "Is Active", "First Seen At", "Last Seen At", "Risk Level", "Risk Score"
+            ])
+            for a in results:
+                writer.writerow([
+                    a.id, a.hostname or "", str(a.ip_address) if a.ip_address else "",
+                    str(a.mac_address) if a.mac_address else "", a.device_category or "",
+                    a.os_family or "", a.os_name or "", a.vendor or "", a.owner or "",
+                    a.is_managed, a.is_active,
+                    a.first_seen_at.isoformat() if a.first_seen_at else "",
+                    a.last_seen_at.isoformat() if a.last_seen_at else "",
+                    a.risk_level or "", a.risk_score
+                ])
+        else:
+            writer.writerow([
+                "ID", "Asset Tag", "Asset Name", "Serial", "Vendor",
+                "Asset Type", "Asset User", "Employee ID", "Status",
+                "Location", "Location ID", "Company Name", "MAC Address 1", "MAC Address 2"
+            ])
+            for r in results:
+                writer.writerow([
+                    r.id, r.asset_tag or "", r.asset_name or "", r.serial or "", r.vendor or "",
+                    r.asset_type or "", r.asset_user or "", r.emp_id or "", r.status or "",
+                    r.location or "", r.location_id or "", r.company_name or "",
+                    str(r.mac_address_1) if r.mac_address_1 else "",
+                    str(r.mac_address_2) if r.mac_address_2 else ""
+                ])
+
+        output.seek(0)
+        response = StreamingResponse(iter([output.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename=amt_{category}_export.csv"
+        return response
+
+    # 3. Paginated JSON response
+    total = q.count()
+    records = q.offset(skip).limit(limit).all()
+
+    if category in ("scanned", "matched", "shadow_it"):
+        serialized = [_serialize_asset(r) for r in records]
+    else:
+        # Serializer for AMTInventoryRecord
+        serialized = [
+            {
+                "id": r.id,
+                "org_id": r.org_id,
+                "mac_address_1": str(r.mac_address_1) if r.mac_address_1 else None,
+                "mac_address_2": str(r.mac_address_2) if r.mac_address_2 else None,
+                "asset_tag": r.asset_tag,
+                "asset_name": r.asset_name,
+                "serial": r.serial,
+                "vendor": r.vendor,
+                "asset_type": r.asset_type,
+                "asset_user": r.asset_user,
+                "emp_id": r.emp_id,
+                "status": r.status,
+                "location": r.location,
+                "location_id": r.location_id,
+                "company_name": r.company_name,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in records
+        ]
+
+    return {
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "data": serialized
+    }
+
 
 
 # ── Asset Detail ─────────────────────────────────────────────────────────────────────────────

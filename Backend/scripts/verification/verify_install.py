@@ -108,7 +108,7 @@ check("Risk score calculation returns non-zero for critical ports", lambda: (
 
 check("InputValidator rejects unsafe input", lambda: (
     not __import__("core.utils", fromlist=["InputValidator"])
-    .InputValidator.is_safe("192.168.1.1; rm -rf /")
+    .InputValidator.is_safe("10.180.6.14; rm -rf /")
 ))
 
 check("deduplicate_cves removes duplicates", lambda: (

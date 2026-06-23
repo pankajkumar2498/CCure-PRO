@@ -25,7 +25,7 @@ def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
         {"scan_duration": 1.0, "description": "ok\x00bad\x01value\nkept"},
         [
             {
-                "ip_address": "192.168.1.10",
+                "ip_address": "10.180.6.140",
                 "interfaces": [{"address": "\x01\x01\x00binary"}],
                 "raw": b"snmp\x00response",
             }
@@ -40,7 +40,7 @@ def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
 def test_public_phase_summary_hides_internal_phase_data():
     summary = _public_phase_summary({
         "total_hosts": 254,
-        "_phase_data": [{"ip_address": "192.168.1.10"}],
+        "_phase_data": [{"ip_address": "10.180.6.140"}],
     })
 
     assert summary == {"total_hosts": 254}
@@ -79,8 +79,8 @@ def test_create_scan_writes_audit_log(db_session: Session):
     scan = create_scan(
         db=db_session,
         user_id=str(user.id),
-        target="192.168.1.1",
-        targets=["192.168.1.1"],
+        target="10.180.6.14",
+        targets=["10.180.6.14"],
         scan_type="adaptive",
         pipeline_mode="vulnerability_audit",
     )
@@ -141,8 +141,8 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
     scan1 = create_scan(
         db=db_session,
         user_id=str(user1.id),
-        target="192.168.1.1",
-        targets=["192.168.1.1"],
+        target="10.180.6.14",
+        targets=["10.180.6.14"],
         scan_type="adaptive",
         pipeline_mode="basic",
     )
@@ -201,15 +201,15 @@ def test_scan_completion_logs_audit_event(db_session: Session):
     scan = create_scan(
         db=db_session,
         user_id=str(user.id),
-        target="192.168.1.1",
-        targets=["192.168.1.1"],
+        target="10.180.6.14",
+        targets=["10.180.6.14"],
         scan_type="adaptive",
         pipeline_mode="basic",
     )
 
     result = {
         "summary": {"scan_duration": 0.2, "total_hosts": 1, "active_hosts": 1},
-        "data": [{"ip_address": "192.168.1.1"}],
+        "data": [{"ip_address": "10.180.6.14"}],
     }
 
     update_scan_phase1(
@@ -265,8 +265,8 @@ def test_scan_failure_logs_audit_event(db_session: Session):
     scan = create_scan(
         db=db_session,
         user_id=str(user.id),
-        target="192.168.1.1",
-        targets=["192.168.1.1"],
+        target="10.180.6.14",
+        targets=["10.180.6.14"],
         scan_type="adaptive",
         pipeline_mode="basic",
     )
@@ -302,7 +302,7 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
     asset = Asset(
         id=f"ast_{org_id}_192_168_1_10",
         org_id=org.id,
-        ip_address="192.168.1.10",
+        ip_address="10.180.6.140",
         mac_address="AA:BB:CC:DD:EE:FF",
         hostname="test-host",
         last_seen_at=utcnow(),
@@ -314,7 +314,7 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
         id=scan_id,
         org_id=org.id,
         created_by=None,
-        target_str="192.168.1.10",
+        target_str="10.180.6.140",
         scan_type="adaptive",
         pipeline_mode="vulnerability_audit",
     )
@@ -323,7 +323,7 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
 
     hosts = [
         {
-            "ip_address": "192.168.1.10",
+            "ip_address": "10.180.6.140",
             "vulnerabilities": [
                 {
                     "cve_id": "CVE-9999-0001",
@@ -365,7 +365,7 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
     asset = Asset(
         id=f"ast_{org_id}_192_168_1_10",
         org_id=org.id,
-        ip_address="192.168.1.10",
+        ip_address="10.180.6.140",
         mac_address="AA:BB:CC:DD:EE:FF",
         hostname="test-host",
         last_seen_at=utcnow(),
@@ -380,7 +380,7 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
         id=scan_id,
         org_id=org.id,
         created_by=None,
-        target_str="192.168.1.10",
+        target_str="10.180.6.140",
         scan_type="adaptive",
         pipeline_mode="vulnerability_audit",
     )
@@ -389,7 +389,7 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
 
     hosts = [
         {
-            "ip_address": "192.168.1.10",
+            "ip_address": "10.180.6.140",
             "vulnerabilities": [
                 {
                     "cve_id": "CVE-9999-0001",
@@ -846,7 +846,7 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
             "hostname_fqdn": "superusr-HP3.localdomain",
             "manufacturer": "HP",
             "mac_address": "02-11-22-33-44-55",
-            "subnet": "192.168.1.0/24",
+            "subnet": "10.180.6.0/24",
             "credentialed_response_time_ms": 123,
         },
         stored_report={"open_ports_credentialed": []},
@@ -859,7 +859,7 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     assert str(asset.mac_address) == "02:11:22:33:44:55"
     assert asset.manufacturer == "HP"
     assert asset.vendor == "HP"
-    assert asset.subnet == "192.168.1.0/24"
+    assert asset.subnet == "10.180.6.0/24"
     assert asset.fqdn is None
     assert asset.response_time_ms == 123
 
@@ -1026,7 +1026,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
     asset = Asset(
         id=f"ast_{org_id}_192_168_1_11",
         org_id=org.id,
-        ip_address="192.168.1.11",
+        ip_address="10.180.6.141",
         mac_address="AA:BB:CC:DD:EE:00",
         hostname="status-host",
         last_seen_at=utcnow(),
@@ -1039,7 +1039,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         id=scan_id,
         org_id=org.id,
         created_by=None,
-        target_str="192.168.1.11",
+        target_str="10.180.6.141",
         scan_type="adaptive",
         pipeline_mode="vulnerability_audit",
     )
@@ -1048,7 +1048,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
 
     hosts = [
         {
-            "ip_address": "192.168.1.11",
+            "ip_address": "10.180.6.141",
             "vulnerabilities": [
                 {
                     "cve_id": "CVE-9999-0003",
@@ -1084,7 +1084,7 @@ def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
     # Mock the internal orchestrator to return a successful dummy result
     mock_result = {
         "success": True,
-        "data": [{"ip_address": "192.168.1.10", "status": "up", "mac_address": "AA:BB:CC:DD:EE:FF"}],
+        "data": [{"ip_address": "10.180.6.140", "status": "up", "mac_address": "AA:BB:CC:DD:EE:FF"}],
         "summary": {"total_hosts": 1, "active_hosts": 1, "inactive_hosts": 0, "scan_duration": 0.5}
     }
     
@@ -1102,7 +1102,7 @@ def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
                 "/scan/host-discovery",
                 headers=auth_headers,
                 json={
-                    "targets": ["192.168.1.0/24"],
+                    "targets": ["10.180.6.0/24"],
                     "scan_type": "adaptive",
                     "pipeline_mode": "asset"
                 }
@@ -1125,7 +1125,7 @@ def test_asset_discovery_wrong_pipeline_mode(client: TestClient, auth_headers: d
         "/scan/asset-discovery",
         headers=auth_headers,
         json={
-            "hosts": [{"ip_address": "192.168.1.10"}],
+            "hosts": [{"ip_address": "10.180.6.140"}],
             "intensity": "normal",
             "pipeline_mode": "basic"  # Basic pipeline only allows Phase 1
         }
@@ -1256,7 +1256,7 @@ def test_scan_progress_requires_scan_read_permission(client: TestClient, db_sess
         org_id=test_org.id,
         created_by=str(user.id),
         scan_no=1,
-        target_str="10.0.0.0/24",
+        target_str="10.180.5.0/24",
         scan_type="adaptive",
         pipeline_mode="basic",
         status="running",
@@ -1299,7 +1299,7 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
     asset = Asset(
         id=f"ast_{org_id}_192_168_1_10",
         org_id=org.id,
-        ip_address="192.168.1.10",
+        ip_address="10.180.6.140",
         mac_address="AA:BB:CC:DD:EE:FF",
         hostname="test-host",
         last_seen_at=utcnow(),
@@ -1311,7 +1311,7 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
         id=scan_id,
         org_id=org.id,
         created_by=None,
-        target_str="192.168.1.10",
+        target_str="10.180.6.140",
         scan_type="adaptive",
         pipeline_mode="vulnerability_audit",
     )
@@ -1335,7 +1335,7 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
 
     hosts = [
         {
-            "ip_address": "192.168.1.10",
+            "ip_address": "10.180.6.140",
             "open_ports": [
                 {
                     "port": 443,

@@ -26,6 +26,35 @@ import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
+const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
+
+const PORT_PROFILES = {
+  it: {
+    label: "IT Infrastructure",
+    ports: "21,22,23,25,53,67,80,88,110,111,123,135,137,139,143,161,389,443,445,465,587,623,636,902,993,995,1433,1521,2049,2375,2376,3306,3389,5432,5900,5985,5986,6379,6443,8080,8443,10250,27017",
+  },
+  scada: {
+    label: "SCADA / OT",
+    ports: "102,502,789,1089,1091,2222,2404,2455,4000,4840,4911,5007,9600,18245,20000,44818,47808,55000,55003",
+  },
+  web: {
+    label: "Web Services",
+    ports: "80,443,3000,5000,8000,8080,8443,8888,9000,9090,9443",
+  },
+  database: {
+    label: "Database",
+    ports: "1433,1521,3306,5432,6379,9042,9200,27017,28017",
+  },
+  remote: {
+    label: "Remote Access",
+    ports: "22,23,3389,5900,5985,5986",
+  },
+  custom: {
+    label: "Custom",
+    ports: "",
+  }
+};
+
 const textValue = (value, fallback = "—") => {
   if (value == null || value === "" || value === "Unknown" || value === "N/A") return fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -57,6 +86,7 @@ export default function Phase1Results() {
     osDetection,
     portScanMode, setPortScanMode,
     customPorts, setCustomPorts,
+    excludePorts, setExcludePorts,
   } = useScan();
 
   const [filter, setFilter] = useState("active");
@@ -68,9 +98,67 @@ export default function Phase1Results() {
   const [error, setError] = useState("");
   const [customPortsError, setCustomPortsError] = useState("");
 
-  const BLACKLISTED_PORTS = [2375, 2376, 6443, 10250];
+  const [excludePortsEnabled, setExcludePortsEnabled] = useState(() => !!excludePorts);
+  const [excludePortsError, setExcludePortsError] = useState("");
+  const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
+  const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
 
   const parseCustomPortsJS = (portsStr) => {
+    if (!portsStr || !portsStr.trim()) {
+      return { ports: [], error: "", sensitiveFound: false };
+    }
+    const clean = portsStr.replace(/\s+/g, "");
+    if (!/^[0-9,\-]+$/.test(clean)) {
+      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed.", sensitiveFound: false };
+    }
+    const tokens = clean.split(",");
+    const portsSet = new Set();
+
+    for (const token of tokens) {
+      if (!token) continue;
+      if (token.includes("-")) {
+        const rangeParts = token.split("-");
+        if (rangeParts.length !== 2) {
+          return { ports: [], error: `Invalid range format: "${token}"`, sensitiveFound: false };
+        }
+        const start = parseInt(rangeParts[0], 10);
+        const end = parseInt(rangeParts[1], 10);
+        if (isNaN(start) || isNaN(end)) {
+          return { ports: [], error: `Invalid range bounds: "${token}"`, sensitiveFound: false };
+        }
+        if (start > end) {
+          return { ports: [], error: `Range start must be <= end: "${token}"`, sensitiveFound: false };
+        }
+        if (start < 1 || end > 65535) {
+          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"`, sensitiveFound: false };
+        }
+        for (let p = start; p <= end; p++) {
+          if (portsSet.has(p)) {
+            return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+          }
+          portsSet.add(p);
+        }
+      } else {
+        const p = parseInt(token, 10);
+        if (isNaN(p)) {
+          return { ports: [], error: `Invalid port number: "${token}"`, sensitiveFound: false };
+        }
+        if (p < 1 || p > 65535) {
+          return { ports: [], error: `Port must be between 1 and 65535: ${p}`, sensitiveFound: false };
+        }
+        if (portsSet.has(p)) {
+          return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+        }
+        portsSet.add(p);
+      }
+    }
+
+    const portsArray = Array.from(portsSet);
+    const sensitiveFound = portsArray.some(p => SENSITIVE_PORTS.includes(p));
+    return { ports: portsArray, error: "", sensitiveFound };
+  };
+
+  const parseExcludePortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
       return { ports: [], error: "" };
     }
@@ -80,7 +168,7 @@ export default function Phase1Results() {
     }
     const tokens = clean.split(",");
     const portsSet = new Set();
-    
+
     for (const token of tokens) {
       if (!token) continue;
       if (token.includes("-")) {
@@ -119,26 +207,48 @@ export default function Phase1Results() {
         portsSet.add(p);
       }
     }
-    
+
     const portsArray = Array.from(portsSet);
-    const blacklistedFound = portsArray.filter(p => BLACKLISTED_PORTS.includes(p));
-    if (blacklistedFound.length > 0) {
-      return {
-        ports: [],
-        error: `Security violation: Restricted ports cannot be scanned (${blacklistedFound.join(", ")}).`
-      };
-    }
-    
     return { ports: portsArray, error: "" };
   };
 
-  // Run initial validation on mount if customPorts has a value
+  const handleExcludeToggleChange = (checked) => {
+    setExcludePortsEnabled(checked);
+    if (!checked) {
+      setExcludePorts("");
+    }
+  };
+
+  const excludeTokens = excludePorts.split(",").map(t => t.trim()).filter(Boolean);
+
+  const handleRemoveExcludeToken = (tokenToRemove) => {
+    const updatedTokens = excludeTokens.filter(t => t !== tokenToRemove);
+    setExcludePorts(updatedTokens.join(", "));
+  };
+
   useEffect(() => {
-    if (portScanMode === "custom" && customPorts) {
-      const { error: portErr } = parseCustomPortsJS(customPorts);
-      setCustomPortsError(portErr);
+    if (portScanMode !== "custom") {
+      setSensitivePortsFound(false);
+      return;
+    }
+    if (customPorts) {
+      const { error, sensitiveFound } = parseCustomPortsJS(customPorts);
+      setSensitivePortsFound(sensitiveFound);
+    } else {
+      setSensitivePortsFound(false);
     }
   }, [portScanMode, customPorts]);
+
+  useEffect(() => {
+    if (excludePorts) {
+      const { ports, error } = parseExcludePortsJS(excludePorts);
+      setExcludePortsError(error);
+      setParsedExcludePortsCount(ports.length);
+    } else {
+      setExcludePortsError("");
+      setParsedExcludePortsCount(0);
+    }
+  }, [excludePorts]);
 
   const hasPhase2 = isPhaseEnabled(pipelineMode, 2);
   const showCheckboxes = executionMode === "interactive" && pipelineMode !== "basic";
@@ -172,6 +282,14 @@ export default function Phase1Results() {
       }
     }
 
+    if (excludePortsEnabled && excludePorts.trim()) {
+      const { error: portErr } = parseExcludePortsJS(excludePorts);
+      if (portErr) {
+        setError(`Exclude ports error: ${portErr}`);
+        return;
+      }
+    }
+
     setAssetLoading(true);
     setError("");
     setSaveStatus("saving");
@@ -184,6 +302,7 @@ export default function Phase1Results() {
         os_detection: osDetection,
         phases: [1, 2],
         ...(portScanMode === "custom" ? { custom_ports: customPorts } : {}),
+        ...(excludePorts && excludePorts.trim() ? { exclude_ports: excludePorts.trim() } : {}),
       });
       if (!data.success) throw new Error(data.error || "Port scan failed to start.");
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
@@ -487,39 +606,20 @@ export default function Phase1Results() {
                       
                       <div className="ns-chips" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 4 }}>Quick Select:</span>
-                        <button
-                          type="button"
-                          className="ns-chip"
-                          onClick={() => {
-                            setCustomPorts("80,443,8080,8443");
-                            setCustomPortsError("");
-                          }}
-                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                        >
-                          Web
-                        </button>
-                        <button
-                          type="button"
-                          className="ns-chip"
-                          onClick={() => {
-                            setCustomPorts("1433,1521,3306,5432,27017");
-                            setCustomPortsError("");
-                          }}
-                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                        >
-                          Database
-                        </button>
-                        <button
-                          type="button"
-                          className="ns-chip"
-                          onClick={() => {
-                            setCustomPorts("22,23,3389,5900");
-                            setCustomPortsError("");
-                          }}
-                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                        >
-                          Remote
-                        </button>
+                        {Object.entries(PORT_PROFILES).filter(([k]) => k !== "custom").map(([k, prof]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className="ns-chip"
+                            onClick={() => {
+                              setCustomPorts(prof.ports);
+                              setCustomPortsError("");
+                            }}
+                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                          >
+                            {prof.label.split(" ")[0]}
+                          </button>
+                        ))}
                       </div>
 
                       {customPortsError && (
@@ -527,6 +627,97 @@ export default function Phase1Results() {
                           ⚠ {customPortsError}
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Exclude Ports Section */}
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <strong style={{ display: "block", color: "var(--text)", fontSize: "0.9rem" }}>🚫 Exclude Specific Ports</strong>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Exclude sensitive or firewalled ports from scanning</span>
+                      </div>
+                      <div className="ns-switch-wrapper">
+                        <label className="ns-switch">
+                          <input
+                            type="checkbox"
+                            checked={excludePortsEnabled}
+                            onChange={e => handleExcludeToggleChange(e.target.checked)}
+                          />
+                          <span className="ns-slider round"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {excludePortsEnabled && (
+                      <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="ns-input"
+                            style={{
+                              flex: 1,
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid var(--border)",
+                              background: "rgba(0,0,0,0.2)",
+                              color: "var(--text)",
+                              fontSize: "0.88rem"
+                            }}
+                            value={excludePorts || ""}
+                            onChange={e => setExcludePorts(e.target.value)}
+                            placeholder="e.g. 2375,2376,6443,10250 or 80-90"
+                            disabled={assetLoading || !canExecuteScans}
+                          />
+                        </div>
+
+                        {excludeTokens.length > 0 && (
+                          <div className="ns-exclude-tags-wrap" style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            {excludeTokens.map((token, idx) => (
+                              <span key={`${token}-${idx}`} className="ns-exclude-tag">
+                                {token}
+                                <button
+                                  type="button"
+                                  className="ns-exclude-tag-remove"
+                                  onClick={() => handleRemoveExcludeToken(token)}
+                                  disabled={assetLoading || !canExecuteScans}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="ns-chips" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 4 }}>Quick:</span>
+                          <button
+                            type="button"
+                            className="ns-chip"
+                            onClick={() => setExcludePorts("2375,2376,6443,10250")}
+                            disabled={assetLoading || !canExecuteScans}
+                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                          >
+                            Sensitive Ports
+                          </button>
+                        </div>
+
+                        {excludePortsError && (
+                          <div style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: 4 }}>
+                            ⚠ {excludePortsError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sensitive Ports Warning Banner */}
+                  {sensitivePortsFound && (
+                    <div className="ns-sensitive-banner" style={{ marginTop: "12px", background: "rgba(245,158,11,0.08)", borderLeft: "3px solid #f59e0b", color: "#fbbf24", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                      <div style={{ fontWeight: "600", marginBottom: "4px" }}>⚠️ Sensitive Ports Detected</div>
+                      <p style={{ margin: 0, color: "#d4d4d8" }}>
+                        Your selection includes sensitive ports (Docker API <code>2375/2376</code>, Kubernetes <code>6443/10250</code>). Scanning them can trigger intrusion detection systems or crash services.
+                      </p>
                     </div>
                   )}
                 </div>

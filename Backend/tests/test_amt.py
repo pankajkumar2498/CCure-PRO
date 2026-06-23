@@ -351,3 +351,178 @@ def test_coverage_stats_endpoint(client: TestClient, auth_headers: dict, db_sess
     assert data["shadow_it"] == 1
     assert data["coverage_gap"] == 1
     assert data["coverage_percentage"] == 50.0
+
+
+def test_sync_asset_discovery_reconcile(db_session: Session, test_user: User):
+    """Verify that sync_asset_discovery_task automatically triggers AMT reconciliation when terminal."""
+    org_id = test_user.org_id
+
+    # 1. Create scan row with pipeline_mode="asset"
+    scan = Scan(
+        id="scn_test_asset_reconcile",
+        org_id=org_id,
+        created_by=str(test_user.id),
+        scan_no=999,
+        status="running",
+        pipeline_mode="asset",
+        scan_type="adaptive",
+        target_str="10.0.0.5",
+        target_hosts=["10.0.0.5"]
+    )
+    db_session.add(scan)
+
+    # 2. Create the scanned asset
+    asset = Asset(
+        id=f"ast_test_{org_id}_10_0_0_5",
+        org_id=org_id,
+        ip_address="10.0.0.5",
+        mac_address="11:22:33:44:55:66",
+        hostname="scanned-host-alice",
+        device_category="unknown",
+        vendor="unknown",
+        owner=None,
+        provenance={}
+    )
+    db_session.add(asset)
+
+    # 3. Add matching AMT record
+    amt_record = AMTInventoryRecord(
+        org_id=org_id,
+        mac_address_1="11:22:33:44:55:66",
+        asset_tag="TAG-001",
+        asset_user="Alice Smith",
+        status="Active"
+    )
+    db_session.add(amt_record)
+    db_session.commit()
+
+    # 4. Trigger sync_asset_discovery_task
+    from core.tasks import sync_asset_discovery_task
+    sync_asset_discovery_task(
+        scan_id=scan.id,
+        org_id=org_id,
+        user_id=str(test_user.id),
+        hosts=[{"ip_address": "10.0.0.5", "mac_address": "11:22:33:44:55:66", "is_active": True}]
+    )
+
+    # 5. Check if reconciliation successfully ran and enriched the asset
+    db_session.refresh(asset)
+    assert asset.owner == "Alice Smith"
+    assert asset.custom_attributes.get("amt_asset_tag") == "TAG-001"
+
+
+def test_sync_vulnerability_audit_reconcile(db_session: Session, test_user: User):
+    """Verify that sync_vulnerability_audit_task automatically triggers AMT reconciliation when terminal."""
+    org_id = test_user.org_id
+
+    # 1. Create scan row with pipeline_mode="vulnerability_audit"
+    scan = Scan(
+        id="scn_test_vuln_reconcile",
+        org_id=org_id,
+        created_by=str(test_user.id),
+        scan_no=1000,
+        status="running",
+        pipeline_mode="vulnerability_audit",
+        scan_type="adaptive",
+        target_str="10.0.0.5",
+        target_hosts=["10.0.0.5"]
+    )
+    db_session.add(scan)
+
+    # 2. Create the scanned asset
+    asset = Asset(
+        id=f"ast_test_{org_id}_10_0_0_5",
+        org_id=org_id,
+        ip_address="10.0.0.5",
+        mac_address="11:22:33:44:55:66",
+        hostname="scanned-host-alice",
+        device_category="unknown",
+        vendor="unknown",
+        owner=None,
+        provenance={}
+    )
+    db_session.add(asset)
+
+    # 3. Add matching AMT record
+    amt_record = AMTInventoryRecord(
+        org_id=org_id,
+        mac_address_1="11:22:33:44:55:66",
+        asset_tag="TAG-002",
+        asset_user="Bob Smith",
+        status="Active"
+    )
+    db_session.add(amt_record)
+    db_session.commit()
+
+    # 4. Trigger sync_vulnerability_audit_task
+    from core.tasks import sync_vulnerability_audit_task
+    sync_vulnerability_audit_task(
+        scan_id=scan.id,
+        org_id=org_id,
+        user_id=str(test_user.id),
+        hosts=[{"ip_address": "10.0.0.5", "mac_address": "11:22:33:44:55:66", "is_active": True}]
+    )
+
+    # 5. Check if reconciliation successfully ran and enriched the asset
+    db_session.refresh(asset)
+    assert asset.owner == "Bob Smith"
+    assert asset.custom_attributes.get("amt_asset_tag") == "TAG-002"
+
+
+def test_credentialed_scan_reconcile(db_session: Session, test_user: User):
+    """Verify that _sync_credentialed_asset_identity followed by reconciliation correctly matches and enriches the asset."""
+    org_id = test_user.org_id
+
+    # 1. Create scan row with pipeline_mode="vulnerability_audit" and scan_type="credentialed"
+    scan = Scan(
+        id="scn_test_cred_reconcile",
+        org_id=org_id,
+        created_by=str(test_user.id),
+        scan_no=1001,
+        status="running",
+        pipeline_mode="vulnerability_audit",
+        scan_type="credentialed",
+        target_str="10.0.0.5",
+        target_hosts=["10.0.0.5"]
+    )
+    db_session.add(scan)
+
+    # 2. Add matching AMT record
+    amt_record = AMTInventoryRecord(
+        org_id=org_id,
+        mac_address_1="11:22:33:44:55:66",
+        asset_tag="TAG-003",
+        asset_user="Charlie Smith",
+        status="Active"
+    )
+    db_session.add(amt_record)
+    db_session.commit()
+
+    # 3. Trigger _sync_credentialed_asset_identity to sync the asset
+    from core.tasks import _sync_credentialed_asset_identity
+    _sync_credentialed_asset_identity(
+        db_session,
+        user_id=str(test_user.id),
+        ip="10.0.0.5",
+        scan_id=scan.id,
+        os_type="linux",
+        system_data={
+            "os_name": "Ubuntu 24.04.4 LTS",
+            "os_version_id": "24.04",
+            "mac_address": "11-22-33-44-55-66",
+            "subnet": "10.0.0.0/24"
+        },
+        stored_report={"open_ports_credentialed": []},
+        cve_list=[],
+        severity_counts={}
+    )
+
+    # 4. Trigger reconciliation (replicates run_credentialed_scan_task logic)
+    reconcile_amt_inventory(db_session, org_id)
+    db_session.commit()
+
+    # 5. Check if reconciliation successfully ran and enriched the asset
+    asset = db_session.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == "10.0.0.5").first()
+    assert asset is not None
+    assert asset.owner == "Charlie Smith"
+    assert asset.custom_attributes.get("amt_asset_tag") == "TAG-003"

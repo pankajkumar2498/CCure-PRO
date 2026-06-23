@@ -216,6 +216,12 @@ PORT_DB: Dict[int, Dict] = {
     4840:  {"service": "OPC-UA",            "risk": "High",     "note": "OPC Unified Architecture -- ICS"},
     44818: {"service": "EtherNet-IP",       "risk": "Critical", "note": "Rockwell/Allen-Bradley ICS"},
     47808: {"service": "BACnet",            "risk": "High",     "note": "Building automation BACnet"},
+    20000: {"service": "DNP3",              "risk": "Critical", "note": "DNP3 outstation -- ICS/SCADA"},
+    2404:  {"service": "IEC-104",           "risk": "Critical", "note": "IEC 60870-5-104 -- ICS/SCADA"},
+    18245: {"service": "GE-SRTP",           "risk": "Critical", "note": "GE SRTP PLC protocol"},
+    9600:  {"service": "FINS",              "risk": "Critical", "note": "Omron FINS PLC protocol"},
+    5007:  {"service": "MELSEC",            "risk": "Critical", "note": "Mitsubishi MELSEC PLC protocol"},
+    2455:  {"service": "CoDeSys",           "risk": "Critical", "note": "CoDeSys PLC runtime"},
     # Security / Backdoors
     4444:  {"service": "Metasploit",        "risk": "Critical", "note": "Known backdoor/C2 port"},
     1337:  {"service": "Leet",              "risk": "Critical", "note": "Known backdoor / hacker tool port"},
@@ -275,6 +281,12 @@ SCAN_PORTS_DEEP = list(range(1, 65536))
 SCAN_PORTS_WEB = [80, 443, 591, 2082, 2083, 8000, 8008, 8080, 8081, 8443, 8888, 9443, 10000]
 SCAN_PORTS_DB  = [1433, 1434, 1521, 2638, 3050, 3306, 5432, 5433, 6379, 6380,
                   7474, 7687, 8086, 9042, 9160, 9200, 9300, 11211, 27017, 27018, 27019]
+SCAN_PORTS_OT  = [102, 502, 2404, 2455, 4840, 5007, 9600, 18245, 20000, 44818, 47808]
+SCAN_PORTS_IT  = [
+    21, 22, 23, 25, 53, 67, 80, 88, 110, 111, 123, 135, 137, 139, 143, 161, 389, 443, 445, 465,
+    587, 623, 636, 902, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 5985, 5986, 6379,
+    8080, 8443, 27017
+]
 
 # UDP services probed by udp_scanner plugin
 UDP_PROBE_PORTS = {

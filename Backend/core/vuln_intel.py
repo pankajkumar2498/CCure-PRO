@@ -189,6 +189,7 @@ def get_vuln_engine() -> Engine:
         pool_size=5,
         max_overflow=5,
         echo=False,
+        connect_args={"connect_timeout": 2},
     )
 
 

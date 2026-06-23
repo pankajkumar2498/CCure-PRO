@@ -205,12 +205,12 @@ from api.host_discovery_api import HostDiscoveryAPI
 api = HostDiscoveryAPI(silent=False, intensity="normal")
 
 # Scan a single host (all 4 phases)
-result = api.scan_single_host("192.168.1.1", scan_type="adaptive")
+result = api.scan_single_host("10.180.6.14", scan_type="adaptive")
 print(result["data"]["host_risk_level"])   # e.g. "High"
 print(result["data"]["cves"])              # list of CVE dicts
 
 # Scan a subnet (discovery only)
-result = api.scan_subnet("192.168.1.0/24")
+result = api.scan_subnet("10.180.6.0/24")
 active = [h for h in result["data"] if h["is_active"]]
 print(f"{len(active)} active hosts found")
 ```
@@ -228,14 +228,14 @@ Interactive prompts:
 ```
 Choose operation:
   1. Scan single host / hostname
-  2. Scan IP range  (e.g. 192.168.1.1-50)
-  3. Scan full subnet  (e.g. 192.168.1.0/24)
+  2. Scan IP range  (e.g. 10.180.6.14-50)
+  3. Scan full subnet  (e.g. 10.180.6.0/24)
   4. Scan subnets of a subnet
 
 Enter choice (1-4): 1
 Scan type [ping/arp/tcp/full/adaptive/stealth] (default: adaptive): adaptive
 Intensity [light/normal/deep] (default: normal): normal
-Enter IP or hostname: 192.168.1.1
+Enter IP or hostname: 10.180.6.14
 ```
 
 Output is pretty-printed JSON.
@@ -334,17 +334,17 @@ Health check. Returns system info and capability flags.
 
 **`POST /scan/host`** — Single IP or hostname through all 4 phases.
 ```json
-{ "target": "192.168.1.1", "scan_type": "adaptive" }
+{ "target": "10.180.6.14", "scan_type": "adaptive" }
 ```
 
 **`POST /scan/range`** — IP range, Phase 1 (discovery) only.
 ```json
-{ "target": "192.168.1.1-50", "scan_type": "adaptive" }
+{ "target": "10.180.6.14-50", "scan_type": "adaptive" }
 ```
 
 **`POST /scan/subnet`** — CIDR subnet, Phase 1 only.
 ```json
-{ "target": "192.168.1.0/24", "scan_type": "adaptive" }
+{ "target": "10.180.6.0/24", "scan_type": "adaptive" }
 ```
 
 **`POST /scan/subnets`** — Sub-networks within a parent CIDR, Phase 1 only.

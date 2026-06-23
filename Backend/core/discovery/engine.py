@@ -21,15 +21,15 @@ Usage::
 
     # Basic Scan (Phase 1 only)
     engine = DiscoveryEngine(profile=FAST, has_privileges=True)
-    hosts  = await engine.run(["192.168.1.0/24"])
+    hosts  = await engine.run(["10.180.6.0/24"])
 
     # Asset Discovery (Phase 1 of a 1+2 pipeline)
     engine = DiscoveryEngine(profile=BALANCED, has_privileges=True)
-    hosts  = await engine.run(["192.168.1.0/24"])
+    hosts  = await engine.run(["10.180.6.0/24"])
 
     # Vulnerability Audit (Phase 1 of a 1+2+3 pipeline)
     engine = DiscoveryEngine(profile=AGGRESSIVE, has_privileges=True)
-    hosts  = await engine.run(["192.168.1.0/24"])
+    hosts  = await engine.run(["10.180.6.0/24"])
 
 Returns::
 
@@ -488,12 +488,14 @@ class DiscoveryEngine:
     async def _enrich_active(self, ips: List[str], results: Dict):
         """
         Enrich active hosts with SNMP/mDNS/NetBIOS/PTR/OS fingerprint.
-        Only runs when profile.enrichment=True (AGGRESSIVE profile).
+        Only runs when profile.enrichment=True.
         Executes all per-host enrichment in parallel using asyncio.gather.
         """
         from core.discovery.enrichment import enrich_host
+        ot_enrich = getattr(self.profile, "ot_enrichment", False)
+        register_ports = ot_enrich
         await asyncio.gather(*[
-            asyncio.to_thread(enrich_host, ip, results[ip])
+            asyncio.to_thread(enrich_host, ip, results[ip], ot_enrichment=ot_enrich, register_ports=register_ports)
             for ip in ips
         ])
 

@@ -502,7 +502,7 @@ def classify_device(host: Dict) -> str:
         # Deep sysDescr parsing (case-insensitive checks) to extract PC operating systems
         if any(k in sys_descr for k in ["ubuntu", "debian", "red hat", "centos", "gentoo", "fedora", "suse", "generic", "windows 10", "windows 11"]):
             is_pc_os = True
-            add_score("endpoint", 80, "snmp")
+            add_score("endpoint", 110, "snmp")
             add_score("server", 40, "snmp")
             add_score("router", -80, "snmp")
             add_score("switch", -80, "snmp")
@@ -529,20 +529,20 @@ def classify_device(host: Dict) -> str:
     if mdns_services:
         services_set = set(mdns_services)
         if {"_printer._tcp.local", "_ipp._tcp.local"} & services_set:
-            add_score("printer", 95, "mdns")
+            add_score("printer", 100, "mdns")
         if {"_ssh._tcp.local", "_workstation._tcp.local"} & services_set:
-            add_score("endpoint", 80, "mdns")
+            add_score("endpoint", 99, "mdns")
 
     # Signal 3: NetBIOS suffix roles
     netbios_names = host.get("netbios_names", [])
     if netbios_names:
         types = {n.get("type") for n in netbios_names if isinstance(n, dict) and "type" in n}
         if {0x1D, 0x1B, 0x1C} & types:
-            add_score("server", 95, "netbios")
+            add_score("server", 98, "netbios")
         elif 0x20 in types:
-            add_score("server", 90, "netbios")
+            add_score("server", 98, "netbios")
         elif 0x00 in types:
-            add_score("endpoint", 80, "netbios")
+            add_score("endpoint", 96, "netbios")
 
     # Signal 3.5: Nmap CPE
     os_cpe = host.get("os_cpe", [])

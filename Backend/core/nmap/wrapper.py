@@ -291,13 +291,13 @@ class NmapScanner:
         scanner = NmapScanner()
 
         # Asset Discovery — batch port states (returns dict of IP → NmapScanResult)
-        results = scanner.scan_hosts(["192.168.1.10", "192.168.1.11"], intensity="basic")
+        results = scanner.scan_hosts(["10.180.6.140", "10.180.6.141"], intensity="basic")
 
         # Asset Discovery — service/version on known open ports
-        result = scanner.detect_services("192.168.1.10", ports=[22, 80, 443])
+        result = scanner.detect_services("10.180.6.140", ports=[22, 80, 443])
 
         # Vulnerability Audit — full service + OS fingerprint + NSE scripts
-        result = scanner.full_scan("192.168.1.10")
+        result = scanner.full_scan("10.180.6.140")
 
     Thread Safety:
         Each call creates its own python-nmap PortScanner instance.
@@ -535,6 +535,7 @@ class NmapScanner:
         with_services: bool = False,
         with_os: bool = False,
         ports: Optional[List[int]] = None,
+        exclude_ports: Optional[List[int]] = None,
     ) -> Dict[str, NmapScanResult]:
         """
         Batch port scan for multiple hosts.
@@ -553,6 +554,8 @@ class NmapScanner:
                            so Phase 2 Asset Discovery produces OS classification
                            consistent with Phase 3 Vulnerability Audit.
             ports:         Optional custom list of ports to scan.
+            exclude_ports: Optional list of ports to exclude from scanning
+                           (passed to Nmap as --exclude-ports).
 
         Returns:
             Dict mapping IP → NmapScanResult (ports include service/version
@@ -574,8 +577,11 @@ class NmapScanner:
         # Append -O when OS fingerprinting is requested
         os_arg = "-O" if with_os else ""
 
+        # Append --exclude-ports when exclusion list is provided
+        exclude_arg = f"--exclude-ports {','.join(str(p) for p in exclude_ports)}" if exclude_ports else ""
+
         args = " ".join(filter(None, [
-            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS
+            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS, exclude_arg
         ]))
 
         log.debug("scan_hosts args: %s", args)

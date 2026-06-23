@@ -32,7 +32,7 @@ def test_is_trusted_proxy():
     assert _is_trusted_proxy("127.0.0.1") is True
     assert _is_trusted_proxy("172.18.0.5") is True
     assert _is_trusted_proxy("10.0.0.1") is True
-    assert _is_trusted_proxy("192.168.1.100") is True
+    assert _is_trusted_proxy("10.180.6.1400") is True
     assert _is_trusted_proxy("8.8.8.8") is False
     assert _is_trusted_proxy("invalid-ip") is False
 

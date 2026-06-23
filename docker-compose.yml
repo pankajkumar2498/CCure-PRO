@@ -45,7 +45,7 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
-      - RELOAD=true
+      - RELOAD=false
     depends_on:
       redis:
         condition: service_healthy

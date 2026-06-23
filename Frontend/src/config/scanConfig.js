@@ -139,7 +139,7 @@ export function getNextPhase(mode, currentPhase) {
  * @returns {object} payload ready for API
  *
  * @example
- * buildPhasePayload("asset", { targets: ["192.168.1.0/24"], scan_type: "adaptive" })
+ * buildPhasePayload("asset", { targets: ["10.180.6.0/24"], scan_type: "adaptive" })
  * // → { phases: [1, 2], pipeline_mode: "asset", targets: [...], scan_type: "adaptive" }
  */
 export function buildPhasePayload(mode, extra = {}) {

@@ -35,6 +35,9 @@ class MockSocket:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+    def settimeout(self, timeout):
+        pass
+
     def close(self):
         pass
 
@@ -215,12 +218,10 @@ def test_probe_modbus_fallback(mock_connect):
     mock_sock = MagicMock()
     mock_sock.sendall.side_effect = socket.error("Closed")
     mock_connect.return_value = mock_sock
+    mock_sock.__enter__.return_value = mock_sock
 
     info = probe_modbus("10.0.0.1")
-    assert info is not None
-    assert info["protocol"] == "modbus"
-    assert info["vendor"] == "Modbus Device"
-    assert info["model"] == "Modbus TCP Controller"
+    assert info is None
 
 
 @patch("socket.create_connection")
@@ -231,6 +232,7 @@ def test_probe_s7_fallback(mock_connect):
     # First recv returns COTP CC, second recv throws exception
     mock_sock.recv.side_effect = [resp_cotp, socket.error("Timeout")]
     mock_connect.return_value = mock_sock
+    mock_sock.__enter__.return_value = mock_sock
 
     info = probe_s7("10.0.0.1")
     assert info is not None

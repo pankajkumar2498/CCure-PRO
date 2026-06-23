@@ -577,6 +577,46 @@ def sync_host_discovery(db: Session, scan_id: str, org_id: str, user_id: Optiona
                 _update_provenance(new_asset, "netbios_name", "discovery", scan_id)
             _record_asset_change(db, asset_id, scan_id, "lifecycle", None, "discovered")
 
+        # Sync open ports/services discovered during Phase 1 enrichment
+        ports = host.get("open_ports") or host.get("ports") or []
+        for p in ports:
+            port_num = p.get("port")
+            if not port_num:
+                continue
+            proto = p.get("protocol", "tcp").lower()
+            service_id = gen_service_id(asset_id, int(port_num), proto)
+
+            db.execute(insert(Service).values(
+                id=service_id, asset_id=asset_id, scan_id=scan_id,
+                port=int(port_num), protocol=proto, state="open",
+                service_name=p.get("service") or "unknown",
+                service_product=p.get("product") or None,
+                service_version=p.get("version") or None,
+                banner=p.get("banner"),
+                created_at=utcnow(), updated_at=utcnow()
+            ).on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "state": "open",
+                    "scan_id": scan_id,
+                    "updated_at": utcnow(),
+                    "service_name": func.coalesce(
+                        func.nullif(Service.service_name, "unknown"),
+                        func.nullif(p.get("service") or "", ""),
+                        Service.service_name,
+                    ),
+                    "service_product": func.coalesce(
+                        Service.service_product,
+                        func.nullif(p.get("product") or "", ""),
+                    ),
+                    "service_version": func.coalesce(
+                        Service.service_version,
+                        func.nullif(p.get("version") or "", ""),
+                    ),
+                    "banner": func.coalesce(Service.banner, func.nullif(p.get("banner") or "", "")),
+                }
+            ))
+
     db.commit()
 
 

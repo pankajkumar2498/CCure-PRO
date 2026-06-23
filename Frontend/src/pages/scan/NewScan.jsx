@@ -50,18 +50,47 @@ const SCAN_INTENSITIES = [
 ];
 
 const PORT_SCAN_INTENSITIES = [
-  { value: "light",  label: "Light",  icon: "⚡", desc: "Quick top-ports only" },
+  { value: "light", label: "Light", icon: "⚡", desc: "Quick top-ports only" },
   { value: "normal", label: "Normal", icon: "⚖", desc: "Balanced port coverage" },
-  { value: "deep",   label: "Deep",   icon: "🔭", desc: "Full port range — comprehensive" },
+  { value: "deep", label: "Deep", icon: "🔭", desc: "Full port range — comprehensive" },
 ];
 
-const QUICK_TARGETS = ["192.168.1.0/24", "10.0.0.0/24", "172.16.0.0/24", "192.168.1.1"];
+const QUICK_TARGETS = ["10.180.4.1", "10.180.6.0/24", "10.180.6.45", "10.180.6.14"];
 
 const PIPELINE_BADGE = {
   basic: { label: "Basic Scan", cls: "ns-badge--basic" },
   asset: { label: "Asset Discovery", cls: "ns-badge--asset" },
   advanced: { label: "Vulnerability Audit", cls: "ns-badge--advanced" },
   vulnerability_audit: { label: "Vulnerability Audit", cls: "ns-badge--advanced" },
+};
+
+const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
+
+const PORT_PROFILES = {
+  it: {
+    label: "IT Infrastructure",
+    ports: "21,22,23,25,53,67,80,88,110,111,123,135,137,139,143,161,389,443,445,465,587,623,636,902,993,995,1433,1521,2049,2375,2376,3306,3389,5432,5900,5985,5986,6379,6443,8080,8443,10250,27017",
+  },
+  scada: {
+    label: "SCADA / OT",
+    ports: "102,502,789,1089,1091,2222,2404,2455,4000,4840,4911,5007,9600,18245,20000,44818,47808,55000,55003",
+  },
+  web: {
+    label: "Web Services",
+    ports: "80,443,3000,5000,8000,8080,8443,8888,9000,9090,9443",
+  },
+  database: {
+    label: "Database",
+    ports: "1433,1521,3306,5432,6379,9042,9200,27017,28017",
+  },
+  remote: {
+    label: "Remote Access",
+    ports: "22,23,3389,5900,5985,5986",
+  },
+  custom: {
+    label: "Custom",
+    ports: "",
+  }
 };
 
 /* ── Helpers ───────────────────────────────────────────────────────────────── */
@@ -84,10 +113,10 @@ const RING_C = 2 * Math.PI * RING_R; // ≈ 138.23
 function HostCard({ host, isNew }) {
   const hostname = host.hostname && host.hostname !== "Unknown" ? host.hostname : null;
   const mac = host.mac_address && host.mac_address !== "N/A" ? host.mac_address : null;
-  
+
   const isEnrichingHostname = host._enriching_hostname === true;
   const isEnrichingMac = host._enriching_mac === true;
-  
+
   const hostnameContent = isEnrichingHostname ? (
     <span className="am-host-field-resolving">Resolving…</span>
   ) : hostname ? (
@@ -95,7 +124,7 @@ function HostCard({ host, isNew }) {
   ) : (
     <span className="muted">—</span>
   );
-  
+
   const macContent = isEnrichingMac ? (
     <span className="am-host-field-resolving">Resolving…</span>
   ) : mac ? (
@@ -297,6 +326,8 @@ export default function NewScan() {
     executionMode, setExecutionMode,
     portScanMode, setPortScanMode,
     customPorts, setCustomPorts,
+    portProfile, setPortProfile,
+    excludePorts, setExcludePorts,
   } = useScan();
 
   const isActiveRoute = !!urlScanId;
@@ -324,9 +355,67 @@ export default function NewScan() {
   const [snmpPrivPassphrase, setSnmpPrivPassphrase] = useState("");
   const [snmpContextName, setSnmpContextName] = useState("");
 
-  const BLACKLISTED_PORTS = [2375, 2376, 6443, 10250];
+  const [excludePortsEnabled, setExcludePortsEnabled] = useState(() => !!excludePorts);
+  const [excludePortsError, setExcludePortsError] = useState("");
+  const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
+  const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
 
   const parseCustomPortsJS = (portsStr) => {
+    if (!portsStr || !portsStr.trim()) {
+      return { ports: [], error: "", sensitiveFound: false };
+    }
+    const clean = portsStr.replace(/\s+/g, "");
+    if (!/^[0-9,\-]+$/.test(clean)) {
+      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed.", sensitiveFound: false };
+    }
+    const tokens = clean.split(",");
+    const portsSet = new Set();
+
+    for (const token of tokens) {
+      if (!token) continue;
+      if (token.includes("-")) {
+        const rangeParts = token.split("-");
+        if (rangeParts.length !== 2) {
+          return { ports: [], error: `Invalid range format: "${token}"`, sensitiveFound: false };
+        }
+        const start = parseInt(rangeParts[0], 10);
+        const end = parseInt(rangeParts[1], 10);
+        if (isNaN(start) || isNaN(end)) {
+          return { ports: [], error: `Invalid range bounds: "${token}"`, sensitiveFound: false };
+        }
+        if (start > end) {
+          return { ports: [], error: `Range start must be <= end: "${token}"`, sensitiveFound: false };
+        }
+        if (start < 1 || end > 65535) {
+          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"`, sensitiveFound: false };
+        }
+        for (let p = start; p <= end; p++) {
+          if (portsSet.has(p)) {
+            return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+          }
+          portsSet.add(p);
+        }
+      } else {
+        const p = parseInt(token, 10);
+        if (isNaN(p)) {
+          return { ports: [], error: `Invalid port number: "${token}"`, sensitiveFound: false };
+        }
+        if (p < 1 || p > 65535) {
+          return { ports: [], error: `Port must be between 1 and 65535: ${p}`, sensitiveFound: false };
+        }
+        if (portsSet.has(p)) {
+          return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+        }
+        portsSet.add(p);
+      }
+    }
+
+    const portsArray = Array.from(portsSet);
+    const sensitiveFound = portsArray.some(p => SENSITIVE_PORTS.includes(p));
+    return { ports: portsArray, error: "", sensitiveFound };
+  };
+
+  const parseExcludePortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
       return { ports: [], error: "" };
     }
@@ -336,7 +425,7 @@ export default function NewScan() {
     }
     const tokens = clean.split(",");
     const portsSet = new Set();
-    
+
     for (const token of tokens) {
       if (!token) continue;
       if (token.includes("-")) {
@@ -375,36 +464,99 @@ export default function NewScan() {
         portsSet.add(p);
       }
     }
-    
+
     const portsArray = Array.from(portsSet);
-    const blacklistedFound = portsArray.filter(p => BLACKLISTED_PORTS.includes(p));
-    if (blacklistedFound.length > 0) {
-      return {
-        ports: [],
-        error: `Security violation: Restricted ports cannot be scanned (${blacklistedFound.join(", ")}).`
-      };
-    }
-    
     return { ports: portsArray, error: "" };
   };
 
   const handleCustomPortsChange = (val) => {
     setCustomPorts(val);
-    const { ports, error } = parseCustomPortsJS(val);
+    const { ports, error, sensitiveFound } = parseCustomPortsJS(val);
     setCustomPortsError(error);
     setParsedCustomPortsCount(ports.length);
+    setSensitivePortsFound(sensitiveFound);
   };
 
+  const handleExcludeToggleChange = (checked) => {
+    setExcludePortsEnabled(checked);
+    if (!checked) {
+      setExcludePorts("");
+    }
+  };
+
+  const excludeTokens = excludePorts.split(",").map(t => t.trim()).filter(Boolean);
+
+  const handleRemoveExcludeToken = (tokenToRemove) => {
+    const updatedTokens = excludeTokens.filter(t => t !== tokenToRemove);
+    setExcludePorts(updatedTokens.join(", "));
+  };
+
+  const getPreviewData = () => {
+    const isPortMode = portScanMode === "port";
+    let typeLabel = isPortMode ? "Port-Based Scan" : "Intensity-Based Scan";
+    let targetPortsLabel = "";
+    let finalCount = "";
+
+    if (isPortMode) {
+      const profileLabel = PORT_PROFILES[portProfile]?.label || "Custom";
+      targetPortsLabel = `${profileLabel}`;
+      if (portProfile === "custom") {
+        finalCount = `${parsedCustomPortsCount} custom port${parsedCustomPortsCount !== 1 ? "s" : ""}`;
+      } else {
+        const baseCount = PORT_PROFILES[portProfile]?.ports ? PORT_PROFILES[portProfile].ports.split(",").length : 0;
+        finalCount = `${baseCount} port${baseCount !== 1 ? "s" : ""}`;
+      }
+    } else {
+      const depthLabel = { light: "Light Scan", normal: "Normal Scan", deep: "Deep Scan" }[portScanIntensity] || "Normal Scan";
+      targetPortsLabel = depthLabel;
+      finalCount = { light: "Top 100 ports", normal: "Top 1000 ports", deep: "All 65535 ports" }[portScanIntensity] || "Top 1000 ports";
+    }
+
+    let excludedLabel = "None";
+    if (excludePortsEnabled && excludePorts.trim()) {
+      const { ports, error } = parseExcludePortsJS(excludePorts);
+      if (!error && ports.length > 0) {
+        excludedLabel = `${ports.join(", ")} (${ports.length} port${ports.length !== 1 ? "s" : ""})`;
+      } else if (error) {
+        excludedLabel = "Invalid exclude ports string";
+      }
+    }
+
+    return { typeLabel, targetPortsLabel, finalCount, excludedLabel };
+  };
+
+  const preview = getPreviewData();
+
   useEffect(() => {
-    if (customPorts) {
-      const { ports, error } = parseCustomPortsJS(customPorts);
+    if (pipelineMode !== "asset" || portScanMode !== "port") {
+      setCustomPortsError("");
+      setParsedCustomPortsCount(0);
+      setSensitivePortsFound(false);
+      return;
+    }
+    const activePortsStr = portProfile === "custom" ? customPorts : (PORT_PROFILES[portProfile]?.ports || "");
+    if (activePortsStr) {
+      const { ports, error, sensitiveFound } = parseCustomPortsJS(activePortsStr);
       setCustomPortsError(error);
       setParsedCustomPortsCount(ports.length);
+      setSensitivePortsFound(sensitiveFound);
     } else {
       setCustomPortsError("");
       setParsedCustomPortsCount(0);
+      setSensitivePortsFound(false);
     }
-  }, [customPorts]);
+  }, [pipelineMode, portScanMode, portProfile, customPorts]);
+
+  useEffect(() => {
+    if (excludePorts) {
+      const { ports, error } = parseExcludePortsJS(excludePorts);
+      setExcludePortsError(error);
+      setParsedExcludePortsCount(ports.length);
+    } else {
+      setExcludePortsError("");
+      setParsedExcludePortsCount(0);
+    }
+  }, [excludePorts]);
 
   const [missionState, setMissionState] = useState({
     status: "running", progress: 0, discovered: 0, totalIps: 0,
@@ -601,7 +753,7 @@ export default function NewScan() {
     };
     reader.readAsText(file);
   };
- 
+
   const handleRemoveTarget = (indexToRemove) => {
     const updatedParsed = parsedTargets.filter((_, idx) => idx !== indexToRemove);
     setParsedTargets(updatedParsed);
@@ -624,15 +776,26 @@ export default function NewScan() {
   const handleScan = async () => {
     if (!canExecuteScans || !target.trim()) return;
     const trimmedTarget = target.trim();
-    
-    if (pipelineMode === "asset" && portScanMode === "custom") {
-      if (!customPorts || !customPorts.trim()) {
-        setError("Custom ports list cannot be empty when custom ports mode is active.");
-        return;
+
+    if (pipelineMode === "asset") {
+      if (portScanMode === "port") {
+        const activePortsStr = portProfile === "custom" ? customPorts : (PORT_PROFILES[portProfile]?.ports || "");
+        if (!activePortsStr || !activePortsStr.trim()) {
+          setError("Ports list cannot be empty.");
+          return;
+        }
+        const { error } = parseCustomPortsJS(activePortsStr);
+        if (error) {
+          setError(error);
+          return;
+        }
       }
-      const { error } = parseCustomPortsJS(customPorts);
+    }
+
+    if (excludePortsEnabled && excludePorts.trim()) {
+      const { error } = parseExcludePortsJS(excludePorts);
       if (error) {
-        setError(error);
+        setError(`Exclude ports error: ${error}`);
         return;
       }
     }
@@ -646,11 +809,14 @@ export default function NewScan() {
         scan_type: "adaptive",
         execution_mode: executionMode,
         ...(pipelineMode === "asset" ? { discovery_intensity: discoveryIntensity } : {}),
-        ...(pipelineMode === "asset" ? { 
-          port_scan_intensity: portScanMode === "custom" ? "custom" : portScanIntensity,
-          ...(portScanMode === "custom" ? { custom_ports: customPorts } : {})
+        ...(pipelineMode === "asset" ? {
+          port_scan_intensity: portScanMode === "port" ? "custom" : portScanIntensity,
+          ...(portScanMode === "port" ? {
+            custom_ports: portProfile === "custom" ? customPorts : PORT_PROFILES[portProfile].ports
+          } : {})
         } : {}),
         ...((pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? { os_detection: osDetection } : {}),
+        ...(excludePorts && excludePorts.trim() ? { exclude_ports: excludePorts.trim() } : {}),
         ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}),
         ...(snmpEnabled ? {
           options: {
@@ -670,16 +836,16 @@ export default function NewScan() {
       });
       const { data } = await api.post("/scan/host-discovery", payload); if (!data.success) throw new Error(data.error);
       const sid = data.scan_id, sno = data.scan_no ?? data.display_id;
-      
-      navigate(`/scan/active/${sid}`, { 
-        replace: true, 
-        state: { 
+
+      navigate(`/scan/active/${sid}`, {
+        replace: true,
+        state: {
           missionMode: true,
           scanId: sid,
           scanNo: sno,
           target: trimmedTarget,
           pipelineMode: pipelineMode || "basic"
-        } 
+        }
       });
     } catch (err) { stopHostPolling(); setMissionState(prev => ({ ...prev, status: "failed", error: err.message })); } finally { setLoading(false); }
   };
@@ -695,12 +861,12 @@ export default function NewScan() {
     navigate((pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? "/scan/vulnerability-audit" : "/scan/host-discovery");
   }, [navigate, pipelineMode, autoRunAdvancedSingleTarget, executionMode]);
 
-  const handleNewScan = useCallback(() => { 
-    stopHostPolling(); 
+  const handleNewScan = useCallback(() => {
+    stopHostPolling();
     navigate("/scan/new");
-    setView("setup"); 
-    setMissionState({ status: "running", progress: 0, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null }); 
-    setLoading(false); 
+    setView("setup");
+    setMissionState({ status: "running", progress: 0, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null });
+    setLoading(false);
   }, [stopHostPolling, navigate]);
 
   useEffect(() => {
@@ -721,15 +887,15 @@ export default function NewScan() {
     if (isMission && !hasAutoRunRef.current && effectiveScanId) {
       hasAutoRunRef.current = true;
       const { scanId, scanNo, target: rt, pipelineMode: rm } = location.state || { scanId: effectiveScanId };
-      
+
       setView("mission");
-      setMissionState(prev => ({ 
-        ...prev, 
-        scanId: effectiveScanId, 
-        scanNo: scanNo || prev.scanNo, 
-        status: "running", 
-        progress: 10, 
-        startMs: Date.now() 
+      setMissionState(prev => ({
+        ...prev,
+        scanId: effectiveScanId,
+        scanNo: scanNo || prev.scanNo,
+        status: "running",
+        progress: 10,
+        startMs: Date.now()
       }));
       missionScanIdRef.current = effectiveScanId;
       if (rt) setTarget(rt);
@@ -757,7 +923,7 @@ export default function NewScan() {
           }
         });
       });
-      
+
       // Clean up state but stay on the active URL
       if (location.state?.missionMode) {
         navigate(`/scan/active/${effectiveScanId}`, { replace: true, state: {} });
@@ -789,7 +955,7 @@ export default function NewScan() {
               <div className="ns-input-row">
                 <div className="ns-input-wrap">
                   <span className="ns-input-icon">🎯</span>
-                  <input className="ns-input" value={target} onChange={e => { setTarget(e.target.value); if (uploadSummary.show) setUploadSummary(p => ({ ...p, show: false })); if (parsedTargets.length) setParsedTargets([]); }} onKeyDown={e => e.key === "Enter" && canExecuteScans && !loading && handleScan()} placeholder="192.168.1.0/24   ·   10.0.0.1-50" disabled={loading || !canExecuteScans} autoFocus />
+                  <input className="ns-input" value={target} onChange={e => { setTarget(e.target.value); if (uploadSummary.show) setUploadSummary(p => ({ ...p, show: false })); if (parsedTargets.length) setParsedTargets([]); }} onKeyDown={e => e.key === "Enter" && canExecuteScans && !loading && handleScan()} placeholder="10.180.6.0/24   ·   10.180.6.1-50" disabled={loading || !canExecuteScans} autoFocus />
                 </div>
                 <button className="ns-browse-btn" onClick={() => fileInputRef.current.click()} disabled={loading || !canExecuteScans}>📂 Upload File</button>
               </div>
@@ -810,7 +976,7 @@ export default function NewScan() {
                   {uploadSummary.invalid > 0 && (
                     <p className="ns-summary-hint">
                       Some invalid entries were ignored.
-                      <button 
+                      <button
                         className="ns-export-btn"
                         onClick={() => {
                           const blob = new Blob([uploadSummary.invalidEntries.join("\n")], { type: "text/plain" });
@@ -836,8 +1002,8 @@ export default function NewScan() {
               <div className="ns-preview-section">
                 <div className="ns-preview-header">
                   <span className="ns-label">Target List Preview</span>
-                  <button 
-                    className="ns-preview-clear" 
+                  <button
+                    className="ns-preview-clear"
                     onClick={() => {
                       setParsedTargets([]);
                       setTarget("");
@@ -868,7 +1034,7 @@ export default function NewScan() {
                             </span>
                           </td>
                           <td style={{ textAlign: "right", paddingRight: "10px" }}>
-                            <button 
+                            <button
                               type="button"
                               onClick={() => handleRemoveTarget(idx)}
                               title="Remove target"
@@ -985,7 +1151,7 @@ export default function NewScan() {
       </div>
 
       {/* Slide-out Drawer for Advanced Settings */}
-      <div 
+      <div
         className={`ns-drawer-backdrop ${showAdvanced ? "ns-drawer-backdrop--open" : ""}`}
         onClick={() => setShowAdvanced(false)}
       />
@@ -995,8 +1161,8 @@ export default function NewScan() {
             <span className="ns-drawer-icon">⚙️</span>
             <span className="ns-drawer-title">Advanced Settings</span>
           </div>
-          <button 
-            type="button" 
+          <button
+            type="button"
             className="ns-drawer-close"
             onClick={() => setShowAdvanced(false)}
             title="Close Settings (Esc)"
@@ -1004,33 +1170,35 @@ export default function NewScan() {
             ✕
           </button>
         </div>
-        
+
         <div className="ns-drawer-body">
           {/* 1. Port Scan Configuration (Asset Discovery Mode Only) */}
           {pipelineMode === "asset" && (
-            <div className="ns-adv-section">
-              <div className="ns-label">Port Scan Mode</div>
-              <div className="ns-segmented-control">
-                <button
-                  type="button"
-                  className={`ns-segmented-btn ${portScanMode === "intensity" ? "ns-segmented-btn--active" : ""}`}
-                  onClick={() => setPortScanMode("intensity")}
-                  disabled={loading || !canExecuteScans}
-                >
-                  Scan by Intensity
-                </button>
-                <button
-                  type="button"
-                  className={`ns-segmented-btn ${portScanMode === "custom" ? "ns-segmented-btn--active" : ""}`}
-                  onClick={() => setPortScanMode("custom")}
-                  disabled={loading || !canExecuteScans}
-                >
-                  Scan by Custom Ports
-                </button>
+            <>
+              <div className="ns-adv-section">
+                <div className="ns-label">Scan Configuration Model</div>
+                <div className="ns-scan-type-cards">
+                  <div
+                    className={`ns-type-card ${portScanMode === "intensity" ? "ns-type-card--selected" : ""}`}
+                    onClick={() => setPortScanMode("intensity")}
+                  >
+                    <div className="ns-type-card-icon">⚡</div>
+                    <div className="ns-type-card-title">Intensity-Based Scan</div>
+                    <div className="ns-type-card-desc">Predefined scan depths (Light, Normal, Deep) without selecting individual ports.</div>
+                  </div>
+                  <div
+                    className={`ns-type-card ${portScanMode === "port" ? "ns-type-card--selected" : ""}`}
+                    onClick={() => setPortScanMode("port")}
+                  >
+                    <div className="ns-type-card-icon">🔌</div>
+                    <div className="ns-type-card-title">Port-Based Scan</div>
+                    <div className="ns-type-card-desc">Select predefined templates (IT, SCADA, Web, Database, Remote) or input custom ports.</div>
+                  </div>
+                </div>
               </div>
-              
+
               {portScanMode === "intensity" ? (
-                <div style={{ marginTop: "12px" }}>
+                <div className="ns-adv-section" style={{ marginTop: "12px" }}>
                   <div className="ns-label" style={{ marginBottom: "8px" }}>
                     Port Scan Intensity <span className="ns-label-hint">depth of Phase 2 port scan</span>
                   </div>
@@ -1058,74 +1226,210 @@ export default function NewScan() {
                   })()}
                 </div>
               ) : (
-                <div style={{ marginTop: "12px" }}>
-                  <div className="ns-label" style={{ marginBottom: "8px" }}>
-                    Custom Ports / Ranges <span className="ns-label-hint">e.g. 22, 80, 443, 8080-8090</span>
-                  </div>
-                  <div className="ns-input-wrap">
-                    <span className="ns-input-icon">🔌</span>
-                    <input
-                      type="text"
-                      className="ns-input"
-                      value={customPorts}
-                      onChange={e => handleCustomPortsChange(e.target.value)}
-                      placeholder="e.g. 22,80,443,8000-8100"
-                      disabled={loading || !canExecuteScans}
-                    />
-                  </div>
-                  
-                  <div className="ns-chips" style={{ marginTop: "10px" }}>
-                    <span className="ns-chips-label">Presets:</span>
-                    <button
-                      type="button"
-                      className="ns-chip"
-                      onClick={() => handleCustomPortsChange("80,443,8080,8443")}
+                <div className="ns-adv-section" style={{ marginTop: "12px" }}>
+                  <div className="ns-label" style={{ marginBottom: "8px" }}>Port Profile</div>
+                  <div className="ns-select-wrap" style={{ marginBottom: "12px" }}>
+                    <select
+                      className="ns-select ns-port-profile-select"
+                      value={portProfile}
+                      onChange={e => setPortProfile(e.target.value)}
                       disabled={loading || !canExecuteScans}
                     >
-                      Web (80,443...)
-                    </button>
-                    <button
-                      type="button"
-                      className="ns-chip"
-                      onClick={() => handleCustomPortsChange("1433,1521,3306,5432,27017")}
-                      disabled={loading || !canExecuteScans}
-                    >
-                      Database (3306,5432...)
-                    </button>
-                    <button
-                      type="button"
-                      className="ns-chip"
-                      onClick={() => handleCustomPortsChange("22,23,3389,5900")}
-                      disabled={loading || !canExecuteScans}
-                    >
-                      Remote (22,3389...)
-                    </button>
+                      {Object.entries(PORT_PROFILES).map(([key, prof]) => (
+                        <option key={key} value={key}>{prof.label}</option>
+                      ))}
+                    </select>
                   </div>
 
-                  {customPortsError && (
-                    <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
-                      ⚠ {customPortsError}
+                  {/* Port pills display for predefined profiles */}
+                  {portProfile !== "custom" && PORT_PROFILES[portProfile]?.ports && (
+                    <div className="ns-port-pills-section" style={{ marginBottom: "12px" }}>
+                      <div className="ns-label-hint" style={{ marginBottom: "6px" }}>
+                        Included Ports ({PORT_PROFILES[portProfile].ports.split(",").length} total)
+                      </div>
+                      <div className="ns-port-pills-wrap">
+                        {PORT_PROFILES[portProfile].ports.split(",").map(pStr => {
+                          const pNum = parseInt(pStr, 10);
+                          const isSensitive = SENSITIVE_PORTS.includes(pNum);
+                          return (
+                            <span
+                              key={pStr}
+                              className={`ns-port-pill ${isSensitive ? "ns-port-pill--sensitive" : ""}`}
+                            >
+                              {pStr}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
-                  {!customPortsError && parsedCustomPortsCount > 0 && (
-                    <div className="ns-estimation-banner" style={{ marginTop: "12px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)", color: "#4ade80", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
-                      <div style={{ fontWeight: "600", marginBottom: "4px", color: "#22c55e" }}>⚡ Scan Estimation</div>
-                      <div style={{ color: "#a3a3a3", display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
-                        <span>Unique ports:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount}</strong>
-                        <span>Est. packets per host:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount} packets</strong>
-                        <span>Est. duration per host:</span> <strong style={{ color: "#e5e5e5" }}>{Math.max(1, Math.round(parsedCustomPortsCount / 50))} - {Math.max(2, Math.round(parsedCustomPortsCount / 10))} seconds</strong>
+                  {/* Custom Ports Input (when profile = custom) */}
+                  {portProfile === "custom" && (
+                    <div style={{ marginTop: "12px" }}>
+                      <div className="ns-label" style={{ marginBottom: "8px" }}>
+                        Custom Ports / Ranges <span className="ns-label-hint">e.g. 22, 80, 443, 8080-8090</span>
                       </div>
+                      <div className="ns-input-wrap">
+                        <span className="ns-input-icon">🔌</span>
+                        <input
+                          type="text"
+                          className="ns-input"
+                          value={customPorts}
+                          onChange={e => handleCustomPortsChange(e.target.value)}
+                          placeholder="e.g. 22,80,443,8000-8100"
+                          disabled={loading || !canExecuteScans}
+                        />
+                      </div>
+
+                      <div className="ns-chips" style={{ marginTop: "10px" }}>
+                        <span className="ns-chips-label">Presets:</span>
+                        {Object.entries(PORT_PROFILES).filter(([k]) => k !== "custom").map(([k, prof]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className="ns-chip"
+                            onClick={() => handleCustomPortsChange(prof.ports)}
+                            disabled={loading || !canExecuteScans}
+                          >
+                            {prof.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {customPortsError && (
+                        <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                          ⚠ {customPortsError}
+                        </div>
+                      )}
+
+                      {!customPortsError && parsedCustomPortsCount > 0 && (
+                        <div className="ns-estimation-banner" style={{ marginTop: "12px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)", color: "#4ade80", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                          <div style={{ fontWeight: "600", marginBottom: "4px", color: "#22c55e" }}>⚡ Scan Estimation</div>
+                          <div style={{ color: "#a3a3a3", display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
+                            <span>Unique ports:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount}</strong>
+                            <span>Est. packets per host:</span> <strong style={{ color: "#e5e5e5" }}>{parsedCustomPortsCount} packets</strong>
+                            <span>Est. duration per host:</span> <strong style={{ color: "#e5e5e5" }}>{Math.max(1, Math.round(parsedCustomPortsCount / 50))} - {Math.max(2, Math.round(parsedCustomPortsCount / 10))} seconds</strong>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
+            </>
+          )}
+
+          {/* Exclude Ports Section */}
+          <div className="ns-adv-section ns-exclude-section" style={{ borderTop: "1.5px solid var(--border)", paddingTop: "16px" }}>
+            <div className="ns-inline-row">
+              <div className="ns-inline-label">
+                <span className="ns-label-main">🚫 Exclude Specific Ports</span>
+                <span className="ns-label-hint">Exclude sensitive or firewalled ports from scanning</span>
+              </div>
+              <div className="ns-switch-wrapper">
+                <label className="ns-switch">
+                  <input
+                    type="checkbox"
+                    checked={excludePortsEnabled}
+                    onChange={e => handleExcludeToggleChange(e.target.checked)}
+                  />
+                  <span className="ns-slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            {excludePortsEnabled && (
+              <div style={{ marginTop: "12px" }}>
+                <div className="ns-input-wrap">
+                  <span className="ns-input-icon">🚫</span>
+                  <input
+                    type="text"
+                    className="ns-input"
+                    value={excludePorts}
+                    onChange={e => setExcludePorts(e.target.value)}
+                    placeholder="e.g. 2375,2376,6443,10250 or 80-90"
+                    disabled={loading || !canExecuteScans}
+                  />
+                </div>
+
+                {excludeTokens.length > 0 && (
+                  <div className="ns-exclude-tags-wrap" style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {excludeTokens.map((token, idx) => (
+                      <span key={`${token}-${idx}`} className="ns-exclude-tag">
+                        {token}
+                        <button
+                          type="button"
+                          className="ns-exclude-tag-remove"
+                          onClick={() => handleRemoveExcludeToken(token)}
+                          disabled={loading || !canExecuteScans}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="ns-chips" style={{ marginTop: "8px" }}>
+                  <span className="ns-chips-label">Quick:</span>
+                  <button
+                    type="button"
+                    className="ns-chip"
+                    onClick={() => setExcludePorts("2375,2376,6443,10250")}
+                    disabled={loading || !canExecuteScans}
+                  >
+                    Exclude Sensitive Ports
+                  </button>
+                </div>
+
+                {excludePortsError && (
+                  <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                    ⚠ {excludePortsError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Sensitive Warning Banner */}
+          {sensitivePortsFound && (
+            <div className="ns-sensitive-banner" style={{ marginTop: "12px", background: "rgba(245,158,11,0.08)", borderLeft: "3px solid #f59e0b", color: "#fbbf24", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
+              <div style={{ fontWeight: "600", marginBottom: "4px" }}>⚠️ Sensitive Ports Detected</div>
+              <p style={{ margin: 0, color: "#d4d4d8" }}>
+                Your selection includes sensitive ports (Docker API <code>2375/2376</code>, Kubernetes <code>6443/10250</code>). While these are allowed, scanning them can trigger intrusion detection systems or crash services if they are not configured correctly.
+              </p>
+            </div>
+          )}
+
+          {/* Live Preview Panel (Asset mode only) */}
+          {pipelineMode === "asset" && (
+            <div className="ns-scan-preview" style={{ marginTop: "16px" }}>
+              <div className="ns-scan-preview-header">🎯 Scan Configuration Preview</div>
+              <div className="ns-scan-preview-grid">
+                <div className="ns-preview-item">
+                  <span className="ns-preview-label">Scan Type</span>
+                  <span className="ns-preview-val">{preview.typeLabel}</span>
+                </div>
+                <div className="ns-preview-item">
+                  <span className="ns-preview-label">Target Profile / Depth</span>
+                  <span className="ns-preview-val">{preview.targetPortsLabel}</span>
+                </div>
+                <div className="ns-preview-item">
+                  <span className="ns-preview-label">Ports Count</span>
+                  <span className="ns-preview-val">{preview.finalCount}</span>
+                </div>
+                <div className="ns-preview-item">
+                  <span className="ns-preview-label">Excluded Ports</span>
+                  <span className="ns-preview-val">{preview.excludedLabel}</span>
+                </div>
+              </div>
             </div>
           )}
 
           {/* 2. OS Detection (shown for asset / advanced / vulnerability_audit) */}
           {(pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && (
-            <div className="ns-inline-row">
+            <div className="ns-inline-row" style={{ borderTop: "1.5px solid var(--border)", paddingTop: "16px" }}>
               <div className="ns-inline-label">
                 <span className="ns-label-main">OS Detection</span>
                 <span className="ns-label-hint">Fingerprint target operating systems</span>
@@ -1185,7 +1489,7 @@ export default function NewScan() {
           </div>
 
           {/* 5. SNMP / Network Topology (optional, all modes) */}
-          <div className="ns-adv-section">
+          <div className="ns-adv-section" style={{ borderTop: "1.5px solid var(--border)", paddingTop: "16px" }}>
             <div className="ns-inline-row">
               <div className="ns-inline-label">
                 <span className="ns-label-main">🗺️ Network Topology (SNMP)</span>
@@ -1284,8 +1588,8 @@ export default function NewScan() {
         </div>
 
         <div className="ns-drawer-footer">
-          <button 
-            type="button" 
+          <button
+            type="button"
             className="ns-drawer-save-btn"
             onClick={() => setShowAdvanced(false)}
           >

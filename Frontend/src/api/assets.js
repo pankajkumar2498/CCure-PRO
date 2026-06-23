@@ -83,3 +83,35 @@ export const importAmtInventory = (formData, orgId) =>
 export const getCoverageStats = (orgId) =>
   api.get("/assets/coverage-stats", { params: orgId ? { org_id: orgId } : {} });
 
+export const getReconciliationDrilldown = ({
+  category, search, owner, department, location, skip = 0, limit = 50, org_id
+} = {}) =>
+  api.get("/assets/reconciliation/drilldown", {
+    params: {
+      category,
+      ...(search ? { search } : {}),
+      ...(owner ? { owner } : {}),
+      ...(department ? { department } : {}),
+      ...(location ? { location } : {}),
+      skip, limit,
+      ...(org_id ? { org_id } : {}),
+    }
+  });
+
+export const exportReconciliationCsv = ({
+  category, search, owner, department, location, org_id
+} = {}) =>
+  api.get("/assets/reconciliation/drilldown", {
+    params: {
+      category,
+      ...(search ? { search } : {}),
+      ...(owner ? { owner } : {}),
+      ...(department ? { department } : {}),
+      ...(location ? { location } : {}),
+      export: true,
+      ...(org_id ? { org_id } : {}),
+    },
+    responseType: "blob",
+  });
+
+

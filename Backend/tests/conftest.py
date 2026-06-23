@@ -141,11 +141,11 @@ def reset_database():
     with Session(engine) as session:
         session.execute(text(
             "INSERT INTO organizations (id, name, slug, plan, max_assets, max_users, is_active, settings, created_at, updated_at) "
-            "VALUES ('00000000-0000-0000-0000-000000000000', 'Default', 'default', 'community', 100, 10, 1, '{}', :now, :now)"
+            "VALUES ('00000000-0000-0000-0000-000000000000', 'Default', 'default', 'community', 100, 10, true, '{}', :now, :now)"
         ), {"now": utcnow()})
         session.execute(text(
             "INSERT INTO roles (id, name, description, is_system_role, created_at) "
-            "VALUES (3, 'analyst', 'Analyst role', 0, :now)"
+            "VALUES (3, 'analyst', 'Analyst role', false, :now)"
         ), {"now": utcnow()})
         session.commit()
     
@@ -201,7 +201,7 @@ def test_org(db_session: Session) -> Organization:
 def test_role_admin(db_session: Session) -> Role:
     from sqlalchemy import text
     from db.base import utcnow
-    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (1, 'org_admin', 'Admin role', 0, :now)"), {"now": utcnow()})
+    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (1, 'org_admin', 'Admin role', false, :now)"), {"now": utcnow()})
     db_session.commit()
     return db_session.query(Role).filter(Role.id == 1).first()
 
@@ -210,7 +210,7 @@ def test_role_admin(db_session: Session) -> Role:
 def test_role_viewer(db_session: Session) -> Role:
     from sqlalchemy import text
     from db.base import utcnow
-    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (2, 'viewer', 'Viewer role', 0, :now)"), {"now": utcnow()})
+    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (2, 'viewer', 'Viewer role', false, :now)"), {"now": utcnow()})
     db_session.commit()
     return db_session.query(Role).filter(Role.id == 2).first()
 

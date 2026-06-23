@@ -109,7 +109,7 @@ class ScanOrchestrator:
         )
 
     async def scan_ip_range(self, target: str, scan_type: str = "adaptive") -> Dict:
-        """Backward-compat: scan an IP range (e.g. '192.168.1.1-50')."""
+        """Backward-compat: scan an IP range (e.g. '10.180.6.14-50')."""
         return await self.run_host_discovery_only(
             targets=[target],
             scan_type=scan_type,
@@ -117,7 +117,7 @@ class ScanOrchestrator:
         )
 
     async def scan_subnet(self, target: str, scan_type: str = "adaptive") -> Dict:
-        """Backward-compat: scan a CIDR subnet (e.g. '192.168.1.0/24')."""
+        """Backward-compat: scan a CIDR subnet (e.g. '10.180.6.0/24')."""
         return await self.run_host_discovery_only(
             targets=[target],
             scan_type=scan_type,
@@ -552,6 +552,7 @@ class ScanOrchestrator:
         pipeline_mode: str = "asset",
         os_detection: bool = True,
         custom_ports: Optional[str] = None,
+        exclude_ports: Optional[str] = None,
     ) -> Dict:
         """
         Phase 2 — Port Scanning.
@@ -569,8 +570,9 @@ class ScanOrchestrator:
             os_detection:  When True (default), passes -O to Nmap for active
                            OS fingerprinting during port scan.
             custom_ports:  Optional custom ports or ranges to scan (e.g. '22,80,443').
+            exclude_ports: Optional ports or ranges to exclude from scan (e.g. '2375,6443').
         """
-        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}, custom_ports={custom_ports}")
+        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}, custom_ports={custom_ports}, exclude_ports={exclude_ports}")
 
         try:
             intensity_enum = ScanIntensity(intensity.lower())
@@ -584,6 +586,14 @@ class ScanOrchestrator:
                 parsed_custom_ports = InputValidator.parse_custom_ports(custom_ports)
             except ValueError as e:
                 log.warning("Failed parsing custom ports in orchestrator: %s", e)
+
+        parsed_exclude_ports = None
+        if exclude_ports:
+            try:
+                from core.utils import InputValidator
+                parsed_exclude_ports = InputValidator.parse_exclude_ports(exclude_ports)
+            except ValueError as e:
+                log.warning("Failed parsing exclude ports in orchestrator: %s", e)
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         discovery_scan_method = self._infer_discovery_method(hosts)
@@ -601,36 +611,56 @@ class ScanOrchestrator:
 
         t0 = time.time()
 
-        # ── SAVE vendor/mac data BEFORE PortEngine modifies hosts ──────────────
-        vendor_backup = {}
+        # ── SAVE vendor/mac and Phase 1 open_ports BEFORE PortEngine modifies hosts ──────────────
+        host_backup = {}
         for host in active_hosts:
             ip = self._get_host_ip(host)
             if ip:
-                vendor_backup[ip] = {
+                host_backup[ip] = {
                     "vendor": host.get("vendor", "N/A"),
                     "mac_address": host.get("mac_address", "N/A"),
+                    "open_ports": list(host.get("open_ports") or []),
                 }
 
         # ── PortEngine now uses NmapScanner internally ────────────────────
         # os_detection enables Nmap -O in Phase 2, producing consistent
         # OS classification with Phase 3 (Vulnerability Audit).
         # User can toggle this via the API's os_detection field (default True).
-        port_engine = PortEngine(intensity=intensity_enum, os_detection=os_detection, custom_ports=parsed_custom_ports)
+        port_engine = PortEngine(
+            intensity=intensity_enum,
+            os_detection=os_detection,
+            custom_ports=parsed_custom_ports,
+            exclude_ports=parsed_exclude_ports,
+        )
         await port_engine.run(active_hosts, scan_id=scan_id)   # mutates in-place
         self._apply_os_inference(active_hosts)
         
-        # ── RESTORE vendor/mac data from backup ────────────────────────────────
-        # This ensures vendor is NEVER lost, regardless of PortEngine behavior
+        # ── RESTORE and MERGE vendor, mac, and open_ports from backup ──────────
+        # This ensures vendor and Phase 1 enrichment ports are NEVER lost, regardless of PortEngine behavior
         for host in active_hosts:
             ip = self._get_host_ip(host)
-            if ip and ip in vendor_backup:
-                backup = vendor_backup[ip]
+            if ip and ip in host_backup:
+                backup = host_backup[ip]
                 # Always restore vendor/mac if they were present in Phase 1
                 if backup["vendor"] != "N/A":
                     host["vendor"] = backup["vendor"]
                 if backup["mac_address"] != "N/A":
                     host["mac_address"] = backup["mac_address"]
                     host["mac"] = backup["mac_address"]
+                
+                # Merge Phase 1 ports into Phase 2 open_ports
+                p1_ports = backup["open_ports"]
+                if p1_ports:
+                    p2_ports = host.setdefault("open_ports", [])
+                    p2_port_nums = {p["port"] for p in p2_ports if p.get("port")}
+                    for port_dict in p1_ports:
+                        p_num = port_dict.get("port")
+                        if p_num and p_num not in p2_port_nums:
+                            p2_ports.append(port_dict)
+                            # Also ensure registered in port_states dict if present
+                            if "port_states" in host:
+                                host["port_states"][p_num] = "open"
+                                host["port_states"][str(p_num)] = "open"
         
         # ── Also try to get vendor from asset registry (ONLY for Vulnerability Audit) ────
         # ONLY for Vulnerability Audit pipeline (phases 1+2+3)

@@ -601,7 +601,7 @@ def sync_asset_discovery_task(scan_id: str, org_id: str, user_id: Optional[str],
         # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
         try:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
-            if scan and scan.pipeline_mode == "asset_discovery":
+            if scan and scan.pipeline_mode in ("asset_discovery", "asset"):
                 from core.amt_reconciliation import reconcile_amt_inventory
                 reconcile_amt_inventory(db, org_id)
         except Exception as amt_exc:
@@ -618,6 +618,14 @@ def sync_vulnerability_audit_task(scan_id: str, org_id: str, user_id: Optional[s
     try:
         from scans.asset_syncer import sync_vulnerability_audit
         sync_vulnerability_audit(db, scan_id, org_id, user_id, hosts)
+        # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
+        try:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if scan and scan.pipeline_mode in ("vulnerability_audit", "advanced"):
+                from core.amt_reconciliation import reconcile_amt_inventory
+                reconcile_amt_inventory(db, org_id)
+        except Exception as amt_exc:
+            log.warning("Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc)
     except Exception as exc:
         log.exception("Asset Sync Phase 3 Failed")
     finally:
@@ -633,7 +641,7 @@ def sync_host_discovery_task(scan_id: str, org_id: str, user_id: Optional[str], 
         # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
         try:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
-            if scan and scan.pipeline_mode == "host_discovery":
+            if scan and scan.pipeline_mode in ("host_discovery", "basic"):
                 from core.amt_reconciliation import reconcile_amt_inventory
                 reconcile_amt_inventory(db, org_id)
         except Exception as amt_exc:
@@ -658,6 +666,7 @@ def run_host_discovery_task(
     os_detection:        bool            = True,
     port_scan_intensity: str             = "normal",
     custom_ports:        Optional[str]   = None,
+    exclude_ports:       Optional[str]   = None,
 ):
     """Phase 1 Background Task."""
     import datetime
@@ -734,6 +743,11 @@ def run_host_discovery_task(
                 if not resolved_custom_ports and scan_row and scan_row.options:
                     resolved_custom_ports = scan_row.options.get("custom_ports")
 
+                # Fetch exclude ports from the scan row if not explicitly passed
+                resolved_exclude_ports = exclude_ports
+                if not resolved_exclude_ports and scan_row and scan_row.options:
+                    resolved_exclude_ports = scan_row.options.get("exclude_ports")
+
                 # Dispatch Phase 2 (Asset Discovery) directly
                 from core.tasks import run_asset_discovery_task
                 next_task = run_asset_discovery_task.delay(
@@ -744,6 +758,7 @@ def run_host_discovery_task(
                     pipeline_mode=pipeline_mode,
                     os_detection=os_detection,      # Forward os_detection from the original request
                     custom_ports=resolved_custom_ports,  # Forward custom_ports
+                    exclude_ports=resolved_exclude_ports,  # Forward exclude_ports
                 )
                 db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
                 db.commit()
@@ -805,6 +820,7 @@ def run_asset_discovery_task(
     pipeline_mode: str,
     os_detection:  bool = True,
     custom_ports:  Optional[str] = None,
+    exclude_ports: Optional[str] = None,
 ):
     """Phase 2 Background Task."""
     import datetime
@@ -832,11 +848,17 @@ def run_asset_discovery_task(
         if not resolved_custom_ports and scan_row and scan_row.options:
             resolved_custom_ports = scan_row.options.get("custom_ports")
 
+        # Fetch exclude ports from the scan row options if not explicitly passed as task parameter
+        resolved_exclude_ports = exclude_ports
+        if not resolved_exclude_ports and scan_row and scan_row.options:
+            resolved_exclude_ports = scan_row.options.get("exclude_ports")
+
         orch = _new_orchestrator()
         result = _run_async(orch.run_asset_discovery_only(
             hosts=hosts, intensity=intensity, pipeline_mode=mode,
             scan_id=scan_id, os_detection=os_detection,
-            custom_ports=resolved_custom_ports
+            custom_ports=resolved_custom_ports,
+            exclude_ports=resolved_exclude_ports,
         ))
 
         if _check_cancelled(db, scan_id):
@@ -1376,6 +1398,13 @@ def run_credentialed_scan_task(
             cve_list=cve_list,
             severity_counts=severity_counts,
         )
+
+        # Trigger AMT reconciliation now that the asset identity has been fully synced
+        try:
+            from core.amt_reconciliation import reconcile_amt_inventory
+            reconcile_amt_inventory(db, str(scan.org_id))
+        except Exception as amt_exc:
+            log.warning("Post-credentialed scan AMT reconciliation failed for org %s: %s", scan.org_id, amt_exc)
 
         # ATOMIC COMMIT: Final persistence of everything
         db.commit()

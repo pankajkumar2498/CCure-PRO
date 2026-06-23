@@ -16,7 +16,7 @@ def test_progress_lifecycle(db_session: Session, test_org, test_user):
         org_id=test_org.id,
         created_by=str(test_user.id),
         scan_no=1,
-        target_str="10.0.0.0/24",
+        target_str="10.180.5.0/24",
         scan_type="adaptive",
         pipeline_mode="basic",
         status="pending"

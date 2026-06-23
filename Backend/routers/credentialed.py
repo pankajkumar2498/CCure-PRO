@@ -35,7 +35,7 @@ router = APIRouter(tags=["Credentialed Scans"])
 # ── Request model ─────────────────────────────────────────────────────────────
 
 class CredentialedScanRequest(BaseModel):
-    ip:          str                 = Field(..., examples=["192.168.1.10"])
+    ip:          str                 = Field(..., examples=["10.180.6.140"])
     username:    str                 = Field(..., examples=["root"])
     password:    Optional[SecretStr] = Field(None)
     key_path:    Optional[str]       = Field(None)
@@ -46,7 +46,7 @@ class CredentialedScanRequest(BaseModel):
 
     model_config = {
         # Never include password in JSON serialisation or __repr__
-        "json_schema_extra": {"examples": [{"ip": "192.168.1.10", "username": "root", "auth_method": "password"}]},
+        "json_schema_extra": {"examples": [{"ip": "10.180.6.140", "username": "root", "auth_method": "password"}]},
     }
 
     @field_validator("key_path")

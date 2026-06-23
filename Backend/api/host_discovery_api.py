@@ -29,7 +29,7 @@ class HostDiscoveryAPI:
 
         api = HostDiscoveryAPI(silent=False, intensity="deep")
         result = api.scan_single_host("10.180.1.1", scan_type="adaptive")
-        result = api.scan_subnet("10.0.0.0/24")
+        result = api.scan_subnet("10.180.5.0/24")
     """
 
     def __init__(

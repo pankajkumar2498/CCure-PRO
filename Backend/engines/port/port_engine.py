@@ -36,7 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
-from core.constants import PORT_DB, SCAN_PORTS_QUICK, SCAN_PORTS_FULL, SCAPY_AVAILABLE
+from core.constants import PORT_DB, SCAN_PORTS_QUICK, SCAN_PORTS_FULL, SCAN_PORTS_OT, SCAPY_AVAILABLE
 from core.models import PortResult, ScanIntensity
 from core.nmap.wrapper import NmapScanner, NMAP_AVAILABLE, NmapScanResult
 from core.utils import lookup_cve, extract_version
@@ -62,10 +62,12 @@ class PortEngine:
         nmap_scanner: Optional[NmapScanner] = None,
         os_detection: bool = False,
         custom_ports: Optional[List[int]] = None,
+        exclude_ports: Optional[List[int]] = None,
     ):
         self.intensity = intensity
         self.os_detection = os_detection
         self.custom_ports = custom_ports
+        self.exclude_ports = exclude_ports
         # Use injected scanner (testable) or default singleton
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows" and nmap_scanner is None
@@ -104,6 +106,9 @@ class PortEngine:
 
         # After port scanning, perform a lightweight SNMP check on active hosts
         await self._lightweight_snmp_check(active)
+
+        # Run dynamic OT identity probes on open SCADA ports
+        await self._ot_enrichment_check(active)
 
         return hosts
 
@@ -161,7 +166,8 @@ class PortEngine:
                     intensity=nmap_intensity,
                     with_services=include_svc,
                     with_os=self.os_detection,
-                    ports=self.custom_ports,
+                    ports=self._port_list(),
+                    exclude_ports=self.exclude_ports,
                 ),
             )
             log.info(
@@ -196,7 +202,10 @@ class PortEngine:
 
             nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
-                lambda: self._nmap.scan_hosts(ips, intensity="deep", with_os=self.os_detection),
+                lambda: self._nmap.scan_hosts(
+                    ips, intensity="deep", with_os=self.os_detection,
+                    exclude_ports=self.exclude_ports,
+                ),
             )
             log.info(
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",
@@ -401,6 +410,53 @@ class PortEngine:
             for h in hosts
         ])
 
+    async def _ot_enrichment_check(self, hosts: List[Dict]) -> None:
+        """
+        Check if any OT ports are open on active hosts and perform deep OT identity probing.
+        """
+        from core.discovery.enrichment import _ot_protocol_probes
+        from core.device_classifier import classify_device
+        
+        def _check_host(host: Dict):
+            ip = host.get("ip_address") or host.get("ip")
+            if not ip:
+                return
+            
+            # SCADA/OT default ports mapped in ot_probes:
+            # modbus (502), s7/mms (102), ethernetip (44818), bacnet (47808), dnp3 (20000),
+            # opcua (4840), iec104 (2404), ge_srtp (18245), fins (9600), melsec (5007), codesys (2455)
+            ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+            
+            open_ports = {p.get("port") for p in host.get("open_ports", []) if p.get("port")}
+            
+            # Skip if ot_info is already present or no OT ports are open
+            if host.get("ot_info") or not (open_ports & ot_ports):
+                return
+                
+            # Initialize registrations needed by _ot_protocol_probes
+            port_states = host.setdefault("port_states", {})
+            for p in open_ports:
+                if p in ot_ports:
+                    port_states[p] = "open"
+                    
+            host.setdefault("confirmations", [])
+            
+            # Execute OT Probes
+            try:
+                _ot_protocol_probes(ip, host)
+                
+                # If OT info was successfully gathered, run classifier to set exact scada_ics details
+                if host.get("ot_info"):
+                    classify_device(host)
+            except Exception as exc:
+                log.debug("PortEngine OT enrichment check failed for %s: %s", ip, exc)
+                
+        loop = asyncio.get_running_loop()
+        await asyncio.gather(*[
+            loop.run_in_executor(None, _check_host, h)
+            for h in hosts
+        ])
+
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 
     async def _scan_fallback(self, hosts: List[Dict], scan_id: Optional[str] = None) -> None:
@@ -514,8 +570,11 @@ class PortEngine:
         try:
             from scapy.all import sr, IP, UDP, ICMP, Raw
             pkts = []
+            exclude_set = set(self.exclude_ports) if self.exclude_ports else set()
             for ip in ips:
                 for port, info in UDP_SERVICES.items():
+                    if port in exclude_set:
+                        continue
                     payload = build_payload(port, info["probe"])
                     pkt = IP(dst=ip) / UDP(dport=port)
                     if payload:
@@ -551,11 +610,22 @@ class PortEngine:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _port_list(self) -> List[int]:
+        ports = []
         if self.custom_ports:
-            return self.custom_ports
-        if self.intensity == ScanIntensity.LIGHT:
-            return SCAN_PORTS_QUICK
-        return SCAN_PORTS_FULL
+            ports = list(self.custom_ports)
+        elif self.intensity == ScanIntensity.LIGHT:
+            # Union of quick IT ports and all OT ports
+            ports = sorted(list(set(SCAN_PORTS_QUICK) | set(SCAN_PORTS_OT)))
+        else:
+            # NORMAL/Default: All system ports (1-1024) + high-value curated ports above 1024
+            system_ports = list(range(1, 1025))
+            high_value_ports = [p for p in PORT_DB.keys() if p > 1024]
+            ports = sorted(list(set(system_ports + high_value_ports)))
+
+        if self.exclude_ports:
+            exclude_set = set(self.exclude_ports)
+            ports = [p for p in ports if p not in exclude_set]
+        return ports
 
     @staticmethod
     def _ip(host: Dict) -> Optional[str]:

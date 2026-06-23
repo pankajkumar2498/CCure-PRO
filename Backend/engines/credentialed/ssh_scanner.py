@@ -10,7 +10,7 @@ Usage::
 
     from engines.credentialed.ssh_scanner import SSHScanner
 
-    scanner = SSHScanner(ip="192.168.1.10", username="root", password="secret")
+    scanner = SSHScanner(ip="10.180.6.140", username="root", password="secret")
     with scanner:
         result = scanner.run("uname -r")
         print(result.stdout)

@@ -42,11 +42,31 @@ def test_parse_custom_ports_value_errors():
     with pytest.raises(ValueError, match="Duplicate port detected"):
         InputValidator.parse_custom_ports("80-85,83")
 
-    # Blacklisted ports
-    with pytest.raises(ValueError, match="Restricted ports cannot be scanned"):
-        InputValidator.parse_custom_ports("2375")
-    with pytest.raises(ValueError, match="Restricted ports cannot be scanned"):
-        InputValidator.parse_custom_ports("22,6443,443")
+def test_parse_custom_ports_sensitive_ports_allowed():
+    # Sensitive ports should parse successfully without error
+    assert InputValidator.parse_custom_ports("2375,6443,10250") == [2375, 6443, 10250]
+
+def test_parse_exclude_ports_success():
+    assert InputValidator.parse_exclude_ports("") == []
+    assert InputValidator.parse_exclude_ports("   ") == []
+    assert InputValidator.parse_exclude_ports("22") == [22]
+    assert InputValidator.parse_exclude_ports("22,80,443") == [22, 80, 443]
+    assert InputValidator.parse_exclude_ports("80-83") == [80, 81, 82, 83]
+    assert InputValidator.parse_exclude_ports("  22, 80 - 83 ,  443 ") == [22, 80, 81, 82, 83, 443]
+
+def test_parse_exclude_ports_errors():
+    with pytest.raises(ValueError, match="Invalid characters"):
+        InputValidator.parse_exclude_ports("22a")
+    with pytest.raises(ValueError, match="Invalid range format"):
+        InputValidator.parse_exclude_ports("80-80-80")
+    with pytest.raises(ValueError, match="Invalid range bounds"):
+        InputValidator.parse_exclude_ports("80-abc")
+    with pytest.raises(ValueError, match="Range start must be <= end"):
+        InputValidator.parse_exclude_ports("80-79")
+    with pytest.raises(ValueError, match="Ports must be between 1 and 65535"):
+        InputValidator.parse_exclude_ports("0")
+    with pytest.raises(ValueError, match="Duplicate port detected"):
+        InputValidator.parse_exclude_ports("22,22")
 
 def test_check_scan_quota_custom_ports():
     # Mock database and organization
@@ -96,8 +116,5 @@ def test_check_scan_quota_custom_ports():
     custom_ports_ent_ok = ",".join(str(x) for x in range(1, 2000) if x not in (2375, 2376, 6443, 10250))
     check_scan_quota(mock_db, org_id="org-1", custom_ports=custom_ports_ent_ok)
 
-    # Blacklist violation in check_scan_quota
-    with pytest.raises(HTTPException) as exc_info:
-        check_scan_quota(mock_db, org_id="org-1", custom_ports="22,6443,80")
-    assert exc_info.value.status_code == 400
-    assert "Restricted ports cannot be scanned" in exc_info.value.detail
+    # Verify sensitive ports parse fine during check_scan_quota too
+    check_scan_quota(mock_db, org_id="org-1", custom_ports="22,6443,80")

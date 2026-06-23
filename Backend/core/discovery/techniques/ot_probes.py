@@ -28,34 +28,38 @@ def probe_modbus(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send Modbus Read Device Identification (FC 43/14) and parse response."""
     try:
         with socket.create_connection((ip, 502), timeout=timeout) as s:
-            info = {"protocol": "modbus", "vendor": "Modbus Device", "model": "Modbus TCP Controller"}
-            try:
-                # TransID=0x0001, ProtoID=0x0000, Len=0x0005, UnitID=0x01, FC=0x2b (43), MEI=0x0e (14), ReadIDCode=0x01, ObjID=0x00
-                req = b"\x00\x01\x00\x00\x00\x05\x01\x2b\x0e\x01\x00"
-                s.sendall(req)
-                resp = s.recv(1024)
-                if len(resp) > 7 and resp[7] == 0x2b:
-                    num_objects = resp[13]
-                    idx = 14
-                    for _ in range(num_objects):
-                        if idx + 2 > len(resp):
-                            break
-                        obj_id = resp[idx]
-                        obj_len = resp[idx+1]
-                        if idx + 2 + obj_len > len(resp):
-                            break
-                        obj_val = resp[idx+2 : idx+2+obj_len].decode("utf-8", errors="ignore").strip()
-                        idx += 2 + obj_len
-                        
-                        if obj_id == 0:
-                            info["vendor"] = obj_val
-                        elif obj_id == 1:
-                            info["model"] = obj_val
-                        elif obj_id == 2:
-                            info["revision"] = obj_val
-            except Exception:
-                pass
-            return info
+            # TransID=0x0001, ProtoID=0x0000, Len=0x0005, UnitID=0x01, FC=0x2b (43), MEI=0x0e (14), ReadIDCode=0x01, ObjID=0x00
+            req = b"\x00\x01\x00\x00\x00\x05\x01\x2b\x0e\x01\x00"
+            s.sendall(req)
+            resp = s.recv(1024)
+            
+            # Check for standard Modbus TCP response header protocol ID (0x0000)
+            # and either Function Code 43 (0x2b) or Exception (0xab)
+            if len(resp) >= 9 and resp[2] == 0x00 and resp[3] == 0x00 and (resp[7] == 0x2b or resp[7] == 0xab):
+                info = {"protocol": "modbus", "vendor": "Modbus Device", "model": "Modbus TCP Controller"}
+                if resp[7] == 0x2b and len(resp) > 13:
+                    try:
+                        num_objects = resp[13]
+                        idx = 14
+                        for _ in range(num_objects):
+                            if idx + 2 > len(resp):
+                                break
+                            obj_id = resp[idx]
+                            obj_len = resp[idx+1]
+                            if idx + 2 + obj_len > len(resp):
+                                break
+                            obj_val = resp[idx+2 : idx+2+obj_len].decode("utf-8", errors="ignore").strip()
+                            idx += 2 + obj_len
+                            
+                            if obj_id == 0:
+                                info["vendor"] = obj_val
+                            elif obj_id == 1:
+                                info["model"] = obj_val
+                            elif obj_id == 2:
+                                info["revision"] = obj_val
+                    except Exception:
+                        pass
+                return info
     except Exception as exc:
         log.debug("probe_modbus(%s) error: %s", ip, exc)
     return None

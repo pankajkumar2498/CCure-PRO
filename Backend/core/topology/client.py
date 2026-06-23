@@ -229,7 +229,7 @@ def _format_mac(raw_bytes) -> str:
 
 
 def _format_ip_from_oid(oid_suffix: str) -> str:
-    """Extract IP from the trailing OID index (e.g., '.1.192.168.1.1' → '192.168.1.1')."""
+    """Extract IP from the trailing OID index (e.g., '.1.10.180.6.14' → '10.180.6.14')."""
     parts = oid_suffix.strip(".").split(".")
     if len(parts) >= 4:
         return ".".join(parts[-4:])

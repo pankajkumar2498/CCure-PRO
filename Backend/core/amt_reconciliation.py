@@ -53,8 +53,8 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
         log.info(f"No scanned assets with MAC addresses found for org {org_id}. Skipping reconciliation.")
         return stats
 
-    # Batch-fetch all AMT reference records globally to match by MAC address across different organization IDs
-    amt_records = db.query(AMTInventoryRecord).all()
+    # Batch-fetch all AMT reference records for this organization to match by MAC address
+    amt_records = db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org_id).all()
 
     # Map both primary and secondary MAC addresses to their respective AMT record
     amt_map = {}

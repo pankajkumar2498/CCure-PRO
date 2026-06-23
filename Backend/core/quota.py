@@ -24,7 +24,7 @@ Usage
 
     # raises HTTPException(429) if quota exceeded, HTTPException(400) if
     # the target subnet is too large for the plan.
-    check_scan_quota(db, org_id=user.org_id, targets=["192.168.1.0/24"])
+    check_scan_quota(db, org_id=user.org_id, targets=["10.180.6.0/24"])
 """
 
 import ipaddress
@@ -73,17 +73,17 @@ def _count_target_ips(targets: List[str]) -> int:
             if "/" in t:
                 total += max(ipaddress.ip_network(t, strict=False).num_addresses - 2, 1)
             elif "-" in t:
-                # e.g. "192.168.1.1-50" or "192.168.1.1-192.168.1.50"
+                # e.g. "10.180.6.14-50" or "10.180.6.14-192.168.1.50"
                 parts = t.split("-")
                 if len(parts) == 2:
                     try:
-                        # Format: base-last_octet  e.g. 192.168.1.1-50
+                        # Format: base-last_octet  e.g. 10.180.6.14-50
                         base = parts[0].strip()
                         end_octet = int(parts[1].strip())
                         start_octet = int(base.rsplit(".", 1)[-1])
                         count = max(end_octet - start_octet + 1, 1)
                     except ValueError:
-                        # Format: full-ip-full-ip  e.g. 192.168.1.1-192.168.1.50
+                        # Format: full-ip-full-ip  e.g. 10.180.6.14-192.168.1.50
                         start_ip = ipaddress.ip_address(parts[0].strip())
                         end_ip   = ipaddress.ip_address(parts[1].strip())
                         count = int(end_ip) - int(start_ip) + 1

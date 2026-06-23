@@ -64,6 +64,7 @@ class DiscoveryProfile:
     concurrency:  int
     enrichment:   bool
     stealth_auto: bool
+    ot_enrichment: bool = False
     description:  str = ""
 
     # LAN-only zone separation: some profiles probe LAN vs routed/WAN differently
@@ -87,6 +88,7 @@ FAST = DiscoveryProfile(
     retries     = 0,     # no retries — speed first
     concurrency = 256,   # high for async TCP connect
     enrichment  = True,  # Allow NetBIOS/mDNS hostname resolution
+    ot_enrichment = False,
     stealth_auto = False,
     separate_lan_wan = True,
 )
@@ -107,6 +109,7 @@ BALANCED = DiscoveryProfile(
     retries     = 1,
     concurrency = 100,
     enrichment  = False,   # Phase 2 Nmap handles service detection
+    ot_enrichment = False,
     stealth_auto = False,
     separate_lan_wan = True,
 )
@@ -133,6 +136,7 @@ AGGRESSIVE = DiscoveryProfile(
     retries     = 2,
     concurrency = 50,    # lower: more thorough per-host, less blast radius
     enrichment  = True,  # run SNMP/mDNS/NetBIOS on active hosts
+    ot_enrichment = True,
     stealth_auto = True, # auto-escalate when IDS detected
     separate_lan_wan = True,
 )

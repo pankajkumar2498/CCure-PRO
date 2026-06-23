@@ -112,7 +112,7 @@ class HostDiscoveryRequest(BaseModel):
       "deep"   → Full BALANCED — maximum coverage, slower.
     Ignored for basic and vulnerability_audit pipelines.
     """
-    targets:             List[str]      = Field(..., examples=[["192.168.1.0/24"]])
+    targets:             List[str]      = Field(..., examples=[["10.180.6.0/24"]])
     scan_type:           str            = Field("adaptive", examples=["adaptive"])
     pipeline_mode:       Optional[str]  = Field("basic",
                                                 examples=["basic"],
@@ -132,6 +132,7 @@ class HostDiscoveryRequest(BaseModel):
     max_concurrency:     Optional[int]   = Field(None, description="Max concurrent threads (e.g. TCP connect probes).")
     wait:                bool            = Field(False, description="If true, wait for task completion (up to 300s) before returning.")
     custom_ports:        Optional[str]   = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
+    exclude_ports:       Optional[str]   = Field(None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')")
     options:             Optional[dict]  = Field(None, description="Additional scan configurations including SNMP credentials for topology mapping")
 
 
@@ -151,6 +152,7 @@ class AssetDiscoveryRequest(BaseModel):
     os_detection:  bool           = Field(True, description="Enable Nmap -O OS fingerprinting during port scan")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
     custom_ports:  Optional[str]  = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
+    exclude_ports: Optional[str]  = Field(None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')")
 
 
 class VulnerabilityAuditRequest(BaseModel):
@@ -172,7 +174,7 @@ class VulnerabilityAuditRequest(BaseModel):
 
 class PhasesRequest(BaseModel):
     """Convenience endpoint — run any combination of phases in one call."""
-    targets:    List[str] = Field(..., examples=[["192.168.1.0/24"]])
+    targets:    List[str] = Field(..., examples=[["10.180.6.0/24"]])
     phases:     str       = Field("1", examples=["1+2"],
                                  description="'1' | '1+2' | '1+2+3+4'")
     scan_type:  str       = Field("adaptive", examples=["adaptive"])
@@ -216,6 +218,7 @@ async def scan_host_discovery(
         **(scan.options or {}),
         "execution_mode": req.execution_mode or "automatic",
         **({"custom_ports": req.custom_ports} if req.custom_ports else {}),
+        **({"exclude_ports": req.exclude_ports} if req.exclude_ports else {}),
         **(req.options or {}),
     }
     db.commit()
@@ -235,6 +238,7 @@ async def scan_host_discovery(
         os_detection        = req.os_detection,
         port_scan_intensity = port_scan_intensity,
         custom_ports        = req.custom_ports,
+        exclude_ports       = req.exclude_ports,
     )
 
     # Store the task ID so it can be revoked if needed
@@ -309,6 +313,7 @@ async def scan_asset_discovery(
         pipeline_mode = req.pipeline_mode,
         os_detection  = req.os_detection,
         custom_ports  = req.custom_ports,
+        exclude_ports = req.exclude_ports,
     )
 
     # Track active task for termination
@@ -316,6 +321,8 @@ async def scan_asset_discovery(
         options = dict(scan.options or {})
         if req.custom_ports:
             options["custom_ports"] = req.custom_ports
+        if req.exclude_ports:
+            options["exclude_ports"] = req.exclude_ports
         scan.current_task_id = task.id
         scan.status = "running"
         scan.options = options

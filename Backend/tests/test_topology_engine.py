@@ -90,11 +90,11 @@ def test_run_topology_mapping_mac_first_and_ip_fallback(db_session, test_org):
     from core.topology.engine import _reconcile_target_asset
     
     # Setup test assets
-    # Asset A: has MAC 00:11:22:33:44:55 and old IP 192.168.1.10
+    # Asset A: has MAC 00:11:22:33:44:55 and old IP 10.180.6.140
     asset_a = Asset(
         id=f"ast_{test_org.slug}_192_168_1_10",
         org_id=test_org.id,
-        ip_address="192.168.1.10",
+        ip_address="10.180.6.140",
         mac_address="00:11:22:33:44:55",
         hostname="Laptop-A",
         discovery_method="discovery"
@@ -164,7 +164,7 @@ def test_sync_host_discovery_mac_first_and_ip_hijack(db_session, test_org):
         id=scan_id,
         org_id=test_org.id,
         status="completed",
-        target_str="192.168.1.0/24"
+        target_str="10.180.6.0/24"
     )
     db_session.add(scan)
     db_session.commit()
@@ -239,7 +239,7 @@ def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, te
         id=scan_id,
         org_id=test_org.id,
         status="completed",
-        target_str="192.168.1.0/24"
+        target_str="10.180.6.0/24"
     )
     db_session.add(scan)
     db_session.commit()

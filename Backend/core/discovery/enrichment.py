@@ -52,7 +52,7 @@ if SCAPY_AVAILABLE:
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
-def enrich_host(ip: str, result: Dict) -> None:
+def enrich_host(ip: str, result: Dict, ot_enrichment: bool = True, register_ports: bool = True) -> None:
     """
     Run all enrichment probes for one active host.
 
@@ -60,14 +60,63 @@ def enrich_host(ip: str, result: Dict) -> None:
     (e.g. SNMP timeout) doesn't prevent the others from running.
 
     Args:
-        ip:     Target IP address string.
-        result: Host result dict from DiscoveryEngine — mutated in place.
+        ip:             Target IP address string.
+        result:         Host result dict from DiscoveryEngine — mutated in place.
+        ot_enrichment:  If True, run deep security and OT protocol queries.
+        register_ports: If True, allow dynamic port/service registration on the host result.
     """
-    for fn in (_ptr_lookup, _snmp_lightweight_probe, _ot_protocol_probes, _mdns_query, _mdns_service_query, _netbios_query, _os_probe_full):
-        try:
-            fn(ip, result)
-        except Exception as exc:
-            log.debug("enrich_host(%s) %s error: %s", ip, fn.__name__, exc)
+    result["_register_ports"] = register_ports
+    try:
+        basic_probes = [_ptr_lookup, _netbios_query, _mdns_query]
+        deep_probes = [_snmp_lightweight_probe, _ot_protocol_probes, _mdns_service_query, _os_probe_full]
+        
+        probes = basic_probes + (deep_probes if ot_enrichment else [])
+        
+        for fn in probes:
+            try:
+                fn(ip, result)
+            except Exception as exc:
+                log.debug("enrich_host(%s) %s error: %s", ip, fn.__name__, exc)
+    finally:
+        result.pop("_register_ports", None)
+
+
+def _register_open_port(result: dict, port: int, service: str, banner: str = "", version: str = "", product: str = "") -> None:
+    """Helper to register an open port / service dynamically on the host result."""
+    if not result.get("_register_ports", True):
+        return
+        
+    port_states = result.setdefault("port_states", {})
+    port_states[port] = "open"
+    port_states[str(port)] = "open"
+    
+    open_ports = result.setdefault("open_ports", [])
+    if not any(p.get("port") == port for p in open_ports):
+        from core.constants import PORT_DB
+        from core.utils import lookup_cve
+        
+        meta = PORT_DB.get(port, {
+            "service": service,
+            "risk": "Info",
+            "note": "",
+        })
+        
+        cves = lookup_cve(banner or service.lower())
+        
+        port_dict = {
+            "port": port,
+            "service": service or meta.get("service", "unknown"),
+            "state": "open",
+            "banner": banner[:500] if banner else "",
+            "version": version[:200] if version else "",
+            "product": product[:255] if product else "",
+            "risk": meta.get("risk", "Info"),
+            "cves": cves
+        }
+        open_ports.append(port_dict)
+        
+        if cves:
+            result.setdefault("cves", []).extend(cves)
 
 
 def _is_port_connectable(ip: str, port: int, timeout: float = 1.0) -> bool:
@@ -191,6 +240,30 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                 if proto_label not in result["confirmations"]:
                     result["confirmations"].append(proto_label)
                 result["method"] = proto_label
+                
+                port_map_reverse = {
+                    "modbus": 502,
+                    "s7": 102,
+                    "mms": 102,
+                    "ethernetip": 44818,
+                    "bacnet": 47808,
+                    "dnp3": 20000,
+                    "opcua": 4840,
+                    "iec104": 2404,
+                    "ge_srtp": 18245,
+                    "fins": 9600,
+                    "melsec": 5007,
+                    "codesys": 2455,
+                }
+                proto_name = info["protocol"].lower()
+                port = port_map_reverse.get(proto_name)
+                if port:
+                    _register_open_port(
+                        result,
+                        port=port,
+                        service=proto_name.upper() if proto_name != "s7" else "s7comm",
+                        banner=f"Protocol: {proto_name.upper()}, Vendor: {info.get('vendor')}, Model: {info.get('model')}"
+                    )
                 break
         except Exception as exc:
             log.debug("OT probe %s failed for %s: %s", name, ip, exc)
@@ -205,6 +278,9 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
     Query port 161 (SNMP) using community 'public' for system details to identify
     network devices early in discovery or port scanning.
     """
+    if result.get("snmp_info"):
+        return  # Skip duplicate probe if already queried
+        
     # Only probe if SNMP UDP port 161 is open or likely open (not explicitly closed)
     port_states = result.get("port_states", {})
     if port_states and port_states.get(161) not in ("open", "open|filtered", None) and port_states.get("161") not in ("open", "open|filtered", None):
@@ -279,6 +355,12 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
             snmp_info["bridge_mib"] = idx != -1 and len(bridge_data) > idx + 2
             
         result["snmp_info"] = snmp_info
+        _register_open_port(
+            result,
+            port=161,
+            service="snmp",
+            banner=snmp_info.get("sys_descr", "") or f"SNMPv1/v2c, Community: {snmp_info.get('community')}"
+        )
         
     except Exception as exc:
         log.debug("_snmp_lightweight_probe(%s) error: %s", ip, exc)
@@ -321,6 +403,12 @@ def _mdns_query(ip: str, result: Dict) -> None:
             name = name.rstrip(".")
             if name:
                 result["mdns_name"] = name
+                _register_open_port(
+                    result,
+                    port=5353,
+                    service="mdns",
+                    banner=f"mDNS Name: {name}"
+                )
     except Exception as exc:
         log.debug("_mdns_query(%s) error: %s", ip, exc)
 
@@ -351,6 +439,12 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
                 found.append(svc)
         if found:
             result["mdns_services"] = found
+            _register_open_port(
+                result,
+                port=5353,
+                service="mdns",
+                banner=f"mDNS Services Discovered: {', '.join(found)}"
+            )
     except Exception as exc:
         log.debug("_mdns_service_query(%s) error: %s", ip, exc)
 
@@ -360,6 +454,9 @@ def _netbios_query(ip: str, result: Dict) -> None:
     NetBIOS Node Status (UDP 137) — returns computer name, workgroup, MAC.
     Uses raw socket (no Scapy needed — this is a plain UDP exchange).
     """
+    if result.get("netbios_names"):
+        return  # Skip duplicate probe if NetBIOS was already queried during discovery
+        
     _NBSTAT = (
         b"\xa2\x48\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
         b"\x20\x43\x4b\x41\x41\x41\x41\x41\x41\x41\x41\x41"
@@ -407,6 +504,12 @@ def _netbios_query(ip: str, result: Dict) -> None:
         result["netbios_workgroup"] = workgroup
         if computer_name and (not result.get("hostname") or result["hostname"] in ("Unknown", "")):
             result["hostname"] = computer_name
+        _register_open_port(
+            result,
+            port=137,
+            service="netbios-ns",
+            banner=f"NetBIOS Computer: {computer_name}, Workgroup: {workgroup}"
+        )
 
     # MAC from NetBIOS response (last 6 bytes starting at offset 57 + num_names*18)
     mac_offset = 57 + num_names * 18

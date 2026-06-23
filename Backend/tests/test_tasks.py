@@ -16,7 +16,7 @@ def test_run_host_discovery_task_success(mock_orch, mock_db):
     # Setup mock returns
     mock_orch.run_host_discovery_only.return_value = {
         "success": True,
-        "data": [{"ip": "192.168.1.1", "is_active": True}],
+        "data": [{"ip": "10.180.6.14", "is_active": True}],
         "summary": {"total_hosts": 1, "active_hosts": 1}
     }
     
@@ -33,7 +33,7 @@ def test_run_host_discovery_task_success(mock_orch, mock_db):
         # Execute task
         result = run_host_discovery_task(
             user_id="user-1",
-            targets=["192.168.1.1"],
+            targets=["10.180.6.14"],
             scan_type="adaptive",
             pipeline_mode="basic",
             discovery_intensity="normal"

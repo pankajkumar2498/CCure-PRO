@@ -24,15 +24,15 @@ router = APIRouter(tags=["Traditional Scans"])
 # ── Request models ────────────────────────────────────────────────────────────
 
 class SingleHostRequest(BaseModel):
-    target:    str = Field(..., examples=["192.168.1.1"])
+    target:    str = Field(..., examples=["10.180.6.14"])
     scan_type: str = Field("adaptive", examples=["adaptive"])
 
 class RangeRequest(BaseModel):
-    target:    str = Field(..., examples=["192.168.1.1-50"])
+    target:    str = Field(..., examples=["10.180.6.14-50"])
     scan_type: str = Field("adaptive", examples=["adaptive"])
 
 class SubnetRequest(BaseModel):
-    target:    str = Field(..., examples=["192.168.1.0/24"])
+    target:    str = Field(..., examples=["10.180.6.0/24"])
     scan_type: str = Field("adaptive", examples=["adaptive"])
 
 class SubnetsRequest(BaseModel):

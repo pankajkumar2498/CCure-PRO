@@ -328,6 +328,7 @@ export default function NewScan() {
     customPorts, setCustomPorts,
     portProfile, setPortProfile,
     excludePorts, setExcludePorts,
+    excludeIps, setExcludeIps,
   } = useScan();
 
   const isActiveRoute = !!urlScanId;
@@ -359,6 +360,9 @@ export default function NewScan() {
   const [excludePortsError, setExcludePortsError] = useState("");
   const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
   const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
+
+  const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(() => !!excludeIps);
+  const [excludeIpsError, setExcludeIpsError] = useState("");
 
   const parseCustomPortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
@@ -483,6 +487,40 @@ export default function NewScan() {
       setExcludePorts("");
     }
   };
+
+  const parseExcludeIpsJS = (ipsStr) => {
+    if (!ipsStr || !ipsStr.trim()) {
+      return { ips: [], error: "" };
+    }
+    const clean = ipsStr.replace(/\s+/g, "");
+    const tokens = clean.split(",");
+    const ipsArray = [];
+    for (const token of tokens) {
+      if (!token) continue;
+      const isValid = isValidIPv4(token) || isValidIPv6(token) || isValidCIDR(token) || isValidRange(token) || isValidHostname(token);
+      if (!isValid) {
+        return { ips: [], error: `Invalid IP, range, or CIDR format: "${token}"` };
+      }
+      ipsArray.push(token);
+    }
+    return { ips: ipsArray, error: "" };
+  };
+
+  const handleExcludeIpsToggleChange = (checked) => {
+    setExcludeIpsEnabled(checked);
+    if (!checked) {
+      setExcludeIps("");
+    }
+  };
+
+  useEffect(() => {
+    if (excludeIps) {
+      const { error } = parseExcludeIpsJS(excludeIps);
+      setExcludeIpsError(error);
+    } else {
+      setExcludeIpsError("");
+    }
+  }, [excludeIps]);
 
   const excludeTokens = excludePorts.split(",").map(t => t.trim()).filter(Boolean);
 
@@ -800,6 +838,14 @@ export default function NewScan() {
       }
     }
 
+    if (excludeIpsEnabled && excludeIps.trim()) {
+      const { error } = parseExcludeIpsJS(excludeIps);
+      if (error) {
+        setError(`Exclude IPs error: ${error}`);
+        return;
+      }
+    }
+
     hostFirstSeenRef.current = new Map(); latestDiscoveredHostsRef.current = [];
     setMissionState({ status: "running", progress: 5, discovered: 0, totalIps: 0, discoveredHosts: [], newHostIps: [], startMs: Date.now(), error: "", scanId: null, scanNo: null });
     setView("mission"); setLoading(true); setPipelineState(PIPELINE_STATES.DISCOVERY);
@@ -817,6 +863,7 @@ export default function NewScan() {
         } : {}),
         ...((pipelineMode === "asset" || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") ? { os_detection: osDetection } : {}),
         ...(excludePorts && excludePorts.trim() ? { exclude_ports: excludePorts.trim() } : {}),
+        ...(excludeIps && excludeIps.trim() ? { exclude_ips: excludeIps.trim() } : {}),
         ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}),
         ...(snmpEnabled ? {
           options: {
@@ -1386,6 +1433,48 @@ export default function NewScan() {
                 {excludePortsError && (
                   <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
                     ⚠ {excludePortsError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Exclude IPs Section */}
+          <div className="ns-adv-section ns-exclude-section" style={{ borderTop: "1.5px solid var(--border)", paddingTop: "16px" }}>
+            <div className="ns-inline-row">
+              <div className="ns-inline-label">
+                <span className="ns-label-main">🚫 Exclude Specific IPs / Subnets</span>
+                <span className="ns-label-hint">Exclude sensitive target hosts or subnets from scanning</span>
+              </div>
+              <div className="ns-switch-wrapper">
+                <label className="ns-switch">
+                  <input
+                    type="checkbox"
+                    checked={excludeIpsEnabled}
+                    onChange={e => handleExcludeIpsToggleChange(e.target.checked)}
+                  />
+                  <span className="ns-slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            {excludeIpsEnabled && (
+              <div style={{ marginTop: "12px" }}>
+                <div className="ns-input-wrap">
+                  <span className="ns-input-icon">🚫</span>
+                  <input
+                    type="text"
+                    className="ns-input"
+                    value={excludeIps}
+                    onChange={e => setExcludeIps(e.target.value)}
+                    placeholder="e.g. 10.180.12.10,10.190.0.0/16"
+                    disabled={loading || !canExecuteScans}
+                  />
+                </div>
+
+                {excludeIpsError && (
+                  <div className="ns-error" style={{ marginTop: "8px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", padding: "10px", borderRadius: "8px", fontSize: "0.85rem" }}>
+                    ⚠ {excludeIpsError}
                   </div>
                 )}
               </div>

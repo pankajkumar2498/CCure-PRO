@@ -167,6 +167,9 @@ class ScanOrchestrator:
         scan_type: str = "adaptive",
         intensity: str = "normal",
         scan_id: Optional[str] = None,
+        passive_first: bool = False,
+        exclude_ot_from_nmap: bool = True,
+        exclude_ips: Optional[str] = None,
     ) -> Dict:
         """
         Backward-compat: run any combination of phases in one call.
@@ -187,6 +190,7 @@ class ScanOrchestrator:
             scan_type=scan_type,
             pipeline_mode=pipeline_mode,
             scan_id=scan_id,
+            exclude_ips=exclude_ips,
         )
         if not result.get("success") or pipeline_mode == "basic":
             return result
@@ -198,13 +202,22 @@ class ScanOrchestrator:
             intensity=intensity,
             pipeline_mode=pipeline_mode,
             scan_id=scan_id,
+            exclude_ot_from_nmap=exclude_ot_from_nmap,
+            passive_first=passive_first,
+            exclude_ips=exclude_ips,
         )
         if not result.get("success") or pipeline_mode == "asset":
             return result
 
         # Phase 3: Vulnerability
         hosts = result.get("data", [])
-        return await asyncio.to_thread(self.run_vulnerability_audit_only, hosts=hosts, scan_id=scan_id)
+        return await asyncio.to_thread(
+            self.run_vulnerability_audit_only,
+            hosts=hosts,
+            scan_id=scan_id,
+            exclude_ot_from_nmap=exclude_ot_from_nmap,
+            exclude_ips=exclude_ips,
+        )
 
     @staticmethod
     def _err(msg: str) -> Dict:
@@ -221,6 +234,7 @@ class ScanOrchestrator:
         scan_id: Optional[str] = None,
         rate_limit: Optional[float] = None,
         max_concurrency: Optional[int] = None,
+        exclude_ips: Optional[str] = None,
     ) -> Dict:
         """
         Phase 1 — Host Discovery.
@@ -243,6 +257,7 @@ class ScanOrchestrator:
         )
 
         # ── Non-asset pipelines: preserve existing behaviour exactly ──────────
+        custom_exclude = self._parse_exclude_ips(exclude_ips)
         if pipeline_mode != "asset":
             # scan_type="fast" (Light Mode toggle on Basic Scan) → always FAST
             if scan_type == "fast":
@@ -250,7 +265,7 @@ class ScanOrchestrator:
             else:
                 profile = profile_for_pipeline(pipeline_mode)
 
-            all_ips = self._expand_targets(targets)
+            all_ips = self._expand_targets(targets, custom_exclude)
             if not all_ips:
                 return self._err("No valid targets to scan.")
 
@@ -266,7 +281,7 @@ class ScanOrchestrator:
             duration = time.time() - t0
 
             # Trigger classification and OS inference on the discovered hosts
-            self._apply_os_inference(disc_results)
+            self._apply_os_inference(disc_results, ot_enrichment=(pipeline_mode == "vulnerability_audit"))
 
             if pipeline_mode == "basic":
                 formatted = [
@@ -331,7 +346,7 @@ class ScanOrchestrator:
             }
 
         # ── Asset Discovery — intensity-aware orchestration ───────────────────
-        all_ips = self._expand_targets(targets)
+        all_ips = self._expand_targets(targets, custom_exclude)
         if not all_ips:
             return self._err("No valid targets to scan.")
 
@@ -448,7 +463,7 @@ class ScanOrchestrator:
         duration = time.time() - t0
 
         # Trigger classification and OS inference on the discovered hosts
-        self._apply_os_inference(raw_results)
+        self._apply_os_inference(raw_results, ot_enrichment=False)
 
         # Format using the same to_basic_dict() path as the original asset flow
         formatted = [
@@ -553,6 +568,9 @@ class ScanOrchestrator:
         os_detection: bool = True,
         custom_ports: Optional[str] = None,
         exclude_ports: Optional[str] = None,
+        exclude_ot_from_nmap: bool = True,
+        passive_first: bool = False,
+        exclude_ips: Optional[str] = None,
     ) -> Dict:
         """
         Phase 2 — Port Scanning.
@@ -596,16 +614,40 @@ class ScanOrchestrator:
                 log.warning("Failed parsing exclude ports in orchestrator: %s", e)
 
         hosts = [self._normalize_host_record(h) for h in hosts]
+        custom_exclude = self._parse_exclude_ips(exclude_ips)
+        hosts = [h for h in hosts if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)]
+        
         discovery_scan_method = self._infer_discovery_method(hosts)
         target_str = self._hosts_target_string(hosts)
-
+        self.asset_engine.register_discovery_results(
+            hosts,
+            discovery_method=discovery_scan_method or "adaptive",
+            discovery_profile=intensity_enum.value.upper(),
+        )
         active_hosts = [h for h in hosts if h.get("is_active", False)]
-        active_count = len(active_hosts)
-        inactive_count = len(hosts) - active_count
+        # Passive-First filter
+        skipped_hosts = []
+        if passive_first:
+            active_for_scan = []
+            for h in active_hosts:
+                is_resolved = (
+                    h.get("device_category") not in ("unknown", None, "") or
+                    h.get("vendor") not in ("N/A", "Unknown", "", None)
+                )
+                if is_resolved:
+                    skipped_hosts.append(h)
+                else:
+                    active_for_scan.append(h)
+            log.info("Passive-first: skipping active port scan for %d hosts: %s", len(skipped_hosts), [self._get_host_ip(h) for h in skipped_hosts])
+        else:
+            active_for_scan = active_hosts
+            
+        active_count = len(active_for_scan)
+        inactive_count = len(hosts) - len(active_hosts) # keep total inactive count correct
 
         if not active_hosts:
             return self._make_empty_phase2(
-                hosts, active_count, inactive_count,
+                hosts, len(active_hosts), inactive_count,
                 intensity_enum, discovery_scan_method, target_str,
             )
 
@@ -623,17 +665,18 @@ class ScanOrchestrator:
                 }
 
         # ── PortEngine now uses NmapScanner internally ────────────────────
-        # os_detection enables Nmap -O in Phase 2, producing consistent
-        # OS classification with Phase 3 (Vulnerability Audit).
-        # User can toggle this via the API's os_detection field (default True).
         port_engine = PortEngine(
             intensity=intensity_enum,
             os_detection=os_detection,
             custom_ports=parsed_custom_ports,
             exclude_ports=parsed_exclude_ports,
+            exclude_ot_from_nmap=exclude_ot_from_nmap,
         )
-        await port_engine.run(active_hosts, scan_id=scan_id)   # mutates in-place
-        self._apply_os_inference(active_hosts)
+        if active_for_scan:
+            await port_engine.run(active_for_scan, scan_id=scan_id)   # mutates in-place
+            self._apply_os_inference(active_for_scan, ot_enrichment=True)
+        if skipped_hosts:
+            self._apply_os_inference(skipped_hosts, ot_enrichment=False)
         
         # ── RESTORE and MERGE vendor, mac, and open_ports from backup ──────────
         # This ensures vendor and Phase 1 enrichment ports are NEVER lost, regardless of PortEngine behavior
@@ -700,7 +743,13 @@ class ScanOrchestrator:
 
     # ── PHASE 3: Vulnerability Audit / Vulnerability + Risk ─────────────────
 
-    def run_vulnerability_audit_only(self, hosts: List[Dict], scan_id: Optional[str] = None) -> Dict:
+    def run_vulnerability_audit_only(
+        self,
+        hosts: List[Dict],
+        scan_id: Optional[str] = None,
+        exclude_ot_from_nmap: bool = True,
+        exclude_ips: Optional[str] = None,
+    ) -> Dict:
         """
         Phase 3+4 — Vulnerability Scanning + Risk Scoring.
 
@@ -715,8 +764,18 @@ class ScanOrchestrator:
         self._log(f"run_vulnerability_audit_only → {len(hosts)} hosts")
 
         hosts = [self._normalize_host_record(h) for h in hosts]
+        custom_exclude = self._parse_exclude_ips(exclude_ips)
+        hosts = [h for h in hosts if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)]
+        
         discovery_scan_method = self._infer_discovery_method(hosts)
         target_str = self._hosts_target_string(hosts)
+
+        # Register hosts in the unified asset registry and enrich them with Phase 2 port scan results
+        self.asset_engine.register_discovery_results(
+            hosts,
+            discovery_method=discovery_scan_method or "adaptive",
+        )
+        self.asset_engine.enrich_port_scan_results(hosts)
 
         active_hosts = [h for h in hosts if h.get("is_active", False)]
         active_count = len(active_hosts)
@@ -739,10 +798,10 @@ class ScanOrchestrator:
         # Nmap runs first to populate host["open_ports"] with accurate service
         # metadata; then VulnerabilityEngine reads that enriched data for
         # reliable CVE correlation.
-        self._nmap_pre_enrich(active_hosts)
+        self._nmap_pre_enrich(active_hosts, exclude_ot_from_nmap=exclude_ot_from_nmap)
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
         vuln_engine.run(active_hosts, scan_id=scan_id)
-        self._apply_os_inference(active_hosts)
+        self._apply_os_inference(active_hosts, ot_enrichment=True)
         
         # ── Enrich asset registry with vulnerability findings ───────────────
         self.asset_engine.enrich_vulnerability_findings(active_hosts)
@@ -781,7 +840,7 @@ class ScanOrchestrator:
     # ── Nmap pre-enrichment for Phase 3 ──────────────────────────────────────
 
     @staticmethod
-    def _nmap_pre_enrich(hosts: List[Dict]) -> None:
+    def _nmap_pre_enrich(hosts: List[Dict], exclude_ot_from_nmap: bool = True) -> None:
         """
         Run Nmap OS fingerprinting + service/version upgrade on each active host.
         Uses known open ports from Phase 2 to limit scan scope.
@@ -804,6 +863,9 @@ class ScanOrchestrator:
             if not ip:
                 return
             open_port_nums = [p["port"] for p in host.get("open_ports", [])]
+            if exclude_ot_from_nmap:
+                ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+                open_port_nums = [p for p in open_port_nums if p not in ot_ports]
             if not open_port_nums:
                 return
             try:
@@ -876,7 +938,39 @@ class ScanOrchestrator:
     # ── Target expansion ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _expand_targets(targets: List[str]) -> List[str]:
+    def _parse_exclude_ips(exclude_ips_str: Optional[str]) -> List:
+        if not exclude_ips_str:
+            return []
+        networks = []
+        import ipaddress
+        for item in exclude_ips_str.split(","):
+            item = item.strip()
+            if item:
+                try:
+                    networks.append(ipaddress.ip_network(item, strict=False))
+                except ValueError:
+                    pass
+        return networks
+
+    @staticmethod
+    def _is_blacklisted(ip: str, custom_exclude_list: Optional[List] = None) -> bool:
+        import ipaddress
+        from config import AppConfig
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            for network in AppConfig.SCAN_IP_BLACKLIST:
+                if ip_obj in network:
+                    return True
+            if custom_exclude_list:
+                for network in custom_exclude_list:
+                    if ip_obj in network:
+                        return True
+        except ValueError:
+            pass
+        return False
+
+    @staticmethod
+    def _expand_targets(targets: List[str], custom_exclude_list: Optional[List] = None) -> List[str]:
         """Expand a list of IPs/ranges/subnets into a flat de-duplicated IP list."""
         all_ips = []
         for target in targets:
@@ -886,11 +980,17 @@ class ScanOrchestrator:
             resolved = res["resolved"]
             if "/" in resolved:
                 network = ipaddress.ip_network(resolved, strict=False)
-                all_ips.extend(str(ip) for ip in network.hosts())
+                for ip in network.hosts():
+                    ip_str = str(ip)
+                    if not ScanOrchestrator._is_blacklisted(ip_str, custom_exclude_list):
+                        all_ips.append(ip_str)
             elif "-" in resolved:
-                all_ips.extend(InputValidator.expand_ip_range(resolved))
+                for ip_str in InputValidator.expand_ip_range(resolved):
+                    if not ScanOrchestrator._is_blacklisted(ip_str, custom_exclude_list):
+                        all_ips.append(ip_str)
             else:
-                all_ips.append(resolved)
+                if not ScanOrchestrator._is_blacklisted(resolved, custom_exclude_list):
+                    all_ips.append(resolved)
         return list(dict.fromkeys(all_ips))  # deduplicate, preserve order
 
     # ── Helpers (unchanged from original) ────────────────────────────────────
@@ -1003,6 +1103,7 @@ class ScanOrchestrator:
             cves             = data.get("cves", []),
             host_risk_score  = data.get("host_risk_score", 0),
             host_risk_level  = data.get("host_risk_level", "Info"),
+            _ot_probed       = data.get("_ot_probed", False),
         )
 
     @staticmethod
@@ -1061,14 +1162,14 @@ class ScanOrchestrator:
         return ", ".join(ips) if ips else None
 
     @staticmethod
-    def _apply_os_inference(hosts: List[Dict]) -> None:
+    def _apply_os_inference(hosts: List[Dict], ot_enrichment: bool = False) -> None:
         from core.risk import infer_os_from_host
         from core.device_classifier import classify_device
         from core.discovery.enrichment import _ot_protocol_probes
         from concurrent.futures import ThreadPoolExecutor
 
         active_hosts = [h for h in hosts if h.get("is_active")]
-        if active_hosts:
+        if active_hosts and ot_enrichment:
             def _probe_host(host: Dict) -> None:
                 ip = host.get("ip_address") or host.get("ip")
                 if ip:

@@ -104,6 +104,8 @@ class ScanConfig:
     NMAP_PROCESS_WAIT_TIMEOUT: int = int(os.getenv("NMAP_PROCESS_WAIT_TIMEOUT", "900"))
     NMAP_CACHE_ENABLED: bool = os.getenv("NMAP_CACHE_ENABLED", "True").lower() == "true"
     NMAP_CACHE_TTL_HOURS: int = int(os.getenv("NMAP_CACHE_TTL_HOURS", "72"))
+    SCAN_IP_BLACKLIST: str = os.getenv("SCAN_IP_BLACKLIST", "")
+    PASSIVE_FIRST_DEFAULT: bool = os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
 
 
 
@@ -229,6 +231,20 @@ class AppConfig:
     NMAP_PROCESS_WAIT_TIMEOUT = ScanConfig.NMAP_PROCESS_WAIT_TIMEOUT
     NMAP_CACHE_ENABLED = ScanConfig.NMAP_CACHE_ENABLED
     NMAP_CACHE_TTL_HOURS = ScanConfig.NMAP_CACHE_TTL_HOURS
+
+    # OT safety config
+    PASSIVE_FIRST_DEFAULT = ScanConfig.PASSIVE_FIRST_DEFAULT
+    SCAN_IP_BLACKLIST: list = []
+    _raw_blacklist = ScanConfig.SCAN_IP_BLACKLIST
+    if _raw_blacklist:
+        import ipaddress
+        for _item in _raw_blacklist.split(","):
+            _item = _item.strip()
+            if _item:
+                try:
+                    SCAN_IP_BLACKLIST.append(ipaddress.ip_network(_item, strict=False))
+                except ValueError:
+                    pass
 
     # Celery
     CELERY_BROKER_URL = CeleryConfig.BROKER_URL

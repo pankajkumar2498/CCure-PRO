@@ -134,6 +134,9 @@ class HostDiscoveryRequest(BaseModel):
     custom_ports:        Optional[str]   = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
     exclude_ports:       Optional[str]   = Field(None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')")
     options:             Optional[dict]  = Field(None, description="Additional scan configurations including SNMP credentials for topology mapping")
+    passive_first:       Optional[bool]  = Field(None, description="Bypass active scan on hosts already resolved passively")
+    exclude_ot_from_nmap: Optional[bool]  = Field(None, description="Exclude OT ports from Nmap scanning")
+    exclude_ips:          Optional[str]   = Field(None, description="IPs/subnets to exclude from this scan")
 
 
 class AssetDiscoveryRequest(BaseModel):
@@ -153,6 +156,9 @@ class AssetDiscoveryRequest(BaseModel):
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
     custom_ports:  Optional[str]  = Field(None, description="Custom ports/ranges to scan (e.g. '22,80,443')")
     exclude_ports: Optional[str]  = Field(None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')")
+    exclude_ot_from_nmap: Optional[bool]  = Field(None, description="Exclude OT ports from Nmap scanning")
+    exclude_ips:          Optional[str]   = Field(None, description="IPs/subnets to exclude from this scan")
+    passive_first:        Optional[bool]  = Field(None, description="Bypass active scan on hosts already resolved passively")
 
 
 class VulnerabilityAuditRequest(BaseModel):
@@ -170,6 +176,8 @@ class VulnerabilityAuditRequest(BaseModel):
                                                  examples=["recommended"],
                                                  description="recommended | conservative | deep")
     phases:        Optional[List[int]] = Field(None, description="Phase list from frontend (informational)")
+    exclude_ot_from_nmap: Optional[bool]  = Field(None, description="Exclude OT ports from Nmap scanning")
+    exclude_ips:          Optional[str]   = Field(None, description="IPs/subnets to exclude from this scan")
 
 
 class PhasesRequest(BaseModel):
@@ -179,6 +187,9 @@ class PhasesRequest(BaseModel):
                                  description="'1' | '1+2' | '1+2+3+4'")
     scan_type:  str       = Field("adaptive", examples=["adaptive"])
     intensity:  str       = Field("normal",   examples=["normal"])
+    passive_first:        Optional[bool]  = Field(None)
+    exclude_ot_from_nmap: Optional[bool]  = Field(None)
+    exclude_ips:          Optional[str]   = Field(None)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -219,6 +230,9 @@ async def scan_host_discovery(
         "execution_mode": req.execution_mode or "automatic",
         **({"custom_ports": req.custom_ports} if req.custom_ports else {}),
         **({"exclude_ports": req.exclude_ports} if req.exclude_ports else {}),
+        **({"passive_first": req.passive_first} if req.passive_first is not None else {}),
+        **({"exclude_ot_from_nmap": req.exclude_ot_from_nmap} if req.exclude_ot_from_nmap is not None else {}),
+        **({"exclude_ips": req.exclude_ips} if req.exclude_ips else {}),
         **(req.options or {}),
     }
     db.commit()
@@ -239,6 +253,9 @@ async def scan_host_discovery(
         port_scan_intensity = port_scan_intensity,
         custom_ports        = req.custom_ports,
         exclude_ports       = req.exclude_ports,
+        passive_first       = req.passive_first,
+        exclude_ot_from_nmap = req.exclude_ot_from_nmap,
+        exclude_ips         = req.exclude_ips,
     )
 
     # Store the task ID so it can be revoked if needed
@@ -314,6 +331,9 @@ async def scan_asset_discovery(
         os_detection  = req.os_detection,
         custom_ports  = req.custom_ports,
         exclude_ports = req.exclude_ports,
+        exclude_ot_from_nmap = req.exclude_ot_from_nmap,
+        passive_first = req.passive_first,
+        exclude_ips   = req.exclude_ips,
     )
 
     # Track active task for termination
@@ -323,6 +343,12 @@ async def scan_asset_discovery(
             options["custom_ports"] = req.custom_ports
         if req.exclude_ports:
             options["exclude_ports"] = req.exclude_ports
+        if req.exclude_ot_from_nmap is not None:
+            options["exclude_ot_from_nmap"] = req.exclude_ot_from_nmap
+        if req.passive_first is not None:
+            options["passive_first"] = req.passive_first
+        if req.exclude_ips:
+            options["exclude_ips"] = req.exclude_ips
         scan.current_task_id = task.id
         scan.status = "running"
         scan.options = options
@@ -365,14 +391,20 @@ async def scan_vulnerability_audit(
         hosts         = req.hosts,
         scan_id       = req.scan_id,
         pipeline_mode = req.pipeline_mode,
+        exclude_ot_from_nmap = req.exclude_ot_from_nmap,
+        exclude_ips   = req.exclude_ips,
     )
 
     # Track active task for termination
-    if req.scan_id:
-        db.query(Scan).filter(Scan.id == req.scan_id).update({
-            "current_task_id": task.id,
-            "status": "running"
-        })
+    if req.scan_id and scan:
+        options = dict(scan.options or {})
+        if req.exclude_ot_from_nmap is not None:
+            options["exclude_ot_from_nmap"] = req.exclude_ot_from_nmap
+        if req.exclude_ips:
+            options["exclude_ips"] = req.exclude_ips
+        scan.current_task_id = task.id
+        scan.status = "running"
+        scan.options = options
         db.commit()
 
     return {
@@ -396,7 +428,10 @@ async def scan_phases(
         targets=req.targets,
         phases=req.phases,
         scan_type=req.scan_type,
-        intensity=req.intensity
+        intensity=req.intensity,
+        passive_first=req.passive_first,
+        exclude_ot_from_nmap=req.exclude_ot_from_nmap,
+        exclude_ips=req.exclude_ips,
     )
     return {
         "success": True,

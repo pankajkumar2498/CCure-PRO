@@ -63,11 +63,13 @@ class PortEngine:
         os_detection: bool = False,
         custom_ports: Optional[List[int]] = None,
         exclude_ports: Optional[List[int]] = None,
+        exclude_ot_from_nmap: bool = True,
     ):
         self.intensity = intensity
         self.os_detection = os_detection
         self.custom_ports = custom_ports
         self.exclude_ports = exclude_ports
+        self.exclude_ot_from_nmap = exclude_ot_from_nmap
         # Use injected scanner (testable) or default singleton
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows" and nmap_scanner is None
@@ -168,6 +170,7 @@ class PortEngine:
                     with_os=self.os_detection,
                     ports=self._port_list(),
                     exclude_ports=self.exclude_ports,
+                    exclude_ot_from_nmap=self.exclude_ot_from_nmap,
                 ),
             )
             log.info(
@@ -201,12 +204,13 @@ class PortEngine:
                 })
 
             nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
-                None,
-                lambda: self._nmap.scan_hosts(
-                    ips, intensity="deep", with_os=self.os_detection,
-                    exclude_ports=self.exclude_ports,
-                ),
-            )
+                    None,
+                    lambda: self._nmap.scan_hosts(
+                        ips, intensity="deep", with_os=self.os_detection,
+                        exclude_ports=self.exclude_ports,
+                        exclude_ot_from_nmap=self.exclude_ot_from_nmap,
+                    ),
+                )
             log.info(
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",
                 time.time() - t0,
@@ -429,8 +433,13 @@ class PortEngine:
             
             open_ports = {p.get("port") for p in host.get("open_ports", []) if p.get("port")}
             
-            # Skip if ot_info is already present or no OT ports are open
-            if host.get("ot_info") or not (open_ports & ot_ports):
+            # Skip if ot_info is already present
+            if host.get("ot_info"):
+                return
+                
+            # If we exclude OT from Nmap, we want to probe all candidate OT ports.
+            # Otherwise, we only probe if at least one OT port is open.
+            if not self.exclude_ot_from_nmap and not (open_ports & ot_ports):
                 return
                 
             # Initialize registrations needed by _ot_protocol_probes
@@ -622,8 +631,14 @@ class PortEngine:
             high_value_ports = [p for p in PORT_DB.keys() if p > 1024]
             ports = sorted(list(set(system_ports + high_value_ports)))
 
-        if self.exclude_ports:
-            exclude_set = set(self.exclude_ports)
+        exclude_set = set(self.exclude_ports) if self.exclude_ports else set()
+        
+        # If exclude_ot_from_nmap is enabled, automatically exclude OT ports from Nmap scan
+        if self.exclude_ot_from_nmap:
+            ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+            exclude_set = exclude_set | ot_ports
+
+        if exclude_set:
             ports = [p for p in ports if p not in exclude_set]
         return ports
 

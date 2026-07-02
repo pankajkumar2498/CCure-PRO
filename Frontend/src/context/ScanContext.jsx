@@ -35,6 +35,7 @@ const SS_KEYS = [
   "cc_customPorts",
   "cc_portProfile",
   "cc_excludePorts",
+  "cc_excludeIps",
 ];
 
 /* ── Session storage helpers ─────────────────────────────────────────────── */
@@ -96,6 +97,7 @@ export function ScanProvider({ children }) {
   const [customPorts,         setCustomPortsRaw]         = useState(() => ssGet("cc_customPorts",         ""));
   const [portProfile,         setPortProfileRaw]         = useState(() => ssGet("cc_portProfile",         "it"));
   const [excludePorts,        setExcludePortsRaw]        = useState(() => ssGet("cc_excludePorts",        ""));
+  const [excludeIps,          setExcludeIpsRaw]          = useState(() => ssGet("cc_excludeIps",          ""));
 
   // Pipeline state machine
   const [pipelineState,       setPipelineStateRaw]       = useState(() => ssGet("cc_pipelineState",      PIPELINE_STATES.IDLE));
@@ -131,6 +133,7 @@ export function ScanProvider({ children }) {
   const setCustomPorts        = mk("cc_customPorts",        setCustomPortsRaw);
   const setPortProfile        = mk("cc_portProfile",        setPortProfileRaw);
   const setExcludePorts       = mk("cc_excludePorts",       setExcludePortsRaw);
+  const setExcludeIps         = mk("cc_excludeIps",         setExcludeIpsRaw);
   const setPipelineState      = mk("cc_pipelineState",      setPipelineStateRaw);
   const setPipelineError      = mk("cc_pipelineError",      setPipelineErrorRaw);
   const setPipelinePhaseTimings = mk("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw);
@@ -170,6 +173,7 @@ export function ScanProvider({ children }) {
     setCustomPortsRaw("");
     setPortProfileRaw("it");
     setExcludePortsRaw("");
+    setExcludeIpsRaw("");
     setPipelineStateRaw(PIPELINE_STATES.IDLE);
     setPipelineErrorRaw(null);
     setPipelinePhaseTimingsRaw({});
@@ -201,6 +205,7 @@ export function ScanProvider({ children }) {
       customPorts, setCustomPorts,
       portProfile, setPortProfile,
       excludePorts, setExcludePorts,
+      excludeIps, setExcludeIps,
       pipelineState, setPipelineState,
       pipelineError, setPipelineError,
       pipelinePhaseTimings, setPipelinePhaseTimings,

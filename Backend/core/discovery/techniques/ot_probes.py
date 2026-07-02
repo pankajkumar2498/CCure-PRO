@@ -20,6 +20,17 @@ from typing import Dict, Optional
 
 log = logging.getLogger("ccure.discovery.ot_probes")
 
+def _configure_safe_socket(s: socket.socket) -> None:
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 0)
+    except Exception:
+        pass
+    if s.type == socket.SOCK_STREAM:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        except Exception:
+            pass
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Modbus TCP (Port 502 TCP)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +39,7 @@ def probe_modbus(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send Modbus Read Device Identification (FC 43/14) and parse response."""
     try:
         with socket.create_connection((ip, 502), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # TransID=0x0001, ProtoID=0x0000, Len=0x0005, UnitID=0x01, FC=0x2b (43), MEI=0x0e (14), ReadIDCode=0x01, ObjID=0x00
             req = b"\x00\x01\x00\x00\x00\x05\x01\x2b\x0e\x01\x00"
             s.sendall(req)
@@ -72,6 +84,7 @@ def probe_s7(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Perform COTP CR, Setup Comm PDU, and Read SZL 0x001C to parse S7 PLC model."""
     try:
         with socket.create_connection((ip, 102), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # 1. COTP Connection Request (CR TPDU)
             cotp_cr = b"\x03\x00\x00\x16\x11\xe0\x00\x00\x00\x01\x00\xc1\x02\x01\x00\xc2\x02\x01\x02\xc0\x01\x0a"
             s.sendall(cotp_cr)
@@ -121,6 +134,7 @@ def probe_ethernetip(ip: str, timeout: float = 1.0) -> Optional[Dict]:
         # Encapsulation Header with Command 0x0063 (ListIdentity)
         req = b"\x63\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            _configure_safe_socket(s)
             s.settimeout(timeout)
             s.sendto(req, (ip, 44818))
             resp, _ = s.recvfrom(2048)
@@ -164,6 +178,7 @@ def probe_bacnet(ip: str, timeout: float = 1.0) -> Optional[Dict]:
         # BACnet Who-Is APDU payload
         req = b"\x81\x0a\x00\x11\x01\x04\x00\x05\x01\x0c\x0c\x02\x3f\xff\xff\x19\x50"
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            _configure_safe_socket(s)
             s.settimeout(timeout)
             s.sendto(req, (ip, 47808))
             resp, _ = s.recvfrom(2048)
@@ -209,6 +224,7 @@ def probe_dnp3(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     # First try TCP
     try:
         with socket.create_connection((ip, 20000), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # Request Link Status: Start=0x0564, Len=0x05, Ctrl=0xc9, Dst=0x0100, Src=0x6400, CRC=0xe23d
             req = b"\x05\x64\x05\xc9\x01\x00\x64\x00\xe2\x3d"
             s.sendall(req)
@@ -222,6 +238,7 @@ def probe_dnp3(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     try:
         req = b"\x05\x64\x05\xc9\x01\x00\x64\x00\xe2\x3d"
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            _configure_safe_socket(s)
             s.settimeout(timeout)
             s.sendto(req, (ip, 20000))
             resp, _ = s.recvfrom(1024)
@@ -239,6 +256,7 @@ def probe_opcua(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send OPC UA HEL (Hello) packet and verify ACKF/ERRF response."""
     try:
         with socket.create_connection((ip, 4840), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # Hello packet: type=HELF, size=54, version=0, buffer sizes, URL length=22, URL=opc.tcp://127.0.0.1:4840
             req = b"HELF\x36\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x16\x00\x00\x00opc.tcp://127.0.0.1:4840"
             s.sendall(req)
@@ -257,6 +275,7 @@ def probe_iec104(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send IEC 104 TESTFR Activation U-Frame and verify response."""
     try:
         with socket.create_connection((ip, 2404), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # TESTFR activation: Start=0x68, Len=0x04, Control=0x43000000
             req = b"\x68\x04\x43\x00\x00\x00"
             s.sendall(req)
@@ -275,6 +294,7 @@ def probe_ge_srtp(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send GE SRTP System Request status query and confirm response format."""
     try:
         with socket.create_connection((ip, 18245), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # 56-byte System Request block
             req = b"\x02\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
             s.sendall(req)
@@ -293,6 +313,7 @@ def probe_fins(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send FINS TCP connection request and parse confirmation header."""
     try:
         with socket.create_connection((ip, 9600), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # FINS TCP Connection Request: Header "FINS", length 12, command 0, error 0
             req = b"FINS\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
             s.sendall(req)
@@ -311,6 +332,7 @@ def probe_melsec(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send MELSEC MC 3E frame CPU Type read and check response."""
     try:
         with socket.create_connection((ip, 5007), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # 3E frame CPU read
             req = b"\x50\x00\x00\xff\xff\x03\x00\x0c\x00\x10\x00\x01\x04\x00\x00\x00\x00\x00\x00\x00\x00"
             s.sendall(req)
@@ -335,6 +357,7 @@ def probe_codesys(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send CoDeSys V2 connection handshake to verify CoDeSys presence."""
     try:
         with socket.create_connection((ip, 2455), timeout=timeout) as s:
+            _configure_safe_socket(s)
             req = b"\xbb\xbb\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
             s.sendall(req)
             resp = s.recv(1024)
@@ -353,6 +376,7 @@ def probe_mms(ip: str, timeout: float = 1.0) -> Optional[Dict]:
     """Send ISO ACSE MMS Initiate Request to identify substation utility relays."""
     try:
         with socket.create_connection((ip, 102), timeout=timeout) as s:
+            _configure_safe_socket(s)
             # ACSE MMS Initiate Request
             req = b"\x03\x00\x00\x2f\x02\xf0\x80\xa1\x27\x88\x02\x07\x80\xa0\x21\xa0\x03\x80\x01\x01\xa1\x0f\x06\x0c\x2b\x06\x01\x04\x01\x82\x37\x01\x01\x01\x02\x01\xa2\x0b\x02\x01\x01\x02\x01\x01\x02\x03\x00\xfa\x00"
             s.sendall(req)

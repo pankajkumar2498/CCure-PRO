@@ -749,6 +749,11 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
         log.info("SNMP walk [%s]: SNMP discovery complete", target_ip)
         return result
     finally:
+        if 'engine' in locals():
+            try:
+                engine.transportDispatcher.closeDispatcher()
+            except Exception as exc:
+                log.warning("Failed to close SNMP transport dispatcher: %s", exc)
         try:
             # Let loop run one tick to cleanly collect/close pending generators/tasks
             if not loop.is_closed() and not loop.is_running():

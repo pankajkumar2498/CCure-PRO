@@ -130,15 +130,19 @@ def _is_port_connectable(ip: str, port: int, timeout: float = 1.0) -> bool:
 
 def _ot_protocol_probes(ip: str, result: Dict) -> None:
     """
-    Perform parallel, safe OT protocol fingerprinting on port-gating targets.
-    Utilizes a shared module-level thread pool, smart connection checks, and sequences port 102.
+    Perform safe OT protocol fingerprinting on port-gating targets sequentially.
+    Utilizes smart connection checks, sequences port 102, and generates audit logs.
     """
+    if result.get("_ot_probed") or result.get("ot_info"):
+        return
+
+    result["_ot_probed"] = True
+
     from core.discovery.techniques.ot_probes import (
         probe_modbus, probe_s7, probe_ethernetip, probe_bacnet, probe_dnp3,
         probe_opcua, probe_iec104, probe_ge_srtp, probe_fins, probe_melsec,
         probe_codesys, probe_mms
     )
-    from concurrent.futures import as_completed
 
     # Port mapping for each protocol (MMS and S7 both share port 102, so handled separately)
     port_map = {
@@ -211,13 +215,29 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
     if not candidate_probes:
         return
 
-    # Submit candidates to the shared OT Pool
-    futures = {_OT_POOL.submit(func, ip, 1.0): name for name, func in candidate_probes}
-    for future in as_completed(futures):
-        name = futures[future]
+    audit_log = logging.getLogger("ccure.audit")
+    port_map_reverse = {
+        "modbus": 502,
+        "s7_or_mms": 102,
+        "ethernetip": 44818,
+        "bacnet": 47808,
+        "dnp3": 20000,
+        "opcua": 4840,
+        "iec104": 2404,
+        "ge_srtp": 18245,
+        "fins": 9600,
+        "melsec": 5007,
+        "codesys": 2455,
+    }
+
+    # Execute candidate probes sequentially
+    for name, func in candidate_probes:
+        port = port_map_reverse.get(name, 102)
+        audit_log.info(f"[AUDIT] Initiating {name.upper()} probe on {ip}:{port}")
         try:
-            info = future.result()
+            info = func(ip, 1.0)
             if info:
+                audit_log.info(f"[AUDIT] Successfully identified {info['protocol'].upper()} device on {ip}")
                 result["ot_info"] = info
                 result["device_category"] = "scada_ics"
                 if "vendor" in info:
@@ -241,7 +261,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                     result["confirmations"].append(proto_label)
                 result["method"] = proto_label
                 
-                port_map_reverse = {
+                real_proto_map_reverse = {
                     "modbus": 502,
                     "s7": 102,
                     "mms": 102,
@@ -256,7 +276,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                     "codesys": 2455,
                 }
                 proto_name = info["protocol"].lower()
-                port = port_map_reverse.get(proto_name)
+                port = real_proto_map_reverse.get(proto_name)
                 if port:
                     _register_open_port(
                         result,

@@ -536,6 +536,7 @@ class NmapScanner:
         with_os: bool = False,
         ports: Optional[List[int]] = None,
         exclude_ports: Optional[List[int]] = None,
+        exclude_ot_from_nmap: bool = True,
     ) -> Dict[str, NmapScanResult]:
         """
         Batch port scan for multiple hosts.
@@ -556,6 +557,8 @@ class NmapScanner:
             ports:         Optional custom list of ports to scan.
             exclude_ports: Optional list of ports to exclude from scanning
                            (passed to Nmap as --exclude-ports).
+            exclude_ot_from_nmap: When True, excludes OT ports from Nmap scan and
+                                  caps the Nmap packet rate.
 
         Returns:
             Dict mapping IP → NmapScanResult (ports include service/version
@@ -570,18 +573,27 @@ class NmapScanner:
             port_arg = self._TOP_PORTS.get(intensity, "-F")
 
         # Merge service detection into the batch call when requested.
-        # --version-intensity 7 (Nmap default) provides ~98% accuracy for service
-        # versions, which is critical for the Vulnerability Engine.
         svc_arg = "-sV --version-intensity 7" if with_services and intensity != "deep" else ""
 
         # Append -O when OS fingerprinting is requested
         os_arg = "-O" if with_os else ""
 
-        # Append --exclude-ports when exclusion list is provided
-        exclude_arg = f"--exclude-ports {','.join(str(p) for p in exclude_ports)}" if exclude_ports else ""
+        # Append --exclude-ports when exclusion list is provided or exclude_ot_from_nmap is True
+        exclude_list = list(exclude_ports) if exclude_ports else []
+        if exclude_ot_from_nmap:
+            ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+            exclude_list = list(set(exclude_list) | ot_ports)
+
+        exclude_arg = f"--exclude-ports {','.join(str(p) for p in exclude_list)}" if exclude_list else ""
+
+        # Adjust performance settings. If we exclude OT from Nmap, we cap the rate at 100 packets/sec
+        # and reduce parallelism to prevent network saturation.
+        perf_args = self._MULTI_PERF_ARGS
+        if exclude_ot_from_nmap:
+            perf_args = "--min-parallelism 8 --max-rate 100"
 
         args = " ".join(filter(None, [
-            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", self._MULTI_PERF_ARGS, exclude_arg
+            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", perf_args, exclude_arg
         ]))
 
         log.debug("scan_hosts args: %s", args)

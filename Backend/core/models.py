@@ -118,6 +118,7 @@ class HostResult:
     cves:             list           = field(default_factory=list)
     host_risk_score:  int            = 0        # 0-100
     host_risk_level:  str            = "Info"   # Critical / High / Medium / Low / Info
+    _ot_probed:       bool           = False
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -145,6 +146,7 @@ class HostResult:
             "os_fingerprint_full": self.os_fingerprint_full,
             "tcp_fingerprint": self.tcp_fingerprint,
             "port_states": self.port_states,
+            "_ot_probed": self._ot_probed,
         }
         return d
 
@@ -164,6 +166,7 @@ class HostResult:
             "device_category": self.device_category,
             "os_guess": self.os_guess,
             "os_confidence": self.os_confidence,
+            "_ot_probed": self._ot_probed,
         }
 
     def to_phase3_dict(self) -> Dict:

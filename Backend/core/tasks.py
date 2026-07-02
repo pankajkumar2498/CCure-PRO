@@ -667,6 +667,9 @@ def run_host_discovery_task(
     port_scan_intensity: str             = "normal",
     custom_ports:        Optional[str]   = None,
     exclude_ports:       Optional[str]   = None,
+    passive_first:       Optional[bool]  = None,
+    exclude_ot_from_nmap: Optional[bool]  = None,
+    exclude_ips:         Optional[str]   = None,
 ):
     """Phase 1 Background Task."""
     import datetime
@@ -698,7 +701,8 @@ def run_host_discovery_task(
         result = _run_async(orch.run_host_discovery_only(
             targets=targets, scan_type=scan_type, pipeline_mode=mode,
             discovery_intensity=discovery_intensity, scan_id=scan_id,
-            rate_limit=rate_limit, max_concurrency=max_concurrency
+            rate_limit=rate_limit, max_concurrency=max_concurrency,
+            exclude_ips=exclude_ips,
         ))
         log.info("[TRACE][ENGINE][%s] run_host_discovery_only finished", ts())
 
@@ -759,6 +763,9 @@ def run_host_discovery_task(
                     os_detection=os_detection,      # Forward os_detection from the original request
                     custom_ports=resolved_custom_ports,  # Forward custom_ports
                     exclude_ports=resolved_exclude_ports,  # Forward exclude_ports
+                    passive_first=passive_first,
+                    exclude_ot_from_nmap=exclude_ot_from_nmap,
+                    exclude_ips=exclude_ips,
                 )
                 db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
                 db.commit()
@@ -821,6 +828,9 @@ def run_asset_discovery_task(
     os_detection:  bool = True,
     custom_ports:  Optional[str] = None,
     exclude_ports: Optional[str] = None,
+    exclude_ot_from_nmap: Optional[bool] = None,
+    passive_first: Optional[bool] = None,
+    exclude_ips:   Optional[str] = None,
 ):
     """Phase 2 Background Task."""
     import datetime
@@ -843,6 +853,24 @@ def run_asset_discovery_task(
             
         is_final = (get_terminal_phase(mode) == 2) or is_interactive
 
+        # Fetch options from scan_row if None
+        resolved_exclude_ot = exclude_ot_from_nmap
+        if resolved_exclude_ot is None:
+            resolved_exclude_ot = True
+            if scan_row and scan_row.options:
+                resolved_exclude_ot = scan_row.options.get("exclude_ot_from_nmap", True)
+
+        resolved_passive_first = passive_first
+        if resolved_passive_first is None:
+            resolved_passive_first = False
+            if scan_row and scan_row.options:
+                resolved_passive_first = scan_row.options.get("passive_first", False)
+
+        resolved_exclude_ips = exclude_ips
+        if resolved_exclude_ips is None:
+            if scan_row and scan_row.options:
+                resolved_exclude_ips = scan_row.options.get("exclude_ips")
+
         # Fetch custom ports from the scan row options if not explicitly passed as task parameter
         resolved_custom_ports = custom_ports
         if not resolved_custom_ports and scan_row and scan_row.options:
@@ -859,6 +887,9 @@ def run_asset_discovery_task(
             scan_id=scan_id, os_detection=os_detection,
             custom_ports=resolved_custom_ports,
             exclude_ports=resolved_exclude_ports,
+            exclude_ot_from_nmap=resolved_exclude_ot,
+            passive_first=resolved_passive_first,
+            exclude_ips=resolved_exclude_ips,
         ))
 
         if _check_cancelled(db, scan_id):
@@ -906,7 +937,9 @@ def run_asset_discovery_task(
                     user_id=user_id,
                     hosts=active_hosts,
                     scan_id=scan_id,
-                    pipeline_mode=pipeline_mode
+                    pipeline_mode=pipeline_mode,
+                    exclude_ot_from_nmap=resolved_exclude_ot,
+                    exclude_ips=resolved_exclude_ips,
                 )
                 db.query(Scan).filter(Scan.id == scan_id).update({"current_task_id": next_task.id})
                 db.commit()
@@ -957,6 +990,8 @@ def run_vulnerability_audit_task(
     hosts:         List[dict],
     scan_id:       str,
     pipeline_mode: str,
+    exclude_ot_from_nmap: Optional[bool] = None,
+    exclude_ips:   Optional[str] = None,
 ):
     """Phase 3 Background Task."""
     db = SessionLocal()
@@ -967,8 +1002,25 @@ def run_vulnerability_audit_task(
             return {"success": False, "error": "Scan cancelled"}
 
         mode = resolve_pipeline_mode(pipeline_mode)
+        scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
+        
+        resolved_exclude_ot = exclude_ot_from_nmap
+        if resolved_exclude_ot is None:
+            resolved_exclude_ot = True
+            if scan_row and scan_row.options:
+                resolved_exclude_ot = scan_row.options.get("exclude_ot_from_nmap", True)
+
+        resolved_exclude_ips = exclude_ips
+        if resolved_exclude_ips is None:
+            if scan_row and scan_row.options:
+                resolved_exclude_ips = scan_row.options.get("exclude_ips")
+
         orch = _new_orchestrator()
-        result = orch.run_vulnerability_audit_only(hosts=hosts, scan_id=scan_id)
+        result = orch.run_vulnerability_audit_only(
+            hosts=hosts, scan_id=scan_id,
+            exclude_ot_from_nmap=resolved_exclude_ot,
+            exclude_ips=resolved_exclude_ips,
+        )
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after vulnerability audit", scan_id)
@@ -1199,13 +1251,21 @@ def run_traditional_scan_task(
     phases:    str,
     scan_type: str,
     intensity: str,
+    passive_first: Optional[bool] = None,
+    exclude_ot_from_nmap: Optional[bool] = None,
+    exclude_ips: Optional[str] = None,
 ):
     """Traditional Scan Task."""
     db = SessionLocal()
     try:
         orch = _new_orchestrator()
+        resolved_passive_first = False if passive_first is None else passive_first
+        resolved_exclude_ot = True if exclude_ot_from_nmap is None else exclude_ot_from_nmap
         result = _run_async(orch.run_phases(
-            targets=targets, phases=phases, scan_type=scan_type, intensity=intensity
+            targets=targets, phases=phases, scan_type=scan_type, intensity=intensity,
+            passive_first=resolved_passive_first,
+            exclude_ot_from_nmap=resolved_exclude_ot,
+            exclude_ips=exclude_ips,
         ))
         return result
     finally:

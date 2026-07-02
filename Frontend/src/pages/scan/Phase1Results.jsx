@@ -87,6 +87,7 @@ export default function Phase1Results() {
     portScanMode, setPortScanMode,
     customPorts, setCustomPorts,
     excludePorts, setExcludePorts,
+    excludeIps, setExcludeIps,
   } = useScan();
 
   const [filter, setFilter] = useState("active");
@@ -102,6 +103,9 @@ export default function Phase1Results() {
   const [excludePortsError, setExcludePortsError] = useState("");
   const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
   const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
+
+  const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(() => !!excludeIps);
+  const [excludeIpsError, setExcludeIpsError] = useState("");
 
   const parseCustomPortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
@@ -219,6 +223,91 @@ export default function Phase1Results() {
     }
   };
 
+  const isValidIPv4 = (ip) => {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(p => {
+      const num = Number(p);
+      return p !== '' && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p;
+    });
+  };
+
+  const isValidIPv6 = (ip) => {
+    if (!ip.includes(':')) return false;
+    return /^[0-9a-fA-F:]+$/.test(ip) && !ip.includes(':::') && (ip.match(/:/g) || []).length <= 7;
+  };
+
+  const isValidCIDR = (cidr) => {
+    if (!cidr.includes('/')) return false;
+    const parts = cidr.split('/');
+    const [ip, maskStr] = parts;
+    const mask = Number(maskStr);
+    if (isNaN(mask) || maskStr === '') return false;
+    if (isValidIPv4(ip)) return mask >= 0 && mask <= 32;
+    if (isValidIPv6(ip)) return mask >= 0 && mask <= 128;
+    return false;
+  };
+
+  const ipToLong = (ip) => {
+    return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0;
+  };
+
+  const isValidRange = (range) => {
+    if (!range.includes('-')) return false;
+    const parts = range.split('-');
+    if (parts.length !== 2) return false;
+    const [start, end] = parts.map(p => p.trim());
+    if (!isValidIPv4(start)) return false;
+    if (isValidIPv4(end)) {
+      return ipToLong(start) <= ipToLong(end);
+    } else if (/^\d+$/.test(end)) {
+      const endOctet = Number(end);
+      const startParts = start.split('.');
+      const startOctet = Number(startParts[3]);
+      return endOctet >= startOctet && endOctet <= 255;
+    }
+    return false;
+  };
+
+  const isValidHostname = (host) => {
+    if (host.length > 253) return false;
+    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(host);
+  };
+
+  const parseExcludeIpsJS = (ipsStr) => {
+    if (!ipsStr || !ipsStr.trim()) {
+      return { ips: [], error: "" };
+    }
+    const clean = ipsStr.replace(/\s+/g, "");
+    const tokens = clean.split(",");
+    const ipsArray = [];
+    for (const token of tokens) {
+      if (!token) continue;
+      const isValid = isValidIPv4(token) || isValidIPv6(token) || isValidCIDR(token) || isValidRange(token) || isValidHostname(token);
+      if (!isValid) {
+        return { ips: [], error: `Invalid IP, range, or CIDR format: "${token}"` };
+      }
+      ipsArray.push(token);
+    }
+    return { ips: ipsArray, error: "" };
+  };
+
+  const handleExcludeIpsToggleChange = (checked) => {
+    setExcludeIpsEnabled(checked);
+    if (!checked) {
+      setExcludeIps("");
+    }
+  };
+
+  useEffect(() => {
+    if (excludeIps) {
+      const { error } = parseExcludeIpsJS(excludeIps);
+      setExcludeIpsError(error);
+    } else {
+      setExcludeIpsError("");
+    }
+  }, [excludeIps]);
+
   const excludeTokens = excludePorts.split(",").map(t => t.trim()).filter(Boolean);
 
   const handleRemoveExcludeToken = (tokenToRemove) => {
@@ -290,6 +379,14 @@ export default function Phase1Results() {
       }
     }
 
+    if (excludeIpsEnabled && excludeIps.trim()) {
+      const { error: ipErr } = parseExcludeIpsJS(excludeIps);
+      if (ipErr) {
+        setError(`Exclude IPs error: ${ipErr}`);
+        return;
+      }
+    }
+
     setAssetLoading(true);
     setError("");
     setSaveStatus("saving");
@@ -303,6 +400,7 @@ export default function Phase1Results() {
         phases: [1, 2],
         ...(portScanMode === "custom" ? { custom_ports: customPorts } : {}),
         ...(excludePorts && excludePorts.trim() ? { exclude_ports: excludePorts.trim() } : {}),
+        ...(excludeIps && excludeIps.trim() ? { exclude_ips: excludeIps.trim() } : {}),
       });
       if (!data.success) throw new Error(data.error || "Port scan failed to start.");
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
@@ -702,9 +800,54 @@ export default function Phase1Results() {
                           </button>
                         </div>
 
-                        {excludePortsError && (
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Exclude IPs Section */}
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <strong style={{ display: "block", color: "var(--text)", fontSize: "0.9rem" }}>🚫 Exclude Specific IPs / Subnets</strong>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Exclude sensitive target hosts or subnets from scanning</span>
+                      </div>
+                      <div className="ns-switch-wrapper">
+                        <label className="ns-switch">
+                          <input
+                            type="checkbox"
+                            checked={excludeIpsEnabled}
+                            onChange={e => handleExcludeIpsToggleChange(e.target.checked)}
+                          />
+                          <span className="ns-slider round"></span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {excludeIpsEnabled && (
+                      <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="ns-input"
+                            style={{
+                              flex: 1,
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid var(--border)",
+                              background: "rgba(0,0,0,0.2)",
+                              color: "var(--text)",
+                              fontSize: "0.88rem"
+                            }}
+                            value={excludeIps || ""}
+                            onChange={e => setExcludeIps(e.target.value)}
+                            placeholder="e.g. 10.180.12.10,10.190.0.0/16"
+                            disabled={assetLoading || !canExecuteScans}
+                          />
+                        </div>
+
+                        {excludeIpsError && (
                           <div style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: 4 }}>
-                            ⚠ {excludePortsError}
+                            ⚠ {excludeIpsError}
                           </div>
                         )}
                       </div>

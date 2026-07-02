@@ -269,16 +269,16 @@ class WebFinding(Base):
     id             = Column(String(350), primary_key=True)
     web_scan_id    = Column(String(100), ForeignKey("web_scans.id",
                             ondelete="CASCADE", onupdate="CASCADE"),
-                            nullable=False, index=True)
+                            nullable=False)
     web_asset_id   = Column(String(250), ForeignKey("web_assets.id",
                             ondelete="CASCADE", onupdate="CASCADE"),
-                            nullable=True, index=True)
+                            nullable=True)
     org_id         = Column(String(100), ForeignKey("organizations.id",
                             ondelete="CASCADE", onupdate="CASCADE"),
                             nullable=False, index=True)
 
     # ── Vulnerability Classification ──────────────────────────────────────────
-    finding_type   = Column(String(50), nullable=False, index=True)
+    finding_type   = Column(String(50), nullable=False)
     # Values: xss, sqli, ssrf, misconfig, exposed_panel, default_creds,
     #         tls_issue, cors, cve, open_redirect, file_inclusion, xxe,
     #         information_disclosure, csrf, idor, command_injection,
@@ -287,7 +287,7 @@ class WebFinding(Base):
     title          = Column(String(512), nullable=False)
     description    = Column(Text,        nullable=True)
 
-    severity       = Column(String(20),    nullable=False, default="info", index=True)
+    severity       = Column(String(20),    nullable=False, default="info")
     cvss_score     = Column(Float,         nullable=True)
     cvss_vector    = Column(String(255),   nullable=True)
 
@@ -318,7 +318,7 @@ class WebFinding(Base):
     cve_id          = Column(String(30), nullable=True, index=True)
 
     # ── Status & Triage ───────────────────────────────────────────────────────
-    status          = Column(String(50), nullable=False, default="open", index=True)
+    status          = Column(String(50), nullable=False, default="open")
     # Values: open, confirmed, false_positive, accepted_risk, fixed, reopened
 
     is_verified     = Column(Boolean, nullable=False, default=False)

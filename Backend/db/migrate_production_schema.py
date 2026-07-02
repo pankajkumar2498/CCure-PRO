@@ -37,6 +37,18 @@ if _BACKEND not in sys.path:
 from sqlalchemy import text, inspect
 from db.base import engine, Base, gen_org_id
 
+# Import all models to register them in Base.metadata for bootstrapping
+from db.models.rbac          import Organization, Role, Permission, RolePermission
+from db.models.users         import User, RefreshTokenSession, AuditLog, PasswordResetToken
+from db.models.assets        import Asset, AssetTag, AssetNote, AssetChangeLog
+from db.models.scans         import Scan, ScanPhase
+from db.models.findings      import (
+    Service, TLSDetail, HttpSecurityDetail,
+    VulnerabilityDefinition, AssetVulnerability,
+)
+from db.models.notifications import Notification
+from db.models.web_scans     import WebScan, WebAsset, WebFinding
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────

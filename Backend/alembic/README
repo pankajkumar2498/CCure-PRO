@@ -1,1 +1,16 @@
 Generic single-database configuration.
+
+Run the Schema Verification Script
+Execute this from your current terminal window in the Backend directory:
+
+powershell
+# 1. Ensure APP_ENV is set to production and DATABASE_URL is set to ccure_db
+$env:APP_ENV="production"
+$env:DATABASE_URL="postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_db"
+
+# 2. Run the migration and initialization script
+python -m db.migrate_production_schema
+
+# 3. Clean up the environment overrides when done
+Remove-Item Env:APP_ENV
+Remove-Item Env:DATABASE_URL

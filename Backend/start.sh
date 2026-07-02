@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "Applying database migrations via Alembic..."
-alembic upgrade head
+echo "Initializing database and running migrations..."
+python db/migrate_production_schema.py
 
 echo "Starting FastAPI server..."
 if [ "${RELOAD}" = "true" ]; then

@@ -25,6 +25,7 @@ import SecurityDashboard    from "./pages/SecurityDashboard";
 import AssetRegistry        from "./pages/AssetRegistry";
 import AssetDetail          from "./pages/AssetDetail";
 import VulnerabilityBrowser from "./pages/VulnerabilityBrowser";
+import ComplianceWorkspace  from "./pages/ComplianceWorkspace";
 
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
 import Login                from "./pages/Login";
@@ -116,6 +117,7 @@ export default function App() {
 
         {/* Reports */}
         <Route path="/reports" element={<SecurityReports />} />
+        <Route path="/compliance" element={<ComplianceWorkspace />} />
 
         {/* Admin — RBAC-gated */}
         <Route element={<PrivateRoute requiredPermission={{ resource: "audit", action: "read" }} />}>

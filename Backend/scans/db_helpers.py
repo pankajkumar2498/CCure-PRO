@@ -145,9 +145,11 @@ def create_scan(
     scan_type: str,
     pipeline_mode: str = "basic",
     current_task_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> Scan:
     """Create an empty running scan before Phase 1 starts."""
-    org_id = _get_org_id(db, user_id)
+    if not org_id:
+        org_id = _get_org_id(db, user_id)
     org = db.query(Organization).filter(Organization.id == org_id).first()
     org_slug = org.slug if org else org_id
     
@@ -567,15 +569,15 @@ def create_completed_scan(
     commit:           bool            = True,
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
-    org_id = _get_org_id(db, user_id)
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    org_slug = org.slug if org else org_id
     base_targets = targets or [target]
 
     if scan_id:
         scan = db.query(Scan).filter(Scan.id == scan_id).first()
         if not scan:
             raise ValueError(f"Scan {scan_id} not found")
+        org_id = str(scan.org_id)
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org_slug = org.slug if org else org_id
 
         if scan.status != "unreachable":
             scan.status = "complete"
@@ -593,6 +595,10 @@ def create_completed_scan(
         scan.low_count = summary.get("low_count", scan.low_count or 0)
         scan.info_count = summary.get("info_count", scan.info_count or 0)
     else:
+        org_id = _get_org_id(db, user_id)
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org_slug = org.slug if org else org_id
+
         scan = Scan(
             id=gen_scan_id(org_slug),
             org_id=org_id,

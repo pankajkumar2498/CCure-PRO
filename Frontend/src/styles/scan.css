@@ -661,7 +661,7 @@
   margin-bottom: 0 !important;
   text-align: right;
   font-weight: 600;
-  color: rgba(226, 232, 240, 0.9);
+  color: var(--text-mid);
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1003,7 +1003,7 @@
 }
 
 .host-card-header:hover {
-  background: #fafbfc;
+  background: var(--bg-app);
 }
 
 .host-card-meta {
@@ -1090,7 +1090,7 @@
 }
 
 .vuln-card-header:hover {
-  background: #fafbfc;
+  background: var(--bg-app);
 }
 
 .vuln-card-title {
@@ -2143,7 +2143,7 @@
   justify-content: flex-end;
   gap: 10px;
   border-top: 1px solid var(--border);
-  background: #fafbfc;
+  background: var(--bg-app);
 }
 
 .confirm-btn {

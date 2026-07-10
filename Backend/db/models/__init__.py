@@ -16,6 +16,16 @@ from .notifications import Notification
 from .web_scans  import WebScan, WebAsset, WebFinding
 from .amt        import AMTInventoryRecord
 from .topology   import NetworkLink, ensure_topology_schema
+from .compliance import (
+    ComplianceFramework, ComplianceTenantFramework, ComplianceControl,
+    ComplianceRule, ComplianceRuleDependency, ComplianceRuleControl,
+    ComplianceRemediation, CompliancePolicy, CompliancePolicyRule,
+    ComplianceScanSchedule, ComplianceScanRun, ComplianceFinding,
+    ComplianceFindingHistory, ComplianceException, ComplianceScore,
+    ComplianceEvidenceRetentionPolicy, ComplianceNotificationRule,
+    ComplianceIntegrationConnector, ComplianceCredential,
+    ComplianceRemediationRequest
+)
 
 __all__ = [
     # RBAC
@@ -55,4 +65,25 @@ __all__ = [
     # Network Topology
     "NetworkLink",
     "ensure_topology_schema",
+    # Compliance Engine
+    "ComplianceFramework",
+    "ComplianceTenantFramework",
+    "ComplianceControl",
+    "ComplianceRule",
+    "ComplianceRuleDependency",
+    "ComplianceRuleControl",
+    "ComplianceRemediation",
+    "CompliancePolicy",
+    "CompliancePolicyRule",
+    "ComplianceScanSchedule",
+    "ComplianceScanRun",
+    "ComplianceFinding",
+    "ComplianceFindingHistory",
+    "ComplianceException",
+    "ComplianceScore",
+    "ComplianceEvidenceRetentionPolicy",
+    "ComplianceNotificationRule",
+    "ComplianceIntegrationConnector",
+    "ComplianceCredential",
+    "ComplianceRemediationRequest",
 ]

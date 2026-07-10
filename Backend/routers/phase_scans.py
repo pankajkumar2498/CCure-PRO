@@ -199,6 +199,7 @@ class PhasesRequest(BaseModel):
 async def scan_host_discovery(
     request: Request,
     req:  HostDiscoveryRequest,
+    org_id: Optional[str] = Query(None),
     user: User    = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
@@ -214,8 +215,10 @@ async def scan_host_discovery(
     raw_port_intensity = (req.port_scan_intensity or "normal").strip().lower()
     port_scan_intensity = raw_port_intensity if raw_port_intensity in ("light", "normal", "deep") else "normal"
 
+    resolved_org = _resolve_org(user, org_id)
+
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
-    check_scan_quota(db, org_id=str(user.org_id), targets=req.targets, custom_ports=req.custom_ports)
+    check_scan_quota(db, org_id=resolved_org, targets=req.targets, custom_ports=req.custom_ports)
 
     scan = create_scan(
         db=db,
@@ -224,6 +227,7 @@ async def scan_host_discovery(
         targets=req.targets,
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
+        org_id=resolved_org,
     )
     scan.options = {
         **(scan.options or {}),
@@ -298,6 +302,7 @@ async def scan_host_discovery(
 async def scan_asset_discovery(
     request: Request,
     req:  AssetDiscoveryRequest,
+    org_id: Optional[str] = Query(None),
     user: User    = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
@@ -318,9 +323,11 @@ async def scan_asset_discovery(
             "status": "running"
         }
 
+    resolved_org = _resolve_org(user, org_id)
+
     # ── Quota gate for custom ports (Phase 2 manually triggered) ──────────────
     if req.custom_ports:
-        check_scan_quota(db, org_id=str(user.org_id), custom_ports=req.custom_ports)
+        check_scan_quota(db, org_id=resolved_org, custom_ports=req.custom_ports)
 
     task = run_asset_discovery_task.delay(
         user_id       = str(user.id),

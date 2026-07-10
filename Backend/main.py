@@ -47,6 +47,7 @@ from routers.assets    import router as assets_router
 from routers.findings  import router as findings_router
 from routers.web_scans import router as web_scans_router
 from routers.topology  import router as topology_router
+from routers.compliance import router as compliance_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -150,18 +151,18 @@ async def lifespan(app: FastAPI):
                         username="admin",
                         email=admin_email,
                         password_hash=hash_password(AppConfig.DEFAULT_ADMIN_PASSWORD),
-                    org_id=org.id,
-                    role_id=role.id,
-                    is_active=True,
-                    is_verified=True
-                )
-                db.add(admin)
-                try:
-                    db.commit()
-                    log.info(f"Successfully seeded admin user: {admin_email}")
-                except Exception as e:
-                    db.rollback()
-                    log.error(f"Failed to seed admin: {e}")
+                        org_id=org.id,
+                        role_id=role.id,
+                        is_active=True,
+                        is_verified=True
+                    )
+                    db.add(admin)
+                    try:
+                        db.commit()
+                        log.info(f"Successfully seeded admin user: {admin_email}")
+                    except Exception as e:
+                        db.rollback()
+                        log.error(f"Failed to seed admin: {e}")
             else:
                 log.warning("Could not seed admin: default org or superadmin role missing.")
         else:
@@ -335,6 +336,7 @@ async def _http_exception_handler(request: Request, exc: HTTPException):
             "success": False,
             "error_code": error_code,
             "message": exc.detail,
+            "detail": exc.detail,
             "request_id": request_id,
         },
         headers={"X-Request-ID": request_id or ""},
@@ -400,6 +402,7 @@ app.include_router(assets_router)
 app.include_router(findings_router)
 app.include_router(web_scans_router)
 app.include_router(topology_router)
+app.include_router(compliance_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

@@ -89,7 +89,7 @@ const TEMPLATES = [
   { id:"cloud",    title:"Cloud Scanning",             desc:"Verify that code meets quality standards and best practices.",         Icon:IcoCloud,    bg:"#f0f9ff", color:"#0ea5e9", mapped:false },
 
   // Row 3
-  { id:"policy",   title:"Policy Compliance Scanning", desc:"Monitor for malicious activity across all endpoints and systems.",     Icon:IcoPolicy,   bg:"#f0fdf4", color:"#16a34a", mapped:false },
+  { id:"policy",   title:"Policy Compliance Scanning", desc:"Evaluate hosts against security baseline configurations and standards.", Icon:IcoPolicy, bg:"#f0fdf4", color:"#16a34a", mapped:true, directRoute: "/compliance" },
   {
     id:       "cred",
     title:    "Credential Validation",

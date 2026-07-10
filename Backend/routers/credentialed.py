@@ -14,12 +14,12 @@ import time
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from sqlalchemy.orm import Session
 
 from db.base import get_db, SessionLocal
-from db.models import User
+from db.models import User, ComplianceCredential
 from auth.rbac import require_permission
 from scans.db_helpers import create_scan
 from scan_helpers import get_api, limiter, log
@@ -35,14 +35,15 @@ router = APIRouter(tags=["Credentialed Scans"])
 # ── Request model ─────────────────────────────────────────────────────────────
 
 class CredentialedScanRequest(BaseModel):
-    ip:          str                 = Field(..., examples=["10.180.6.140"])
-    username:    str                 = Field(..., examples=["root"])
-    password:    Optional[SecretStr] = Field(None)
-    key_path:    Optional[str]       = Field(None)
-    port:        int                 = Field(22, ge=1, le=65535)
-    auth_method: str                 = Field("password")
-    sections:    Optional[List[str]] = Field(None)
-    os_type:     str                 = Field("auto", description="'linux' | 'windows' | 'auto'")
+    ip:            str                 = Field(..., examples=["10.180.6.140"])
+    username:      Optional[str]       = Field(None, examples=["root"])
+    password:      Optional[SecretStr] = Field(None)
+    key_path:      Optional[str]       = Field(None)
+    port:          int                 = Field(22, ge=1, le=65535)
+    auth_method:   str                 = Field("password")
+    sections:      Optional[List[str]] = Field(None)
+    os_type:       str                 = Field("auto", description="'linux' | 'windows' | 'auto'")
+    credential_id: Optional[str]       = Field(None)
 
     model_config = {
         # Never include password in JSON serialisation or __repr__
@@ -136,6 +137,7 @@ from core.tasks import run_credentialed_scan_task
 async def scan_credentialed(
     request: Request,
     req:  CredentialedScanRequest,
+    org_id: Optional[str] = Query(None),
     user: User    = Depends(require_permission("scans", "execute")),
 ):
     """
@@ -147,15 +149,42 @@ async def scan_credentialed(
             detail="Credentialed scanning requires paramiko. Run: pip install paramiko==3.4.0",
         )
 
+    # Validate based on credential input type
+    target_port = req.port
+    if not req.credential_id:
+        if not req.username:
+            raise HTTPException(status_code=400, detail="Username is required when not using stored credentials.")
+        if req.auth_method == "password" and not req.password:
+            raise HTTPException(status_code=400, detail="Password is required for password authentication.")
+        if req.auth_method == "key" and not req.key_path:
+            raise HTTPException(status_code=400, detail="Key path is required for key authentication.")
+    else:
+        # Verify stored credential exists and fetch its port
+        db = SessionLocal()
+        try:
+            role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
+            target_org_id = org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
+            cred = db.query(ComplianceCredential).filter(
+                ComplianceCredential.id == req.credential_id,
+                ComplianceCredential.tenant_id == target_org_id
+            ).first()
+            if not cred:
+                raise HTTPException(status_code=404, detail="Stored credential not found or access denied.")
+            target_port = cred.port
+        finally:
+            db.close()
+
     # Note: test_connectivity is fast, so we keep it in the API for immediate feedback
-    if not SSHScanner.test_connectivity(req.ip, req.port, timeout=5):
+    if not SSHScanner.test_connectivity(req.ip, target_port, timeout=5):
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot reach {req.ip}:{req.port} — host is down or port is closed.",
+            detail=f"Cannot reach {req.ip}:{target_port} — host is down or port is closed.",
         )
 
     db = SessionLocal()
     try:
+        role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
+        target_org_id = org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
         scan = create_scan(
             db=db,
             user_id=str(user.id),
@@ -163,6 +192,7 @@ async def scan_credentialed(
             targets=[req.ip],
             scan_type="credentialed",
             pipeline_mode="vulnerability_audit",
+            org_id=target_org_id,
         )
         scan_id = str(scan.id)
         scan_no = scan.scan_no
@@ -175,11 +205,12 @@ async def scan_credentialed(
         username    = req.username,
         password    = req.password.get_secret_value() if req.auth_method == "password" and req.password else None,
         key_path    = req.key_path  if req.auth_method == "key"      else None,
-        port        = req.port,
+        port        = target_port,
         auth_method = req.auth_method,
         sections    = req.sections,
         os_type_req = req.os_type,
         scan_id     = scan_id,
+        credential_id = req.credential_id,
     )
 
     log.info("Credentialed scan queued — target=%s scan_id=%s task_id=%s", req.ip, scan_id, task.id)

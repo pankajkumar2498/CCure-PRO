@@ -543,7 +543,7 @@ export default function UserManagement() {
             </div>
 
             <div className="field">
-              <label htmlFor="reset-new-password">New Password</label>
+              <label className="field-label" htmlFor="reset-new-password">New Password</label>
               <input
                 id="reset-new-password"
                 className="field-input"

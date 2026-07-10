@@ -18,8 +18,8 @@ Usage (called by the endpoint, not directly)::
 
 import ipaddress
 import json
-import logging
 import re
+import logging
 from typing import Any, Dict, List, Optional
 
 from engines.credentialed.ssh_scanner import SSHScanner, CommandResult
@@ -66,6 +66,12 @@ COMMANDS: Dict[str, str] = {
     "env_vars":        "env 2>/dev/null",
     "bios_version":    "cat /sys/class/dmi/id/bios_version 2>/dev/null",
     "local_groups":    "cat /etc/group 2>/dev/null",
+
+    # Safe Protocol Hardening Queries
+    "samba_config":    "cat /etc/samba/smb.conf 2>/dev/null",
+    "nmbd_status":     "systemctl is-active nmbd 2>/dev/null || systemctl is-active nmb 2>/dev/null",
+    "openssl_config":  "cat /etc/ssl/openssl.cnf /etc/pki/tls/openssl.cnf 2>/dev/null",
+    "telnet_status":   "systemctl is-active telnet.socket 2>/dev/null || systemctl is-active telnetd 2>/dev/null || which telnetd 2>/dev/null",
 }
 
 
@@ -159,11 +165,30 @@ class LinuxCollector:
         data["uname_full"]     = self._run("uname_full")
 
         # Hostname
-        hostname_fqdn = self._run("hostname_fqdn")
+        hostname_fqdn = self._run("hostname_fqdn").strip()
+        hostname_short = self._run("hostname_short").strip()
         data["hostname_fqdn"] = hostname_fqdn
-        data["hostname_short"] = self._run("hostname_short")
-        data["fqdn"] = hostname_fqdn if "." in hostname_fqdn else ""
-        data["domain"] = self._run("domain")
+        data["hostname_short"] = hostname_short
+        
+        domain = self._run("domain").strip()
+        if domain.lower() in ("(none)", "none", ""):
+            # Fallback: parse resolv.conf for search/domain options
+            res = self._ssh.run("grep -E '^(search|domain)' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | head -n 1")
+            resolv_domain = res.stdout.strip() if res.success and res.stdout else ""
+            if resolv_domain:
+                domain = resolv_domain
+            else:
+                domain = ""
+                
+        data["domain"] = domain
+        
+        if "." in hostname_fqdn:
+            data["fqdn"] = hostname_fqdn
+        elif hostname_short and domain:
+            data["fqdn"] = f"{hostname_short}.{domain}"
+        else:
+            data["fqdn"] = hostname_fqdn
+
         data["manufacturer"] = self._run("dmi_vendor")
         data["hardware_model"] = self._run("dmi_product")
         data["os_family"] = "Linux"
@@ -315,6 +340,59 @@ class LinuxCollector:
             issues.append(f"{len(data['suid_binaries'])} SUID binaries found — review for privilege escalation risk")
         if data["world_writable_dirs"]:
             issues.append(f"{len(data['world_writable_dirs'])} world-writable directories found")
+
+        # Safe Protocol Hardening Checks
+        # 1. SMBv1 status
+        samba_raw = self._run("samba_config").strip()
+        smbv1_disabled = True
+        if samba_raw:
+            # Parse server min protocol (handle comments, spacing, and case-insensitivity)
+            smb_min_proto_match = re.search(r'^\s*server\s+min\s+protocol\s*=\s*(\w+)', samba_raw, re.IGNORECASE | re.MULTILINE)
+            if smb_min_proto_match:
+                min_proto = smb_min_proto_match.group(1).upper()
+                if min_proto in ("CORE", "LANMAN1", "LANMAN2", "NT1"):
+                    smbv1_disabled = False
+        else:
+            # Samba config does not exist/uninstalled -> Secure default
+            smbv1_disabled = True
+
+        data["smbv1_disabled"] = smbv1_disabled
+        if not smbv1_disabled:
+            issues.append("Legacy SMBv1 protocol is allowed in Samba configuration")
+
+        # 2. NetBIOS status (nmbd service)
+        nmbd_raw = self._run("nmbd_status").strip().lower()
+        netbios_disabled = True
+        if "active" in nmbd_raw:
+            netbios_disabled = False
+        data["netbios_disabled"] = netbios_disabled
+        if not netbios_disabled:
+            issues.append("NetBIOS daemon (nmbd) is active and running")
+
+        # 3. Legacy TLS status
+        openssl_raw = self._run("openssl_config").strip()
+        legacy_tls_disabled = True
+        if openssl_raw:
+            min_proto_match = re.search(r'MinProtocol\s*=\s*(\S+)', openssl_raw, re.IGNORECASE)
+            if min_proto_match:
+                min_proto = min_proto_match.group(1).lower()
+                if "tls1.2" in min_proto or "tls1.3" in min_proto:
+                    legacy_tls_disabled = True
+                else:
+                    legacy_tls_disabled = False
+        data["legacy_tls_disabled"] = legacy_tls_disabled
+
+        # 4. Telnet status
+        telnet_raw = self._run("telnet_status").strip().lower()
+        telnet_disabled = True
+        if "active" in telnet_raw or "telnetd" in telnet_raw:
+            telnet_disabled = False
+        data["telnet_disabled"] = telnet_disabled
+        if not telnet_disabled:
+            issues.append("Telnet service/daemon is running or installed")
+
+        # 5. RDP NLA is a Windows-only configuration, default to True on Linux
+        data["rdp_nla_enforced"] = True
 
         data["security_issues"] = issues
         return data

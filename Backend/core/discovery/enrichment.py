@@ -243,7 +243,18 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                 if "vendor" in info:
                     result["vendor"] = info["vendor"]
                 if "model" in info:
-                    result["hostname"] = info["model"]
+                    # Avoid clobbering real hostnames and avoid generic protocol/service labels in hostname
+                    current_host = result.get("hostname")
+                    is_unresolved = not current_host or current_host in ("Unknown", "N/A", "")
+                    generic_labels = {
+                        "OPC UA Server", "Modbus TCP Controller", "BACnet Hvac/Sensor", 
+                        "DNP3 Outstation", "IEC 60870-5-104 Device", "MMS Telecontrol",
+                        "CoDeSys PLC Runtime", "GE Series PLC", "Omron Sysmac PLC",
+                        "S7-Compatible PLC"
+                    }
+                    if is_unresolved and info["model"] not in generic_labels:
+                        result["hostname"] = info["model"]
+                    
                     vendor_part = info.get("vendor", "")
                     proto_part = info.get("protocol", "").upper()
                     import re

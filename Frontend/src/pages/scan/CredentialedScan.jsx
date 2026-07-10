@@ -9,6 +9,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import { runCredentialedScan } from "../../api/credentialedScan";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
+import api from "../../api/axiosInstance";
 
 const SECTIONS = [
   { key: "system_info", label: "System Info", icon: "🖥", desc: "OS, kernel/build, CPU, RAM, disk" },
@@ -41,9 +42,23 @@ export default function CredentialedScan() {
   const [loadPhase, setLoadPhase] = useState("");  // "detecting" | "collecting"
   const [error, setError] = useState("");
 
+  const [credentialSource, setCredentialSource] = useState("jit"); // "jit" | "stored"
+  const [credentialsList, setCredentialsList] = useState([]);
+  const [selectedCredId, setSelectedCredId] = useState("");
+
   useEffect(() => {
     if (prefillIp) { setIp(prefillIp); setPassword(""); setKeyPath(""); setError(""); }
   }, [prefillIp]);
+
+  useEffect(() => {
+    api.get("/compliance/credentials")
+      .then(res => {
+        setCredentialsList(res.data || []);
+      })
+      .catch(err => {
+        console.error("Failed to load credentials for scan", err);
+      });
+  }, []);
 
   const toggleSection = key => {
     const n = new Set(sections);
@@ -59,9 +74,15 @@ export default function CredentialedScan() {
     setError("");
     if (!canExecuteScans) return setError(denyMessage);
     if (!ip.trim()) return setError("Please enter a target IP or hostname.");
-    if (!username.trim()) return setError("Please enter an SSH username.");
-    if (authMethod === "password" && !password) return setError("Please enter a password.");
-    if (authMethod === "key" && !keyPath) return setError("Please enter the SSH key path.");
+    
+    if (credentialSource === "stored") {
+      if (!selectedCredId) return setError("Please select a stored credential.");
+    } else {
+      if (!username.trim()) return setError("Please enter an SSH username.");
+      if (authMethod === "password" && !password) return setError("Please enter a password.");
+      if (authMethod === "key" && !keyPath) return setError("Please enter the SSH key path.");
+    }
+    
     if (noneSelected) return setError("Select at least one data category to collect.");
 
     setLoading(true);
@@ -72,13 +93,14 @@ export default function CredentialedScan() {
       if (osType === "auto") setLoadPhase("collecting"); // detection happens first server-side
       const { data } = await runCredentialedScan({
         ip: ip.trim(),
-        username: username.trim(),
-        password: authMethod === "password" ? password : undefined,
-        keyPath: authMethod === "key" ? keyPath.trim() : undefined,
+        username: credentialSource === "jit" ? username.trim() : undefined,
+        password: credentialSource === "jit" && authMethod === "password" ? password : undefined,
+        keyPath: credentialSource === "jit" && authMethod === "key" ? keyPath.trim() : undefined,
         port: parseInt(port, 10) || 22,
-        authMethod,
+        authMethod: credentialSource === "jit" ? authMethod : undefined,
         sections: allSelected ? null : Array.from(sections),
         osType,
+        credentialId: credentialSource === "stored" ? selectedCredId : undefined,
       });
 
       if (!data.success) throw new Error(data.error || "Scan failed");
@@ -128,7 +150,7 @@ export default function CredentialedScan() {
               <div className="cred-field cred-field--wide">
                 <label className="field-label">IP / Hostname</label>
                 <input className="field-input" type="text"
-                  placeholder="10.180.6.140 or server.local"
+                  placeholder="10.180.5.190 or server.local"
                   value={ip} onChange={e => setIp(e.target.value)}
                   disabled={loading || !canExecuteScans} autoComplete="off"
                 />
@@ -168,55 +190,92 @@ export default function CredentialedScan() {
           <div className="cred-section">
             <h3 className="cred-section-title">Authentication</h3>
 
-            <div className="cred-auth-toggle">
-              {["password", "key"].map(method => (
-                <button key={method}
-                  className={`cred-auth-btn ${authMethod === method ? "cred-auth-btn--active" : ""}`}
-                  onClick={() => setAuthMethod(method)}
-                  disabled={loading || !canExecuteScans}
-                >
-                  {method === "password" ? "🔑 Password" : "📄 SSH Key"}
-                </button>
-              ))}
+            <div style={{ display: "flex", gap: "16px", marginBottom: "16px" }}>
+              <label style={{ fontSize: "0.84rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600 }}>
+                <input type="radio" checked={credentialSource === "jit"} onChange={() => setCredentialSource("jit")} disabled={loading || !canExecuteScans} />
+                One-time JIT Credentials
+              </label>
+              <label style={{ fontSize: "0.84rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600 }}>
+                <input type="radio" checked={credentialSource === "stored"} onChange={() => setCredentialSource("stored")} disabled={loading || !canExecuteScans} />
+                Use Stored Credential
+              </label>
             </div>
 
-            <div className="cred-row">
-              <div className="cred-field">
-                <label className="field-label">Username</label>
-                <input className="field-input" type="text"
-                  placeholder="root" value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  disabled={loading || !canExecuteScans} autoComplete="off"
-                />
-              </div>
-
-              {authMethod === "password" ? (
-                <div className="cred-field cred-field--pass">
-                  <label className="field-label">Password</label>
-                  <div className="pass-wrap">
-                    <input className="field-input"
-                      type={showPass ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={password} onChange={e => setPassword(e.target.value)}
-                      disabled={loading || !canExecuteScans} autoComplete="current-password"
-                    />
-                    <button className="pass-toggle"
-                      onClick={() => setShowPass(p => !p)} tabIndex={-1}>
-                      {showPass ? "🙈" : "👁"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
+            {credentialSource === "stored" ? (
+              <div className="cred-row">
                 <div className="cred-field cred-field--wide">
-                  <label className="field-label">Private Key Path (server-side)</label>
-                  <input className="field-input" type="text"
-                    placeholder="/home/user/.ssh/id_rsa"
-                    value={keyPath} onChange={e => setKeyPath(e.target.value)}
-                    disabled={loading || !canExecuteScans} autoComplete="off"
-                  />
+                  <label className="field-label">Select Saved Credential</label>
+                  <select 
+                    className="field-input" 
+                    value={selectedCredId} 
+                    onChange={e => setSelectedCredId(e.target.value)} 
+                    disabled={loading || !canExecuteScans}
+                  >
+                    <option value="">-- Choose Credential --</option>
+                    {credentialsList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.username})</option>
+                    ))}
+                  </select>
+                  {credentialsList.length === 0 && (
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "6px", marginBottom: 0 }}>
+                      No saved credentials registered. Manage your credentials under the <button type="button" className="btn-link" style={{ background: "none", border: "none", color: "var(--accent)", textDecoration: "underline", padding: 0, font: "inherit", cursor: "pointer" }} onClick={() => navigate("/compliance")}>Credentials Manager</button> tab.
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <>
+                <div className="cred-auth-toggle">
+                  {["password", "key"].map(method => (
+                    <button key={method}
+                      className={`cred-auth-btn ${authMethod === method ? "cred-auth-btn--active" : ""}`}
+                      onClick={() => setAuthMethod(method)}
+                      disabled={loading || !canExecuteScans}
+                    >
+                      {method === "password" ? "🔑 Password" : "📄 SSH Key"}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="cred-row">
+                  <div className="cred-field">
+                    <label className="field-label">Username</label>
+                    <input className="field-input" type="text"
+                      placeholder="root" value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      disabled={loading || !canExecuteScans} autoComplete="off"
+                    />
+                  </div>
+
+                  {authMethod === "password" ? (
+                    <div className="cred-field cred-field--pass">
+                      <label className="field-label">Password</label>
+                      <div className="pass-wrap">
+                        <input className="field-input"
+                          type={showPass ? "text" : "password"}
+                          placeholder="••••••••"
+                          value={password} onChange={e => setPassword(e.target.value)}
+                          disabled={loading || !canExecuteScans} autoComplete="current-password"
+                        />
+                        <button className="pass-toggle"
+                          onClick={() => setShowPass(p => !p)} tabIndex={-1}>
+                          {showPass ? "🙈" : "👁"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="cred-field cred-field--wide">
+                      <label className="field-label">Private Key Path (server-side)</label>
+                      <input className="field-input" type="text"
+                        placeholder="/home/user/.ssh/id_rsa"
+                        value={keyPath} onChange={e => setKeyPath(e.target.value)}
+                        disabled={loading || !canExecuteScans} autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <p className="cred-privacy-note">
               🔒 Credentials are used for this scan only and immediately discarded — never logged, stored, or transmitted elsewhere.

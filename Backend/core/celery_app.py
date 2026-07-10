@@ -13,6 +13,7 @@ celery_app = Celery(
     include=[
         "core.tasks",       # Network scan background jobs
         "core.web.tasks",   # Web application scan background jobs
+        "core.compliance_tasks", # Compliance scan background jobs
     ]
 )
 
@@ -32,10 +33,20 @@ celery_app.conf.update(
         Queue("web_crawl"),     # Web scan: Playwright spidering, ffuf directory brute
         Queue("web_dast"),      # Web scan: Nuclei templates, SQLMap injection
         Queue("web_audit"),     # Web scan: TLS audit, compliance mapping
+        Queue("compliance"),    # Compliance scan baseline queue (new)
     ),
     task_track_started=True,
     worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY, # Limits parallel heavy scans
     worker_prefetch_multiplier=AppConfig.SCANNER_WORKER_PREFETCH_MULTIPLIER,
     task_time_limit=AppConfig.NMAP_TIMEOUT + 60, # Kill tasks if they hang
 )
+
+from celery.schedules import crontab
+
+celery_app.conf.beat_schedule = {
+    "prune-compliance-remediation-logs-weekly": {
+        "task": "compliance.prune_remediation_logs",
+        "schedule": crontab(hour=0, minute=0, day_of_week="sun"),
+    },
+}
 

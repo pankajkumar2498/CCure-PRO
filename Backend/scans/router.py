@@ -329,7 +329,7 @@ async def stream_scan_history(
         last_version = None
         yield _format_sse("connected", {"ok": True, "scope": scope})
 
-        while not await request.is_disconnected():
+        while True:
             db = SessionLocal()
             try:
                 snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, org, scope, skip, limit, created_by)

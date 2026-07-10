@@ -332,13 +332,13 @@ async def stream_notifications(
                 exc.__class__.__name__,
             )
             await pubsub.close()
-            while not await request.is_disconnected():
+            while True:
                 yield _format_sse("heartbeat", {"emitted_at": utcnow().isoformat()})
                 await asyncio.sleep(25)
             return
 
         try:
-            while not await request.is_disconnected():
+            while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=25)
                 if message:
                     payload = json.loads(message["data"])

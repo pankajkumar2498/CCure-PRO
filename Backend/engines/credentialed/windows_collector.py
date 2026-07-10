@@ -152,6 +152,43 @@ COMMANDS: Dict[str, str] = {
 
     # Event log — failed logins
     "failed_logins": "(Get-WinEvent -LogName Security -FilterHashtable @{Id=4625} -MaxEvents 20 -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | ConvertTo-Json)",
+
+    # Safe Protocol Hardening Queries
+    "smbv1_status": (
+        "$_smb1 = Get-ItemPropertyValue 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' -Name SMB1 -ErrorAction SilentlyContinue; "
+        "$_feat = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ "
+        "  SMB1 = if ($_smb1 -ne $null) { [int]$_smb1 } else { 0 }; "
+        "  FeatureEnabled = if ($_feat -ne $null -and $_feat.State -eq 'Enabled') { $true } else { $false } "
+        "} | ConvertTo-Json -Compress"
+    ),
+    "netbios_status": (
+        "Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled = True' | "
+        "Select-Object SettingID, NetbiosOptions | ConvertTo-Json"
+    ),
+    "tls_status": (
+        "$protocols = @('SSL 2.0', 'SSL 3.0', 'TLS 1.0', 'TLS 1.1'); "
+        "$res = @(); "
+        "foreach ($proto in $protocols) { "
+        "  foreach ($type in @('Client', 'Server')) { "
+        "    $val = Get-ItemPropertyValue \"HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\$type\" -Name Enabled -ErrorAction SilentlyContinue; "
+        "    $res += [PSCustomObject]@{ Protocol = $proto; Type = $type; Enabled = if ($val -ne $null) { [int]$val } else { 1 } } "
+        "  } "
+        "}; "
+        "$res | ConvertTo-Json"
+    ),
+    "rdp_nla_status": (
+        "$_nla = Get-ItemPropertyValue 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -Name UserAuthentication -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ UserAuthentication = if ($_nla -ne $null) { [int]$_nla } else { 0 } } | ConvertTo-Json -Compress"
+    ),
+    "telnet_status": (
+        "$_svc = Get-Service -Name TlntSvr -ErrorAction SilentlyContinue; "
+        "$_feat = Get-WindowsOptionalFeature -Online -FeatureName TelnetClient -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ "
+        "  ServiceRunning = if ($_svc -ne $null -and $_svc.Status -eq 'Running') { $true } else { $false }; "
+        "  FeatureEnabled = if ($_feat -ne $null -and $_feat.State -eq 'Enabled') { $true } else { $false } "
+        "} | ConvertTo-Json -Compress"
+    ),
 }
 
 
@@ -452,6 +489,49 @@ class WindowsCollector:
         tasks_raw = self._run_json("scheduled_tasks")
         if isinstance(tasks_raw, list):
             data["suspicious_scheduled_tasks"] = tasks_raw
+
+        # Safe Protocol Hardening Checks
+        smb1_raw = self._run_json("smbv1_status")
+        smbv1_disabled = not (smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False))
+        data["smbv1_disabled"] = smbv1_disabled
+        if not smbv1_disabled:
+            issues.append("Legacy SMBv1 protocol is enabled")
+
+        netbios_raw = self._run_json("netbios_status")
+        netbios_list = netbios_raw if isinstance(netbios_raw, list) else [netbios_raw] if isinstance(netbios_raw, dict) else []
+        netbios_disabled = True
+        if netbios_list:
+            for adapter in netbios_list:
+                # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
+                if adapter.get("NetbiosOptions") != 2:
+                    netbios_disabled = False
+                    break
+        else:
+            netbios_disabled = False
+        data["netbios_disabled"] = netbios_disabled
+        if not netbios_disabled:
+            issues.append("NetBIOS over TCP/IP is enabled on one or more network adapters")
+
+        tls_raw = self._run_json("tls_status")
+        tls_list = tls_raw if isinstance(tls_raw, list) else [tls_raw] if isinstance(tls_raw, dict) else []
+        legacy_tls_disabled = True
+        for proto in tls_list:
+            if proto.get("Enabled", 1) == 1:
+                legacy_tls_disabled = False
+                issues.append(f"Legacy SChannel protocol {proto.get('Protocol')} ({proto.get('Type')}) is enabled")
+        data["legacy_tls_disabled"] = legacy_tls_disabled
+
+        nla_raw = self._run_json("rdp_nla_status")
+        rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
+        data["rdp_nla_enforced"] = rdp_nla_enforced
+        if not rdp_nla_enforced and rdp_enabled:
+            issues.append("RDP is enabled but Network Level Authentication (NLA) is not enforced")
+
+        telnet_raw = self._run_json("telnet_status")
+        telnet_disabled = not (telnet_raw.get("ServiceRunning", False) or telnet_raw.get("FeatureEnabled", False))
+        data["telnet_disabled"] = telnet_disabled
+        if not telnet_disabled:
+            issues.append("Telnet client or server is enabled/running")
 
         data["security_issues"] = issues
         return data

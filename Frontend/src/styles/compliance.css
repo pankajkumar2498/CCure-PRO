@@ -1,0 +1,353 @@
+/**
+ * Frontend/src/styles/compliance.css
+ * Styled design system tokens for the Policy Compliance Workspace.
+ * Aligned with CCure Audit PRO light theme.
+ */
+
+.compliance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.metric-card {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+}
+
+.metric-card h3 {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.radial-score {
+  font-size: 3.5rem;
+  font-weight: 800;
+  margin-top: 1rem;
+  display: inline-block;
+}
+
+.radial-score--low {
+  color: var(--danger);
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.radial-score--medium {
+  color: var(--warn);
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.radial-score--high {
+  color: var(--ok);
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.radial-score--weighted {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.kpis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.kpis-list div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.kpis-list span {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kpis-list span.danger {
+  color: var(--danger);
+}
+
+.kpis-list span.info {
+  color: var(--accent);
+}
+
+/* ISO Quadrants */
+.quadrant-scores {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  margin-bottom: 2rem;
+}
+
+.quadrant-scores h3 {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.quadrant-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.quad-item {
+  display: grid;
+  grid-template-columns: 80px 1fr 60px;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.quad-label {
+  font-weight: 600;
+  color: var(--text-mid);
+  font-size: 0.85rem;
+}
+
+.progress-container {
+  height: 0.625rem;
+  background: var(--border);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.comp-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, #60a5fa 100%);
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+.quad-value {
+  font-weight: 700;
+  text-align: right;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+/* Grid layout */
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Framework Cards */
+.framework-card {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.framework-card:hover {
+  transform: translateY(-2px);
+}
+
+.framework-card h3 {
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.framework-card p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.fw-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Action button styles */
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Forms styling */
+.compliance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.compliance-form label {
+  font-weight: 600;
+  color: var(--text-mid);
+  font-size: 0.85rem;
+}
+
+.compliance-form input,
+.compliance-form select,
+.compliance-form textarea {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.compliance-form input:focus,
+.compliance-form select:focus,
+.compliance-form textarea:focus {
+  border-color: var(--accent);
+}
+
+.compliance-form textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* Loading bar animation */
+.loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), #60a5fa, var(--accent));
+  background-size: 200% 100%;
+  animation: loading-slide 1.5s infinite linear;
+  z-index: 9999;
+}
+
+@keyframes loading-slide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Findings Pagination Bar ─────────────────────────────────────────────── */
+.cw-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-white);
+  font-size: 0.72rem;
+}
+.cw-pagination-summary {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.cw-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.cw-pagination-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.cw-pagination-btn:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text);
+}
+.cw-pagination-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.cw-pagination-page-indicator {
+  padding: 0 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.cw-pagination-sizer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.cw-pagination-select {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-white);
+  color: var(--text);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+@media (max-width: 768px) {
+  .cw-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+.framework-installed-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+}

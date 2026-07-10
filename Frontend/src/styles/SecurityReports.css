@@ -51,8 +51,9 @@
           width: 100%;
           padding: 10px 12px 10px 40px;
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          background: white;
+          border: 1px solid var(--border);
+          background: var(--bg-white);
+          color: var(--text);
           font-size: 0.9rem;
           outline: none;
           transition: border-color 0.2s;
@@ -65,8 +66,9 @@
         .filter-select {
           padding: 10px 16px;
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          background: white;
+          border: 1px solid var(--border);
+          background: var(--bg-white);
+          color: var(--text);
           font-size: 0.9rem;
           outline: none;
           min-width: 180px;
@@ -79,9 +81,9 @@
         }
 
         .report-card {
-          background: white;
+          background: var(--bg-white);
           border-radius: 12px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid var(--border);
           padding: 20px;
           transition: transform 0.2s, box-shadow 0.2s;
           display: flex;
@@ -106,8 +108,8 @@
           text-transform: uppercase;
           padding: 2px 8px;
           border-radius: 4px;
-          background: #f1f5f9;
-          color: #475569;
+          background: var(--bg-app);
+          color: var(--text-mid);
         }
         .rc-id {
           font-family: var(--mono);
@@ -118,7 +120,7 @@
         .rc-target {
           font-size: 1.1rem;
           font-weight: 700;
-          color: #1e293b;
+          color: var(--text);
           margin-top: 4px;
           word-break: break-all;
         }
@@ -128,9 +130,9 @@
           flex-wrap: wrap;
           gap: 12px;
           font-size: 0.8rem;
-          color: #64748b;
-          border-top: 1px solid #f1f5f9;
-          border-bottom: 1px solid #f1f5f9;
+          color: var(--text-muted);
+          border-top: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
           padding: 12px 0;
         }
         .rc-meta-item {
@@ -158,11 +160,11 @@
           border: 1px solid #e2e8f0;
         }
         .download-btn--json {
-          background: #f8fafc;
-          color: #1e293b;
+          background: var(--bg-app);
+          color: var(--text);
         }
         .download-btn--json:hover {
-          background: #f1f5f9;
+          background: var(--border);
         }
         .download-btn--xml {
           background: #f0f9ff;

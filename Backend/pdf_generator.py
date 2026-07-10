@@ -34,7 +34,7 @@ from reportlab.lib.styles                import getSampleStyleSheet, ParagraphSt
 from reportlab.lib.enums                 import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus                  import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, PageBreak, KeepTogether
+    HRFlowable, PageBreak, KeepTogether, Preformatted
 )
 from reportlab.platypus.flowables        import Flowable
 from scan_helpers                        import make_pdf_cve_paragraph
@@ -146,6 +146,14 @@ def _build_styles():
             fontSize      = 8,
             textColor     = colors.HexColor("#777777"),
             fontName      = "Helvetica",
+        ),
+        "mono_pre": ParagraphStyle(
+            "MonoPre",
+            parent        = base["Normal"],
+            fontName      = "Courier",
+            fontSize      = 7.5,
+            leading       = 10,
+            textColor     = colors.HexColor("#1E293B"),
         ),
     }
     return styles
@@ -793,6 +801,57 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
                 members_str or "No members"
             ])
         story.append(mk_table(["Group Name", "GID", "Members"], g_rows, [50*mm, 25*mm, W - 75*mm]))
+        story.append(Spacer(1, 3 * mm))
+
+    # OS Hardening & Security Audits
+    hardening_audits = host.get("hardening_audits") or {}
+    if hardening_audits:
+        story.append(mk_header("OS Hardening & Security Audits"))
+        h_rows = []
+        for key, audit in hardening_audits.items():
+            status = audit.get("status", "N/A")
+            if status == "PASS":
+                status_para = Paragraph("<font color='#1A7A3F'><b>PASS</b></font>", styles["value"])
+            elif status == "FAIL":
+                status_para = Paragraph("<font color='#C0392B'><b>FAIL</b></font>", styles["value"])
+            else:
+                status_para = Paragraph(f"<b>{status}</b>", styles["value"])
+                
+            h_rows.append([
+                Paragraph(audit.get("label", key), styles["value"]),
+                status_para,
+                Paragraph(audit.get("detail", "N/A"), styles["value"])
+            ])
+        story.append(mk_table(["Configuration / Audit", "Status", "Audit Findings Detail"], h_rows, [50*mm, 20*mm, W - 70*mm]))
+        story.append(Spacer(1, 3 * mm))
+
+    # Suspicious Scheduled Tasks (Windows)
+    tasks = host.get("suspicious_scheduled_tasks") or []
+    if tasks:
+        story.append(mk_header(f"Suspicious Scheduled Tasks ({len(tasks)})"))
+        t_rows = []
+        for t in tasks[:15]:
+            t_rows.append([
+                t.get("TaskName", "N/A"),
+                t.get("TaskPath", "N/A"),
+                t.get("State", "N/A")
+            ])
+        story.append(mk_table(["Task Name", "Path", "Status"], t_rows, [60*mm, 80*mm, W - 140*mm]))
+        if len(tasks) > 15:
+            story.append(Paragraph(f"... and {len(tasks)-15} more scheduled tasks", styles["small"]))
+        story.append(Spacer(1, 3 * mm))
+
+    # Scheduled Cron Jobs (Linux)
+    cron_raw = host.get("cron_info_raw", "").strip()
+    if cron_raw:
+        story.append(mk_header("Scheduled Cron Jobs (System / User)"))
+        lines = cron_raw.splitlines()
+        if len(lines) > 50:
+            truncated = "\n".join(lines[:50]) + "\n... [Truncated for Report]"
+        else:
+            truncated = cron_raw
+            
+        story.append(Preformatted(truncated, styles["mono_pre"], maxLineLength=80))
         story.append(Spacer(1, 3 * mm))
 
     # 7. System Audit Findings

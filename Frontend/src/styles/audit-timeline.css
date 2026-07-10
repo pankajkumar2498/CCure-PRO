@@ -173,7 +173,7 @@
 /* ── Events List ────────────────────────────────────────────────────────── */
 .audit-group-body {
   border-top: 1px solid var(--border);
-  background: #fafbfc;
+  background: var(--bg-app);
   padding: 0;
 }
 

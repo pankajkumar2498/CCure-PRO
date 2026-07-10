@@ -392,7 +392,7 @@ def list_global_services(
         Service.protocol.label("protocol"),
         func.count(func.distinct(Service.asset_id)).label("asset_count"),
         func.max(Service.updated_at).label("last_seen")
-    ).join(Asset).filter(Asset.org_id == org)
+    ).join(Asset).filter(Asset.org_id == org, Service.state == 'open')
 
     # Apply filters
     if search:
@@ -475,6 +475,7 @@ def list_service_assets(
         Asset.org_id == org,
         Service.port == port,
         Service.protocol.ilike(protocol),
+        Service.state == "open"
     )
 
     if service_name and service_name != "unknown":

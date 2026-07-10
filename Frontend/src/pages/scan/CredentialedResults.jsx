@@ -124,6 +124,10 @@ export default function CredentialedResults() {
   const [scanStatus, setScanStatus] = useState(stateResult?.status || "running");
   const [cveFilter, setCveFilter] = useState("All");
   const [showSystemUsers, setShowSystemUsers] = useState(false);
+  const [servicesSearch, setServicesSearch] = useState("");
+  const [portsSearch, setPortsSearch] = useState("");
+  const [packagesSearch, setPackagesSearch] = useState("");
+  const [usersSearch, setUsersSearch] = useState("");
 
   // Live progress state
   const [progress, setProgress] = useState({
@@ -426,6 +430,10 @@ export default function CredentialedResults() {
     network_interfaces_raw = "",
     env_vars_flagged = [],
     cves = [], cve_count = 0, severity_summary = {},
+    hardening_audits = {},
+    cron_info_raw = "",
+    suspicious_scheduled_tasks = [],
+    local_groups = [],
   } = result;
 
   // Parse network_interfaces_raw if it is in JSON format
@@ -491,11 +499,53 @@ export default function CredentialedResults() {
   });
   const displayedUsers = showSystemUsers ? users : interactiveUsers;
 
+  const filteredServices = running_services.filter(svc => {
+    if (!servicesSearch) return true;
+    const query = servicesSearch.toLowerCase();
+    return (
+      String(svc.name || "").toLowerCase().includes(query) ||
+      String(svc.description || "").toLowerCase().includes(query) ||
+      String(svc.sub_state || "").toLowerCase().includes(query)
+    );
+  });
+
+  const filteredPorts = open_ports_credentialed.filter(p => {
+    if (!portsSearch) return true;
+    const query = portsSearch.toLowerCase();
+    return (
+      String(p.port || "").toLowerCase().includes(query) ||
+      String(p.local_addr || "").toLowerCase().includes(query) ||
+      String(p.state || "").toLowerCase().includes(query) ||
+      String(p.process || "").toLowerCase().includes(query)
+    );
+  });
+
+  const filteredPackages = packagesWithCves.filter(pkg => {
+    if (!packagesSearch) return true;
+    const query = packagesSearch.toLowerCase();
+    return (
+      String(pkg.name || "").toLowerCase().includes(query) ||
+      String(pkg.version || "").toLowerCase().includes(query) ||
+      String(pkg.manager || "").toLowerCase().includes(query)
+    );
+  });
+
+  const filteredUsers = displayedUsers.filter(u => {
+    if (!usersSearch) return true;
+    const query = usersSearch.toLowerCase();
+    return (
+      String(u.username || "").toLowerCase().includes(query) ||
+      String(u.uid || "").toLowerCase().includes(query) ||
+      String(u.shell || "").toLowerCase().includes(query) ||
+      String(u.home || "").toLowerCase().includes(query)
+    );
+  });
+
   const usersTableHead = detected_os === "windows"
     ? ["Username", "Role / Type", "Status", "Password Required", "Last Logon"]
     : ["Username", "UID", "Shell", "Home", "Type"];
 
-  const usersTableRows = displayedUsers.map(u => {
+  const usersTableRows = filteredUsers.map(u => {
     if (detected_os === "windows") {
       const isAdmin = u.is_admin === true || String(u.is_admin).toLowerCase() === "true";
       const isEnabled = String(u.enabled).toLowerCase() === "true";
@@ -597,7 +647,7 @@ export default function CredentialedResults() {
 
         {/* System Info */}
         <Section title="🖥 System Information" defaultOpen>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0 24px" }}>
             <KV k="OS" v={system_info.os_name || "—"} />
             <KV k="Version" v={system_info.os_version_id || "—"} />
             <KV k="Kernel" v={system_info.kernel_version || "—"} mono />
@@ -608,6 +658,12 @@ export default function CredentialedResults() {
             <KV k="CPU Count" v={system_info.cpu_count || "—"} />
             <KV k="Architecture" v={system_info.cpu_arch || "—"} />
             <KV k="Uptime" v={system_info.uptime || "—"} />
+            <KV k="Serial Number" v={system_info.serial_number || "—"} mono />
+            <KV k="BIOS Version" v={system_info.bios_version || "—"} mono />
+            <KV k="MAC Address" v={system_info.mac_address || "—"} mono />
+            <KV k="Subnet" v={system_info.subnet || "—"} mono />
+            <KV k="Domain" v={system_info.domain || "—"} mono />
+            <KV k="FQDN" v={system_info.fqdn || "—"} mono />
             {system_info.memory_summary?.total && (
               <>
                 <KV k="RAM Total" v={system_info.memory_summary.total} />
@@ -706,6 +762,40 @@ export default function CredentialedResults() {
             <KV k="World-Writable Dirs" v={`${world_writable_dirs.length} found`} warn={world_writable_dirs.length > 0} />
             <KV k="Failed Logins" v={`${failed_login_count}${brute_force_warning ? " ⚠ possible brute force" : ""}`} danger={brute_force_warning} />
           </div>
+          {Object.keys(hardening_audits).length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <h4 className="section-title">OS Hardening & Auditing</h4>
+              <CredTable
+                head={["Configuration / Audit", "Status", "Audit Findings Detail"]}
+                rows={Object.entries(hardening_audits).map(([key, audit]) => {
+                  const isPass = audit.status === "PASS";
+                  const isFail = audit.status === "FAIL";
+                  const statusBg = isPass ? "rgba(22, 163, 74, 0.15)" : isFail ? "rgba(239, 68, 68, 0.15)" : "rgba(245, 158, 11, 0.15)";
+                  const statusColor = isPass ? "#16a34a" : isFail ? "#ef4444" : "#f59e0b";
+                  
+                  return {
+                    cells: [
+                      { content: <span style={{ fontWeight: 600 }}>{audit.label || key}</span> },
+                      { content: (
+                        <span style={{
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: "bold",
+                          backgroundColor: statusBg,
+                          color: statusColor,
+                          display: "inline-block"
+                        }}>
+                          {audit.status}
+                        </span>
+                      )},
+                      { content: <span>{audit.detail || "—"}</span> },
+                    ]
+                  };
+                })}
+              />
+            </div>
+          )}
           {suid_binaries.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <h4 className="section-title">SUID Binaries</h4>
@@ -719,79 +809,165 @@ export default function CredentialedResults() {
         {/* Running Services */}
         {running_services.length > 0 && (
           <Section title={`⚙️ Running Services (${running_services.length})`}>
-            <CredTable
-              head={["Service", "Status", "Description"]}
-              rows={running_services.map(svc => ({
-                cells: [
-                  { content: <code style={{ fontSize: 11 }}>{svc.name}</code> },
-                  { content: svc.sub_state || "running", style: { color: "var(--ok)", fontSize: 11 } },
-                  { content: svc.description, style: { fontSize: 12, color: "var(--text-muted)" } },
-                ],
-              }))}
-            />
+            <div style={{ marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Search services..."
+                value={servicesSearch}
+                onChange={(e) => setServicesSearch(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-card)",
+                  color: "var(--text)",
+                  width: "100%",
+                  maxWidth: "320px",
+                  outline: "none"
+                }}
+              />
+            </div>
+            {filteredServices.length === 0 ? (
+              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>No services matching "{servicesSearch}"</p>
+            ) : (
+              <CredTable
+                head={["Service", "Status", "Description"]}
+                rows={filteredServices.map(svc => ({
+                  cells: [
+                    { content: <code style={{ fontSize: 11 }}>{svc.name}</code> },
+                    { content: svc.sub_state || "running", style: { color: "var(--ok)", fontSize: 11 } },
+                    { content: svc.description, style: { fontSize: 12, color: "var(--text-muted)" } },
+                  ],
+                }))}
+              />
+            )}
           </Section>
         )}
 
         {/* Open Ports */}
         {open_ports_credentialed.length > 0 && (
           <Section title={`🔌 Open Ports — socket table (${open_ports_credentialed.length})`}>
-            <CredTable
-              head={["State", "Local Addr", "Port", "Process"]}
-              rows={open_ports_credentialed.map(p => ({
-                cells: [
-                  { content: p.state, style: { color: "var(--ok)", fontSize: 11 } },
-                  { content: <code style={{ fontSize: 11 }}>{p.local_addr}</code> },
-                  { content: <code style={{ fontSize: 12 }}>{p.port}</code> },
-                  { content: p.process, style: { fontSize: 11, color: "var(--text-muted)" } },
-                ],
-              }))}
-            />
+            <div style={{ marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Search ports, IPs, or processes..."
+                value={portsSearch}
+                onChange={(e) => setPortsSearch(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-card)",
+                  color: "var(--text)",
+                  width: "100%",
+                  maxWidth: "320px",
+                  outline: "none"
+                }}
+              />
+            </div>
+            {filteredPorts.length === 0 ? (
+              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>No open ports matching "{portsSearch}"</p>
+            ) : (
+              <CredTable
+                head={["State", "Local Addr", "Port", "Process"]}
+                rows={filteredPorts.map(p => ({
+                  cells: [
+                    { content: p.state, style: { color: "var(--ok)", fontSize: 11 } },
+                    { content: <code style={{ fontSize: 11 }}>{p.local_addr}</code> },
+                    { content: <code style={{ fontSize: 12 }}>{p.port}</code> },
+                    { content: p.process, style: { fontSize: 11, color: "var(--text-muted)" } },
+                  ],
+                }))}
+              />
+            )}
           </Section>
         )}
 
         {/* Packages */}
         {packagesWithCves.length > 0 && (
           <Section title={`Packages with Vulnerabilities (${packagesWithCves.length})`}>
-            <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-              Showing only packages that match vulnerability findings.
-            </p>
-            <CredTable
-              head={["Affected Packages", "Version", "Manager", "CVE"]}
-              rows={packagesWithCves.map(pkg => {
-                const pkgCves = cves.filter(c => String(c.package || "").toLowerCase() === String(pkg.name || "").toLowerCase());
-                const uniqueCveIds = Array.from(new Set(pkgCves.map(c => c.cve_id))).filter(Boolean);
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                Showing only packages that match vulnerability findings.
+              </p>
+              <input
+                type="text"
+                placeholder="Search packages..."
+                value={packagesSearch}
+                onChange={(e) => setPackagesSearch(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-card)",
+                  color: "var(--text)",
+                  width: "100%",
+                  maxWidth: "320px",
+                  outline: "none"
+                }}
+              />
+            </div>
+            {filteredPackages.length === 0 ? (
+              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>No packages matching "{packagesSearch}"</p>
+            ) : (
+              <CredTable
+                head={["Affected Packages", "Version", "Manager", "CVE"]}
+                rows={filteredPackages.map(pkg => {
+                  const pkgCves = cves.filter(c => String(c.package || "").toLowerCase() === String(pkg.name || "").toLowerCase());
+                  const uniqueCveIds = Array.from(new Set(pkgCves.map(c => c.cve_id))).filter(Boolean);
 
-                return {
-                  _style: { background: "rgba(249,115,22,0.07)" },
-                  cells: [
-                    { content: <span style={{ fontWeight: 600, color: "#f97316" }}>{pkg.name}</span> },
-                    { content: <code style={{ fontSize: 11 }}>{pkg.version}</code> },
-                    { content: pkg.manager, style: { fontSize: 11, color: "var(--text-muted)" } },
-                    {
-                      content: uniqueCveIds.length > 0 ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
-                          {uniqueCveIds.map((cveId, idx) => (
-                            <span key={cveId} style={{ display: "inline-flex", alignItems: "center" }}>
-                              <CVELink cveId={cveId} style={{ color: "#f97316", fontWeight: 600, fontSize: "0.82rem" }} />
-                              {idx < uniqueCveIds.length - 1 && <span style={{ color: "var(--text-faint)", marginLeft: 4 }}>,</span>}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span style={{ color: "var(--text-faint)" }}>—</span>
-                      )
-                    },
-                  ],
-                };
-              })}
-            />
+                  return {
+                    _style: { background: "rgba(249,115,22,0.07)" },
+                    cells: [
+                      { content: <span style={{ fontWeight: 600, color: "#f97316" }}>{pkg.name}</span> },
+                      { content: <code style={{ fontSize: 11 }}>{pkg.version}</code> },
+                      { content: pkg.manager, style: { fontSize: 11, color: "var(--text-muted)" } },
+                      {
+                        content: uniqueCveIds.length > 0 ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
+                            {uniqueCveIds.map((cveId, idx) => (
+                              <span key={cveId} style={{ display: "inline-flex", alignItems: "center" }}>
+                                <CVELink cveId={cveId} style={{ color: "#f97316", fontWeight: 600, fontSize: "0.82rem" }} />
+                                {idx < uniqueCveIds.length - 1 && <span style={{ color: "var(--text-faint)", marginLeft: 4 }}>,</span>}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--text-faint)" }}>—</span>
+                        )
+                      },
+                    ],
+                  };
+                })}
+              />
+            )}
           </Section>
         )}
 
         {/* Users */}
         {users.length > 0 && (
-          <Section title={`👤 Users (${displayedUsers.length})`}>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <Section title={`👤 Users (${filteredUsers.length})`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={usersSearch}
+                onChange={(e) => setUsersSearch(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-card)",
+                  color: "var(--text)",
+                  width: "100%",
+                  maxWidth: "320px",
+                  outline: "none"
+                }}
+              />
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.8rem", color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}>
                 <input
                   type="checkbox"
@@ -802,10 +978,81 @@ export default function CredentialedResults() {
                 Show system & service accounts
               </label>
             </div>
+            {filteredUsers.length === 0 ? (
+              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>No users matching "{usersSearch}"</p>
+            ) : (
+              <CredTable
+                head={usersTableHead}
+                rows={usersTableRows}
+              />
+            )}
+          </Section>
+        )}
+
+        {/* Local Groups */}
+        {local_groups.length > 0 && (
+          <Section title={`👤 Local Groups (${local_groups.length})`}>
             <CredTable
-              head={usersTableHead}
-              rows={usersTableRows}
+              head={["Group Name", "GID", "Members"]}
+              rows={local_groups.map(g => ({
+                cells: [
+                  { content: <span style={{ fontWeight: 600 }}>{g.name}</span> },
+                  { content: <code>{g.gid || "—"}</code> },
+                  { content: <span>{Array.isArray(g.members) && g.members.length > 0 ? g.members.join(", ") : "—"}</span> },
+                ],
+              }))}
             />
+          </Section>
+        )}
+
+        {/* Scheduled Tasks & Cron Jobs */}
+        {((detected_os === "windows" && suspicious_scheduled_tasks?.length > 0) || (detected_os !== "windows" && cron_info_raw)) && (
+          <Section title={detected_os === "windows" ? `📅 Scheduled Tasks (${suspicious_scheduled_tasks.length})` : "📅 Scheduled Cron Jobs"}>
+            {detected_os === "windows" ? (
+              <CredTable
+                head={["Task Name", "Path", "State"]}
+                rows={suspicious_scheduled_tasks.map(t => ({
+                  cells: [
+                    { content: <span style={{ fontWeight: 600 }}>{t.TaskName || "—"}</span> },
+                    { content: <code style={{ fontSize: 11 }}>{t.TaskPath || "—"}</code> },
+                    { content: (
+                      <span style={{
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        fontSize: 10,
+                        fontWeight: "bold",
+                        backgroundColor: t.State === "Ready" || t.State === "Running" ? "rgba(22, 163, 74, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        color: t.State === "Ready" || t.State === "Running" ? "#16a34a" : "#f59e0b",
+                        display: "inline-block"
+                      }}>
+                        {t.State || "—"}
+                      </span>
+                    )},
+                  ]
+                }))}
+              />
+            ) : (
+              <div>
+                <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Target crontab files and system schedules configuration.
+                </p>
+                <pre style={{
+                  background: "var(--bg-app)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  color: "var(--text-mid)",
+                  overflowX: "auto",
+                  maxHeight: 250,
+                  overflowY: "auto",
+                  whiteSpace: "pre-wrap"
+                }}>
+                  {cron_info_raw}
+                </pre>
+              </div>
+            )}
           </Section>
         )}
 

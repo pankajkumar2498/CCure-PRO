@@ -84,7 +84,7 @@ const SIDEBAR_SECTIONS = [
     label: "Reports",
     items: [
       { id: "security-reports", label: "Security Reports", Icon: IcoChart,       route: "/reports", permission: { resource: "reports", action: "read" } },
-      { id: "compliance",       label: "Compliance",       Icon: IcoCheckCircle, route: "/reports?tab=compliance", permission: { resource: "reports", action: "read" } },
+      { id: "compliance",       label: "Compliance",       Icon: IcoCheckCircle, route: "/compliance", permission: { resource: "reports", action: "read" } },
       { id: "risk-trends",      label: "Risk Trends",      Icon: IcoTrendUp,     route: "/reports?tab=trends", permission: { resource: "reports", action: "read" } },
     ],
   },

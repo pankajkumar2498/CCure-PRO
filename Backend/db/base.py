@@ -238,6 +238,24 @@ def gen_network_link_id(org_slug: str, src_mac: str, dst_mac: str) -> str:
     return f"lnk_{org_part}_{clean_src}_{clean_dst}"
 
 
+def gen_compliance_credential_id(org_slug: str) -> str:
+    """
+    Generate a readable Compliance Credential ID.
+    Example: ccrd_defa_1a2b3c4d_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    return f"ccrd_{org_part}_{_rand()}"
+
+
+def gen_compliance_remediation_request_id(org_slug: str) -> str:
+    """
+    Generate a readable Compliance Remediation Request ID.
+    Example: crrq_defa_1a2b3c4d_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    return f"crrq_{org_part}_{_rand()}"
+
+
 def utcnow() -> datetime:
     """Return the current UTC datetime (timezone-aware)."""
     return datetime.now(timezone.utc)

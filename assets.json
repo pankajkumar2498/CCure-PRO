@@ -1,7 +1,7 @@
 {
   "status": "success",
   "company": "C-DAC Bangalore",
-  "total": 413,
+  "total": 428,
   "data": [
     {
       "asset_tag": "00000198",
@@ -68,13 +68,13 @@
       "asset_name": "Dell Precision Desktop",
       "serial": "17JPXH2",
       "company_name": "C-DAC Bangalore",
-      "location": "CDAC KP",
-      "location_id": 2,
+      "location": "BLK",
+      "location_id": 211,
       "status": "Ready to Deploy",
       "vendor": "Dell",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Gudapati Naresh Raghava ",
-      "emp_id": "345902",
+      "emp_id": "350508",
       "mac_address_1": "48:4D:7E:D6:14:5E",
       "mac_address_2": null
     },
@@ -90,7 +90,52 @@
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Kalai Selvan K ",
       "emp_id": "102085",
-      "mac_address_1": "64:00:6A:79:6C:17",
+      "mac_address_1": "64:00:6a:79:6c:17",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00000244",
+      "asset_name": "Dell EMC PowerEdge Server",
+      "serial": "FZT4TB3",
+      "company_name": "C-DAC Bangalore",
+      "location": "BLK",
+      "location_id": 211,
+      "status": "Ready to Deploy",
+      "vendor": "Dell",
+      "asset_type": "Computers and Peripherals - Server",
+      "asset_user": "Kalai Selvan K ",
+      "emp_id": "102085",
+      "mac_address_1": "bc:97:e1:01:e2:a0",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00000245",
+      "asset_name": "Dell EMC PowerEdge Server",
+      "serial": "DZT4TB3",
+      "company_name": "C-DAC Bangalore",
+      "location": "BLK",
+      "location_id": 211,
+      "status": "Ready to Deploy",
+      "vendor": "Dell",
+      "asset_type": "Computers and Peripherals - Server",
+      "asset_user": "Kalai Selvan K ",
+      "emp_id": "102085",
+      "mac_address_1": "bc:97:e1:01:75:da",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00000246",
+      "asset_name": "Dell EMC PowerEdge Server",
+      "serial": "BTP4TB3",
+      "company_name": "C-DAC Bangalore",
+      "location": "BLK",
+      "location_id": 211,
+      "status": "Ready to Deploy",
+      "vendor": "Dell",
+      "asset_type": "Computers and Peripherals - Server",
+      "asset_user": "Kalai Selvan K ",
+      "emp_id": "102085",
+      "mac_address_1": "bc:97:e1:01:be:e8",
       "mac_address_2": null
     },
     {
@@ -133,8 +178,8 @@
       "status": "Ready to Deploy",
       "vendor": "Dell",
       "asset_type": "Computers and Peripherals - Desktop",
-      "asset_user": "Maroti Shinde ",
-      "emp_id": "346117",
+      "asset_user": "Shraddha Sharma ",
+      "emp_id": "346728",
       "mac_address_1": "8C:47:BE:FE:1D:B5",
       "mac_address_2": null
     },
@@ -269,7 +314,7 @@
       "vendor": "Acer",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Mohit Takzare ",
-      "emp_id": "345367",
+      "emp_id": "349357",
       "mac_address_1": "A8:A1:59:D8:70:A5",
       "mac_address_2": null
     },
@@ -540,7 +585,7 @@
       "asset_type": "Laptop-Notebook",
       "asset_user": "R K Senthil Kumar ",
       "emp_id": "101237",
-      "mac_address_1": "60:E9:AA:1D:24:AF",
+      "mac_address_1": "60:E9:AA:1d:24:AF",
       "mac_address_2": null
     },
     {
@@ -569,7 +614,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Prathamesh Shashank Papade ",
-      "emp_id": null,
+      "emp_id": "347818",
       "mac_address_1": "60:E9:AA:1D:24:B1",
       "mac_address_2": null
     },
@@ -670,11 +715,11 @@
       "company_name": "C-DAC Bangalore",
       "location": "CDAC KP",
       "location_id": 2,
-      "status": "Ready to Deploy",
+      "status": "Undeployable",
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
-      "asset_user": "M Siddharth Rao ",
-      "emp_id": "102099",
+      "asset_user": null,
+      "emp_id": null,
       "mac_address_1": "60:E9:AA:1D:25:05",
       "mac_address_2": null
     },
@@ -748,7 +793,7 @@
       "status": "Ready to Deploy",
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
-      "asset_user": "Raja M Vasudevan ",
+      "asset_user": "Raja Vasudevan ",
       "emp_id": "102302",
       "mac_address_1": "60:E9:AA:1D:25:09",
       "mac_address_2": null
@@ -878,13 +923,13 @@
       "asset_name": "HP 445 G9 R7 5825U",
       "serial": "1N13160FHQ",
       "company_name": "C-DAC Bangalore",
-      "location": "CDAC KP",
-      "location_id": 2,
+      "location": "BLK",
+      "location_id": 211,
       "status": "Ready to Deploy",
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Gudapati Naresh Raghava ",
-      "emp_id": "345902",
+      "emp_id": "350508",
       "mac_address_1": "60:E9:AA:1C:EE:4F",
       "mac_address_2": null
     },
@@ -899,7 +944,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Pranose J Edavoor ",
-      "emp_id": "344330",
+      "emp_id": "350308",
       "mac_address_1": "60:E9:AA:1C:F0:3F",
       "mac_address_2": null
     },
@@ -974,7 +1019,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Syed Anees Ahammad ",
-      "emp_id": null,
+      "emp_id": "348039",
       "mac_address_1": "60:E9:AA:1D:16:D5",
       "mac_address_2": null
     },
@@ -989,7 +1034,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Anusree C ",
-      "emp_id": null,
+      "emp_id": "348650",
       "mac_address_1": "60:E9:AA:1D:17:3F",
       "mac_address_2": null
     },
@@ -1019,7 +1064,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Dilna Humayoon Kabeer ",
-      "emp_id": null,
+      "emp_id": "349444",
       "mac_address_1": "60:E9:AA:1D:17:41",
       "mac_address_2": null
     },
@@ -1034,7 +1079,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Bhupathi Reshma ",
-      "emp_id": null,
+      "emp_id": "347888",
       "mac_address_1": "60:E9:AA:1D:16:D3",
       "mac_address_2": null
     },
@@ -1064,7 +1109,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Shivani Kishor Parhad ",
-      "emp_id": null,
+      "emp_id": "348633",
       "mac_address_1": "60:E9:AA:1C:ED:B1",
       "mac_address_2": null
     },
@@ -1079,7 +1124,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Mamiduri Vamshi Krishna Reddy ",
-      "emp_id": null,
+      "emp_id": "349948",
       "mac_address_1": "60:E9:AA:1D:17:2D",
       "mac_address_2": null
     },
@@ -1094,7 +1139,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Akshay Mahato ",
-      "emp_id": null,
+      "emp_id": "349913",
       "mac_address_1": "60:E9:AA:1C:ED:AF",
       "mac_address_2": null
     },
@@ -1199,7 +1244,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Abhishek Dhiman ",
-      "emp_id": "346911",
+      "emp_id": "350269",
       "mac_address_1": "60:E9:AA:1D:17:13",
       "mac_address_2": null
     },
@@ -1229,7 +1274,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Adarsh Arjunan ",
-      "emp_id": "347101",
+      "emp_id": "349985",
       "mac_address_1": "60:E9:AA:1C:ED:B9",
       "mac_address_2": null
     },
@@ -1259,7 +1304,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Jayeeta Choudhury ",
-      "emp_id": null,
+      "emp_id": "348648",
       "mac_address_1": "60:E9:AA:1D:17:15",
       "mac_address_2": null
     },
@@ -1289,7 +1334,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Harini Umamaheshwaran Iyer ",
-      "emp_id": null,
+      "emp_id": "347961",
       "mac_address_1": "60:E9:AA:1D:17:17",
       "mac_address_2": null
     },
@@ -1304,7 +1349,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Shriraj Mahadev Gaikwad ",
-      "emp_id": null,
+      "emp_id": "347881",
       "mac_address_1": "60:E9:AA:1C:E9:91",
       "mac_address_2": null
     },
@@ -1319,7 +1364,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Chanchal Manoharan ",
-      "emp_id": null,
+      "emp_id": "348673",
       "mac_address_1": "60:E9:AA:1C:E9:8F",
       "mac_address_2": null
     },
@@ -1349,7 +1394,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Nandu C ",
-      "emp_id": "346404",
+      "emp_id": "348629",
       "mac_address_1": "60:E9:AA:1C:ED:B5",
       "mac_address_2": null
     },
@@ -1394,7 +1439,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Abhinav Ghosh ",
-      "emp_id": null,
+      "emp_id": "347967",
       "mac_address_1": "60:E9:AA:1C:E9:99",
       "mac_address_2": null
     },
@@ -1424,7 +1469,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "R Vishal ",
-      "emp_id": "345006",
+      "emp_id": "348617",
       "mac_address_1": "60:E9:AA:1D:0F:57",
       "mac_address_2": null
     },
@@ -1438,8 +1483,8 @@
       "status": "Ready to Deploy",
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
-      "asset_user": "Chandra Sekhar Behera ",
-      "emp_id": null,
+      "asset_user": "Dasari Sai Teja ",
+      "emp_id": "350464",
       "mac_address_1": "60:E9:AA:1C:E9:85",
       "mac_address_2": null
     },
@@ -1454,7 +1499,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Goutam Agrawal ",
-      "emp_id": null,
+      "emp_id": "348044",
       "mac_address_1": "60:E9:AA:1C:EF:C5",
       "mac_address_2": null
     },
@@ -1484,7 +1529,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Aniket Prakash Garade ",
-      "emp_id": "346104",
+      "emp_id": "350313",
       "mac_address_1": "60:E9:AA:1C:EF:E5",
       "mac_address_2": null
     },
@@ -1529,7 +1574,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Akshay K ",
-      "emp_id": "349359",
+      "emp_id": "350507",
       "mac_address_1": "60:E9:AA:1D:17:23",
       "mac_address_2": null
     },
@@ -1544,7 +1589,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Uppala Pavan Kumar ",
-      "emp_id": null,
+      "emp_id": "347971",
       "mac_address_1": "60:E9:AA:1C:EF:C9",
       "mac_address_2": null
     },
@@ -1559,7 +1604,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Vadluri Shiva Krishna ",
-      "emp_id": null,
+      "emp_id": "348652",
       "mac_address_1": "60:E9:AA:1C:EF:C3",
       "mac_address_2": null
     },
@@ -1574,7 +1619,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Vijayanand H ",
-      "emp_id": null,
+      "emp_id": "347954",
       "mac_address_1": "60:E9:AA:1C:EF:C7",
       "mac_address_2": null
     },
@@ -1619,7 +1664,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Pranose J Edavoor ",
-      "emp_id": "344330",
+      "emp_id": "350308",
       "mac_address_1": "60:E9:AA:1C:EF:B9",
       "mac_address_2": null
     },
@@ -1649,7 +1694,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Pranose J Edavoor ",
-      "emp_id": "344330",
+      "emp_id": "350308",
       "mac_address_1": "60:E9:AA:1C:EF:B7",
       "mac_address_2": null
     },
@@ -1694,7 +1739,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Suyog Jaykumar Chaudhary ",
-      "emp_id": "347347",
+      "emp_id": "349989",
       "mac_address_1": "60:E9:AA:1D:0D:BF",
       "mac_address_2": null
     },
@@ -1739,7 +1784,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Paritosh Biswas ",
-      "emp_id": "347273",
+      "emp_id": "349982",
       "mac_address_1": "60:E9:AA:1D:06:A3",
       "mac_address_2": null
     },
@@ -1754,7 +1799,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Soumya G Hosmani ",
-      "emp_id": "346173",
+      "emp_id": "350469",
       "mac_address_1": "60:E9:AA:1D:0A:3D",
       "mac_address_2": null
     },
@@ -1799,7 +1844,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Harsh Vijay Guru ",
-      "emp_id": null,
+      "emp_id": "348825",
       "mac_address_1": "60:E9:AA:1D:07:C9",
       "mac_address_2": null
     },
@@ -1829,7 +1874,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Bhethala Vamsi ",
-      "emp_id": null,
+      "emp_id": "348844",
       "mac_address_1": "60:E9:AA:1D:0C:EF",
       "mac_address_2": null
     },
@@ -1844,7 +1889,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Karthik C H ",
-      "emp_id": null,
+      "emp_id": "348651",
       "mac_address_1": "60:E9:AA:1D:0D:F5",
       "mac_address_2": null
     },
@@ -1928,13 +1973,13 @@
       "asset_name": "HP 445 G9 R7 5825U",
       "serial": "1N13160FMF",
       "company_name": "C-DAC Bangalore",
-      "location": "BLK",
-      "location_id": 211,
+      "location": "CDAC KP",
+      "location_id": 2,
       "status": "Ready to Deploy",
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Vijayalakshmi A ",
-      "emp_id": null,
+      "emp_id": "349476",
       "mac_address_1": "60:E9:AA:1D:1E:D3",
       "mac_address_2": null
     },
@@ -1964,7 +2009,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Abhishek Chanchal ",
-      "emp_id": null,
+      "emp_id": "348123",
       "mac_address_1": "60:E9:AA:1D:17:C3",
       "mac_address_2": null
     },
@@ -1979,7 +2024,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Manaswi Sunil Kalake ",
-      "emp_id": null,
+      "emp_id": "349420",
       "mac_address_1": "60:E9:AA:1D:0D:C1",
       "mac_address_2": null
     },
@@ -2025,7 +2070,7 @@
       "asset_type": "Laptop-Notebook",
       "asset_user": "B Jayanth ",
       "emp_id": "100539",
-      "mac_address_1": "60:E9:AA:1D:0D:53",
+      "mac_address_1": "E0:73:E7:2F:53:DC",
       "mac_address_2": null
     },
     {
@@ -2054,7 +2099,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Beeramgunta Ganesh ",
-      "emp_id": null,
+      "emp_id": "348041",
       "mac_address_1": "60:E9:AA:1D:0F:5D",
       "mac_address_2": null
     },
@@ -2069,7 +2114,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Arvind Bisht ",
-      "emp_id": null,
+      "emp_id": "348037",
       "mac_address_1": "60:E9:AA:1D:29:D7",
       "mac_address_2": null
     },
@@ -2084,7 +2129,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Vaishnavi R K ",
-      "emp_id": null,
+      "emp_id": "349424",
       "mac_address_1": "60:E9:AA:1D:17:25",
       "mac_address_2": null
     },
@@ -2114,7 +2159,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Mahima Agarwal ",
-      "emp_id": "346726",
+      "emp_id": "348627",
       "mac_address_1": "60:E9:AA:6C:88:73",
       "mac_address_2": null
     },
@@ -2144,7 +2189,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Hemant Kumar Sahu ",
-      "emp_id": null,
+      "emp_id": "347795",
       "mac_address_1": "60:E9:AA:1D:0D:C9",
       "mac_address_2": null
     },
@@ -2174,7 +2219,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Ekta Mallick ",
-      "emp_id": null,
+      "emp_id": "350339",
       "mac_address_1": "60:E9:AA:1D:1E:B3",
       "mac_address_2": null
     },
@@ -2219,7 +2264,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Nitin Diwakar ",
-      "emp_id": null,
+      "emp_id": "347880",
       "mac_address_1": "60:E9:AA:1D:0D:BB",
       "mac_address_2": null
     },
@@ -2234,7 +2279,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Ayush Kumar Singh ",
-      "emp_id": null,
+      "emp_id": "347871",
       "mac_address_1": "60:E9:AA:1D:0D:BD",
       "mac_address_2": null
     },
@@ -2354,7 +2399,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Kishore Karthikeyan A T ",
-      "emp_id": null,
+      "emp_id": "349413",
       "mac_address_1": "60:E9:AA:1D:1D:B7",
       "mac_address_2": null
     },
@@ -2369,7 +2414,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Akshaya K ",
-      "emp_id": null,
+      "emp_id": "348614",
       "mac_address_1": "60:E9:AA:1D:1D:B5",
       "mac_address_2": null
     },
@@ -2384,7 +2429,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Harish Chandra ",
-      "emp_id": "345706",
+      "emp_id": "350424",
       "mac_address_1": "60:E9:AA:1D:0D:5D",
       "mac_address_2": null
     },
@@ -2459,7 +2504,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Kaustubh Moni Deka ",
-      "emp_id": "346724",
+      "emp_id": "348628",
       "mac_address_1": "60:E9:AA:1D:1E:AF",
       "mac_address_2": null
     },
@@ -2474,7 +2519,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Kakarla Harsha Sai ",
-      "emp_id": null,
+      "emp_id": "348813",
       "mac_address_1": "60:E9:AA:1D:0D:C3",
       "mac_address_2": null
     },
@@ -2504,7 +2549,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Tejas Sunil Suryawanshi ",
-      "emp_id": "347346",
+      "emp_id": "350191",
       "mac_address_1": "60:E9:AA:1D:0F:5B",
       "mac_address_2": null
     },
@@ -2699,7 +2744,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Mandla Bhanu Teja ",
-      "emp_id": null,
+      "emp_id": "348204",
       "mac_address_1": "60:E9:AA:1D:17:EF",
       "mac_address_2": null
     },
@@ -2729,7 +2774,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Ajay Singh ",
-      "emp_id": null,
+      "emp_id": "348818",
       "mac_address_1": "60:E9:AA:1D:0F:FB",
       "mac_address_2": null
     },
@@ -2744,7 +2789,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "S Jatin Kumar ",
-      "emp_id": "349333",
+      "emp_id": "345359",
       "mac_address_1": "60:E9:AA:1D:1C:DB",
       "mac_address_2": null
     },
@@ -2774,7 +2819,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Deepak Kumar ",
-      "emp_id": null,
+      "emp_id": "348632",
       "mac_address_1": "60:E9:AA:1D:0F:FD",
       "mac_address_2": null
     },
@@ -2789,7 +2834,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Shubham Sharaff ",
-      "emp_id": "347380",
+      "emp_id": "349964",
       "mac_address_1": "60:E9:AA:1D:28:67",
       "mac_address_2": null
     },
@@ -2834,7 +2879,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Harishankar Mishra ",
-      "emp_id": null,
+      "emp_id": "347831",
       "mac_address_1": "60:E9:AA:1D:16:DD",
       "mac_address_2": null
     },
@@ -2909,7 +2954,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Mriganka Bezbaruah ",
-      "emp_id": "347163",
+      "emp_id": "350318",
       "mac_address_1": "60:E9:AA:1D:24:F3",
       "mac_address_2": null
     },
@@ -3269,7 +3314,7 @@
       "vendor": "HP",
       "asset_type": "Computers and Peripherals - Laptop",
       "asset_user": "Vyshna M",
-      "emp_id": null,
+      "emp_id": "349901",
       "mac_address_1": "40:1A:58:C4:91:C3",
       "mac_address_2": null
     },
@@ -3299,7 +3344,7 @@
       "vendor": "HP",
       "asset_type": "Computers and Peripherals - Laptop",
       "asset_user": "Rajesh P ",
-      "emp_id": null,
+      "emp_id": "350215",
       "mac_address_1": "40:1A:58:C9:91:6D",
       "mac_address_2": null
     },
@@ -3329,7 +3374,7 @@
       "vendor": "HP",
       "asset_type": "Computers and Peripherals - Laptop",
       "asset_user": "Divya Vyas",
-      "emp_id": null,
+      "emp_id": "349900",
       "mac_address_1": "40:1A:58:C9:9E:43",
       "mac_address_2": null
     },
@@ -3344,7 +3389,7 @@
       "vendor": "HP",
       "asset_type": "Computers and Peripherals - Laptop",
       "asset_user": "Abhishek Kumar Singh ",
-      "emp_id": null,
+      "emp_id": "348612",
       "mac_address_1": "40:1A:58:C9:91:5F",
       "mac_address_2": null
     },
@@ -3389,7 +3434,7 @@
       "vendor": "HP",
       "asset_type": "Laptop-Notebook",
       "asset_user": "Harsh Sharma ",
-      "emp_id": null,
+      "emp_id": "347908",
       "mac_address_1": "60:E9:AA:1D:10:57",
       "mac_address_2": null
     },
@@ -3404,7 +3449,7 @@
       "vendor": "Dell",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Harishankar Mishra ",
-      "emp_id": null,
+      "emp_id": "347831",
       "mac_address_1": "64:00:6A:79:71:33",
       "mac_address_2": null
     },
@@ -3569,7 +3614,7 @@
       "vendor": "RDP",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Shuchika S ",
-      "emp_id": null,
+      "emp_id": "348609",
       "mac_address_1": "50:EB:F6:94:C4:E1",
       "mac_address_2": null
     },
@@ -3629,7 +3674,7 @@
       "vendor": "RDP",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Vishnu Mohan ",
-      "emp_id": null,
+      "emp_id": "350050",
       "mac_address_1": "D0:37:45:B8:0D:22",
       "mac_address_2": null
     },
@@ -3689,7 +3734,7 @@
       "vendor": "RDP",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Salma Salim ",
-      "emp_id": null,
+      "emp_id": "348615",
       "mac_address_1": "58:11:22:8F:73:91",
       "mac_address_2": null
     },
@@ -3809,7 +3854,7 @@
       "vendor": "RDP",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Nilesh Deonath Chauhan ",
-      "emp_id": null,
+      "emp_id": "347820",
       "mac_address_1": "50:EB:F6:94:C4:77",
       "mac_address_2": null
     },
@@ -3884,7 +3929,7 @@
       "vendor": "Dell",
       "asset_type": "Computers and Peripherals - Desktop",
       "asset_user": "Chandra Sekhar Behera ",
-      "emp_id": null,
+      "emp_id": "348179",
       "mac_address_1": "50:9A:4C:27:69:9D",
       "mac_address_2": null
     },
@@ -3899,7 +3944,7 @@
       "vendor": "Lenovo ",
       "asset_type": "All in One PC ",
       "asset_user": "Rajesh K ",
-      "emp_id": null,
+      "emp_id": "348009",
       "mac_address_1": "D4:3D:7E:7D:EF:83",
       "mac_address_2": null
     },
@@ -4261,6 +4306,96 @@
       "asset_user": null,
       "emp_id": null,
       "mac_address_1": "00:1A:6B:4C:D7:04",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00003679",
+      "asset_name": "HP Elite SFF 800 G9 Desktop PC",
+      "serial": "1N14090DZC",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Sajin Xavier ",
+      "emp_id": "350088",
+      "mac_address_1": "2C:58:B9:0C:4C:83",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00004853",
+      "asset_name": "HP 800 G9 SFF i9 12900 Desktop",
+      "serial": "1N141405KQ",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Pankaj Kumar ",
+      "emp_id": "347868",
+      "mac_address_1": "2c:58:b9:15:74:70",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00004875",
+      "asset_name": "HP 800 G9 SFF i9 12900 Desktop",
+      "serial": "1N141405JR",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Nitesh Kumar Kannaujiya ",
+      "emp_id": "347872",
+      "mac_address_1": "2C:58:B9:19:A2:91",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00004889",
+      "asset_name": "HP 800 G9 SFF i9 12900 Desktop",
+      "serial": "1N141405JC",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "B Jayanth ",
+      "emp_id": "100539",
+      "mac_address_1": "2C:58:B9:15:72:01",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00004894",
+      "asset_name": "HP 800 G9 SFF i9 12900 Desktop",
+      "serial": "1N141405J3",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Atharv Singh ",
+      "emp_id": "347349",
+      "mac_address_1": "2c:58:b9:87:0b:b3",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00004897",
+      "asset_name": "HP 800 G9 SFF i9 12900 Desktop",
+      "serial": "1N141405DC",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "R K Senthil Kumar ",
+      "emp_id": "101237",
+      "mac_address_1": "2C:58:B9:87:0B:74",
       "mac_address_2": null
     },
     {
@@ -4819,6 +4954,21 @@
       "mac_address_2": null
     },
     {
+      "asset_tag": "00012051",
+      "asset_name": "Dell Latitude 7420",
+      "serial": "4TR3YD3",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "Dell Inc",
+      "asset_type": "Computers and Peripherals - Laptop",
+      "asset_user": "Anisha V ",
+      "emp_id": "349386",
+      "mac_address_1": "04:56:E5:5F:3F:25",
+      "mac_address_2": null
+    },
+    {
       "asset_tag": "00012563",
       "asset_name": "ACER LAPTOP",
       "serial": "UN35LSI01B61112D5C0700",
@@ -4889,7 +5039,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Sudhi P D ",
-      "emp_id": "349349",
+      "emp_id": "350408",
       "mac_address_1": "9C:97:1B:CB:32:75",
       "mac_address_2": null
     },
@@ -4919,7 +5069,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:97:EB",
       "mac_address_2": null
     },
@@ -5159,7 +5309,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:8A:57",
       "mac_address_2": null
     },
@@ -5654,7 +5804,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "C Mithun Sriram ",
-      "emp_id": null,
+      "emp_id": "349456",
       "mac_address_1": "9C:97:1B:8D:AB:12",
       "mac_address_2": null
     },
@@ -5819,7 +5969,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Dheeraj K Nambiar ",
-      "emp_id": "346909",
+      "emp_id": "349915",
       "mac_address_1": "84:47:09:7D:98:0F",
       "mac_address_2": null
     },
@@ -5834,7 +5984,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Dheeraj K Nambiar ",
-      "emp_id": "346909",
+      "emp_id": "349915",
       "mac_address_1": "84:47:09:7D:99:83",
       "mac_address_2": null
     },
@@ -5849,7 +5999,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Dheeraj K Nambiar ",
-      "emp_id": "346909",
+      "emp_id": "349915",
       "mac_address_1": "84:47:09:7D:8A:7F",
       "mac_address_2": null
     },
@@ -5864,7 +6014,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Dheeraj K Nambiar ",
-      "emp_id": "346909",
+      "emp_id": "349915",
       "mac_address_1": "84:47:09:7D:85:8D",
       "mac_address_2": null
     },
@@ -5879,7 +6029,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:99:99",
       "mac_address_2": null
     },
@@ -5894,7 +6044,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:86:2E",
       "mac_address_2": null
     },
@@ -5909,7 +6059,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Dheeraj K Nambiar ",
-      "emp_id": "346909",
+      "emp_id": "349915",
       "mac_address_1": "84:47:09:7D:98:E9",
       "mac_address_2": null
     },
@@ -5924,7 +6074,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:85:D2",
       "mac_address_2": null
     },
@@ -5939,7 +6089,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Abhijith Tej Vaddeboina",
-      "emp_id": null,
+      "emp_id": "349917",
       "mac_address_1": "84:47:09:7D:88:25",
       "mac_address_2": null
     },
@@ -6089,7 +6239,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Hemant Kumar Sahu ",
-      "emp_id": null,
+      "emp_id": "347795",
       "mac_address_1": "84-47-09-7D-89-ED",
       "mac_address_2": null
     },
@@ -6134,7 +6284,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Nipun Choubey ",
-      "emp_id": null,
+      "emp_id": "350403",
       "mac_address_1": "84-47-09-7D-86-3A",
       "mac_address_2": null
     },
@@ -6149,7 +6299,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Sneha S ",
-      "emp_id": null,
+      "emp_id": "350396",
       "mac_address_1": "84-47-09-7D-86-3A",
       "mac_address_2": null
     },
@@ -6164,7 +6314,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Nandhini P S ",
-      "emp_id": null,
+      "emp_id": "349929",
       "mac_address_1": "84-47-09-7D-86-3A",
       "mac_address_2": null
     },
@@ -6179,7 +6329,7 @@
       "vendor": "Acer",
       "asset_type": null,
       "asset_user": "Meenakshi K R ",
-      "emp_id": null,
+      "emp_id": "350410",
       "mac_address_1": "84-47-09-7D-86-3A",
       "mac_address_2": null
     },
@@ -6196,6 +6346,81 @@
       "asset_user": "Janaki C H ",
       "emp_id": "101627",
       "mac_address_1": "84-47-09-7D-86-3A",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012873",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN35LSI01B6140063C0700",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "Allan M G ",
+      "emp_id": "350338",
+      "mac_address_1": "84-47-09-7D-86-3A",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012874",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN35LSI01B614006190700",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "Vijayanand H ",
+      "emp_id": "347954",
+      "mac_address_1": "84-47-09-7D-87-13",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012875",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN35LSI01B61112D6A0700",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "C Mithun Sriram ",
+      "emp_id": "349456",
+      "mac_address_1": "9C:97:1B:8D:AB:12",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012876",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN35LSI01B61112D600700",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": null,
+      "emp_id": null,
+      "mac_address_1": "64:4A:7D:94:BD:58",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012877",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN35LSI01B61112D4D0700",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "Anshumaan Kumar Yadav ",
+      "emp_id": "346730",
+      "mac_address_1": "9C:97:1B:8F:73:48",
       "mac_address_2": null
     }
   ]

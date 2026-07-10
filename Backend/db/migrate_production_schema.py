@@ -200,6 +200,18 @@ PERMISSIONS = [
     ("organizations", "delete",  "Delete organizations"),
     # Audit Logs
     ("audit",       "read",    "View the immutable audit log"),
+    # Compliance
+    ("compliance",  "read",              "View compliance dashboards and findings"),
+    ("compliance",  "scan",              "Trigger manual compliance scans"),
+    ("compliance",  "manage_schedules",   "Manage recurring compliance scan schedules"),
+    ("compliance",  "attest",            "Record manual control attestation and evidence"),
+    ("compliance",  "remediate",         "Apply remediation scripts and status updates"),
+    ("compliance",  "manage_rules",      "Create and edit compliance policies and rules"),
+    ("compliance",  "manage_frameworks", "Install and configure compliance frameworks"),
+    ("compliance",  "manage_retention",  "Configure compliance evidence retention policies"),
+    ("compliance",  "manage_integrations", "Configure compliance notifications and integrations"),
+    ("compliance",  "approve_exception", "Approve or reject compliance exception waivers"),
+    ("compliance",  "export_report",     "Export Statement of Applicability and executive reports"),
 ]
 
 # Which permissions are granted to each role
@@ -219,6 +231,17 @@ ROLE_PERMISSIONS = {
         "settings:read", "settings:update",
         "dashboard:read",
         "audit:read",
+        "compliance:read",
+        "compliance:scan",
+        "compliance:manage_schedules",
+        "compliance:attest",
+        "compliance:remediate",
+        "compliance:manage_rules",
+        "compliance:manage_frameworks",
+        "compliance:manage_retention",
+        "compliance:manage_integrations",
+        "compliance:approve_exception",
+        "compliance:export_report",
     ],
     "analyst": [
         "scans:create", "scans:read", "scans:read_all", "scans:execute", "scans:cancel",
@@ -228,6 +251,12 @@ ROLE_PERMISSIONS = {
         "credentials:read",
         "settings:read",
         "dashboard:read",
+        "compliance:read",
+        "compliance:scan",
+        "compliance:manage_schedules",
+        "compliance:attest",
+        "compliance:remediate",
+        "compliance:export_report",
     ],
     "viewer": [
         "scans:read", "scans:read_all",
@@ -236,6 +265,7 @@ ROLE_PERMISSIONS = {
         "reports:read",
         "settings:read",
         "dashboard:read",
+        "compliance:read",
     ],
     "scanner": [
         "scans:create", "scans:read", "scans:execute",

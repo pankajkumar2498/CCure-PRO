@@ -1,7 +1,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'Backend'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ["DATABASE_URL"] = "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test"
 

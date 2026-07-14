@@ -60,19 +60,7 @@ jobs:
         run: |
           ruff check Backend/ --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821
 
-      - name: Run Alembic Migration Integrity Check
-        env:
-          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-        run: |
-          cd Backend
-          # Run forward migration
-          alembic upgrade head
-          # Run rollback check
-          alembic downgrade -1
-          # Re-apply migrations for subsequent seed scripts and tests
-          alembic upgrade head
-
-      - name: Run Database Seeding Validation
+      - name: Bootstrap Database Schema & Seeding Validation
         env:
           DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
           CELERY_BROKER_URL: redis://localhost:6379/0
@@ -83,6 +71,16 @@ jobs:
           python db/migrate_production_schema.py
           python -m scripts.seed_compliance
           python -m scripts.seed_real_rules
+
+      - name: Run Alembic Migration Integrity Check
+        env:
+          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+        run: |
+          cd Backend
+          # Run rollback check on the latest migration
+          alembic downgrade -1
+          # Re-apply the migration to return to head
+          alembic upgrade head
 
       - name: OpenAPI Schema Diff Check
         env:

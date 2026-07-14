@@ -15,8 +15,7 @@ This wrapper:
 """
 
 import logging
-import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from config import WebScanConfig
 from core.web.base_wrapper import ToolWrapper
@@ -88,14 +87,15 @@ class SqlmapWrapper(ToolWrapper):
 
         args = [
             self.binary,
-            "-u", target,
-            "--batch",                                          # Non-interactive
+            "-u",
+            target,
+            "--batch",  # Non-interactive
             f"--level={level or WebScanConfig.SQLMAP_LEVEL}",
             f"--risk={risk or WebScanConfig.SQLMAP_RISK}",
             f"--output-dir={output_dir}",
             "--flush-session",
             "--disable-coloring",
-            "--answers=crack=N,dict=N",                         # Skip cracking
+            "--answers=crack=N,dict=N",  # Skip cracking
         ]
 
         if method.upper() == "POST" and post_data:
@@ -132,28 +132,34 @@ class SqlmapWrapper(ToolWrapper):
                     vulnerable = True
 
             if vulnerable:
-                findings.append({
-                    "finding_type": "sqli",
-                    "title": f"SQL Injection detected: {target[:100]}",
-                    "description": (
-                        "SQLMap confirmed SQL injection vulnerability at this endpoint. "
-                        "An attacker could extract, modify, or delete database contents."
-                    ),
-                    "severity": "critical",
-                    "cvss_score": 9.8,
-                    "detected_by": "sqlmap",
-                    "matched_at": target,
-                    "request_url": target,
-                    "request_method": method.upper(),
-                    "request_body": post_data,
-                    "payload_used": "\n".join(injection_points[:5]),
-                    "response_evidence": stdout[-2000:] if len(stdout) > 2000 else stdout,
-                    "is_verified": True,
-                })
+                findings.append(
+                    {
+                        "finding_type": "sqli",
+                        "title": f"SQL Injection detected: {target[:100]}",
+                        "description": (
+                            "SQLMap confirmed SQL injection vulnerability at this endpoint. "
+                            "An attacker could extract, modify, or delete database contents."
+                        ),
+                        "severity": "critical",
+                        "cvss_score": 9.8,
+                        "detected_by": "sqlmap",
+                        "matched_at": target,
+                        "request_url": target,
+                        "request_method": method.upper(),
+                        "request_body": post_data,
+                        "payload_used": "\n".join(injection_points[:5]),
+                        "response_evidence": (
+                            stdout[-2000:] if len(stdout) > 2000 else stdout
+                        ),
+                        "is_verified": True,
+                    }
+                )
 
             log.info(
                 "SQLMap complete for %s: vulnerable=%s, %d injection points",
-                target[:80], vulnerable, len(injection_points),
+                target[:80],
+                vulnerable,
+                len(injection_points),
             )
 
             return {

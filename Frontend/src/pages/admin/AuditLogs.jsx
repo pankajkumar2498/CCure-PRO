@@ -13,7 +13,11 @@ export default function AuditLogs() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState({ action: "", resource_type: "", status: "" });
+  const [filters, setFilters] = useState({
+    action: "",
+    resource_type: "",
+    status: "",
+  });
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
@@ -23,34 +27,42 @@ export default function AuditLogs() {
   const [pageSize, setPageSize] = useState(50);
   const isFirstLoad = useRef(true);
 
-  const loadData = useCallback(async (quiet = false, targetPage = page) => {
-    if (!quiet) setLoading(true);
-    else setRefreshing(true);
-    try {
-      const params = {
-        skip: (targetPage - 1) * pageSize,
-        limit: pageSize,
-        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ""))
-      };
-      const data = await listAuditLogs(params);
-      setLogs(data.logs);
-      setTotal(data.total);
-      if (targetPage === 1) {
-        if (data.logs && data.logs.length > 0) {
-          setLatestLogTime(data.logs[0].created_at);
-        } else {
-          setLatestLogTime(null);
+  const loadData = useCallback(
+    async (quiet = false, targetPage = page) => {
+      if (!quiet) setLoading(true);
+      else setRefreshing(true);
+      try {
+        const params = {
+          skip: (targetPage - 1) * pageSize,
+          limit: pageSize,
+          ...Object.fromEntries(
+            Object.entries(filters).filter(([_, v]) => v !== ""),
+          ),
+        };
+        const data = await listAuditLogs(params);
+        setLogs(data.logs);
+        setTotal(data.total);
+        if (targetPage === 1) {
+          if (data.logs && data.logs.length > 0) {
+            setLatestLogTime(data.logs[0].created_at);
+          } else {
+            setLatestLogTime(null);
+          }
         }
+        setNewEventsCount(0);
+      } catch (err) {
+        setError("Failed to load audit logs.");
+        pushToast(
+          err.response?.data?.detail || "Unable to refresh audit logs.",
+          "error",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      setNewEventsCount(0);
-    } catch (err) {
-      setError("Failed to load audit logs.");
-      pushToast(err.response?.data?.detail || "Unable to refresh audit logs.", "error");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [filters, pageSize, pushToast]);
+    },
+    [filters, pageSize, pushToast],
+  );
 
   useEffect(() => {
     // Only show full-page loading spinner on initial mount when logs are empty.
@@ -79,12 +91,14 @@ export default function AuditLogs() {
           limit: 10,
           ...(action ? { action } : {}),
           ...(resource_type ? { resource_type } : {}),
-          ...(status ? { status } : {})
+          ...(status ? { status } : {}),
         };
         const data = await listAuditLogs(params);
         if (data && data.logs && data.logs.length > 0) {
           const newestTime = new Date(latestLogTime).getTime();
-          const newLogs = data.logs.filter(log => new Date(log.created_at).getTime() > newestTime);
+          const newLogs = data.logs.filter(
+            (log) => new Date(log.created_at).getTime() > newestTime,
+          );
           if (newLogs.length > 0) {
             setNewEventsCount(newLogs.length);
           }
@@ -97,7 +111,13 @@ export default function AuditLogs() {
     const interval = setInterval(checkNewLogs, 5000); // Poll every 5 seconds for snappy feedback
 
     return () => clearInterval(interval);
-  }, [latestLogTime, filters.action, filters.resource_type, filters.status, loading]);
+  }, [
+    latestLogTime,
+    filters.action,
+    filters.resource_type,
+    filters.status,
+    loading,
+  ]);
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -105,11 +125,17 @@ export default function AuditLogs() {
   };
 
   const renderAffectedObject = (log) => {
-    const resType = String(log.resource_type || "").toLowerCase() ||
-      (String(log.action || "").includes("session") ? "session" :
-        (String(log.action || "").startsWith("user.") ? "user" :
-          (String(log.action || "").startsWith("organization.") ? "organization" :
-            (String(log.action || "").startsWith("scan.") ? "scan" : "event"))));
+    const resType =
+      String(log.resource_type || "").toLowerCase() ||
+      (String(log.action || "").includes("session")
+        ? "session"
+        : String(log.action || "").startsWith("user.")
+          ? "user"
+          : String(log.action || "").startsWith("organization.")
+            ? "organization"
+            : String(log.action || "").startsWith("scan.")
+              ? "scan"
+              : "event");
 
     let targetVal = log.resource_id || log.user_id;
     if (!targetVal && log.changes?.session_id) {
@@ -123,7 +149,9 @@ export default function AuditLogs() {
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 14 }}>🎫</span>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Session #{targetVal}</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            Session #{targetVal}
+          </span>
         </div>
       );
     }
@@ -131,24 +159,34 @@ export default function AuditLogs() {
     if (resType === "user") {
       if (log.user_id && targetVal === log.user_id) {
         return (
-          <span style={{ color: "var(--text-faint)", fontSize: 13 }}>Self Account</span>
+          <span style={{ color: "var(--text-faint)", fontSize: 13 }}>
+            Self Account
+          </span>
         );
       }
       const cleanTarget = targetVal.split("_").slice(-2, -1)[0] || targetVal;
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 14 }}>👤</span>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>User: {cleanTarget}</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            User: {cleanTarget}
+          </span>
         </div>
       );
     }
 
     if (resType === "scan") {
-      const displayId = targetVal.includes("_") ? targetVal.split("_").pop() : targetVal;
+      const displayId = targetVal.includes("_")
+        ? targetVal.split("_").pop()
+        : targetVal;
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 14 }}>📡</span>
-          <span style={{ fontSize: 13, fontWeight: 500, fontFamily: "monospace" }}>Scan #{displayId.slice(-6)}</span>
+          <span
+            style={{ fontSize: 13, fontWeight: 500, fontFamily: "monospace" }}
+          >
+            Scan #{displayId.slice(-6)}
+          </span>
         </div>
       );
     }
@@ -156,7 +194,9 @@ export default function AuditLogs() {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontSize: 14 }}>📌</span>
-        <span style={{ fontSize: 13, fontWeight: 500 }}>{resType.charAt(0).toUpperCase() + resType.slice(1)}</span>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>
+          {resType.charAt(0).toUpperCase() + resType.slice(1)}
+        </span>
       </div>
     );
   };
@@ -184,16 +224,20 @@ export default function AuditLogs() {
     else if (uaStr.includes("Windows NT 6.3")) os = "Windows 8.1";
     else if (uaStr.includes("Windows NT 6.2")) os = "Windows 8";
     else if (uaStr.includes("Windows NT 6.1")) os = "Windows 7";
-    else if (uaStr.includes("Macintosh") || uaStr.includes("Mac OS")) os = "macOS";
+    else if (uaStr.includes("Macintosh") || uaStr.includes("Mac OS"))
+      os = "macOS";
     else if (uaStr.includes("Linux")) os = "Linux";
     else if (uaStr.includes("Android")) os = "Android";
     else if (uaStr.includes("iPhone") || uaStr.includes("iPad")) os = "iOS";
 
     if (uaStr.includes("Edg/")) browser = "Edge";
-    else if (uaStr.includes("Chrome/") && uaStr.includes("Safari/")) browser = "Chrome";
+    else if (uaStr.includes("Chrome/") && uaStr.includes("Safari/"))
+      browser = "Chrome";
     else if (uaStr.includes("Firefox/")) browser = "Firefox";
-    else if (uaStr.includes("Safari/") && !uaStr.includes("Chrome/")) browser = "Safari";
-    else if (uaStr.includes("Trident/") || uaStr.includes("MSIE")) browser = "IE";
+    else if (uaStr.includes("Safari/") && !uaStr.includes("Chrome/"))
+      browser = "Safari";
+    else if (uaStr.includes("Trident/") || uaStr.includes("MSIE"))
+      browser = "IE";
 
     return `${browser} on ${os}`;
   };
@@ -202,14 +246,46 @@ export default function AuditLogs() {
     const act = String(action || "").toLowerCase();
     const config = {
       "user.login": { label: "Logged In", icon: "🔑", color: "var(--ok)" },
-      "user.login_failed": { label: "Failed Login", icon: "⚠️", color: "var(--danger)" },
-      "user.logout": { label: "Logged Out", icon: "🚪", color: "var(--accent)" },
-      "user.created": { label: "User Created", icon: "👤", color: "var(--primary)" },
-      "user.updated": { label: "User Updated", icon: "⚙️", color: "var(--warning)" },
-      "user.deleted": { label: "User Deleted", icon: "🗑️", color: "var(--danger)" },
-      "scan.created": { label: "Scan Started", icon: "📡", color: "var(--primary)" },
-      "scan.completed": { label: "Scan Completed", icon: "✅", color: "var(--ok)" },
-      "scan.failed": { label: "Scan Failed", icon: "❌", color: "var(--danger)" },
+      "user.login_failed": {
+        label: "Failed Login",
+        icon: "⚠️",
+        color: "var(--danger)",
+      },
+      "user.logout": {
+        label: "Logged Out",
+        icon: "🚪",
+        color: "var(--accent)",
+      },
+      "user.created": {
+        label: "User Created",
+        icon: "👤",
+        color: "var(--primary)",
+      },
+      "user.updated": {
+        label: "User Updated",
+        icon: "⚙️",
+        color: "var(--warning)",
+      },
+      "user.deleted": {
+        label: "User Deleted",
+        icon: "🗑️",
+        color: "var(--danger)",
+      },
+      "scan.created": {
+        label: "Scan Started",
+        icon: "📡",
+        color: "var(--primary)",
+      },
+      "scan.completed": {
+        label: "Scan Completed",
+        icon: "✅",
+        color: "var(--ok)",
+      },
+      "scan.failed": {
+        label: "Scan Failed",
+        icon: "❌",
+        color: "var(--danger)",
+      },
     };
 
     if (config[act]) {
@@ -221,7 +297,7 @@ export default function AuditLogs() {
       .split(".")
       .pop()
       .split(" ")
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
 
     return { label: cleanLabel, icon: "📌", color: "var(--text)" };
@@ -243,7 +319,9 @@ export default function AuditLogs() {
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Audit Logs</h2>
-            <p className="page-subtitle">Immutable trail of system activities and user actions</p>
+            <p className="page-subtitle">
+              Immutable trail of system activities and user actions
+            </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {newEventsCount > 0 && (
@@ -267,20 +345,24 @@ export default function AuditLogs() {
                   fontSize: "0.78rem",
                   fontWeight: 600,
                   boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
-                  transition: "all 0.2s ease-in-out"
+                  transition: "all 0.2s ease-in-out",
                 }}
                 onMouseOver={(e) => {
                   e.currentTarget.style.background = "rgba(96, 165, 250, 0.22)";
                   e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(96, 165, 250, 0.2)";
+                  e.currentTarget.style.boxShadow =
+                    "0 6px 20px rgba(96, 165, 250, 0.2)";
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.background = "rgba(96, 165, 250, 0.15)";
                   e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.2)";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 15px rgba(0, 0, 0, 0.2)";
                 }}
               >
-                <span>💬 {newEventsCount} new event{newEventsCount > 1 ? 's' : ''}</span>
+                <span>
+                  💬 {newEventsCount} new event{newEventsCount > 1 ? "s" : ""}
+                </span>
               </div>
             )}
             <Button
@@ -301,7 +383,11 @@ export default function AuditLogs() {
         {error && <div className="alert alert--error">{error}</div>}
 
         <div className="filter-bar">
-          <FormField className="filter-group" htmlFor="filter-action" label="Action">
+          <FormField
+            className="filter-group"
+            htmlFor="filter-action"
+            label="Action"
+          >
             <select
               id="filter-action"
               name="action"
@@ -319,7 +405,11 @@ export default function AuditLogs() {
             </select>
           </FormField>
 
-          <FormField className="filter-group" htmlFor="filter-resource" label="Resource">
+          <FormField
+            className="filter-group"
+            htmlFor="filter-resource"
+            label="Resource"
+          >
             <select
               id="filter-resource"
               name="resource_type"
@@ -334,7 +424,11 @@ export default function AuditLogs() {
             </select>
           </FormField>
 
-          <FormField className="filter-group" htmlFor="filter-status" label="Status">
+          <FormField
+            className="filter-group"
+            htmlFor="filter-status"
+            label="Status"
+          >
             <select
               id="filter-status"
               name="status"
@@ -353,14 +447,31 @@ export default function AuditLogs() {
         {total > 0 && (
           <div className="pagination-row" style={{ marginBottom: 16 }}>
             <div className="pagination-summary">
-              Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} of {total} events
+              Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}-
+              {Math.min(page * pageSize, total)} of {total} events
             </div>
-            <div className="pagination-controls" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginRight: 12 }}>
+            <div
+              className="pagination-controls"
+              style={{ display: "flex", alignItems: "center", gap: 12 }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  marginRight: 12,
+                }}
+              >
                 <span className="text-muted">Show</span>
                 <select
                   className="field-input"
-                  style={{ width: 70, height: 28, padding: "0 4px", fontSize: 12 }}
+                  style={{
+                    width: 70,
+                    height: 28,
+                    padding: "0 4px",
+                    fontSize: 12,
+                  }}
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
@@ -409,7 +520,9 @@ export default function AuditLogs() {
                 variant="ghost"
                 size="sm"
                 disabled={page >= Math.ceil(total / pageSize) || refreshing}
-                onClick={() => setPage(Math.max(1, Math.ceil(total / pageSize)))}
+                onClick={() =>
+                  setPage(Math.max(1, Math.ceil(total / pageSize)))
+                }
               >
                 {">>"}
               </Button>
@@ -417,7 +530,13 @@ export default function AuditLogs() {
           </div>
         )}
 
-        <div className="table-wrap" style={{ opacity: refreshing ? 0.6 : 1, transition: "opacity 0.15s ease-in-out" }}>
+        <div
+          className="table-wrap"
+          style={{
+            opacity: refreshing ? 0.6 : 1,
+            transition: "opacity 0.15s ease-in-out",
+          }}
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -431,53 +550,95 @@ export default function AuditLogs() {
               </tr>
             </thead>
             <tbody>
-              {logs.map(log => {
+              {logs.map((log) => {
                 const actInfo = getActionDisplay(log.action);
                 return (
                   <tr key={log.id}>
-                    <td style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    <td
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {formatDateTime(log.created_at)}
                     </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{getActorDisplay(log)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          {getActorDisplay(log)}
+                        </span>
                         {log.user_email && (
-                          <span style={{ fontSize: "0.68rem", color: "var(--text-faint)" }}>{log.user_email}</span>
+                          <span
+                            style={{
+                              fontSize: "0.68rem",
+                              color: "var(--text-faint)",
+                            }}
+                          >
+                            {log.user_email}
+                          </span>
                         )}
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         <span style={{ fontSize: 14 }}>{actInfo.icon}</span>
                         <strong style={{ fontSize: 13, color: actInfo.color }}>
                           {actInfo.label}
                         </strong>
                       </div>
                     </td>
+                    <td>{renderAffectedObject(log)}</td>
                     <td>
-                      {renderAffectedObject(log)}
-                    </td>
-                    <td>
-                      <span style={{
-                        color: log.status === 'success' ? 'var(--ok)' : 'var(--danger)',
-                        fontSize: 12,
-                        fontWeight: 600
-                      }}>
+                      <span
+                        style={{
+                          color:
+                            log.status === "success"
+                              ? "var(--ok)"
+                              : "var(--danger)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
                         {log.status.toUpperCase()}
                       </span>
                     </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column" }}>
-                        <code style={{ fontSize: 12, fontWeight: 600 }}>{log.ip_address || "—"}</code>
+                        <code style={{ fontSize: 12, fontWeight: 600 }}>
+                          {log.ip_address || "—"}
+                        </code>
                         {log.user_agent && (
-                          <span style={{ fontSize: "0.68rem", color: "var(--text-faint)", marginTop: 2 }}>
+                          <span
+                            style={{
+                              fontSize: "0.68rem",
+                              color: "var(--text-faint)",
+                              marginTop: 2,
+                            }}
+                          >
                             {parseUserAgent(log.user_agent)}
                           </span>
                         )}
                       </div>
                     </td>
                     <td>
-                      {log.changes && Object.keys(log.changes).length > 0 && !["user.login", "user.login_failed", "user.logout", "scan.started", "scan.created", "scan.completed", "scan.failed"].includes(log.action) ? (
+                      {log.changes &&
+                      Object.keys(log.changes).length > 0 &&
+                      ![
+                        "user.login",
+                        "user.login_failed",
+                        "user.logout",
+                        "scan.started",
+                        "scan.created",
+                        "scan.completed",
+                        "scan.failed",
+                      ].includes(log.action) ? (
                         <Button
                           type="button"
                           variant="ghost"
@@ -488,21 +649,30 @@ export default function AuditLogs() {
                               _displayActor: getActorDisplay(log),
                               _displayTarget: renderAffectedObject(log),
                               _displayAction: actInfo.label,
-                              _displayTime: formatDateTime(log.created_at)
+                              _displayTime: formatDateTime(log.created_at),
                             });
                             setDetailsOpen(true);
                           }}
                         >
                           View Changes
                         </Button>
-                      ) : "—"}
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {logs.length === 0 && (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
+                  <td
+                    colSpan="7"
+                    style={{
+                      textAlign: "center",
+                      padding: 60,
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     No audit logs found matching your criteria.
                   </td>
                 </tr>
@@ -512,7 +682,11 @@ export default function AuditLogs() {
         </div>
       </div>
 
-      <AuditLogDetailsModal isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} log={selectedLog} />
+      <AuditLogDetailsModal
+        isOpen={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        log={selectedLog}
+      />
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );

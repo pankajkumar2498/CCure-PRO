@@ -49,6 +49,7 @@ REFRESH_COOKIE_DOMAIN = os.getenv("REFRESH_COOKIE_DOMAIN") or None
 
 # ── Request / Response Schemas ────────────────────────────────────────────────
 
+
 class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
@@ -160,12 +161,12 @@ class MfaDisableRequest(BaseModel):
     password: str
 
 
-
 @router.post("/ticket")
 def generate_ws_download_ticket(current_user: User = Depends(get_current_user)):
     """Generate a short-lived (60s) JWT ticket for WebSocket connections and PDF downloads."""
     ticket = create_download_ticket(current_user.id, current_user.username)
     return {"ticket": ticket}
+
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     response.set_cookie(
@@ -198,8 +199,11 @@ def _clear_refresh_cookie(response: Response) -> None:
         )
 
 
-def _resolve_refresh_token(request: Request, token_from_body: Optional[str]) -> Optional[str]:
+def _resolve_refresh_token(
+    request: Request, token_from_body: Optional[str]
+) -> Optional[str]:
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
+
 
 @router.get("/check-username")
 @limiter.limit("20/minute")
@@ -210,6 +214,7 @@ def check_username(request: Request, q: str, db: Session = Depends(get_db)):
     exists = db.query(User).filter(User.username == q.strip()).first()
     return {"available": not bool(exists)}
 
+
 @router.get("/check-email")
 @limiter.limit("20/minute")
 def check_email(request: Request, q: str, db: Session = Depends(get_db)):
@@ -219,9 +224,15 @@ def check_email(request: Request, q: str, db: Session = Depends(get_db)):
     exists = db.query(User).filter(email_matches(User.email, q)).first()
     return {"available": not bool(exists)}
 
+
 @router.post("/register", response_model=TokenResponse, status_code=201)
 @limiter.limit("5/minute")
-def register(req: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+def register(
+    req: RegisterRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
     Create a new user account.
     Returns access + refresh tokens immediately so the user is logged in.
@@ -236,35 +247,39 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
 
     # For production auto-registration, place new users in the Self-Service Organization with the 'analyst' role.
     # This organization can be managed by superadmins and org_admins
-    self_service_org = db.query(Organization).filter(Organization.slug == "self-service").first()
-    
+    self_service_org = (
+        db.query(Organization).filter(Organization.slug == "self-service").first()
+    )
+
     # Create self-service org if it doesn't exist
     if not self_service_org:
         self_service_org = Organization(
-            id=gen_org_id("self-service"),   # → org_self-service
+            id=gen_org_id("self-service"),  # → org_self-service
             name="Self-Service Users",
             slug="self-service",
             plan="community",
             max_assets=100,
             max_users=50,
             is_active=True,
-            settings={"description": "Organization for self-registered users"}
+            settings={"description": "Organization for self-registered users"},
         )
         db.add(self_service_org)
         db.flush()
-    
+
     default_role = db.query(Role).filter(Role.name == "analyst").first()
-    
+
     if not default_role:
         raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
 
     user = User(
-        id=gen_user_id(self_service_org.slug, req.username.strip()),  # → usr_sel_pankaj_x9v1
+        id=gen_user_id(
+            self_service_org.slug, req.username.strip()
+        ),  # → usr_sel_pankaj_x9v1
         username=req.username.strip(),
         email=email,
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
-        role_id=default_role.id
+        role_id=default_role.id,
     )
     db.add(user)
     try:
@@ -276,7 +291,9 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
             raise HTTPException(status_code=409, detail="Email already registered")
         if "username" in error_text:
             raise HTTPException(status_code=409, detail="Username already taken")
-        raise HTTPException(status_code=400, detail="Registration failed: duplicate entry")
+        raise HTTPException(
+            status_code=400, detail="Registration failed: duplicate entry"
+        )
 
     db.refresh(user)
     from core.audit import log_audit_event
@@ -310,24 +327,36 @@ def register(req: RegisterRequest, request: Request, response: Response, db: Ses
             "email": user.email,
             "created_at": user.created_at.isoformat(),
             "mfa_enabled": user.mfa_enabled,
-            "role": {
-                "name": user.role.name,
-                "permissions": [
-                    {"resource": rp.permission.resource, "action": rp.permission.action}
-                    for rp in user.role.permissions
-                ]
-            } if user.role else None
+            "role": (
+                {
+                    "name": user.role.name,
+                    "permissions": [
+                        {
+                            "resource": rp.permission.resource,
+                            "action": rp.permission.action,
+                        }
+                        for rp in user.role.permissions
+                    ],
+                }
+                if user.role
+                else None
+            ),
         },
     }
 
 
 @router.post("/login", response_model=Union[TokenResponse, MfaChallengeResponse])
 @limiter.limit("10/minute")
-def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+def login(
+    req: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
     Authenticate with email + password.
     Returns access + refresh tokens on success.
-    
+
     Organization Status Validation:
     - Users from deactivated organizations cannot log in.
     - This prevents new sessions from being created for inactive orgs.
@@ -346,7 +375,16 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if getattr(user, "is_deleted", False):
-        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account deleted"})
+        log_audit_event(
+            db,
+            user,
+            "user.login_failed",
+            "user",
+            str(user.id),
+            request=request,
+            status="denied",
+            changes={"reason": "account deleted"},
+        )
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -354,7 +392,16 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if not user.is_active:
-        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account disabled"})
+        log_audit_event(
+            db,
+            user,
+            "user.login_failed",
+            "user",
+            str(user.id),
+            request=request,
+            status="denied",
+            changes={"reason": "account disabled"},
+        )
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -366,8 +413,16 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     # User statuses remain unchanged for reversibility.
     organization = db.query(Organization).filter(Organization.id == user.org_id).first()
     if organization and not organization.is_active:
-        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied",
-                       changes={"reason": "organization deactivated"})
+        log_audit_event(
+            db,
+            user,
+            "user.login_failed",
+            "user",
+            str(user.id),
+            request=request,
+            status="denied",
+            changes={"reason": "organization deactivated"},
+        )
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -375,7 +430,16 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         )
 
     if user.locked_until and user.locked_until > utcnow():
-        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="denied", changes={"reason": "account locked"})
+        log_audit_event(
+            db,
+            user,
+            "user.login_failed",
+            "user",
+            str(user.id),
+            request=request,
+            status="denied",
+            changes={"reason": "account locked"},
+        )
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -396,9 +460,26 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
         user.failed_login_count += 1
         if user.failed_login_count >= 5:
             user.locked_until = utcnow() + datetime.timedelta(minutes=15)
-            log_audit_event(db, user, "user.locked", "user", str(user.id), request=request, status="failure", changes={"reason": "too many failed attempts"})
-        
-        log_audit_event(db, user, "user.login_failed", "user", str(user.id), request=request, status="failure")
+            log_audit_event(
+                db,
+                user,
+                "user.locked",
+                "user",
+                str(user.id),
+                request=request,
+                status="failure",
+                changes={"reason": "too many failed attempts"},
+            )
+
+        log_audit_event(
+            db,
+            user,
+            "user.login_failed",
+            "user",
+            str(user.id),
+            request=request,
+            status="failure",
+        )
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -411,21 +492,29 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
 
     if user.mfa_enabled:
         from auth.jwt_handler import create_mfa_challenge_token
+
         mfa_token = create_mfa_challenge_token(
             user_id=user.id,
             username=user.username,
             role=getattr(user.role, "name", None),
             org_id=user.org_id,
         )
-        log_audit_event(db, user, "user.mfa_challenge_issued", "user", str(user.id), request=request, status="success")
+        log_audit_event(
+            db,
+            user,
+            "user.mfa_challenge_issued",
+            "user",
+            str(user.id),
+            request=request,
+            status="success",
+        )
         db.commit()
-        return {
-            "status": "mfa_required",
-            "mfa_token": mfa_token
-        }
+        return {"status": "mfa_required", "mfa_token": mfa_token}
 
     user.last_login_at = utcnow()
-    log_audit_event(db, user, "user.login", "user", str(user.id), request=request, status="success")
+    log_audit_event(
+        db, user, "user.login", "user", str(user.id), request=request, status="success"
+    )
     db.commit()
 
     refresh_token = create_refresh_token(user.id, db, request=request)
@@ -445,16 +534,22 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
             "email": user.email,
             "created_at": user.created_at.isoformat(),
             "mfa_enabled": user.mfa_enabled,
-            "role": {
-                "name": user.role.name,
-                "permissions": [
-                    {"resource": rp.permission.resource, "action": rp.permission.action}
-                    for rp in user.role.permissions
-                ]
-            } if user.role else None
+            "role": (
+                {
+                    "name": user.role.name,
+                    "permissions": [
+                        {
+                            "resource": rp.permission.resource,
+                            "action": rp.permission.action,
+                        }
+                        for rp in user.role.permissions
+                    ],
+                }
+                if user.role
+                else None
+            ),
         },
     }
-
 
 
 @router.post("/logout")
@@ -524,18 +619,26 @@ def me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "created_at": current_user.created_at.isoformat(),
         "mfa_enabled": current_user.mfa_enabled,
-        "role": {
-            "name": current_user.role.name,
-            "permissions": [
-                {"resource": rp.permission.resource, "action": rp.permission.action}
-                for rp in current_user.role.permissions
-            ]
-        } if current_user.role else None,
-        "organization": {
-            "id": str(current_user.organization.id),
-            "name": current_user.organization.name,
-            "slug": current_user.organization.slug,
-        } if getattr(current_user, "organization", None) else None,
+        "role": (
+            {
+                "name": current_user.role.name,
+                "permissions": [
+                    {"resource": rp.permission.resource, "action": rp.permission.action}
+                    for rp in current_user.role.permissions
+                ],
+            }
+            if current_user.role
+            else None
+        ),
+        "organization": (
+            {
+                "id": str(current_user.organization.id),
+                "name": current_user.organization.name,
+                "slug": current_user.organization.slug,
+            }
+            if getattr(current_user, "organization", None)
+            else None
+        ),
     }
 
 
@@ -581,7 +684,7 @@ def forgot_password(
     Submits a password reset request.
     Generates a secure token, hashes it, saves it to the database,
     and dispatches a Celery task to send the email.
-    
+
     Always returns 200 OK to prevent account enumeration.
     """
     import secrets
@@ -629,12 +732,16 @@ def forgot_password(
         db.commit()
 
         # Build reset link using configuration frontend URL
-        reset_link = f"{AppConfig.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
+        reset_link = (
+            f"{AppConfig.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
+        )
 
         # Trigger background task
         send_password_reset_email_task.delay(user.email, user.username, reset_link)
 
-    return {"detail": "If this email is registered, you will receive a reset link shortly."}
+    return {
+        "detail": "If this email is registered, you will receive a reset link shortly."
+    }
 
 
 @router.post("/reset-password")
@@ -657,7 +764,11 @@ def reset_password_endpoint(
     token_hash = hashlib.sha256(req.token.encode("utf-8")).hexdigest()
 
     # Find the token in the database
-    reset_token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+    reset_token = (
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.token_hash == token_hash)
+        .first()
+    )
     if not reset_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -687,7 +798,9 @@ def reset_password_endpoint(
     user.password_hash = hash_password(req.password)
 
     # Invalidate all active sessions for the user
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
     # Delete the reset token (single-use constraint)
     db.delete(reset_token)
@@ -711,10 +824,12 @@ def reset_password_endpoint(
 
 # ── MFA Helper Cryptographic Functions ────────────────────────────────────────
 
+
 def encrypt_secret(plain_secret: str) -> str:
     """Symmetrically encrypt the secret key using Fernet."""
     from cryptography.fernet import Fernet
     from config import AppConfig
+
     f = Fernet(AppConfig.MFA_KEY)
     return f.encrypt(plain_secret.encode()).decode()
 
@@ -723,15 +838,19 @@ def decrypt_secret(encrypted_secret: str) -> str:
     """Symmetrically decrypt the secret key using Fernet."""
     from cryptography.fernet import Fernet
     from config import AppConfig
+
     f = Fernet(AppConfig.MFA_KEY)
     return f.decrypt(encrypted_secret.encode()).decode()
 
 
 # ── MFA Endpoints ────────────────────────────────────────────────────────────
 
+
 @router.post("/login/send-email-otp")
 @limiter.limit("5/minute")
-def send_email_otp(req: MfaEmailRequest, request: Request, db: Session = Depends(get_db)):
+def send_email_otp(
+    req: MfaEmailRequest, request: Request, db: Session = Depends(get_db)
+):
     """
     Generate and email a 6-digit verification code fallback.
     Rate limited to 5 requests/minute.
@@ -740,14 +859,14 @@ def send_email_otp(req: MfaEmailRequest, request: Request, db: Session = Depends
     from datetime import timedelta
     from db.base import utcnow
     from core.tasks import send_mfa_otp_task
-    
+
     payload = decode_token(req.mfa_token)
     if not payload or payload.get("type") != "mfa_challenge":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired challenge token.",
         )
-    
+
     user_id = payload.get("sub")
     user = db.query(User).filter(User.id == user_id).first()
     if not user or getattr(user, "is_deleted", False) or not user.is_active:
@@ -755,38 +874,43 @@ def send_email_otp(req: MfaEmailRequest, request: Request, db: Session = Depends
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired challenge token.",
         )
-        
+
     # Generate 6-digit random code
     code = f"{secrets.randbelow(1000000):06d}"
-    
+
     # Save hashed code to database
     user.email_otp_hash = hash_password(code)
     user.email_otp_expires_at = utcnow() + timedelta(minutes=5)
     db.commit()
-    
+
     # Dispatch Celery task to send email
     send_mfa_otp_task.delay(user.email, user.username, code)
-    
+
     return {"success": True}
 
 
 @router.post("/login/verify-mfa", response_model=TokenResponse)
 @limiter.limit("5/minute")
-def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+def verify_mfa(
+    req: MfaVerifyRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
     Verify the MFA code (App TOTP, Email OTP, or Recovery Backup Code).
     Rate limited to 5 requests/minute.
     """
     from db.base import utcnow
     from core.audit import log_audit_event
-    
+
     payload = decode_token(req.mfa_token)
     if not payload or payload.get("type") != "mfa_challenge":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired challenge token.",
         )
-        
+
     user_id = payload.get("sub")
     user = db.query(User).filter(User.id == user_id).first()
     if not user or getattr(user, "is_deleted", False) or not user.is_active:
@@ -810,6 +934,7 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
     if user.totp_secret:
         try:
             import pyotp
+
             decrypted = decrypt_secret(user.totp_secret)
             totp = pyotp.TOTP(decrypted)
             # valid_window=1 allows codes from previous or next 30-sec interval to combat clock drift
@@ -817,7 +942,9 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
                 verified = True
                 verification_method = "totp"
         except Exception as e:
-            logger.error(f"Error during TOTP verification for user {user.id}: {e}", exc_info=True)
+            logger.error(
+                f"Error during TOTP verification for user {user.id}: {e}", exc_info=True
+            )
 
     # 2. Try Email OTP
     if not verified and temp_hash and temp_expires:
@@ -834,7 +961,7 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
             if verify_password(code, h):
                 matched_hash = h
                 break
-        
+
         if matched_hash:
             # Code matched! Remove it from list (single-use constraint)
             codes = list(user.mfa_backup_codes)
@@ -849,7 +976,7 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
                 resource_type="user",
                 resource_id=str(user.id),
                 request=request,
-                status="success"
+                status="success",
             )
             db.commit()
 
@@ -861,7 +988,7 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
             resource_type="user",
             resource_id=str(user.id),
             request=request,
-            status="failure"
+            status="failure",
         )
         db.commit()
         raise HTTPException(
@@ -881,7 +1008,7 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
         resource_id=str(user.id),
         request=request,
         status="success",
-        changes={"mfa_method": verification_method}
+        changes={"mfa_method": verification_method},
     )
     db.commit()
 
@@ -902,19 +1029,28 @@ def verify_mfa(req: MfaVerifyRequest, request: Request, response: Response, db: 
             "email": user.email,
             "created_at": user.created_at.isoformat(),
             "mfa_enabled": user.mfa_enabled,
-            "role": {
-                "name": user.role.name,
-                "permissions": [
-                    {"resource": rp.permission.resource, "action": rp.permission.action}
-                    for rp in user.role.permissions
-                ]
-            } if user.role else None
+            "role": (
+                {
+                    "name": user.role.name,
+                    "permissions": [
+                        {
+                            "resource": rp.permission.resource,
+                            "action": rp.permission.action,
+                        }
+                        for rp in user.role.permissions
+                    ],
+                }
+                if user.role
+                else None
+            ),
         },
     }
 
 
 @router.post("/mfa/enable")
-def enable_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def enable_mfa(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     """
     Initiates MFA setup by generating a TOTP secret and rendering it as a QR code.
     Accessible only to authenticated users. If MFA is already active, returns 400.
@@ -936,8 +1072,7 @@ def enable_mfa(current_user: User = Depends(get_current_user), db: Session = Dep
     db.commit()
 
     provisioning_url = pyotp.TOTP(secret).provisioning_uri(
-        name=current_user.email,
-        issuer_name="CCure Audit PRO"
+        name=current_user.email, issuer_name="CCure Audit PRO"
     )
 
     # Generate QR Code as Base64 Data URI
@@ -945,20 +1080,22 @@ def enable_mfa(current_user: User = Depends(get_current_user), db: Session = Dep
     qr.add_data(provisioning_url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    
+
     buffered = io.BytesIO()
     img.save(buffered, format="PNG")
     qr_base64 = base64.b64encode(buffered.getvalue()).decode()
     qr_data_uri = f"data:image/png;base64,{qr_base64}"
 
-    return {
-        "secret": secret,
-        "qr_code": qr_data_uri
-    }
+    return {"secret": secret, "qr_code": qr_data_uri}
 
 
 @router.post("/mfa/confirm")
-def confirm_mfa(req: MfaConfirmRequest, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def confirm_mfa(
+    req: MfaConfirmRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Confirms the setup code and enables MFA for the user.
     Generates backup codes and revokes other sessions.
@@ -992,9 +1129,11 @@ def confirm_mfa(req: MfaConfirmRequest, request: Request, current_user: User = D
 
     current_user.mfa_enabled = True
     current_user.mfa_backup_codes = hashed_backups
-    
+
     # Revoke all other active sessions for user (session isolation)
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == current_user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(
+        RefreshTokenSession.user_id == current_user.id
+    ).delete(synchronize_session=False)
 
     log_audit_event(
         db=db,
@@ -1003,7 +1142,7 @@ def confirm_mfa(req: MfaConfirmRequest, request: Request, current_user: User = D
         resource_type="user",
         resource_id=str(current_user.id),
         request=request,
-        status="success"
+        status="success",
     )
     db.commit()
 
@@ -1011,7 +1150,12 @@ def confirm_mfa(req: MfaConfirmRequest, request: Request, current_user: User = D
 
 
 @router.post("/mfa/disable")
-def disable_mfa(req: MfaDisableRequest, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def disable_mfa(
+    req: MfaDisableRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Disable MFA. Requires password validation for safety.
     """
@@ -1036,7 +1180,9 @@ def disable_mfa(req: MfaDisableRequest, request: Request, current_user: User = D
     current_user.email_otp_expires_at = None
 
     # Revoke all active sessions for user
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == current_user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(
+        RefreshTokenSession.user_id == current_user.id
+    ).delete(synchronize_session=False)
 
     log_audit_event(
         db=db,
@@ -1045,9 +1191,8 @@ def disable_mfa(req: MfaDisableRequest, request: Request, current_user: User = D
         resource_type="user",
         resource_id=str(current_user.id),
         request=request,
-        status="success"
+        status="success",
     )
     db.commit()
 
     return {"success": True}
-

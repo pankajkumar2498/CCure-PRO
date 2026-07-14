@@ -10,7 +10,6 @@ Data source: IEEE (www.ieee.org/oui)
 Format: hex OUI (6 chars) tab Org Name
 """
 
-import json
 import logging
 import os
 import threading
@@ -21,8 +20,12 @@ import requests
 
 log = logging.getLogger("ccure.oui")
 
-DEFAULT_VENDOR_API_URL = os.environ.get("MAC_VENDOR_API_URL", "https://api.macvendors.com/")
-DEFAULT_VENDOR_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor_cache.json")
+DEFAULT_VENDOR_API_URL = os.environ.get(
+    "MAC_VENDOR_API_URL", "https://api.macvendors.com/"
+)
+DEFAULT_VENDOR_CACHE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "vendor_cache.json"
+)
 
 
 class OUIDatabase:
@@ -34,7 +37,12 @@ class OUIDatabase:
         vendor = db.lookup("00:1A:2B")  # Returns vendor name or None
     """
 
-    def __init__(self, db_path: Optional[str] = None, cache_path: Optional[str] = None, api_url: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        cache_path: Optional[str] = None,
+        api_url: Optional[str] = None,
+    ):
         """Initialize OUI database. Loads on first lookup."""
         if db_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,14 +59,18 @@ class OUIDatabase:
                     break
 
         self.db_path = db_path
-        self.cache_path = cache_path or os.environ.get("MAC_VENDOR_CACHE_PATH", DEFAULT_VENDOR_CACHE_FILE)
+        self.cache_path = cache_path or os.environ.get(
+            "MAC_VENDOR_CACHE_PATH", DEFAULT_VENDOR_CACHE_FILE
+        )
         self.api_url = api_url or DEFAULT_VENDOR_API_URL
         self._database: Dict[str, str] = {}
         self._cache: Dict[str, str] = {}
         self._loaded = False
         self._cache_lock = threading.Lock()
         self._pending_fetches = set()
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="oui-fallback")
+        self._executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="oui-fallback"
+        )
         self._load_cache()
 
     def _load(self):
@@ -67,29 +79,36 @@ class OUIDatabase:
             return
 
         if not self.db_path or not os.path.exists(self.db_path):
-            log.warning("OUI database not found at %s. Vendor lookup disabled.", self.db_path)
+            log.warning(
+                "OUI database not found at %s. Vendor lookup disabled.", self.db_path
+            )
             self._loaded = True
             return
 
         try:
-            with open(self.db_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(self.db_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
 
                     # Support tab separation (Assignment \t ShortName \t FullName)
-                    parts = [p.strip() for p in line.split('\t') if p.strip()]
+                    parts = [p.strip() for p in line.split("\t") if p.strip()]
                     if not parts:
                         continue
 
                     oui_str = parts[0]
                     # Normalize MAC Prefix (strip colons, hyphens, spaces)
-                    oui_normalized = oui_str.replace(':', '').replace('-', '').replace(' ', '').lower()
+                    oui_normalized = (
+                        oui_str.replace(":", "")
+                        .replace("-", "")
+                        .replace(" ", "")
+                        .lower()
+                    )
 
                     if len(oui_normalized) >= 6:
                         oui_normalized = oui_normalized[:6]
-                        
+
                         # Grab full vendor name (last column) if available, else short name
                         if len(parts) >= 3:
                             vendor = parts[2]
@@ -117,14 +136,16 @@ class OUIDatabase:
     def _normalize_mac(self, mac_address: str) -> Optional[str]:
         if not mac_address:
             return None
-        mac_clean = mac_address.lower().replace(':', '').replace('-', '').replace('.', '')
+        mac_clean = (
+            mac_address.lower().replace(":", "").replace("-", "").replace(".", "")
+        )
         return mac_clean if len(mac_clean) >= 6 else None
 
     def _query_vendor_api(self, mac_address: str) -> Optional[str]:
         if not self.api_url:
             return None
 
-        url = self.api_url.rstrip('/') + '/' + mac_address
+        url = self.api_url.rstrip("/") + "/" + mac_address
         try:
             response = requests.get(url, timeout=2.0)
             if response.status_code != 200:
@@ -153,16 +174,20 @@ class OUIDatabase:
 
                 db = SessionLocal()
                 try:
-                    stmt = insert(MacVendorCache).values(
-                        mac_prefix=oui,
-                        vendor_name=vendor
-                    ).on_conflict_do_update(
-                        index_elements=["mac_prefix"],
-                        set_={"vendor_name": vendor}
+                    stmt = (
+                        insert(MacVendorCache)
+                        .values(mac_prefix=oui, vendor_name=vendor)
+                        .on_conflict_do_update(
+                            index_elements=["mac_prefix"], set_={"vendor_name": vendor}
+                        )
                     )
                     db.execute(stmt)
                     db.commit()
-                    log.info("Cached background vendor lookup to DB for OUI %s -> %s", oui, vendor)
+                    log.info(
+                        "Cached background vendor lookup to DB for OUI %s -> %s",
+                        oui,
+                        vendor,
+                    )
                 finally:
                     db.close()
             except Exception as e:
@@ -184,7 +209,11 @@ class OUIDatabase:
 
             db = SessionLocal()
             try:
-                cached_entry = db.query(MacVendorCache).filter(MacVendorCache.mac_prefix == oui).first()
+                cached_entry = (
+                    db.query(MacVendorCache)
+                    .filter(MacVendorCache.mac_prefix == oui)
+                    .first()
+                )
                 if cached_entry:
                     return
             finally:
@@ -225,7 +254,7 @@ class OUIDatabase:
             return None
 
         oui = mac_clean[:6]
-        
+
         # 1. Primary path: Local offline file registry
         vendor = self._database.get(oui)
         if vendor:
@@ -238,7 +267,11 @@ class OUIDatabase:
 
             db = SessionLocal()
             try:
-                cached_entry = db.query(MacVendorCache).filter(MacVendorCache.mac_prefix == oui).first()
+                cached_entry = (
+                    db.query(MacVendorCache)
+                    .filter(MacVendorCache.mac_prefix == oui)
+                    .first()
+                )
                 if cached_entry:
                     return cached_entry.vendor_name
             finally:
@@ -271,12 +304,12 @@ class OUIDatabase:
 
                 db = SessionLocal()
                 try:
-                    stmt = insert(MacVendorCache).values(
-                        mac_prefix=oui,
-                        vendor_name=vendor
-                    ).on_conflict_do_update(
-                        index_elements=["mac_prefix"],
-                        set_={"vendor_name": vendor}
+                    stmt = (
+                        insert(MacVendorCache)
+                        .values(mac_prefix=oui, vendor_name=vendor)
+                        .on_conflict_do_update(
+                            index_elements=["mac_prefix"], set_={"vendor_name": vendor}
+                        )
                     )
                     db.execute(stmt)
                     db.commit()
@@ -321,33 +354,33 @@ def lookup_vendor(mac_address: str) -> Optional[str]:
 
 #: Maps a substring of a vendor name (lowercase) to a device category string.
 VENDOR_DEVICE_MAP: Dict[str, str] = {
-    "cisco":       "router",
-    "juniper":     "router",
-    "ubiquiti":    "wireless_ap",
-    "mikrotik":    "router",
-    "fortinet":    "firewall",
-    "palo alto":   "firewall",
-    "aruba":       "wireless_ap",
-    "brother":     "printer",
-    "canon":       "printer",
-    "epson":       "printer",
-    "hp":          "printer",
-    "raspberry":   "iot",
-    "espressif":   "iot",
-    "siemens":     "scada_ics",
-    "schneider":   "scada_ics",
-    "honeywell":   "scada_ics",
-    "rockwell":    "scada_ics",
-    "yokogawa":    "scada_ics",
-    "beckhoff":    "scada_ics",
-    "omron":       "scada_ics",
-    "abb":         "scada_ics",
-    "wago":        "scada_ics",
-    "moxa":        "scada_ics",
-    "vmware":      "virtual_machine",
-    "xen":         "virtual_machine",
-    "hyper-v":     "virtual_machine",
-    "hyperv":      "virtual_machine",
+    "cisco": "router",
+    "juniper": "router",
+    "ubiquiti": "wireless_ap",
+    "mikrotik": "router",
+    "fortinet": "firewall",
+    "palo alto": "firewall",
+    "aruba": "wireless_ap",
+    "brother": "printer",
+    "canon": "printer",
+    "epson": "printer",
+    "hp": "printer",
+    "raspberry": "iot",
+    "espressif": "iot",
+    "siemens": "scada_ics",
+    "schneider": "scada_ics",
+    "honeywell": "scada_ics",
+    "rockwell": "scada_ics",
+    "yokogawa": "scada_ics",
+    "beckhoff": "scada_ics",
+    "omron": "scada_ics",
+    "abb": "scada_ics",
+    "wago": "scada_ics",
+    "moxa": "scada_ics",
+    "vmware": "virtual_machine",
+    "xen": "virtual_machine",
+    "hyper-v": "virtual_machine",
+    "hyperv": "virtual_machine",
 }
 
 

@@ -3,12 +3,14 @@
 React + Vite frontend unified from the CAST Dashboard design system and CCure Audit PRO backend.
 
 ## Design System
+
 - **Sidebar**: `#1a2332` dark navy
 - **Accent**: `#0ea5e9` sky blue
 - **Background**: `#f8fafc` light gray
 - All CSS lives in `src/styles/global.css` with CSS variables
 
 ## Project Structure
+
 ```
 src/
 ├── api/                     # Axios wrappers for every backend endpoint
@@ -49,29 +51,32 @@ src/
 ```
 
 ## API Endpoints Used
-| Endpoint | Method | Used By |
-|---|---|---|
-| `/auth/login` | POST | Login.jsx |
-| `/auth/register` | POST | Register.jsx |
-| `/auth/logout` | POST | AppLayout (sign out) |
-| `/auth/me` | GET | AuthContext (session restore) |
-| `/auth/refresh` | POST | axiosInstance (auto-refresh) |
-| `/scan/host-discovery` | POST | NewScan.jsx, ScanHistory (re-run) |
-| `/scan/asset-discovery` | POST | Phase2Results.jsx |
-| `/scan/vulnerability-audit` | POST | Phase3Results.jsx |
-| `/scan/credentialed` | POST | CredentialedScan.jsx |
-| `/scans` | GET | ScanHistory.jsx |
-| `/scans/{id}` | GET | ScanHistory modal, CredentialedResults |
-| `/scans/{id}` | DELETE | ScanHistory.jsx |
-| `/reports/download/{id}` | GET | ExportPanel.jsx (PDF) |
+
+| Endpoint                    | Method | Used By                                |
+| --------------------------- | ------ | -------------------------------------- |
+| `/auth/login`               | POST   | Login.jsx                              |
+| `/auth/register`            | POST   | Register.jsx                           |
+| `/auth/logout`              | POST   | AppLayout (sign out)                   |
+| `/auth/me`                  | GET    | AuthContext (session restore)          |
+| `/auth/refresh`             | POST   | axiosInstance (auto-refresh)           |
+| `/scan/host-discovery`      | POST   | NewScan.jsx, ScanHistory (re-run)      |
+| `/scan/asset-discovery`     | POST   | Phase2Results.jsx                      |
+| `/scan/vulnerability-audit` | POST   | Phase3Results.jsx                      |
+| `/scan/credentialed`        | POST   | CredentialedScan.jsx                   |
+| `/scans`                    | GET    | ScanHistory.jsx                        |
+| `/scans/{id}`               | GET    | ScanHistory modal, CredentialedResults |
+| `/scans/{id}`               | DELETE | ScanHistory.jsx                        |
+| `/reports/download/{id}`    | GET    | ExportPanel.jsx (PDF)                  |
 
 ## Setup & Run
 
 ### Prerequisites
+
 - Node.js 18+
 - Backend running on `http://localhost:8000`
 
 ### Install & Start
+
 ```bash
 npm install
 npm run dev
@@ -80,6 +85,7 @@ npm run dev
 Opens at **http://localhost:3000**
 
 ### Backend
+
 ```bash
 cd Backend
 pip install -r requirements.txt
@@ -87,12 +93,14 @@ uvicorn main:app --reload --port 8000
 ```
 
 ### Build for Production
+
 ```bash
 npm run build
 # Output in dist/
 ```
 
 ## Authentication Flow
+
 1. User logs in → receives `access_token` + `refresh_token`
 2. Tokens stored in `localStorage`
 3. Every API request has `Authorization: Bearer <access_token>` header
@@ -100,9 +108,11 @@ npm run build
 5. Logout → tokens cleared, redirect to `/login`
 
 ## Scan Wizard Flow
+
 ```
 /dashboard  →  /scan  →  /scan/host-discovery  →  /scan/asset-discovery  →  /scan/vulnerability-audit
                                                               ↓
                                                           /history
 ```
+
 All intermediate state is persisted in `sessionStorage` — browser refresh restores progress.

@@ -29,23 +29,28 @@ from scan_helpers import (
 
 router = APIRouter(tags=["Reports"])
 
-_REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
+_REPORTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports"
+)
 # Fallback: if routers/ is directly under Backend/, go up one level
 if not os.path.isdir(_REPORTS_DIR):
-    _REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports")
+    _REPORTS_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "reports"
+    )
     _REPORTS_DIR = os.path.abspath(_REPORTS_DIR)
+
 
 def cleanup_old_reports(days_old: int = 7) -> None:
     """Delete PDF files in the reports directory older than `days_old`."""
     if not os.path.isdir(_REPORTS_DIR):
         return
-    
+
     cutoff_time = time.time() - (days_old * 86400)
     count = 0
     for filename in os.listdir(_REPORTS_DIR):
         if not filename.lower().endswith(".pdf"):
             continue
-            
+
         file_path = os.path.join(_REPORTS_DIR, filename)
         try:
             if os.path.getmtime(file_path) < cutoff_time:
@@ -53,7 +58,7 @@ def cleanup_old_reports(days_old: int = 7) -> None:
                 count += 1
         except Exception as e:
             log.warning(f"Failed to delete old report {filename}: {e}")
-            
+
     if count > 0:
         log.info(f"Cleaned up {count} report(s) older than {days_old} days.")
 
@@ -73,15 +78,19 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     else:
         return {}
 
-    if not payload.get("data") and not (key == "credentialed" and payload.get("report")):
+    if not payload.get("data") and not (
+        key == "credentialed" and payload.get("report")
+    ):
         return {}
 
     payload_data = payload.get("data", [])
     if key == "credentialed" and payload.get("report"):
         payload_data = {"credentialed": {"report": payload.get("report")}}
 
-    payload_meta = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
-    
+    payload_meta = (
+        payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
+    )
+
     hosts_list = []
     if isinstance(payload_data, list):
         hosts_list = payload_data
@@ -98,7 +107,7 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
 
     result = {
         "success": True,
-        "data":    payload_data,
+        "data": payload_data,
         "summary": payload.get("summary", {}),
         "metadata": {"scan_no": scan.scan_no, **payload_meta, **context_meta},
     }
@@ -126,7 +135,9 @@ def _require_reports_read(user: User, db: Session) -> None:
         return
 
     if not role:
-        raise HTTPException(status_code=403, detail="Your account does not have a role assigned.")
+        raise HTTPException(
+            status_code=403, detail="Your account does not have a role assigned."
+        )
 
     has_reports_read = (
         db.query(RolePermission)
@@ -154,7 +165,9 @@ def _require_reports_delete(user: User, db: Session) -> None:
         return
 
     if not role:
-        raise HTTPException(status_code=403, detail="Your account does not have a role assigned.")
+        raise HTTPException(
+            status_code=403, detail="Your account does not have a role assigned."
+        )
 
     has_reports_delete = (
         db.query(RolePermission)
@@ -175,7 +188,9 @@ def _require_reports_delete(user: User, db: Session) -> None:
 
 
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
 
 
 def _can_read_all_org_scans(user: User, db: Session) -> bool:
@@ -196,10 +211,10 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
 @router.get("/reports/download/{scan_id}")
 def download_report(
     scan_id: str,
-    fmt:     str            = "JSON",
-    ticket:  Optional[str]  = Query(None),
-    db:      Session        = Depends(get_db),
-    user:    User           = Depends(get_current_user_flexible),
+    fmt: str = "JSON",
+    ticket: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_flexible),
 ):
     _require_reports_read(user, db)
 
@@ -236,9 +251,9 @@ def download_report(
         raise HTTPException(status_code=400, detail="Stored report path is invalid.")
 
     return FileResponse(
-        path       = pdf_path,
-        media_type = "application/pdf",
-        filename   = os.path.basename(pdf_path),
+        path=pdf_path,
+        media_type="application/pdf",
+        filename=os.path.basename(pdf_path),
     )
 
 
@@ -269,7 +284,9 @@ def delete_report(
         abs_path = os.path.abspath(report_path)
         if os.path.isfile(abs_path):
             try:
-                if os.path.commonpath([os.path.abspath(_REPORTS_DIR), abs_path]) == os.path.abspath(_REPORTS_DIR):
+                if os.path.commonpath(
+                    [os.path.abspath(_REPORTS_DIR), abs_path]
+                ) == os.path.abspath(_REPORTS_DIR):
                     os.remove(abs_path)
                     deleted_files += 1
             except Exception as exc:
@@ -279,4 +296,7 @@ def delete_report(
 
     db.add(scan)
     db.commit()
-    return {"detail": f"Report artifacts deleted for scan {scan_id}", "deleted_files": deleted_files}
+    return {
+        "detail": f"Report artifacts deleted for scan {scan_id}",
+        "deleted_files": deleted_files,
+    }

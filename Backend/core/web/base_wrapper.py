@@ -30,13 +30,14 @@ import tempfile
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 log = logging.getLogger("ccure.web.wrapper")
 
 
 class ToolNotAvailableError(RuntimeError):
     """Raised when a required external tool binary is not found."""
+
     pass
 
 
@@ -80,15 +81,14 @@ class ToolWrapper(ABC):
         binary_path = shutil.which(self.binary)
         if binary_path:
             self._binary_verified = True
-            log.info(
-                "%s binary found at: %s", self.name, binary_path
-            )
+            log.info("%s binary found at: %s", self.name, binary_path)
         else:
             self._binary_verified = False
             log.warning(
                 "%s binary NOT FOUND in PATH (expected: %s). "
                 "Tool will be unavailable for scanning.",
-                self.name, self.binary,
+                self.name,
+                self.binary,
             )
         return self._binary_verified
 
@@ -109,7 +109,9 @@ class ToolWrapper(ABC):
         try:
             result = subprocess.run(
                 [self.binary, "-version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             self._binary_version = result.stdout.strip() or result.stderr.strip()
             return self._binary_version
@@ -155,7 +157,9 @@ class ToolWrapper(ABC):
         safe_args = self._sanitize_args_for_log(args)
         log.info(
             "[%s] Starting: %s (timeout=%ds)",
-            tool_name, " ".join(safe_args), effective_timeout,
+            tool_name,
+            " ".join(safe_args),
+            effective_timeout,
         )
 
         t0 = time.monotonic()
@@ -173,13 +177,14 @@ class ToolWrapper(ABC):
             duration = time.monotonic() - t0
             log.error(
                 "[%s] TIMEOUT after %.1fs (limit=%ds). Command: %s",
-                tool_name, duration, effective_timeout, " ".join(safe_args),
+                tool_name,
+                duration,
+                effective_timeout,
+                " ".join(safe_args),
             )
             raise
         except FileNotFoundError:
-            raise ToolNotAvailableError(
-                f"{tool_name} binary not found: {args[0]}"
-            )
+            raise ToolNotAvailableError(f"{tool_name} binary not found: {args[0]}")
 
         duration = time.monotonic() - t0
 
@@ -187,7 +192,10 @@ class ToolWrapper(ABC):
             stderr_preview = (result.stderr or "")[:500]
             log.warning(
                 "[%s] Exited with code %d after %.1fs. stderr: %s",
-                tool_name, result.returncode, duration, stderr_preview,
+                tool_name,
+                result.returncode,
+                duration,
+                stderr_preview,
             )
             # Some tools use non-zero codes for "findings found" — don't
             # always raise. Let subclasses decide via _check_exit_code.
@@ -200,7 +208,9 @@ class ToolWrapper(ABC):
         else:
             log.info(
                 "[%s] Completed successfully in %.1fs (%d bytes stdout)",
-                tool_name, duration, len(result.stdout or ""),
+                tool_name,
+                duration,
+                len(result.stdout or ""),
             )
 
         return result
@@ -272,7 +282,15 @@ class ToolWrapper(ABC):
         """
         sanitized: List[str] = []
         skip_next = False
-        sensitive_flags = {"-H", "--header", "--cookie", "-u", "--user", "-p", "--password"}
+        sensitive_flags = {
+            "-H",
+            "--header",
+            "--cookie",
+            "-u",
+            "--user",
+            "-p",
+            "--password",
+        }
 
         for i, arg in enumerate(args):
             if skip_next:

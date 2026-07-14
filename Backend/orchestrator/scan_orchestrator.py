@@ -22,13 +22,11 @@ import logging
 import platform
 import socket
 import time
-import uuid
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
-from core.models import DiscoveryScanType, ScanIntensity, HostResult, DiscoverySummary
+from core.models import ScanIntensity, HostResult
 from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
 from core.risk import infer_os_from_host
 from core.constants import PDF_AVAILABLE
@@ -37,7 +35,7 @@ from core.asset_correlation import AssetCorrelationEngine
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine
-from core.discovery.profiles import FAST, BALANCED, AGGRESSIVE, profile_for_pipeline
+from core.discovery.profiles import FAST, BALANCED, profile_for_pipeline
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
 from engines.port.port_engine import PortEngine
@@ -61,18 +59,18 @@ class ScanOrchestrator:
 
     def __init__(
         self,
-        silent:       bool  = True,
-        reports_dir:  Optional[str] = None,
-        intensity:    str   = "normal",
-        rate_limit:   float = 200.0,
-        stealth_mode: bool  = False,
+        silent: bool = True,
+        reports_dir: Optional[str] = None,
+        intensity: str = "normal",
+        rate_limit: float = 200.0,
+        stealth_mode: bool = False,
     ):
-        self.silent       = silent
-        self.rate_limit   = rate_limit
+        self.silent = silent
+        self.rate_limit = rate_limit
         self.stealth_mode = stealth_mode
-        self.platform     = PrivilegeManager.get_platform()
-        self.has_priv     = PrivilegeManager.is_admin()
-        
+        self.platform = PrivilegeManager.get_platform()
+        self.has_priv = PrivilegeManager.is_admin()
+
         # ── NEW: Unified asset correlation engine for data consistency ────────
         self.asset_engine = AssetCorrelationEngine()
 
@@ -132,6 +130,7 @@ class ScanOrchestrator:
     ) -> Dict:
         """Backward-compat: scan all sub-subnets of a parent CIDR."""
         import ipaddress
+
         results: List[Dict] = []
         try:
             parent = ipaddress.ip_network(target, strict=False)
@@ -281,7 +280,9 @@ class ScanOrchestrator:
             duration = time.time() - t0
 
             # Trigger classification and OS inference on the discovered hosts
-            self._apply_os_inference(disc_results, ot_enrichment=(pipeline_mode == "vulnerability_audit"))
+            self._apply_os_inference(
+                disc_results, ot_enrichment=(pipeline_mode == "vulnerability_audit")
+            )
 
             if pipeline_mode == "basic":
                 formatted = [
@@ -305,43 +306,43 @@ class ScanOrchestrator:
 
             if pipeline_mode == "vulnerability_audit":
                 summary = {
-                    "total_hosts":           len(formatted),
-                    "active_hosts":          active,
-                    "inactive_hosts":        len(formatted) - active,
-                    "scan_duration":         duration,
-                    "phase":                 1,
-                    "scan_type":             scan_type.upper(),
+                    "total_hosts": len(formatted),
+                    "active_hosts": active,
+                    "inactive_hosts": len(formatted) - active,
+                    "scan_duration": duration,
+                    "phase": 1,
+                    "scan_type": scan_type.upper(),
                     "discovery_scan_method": scan_type.upper(),
-                    "discovery_profile":     profile.name,
-                }
-                metadata = {
-                    "target":                ", ".join(targets),
-                    "original_targets":      targets,
-                    "scan_method":           scan_type.upper(),
-                    "discovery_scan_method": scan_type.upper(),
-                    "discovery_profile":     profile.name,
-                }
-            else:  # basic
-                summary = {
-                    "total_hosts":       len(formatted),
-                    "active_hosts":      active,
-                    "inactive_hosts":    len(formatted) - active,
-                    "scan_duration":     duration,
-                    "phase":             1,
-                    "scan_type":         scan_type.upper(),
                     "discovery_profile": profile.name,
                 }
                 metadata = {
-                    "target":            ", ".join(targets),
-                    "original_targets":  targets,
-                    "scan_type":         scan_type.upper(),
+                    "target": ", ".join(targets),
+                    "original_targets": targets,
+                    "scan_method": scan_type.upper(),
+                    "discovery_scan_method": scan_type.upper(),
+                    "discovery_profile": profile.name,
+                }
+            else:  # basic
+                summary = {
+                    "total_hosts": len(formatted),
+                    "active_hosts": active,
+                    "inactive_hosts": len(formatted) - active,
+                    "scan_duration": duration,
+                    "phase": 1,
+                    "scan_type": scan_type.upper(),
+                    "discovery_profile": profile.name,
+                }
+                metadata = {
+                    "target": ", ".join(targets),
+                    "original_targets": targets,
+                    "scan_type": scan_type.upper(),
                     "discovery_profile": profile.name,
                 }
 
             return {
-                "success":  True,
-                "data":     formatted,
-                "summary":  summary,
+                "success": True,
+                "data": formatted,
+                "summary": summary,
                 "metadata": metadata,
             }
 
@@ -422,7 +423,8 @@ class ScanOrchestrator:
             # Determine which IPs are still inactive after FAST pass
             fast_by_ip: Dict[str, Dict] = {r["ip"]: r for r in fast_raw}
             unresolved_ips = [
-                ip for ip in all_ips
+                ip
+                for ip in all_ips
                 if not fast_by_ip.get(ip, {}).get("is_active", False)
             ]
             fallback_targets_count = len(unresolved_ips)
@@ -434,7 +436,9 @@ class ScanOrchestrator:
                     stealth_mode=self.stealth_mode,
                     rate_limit=rate_limit,
                 )
-                balanced_raw: List[Dict] = await balanced_engine.run(unresolved_ips, scan_id=scan_id)
+                balanced_raw: List[Dict] = await balanced_engine.run(
+                    unresolved_ips, scan_id=scan_id
+                )
                 balanced_by_ip: Dict[str, Dict] = {r["ip"]: r for r in balanced_raw}
                 fallback_active_hosts = sum(
                     1 for r in balanced_raw if r.get("is_active", False)
@@ -467,45 +471,44 @@ class ScanOrchestrator:
 
         # Format using the same to_basic_dict() path as the original asset flow
         formatted = [
-            self._format_host(r.get("ip"), r).to_basic_dict()
-            for r in raw_results
+            self._format_host(r.get("ip"), r).to_basic_dict() for r in raw_results
         ]
 
         active = sum(1 for h in formatted if h["is_active"])
 
         summary = {
-            "total_hosts":          len(formatted),
-            "active_hosts":         active,
-            "inactive_hosts":       len(formatted) - active,
-            "scan_duration":        duration,
-            "phase":                1,
-            "scan_type":            scan_type.upper(),
-            "discovery_profile":    discovery_profile_label,
-            "discovery_intensity":  intensity,
+            "total_hosts": len(formatted),
+            "active_hosts": active,
+            "inactive_hosts": len(formatted) - active,
+            "scan_duration": duration,
+            "phase": 1,
+            "scan_type": scan_type.upper(),
+            "discovery_profile": discovery_profile_label,
+            "discovery_intensity": intensity,
         }
         if intensity == "normal":
             summary["fallback_targets_count"] = fallback_targets_count
-            summary["fallback_active_hosts"]  = fallback_active_hosts
+            summary["fallback_active_hosts"] = fallback_active_hosts
 
         metadata = {
-            "target":               ", ".join(targets),
-            "original_targets":     targets,
-            "scan_type":            scan_type.upper(),
-            "discovery_profile":    discovery_profile_label,
-            "discovery_intensity":  intensity,
+            "target": ", ".join(targets),
+            "original_targets": targets,
+            "scan_type": scan_type.upper(),
+            "discovery_profile": discovery_profile_label,
+            "discovery_intensity": intensity,
         }
 
         return {
-            "success":  True,
-            "data":     formatted,
-            "summary":  summary,
+            "success": True,
+            "data": formatted,
+            "summary": summary,
             "metadata": metadata,
         }
 
     @staticmethod
     def _merge_fast_balanced_results(
-        ordered_ips:    List[str],
-        fast_by_ip:     Dict[str, Dict],
+        ordered_ips: List[str],
+        fast_by_ip: Dict[str, Dict],
         balanced_by_ip: Dict[str, Dict],
     ) -> List[Dict]:
         """
@@ -519,9 +522,17 @@ class ScanOrchestrator:
         """
         merged: List[Dict] = []
         for ip in ordered_ips:
-            fast_r     = fast_by_ip.get(ip, {"ip": ip, "ip_address": ip,
-                                              "is_active": False, "method": "N/A",
-                                              "confirmations": [], "mac": "N/A"})
+            fast_r = fast_by_ip.get(
+                ip,
+                {
+                    "ip": ip,
+                    "ip_address": ip,
+                    "is_active": False,
+                    "method": "N/A",
+                    "confirmations": [],
+                    "mac": "N/A",
+                },
+            )
             balanced_r = balanced_by_ip.get(ip)
 
             if fast_r.get("is_active"):
@@ -541,8 +552,10 @@ class ScanOrchestrator:
             else:
                 # Rule 3: both inactive → pick whichever has more populated fields
                 if balanced_r:
-                    fast_pop     = sum(1 for v in fast_r.values()     if v and v != "N/A")
-                    balanced_pop = sum(1 for v in balanced_r.values()  if v and v != "N/A")
+                    fast_pop = sum(1 for v in fast_r.values() if v and v != "N/A")
+                    balanced_pop = sum(
+                        1 for v in balanced_r.values() if v and v != "N/A"
+                    )
                     base = balanced_r if balanced_pop >= fast_pop else fast_r
                     result = dict(base)
                     # Preserve MAC from either side
@@ -590,7 +603,9 @@ class ScanOrchestrator:
             custom_ports:  Optional custom ports or ranges to scan (e.g. '22,80,443').
             exclude_ports: Optional ports or ranges to exclude from scan (e.g. '2375,6443').
         """
-        self._log(f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}, custom_ports={custom_ports}, exclude_ports={exclude_ports}")
+        self._log(
+            f"run_asset_discovery_only → {len(hosts)} hosts, intensity={intensity}, os_detection={os_detection}, custom_ports={custom_ports}, exclude_ports={exclude_ports}"
+        )
 
         try:
             intensity_enum = ScanIntensity(intensity.lower())
@@ -601,6 +616,7 @@ class ScanOrchestrator:
         if custom_ports:
             try:
                 from core.utils import InputValidator
+
                 parsed_custom_ports = InputValidator.parse_custom_ports(custom_ports)
             except ValueError as e:
                 log.warning("Failed parsing custom ports in orchestrator: %s", e)
@@ -609,14 +625,19 @@ class ScanOrchestrator:
         if exclude_ports:
             try:
                 from core.utils import InputValidator
+
                 parsed_exclude_ports = InputValidator.parse_exclude_ports(exclude_ports)
             except ValueError as e:
                 log.warning("Failed parsing exclude ports in orchestrator: %s", e)
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         custom_exclude = self._parse_exclude_ips(exclude_ips)
-        hosts = [h for h in hosts if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)]
-        
+        hosts = [
+            h
+            for h in hosts
+            if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)
+        ]
+
         discovery_scan_method = self._infer_discovery_method(hosts)
         target_str = self._hosts_target_string(hosts)
         self.asset_engine.register_discovery_results(
@@ -630,25 +651,36 @@ class ScanOrchestrator:
         if passive_first:
             active_for_scan = []
             for h in active_hosts:
-                is_resolved = (
-                    h.get("device_category") not in ("unknown", None, "") or
-                    h.get("vendor") not in ("N/A", "Unknown", "", None)
-                )
+                is_resolved = h.get("device_category") not in (
+                    "unknown",
+                    None,
+                    "",
+                ) or h.get("vendor") not in ("N/A", "Unknown", "", None)
                 if is_resolved:
                     skipped_hosts.append(h)
                 else:
                     active_for_scan.append(h)
-            log.info("Passive-first: skipping active port scan for %d hosts: %s", len(skipped_hosts), [self._get_host_ip(h) for h in skipped_hosts])
+            log.info(
+                "Passive-first: skipping active port scan for %d hosts: %s",
+                len(skipped_hosts),
+                [self._get_host_ip(h) for h in skipped_hosts],
+            )
         else:
             active_for_scan = active_hosts
-            
+
         active_count = len(active_for_scan)
-        inactive_count = len(hosts) - len(active_hosts) # keep total inactive count correct
+        inactive_count = len(hosts) - len(
+            active_hosts
+        )  # keep total inactive count correct
 
         if not active_hosts:
             return self._make_empty_phase2(
-                hosts, len(active_hosts), inactive_count,
-                intensity_enum, discovery_scan_method, target_str,
+                hosts,
+                len(active_hosts),
+                inactive_count,
+                intensity_enum,
+                discovery_scan_method,
+                target_str,
             )
 
         t0 = time.time()
@@ -673,11 +705,11 @@ class ScanOrchestrator:
             exclude_ot_from_nmap=exclude_ot_from_nmap,
         )
         if active_for_scan:
-            await port_engine.run(active_for_scan, scan_id=scan_id)   # mutates in-place
+            await port_engine.run(active_for_scan, scan_id=scan_id)  # mutates in-place
             self._apply_os_inference(active_for_scan, ot_enrichment=True)
         if skipped_hosts:
             self._apply_os_inference(skipped_hosts, ot_enrichment=False)
-        
+
         # ── RESTORE and MERGE vendor, mac, and open_ports from backup ──────────
         # This ensures vendor and Phase 1 enrichment ports are NEVER lost, regardless of PortEngine behavior
         for host in active_hosts:
@@ -690,7 +722,7 @@ class ScanOrchestrator:
                 if backup["mac_address"] != "N/A":
                     host["mac_address"] = backup["mac_address"]
                     host["mac"] = backup["mac_address"]
-                
+
                 # Merge Phase 1 ports into Phase 2 open_ports
                 p1_ports = backup["open_ports"]
                 if p1_ports:
@@ -704,7 +736,7 @@ class ScanOrchestrator:
                             if "port_states" in host:
                                 host["port_states"][p_num] = "open"
                                 host["port_states"][str(p_num)] = "open"
-        
+
         # ── Also try to get vendor from asset registry (ONLY for Vulnerability Audit) ────
         # ONLY for Vulnerability Audit pipeline (phases 1+2+3)
         if pipeline_mode == "vulnerability_audit":
@@ -714,28 +746,27 @@ class ScanOrchestrator:
         duration = time.time() - t0
 
         formatted = [
-            self._format_host(self._get_host_ip(h), h).to_clean_dict()
-            for h in hosts
+            self._format_host(self._get_host_ip(h), h).to_clean_dict() for h in hosts
         ]
         hosts_with_ports = sum(1 for h in formatted if h.get("open_ports"))
 
         summary = {
-            "total_hosts":            len(formatted),
-            "active_hosts":           active_count,
-            "inactive_hosts":         inactive_count,
-            "hosts_with_ports":       hosts_with_ports,
-            "scan_duration":          duration,
-            "phase":                  2,
-            "scan_type":              intensity_enum.value.upper(),
-            "discovery_scan_method":  discovery_scan_method or "N/A",
+            "total_hosts": len(formatted),
+            "active_hosts": active_count,
+            "inactive_hosts": inactive_count,
+            "hosts_with_ports": hosts_with_ports,
+            "scan_duration": duration,
+            "phase": 2,
+            "scan_type": intensity_enum.value.upper(),
+            "discovery_scan_method": discovery_scan_method or "N/A",
         }
         if custom_ports:
             summary["custom_ports"] = custom_ports
 
         return {
-            "success":  True,
-            "data":     formatted,
-            "summary":  summary,
+            "success": True,
+            "data": formatted,
+            "summary": summary,
             "metadata": self._phase2_meta(
                 target_str, intensity_enum, discovery_scan_method
             ),
@@ -765,8 +796,12 @@ class ScanOrchestrator:
 
         hosts = [self._normalize_host_record(h) for h in hosts]
         custom_exclude = self._parse_exclude_ips(exclude_ips)
-        hosts = [h for h in hosts if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)]
-        
+        hosts = [
+            h
+            for h in hosts
+            if not self._is_blacklisted(self._get_host_ip(h), custom_exclude)
+        ]
+
         discovery_scan_method = self._infer_discovery_method(hosts)
         target_str = self._hosts_target_string(hosts)
 
@@ -783,8 +818,11 @@ class ScanOrchestrator:
 
         if not active_hosts:
             return self._make_empty_phase3(
-                hosts, active_count, inactive_count,
-                discovery_scan_method, target_str,
+                hosts,
+                active_count,
+                inactive_count,
+                discovery_scan_method,
+                target_str,
             )
 
         t0 = time.time()
@@ -802,38 +840,41 @@ class ScanOrchestrator:
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
         vuln_engine.run(active_hosts, scan_id=scan_id)
         self._apply_os_inference(active_hosts, ot_enrichment=True)
-        
+
         # ── Enrich asset registry with vulnerability findings ───────────────
         self.asset_engine.enrich_vulnerability_findings(active_hosts)
 
         duration = time.time() - t0
 
         formatted = [
-            self._format_host(self._get_host_ip(h), h).to_phase3_dict()
-            for h in hosts
+            self._format_host(self._get_host_ip(h), h).to_phase3_dict() for h in hosts
         ]
         critical = sum(1 for h in formatted if h.get("host_risk_level") == "Critical")
-        high     = sum(1 for h in formatted if h.get("host_risk_level") == "High")
+        high = sum(1 for h in formatted if h.get("host_risk_level") == "High")
 
         summary = {
-            "total_hosts":           len(formatted),
-            "active_hosts":          active_count,
-            "inactive_hosts":        inactive_count,
-            "critical_hosts":        critical,
-            "high_risk_hosts":       high,
-            "scan_duration":         duration,
-            "phase":                 3,
-            "scan_type":             "vulnerability_audit",
+            "total_hosts": len(formatted),
+            "active_hosts": active_count,
+            "inactive_hosts": inactive_count,
+            "critical_hosts": critical,
+            "high_risk_hosts": high,
+            "scan_duration": duration,
+            "phase": 3,
+            "scan_type": "vulnerability_audit",
             "discovery_scan_method": discovery_scan_method or "N/A",
         }
         return {
-            "success":  True,
-            "data":     formatted,
-            "summary":  summary,
+            "success": True,
+            "data": formatted,
+            "summary": summary,
             "metadata": {
                 **({} if not target_str else {"target": target_str}),
-                "scan_type":             "vulnerability_audit",
-                **({} if not discovery_scan_method else {"discovery_scan_method": discovery_scan_method}),
+                "scan_type": "vulnerability_audit",
+                **(
+                    {}
+                    if not discovery_scan_method
+                    else {"discovery_scan_method": discovery_scan_method}
+                ),
             },
         }
 
@@ -852,19 +893,33 @@ class ScanOrchestrator:
         If Nmap fails or is unavailable, the host data from Phase 2 is used as-is.
         """
         from core.nmap.wrapper import NmapScanner, NMAP_AVAILABLE
+
         if not NMAP_AVAILABLE:
             return
 
         # On Windows, sudo doesn't work — disable it. On Linux/Mac, enable it for SYN scan.
         use_sudo = platform.system() != "Windows"
         scanner = NmapScanner(sudo=use_sudo)
+
         def _enrich_one_host(host: Dict) -> None:
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
                 return
             open_port_nums = [p["port"] for p in host.get("open_ports", [])]
             if exclude_ot_from_nmap:
-                ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+                ot_ports = {
+                    502,
+                    102,
+                    44818,
+                    47808,
+                    20000,
+                    4840,
+                    2404,
+                    18245,
+                    9600,
+                    5007,
+                    2455,
+                }
                 open_port_nums = [p for p in open_port_nums if p not in ot_ports]
             if not open_port_nums:
                 return
@@ -887,13 +942,13 @@ class ScanOrchestrator:
                 # CRITICAL: Add accurate OS fingerprinting results
                 best_os = result.best_os
                 if best_os and best_os.accuracy >= 75:
-                    host["os_guess"]      = best_os.name
-                    host["os_confidence"] = "High" if best_os.accuracy >= 90 else "Medium"
+                    host["os_guess"] = best_os.name
+                    host["os_confidence"] = (
+                        "High" if best_os.accuracy >= 90 else "Medium"
+                    )
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
 
-        from concurrent.futures import ThreadPoolExecutor
-        
         if not hosts:
             return
 
@@ -916,19 +971,19 @@ class ScanOrchestrator:
         """
         Retrieve vendor information from the asset registry (Phase 1 data)
         and apply it to Phase 2 results.
-        
+
         This ensures vendor data is NOT lost when PortEngine overwrites the host dict.
         """
         for host in hosts:
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
                 continue
-            
+
             # Get unified asset from registry
             asset = self.asset_engine.get_asset(ip)
             if not asset:
                 continue
-            
+
             # Restore vendor info from Phase 1
             if asset.vendor and asset.vendor.name != "Unknown":
                 host["vendor"] = asset.vendor.name
@@ -943,6 +998,7 @@ class ScanOrchestrator:
             return []
         networks = []
         import ipaddress
+
         for item in exclude_ips_str.split(","):
             item = item.strip()
             if item:
@@ -956,6 +1012,7 @@ class ScanOrchestrator:
     def _is_blacklisted(ip: str, custom_exclude_list: Optional[List] = None) -> bool:
         import ipaddress
         from config import AppConfig
+
         try:
             ip_obj = ipaddress.ip_address(ip)
             for network in AppConfig.SCAN_IP_BLACKLIST:
@@ -970,7 +1027,9 @@ class ScanOrchestrator:
         return False
 
     @staticmethod
-    def _expand_targets(targets: List[str], custom_exclude_list: Optional[List] = None) -> List[str]:
+    def _expand_targets(
+        targets: List[str], custom_exclude_list: Optional[List] = None
+    ) -> List[str]:
         """Expand a list of IPs/ranges/subnets into a flat de-duplicated IP list."""
         all_ips = []
         for target in targets:
@@ -982,11 +1041,15 @@ class ScanOrchestrator:
                 network = ipaddress.ip_network(resolved, strict=False)
                 for ip in network.hosts():
                     ip_str = str(ip)
-                    if not ScanOrchestrator._is_blacklisted(ip_str, custom_exclude_list):
+                    if not ScanOrchestrator._is_blacklisted(
+                        ip_str, custom_exclude_list
+                    ):
                         all_ips.append(ip_str)
             elif "-" in resolved:
                 for ip_str in InputValidator.expand_ip_range(resolved):
-                    if not ScanOrchestrator._is_blacklisted(ip_str, custom_exclude_list):
+                    if not ScanOrchestrator._is_blacklisted(
+                        ip_str, custom_exclude_list
+                    ):
                         all_ips.append(ip_str)
             else:
                 if not ScanOrchestrator._is_blacklisted(resolved, custom_exclude_list):
@@ -995,7 +1058,9 @@ class ScanOrchestrator:
 
     # ── Helpers (unchanged from original) ────────────────────────────────────
 
-    def _format_host(self, ip: str, data: Dict, input_hostname: str = None) -> HostResult:
+    def _format_host(
+        self, ip: str, data: Dict, input_hostname: str = None
+    ) -> HostResult:
         """
         Resolve hostname with live-source priority over stale DNS.
 
@@ -1017,7 +1082,9 @@ class ScanOrchestrator:
             if not netbios_name:
                 # Also scan netbios_names list for the workstation entry
                 for entry in data.get("netbios_names", []):
-                    if isinstance(entry, dict) and not (entry.get("flags", 0xFFFF) & 0x8000):
+                    if isinstance(entry, dict) and not (
+                        entry.get("flags", 0xFFFF) & 0x8000
+                    ):
                         netbios_name = entry.get("name", "")
                         break
 
@@ -1029,9 +1096,10 @@ class ScanOrchestrator:
                 hostname = data["mdns_name"]
 
             # ── 3. hostname already set by discovery engine ───────────────────
-            elif (
-                data.get("hostname")
-                and data["hostname"] not in ("Unknown", "", "N/A")
+            elif data.get("hostname") and data["hostname"] not in (
+                "Unknown",
+                "",
+                "N/A",
             ):
                 hostname = data["hostname"]
 
@@ -1044,7 +1112,8 @@ class ScanOrchestrator:
                         log.debug(
                             "_format_host(%s): DNS PTR used as fallback → %s "
                             "(NetBIOS/mDNS returned nothing — result may be stale)",
-                            ip, dns_name,
+                            ip,
+                            dns_name,
                         )
                     else:
                         hostname = input_hostname or "Unknown"
@@ -1068,42 +1137,43 @@ class ScanOrchestrator:
 
         confs = data.get("confirmations", [])
         confidence = (
-            "High"   if len(confs) >= 2 or "ARP" in confs else
-            "Medium" if len(confs) == 1 else "Low"
+            "High"
+            if len(confs) >= 2 or "ARP" in confs
+            else "Medium" if len(confs) == 1 else "Low"
         )
         if not is_active:
             confidence = "N/A"
 
         return HostResult(
-            ip_address       = ip or "",
-            hostname         = hostname,
-            mac_address      = mac,
-            vendor           = vendor,
-            is_active        = is_active,
-            status           = "Active" if is_active else "Inactive",
-            scan_method      = data.get("method") or data.get("scan_method") or "N/A",
-            response_time_ms = data.get("elapsed_ms") or data.get("response_time_ms"),
-            open_ports       = data.get("open_ports", []),
-            os_guess         = data.get("os_guess", "Unknown"),
-            os_confidence    = data.get("os_confidence", "Low"),
-            confidence       = confidence,
-            device_category  = data.get("device_category", "unknown"),
-            snmp_device_type = data.get("snmp_device_type"),
-            mdns_name        = data.get("mdns_name"),
-            netbios_names    = data.get("netbios_names", []),
-            os_fingerprint_full = data.get("os_fingerprint_full", {}),
-            tcp_fingerprint  = data.get("tcp_fingerprint", {}),
-            port_states      = data.get("port_states", {}),
-            tls_info         = data.get("tls_info", {}),
-            http_audit       = data.get("http_audit", {}),
-            snmp_info        = data.get("snmp_info", {}),
-            smb_info         = data.get("smb_info", {}),
-            ssh_info         = data.get("ssh_info", {}),
-            udp_services     = data.get("udp_services", []),
-            cves             = data.get("cves", []),
-            host_risk_score  = data.get("host_risk_score", 0),
-            host_risk_level  = data.get("host_risk_level", "Info"),
-            _ot_probed       = data.get("_ot_probed", False),
+            ip_address=ip or "",
+            hostname=hostname,
+            mac_address=mac,
+            vendor=vendor,
+            is_active=is_active,
+            status="Active" if is_active else "Inactive",
+            scan_method=data.get("method") or data.get("scan_method") or "N/A",
+            response_time_ms=data.get("elapsed_ms") or data.get("response_time_ms"),
+            open_ports=data.get("open_ports", []),
+            os_guess=data.get("os_guess", "Unknown"),
+            os_confidence=data.get("os_confidence", "Low"),
+            confidence=confidence,
+            device_category=data.get("device_category", "unknown"),
+            snmp_device_type=data.get("snmp_device_type"),
+            mdns_name=data.get("mdns_name"),
+            netbios_names=data.get("netbios_names", []),
+            os_fingerprint_full=data.get("os_fingerprint_full", {}),
+            tcp_fingerprint=data.get("tcp_fingerprint", {}),
+            port_states=data.get("port_states", {}),
+            tls_info=data.get("tls_info", {}),
+            http_audit=data.get("http_audit", {}),
+            snmp_info=data.get("snmp_info", {}),
+            smb_info=data.get("smb_info", {}),
+            ssh_info=data.get("ssh_info", {}),
+            udp_services=data.get("udp_services", []),
+            cves=data.get("cves", []),
+            host_risk_score=data.get("host_risk_score", 0),
+            host_risk_level=data.get("host_risk_level", "Info"),
+            _ot_probed=data.get("_ot_probed", False),
         )
 
     @staticmethod
@@ -1134,9 +1204,13 @@ class ScanOrchestrator:
         if not token or token in {"N/A", "UNKNOWN", "NONE"}:
             return None
         for key, label in [
-            ("ADAPTIVE", "ADAPTIVE"), ("STEALTH", "STEALTH"),
-            ("FULL", "FULL"), ("ARP", "ARP"),
-            ("PING", "PING"), ("ICMP", "PING"), ("TCP", "TCP"),
+            ("ADAPTIVE", "ADAPTIVE"),
+            ("STEALTH", "STEALTH"),
+            ("FULL", "FULL"),
+            ("ARP", "ARP"),
+            ("PING", "PING"),
+            ("ICMP", "PING"),
+            ("TCP", "TCP"),
         ]:
             if key in token:
                 return label
@@ -1145,7 +1219,11 @@ class ScanOrchestrator:
     def _infer_discovery_method(self, hosts: List[Dict]) -> Optional[str]:
         methods = []
         for host in hosts:
-            raw = host.get("method") or host.get("scan_method") or host.get("discovery_method")
+            raw = (
+                host.get("method")
+                or host.get("scan_method")
+                or host.get("discovery_method")
+            )
             m = self._normalize_scan_method(raw)
             if m:
                 methods.append(m)
@@ -1163,13 +1241,13 @@ class ScanOrchestrator:
 
     @staticmethod
     def _apply_os_inference(hosts: List[Dict], ot_enrichment: bool = False) -> None:
-        from core.risk import infer_os_from_host
         from core.device_classifier import classify_device
         from core.discovery.enrichment import _ot_protocol_probes
         from concurrent.futures import ThreadPoolExecutor
 
         active_hosts = [h for h in hosts if h.get("is_active")]
         if active_hosts and ot_enrichment:
+
             def _probe_host(host: Dict) -> None:
                 ip = host.get("ip_address") or host.get("ip")
                 if ip:
@@ -1184,7 +1262,7 @@ class ScanOrchestrator:
         for host in hosts:
             guess, conf = infer_os_from_host(host)
             if host.get("os_guess", "Unknown") == "Unknown":
-                host["os_guess"]      = guess
+                host["os_guess"] = guess
                 host["os_confidence"] = conf
             classify_device(host)
 
@@ -1204,13 +1282,19 @@ class ScanOrchestrator:
     # ── Empty result builders ─────────────────────────────────────────────────
 
     def _make_empty_phase2(self, hosts, active, inactive, intensity, dsm, target):
-        formatted = [self._format_host(self._get_host_ip(h), h).to_clean_dict() for h in hosts]
+        formatted = [
+            self._format_host(self._get_host_ip(h), h).to_clean_dict() for h in hosts
+        ]
         return {
-            "success": True, "data": formatted,
+            "success": True,
+            "data": formatted,
             "summary": {
-                "total_hosts": len(formatted), "active_hosts": active,
-                "inactive_hosts": inactive, "hosts_with_ports": 0,
-                "scan_duration": 0, "phase": 2,
+                "total_hosts": len(formatted),
+                "active_hosts": active,
+                "inactive_hosts": inactive,
+                "hosts_with_ports": 0,
+                "scan_duration": 0,
+                "phase": 2,
                 "scan_type": intensity.value.upper(),
                 "discovery_scan_method": dsm or "N/A",
             },
@@ -1218,14 +1302,21 @@ class ScanOrchestrator:
         }
 
     def _make_empty_phase3(self, hosts, active, inactive, dsm, target):
-        formatted = [self._format_host(self._get_host_ip(h), h).to_clean_dict() for h in hosts]
+        formatted = [
+            self._format_host(self._get_host_ip(h), h).to_clean_dict() for h in hosts
+        ]
         return {
-            "success": True, "data": formatted,
+            "success": True,
+            "data": formatted,
             "summary": {
-                "total_hosts": len(formatted), "active_hosts": active,
-                "inactive_hosts": inactive, "critical_hosts": 0,
-                "high_risk_hosts": 0, "scan_duration": 0,
-                "phase": 3, "scan_type": "vulnerability_audit",
+                "total_hosts": len(formatted),
+                "active_hosts": active,
+                "inactive_hosts": inactive,
+                "critical_hosts": 0,
+                "high_risk_hosts": 0,
+                "scan_duration": 0,
+                "phase": 3,
+                "scan_type": "vulnerability_audit",
                 "discovery_scan_method": dsm or "N/A",
             },
             "metadata": {

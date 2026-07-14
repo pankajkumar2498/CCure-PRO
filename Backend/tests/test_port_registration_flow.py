@@ -1,9 +1,7 @@
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 from core.discovery.enrichment import enrich_host, _register_open_port
-from core.discovery.engine import DiscoveryEngine
-from core.discovery.profiles import FAST, AGGRESSIVE
 from orchestrator.scan_orchestrator import ScanOrchestrator
 
 
@@ -16,7 +14,12 @@ def test_register_open_port_honors_register_ports_flag():
     assert result_with_ports["open_ports"][0]["port"] == 137
 
     # Scenario 2: register_ports is False (as in FAST profile / Basic Scan)
-    result_no_ports = {"port_states": {}, "open_ports": [], "confirmations": [], "_register_ports": False}
+    result_no_ports = {
+        "port_states": {},
+        "open_ports": [],
+        "confirmations": [],
+        "_register_ports": False,
+    }
     _register_open_port(result_no_ports, port=137, service="netbios-ns")
     assert 137 not in result_no_ports["port_states"]
     assert len(result_no_ports["open_ports"]) == 0
@@ -36,7 +39,7 @@ def test_enrich_host_sets_and_pops_internal_flag(mock_ptr, mock_mdns, mock_netbi
     # Test under FAST profile (register_ports=False)
     result_fast = {"port_states": {}, "open_ports": []}
     enrich_host("10.180.12.104", result_fast, ot_enrichment=False, register_ports=False)
-    
+
     # Internal key should be popped
     assert "_register_ports" not in result_fast
     # Hostname/NetBIOS name details are resolved
@@ -47,8 +50,10 @@ def test_enrich_host_sets_and_pops_internal_flag(mock_ptr, mock_mdns, mock_netbi
 
     # Test under AGGRESSIVE profile (register_ports=True)
     result_aggressive = {"port_states": {}, "open_ports": []}
-    enrich_host("10.180.12.104", result_aggressive, ot_enrichment=False, register_ports=True)
-    
+    enrich_host(
+        "10.180.12.104", result_aggressive, ot_enrichment=False, register_ports=True
+    )
+
     assert "_register_ports" not in result_aggressive
     assert result_aggressive.get("netbios_computer") == "TEST-PC"
     # Port 137 SHOULD be registered as open
@@ -61,7 +66,7 @@ def test_enrich_host_sets_and_pops_internal_flag(mock_ptr, mock_mdns, mock_netbi
 async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls):
     # Mock PortEngine to run without modifying open_ports (simulating a scan that misses port 502)
     mock_port_engine = MagicMock()
-    
+
     async def mock_run(hosts, scan_id=None):
         for h in hosts:
             # Overwrite open_ports to represent a scan that did not cover port 502
@@ -84,15 +89,15 @@ async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls
                     "port": 502,
                     "service": "MODBUS",
                     "state": "open",
-                    "banner": "Protocol: MODBUS, Vendor: Modbus Device"
+                    "banner": "Protocol: MODBUS, Vendor: Modbus Device",
                 }
             ],
-            "port_states": {502: "open", "502": "open"}
+            "port_states": {502: "open", "502": "open"},
         }
     ]
 
-    orch = ScanOrchestrator(has_privileges=True)
-    
+    orch = ScanOrchestrator()
+
     # Mocking helpers on orchestrator that we are not testing
     orch._expand_targets = MagicMock(return_value=["10.180.12.104"])
     orch._apply_os_inference = MagicMock()
@@ -101,13 +106,13 @@ async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls
         hosts=hosts_input,
         intensity="normal",
         pipeline_mode="vulnerability_audit",
-        os_detection=False
+        os_detection=False,
     )
 
     assert res["success"] is True
     hosts_output = res["data"]
     assert len(hosts_output) == 1
-    
+
     host = hosts_output[0]
     # Verify port 502 from Phase 1 is merged back into Phase 2 output
     assert len(host["open_ports"]) == 1
@@ -122,7 +127,8 @@ def test_port_engine_port_list_curated_hybrid_ranges():
     from core.constants import SCAN_PORTS_OT, SCAN_PORTS_QUICK
 
     # Scenario 1: LIGHT intensity
-    pe_light = PortEngine(intensity=ScanIntensity.LIGHT)
+    # Pass exclude_ot_from_nmap=False so OT ports are not stripped from the list
+    pe_light = PortEngine(intensity=ScanIntensity.LIGHT, exclude_ot_from_nmap=False)
     ports_light = pe_light._port_list()
     # Check that it contains all OT ports (like 502, 102, 2404)
     for ot_port in SCAN_PORTS_OT:
@@ -132,7 +138,7 @@ def test_port_engine_port_list_curated_hybrid_ranges():
         assert quick_port in ports_light
 
     # Scenario 2: NORMAL intensity
-    pe_normal = PortEngine(intensity=ScanIntensity.NORMAL)
+    pe_normal = PortEngine(intensity=ScanIntensity.NORMAL, exclude_ot_from_nmap=False)
     ports_normal = pe_normal._port_list()
     # Check that it contains all system ports 1-1024
     for p in range(1, 1025):
@@ -147,4 +153,3 @@ def test_port_engine_port_list_curated_hybrid_ranges():
     assert 3306 in ports_normal
     assert 5432 in ports_normal
     assert 3389 in ports_normal  # RDP
-

@@ -31,16 +31,23 @@ export default function OrganizationManagement() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState(null);
-  const [formData, setFormData] = useState({ name: "", slug: "", plan: "community", max_assets: 500, max_users: 10 });
+  const [formData, setFormData] = useState({
+    name: "",
+    slug: "",
+    plan: "community",
+    max_assets: 500,
+    max_users: 10,
+  });
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const isSuperadmin = isSuperAdmin(currentUser);
   const canCreateOrganizations = can(currentUser, "organizations", "create");
   const canUpdateOrganizations = can(currentUser, "organizations", "update");
-  const canDeleteOrganizations = isSuperadmin && can(currentUser, "organizations", "delete");
+  const canDeleteOrganizations =
+    isSuperadmin && can(currentUser, "organizations", "delete");
 
-  const canManageOrg = (org) => (
-    isSuperadmin || (canUpdateOrganizations && String(org.id) === String(currentUser?.org_id))
-  );
+  const canManageOrg = (org) =>
+    isSuperadmin ||
+    (canUpdateOrganizations && String(org.id) === String(currentUser?.org_id));
 
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -49,7 +56,9 @@ export default function OrganizationManagement() {
       const data = await listOrganizations();
       setOrgs(data.organizations);
     } catch (err) {
-      setError("Failed to load organizations. This area is for Superadmins only.");
+      setError(
+        "Failed to load organizations. This area is for Superadmins only.",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,10 +79,19 @@ export default function OrganizationManagement() {
       await createOrganization(data);
       pushToast("Organization created successfully.", "success");
       setIsCreateModalOpen(false);
-      setFormData({ name: "", slug: "", plan: "community", max_assets: 500, max_users: 10 });
+      setFormData({
+        name: "",
+        slug: "",
+        plan: "community",
+        max_assets: 500,
+        max_users: 10,
+      });
       loadData(true);
     } catch (err) {
-      pushToast(err.response?.data?.detail || "Failed to create organization.", "error");
+      pushToast(
+        err.response?.data?.detail || "Failed to create organization.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -98,7 +116,10 @@ export default function OrganizationManagement() {
       setIsEditModalOpen(false);
       loadData(true);
     } catch (err) {
-      pushToast(err.response?.data?.detail || "Failed to update organization.", "error");
+      pushToast(
+        err.response?.data?.detail || "Failed to update organization.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -124,10 +145,17 @@ export default function OrganizationManagement() {
         setBusy(true);
         try {
           await changeOrganizationStatus(org.id, { is_active: !org.is_active });
-          pushToast(`Organization ${org.name} ${org.is_active ? "deactivated" : "activated"}.`, "success");
+          pushToast(
+            `Organization ${org.name} ${org.is_active ? "deactivated" : "activated"}.`,
+            "success",
+          );
           await loadData(true);
         } catch (err) {
-          pushToast(err.response?.data?.detail || "Unable to update organization status.", "error");
+          pushToast(
+            err.response?.data?.detail ||
+              "Unable to update organization status.",
+            "error",
+          );
         } finally {
           setBusy(false);
           setConfirmConfig(null);
@@ -145,7 +173,8 @@ export default function OrganizationManagement() {
     setConfirmConfig({
       title: `Delete ${org.name}`,
       subtitle: "Are you sure you want to delete this organization?",
-      warning: "This is a destructive tenant-level action. Users, assets, scans, and related organization data may be removed.",
+      warning:
+        "This is a destructive tenant-level action. Users, assets, scans, and related organization data may be removed.",
       confirmLabel: "Delete organization",
       confirmType: "danger",
       icon: "🗑️",
@@ -157,7 +186,10 @@ export default function OrganizationManagement() {
           pushToast("Organization deleted successfully.", "success");
           await loadData(true);
         } catch (err) {
-          pushToast(err.response?.data?.detail || "Unable to delete organization.", "error");
+          pushToast(
+            err.response?.data?.detail || "Unable to delete organization.",
+            "error",
+          );
         } finally {
           setBusy(false);
           setConfirmConfig(null);
@@ -175,7 +207,7 @@ export default function OrganizationManagement() {
       plan: org.plan,
       max_assets: org.max_assets,
       max_users: org.max_users,
-      is_active: org.is_active
+      is_active: org.is_active,
     });
     setIsEditModalOpen(true);
   };
@@ -196,14 +228,28 @@ export default function OrganizationManagement() {
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Organizations</h2>
-            <p className="page-subtitle">Manage multi-tenant organizations and their subscription plans</p>
+            <p className="page-subtitle">
+              Manage multi-tenant organizations and their subscription plans
+            </p>
           </div>
           <div className="page-actions-row">
-            <Button type="button" variant="ghost" size="sm" onClick={() => loadData(true)} disabled={refreshing || busy}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => loadData(true)}
+              disabled={refreshing || busy}
+            >
               {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
             {canCreateOrganizations && (
-              <Button type="button" variant="primary" size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={busy}>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={busy}
+              >
                 + New Organization
               </Button>
             )}
@@ -227,15 +273,27 @@ export default function OrganizationManagement() {
               </tr>
             </thead>
             <tbody>
-              {orgs.map(o => (
+              {orgs.map((o) => (
                 <tr key={o.id}>
-                  <td><strong>{o.name}</strong></td>
-                  <td><code className="ip-code">{o.slug}</code></td>
-                  <td><span className="chip chip--info">{o.plan}</span></td>
-                  <td><code className="ip-code">{o.max_assets}</code></td>
-                  <td><code className="ip-code">{o.max_users}</code></td>
                   <td>
-                    <span className={`chip ${o.is_active ? "chip--active" : "chip--inactive"}`}>
+                    <strong>{o.name}</strong>
+                  </td>
+                  <td>
+                    <code className="ip-code">{o.slug}</code>
+                  </td>
+                  <td>
+                    <span className="chip chip--info">{o.plan}</span>
+                  </td>
+                  <td>
+                    <code className="ip-code">{o.max_assets}</code>
+                  </td>
+                  <td>
+                    <code className="ip-code">{o.max_users}</code>
+                  </td>
+                  <td>
+                    <span
+                      className={`chip ${o.is_active ? "chip--active" : "chip--inactive"}`}
+                    >
                       {o.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>
@@ -251,7 +309,9 @@ export default function OrganizationManagement() {
                             variant="ghost"
                             size="sm"
                             title="View users in this organization"
-                            onClick={() => navigate(`/admin/users?org_id=${o.id}`)}
+                            onClick={() =>
+                              navigate(`/admin/users?org_id=${o.id}`)
+                            }
                           >
                             👥 Users
                           </Button>
@@ -270,7 +330,11 @@ export default function OrganizationManagement() {
                           type="button"
                           variant="secondary"
                           size="sm"
-                          title={o.is_active ? "Deactivate organization" : "Activate organization"}
+                          title={
+                            o.is_active
+                              ? "Deactivate organization"
+                              : "Activate organization"
+                          }
                           onClick={() => handleToggleStatus(o)}
                           disabled={busy}
                         >
@@ -298,7 +362,8 @@ export default function OrganizationManagement() {
               {orgs.length === 0 && (
                 <tr>
                   <td colSpan="8" className="table-empty-cell">
-                    No organizations are available yet. Create one to get started.
+                    No organizations are available yet. Create one to get
+                    started.
                   </td>
                 </tr>
               )}

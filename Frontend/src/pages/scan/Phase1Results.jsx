@@ -31,11 +31,13 @@ const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
 const PORT_PROFILES = {
   it: {
     label: "IT Infrastructure",
-    ports: "21,22,23,25,53,67,80,88,110,111,123,135,137,139,143,161,389,443,445,465,587,623,636,902,993,995,1433,1521,2049,2375,2376,3306,3389,5432,5900,5985,5986,6379,6443,8080,8443,10250,27017",
+    ports:
+      "21,22,23,25,53,67,80,88,110,111,123,135,137,139,143,161,389,443,445,465,587,623,636,902,993,995,1433,1521,2049,2375,2376,3306,3389,5432,5900,5985,5986,6379,6443,8080,8443,10250,27017",
   },
   scada: {
     label: "SCADA / OT",
-    ports: "102,502,789,1089,1091,2222,2404,2455,4000,4840,4911,5007,9600,18245,20000,44818,47808,55000,55003",
+    ports:
+      "102,502,789,1089,1091,2222,2404,2455,4000,4840,4911,5007,9600,18245,20000,44818,47808,55000,55003",
   },
   web: {
     label: "Web Services",
@@ -52,14 +54,29 @@ const PORT_PROFILES = {
   custom: {
     label: "Custom",
     ports: "",
-  }
+  },
 };
 
 const textValue = (value, fallback = "—") => {
-  if (value == null || value === "" || value === "Unknown" || value === "N/A") return fallback;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map(v => textValue(v, "")).filter(Boolean).join(", ") || fallback;
-  if (typeof value === "object") return value.name || value.vendor || value.address || value.value || fallback;
+  if (value == null || value === "" || value === "Unknown" || value === "N/A")
+    return fallback;
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  )
+    return String(value);
+  if (Array.isArray(value))
+    return (
+      value
+        .map((v) => textValue(v, ""))
+        .filter(Boolean)
+        .join(", ") || fallback
+    );
+  if (typeof value === "object")
+    return (
+      value.name || value.vendor || value.address || value.value || fallback
+    );
   return fallback;
 };
 
@@ -73,38 +90,53 @@ export default function Phase1Results() {
   const { user } = useAuth();
   const canExecuteScans = can(user, "scans", "execute");
   const {
-    target, scanId, scanNo,
-    phase1Hosts, phase1Summary,
+    target,
+    scanId,
+    scanNo,
+    phase1Hosts,
+    phase1Summary,
     phase2Results,
     pipelineMode,
-    saveStatus, setSaveStatus,
+    saveStatus,
+    setSaveStatus,
     setPhase2Results,
     setPhase2Summary,
     setPipelineState,
     executionMode,
     portScanIntensity,
     osDetection,
-    portScanMode, setPortScanMode,
-    customPorts, setCustomPorts,
-    excludePorts, setExcludePorts,
-    excludeIps, setExcludeIps,
+    portScanMode,
+    setPortScanMode,
+    customPorts,
+    setCustomPorts,
+    excludePorts,
+    setExcludePorts,
+    excludeIps,
+    setExcludeIps,
   } = useScan();
 
   const [filter, setFilter] = useState("active");
   // For asset pipeline: poll once to know if Phase 2 is already done
-  const [phase2Done, setPhase2Done]     = useState(phase2Results.length > 0);
+  const [phase2Done, setPhase2Done] = useState(phase2Results.length > 0);
   const [phase2Polling, setPhase2Polling] = useState(false);
-  const [selected, setSelected] = useState(() => new Set(phase1Hosts.filter(h => h.is_active).map(h => h.ip_address)));
+  const [selected, setSelected] = useState(
+    () =>
+      new Set(phase1Hosts.filter((h) => h.is_active).map((h) => h.ip_address)),
+  );
   const [assetLoading, setAssetLoading] = useState(false);
   const [error, setError] = useState("");
   const [customPortsError, setCustomPortsError] = useState("");
 
-  const [excludePortsEnabled, setExcludePortsEnabled] = useState(() => !!excludePorts);
+  const [excludePortsEnabled, setExcludePortsEnabled] = useState(
+    () => !!excludePorts,
+  );
   const [excludePortsError, setExcludePortsError] = useState("");
   const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
   const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
 
-  const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(() => !!excludeIps);
+  const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(
+    () => !!excludeIps,
+  );
   const [excludeIpsError, setExcludeIpsError] = useState("");
 
   const parseCustomPortsJS = (portsStr) => {
@@ -113,7 +145,12 @@ export default function Phase1Results() {
     }
     const clean = portsStr.replace(/\s+/g, "");
     if (!/^[0-9,\-]+$/.test(clean)) {
-      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed.", sensitiveFound: false };
+      return {
+        ports: [],
+        error:
+          "Invalid characters. Only numbers, commas, and hyphens are allowed.",
+        sensitiveFound: false,
+      };
     }
     const tokens = clean.split(",");
     const portsSet = new Set();
@@ -123,42 +160,74 @@ export default function Phase1Results() {
       if (token.includes("-")) {
         const rangeParts = token.split("-");
         if (rangeParts.length !== 2) {
-          return { ports: [], error: `Invalid range format: "${token}"`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Invalid range format: "${token}"`,
+            sensitiveFound: false,
+          };
         }
         const start = parseInt(rangeParts[0], 10);
         const end = parseInt(rangeParts[1], 10);
         if (isNaN(start) || isNaN(end)) {
-          return { ports: [], error: `Invalid range bounds: "${token}"`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Invalid range bounds: "${token}"`,
+            sensitiveFound: false,
+          };
         }
         if (start > end) {
-          return { ports: [], error: `Range start must be <= end: "${token}"`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Range start must be <= end: "${token}"`,
+            sensitiveFound: false,
+          };
         }
         if (start < 1 || end > 65535) {
-          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Ports must be between 1 and 65535: "${token}"`,
+            sensitiveFound: false,
+          };
         }
         for (let p = start; p <= end; p++) {
           if (portsSet.has(p)) {
-            return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+            return {
+              ports: [],
+              error: `Duplicate port detected: ${p}`,
+              sensitiveFound: false,
+            };
           }
           portsSet.add(p);
         }
       } else {
         const p = parseInt(token, 10);
         if (isNaN(p)) {
-          return { ports: [], error: `Invalid port number: "${token}"`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Invalid port number: "${token}"`,
+            sensitiveFound: false,
+          };
         }
         if (p < 1 || p > 65535) {
-          return { ports: [], error: `Port must be between 1 and 65535: ${p}`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Port must be between 1 and 65535: ${p}`,
+            sensitiveFound: false,
+          };
         }
         if (portsSet.has(p)) {
-          return { ports: [], error: `Duplicate port detected: ${p}`, sensitiveFound: false };
+          return {
+            ports: [],
+            error: `Duplicate port detected: ${p}`,
+            sensitiveFound: false,
+          };
         }
         portsSet.add(p);
       }
     }
 
     const portsArray = Array.from(portsSet);
-    const sensitiveFound = portsArray.some(p => SENSITIVE_PORTS.includes(p));
+    const sensitiveFound = portsArray.some((p) => SENSITIVE_PORTS.includes(p));
     return { ports: portsArray, error: "", sensitiveFound };
   };
 
@@ -168,7 +237,11 @@ export default function Phase1Results() {
     }
     const clean = portsStr.replace(/\s+/g, "");
     if (!/^[0-9,\-]+$/.test(clean)) {
-      return { ports: [], error: "Invalid characters. Only numbers, commas, and hyphens are allowed." };
+      return {
+        ports: [],
+        error:
+          "Invalid characters. Only numbers, commas, and hyphens are allowed.",
+      };
     }
     const tokens = clean.split(",");
     const portsSet = new Set();
@@ -189,7 +262,10 @@ export default function Phase1Results() {
           return { ports: [], error: `Range start must be <= end: "${token}"` };
         }
         if (start < 1 || end > 65535) {
-          return { ports: [], error: `Ports must be between 1 and 65535: "${token}"` };
+          return {
+            ports: [],
+            error: `Ports must be between 1 and 65535: "${token}"`,
+          };
         }
         for (let p = start; p <= end; p++) {
           if (portsSet.has(p)) {
@@ -224,45 +300,53 @@ export default function Phase1Results() {
   };
 
   const isValidIPv4 = (ip) => {
-    const parts = ip.split('.');
+    const parts = ip.split(".");
     if (parts.length !== 4) return false;
-    return parts.every(p => {
+    return parts.every((p) => {
       const num = Number(p);
-      return p !== '' && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p;
+      return (
+        p !== "" && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p
+      );
     });
   };
 
   const isValidIPv6 = (ip) => {
-    if (!ip.includes(':')) return false;
-    return /^[0-9a-fA-F:]+$/.test(ip) && !ip.includes(':::') && (ip.match(/:/g) || []).length <= 7;
+    if (!ip.includes(":")) return false;
+    return (
+      /^[0-9a-fA-F:]+$/.test(ip) &&
+      !ip.includes(":::") &&
+      (ip.match(/:/g) || []).length <= 7
+    );
   };
 
   const isValidCIDR = (cidr) => {
-    if (!cidr.includes('/')) return false;
-    const parts = cidr.split('/');
+    if (!cidr.includes("/")) return false;
+    const parts = cidr.split("/");
     const [ip, maskStr] = parts;
     const mask = Number(maskStr);
-    if (isNaN(mask) || maskStr === '') return false;
+    if (isNaN(mask) || maskStr === "") return false;
     if (isValidIPv4(ip)) return mask >= 0 && mask <= 32;
     if (isValidIPv6(ip)) return mask >= 0 && mask <= 128;
     return false;
   };
 
   const ipToLong = (ip) => {
-    return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0;
+    return (
+      ip.split(".").reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0
+    );
   };
 
   const isValidRange = (range) => {
-    if (!range.includes('-')) return false;
-    const parts = range.split('-');
+    if (!range.includes("-")) return false;
+    const parts = range.split("-");
     if (parts.length !== 2) return false;
-    const [start, end] = parts.map(p => p.trim());
+    const [start, end] = parts.map((p) => p.trim());
     if (!isValidIPv4(start)) return false;
     if (isValidIPv4(end)) {
       return ipToLong(start) <= ipToLong(end);
     } else if (/^\d+$/.test(end)) {
       const endOctet = Number(end);
-      const startParts = start.split('.');
+      const startParts = start.split(".");
       const startOctet = Number(startParts[3]);
       return endOctet >= startOctet && endOctet <= 255;
     }
@@ -271,7 +355,9 @@ export default function Phase1Results() {
 
   const isValidHostname = (host) => {
     if (host.length > 253) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(host);
+    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(
+      host,
+    );
   };
 
   const parseExcludeIpsJS = (ipsStr) => {
@@ -283,9 +369,17 @@ export default function Phase1Results() {
     const ipsArray = [];
     for (const token of tokens) {
       if (!token) continue;
-      const isValid = isValidIPv4(token) || isValidIPv6(token) || isValidCIDR(token) || isValidRange(token) || isValidHostname(token);
+      const isValid =
+        isValidIPv4(token) ||
+        isValidIPv6(token) ||
+        isValidCIDR(token) ||
+        isValidRange(token) ||
+        isValidHostname(token);
       if (!isValid) {
-        return { ips: [], error: `Invalid IP, range, or CIDR format: "${token}"` };
+        return {
+          ips: [],
+          error: `Invalid IP, range, or CIDR format: "${token}"`,
+        };
       }
       ipsArray.push(token);
     }
@@ -308,10 +402,13 @@ export default function Phase1Results() {
     }
   }, [excludeIps]);
 
-  const excludeTokens = excludePorts.split(",").map(t => t.trim()).filter(Boolean);
+  const excludeTokens = excludePorts
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 
   const handleRemoveExcludeToken = (tokenToRemove) => {
-    const updatedTokens = excludeTokens.filter(t => t !== tokenToRemove);
+    const updatedTokens = excludeTokens.filter((t) => t !== tokenToRemove);
     setExcludePorts(updatedTokens.join(", "));
   };
 
@@ -340,7 +437,8 @@ export default function Phase1Results() {
   }, [excludePorts]);
 
   const hasPhase2 = isPhaseEnabled(pipelineMode, 2);
-  const showCheckboxes = executionMode === "interactive" && pipelineMode !== "basic";
+  const showCheckboxes =
+    executionMode === "interactive" && pipelineMode !== "basic";
 
   const toggleHost = (ip) => {
     const next = new Set(selected);
@@ -353,7 +451,9 @@ export default function Phase1Results() {
       setError("You do not have permission to execute scans.");
       return;
     }
-    const selectedHosts = phase1Hosts.filter(h => selected.has(h.ip_address) && h.is_active);
+    const selectedHosts = phase1Hosts.filter(
+      (h) => selected.has(h.ip_address) && h.is_active,
+    );
     if (!selectedHosts.length) {
       setError("Select at least one host to port scan.");
       return;
@@ -361,7 +461,9 @@ export default function Phase1Results() {
 
     if (portScanMode === "custom") {
       if (!customPorts || !customPorts.trim()) {
-        setError("Custom ports list cannot be empty when custom ports mode is active.");
+        setError(
+          "Custom ports list cannot be empty when custom ports mode is active.",
+        );
         return;
       }
       const { error: portErr } = parseCustomPortsJS(customPorts);
@@ -393,16 +495,22 @@ export default function Phase1Results() {
     try {
       const { data } = await api.post("/scan/asset-discovery", {
         hosts: selectedHosts,
-        intensity: portScanMode === "custom" ? "custom" : (portScanIntensity || "normal"),
+        intensity:
+          portScanMode === "custom" ? "custom" : portScanIntensity || "normal",
         scan_id: scanId,
         pipeline_mode: pipelineMode,
         os_detection: osDetection,
         phases: [1, 2],
         ...(portScanMode === "custom" ? { custom_ports: customPorts } : {}),
-        ...(excludePorts && excludePorts.trim() ? { exclude_ports: excludePorts.trim() } : {}),
-        ...(excludeIps && excludeIps.trim() ? { exclude_ips: excludeIps.trim() } : {}),
+        ...(excludePorts && excludePorts.trim()
+          ? { exclude_ports: excludePorts.trim() }
+          : {}),
+        ...(excludeIps && excludeIps.trim()
+          ? { exclude_ips: excludeIps.trim() }
+          : {}),
       });
-      if (!data.success) throw new Error(data.error || "Port scan failed to start.");
+      if (!data.success)
+        throw new Error(data.error || "Port scan failed to start.");
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 4000);
@@ -422,42 +530,65 @@ export default function Phase1Results() {
     }
   }, [phase1Hosts.length, navigate]);
 
-  const isBasicScan     = pipelineMode === "basic";
+  const isBasicScan = pipelineMode === "basic";
   const isAssetPipeline = pipelineMode === "asset";
-  const activeHosts     = phase1Hosts.filter(h => h.is_active);
-  const displayHosts    = filter === "active" ? activeHosts : phase1Hosts;
+  const activeHosts = phase1Hosts.filter((h) => h.is_active);
+  const displayHosts = filter === "active" ? activeHosts : phase1Hosts;
 
-  const isUnreachable = phase1Summary && (
-    phase1Summary.status === "unreachable" ||
-    (Number(phase1Summary.active_hosts) === 0 && Number(phase1Summary.total_hosts) > 0)
-  );
+  const isUnreachable =
+    phase1Summary &&
+    (phase1Summary.status === "unreachable" ||
+      (Number(phase1Summary.active_hosts) === 0 &&
+        Number(phase1Summary.total_hosts) > 0));
 
   const canProceedToPhase2 = isPhaseEnabled(pipelineMode, 2) && !isUnreachable;
-  const nextPhase          = getNextPhase(pipelineMode, 1);
+  const nextPhase = getNextPhase(pipelineMode, 1);
 
   // ── Stepper: configure active step state ──
   useEffect(() => {
     if (hasPhase2) {
       if (phase2Done) {
-        setPipelineState(pipelineMode === "asset" ? PIPELINE_STATES.REPORT_READY : PIPELINE_STATES.PORT_SCAN);
+        setPipelineState(
+          pipelineMode === "asset"
+            ? PIPELINE_STATES.REPORT_READY
+            : PIPELINE_STATES.PORT_SCAN,
+        );
       } else {
-        setPipelineState(executionMode === "interactive" ? PIPELINE_STATES.IDLE : PIPELINE_STATES.PORT_SCAN);
+        setPipelineState(
+          executionMode === "interactive"
+            ? PIPELINE_STATES.IDLE
+            : PIPELINE_STATES.PORT_SCAN,
+        );
       }
     } else if (phase1Hosts.length > 0) {
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
     }
-  }, [hasPhase2, phase2Done, phase1Hosts.length, executionMode, pipelineMode, setPipelineState]);
+  }, [
+    hasPhase2,
+    phase2Done,
+    phase1Hosts.length,
+    executionMode,
+    pipelineMode,
+    setPipelineState,
+  ]);
 
   // ── For pipelines with phase 2: poll the scan until Phase 2 is complete ──────────
   useEffect(() => {
-    if (!hasPhase2 || phase2Done || !scanId || isUnreachable || executionMode === "interactive") return;
+    if (
+      !hasPhase2 ||
+      phase2Done ||
+      !scanId ||
+      isUnreachable ||
+      executionMode === "interactive"
+    )
+      return;
 
     let stopped = false;
     setPhase2Polling(true);
 
     const poll = async () => {
       while (!stopped) {
-        await new Promise(r => setTimeout(r, 4000));
+        await new Promise((r) => setTimeout(r, 4000));
         if (stopped) break;
         try {
           const { data: scan } = await api.get(`/scans/${scanId}`);
@@ -481,13 +612,25 @@ export default function Phase1Results() {
             setPhase2Polling(false);
             break;
           }
-        } catch { /* ignore transient errors */ }
+        } catch {
+          /* ignore transient errors */
+        }
       }
     };
 
     poll();
-    return () => { stopped = true; };
-  }, [hasPhase2, phase2Done, scanId, isUnreachable, executionMode, setPhase2Results, setPhase2Summary]);
+    return () => {
+      stopped = true;
+    };
+  }, [
+    hasPhase2,
+    phase2Done,
+    scanId,
+    isUnreachable,
+    executionMode,
+    setPhase2Results,
+    setPhase2Summary,
+  ]);
 
   if (!phase1Hosts.length) return null;
 
@@ -498,9 +641,13 @@ export default function Phase1Results() {
   };
 
   const stepperCurrent = hasPhase2
-    ? (phase2Done
-        ? (pipelineMode === "asset" ? 3 : 2)
-        : (executionMode === "interactive" ? 1 : 2))
+    ? phase2Done
+      ? pipelineMode === "asset"
+        ? 3
+        : 2
+      : executionMode === "interactive"
+        ? 1
+        : 2
     : 1;
 
   return (
@@ -508,36 +655,55 @@ export default function Phase1Results() {
       <ScanStepper current={stepperCurrent} />
 
       <div className="page-inner">
-
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Discovery Results</h2>
             <p className="page-subtitle">
               Target: <code className="ip-code">{target}</code>
-              {scanId && <span className="muted"> · Scan No. {scanNo ?? "—"}</span>}
+              {scanId && (
+                <span className="muted"> · Scan No. {scanNo ?? "—"}</span>
+              )}
             </p>
           </div>
-          <button className="btn btn--ghost" onClick={() => navigate("/dashboard")}>
+          <button
+            className="btn btn--ghost"
+            onClick={() => navigate("/dashboard")}
+          >
             ← New Scan
           </button>
         </div>
 
-        {error && <div className="alert alert--error" style={{ margin: "16px 0" }}>⚠ {error}</div>}
+        {error && (
+          <div className="alert alert--error" style={{ margin: "16px 0" }}>
+            ⚠ {error}
+          </div>
+        )}
 
         {/* ── Unreachable Banner ───────────────────────────────────────────── */}
         {isUnreachable && (
-          <div style={{
-            margin: "16px 0", padding: "16px 20px", borderRadius: 8,
-            background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)",
-            display: "flex", alignItems: "center", gap: 16, color: "#92400e"
-          }}>
+          <div
+            style={{
+              margin: "16px 0",
+              padding: "16px 20px",
+              borderRadius: 8,
+              background: "rgba(245, 158, 11, 0.08)",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              color: "#92400e",
+            }}
+          >
             <span style={{ fontSize: 24 }}>⚠️</span>
             <div>
-              <strong style={{ display: "block", fontSize: 16 }}>Host is unavailable/down/unreachable</strong>
+              <strong style={{ display: "block", fontSize: 16 }}>
+                Host is unavailable/down/unreachable
+              </strong>
               <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
                 The discovery scan completed but the target did not respond.
-                Verify the IP address and network connectivity before re-scanning.
+                Verify the IP address and network connectivity before
+                re-scanning.
               </p>
             </div>
           </div>
@@ -546,34 +712,61 @@ export default function Phase1Results() {
         {/* ── Phase 1 summary bar ──────────────────────────────────────────── */}
         {phase1Summary && (
           <div className="summary-bar">
-            <span className="summary-item"><b>{phase1Summary.total_hosts}</b> Total</span>
-            <span className="summary-item summary-item--active"><b>{phase1Summary.active_hosts}</b> Active</span>
-            <span className="summary-item"><b>{phase1Summary.inactive_hosts}</b> Inactive</span>
-            <span className="summary-item"><b>{fmtNumber(phase1Summary.scan_duration)}s</b> Duration</span>
+            <span className="summary-item">
+              <b>{phase1Summary.total_hosts}</b> Total
+            </span>
+            <span className="summary-item summary-item--active">
+              <b>{phase1Summary.active_hosts}</b> Active
+            </span>
+            <span className="summary-item">
+              <b>{phase1Summary.inactive_hosts}</b> Inactive
+            </span>
+            <span className="summary-item">
+              <b>{fmtNumber(phase1Summary.scan_duration)}s</b> Duration
+            </span>
             {isAssetPipeline && phase1Summary.discovery_profile && (
               <span className="summary-item" style={{ gap: 6 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                  background: phase1Summary.discovery_profile === "FAST" ? "rgba(34,211,238,0.12)"
-                    : phase1Summary.discovery_profile === "BALANCED" ? "rgba(245,158,11,0.12)"
-                    : "rgba(34,197,94,0.12)",
-                  color: phase1Summary.discovery_profile === "FAST" ? "#22d3ee"
-                    : phase1Summary.discovery_profile === "BALANCED" ? "#f59e0b"
-                    : "#22c55e",
-                  border: phase1Summary.discovery_profile === "FAST" ? "1px solid rgba(34,211,238,0.3)"
-                    : phase1Summary.discovery_profile === "BALANCED" ? "1px solid rgba(245,158,11,0.3)"
-                    : "1px solid rgba(34,197,94,0.3)",
-                }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    background:
+                      phase1Summary.discovery_profile === "FAST"
+                        ? "rgba(34,211,238,0.12)"
+                        : phase1Summary.discovery_profile === "BALANCED"
+                          ? "rgba(245,158,11,0.12)"
+                          : "rgba(34,197,94,0.12)",
+                    color:
+                      phase1Summary.discovery_profile === "FAST"
+                        ? "#22d3ee"
+                        : phase1Summary.discovery_profile === "BALANCED"
+                          ? "#f59e0b"
+                          : "#22c55e",
+                    border:
+                      phase1Summary.discovery_profile === "FAST"
+                        ? "1px solid rgba(34,211,238,0.3)"
+                        : phase1Summary.discovery_profile === "BALANCED"
+                          ? "1px solid rgba(245,158,11,0.3)"
+                          : "1px solid rgba(34,197,94,0.3)",
+                  }}
+                >
                   {phase1Summary.discovery_profile}
                 </span>
               </span>
             )}
-            {isAssetPipeline && phase1Summary.discovery_intensity === "normal"
-              && phase1Summary.fallback_targets_count != null && (
-              <span className="summary-item" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Fallback: <b>{phase1Summary.fallback_active_hosts}</b>/{phase1Summary.fallback_targets_count} resolved
-              </span>
-            )}
+            {isAssetPipeline &&
+              phase1Summary.discovery_intensity === "normal" &&
+              phase1Summary.fallback_targets_count != null && (
+                <span
+                  className="summary-item"
+                  style={{ fontSize: 12, color: "var(--text-muted)" }}
+                >
+                  Fallback: <b>{phase1Summary.fallback_active_hosts}</b>/
+                  {phase1Summary.fallback_targets_count} resolved
+                </span>
+              )}
           </div>
         )}
 
@@ -581,91 +774,172 @@ export default function Phase1Results() {
         {hasPhase2 && !isUnreachable && (
           <div style={{ margin: "16px 0" }}>
             {phase2Done ? (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 14,
-                padding: "14px 20px", borderRadius: 8,
-                background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)",
-              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "14px 20px",
+                  borderRadius: 8,
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.3)",
+                }}
+              >
                 <span style={{ fontSize: 22 }}>✅</span>
                 <div style={{ flex: 1 }}>
-                  <strong style={{ display: "block", color: "#15803d" }}>Port Scan Complete</strong>
+                  <strong style={{ display: "block", color: "#15803d" }}>
+                    Port Scan Complete
+                  </strong>
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    Phase 2 finished successfully. View the full port scan results below.
+                    Phase 2 finished successfully. View the full port scan
+                    results below.
                   </span>
                 </div>
-                <button className="btn btn--primary" onClick={() => navigate("/scan/asset-discovery")}>
+                <button
+                  className="btn btn--primary"
+                  onClick={() => navigate("/scan/asset-discovery")}
+                >
                   View Port Scan Results →
                 </button>
               </div>
             ) : executionMode === "interactive" ? (
-              <div style={{
-                padding: "20px", borderRadius: 8,
-                background: "var(--bg-card)",
-                border: "1px solid var(--border)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 16
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+              <div
+                style={{
+                  padding: "20px",
+                  borderRadius: 8,
+                  background: "var(--bg-card)",
+                  border: "1px solid var(--border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                >
                   <div>
-                    <strong style={{ display: "block", color: "var(--text)", fontSize: "1.1rem" }}>Configure & Run Port Scan</strong>
+                    <strong
+                      style={{
+                        display: "block",
+                        color: "var(--text)",
+                        fontSize: "1.1rem",
+                      }}
+                    >
+                      Configure & Run Port Scan
+                    </strong>
                     <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                      Select hosts below to probe TCP/UDP services. <b>{selected.size}</b> host{selected.size !== 1 ? "s" : ""} selected.
+                      Select hosts below to probe TCP/UDP services.{" "}
+                      <b>{selected.size}</b> host
+                      {selected.size !== 1 ? "s" : ""} selected.
                     </span>
                   </div>
                   <button
                     className="btn btn--primary"
                     onClick={runPortScan}
-                    disabled={selected.size === 0 || assetLoading || !canExecuteScans || (portScanMode === "custom" && !!customPortsError)}
+                    disabled={
+                      selected.size === 0 ||
+                      assetLoading ||
+                      !canExecuteScans ||
+                      (portScanMode === "custom" && !!customPortsError)
+                    }
                     style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
                     {assetLoading ? (
                       <>
-                        <span className="btn-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        <span
+                          className="btn-spinner"
+                          style={{ width: 14, height: 14, borderWidth: 2 }}
+                        />
                         Starting Port Scan...
                       </>
                     ) : (
-                      <>
-                        Run Port Scan on Selected Hosts →
-                      </>
+                      <>Run Port Scan on Selected Hosts →</>
                     )}
                   </button>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <span style={{ fontSize: 13, fontWeight: "600", color: "var(--text)" }}>Port Scan Mode:</span>
-                    <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: "6px", padding: "2px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    borderTop: "1px solid var(--border)",
+                    paddingTop: 16,
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 16 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: "var(--text)",
+                      }}
+                    >
+                      Port Scan Mode:
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        background: "rgba(255,255,255,0.05)",
+                        borderRadius: "6px",
+                        padding: "2px",
+                      }}
+                    >
                       <button
                         type="button"
-                        onClick={() => { setPortScanMode("intensity"); setCustomPortsError(""); }}
+                        onClick={() => {
+                          setPortScanMode("intensity");
+                          setCustomPortsError("");
+                        }}
                         style={{
-                          background: portScanMode === "intensity" ? "var(--btn-primary-bg, #3b82f6)" : "transparent",
-                          color: portScanMode === "intensity" ? "#ffffff" : "var(--text-muted)",
+                          background:
+                            portScanMode === "intensity"
+                              ? "var(--btn-primary-bg, #3b82f6)"
+                              : "transparent",
+                          color:
+                            portScanMode === "intensity"
+                              ? "#ffffff"
+                              : "var(--text-muted)",
                           border: "none",
                           borderRadius: "4px",
                           padding: "4px 12px",
                           fontSize: "0.8rem",
                           fontWeight: "600",
                           cursor: "pointer",
-                          transition: "all 0.15s ease"
+                          transition: "all 0.15s ease",
                         }}
                       >
                         Intensity Profile
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setPortScanMode("custom"); setCustomPortsError(""); }}
+                        onClick={() => {
+                          setPortScanMode("custom");
+                          setCustomPortsError("");
+                        }}
                         style={{
-                          background: portScanMode === "custom" ? "var(--btn-primary-bg, #3b82f6)" : "transparent",
-                          color: portScanMode === "custom" ? "#ffffff" : "var(--text-muted)",
+                          background:
+                            portScanMode === "custom"
+                              ? "var(--btn-primary-bg, #3b82f6)"
+                              : "transparent",
+                          color:
+                            portScanMode === "custom"
+                              ? "#ffffff"
+                              : "var(--text-muted)",
                           border: "none",
                           borderRadius: "4px",
                           padding: "4px 12px",
                           fontSize: "0.8rem",
                           fontWeight: "600",
                           cursor: "pointer",
-                          transition: "all 0.15s ease"
+                          transition: "all 0.15s ease",
                         }}
                       >
                         Custom Ports
@@ -674,12 +948,37 @@ export default function Phase1Results() {
                   </div>
 
                   {portScanMode === "intensity" ? (
-                    <div style={{ fontSize: 13, color: "var(--text-muted)", background: "rgba(255,255,255,0.02)", padding: "10px 14px", borderRadius: "6px", border: "1px dashed var(--border)" }}>
-                      Selected intensity: <span style={{ fontWeight: "700", color: "var(--text)" }}>{portScanIntensity?.toUpperCase() || "NORMAL"}</span> (change on setup screen)
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--text-muted)",
+                        background: "rgba(255,255,255,0.02)",
+                        padding: "10px 14px",
+                        borderRadius: "6px",
+                        border: "1px dashed var(--border)",
+                      }}
+                    >
+                      Selected intensity:{" "}
+                      <span style={{ fontWeight: "700", color: "var(--text)" }}>
+                        {portScanIntensity?.toUpperCase() || "NORMAL"}
+                      </span>{" "}
+                      (change on setup screen)
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                        }}
+                      >
                         <input
                           type="text"
                           className="ns-input"
@@ -690,38 +989,66 @@ export default function Phase1Results() {
                             border: "1px solid var(--border)",
                             background: "rgba(0,0,0,0.2)",
                             color: "var(--text)",
-                            fontSize: "0.88rem"
+                            fontSize: "0.88rem",
                           }}
                           value={customPorts || ""}
-                          onChange={e => {
+                          onChange={(e) => {
                             setCustomPorts(e.target.value);
-                            const { error: portErr } = parseCustomPortsJS(e.target.value);
+                            const { error: portErr } = parseCustomPortsJS(
+                              e.target.value,
+                            );
                             setCustomPortsError(portErr);
                           }}
                           placeholder="e.g. 22,80,443,8000-8100"
                         />
                       </div>
-                      
-                      <div className="ns-chips" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 4 }}>Quick Select:</span>
-                        {Object.entries(PORT_PROFILES).filter(([k]) => k !== "custom").map(([k, prof]) => (
-                          <button
-                            key={k}
-                            type="button"
-                            className="ns-chip"
-                            onClick={() => {
-                              setCustomPorts(prof.ports);
-                              setCustomPortsError("");
-                            }}
-                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                          >
-                            {prof.label.split(" ")[0]}
-                          </button>
-                        ))}
+
+                      <div
+                        className="ns-chips"
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-muted)",
+                            marginRight: 4,
+                          }}
+                        >
+                          Quick Select:
+                        </span>
+                        {Object.entries(PORT_PROFILES)
+                          .filter(([k]) => k !== "custom")
+                          .map(([k, prof]) => (
+                            <button
+                              key={k}
+                              type="button"
+                              className="ns-chip"
+                              onClick={() => {
+                                setCustomPorts(prof.ports);
+                                setCustomPortsError("");
+                              }}
+                              style={{
+                                padding: "3px 8px",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              {prof.label.split(" ")[0]}
+                            </button>
+                          ))}
                       </div>
 
                       {customPortsError && (
-                        <div style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: 4 }}>
+                        <div
+                          style={{
+                            color: "#ef4444",
+                            fontSize: "0.8rem",
+                            marginTop: 4,
+                          }}
+                        >
                           ⚠ {customPortsError}
                         </div>
                       )}
@@ -729,18 +1056,44 @@ export default function Phase1Results() {
                   )}
 
                   {/* Exclude Ports Section */}
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{
+                      borderTop: "1px solid var(--border)",
+                      paddingTop: 16,
+                      marginTop: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <div>
-                        <strong style={{ display: "block", color: "var(--text)", fontSize: "0.9rem" }}>🚫 Exclude Specific Ports</strong>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Exclude sensitive or firewalled ports from scanning</span>
+                        <strong
+                          style={{
+                            display: "block",
+                            color: "var(--text)",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          🚫 Exclude Specific Ports
+                        </strong>
+                        <span
+                          style={{ fontSize: 12, color: "var(--text-muted)" }}
+                        >
+                          Exclude sensitive or firewalled ports from scanning
+                        </span>
                       </div>
                       <div className="ns-switch-wrapper">
                         <label className="ns-switch">
                           <input
                             type="checkbox"
                             checked={excludePortsEnabled}
-                            onChange={e => handleExcludeToggleChange(e.target.checked)}
+                            onChange={(e) =>
+                              handleExcludeToggleChange(e.target.checked)
+                            }
                           />
                           <span className="ns-slider round"></span>
                         </label>
@@ -748,8 +1101,21 @@ export default function Phase1Results() {
                     </div>
 
                     {excludePortsEnabled && (
-                      <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
                           <input
                             type="text"
                             className="ns-input"
@@ -760,24 +1126,36 @@ export default function Phase1Results() {
                               border: "1px solid var(--border)",
                               background: "rgba(0,0,0,0.2)",
                               color: "var(--text)",
-                              fontSize: "0.88rem"
+                              fontSize: "0.88rem",
                             }}
                             value={excludePorts || ""}
-                            onChange={e => setExcludePorts(e.target.value)}
+                            onChange={(e) => setExcludePorts(e.target.value)}
                             placeholder="e.g. 2375,2376,6443,10250 or 80-90"
                             disabled={assetLoading || !canExecuteScans}
                           />
                         </div>
 
                         {excludeTokens.length > 0 && (
-                          <div className="ns-exclude-tags-wrap" style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          <div
+                            className="ns-exclude-tags-wrap"
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "6px",
+                            }}
+                          >
                             {excludeTokens.map((token, idx) => (
-                              <span key={`${token}-${idx}`} className="ns-exclude-tag">
+                              <span
+                                key={`${token}-${idx}`}
+                                className="ns-exclude-tag"
+                              >
                                 {token}
                                 <button
                                   type="button"
                                   className="ns-exclude-tag-remove"
-                                  onClick={() => handleRemoveExcludeToken(token)}
+                                  onClick={() =>
+                                    handleRemoveExcludeToken(token)
+                                  }
                                   disabled={assetLoading || !canExecuteScans}
                                 >
                                   ×
@@ -787,36 +1165,79 @@ export default function Phase1Results() {
                           </div>
                         )}
 
-                        <div className="ns-chips" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 4 }}>Quick:</span>
+                        <div
+                          className="ns-chips"
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "var(--text-muted)",
+                              marginRight: 4,
+                            }}
+                          >
+                            Quick:
+                          </span>
                           <button
                             type="button"
                             className="ns-chip"
-                            onClick={() => setExcludePorts("2375,2376,6443,10250")}
+                            onClick={() =>
+                              setExcludePorts("2375,2376,6443,10250")
+                            }
                             disabled={assetLoading || !canExecuteScans}
                             style={{ padding: "3px 8px", fontSize: "0.75rem" }}
                           >
                             Sensitive Ports
                           </button>
                         </div>
-
                       </div>
                     )}
                   </div>
 
                   {/* Exclude IPs Section */}
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{
+                      borderTop: "1px solid var(--border)",
+                      paddingTop: 16,
+                      marginTop: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <div>
-                        <strong style={{ display: "block", color: "var(--text)", fontSize: "0.9rem" }}>🚫 Exclude Specific IPs / Subnets</strong>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Exclude sensitive target hosts or subnets from scanning</span>
+                        <strong
+                          style={{
+                            display: "block",
+                            color: "var(--text)",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          🚫 Exclude Specific IPs / Subnets
+                        </strong>
+                        <span
+                          style={{ fontSize: 12, color: "var(--text-muted)" }}
+                        >
+                          Exclude sensitive target hosts or subnets from
+                          scanning
+                        </span>
                       </div>
                       <div className="ns-switch-wrapper">
                         <label className="ns-switch">
                           <input
                             type="checkbox"
                             checked={excludeIpsEnabled}
-                            onChange={e => handleExcludeIpsToggleChange(e.target.checked)}
+                            onChange={(e) =>
+                              handleExcludeIpsToggleChange(e.target.checked)
+                            }
                           />
                           <span className="ns-slider round"></span>
                         </label>
@@ -824,8 +1245,21 @@ export default function Phase1Results() {
                     </div>
 
                     {excludeIpsEnabled && (
-                      <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
                           <input
                             type="text"
                             className="ns-input"
@@ -836,17 +1270,23 @@ export default function Phase1Results() {
                               border: "1px solid var(--border)",
                               background: "rgba(0,0,0,0.2)",
                               color: "var(--text)",
-                              fontSize: "0.88rem"
+                              fontSize: "0.88rem",
                             }}
                             value={excludeIps || ""}
-                            onChange={e => setExcludeIps(e.target.value)}
+                            onChange={(e) => setExcludeIps(e.target.value)}
                             placeholder="e.g. 10.180.12.10,10.190.0.0/16"
                             disabled={assetLoading || !canExecuteScans}
                           />
                         </div>
 
                         {excludeIpsError && (
-                          <div style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: 4 }}>
+                          <div
+                            style={{
+                              color: "#ef4444",
+                              fontSize: "0.8rem",
+                              marginTop: 4,
+                            }}
+                          >
                             ⚠ {excludeIpsError}
                           </div>
                         )}
@@ -856,26 +1296,59 @@ export default function Phase1Results() {
 
                   {/* Sensitive Ports Warning Banner */}
                   {sensitivePortsFound && (
-                    <div className="ns-sensitive-banner" style={{ marginTop: "12px", background: "rgba(245,158,11,0.08)", borderLeft: "3px solid #f59e0b", color: "#fbbf24", padding: "12px", borderRadius: "8px", fontSize: "0.85rem" }}>
-                      <div style={{ fontWeight: "600", marginBottom: "4px" }}>⚠️ Sensitive Ports Detected</div>
+                    <div
+                      className="ns-sensitive-banner"
+                      style={{
+                        marginTop: "12px",
+                        background: "rgba(245,158,11,0.08)",
+                        borderLeft: "3px solid #f59e0b",
+                        color: "#fbbf24",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+                        ⚠️ Sensitive Ports Detected
+                      </div>
                       <p style={{ margin: 0, color: "#d4d4d8" }}>
-                        Your selection includes sensitive ports (Docker API <code>2375/2376</code>, Kubernetes <code>6443/10250</code>). Scanning them can trigger intrusion detection systems or crash services.
+                        Your selection includes sensitive ports (Docker API{" "}
+                        <code>2375/2376</code>, Kubernetes{" "}
+                        <code>6443/10250</code>). Scanning them can trigger
+                        intrusion detection systems or crash services.
                       </p>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 14,
-                padding: "14px 20px", borderRadius: 8,
-                background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.3)",
-              }}>
-                <span className="btn-spinner" style={{ width: 20, height: 20, borderWidth: 3, flexShrink: 0 }} />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "14px 20px",
+                  borderRadius: 8,
+                  background: "rgba(99,102,241,0.08)",
+                  border: "1px solid rgba(99,102,241,0.3)",
+                }}
+              >
+                <span
+                  className="btn-spinner"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderWidth: 3,
+                    flexShrink: 0,
+                  }}
+                />
                 <div>
-                  <strong style={{ display: "block", color: "#6366f1" }}>Port Scan Running…</strong>
+                  <strong style={{ display: "block", color: "#6366f1" }}>
+                    Port Scan Running…
+                  </strong>
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    Phase 2 is running automatically in the background. This page will update when it completes.
+                    Phase 2 is running automatically in the background. This
+                    page will update when it completes.
                   </span>
                 </div>
               </div>
@@ -889,13 +1362,23 @@ export default function Phase1Results() {
             <div className="app-progress-track">
               <div
                 className={`app-progress-fill ${phase2Polling ? "app-progress-fill--animated" : ""}`}
-                style={{ width: phase2Done ? "100%" : phase2Polling ? "65%" : "50%" }}
+                style={{
+                  width: phase2Done ? "100%" : phase2Polling ? "65%" : "50%",
+                }}
               />
             </div>
             <div className="app-progress-labels">
-              <span className="app-progress-label app-progress-label--done">✓ Discovery</span>
-              <span className={`app-progress-label ${phase2Polling ? "app-progress-label--active" : phase2Done ? "app-progress-label--done" : "app-progress-label--pending"}`}>
-                {phase2Done ? "✓ Port Scan" : phase2Polling ? "● Port Scan" : "○ Port Scan"}
+              <span className="app-progress-label app-progress-label--done">
+                ✓ Discovery
+              </span>
+              <span
+                className={`app-progress-label ${phase2Polling ? "app-progress-label--active" : phase2Done ? "app-progress-label--done" : "app-progress-label--pending"}`}
+              >
+                {phase2Done
+                  ? "✓ Port Scan"
+                  : phase2Polling
+                    ? "● Port Scan"
+                    : "○ Port Scan"}
               </span>
             </div>
           </div>
@@ -903,9 +1386,20 @@ export default function Phase1Results() {
 
         {/* ── Filter tabs (non-asset pipelines) ────────────────────────────── */}
         {!isAssetPipeline && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div className="filter-tabs">
-              {[["active", `Active (${activeHosts.length})`], ["all", `All (${phase1Hosts.length})`]].map(([val, lbl]) => (
+              {[
+                ["active", `Active (${activeHosts.length})`],
+                ["all", `All (${phase1Hosts.length})`],
+              ].map(([val, lbl]) => (
                 <button
                   key={val}
                   className={`filter-tab ${filter === val ? "filter-tab--active" : ""}`}
@@ -927,10 +1421,15 @@ export default function Phase1Results() {
                   <th style={{ width: 40, paddingRight: 0 }}>
                     <input
                       type="checkbox"
-                      checked={activeHosts.length > 0 && activeHosts.every(h => selected.has(h.ip_address))}
+                      checked={
+                        activeHosts.length > 0 &&
+                        activeHosts.every((h) => selected.has(h.ip_address))
+                      }
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelected(new Set(activeHosts.map(h => h.ip_address)));
+                          setSelected(
+                            new Set(activeHosts.map((h) => h.ip_address)),
+                          );
                         } else {
                           setSelected(new Set());
                         }
@@ -950,17 +1449,20 @@ export default function Phase1Results() {
               </tr>
             </thead>
             <tbody>
-              {(isAssetPipeline ? activeHosts : displayHosts).map(h => {
+              {(isAssetPipeline ? activeHosts : displayHosts).map((h) => {
                 let displayHost = h.hostname;
                 if (!displayHost || displayHost === "Unknown") {
-                    if (h.mdns_name) displayHost = h.mdns_name;
-                    else if (h.netbios_names && h.netbios_names.length) displayHost = h.netbios_names[0]?.name;
+                  if (h.mdns_name) displayHost = h.mdns_name;
+                  else if (h.netbios_names && h.netbios_names.length)
+                    displayHost = h.netbios_names[0]?.name;
                 }
                 displayHost = textValue(displayHost, "");
 
                 return (
                   <React.Fragment key={h.ip_address}>
-                    <tr className={h.is_active ? "row--active" : "row--inactive"}>
+                    <tr
+                      className={h.is_active ? "row--active" : "row--inactive"}
+                    >
                       {showCheckboxes && (
                         <td style={{ paddingRight: 0 }}>
                           <input
@@ -972,23 +1474,54 @@ export default function Phase1Results() {
                           />
                         </td>
                       )}
-                      <td><code className="ip-code">{h.ip_address}</code></td>
+                      <td>
+                        <code className="ip-code">{h.ip_address}</code>
+                      </td>
                       <td>{displayHost || <span className="muted">—</span>}</td>
-                      <td>{textValue(h.mac_address, <span className="muted">—</span>)}</td>
-                      <td>{textValue(h.vendor, <span className="muted">—</span>)}</td>
-                      <td>{textValue(h.discovery_method, <span className="muted">—</span>)}</td>
+                      <td>
+                        {textValue(
+                          h.mac_address,
+                          <span className="muted">—</span>,
+                        )}
+                      </td>
+                      <td>
+                        {textValue(h.vendor, <span className="muted">—</span>)}
+                      </td>
+                      <td>
+                        {textValue(
+                          h.discovery_method,
+                          <span className="muted">—</span>,
+                        )}
+                      </td>
                       {!isBasicScan && (
-                        <td>{h.response_time_ms != null ? `${fmtNumber(h.response_time_ms)} ms` : <span className="muted">—</span>}</td>
+                        <td>
+                          {h.response_time_ms != null ? (
+                            `${fmtNumber(h.response_time_ms)} ms`
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
                       )}
                       <td>
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                          padding: h.is_active ? "2px 8px" : "2px 6px",
-                          background: h.is_active ? "rgba(34,197,94,0.1)" : "transparent",
-                          color: h.is_active ? "#15803d" : "inherit",
-                          borderRadius: 12
-                        }}>
-                          <span className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`} style={{ margin: 0 }} />
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            padding: h.is_active ? "2px 8px" : "2px 6px",
+                            background: h.is_active
+                              ? "rgba(34,197,94,0.1)"
+                              : "transparent",
+                            color: h.is_active ? "#15803d" : "inherit",
+                            borderRadius: 12,
+                          }}
+                        >
+                          <span
+                            className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`}
+                            style={{ margin: 0 }}
+                          />
                           {h.is_active ? "Active" : "Inactive"}
                         </span>
                       </td>
@@ -1003,7 +1536,10 @@ export default function Phase1Results() {
         {/* ── Basic Scan: completion + export ──────────────────────────────── */}
         {phase1Summary && !canProceedToPhase2 && (
           <>
-            <div className="alert alert--success" style={{ marginTop: 20, marginBottom: 8 }}>
+            <div
+              className="alert alert--success"
+              style={{ marginTop: 20, marginBottom: 8 }}
+            >
               ✓ Scan completed. Export report available below.
             </div>
             <ExportPanel
@@ -1018,17 +1554,24 @@ export default function Phase1Results() {
         )}
 
         {/* ── Vulnerability Audit pipeline: proceed button ─────────────────── */}
-        {canProceedToPhase2 && !isAssetPipeline && executionMode !== "interactive" && executionMode !== "automatic" && (
-          <div className="phase-action-bar">
-            <p className="muted" style={{ fontSize: "0.85rem" }}>
-              Continue to Port Scan to choose hosts and intensity on the same page.
-            </p>
-            <button className="btn btn--primary" onClick={proceedToNextPhase} disabled={!canExecuteScans}>
-              Continue to Port Scan
-            </button>
-          </div>
-        )}
-
+        {canProceedToPhase2 &&
+          !isAssetPipeline &&
+          executionMode !== "interactive" &&
+          executionMode !== "automatic" && (
+            <div className="phase-action-bar">
+              <p className="muted" style={{ fontSize: "0.85rem" }}>
+                Continue to Port Scan to choose hosts and intensity on the same
+                page.
+              </p>
+              <button
+                className="btn btn--primary"
+                onClick={proceedToNextPhase}
+                disabled={!canExecuteScans}
+              >
+                Continue to Port Scan
+              </button>
+            </div>
+          )}
       </div>
     </AppLayout>
   );

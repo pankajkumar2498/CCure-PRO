@@ -15,7 +15,6 @@ import json
 import logging
 import time
 from typing import Dict, List, Optional
-from urllib.parse import urljoin
 
 log = logging.getLogger("ccure.web.auth")
 
@@ -145,7 +144,9 @@ class WebSessionManager:
 
         if not login_url or not username:
             log.warning("Incomplete form_login config for scan %s", scan_id)
-            return WebSession(scan_id=scan_id, auth_error="Incomplete login configuration")
+            return WebSession(
+                scan_id=scan_id, auth_error="Incomplete login configuration"
+            )
 
         try:
             import httpx
@@ -168,12 +169,15 @@ class WebSessionManager:
                 # Check for success
                 is_success = resp.status_code in (200, 302, 303)
                 if success_indicator:
-                    is_success = is_success and success_indicator.lower() in resp.text.lower()
+                    is_success = (
+                        is_success and success_indicator.lower() in resp.text.lower()
+                    )
 
                 if not is_success:
                     log.warning(
                         "Form login failed for scan %s (status=%d)",
-                        scan_id, resp.status_code,
+                        scan_id,
+                        resp.status_code,
                     )
                     return WebSession(
                         scan_id=scan_id,
@@ -201,7 +205,11 @@ class WebSessionManager:
                 )
 
                 self._save_session(session)
-                log.info("Form login successful for scan %s (%d cookies)", scan_id, len(all_cookies))
+                log.info(
+                    "Form login successful for scan %s (%d cookies)",
+                    scan_id,
+                    len(all_cookies),
+                )
                 return session
 
         except ImportError:
@@ -277,6 +285,7 @@ class WebSession:
     def get_cookies_for_playwright(self) -> List[Dict]:
         """Format cookies for Playwright's add_cookies API."""
         from urllib.parse import urlparse
+
         domain = ""
         if self.login_url:
             domain = urlparse(self.login_url).hostname or ""

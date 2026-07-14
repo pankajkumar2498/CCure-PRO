@@ -31,7 +31,7 @@ const forceLogout = (reason = "expired") => {
   if (reason === "expired" && window.location.pathname !== "/login") {
     sessionStorage.setItem(
       "postLoginRedirect",
-      `${window.location.pathname}${window.location.search}${window.location.hash}`
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
     );
   }
   clearAuthTokens();
@@ -58,7 +58,7 @@ axiosInstance.interceptors.request.use(
 
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 axiosInstance.interceptors.response.use(
@@ -77,11 +77,17 @@ axiosInstance.interceptors.response.use(
       "/auth/refresh",
       "/auth/register",
       "/auth/forgot-password",
-      "/auth/reset-password"
+      "/auth/reset-password",
     ];
-    const isBypassUrl = bypassUrls.some((url) => originalRequest.url?.includes(url));
+    const isBypassUrl = bypassUrls.some((url) =>
+      originalRequest.url?.includes(url),
+    );
 
-    if (error.response.status !== 401 || originalRequest._retry || isBypassUrl) {
+    if (
+      error.response.status !== 401 ||
+      originalRequest._retry ||
+      isBypassUrl
+    ) {
       return Promise.reject(error);
     }
 
@@ -129,7 +135,7 @@ axiosInstance.interceptors.response.use(
     } finally {
       isRefreshing = false;
     }
-  }
+  },
 );
 
 export const authSession = {

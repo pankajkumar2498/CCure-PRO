@@ -22,43 +22,49 @@ Usage:
 """
 
 import os
-import json
 import xml.dom.minidom
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 
-from reportlab.lib                       import colors
-from reportlab.lib.pagesizes             import A4
-from reportlab.lib.units                 import mm
-from reportlab.lib.styles                import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums                 import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.platypus                  import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, PageBreak, KeepTogether
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    PageBreak,
+    KeepTogether,
+    Preformatted,
 )
-from reportlab.platypus.flowables        import Flowable
-from scan_helpers                        import make_pdf_cve_paragraph
+from scan_helpers import make_pdf_cve_paragraph
 
 
 # -----------------------------------------------------------------------------
 # Brand colours
 # -----------------------------------------------------------------------------
 
-CDAC_BLUE        = colors.HexColor("#003366")   # deep navy
-CDAC_LIGHT_BLUE  = colors.HexColor("#0066CC")   # accent
-CDAC_ACCENT      = colors.HexColor("#E8F0F7")   # table row alt background
-ACTIVE_GREEN     = colors.HexColor("#1A7A3F")
-INACTIVE_RED     = colors.HexColor("#C0392B")
-HEADER_BG        = colors.HexColor("#003366")
-TABLE_HEADER_BG  = colors.HexColor("#0066CC")
-BORDER_COLOUR    = colors.HexColor("#CBD5E0")
-WHITE            = colors.white
-LIGHT_GREY       = colors.HexColor("#F7F9FC")
+CDAC_BLUE = colors.HexColor("#003366")  # deep navy
+CDAC_LIGHT_BLUE = colors.HexColor("#0066CC")  # accent
+CDAC_ACCENT = colors.HexColor("#E8F0F7")  # table row alt background
+ACTIVE_GREEN = colors.HexColor("#1A7A3F")
+INACTIVE_RED = colors.HexColor("#C0392B")
+HEADER_BG = colors.HexColor("#003366")
+TABLE_HEADER_BG = colors.HexColor("#0066CC")
+BORDER_COLOUR = colors.HexColor("#CBD5E0")
+WHITE = colors.white
+LIGHT_GREY = colors.HexColor("#F7F9FC")
 
 
 # -----------------------------------------------------------------------------
 # Styles
 # -----------------------------------------------------------------------------
+
 
 def _build_styles():
     base = getSampleStyleSheet()
@@ -66,86 +72,94 @@ def _build_styles():
     styles = {
         "title": ParagraphStyle(
             "ReportTitle",
-            parent        = base["Title"],
-            fontSize      = 20,
-            textColor     = CDAC_BLUE,
-            spaceAfter    = 4,
-            spaceBefore   = 0,
-            alignment     = TA_CENTER,
-            fontName      = "Helvetica-Bold",
+            parent=base["Title"],
+            fontSize=20,
+            textColor=CDAC_BLUE,
+            spaceAfter=4,
+            spaceBefore=0,
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
         ),
         "subtitle": ParagraphStyle(
             "ReportSubtitle",
-            parent        = base["Normal"],
-            fontSize      = 10,
-            textColor     = colors.HexColor("#555555"),
-            spaceAfter    = 2,
-            alignment     = TA_CENTER,
-            fontName      = "Helvetica",
+            parent=base["Normal"],
+            fontSize=10,
+            textColor=colors.HexColor("#555555"),
+            spaceAfter=2,
+            alignment=TA_CENTER,
+            fontName="Helvetica",
         ),
         "section": ParagraphStyle(
             "SectionHeader",
-            parent        = base["Heading2"],
-            fontSize      = 12,
-            textColor     = WHITE,
-            backColor     = CDAC_BLUE,
-            spaceBefore   = 10,
-            spaceAfter    = 6,
-            leftIndent    = 6,
-            fontName      = "Helvetica-Bold",
+            parent=base["Heading2"],
+            fontSize=12,
+            textColor=WHITE,
+            backColor=CDAC_BLUE,
+            spaceBefore=10,
+            spaceAfter=6,
+            leftIndent=6,
+            fontName="Helvetica-Bold",
         ),
         "label": ParagraphStyle(
             "CellLabel",
-            parent        = base["Normal"],
-            fontSize      = 9,
-            textColor     = colors.HexColor("#333333"),
-            fontName      = "Helvetica-Bold",
+            parent=base["Normal"],
+            fontSize=9,
+            textColor=colors.HexColor("#333333"),
+            fontName="Helvetica-Bold",
         ),
         "value": ParagraphStyle(
             "CellValue",
-            parent        = base["Normal"],
-            fontSize      = 9,
-            textColor     = colors.HexColor("#222222"),
-            fontName      = "Helvetica",
+            parent=base["Normal"],
+            fontSize=9,
+            textColor=colors.HexColor("#222222"),
+            fontName="Helvetica",
         ),
         "active": ParagraphStyle(
             "ActiveStatus",
-            parent        = base["Normal"],
-            fontSize      = 9,
-            textColor     = ACTIVE_GREEN,
-            fontName      = "Helvetica-Bold",
+            parent=base["Normal"],
+            fontSize=9,
+            textColor=ACTIVE_GREEN,
+            fontName="Helvetica-Bold",
         ),
         "inactive": ParagraphStyle(
             "InactiveStatus",
-            parent        = base["Normal"],
-            fontSize      = 9,
-            textColor     = INACTIVE_RED,
-            fontName      = "Helvetica-Bold",
+            parent=base["Normal"],
+            fontSize=9,
+            textColor=INACTIVE_RED,
+            fontName="Helvetica-Bold",
         ),
         "mono": ParagraphStyle(
             "MonoText",
-            parent        = base["Normal"],
-            fontSize      = 8,
-            fontName      = "Courier",
-            textColor     = colors.HexColor("#1A1A2E"),
-            spaceAfter    = 2,
-            leading       = 12,
+            parent=base["Normal"],
+            fontSize=8,
+            fontName="Courier",
+            textColor=colors.HexColor("#1A1A2E"),
+            spaceAfter=2,
+            leading=12,
         ),
         "xml_tag": ParagraphStyle(
             "XmlTag",
-            parent        = base["Normal"],
-            fontSize      = 8,
-            fontName      = "Courier-Bold",
-            textColor     = CDAC_BLUE,
-            leading       = 12,
+            parent=base["Normal"],
+            fontSize=8,
+            fontName="Courier-Bold",
+            textColor=CDAC_BLUE,
+            leading=12,
         ),
         "normal": base["Normal"],
         "small": ParagraphStyle(
             "SmallNote",
-            parent        = base["Normal"],
-            fontSize      = 8,
-            textColor     = colors.HexColor("#777777"),
-            fontName      = "Helvetica",
+            parent=base["Normal"],
+            fontSize=8,
+            textColor=colors.HexColor("#777777"),
+            fontName="Helvetica",
+        ),
+        "mono_pre": ParagraphStyle(
+            "MonoPre",
+            parent=base["Normal"],
+            fontName="Courier",
+            fontSize=7.5,
+            leading=10,
+            textColor=colors.HexColor("#1E293B"),
         ),
     }
     return styles
@@ -156,7 +170,7 @@ def _build_styles():
 # -----------------------------------------------------------------------------
 
 PAGE_W, PAGE_H = A4
-MARGIN         = 18 * mm
+MARGIN = 18 * mm
 
 
 def _draw_header_footer(canvas, doc):
@@ -164,7 +178,9 @@ def _draw_header_footer(canvas, doc):
     canvas.saveState()
 
     # Retrieve the original scan timestamp passed into the doc
-    report_ts = getattr(doc, "scan_timestamp", datetime.now().strftime("%d %b %Y  %H:%M:%S"))
+    report_ts = getattr(
+        doc, "scan_timestamp", datetime.now().strftime("%d %b %Y  %H:%M:%S")
+    )
 
     # -- Header bar ----------------------------------------------------------
     canvas.setFillColor(HEADER_BG)
@@ -177,10 +193,12 @@ def _draw_header_footer(canvas, doc):
 
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#AACCEE"))
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10 * mm,
-                           getattr(doc, "report_running_header", "Security Audit Report"))
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm,
-                           f"Generated: {report_ts}")
+    canvas.drawRightString(
+        PAGE_W - MARGIN,
+        PAGE_H - 10 * mm,
+        getattr(doc, "report_running_header", "Security Audit Report"),
+    )
+    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm, f"Generated: {report_ts}")
 
     # Thin accent line below header
     canvas.setStrokeColor(CDAC_LIGHT_BLUE)
@@ -196,8 +214,7 @@ def _draw_header_footer(canvas, doc):
     canvas.drawString(MARGIN, 4.5 * mm, "Copyright@CDAC Bangalore RTSG")
 
     canvas.setFont("Helvetica", 8)
-    canvas.drawRightString(PAGE_W - MARGIN, 4.5 * mm,
-                           f"Page {doc.page}")
+    canvas.drawRightString(PAGE_W - MARGIN, 4.5 * mm, f"Page {doc.page}")
 
     canvas.restoreState()
 
@@ -205,6 +222,7 @@ def _draw_header_footer(canvas, doc):
 # -----------------------------------------------------------------------------
 # JSON -> PDF helpers
 # -----------------------------------------------------------------------------
+
 
 def _kv_table(rows: List[tuple], styles: dict, col_widths=None) -> Table:
     """
@@ -216,21 +234,36 @@ def _kv_table(rows: List[tuple], styles: dict, col_widths=None) -> Table:
 
     table_data = []
     for label, value in rows:
-        val_comp = value if isinstance(value, Paragraph) else Paragraph(str(value), styles["value"])
+        val_comp = (
+            value
+            if isinstance(value, Paragraph)
+            else Paragraph(str(value), styles["value"])
+        )
         table_data.append([Paragraph(label, styles["label"]), val_comp])
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=0)
-    tbl.setStyle(TableStyle([
-        # Alternating row backgrounds
-        *[("BACKGROUND", (0, i), (-1, i), CDAC_ACCENT if i % 2 == 0 else WHITE)
-          for i in range(len(table_data))],
-        ("GRID",        (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING",   (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
-        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-    ]))
+    tbl.setStyle(
+        TableStyle(
+            [
+                # Alternating row backgrounds
+                *[
+                    (
+                        "BACKGROUND",
+                        (0, i),
+                        (-1, i),
+                        CDAC_ACCENT if i % 2 == 0 else WHITE,
+                    )
+                    for i in range(len(table_data))
+                ],
+                ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
     return tbl
 
 
@@ -240,44 +273,66 @@ def _host_table(hosts: List[dict], styles: dict) -> Table:
     Columns: #, IP Address, Hostname, MAC Address, Status
     """
     headers = ["#", "IP Address", "Hostname", "MAC Address", "Status"]
-    col_w   = [10*mm, 32*mm, 48*mm, 38*mm, 18*mm]
+    col_w = [10 * mm, 32 * mm, 48 * mm, 38 * mm, 18 * mm]
 
-    header_row = [Paragraph(h, ParagraphStyle(
-        "TH", fontName="Helvetica-Bold", fontSize=9,
-        textColor=WHITE, alignment=TA_CENTER)) for h in headers]
+    header_row = [
+        Paragraph(
+            h,
+            ParagraphStyle(
+                "TH",
+                fontName="Helvetica-Bold",
+                fontSize=9,
+                textColor=WHITE,
+                alignment=TA_CENTER,
+            ),
+        )
+        for h in headers
+    ]
 
     rows = [header_row]
     for idx, host in enumerate(hosts, start=1):
         is_active = host.get("is_active", False)
         status_text = host.get("status") or ("Active" if is_active else "Inactive")
-        status_p  = Paragraph(
-            status_text,
-            styles["active"] if is_active else styles["inactive"]
+        status_p = Paragraph(
+            status_text, styles["active"] if is_active else styles["inactive"]
         )
-        rows.append([
-            Paragraph(str(idx),                          styles["value"]),
-            Paragraph(host.get("ip_address", "N/A"),     styles["value"]),
-            Paragraph(host.get("hostname",   "Unknown"), styles["value"]),
-            Paragraph(host.get("mac_address","N/A"),     styles["value"]),
-            status_p,
-        ])
+        rows.append(
+            [
+                Paragraph(str(idx), styles["value"]),
+                Paragraph(host.get("ip_address", "N/A"), styles["value"]),
+                Paragraph(host.get("hostname", "Unknown"), styles["value"]),
+                Paragraph(host.get("mac_address", "N/A"), styles["value"]),
+                status_p,
+            ]
+        )
 
     tbl = Table(rows, colWidths=col_w, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        # Header row
-        ("BACKGROUND",   (0, 0), (-1, 0),  TABLE_HEADER_BG),
-        ("ALIGN",        (0, 0), (-1, 0),  "CENTER"),
-        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-        # Alternating body rows
-        *[("BACKGROUND", (0, i), (-1, i), CDAC_ACCENT if i % 2 == 0 else WHITE)
-          for i in range(1, len(rows))],
-        ("GRID",         (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING",   (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [CDAC_ACCENT, WHITE]),
-    ]))
+    tbl.setStyle(
+        TableStyle(
+            [
+                # Header row
+                ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                # Alternating body rows
+                *[
+                    (
+                        "BACKGROUND",
+                        (0, i),
+                        (-1, i),
+                        CDAC_ACCENT if i % 2 == 0 else WHITE,
+                    )
+                    for i in range(1, len(rows))
+                ],
+                ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [CDAC_ACCENT, WHITE]),
+            ]
+        )
+    )
     return tbl
 
 
@@ -314,7 +369,7 @@ def _resolve_pdf_cve_package(cve: dict) -> str:
     pkg = cve.get("package") or cve.get("package_name")
     if pkg:
         return str(pkg)
-        
+
     # Check affected_software (often a list of CPEs or strings)
     affected = cve.get("affected_software") or cve.get("affected")
     if affected:
@@ -326,7 +381,7 @@ def _resolve_pdf_cve_package(cve: dict) -> str:
             return str(first)
         if isinstance(affected, str) and affected:
             return affected
-            
+
     return "N/A"
 
 
@@ -499,12 +554,12 @@ def _collect_hosts(result: dict) -> List[dict]:
     meta = result.get("metadata", {})
     summary = result.get("summary", {})
     timestamp = (
-        meta.get("timestamp") or 
-        meta.get("completed_at") or 
-        summary.get("completed_at") or 
-        summary.get("timestamp") or 
-        summary.get("started_at") or 
-        datetime.now().isoformat()
+        meta.get("timestamp")
+        or meta.get("completed_at")
+        or summary.get("completed_at")
+        or summary.get("timestamp")
+        or summary.get("started_at")
+        or datetime.now().isoformat()
     )
     try:
         dt = datetime.fromisoformat(timestamp)
@@ -543,7 +598,9 @@ def _collect_hosts(result: dict) -> List[dict]:
 
     for host in hosts:
         if host.get("is_active") is None:
-            host["is_active"] = bool(str(host.get("status", "")).strip().lower() == "active")
+            host["is_active"] = bool(
+                str(host.get("status", "")).strip().lower() == "active"
+            )
 
         status_text = str(host.get("status", "")).strip()
         if not status_text or status_text.lower() == "unknown":
@@ -552,10 +609,22 @@ def _collect_hosts(result: dict) -> List[dict]:
         # Flatten credentialed system info to host root for standard tables & reports
         sys_info = host.get("system_info")
         if sys_info and isinstance(sys_info, dict):
-            host["hostname"] = sys_info.get("hostname") or sys_info.get("hostname_short") or host.get("hostname") or "Unknown"
-            host["mac_address"] = sys_info.get("mac_address") or host.get("mac_address") or "N/A"
-            if not host.get("response_time_ms") or host.get("response_time_ms") == "N/A":
-                host["response_time_ms"] = sys_info.get("credentialed_response_time_ms") or "N/A"
+            host["hostname"] = (
+                sys_info.get("hostname")
+                or sys_info.get("hostname_short")
+                or host.get("hostname")
+                or "Unknown"
+            )
+            host["mac_address"] = (
+                sys_info.get("mac_address") or host.get("mac_address") or "N/A"
+            )
+            if (
+                not host.get("response_time_ms")
+                or host.get("response_time_ms") == "N/A"
+            ):
+                host["response_time_ms"] = (
+                    sys_info.get("credentialed_response_time_ms") or "N/A"
+                )
             if not host.get("scan_method") or host.get("scan_method") == "N/A":
                 host["scan_method"] = "Credentialed"
             if not host.get("scan_timestamp") or host.get("scan_timestamp") == "N/A":
@@ -573,7 +642,9 @@ def _as_int(value: Any) -> Optional[int]:
         return None
 
 
-def _compute_discovery_summary(summary: dict, hosts: List[dict]) -> Tuple[int, int, int, str]:
+def _compute_discovery_summary(
+    summary: dict, hosts: List[dict]
+) -> Tuple[int, int, int, str]:
     total = _as_int(summary.get("total_hosts"))
     active = _as_int(summary.get("active_hosts"))
     inactive = _as_int(summary.get("inactive_hosts"))
@@ -613,26 +684,65 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
     W = PAGE_W - 2 * MARGIN
 
     def mk_header(title):
-        return Paragraph(f"<b>{title}</b>", ParagraphStyle("s", parent=styles["normal"], fontSize=10, textColor=CDAC_BLUE, spaceBefore=10, spaceAfter=4))
-    
+        return Paragraph(
+            f"<b>{title}</b>",
+            ParagraphStyle(
+                "s",
+                parent=styles["normal"],
+                fontSize=10,
+                textColor=CDAC_BLUE,
+                spaceBefore=10,
+                spaceAfter=4,
+            ),
+        )
+
     def mk_table(headers, rows, widths=None):
-        header_row = [Paragraph(h, ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, textColor=WHITE)) for h in headers]
+        header_row = [
+            Paragraph(
+                h,
+                ParagraphStyle(
+                    "th", fontName="Helvetica-Bold", fontSize=8, textColor=WHITE
+                ),
+            )
+            for h in headers
+        ]
         data = [header_row]
         for r in rows:
-            data.append([Paragraph(str(c), styles["value"]) if not isinstance(c, Paragraph) else c for c in r])
+            data.append(
+                [
+                    (
+                        Paragraph(str(c), styles["value"])
+                        if not isinstance(c, Paragraph)
+                        else c
+                    )
+                    for c in r
+                ]
+            )
         if not widths:
             widths = [W / len(headers)] * len(headers)
         tbl = Table(data, colWidths=widths, repeatRows=1)
-        tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
-            *[("BACKGROUND", (0, i), (-1, i), CDAC_ACCENT if i % 2 == 0 else WHITE) for i in range(1, len(data))],
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+                    *[
+                        (
+                            "BACKGROUND",
+                            (0, i),
+                            (-1, i),
+                            CDAC_ACCENT if i % 2 == 0 else WHITE,
+                        )
+                        for i in range(1, len(data))
+                    ],
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         return tbl
 
     sys_info = host.get("system_info")
@@ -644,7 +754,7 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
     ip_addr = host.get("ip_address") or host.get("target") or "N/A"
     clean_ip = str(ip_addr).replace(".", "_")
     asset_id = f"ast_cdac_{clean_ip}"
-    
+
     os_confidence = sys_info.get("os_confidence", "100")
     if str(os_confidence).isdigit():
         os_conf_str = f"{os_confidence}%"
@@ -654,7 +764,10 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
     id_rows = [
         ("Asset ID", asset_id),
         ("IP Address", ip_addr),
-        ("MAC Address", host.get("mac_address") or sys_info.get("mac_address") or "N/A"),
+        (
+            "MAC Address",
+            host.get("mac_address") or sys_info.get("mac_address") or "N/A",
+        ),
         ("Subnet", sys_info.get("subnet") or "N/A"),
         ("Hostname", sys_info.get("hostname") or host.get("hostname") or "Unknown"),
         ("FQDN", sys_info.get("fqdn") or "N/A"),
@@ -667,20 +780,26 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
         ("OS Confidence", os_conf_str),
         ("Device Category", host.get("device_category") or "endpoint"),
     ]
-    story.append(mk_table(["Property", "Value"], id_rows, [50*mm, W - 50*mm]))
+    story.append(mk_table(["Property", "Value"], id_rows, [50 * mm, W - 50 * mm]))
     story.append(Spacer(1, 3 * mm))
 
     # 2. Hardware Specifications
     story.append(mk_header("Hardware Specifications"))
     hw_rows = [
-        ("Vendor / Manufacturer", sys_info.get("manufacturer") or sys_info.get("mac_vendor") or sys_info.get("vendor") or "N/A"),
+        (
+            "Vendor / Manufacturer",
+            sys_info.get("manufacturer")
+            or sys_info.get("mac_vendor")
+            or sys_info.get("vendor")
+            or "N/A",
+        ),
         ("Hardware Model", sys_info.get("hardware_model") or "N/A"),
         ("CPU Model", sys_info.get("cpu_model") or "N/A"),
         ("CPU Cores / Threads", sys_info.get("cpu_count") or "N/A"),
         ("BIOS Version", sys_info.get("bios_version") or "N/A"),
         ("Serial Number", sys_info.get("serial_number") or "N/A"),
     ]
-    story.append(mk_table(["Property", "Value"], hw_rows, [50*mm, W - 50*mm]))
+    story.append(mk_table(["Property", "Value"], hw_rows, [50 * mm, W - 50 * mm]))
     story.append(Spacer(1, 3 * mm))
 
     # 3. Memory Summary
@@ -693,7 +812,7 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
             ("Free Memory", mem.get("free", "N/A")),
             ("Available Memory", mem.get("available", "N/A")),
         ]
-        story.append(mk_table(["Property", "Value"], mem_rows, [50*mm, W - 50*mm]))
+        story.append(mk_table(["Property", "Value"], mem_rows, [50 * mm, W - 50 * mm]))
         story.append(Spacer(1, 3 * mm))
 
     # 4. Disk Storage Inventory
@@ -702,45 +821,64 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
         story.append(mk_header(f"Disk Storage Inventory ({len(disk_usage)} drive(s))"))
         disk_rows = []
         is_windows = str(sys_info.get("os_family", "")).lower() == "windows"
-        
+
         if is_windows:
             headers = ["Drive Letter", "Used Space", "Available Space"]
-            col_widths = [40*mm, 65*mm, 65*mm]
+            col_widths = [40 * mm, 65 * mm, 65 * mm]
             for d in disk_usage:
-                disk_rows.append([
-                    d.get("filesystem", d.get("Name", "N/A")),
-                    d.get("used", "N/A"),
-                    d.get("available", "N/A")
-                ])
+                disk_rows.append(
+                    [
+                        d.get("filesystem", d.get("Name", "N/A")),
+                        d.get("used", "N/A"),
+                        d.get("available", "N/A"),
+                    ]
+                )
         else:
             headers = ["Mount Point", "Total Size", "Used", "Available", "Use %"]
-            col_widths = [50*mm, 30*mm, 30*mm, 30*mm, 30*mm]
+            col_widths = [50 * mm, 30 * mm, 30 * mm, 30 * mm, 30 * mm]
             for d in disk_usage:
-                disk_rows.append([
-                    d.get("mounted_on", d.get("filesystem", "N/A")),
-                    d.get("size", "N/A"),
-                    d.get("used", "N/A"),
-                    d.get("available", "N/A"),
-                    d.get("use_pct", "N/A")
-                ])
+                disk_rows.append(
+                    [
+                        d.get("mounted_on", d.get("filesystem", "N/A")),
+                        d.get("size", "N/A"),
+                        d.get("used", "N/A"),
+                        d.get("available", "N/A"),
+                        d.get("use_pct", "N/A"),
+                    ]
+                )
         story.append(mk_table(headers, disk_rows, col_widths))
         story.append(Spacer(1, 3 * mm))
 
     # 5. Network Sockets & Open Ports
     open_ports = host.get("open_ports_credentialed", [])
     if open_ports:
-        story.append(mk_header(f"Open Socket Connections ({len(open_ports)} listening)"))
+        story.append(
+            mk_header(f"Open Socket Connections ({len(open_ports)} listening)")
+        )
         port_rows = []
         for p in open_ports[:20]:
-            port_rows.append([
-                p.get("port", "N/A"),
-                p.get("state", "LISTEN"),
-                p.get("process") or "Unknown",
-                p.get("local_addr") or "N/A"
-            ])
-        story.append(mk_table(["Port", "State", "Process / PID", "Binding Address"], port_rows, [25*mm, 25*mm, 70*mm, 50*mm]))
+            port_rows.append(
+                [
+                    p.get("port", "N/A"),
+                    p.get("state", "LISTEN"),
+                    p.get("process") or "Unknown",
+                    p.get("local_addr") or "N/A",
+                ]
+            )
+        story.append(
+            mk_table(
+                ["Port", "State", "Process / PID", "Binding Address"],
+                port_rows,
+                [25 * mm, 25 * mm, 70 * mm, 50 * mm],
+            )
+        )
         if len(open_ports) > 20:
-            story.append(Paragraph(f"... and {len(open_ports)-20} more listening ports", styles["small"]))
+            story.append(
+                Paragraph(
+                    f"... and {len(open_ports)-20} more listening ports",
+                    styles["small"],
+                )
+            )
         story.append(Spacer(1, 3 * mm))
 
     # 6. Users & Access Controls
@@ -751,32 +889,47 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
         u_rows = []
         is_windows = str(sys_info.get("os_family", "")).lower() == "windows"
         if is_windows:
-            headers = ["Username", "Enabled", "Is Admin", "Last Logon", "Password Required"]
-            col_widths = [40*mm, 25*mm, 25*mm, 45*mm, 35*mm]
+            headers = [
+                "Username",
+                "Enabled",
+                "Is Admin",
+                "Last Logon",
+                "Password Required",
+            ]
+            col_widths = [40 * mm, 25 * mm, 25 * mm, 45 * mm, 35 * mm]
             for u in users[:15]:
-                u_rows.append([
-                    u.get("username", "N/A"),
-                    str(u.get("enabled", "N/A")),
-                    "Yes" if u.get("is_admin") else "No",
-                    u.get("last_logon", "N/A")[:20],
-                    str(u.get("pwd_required", "N/A"))
-                ])
+                u_rows.append(
+                    [
+                        u.get("username", "N/A"),
+                        str(u.get("enabled", "N/A")),
+                        "Yes" if u.get("is_admin") else "No",
+                        u.get("last_logon", "N/A")[:20],
+                        str(u.get("pwd_required", "N/A")),
+                    ]
+                )
         else:
             headers = ["Username", "UID", "Shell", "Role / Type"]
-            col_widths = [50*mm, 25*mm, W - 110*mm, 35*mm]
+            col_widths = [50 * mm, 25 * mm, W - 110 * mm, 35 * mm]
             for u in users[:15]:
                 if u.get("is_root") or not u.get("is_system"):
                     u_type = "Root/Admin" if u.get("is_root") else "User"
-                    u_rows.append([
-                        u.get("username", "N/A"),
-                        str(u.get("uid", "")),
-                        u.get("shell", "N/A"),
-                        u_type
-                    ])
+                    u_rows.append(
+                        [
+                            u.get("username", "N/A"),
+                            str(u.get("uid", "")),
+                            u.get("shell", "N/A"),
+                            u_type,
+                        ]
+                    )
         if u_rows:
             story.append(mk_table(headers, u_rows, col_widths))
             if len(users) > 15:
-                story.append(Paragraph(f"... and {len(users)-15} more local user accounts", styles["small"]))
+                story.append(
+                    Paragraph(
+                        f"... and {len(users)-15} more local user accounts",
+                        styles["small"],
+                    )
+                )
             story.append(Spacer(1, 3 * mm))
 
     if local_groups:
@@ -787,75 +940,184 @@ def _build_advanced_insights(host: dict, styles: dict) -> list:
             members_str = ", ".join(members[:8])
             if len(members) > 8:
                 members_str += f" (+{len(members)-8} more)"
-            g_rows.append([
-                g.get("name", "N/A"),
-                str(g.get("gid") or "N/A"),
-                members_str or "No members"
-            ])
-        story.append(mk_table(["Group Name", "GID", "Members"], g_rows, [50*mm, 25*mm, W - 75*mm]))
+            g_rows.append(
+                [
+                    g.get("name", "N/A"),
+                    str(g.get("gid") or "N/A"),
+                    members_str or "No members",
+                ]
+            )
+        story.append(
+            mk_table(
+                ["Group Name", "GID", "Members"],
+                g_rows,
+                [50 * mm, 25 * mm, W - 75 * mm],
+            )
+        )
+        story.append(Spacer(1, 3 * mm))
+
+    # OS Hardening & Security Audits
+    hardening_audits = host.get("hardening_audits") or {}
+    if hardening_audits:
+        story.append(mk_header("OS Hardening & Security Audits"))
+        h_rows = []
+        for key, audit in hardening_audits.items():
+            status = audit.get("status", "N/A")
+            if status == "PASS":
+                status_para = Paragraph(
+                    "<font color='#1A7A3F'><b>PASS</b></font>", styles["value"]
+                )
+            elif status == "FAIL":
+                status_para = Paragraph(
+                    "<font color='#C0392B'><b>FAIL</b></font>", styles["value"]
+                )
+            else:
+                status_para = Paragraph(f"<b>{status}</b>", styles["value"])
+
+            h_rows.append(
+                [
+                    Paragraph(audit.get("label", key), styles["value"]),
+                    status_para,
+                    Paragraph(audit.get("detail", "N/A"), styles["value"]),
+                ]
+            )
+        story.append(
+            mk_table(
+                ["Configuration / Audit", "Status", "Audit Findings Detail"],
+                h_rows,
+                [50 * mm, 20 * mm, W - 70 * mm],
+            )
+        )
+        story.append(Spacer(1, 3 * mm))
+
+    # Suspicious Scheduled Tasks (Windows)
+    tasks = host.get("suspicious_scheduled_tasks") or []
+    if tasks:
+        story.append(mk_header(f"Suspicious Scheduled Tasks ({len(tasks)})"))
+        t_rows = []
+        for t in tasks[:15]:
+            t_rows.append(
+                [
+                    t.get("TaskName", "N/A"),
+                    t.get("TaskPath", "N/A"),
+                    t.get("State", "N/A"),
+                ]
+            )
+        story.append(
+            mk_table(
+                ["Task Name", "Path", "Status"],
+                t_rows,
+                [60 * mm, 80 * mm, W - 140 * mm],
+            )
+        )
+        if len(tasks) > 15:
+            story.append(
+                Paragraph(
+                    f"... and {len(tasks)-15} more scheduled tasks", styles["small"]
+                )
+            )
+        story.append(Spacer(1, 3 * mm))
+
+    # Scheduled Cron Jobs (Linux)
+    cron_raw = host.get("cron_info_raw", "").strip()
+    if cron_raw:
+        story.append(mk_header("Scheduled Cron Jobs (System / User)"))
+        lines = cron_raw.splitlines()
+        if len(lines) > 50:
+            truncated = "\n".join(lines[:50]) + "\n... [Truncated for Report]"
+        else:
+            truncated = cron_raw
+
+        story.append(Preformatted(truncated, styles["mono_pre"], maxLineLength=80))
         story.append(Spacer(1, 3 * mm))
 
     # 7. System Audit Findings
     sec_issues = host.get("security_issues", [])
     suid = host.get("suid_binaries", [])
     ww_dirs = host.get("world_writable_dirs", [])
-    
-    if sec_issues or host.get("sudo_nopasswd") or host.get("failed_login_count") or suid or ww_dirs:
+
+    if (
+        sec_issues
+        or host.get("sudo_nopasswd")
+        or host.get("failed_login_count")
+        or suid
+        or ww_dirs
+    ):
         story.append(mk_header("Security Audit Findings"))
         iss_rows = []
         if host.get("sudo_nopasswd"):
-            iss_rows.append(["NOPASSWD Sudo", "Enabled (High Risk — user can run sudo without password)"])
+            iss_rows.append(
+                [
+                    "NOPASSWD Sudo",
+                    "Enabled (High Risk — user can run sudo without password)",
+                ]
+            )
         for iss in sec_issues:
             iss_rows.append(["Misconfiguration", iss])
         if suid:
-            iss_rows.append(["SUID Binaries", f"{len(suid)} binary files with SUID bit set"])
+            iss_rows.append(
+                ["SUID Binaries", f"{len(suid)} binary files with SUID bit set"]
+            )
         if ww_dirs:
-            iss_rows.append(["Writable Directories", f"{len(ww_dirs)} world-writable folders found"])
+            iss_rows.append(
+                ["Writable Directories", f"{len(ww_dirs)} world-writable folders found"]
+            )
         if host.get("failed_login_count"):
-            iss_rows.append(["Failed Login Events", f"{host.get('failed_login_count')} failed login attempts detected"])
-            
+            iss_rows.append(
+                [
+                    "Failed Login Events",
+                    f"{host.get('failed_login_count')} failed login attempts detected",
+                ]
+            )
+
         if iss_rows:
-            story.append(mk_table(["Finding Type", "Detail"], iss_rows, [50*mm, W - 50*mm]))
+            story.append(
+                mk_table(["Finding Type", "Detail"], iss_rows, [50 * mm, W - 50 * mm])
+            )
             story.append(Spacer(1, 3 * mm))
 
     return story
 
 
-def _build_json_story(result: dict, scan_type: str,
-                      timestamp: str, styles: dict) -> list:
+def _build_json_story(
+    result: dict, scan_type: str, timestamp: str, styles: dict
+) -> list:
     """
     Build the ReportLab story (list of flowables) for the JSON PDF.
     """
     story = []
-    W     = PAGE_W - 2 * MARGIN
+    W = PAGE_W - 2 * MARGIN
 
     # -- Cover / Title --------------------------------------------------------
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(_resolve_report_title(scan_type), styles["title"]))
-    story.append(Paragraph("Network Visibility &amp; Audit Summary", styles["subtitle"]))
+    story.append(
+        Paragraph("Network Visibility &amp; Audit Summary", styles["subtitle"])
+    )
     story.append(Spacer(1, 3 * mm))
-    story.append(HRFlowable(width=W, thickness=1.5,
-                             color=CDAC_LIGHT_BLUE, spaceAfter=6))
+    story.append(
+        HRFlowable(width=W, thickness=1.5, color=CDAC_LIGHT_BLUE, spaceAfter=6)
+    )
 
     # -- Scan Meta ------------------------------------------------------------
     story.append(_section_header("Scan Information", styles))
-    meta    = result.get("metadata", {})
-    summary = result.get("summary",  {})
-    data    = result.get("data", [])
-    hosts   = _collect_hosts(result)
+    meta = result.get("metadata", {})
+    summary = result.get("summary", {})
+    data = result.get("data", [])
+    hosts = _collect_hosts(result)
 
     scan_strategy = _resolve_scan_strategy(meta, summary)
-    target_value  = _resolve_target(meta, summary)
+    target_value = _resolve_target(meta, summary)
 
     scan_info_rows = [
-        ("Scan No.",          meta.get("scan_no", "N/A")),
-        ("Scan Type",         _get_scan_type_label(scan_type)),
-        ("Target",            target_value),
-        ("Scan Strategy",     scan_strategy),
-        ("Scan Date",         timestamp[:10]),
-        ("Scan Time",         timestamp[11:19]),
-        ("Scan Duration",     f"{summary.get('scan_duration', 0):.3f} seconds"),
-        ("Report Generated",  datetime.now().strftime("%d %b %Y  %H:%M:%S")),
+        ("Scan No.", meta.get("scan_no", "N/A")),
+        ("Scan Type", _get_scan_type_label(scan_type)),
+        ("Target", target_value),
+        ("Scan Strategy", scan_strategy),
+        ("Scan Date", timestamp[:10]),
+        ("Scan Time", timestamp[11:19]),
+        ("Scan Duration", f"{summary.get('scan_duration', 0):.3f} seconds"),
+        ("Report Generated", datetime.now().strftime("%d %b %Y  %H:%M:%S")),
         # ("Report Format",     "JSON - Tabular"),
     ]
     story.append(_kv_table(scan_info_rows, styles))
@@ -866,10 +1128,10 @@ def _build_json_story(result: dict, scan_type: str,
     total, active, inactive, pct = _compute_discovery_summary(summary, hosts)
 
     summary_rows = [
-        ("Total Hosts Scanned",   total),
-        ("Active Hosts",          active),
-        ("Inactive / No Response",inactive),
-        ("Active Host Ratio",     pct),
+        ("Total Hosts Scanned", total),
+        ("Active Hosts", active),
+        ("Inactive / No Response", inactive),
+        ("Active Host Ratio", pct),
     ]
     story.append(_kv_table(summary_rows, styles))
     story.append(Spacer(1, 4 * mm))
@@ -879,8 +1141,9 @@ def _build_json_story(result: dict, scan_type: str,
     active_hosts = [h for h in hosts if h.get("is_active", False)]
 
     if active_hosts:
-        story.append(_section_header(
-            f"Discovered Hosts  ({len(active_hosts)} active)", styles))
+        story.append(
+            _section_header(f"Discovered Hosts  ({len(active_hosts)} active)", styles)
+        )
         story.append(_host_table(active_hosts, styles))
         story.append(Spacer(1, 4 * mm))
 
@@ -889,9 +1152,10 @@ def _build_json_story(result: dict, scan_type: str,
         all_cve_rows: List[tuple] = []  # (ip, cve_id, severity, package, description)
         for idx, host in enumerate(active_hosts, start=1):
             is_active = host.get("is_active", False)
-            
-            card_colour = colors.HexColor("#EAF7EE") if is_active \
-                     else colors.HexColor("#FDF2F2")
+
+            card_colour = (
+                colors.HexColor("#EAF7EE") if is_active else colors.HexColor("#FDF2F2")
+            )
 
             # Build port display
             open_ports = host.get("open_ports", [])
@@ -900,42 +1164,55 @@ def _build_json_story(result: dict, scan_type: str,
                 for p in open_ports:
                     port_num = p.get("port", 0)
                     banner = p.get("banner", "")
-                    banner_str = f" [{banner[:30]}..]" if len(banner) > 30 else f" [{banner}]" if banner else ""
-                    port_strings.append(f"{port_num}/{p.get('service', 'unknown').upper()}{banner_str}")
-            
+                    banner_str = (
+                        f" [{banner[:30]}..]"
+                        if len(banner) > 30
+                        else f" [{banner}]" if banner else ""
+                    )
+                    port_strings.append(
+                        f"{port_num}/{p.get('service', 'unknown').upper()}{banner_str}"
+                    )
+
             ports_display = ", ".join(port_strings) if port_strings else "None"
 
             detail_rows = [
-                ("IP Address",        host.get("ip_address",    "N/A")),
-                ("Hostname",          host.get("hostname",      "Unknown")),
-                ("MAC Address",       host.get("mac_address",   "N/A")),
-                ("Detection Method",  _resolve_detection_method(host)),
+                ("IP Address", host.get("ip_address", "N/A")),
+                ("Hostname", host.get("hostname", "Unknown")),
+                ("MAC Address", host.get("mac_address", "N/A")),
+                ("Detection Method", _resolve_detection_method(host)),
             ]
             # Only include port information for non-host-discovery scans (phase > 1)
             if result.get("summary", {}).get("phase", 1) > 1:
-                detail_rows.append(("Open TCP Ports",    ports_display if is_active else "N/A"))
-            
+                detail_rows.append(
+                    ("Open TCP Ports", ports_display if is_active else "N/A")
+                )
+
             # --- GAP 06-10 Fields ---
             dev_cat = host.get("device_category") or host.get("snmp_device_type")
             if dev_cat and dev_cat != "unknown":
                 detail_rows.append(("Device Category", str(dev_cat).capitalize()))
-                
+
             if host.get("snmp_info", {}).get("vendor"):
                 detail_rows.append(("SNMP Vendor", host["snmp_info"]["vendor"]))
-                
+
             if host.get("snmp_info", {}).get("sys_location"):
                 detail_rows.append(("SNMP Location", host["snmp_info"]["sys_location"]))
-                
+
             if host.get("firewall_likely"):
-                detail_rows.append(("Firewall Detected", f"Yes (confidence: {host.get('firewall_confidence', 'Low')})"))
-                
+                detail_rows.append(
+                    (
+                        "Firewall Detected",
+                        f"Yes (confidence: {host.get('firewall_confidence', 'Low')})",
+                    )
+                )
+
             if host.get("netbios_workgroup"):
                 detail_rows.append(("Domain/Workgroup", host["netbios_workgroup"]))
-                
+
             mdns_svcs = host.get("mdns_services", [])
             if mdns_svcs:
                 detail_rows.append(("mDNS Services", ", ".join(mdns_svcs[:6])))
-                
+
             ifaces = host.get("snmp_info", {}).get("interfaces", [])
             if ifaces:
                 iface_str = " | ".join(
@@ -945,42 +1222,81 @@ def _build_json_story(result: dict, scan_type: str,
                 if len(ifaces) > 3:
                     iface_str += f" (+{len(ifaces)-3} more)"
                 detail_rows.append(("SNMP Interfaces", iface_str))
-                
+
             if host.get("host_risk_level"):
-                detail_rows.append(("Risk Level", f"{host['host_risk_level']} (score: {host.get('host_risk_score', 0)})"))
-                
+                detail_rows.append(
+                    (
+                        "Risk Level",
+                        f"{host['host_risk_level']} (score: {host.get('host_risk_score', 0)})",
+                    )
+                )
+
             cves = host.get("cves", [])
             if cves:
                 detail_rows.append(("CVEs Found", str(len(cves))))
-                
+
             active_findings = []
-            if host.get("heartbleed_info", {}).get("vulnerable"):          active_findings.append("Heartbleed (CVE-2014-0160)")
-            if host.get("smb_ms17010_info", {}).get("ms17010_likely"):     active_findings.append("EternalBlue MS17-010")
-            if host.get("ldap_info", {}).get("anonymous_bind", {}).get("allowed"): active_findings.append("LDAP Anonymous Bind")
-            if host.get("dns_info", {}).get("zone_transfer", {}).get("vulnerable"): active_findings.append("DNS Zone Transfer (AXFR)")
-            if host.get("default_creds_info"):                             active_findings.append("Default Credentials")
+            if host.get("heartbleed_info", {}).get("vulnerable"):
+                active_findings.append("Heartbleed (CVE-2014-0160)")
+            if host.get("smb_ms17010_info", {}).get("ms17010_likely"):
+                active_findings.append("EternalBlue MS17-010")
+            if host.get("ldap_info", {}).get("anonymous_bind", {}).get("allowed"):
+                active_findings.append("LDAP Anonymous Bind")
+            if host.get("dns_info", {}).get("zone_transfer", {}).get("vulnerable"):
+                active_findings.append("DNS Zone Transfer (AXFR)")
+            if host.get("default_creds_info"):
+                active_findings.append("Default Credentials")
             # FTP deep-probe findings
             ftp = host.get("ftp_info", {})
-            if ftp.get("anonymous_login"):                                 active_findings.append("FTP Anonymous Login")
-            if ftp.get("write_access"):                                    active_findings.append("FTP Anonymous Write Access")
-            if ftp.get("weak_credentials"):                                active_findings.append(f"FTP Weak Credentials ({len(ftp['weak_credentials'])} pair(s))")
+            if ftp.get("anonymous_login"):
+                active_findings.append("FTP Anonymous Login")
+            if ftp.get("write_access"):
+                active_findings.append("FTP Anonymous Write Access")
+            if ftp.get("weak_credentials"):
+                active_findings.append(
+                    f"FTP Weak Credentials ({len(ftp['weak_credentials'])} pair(s))"
+                )
             # HTTP deep-probe findings
             http = host.get("http_audit", {})
-            if http.get("exposed_paths"):                                  active_findings.append(f"HTTP Exposed Paths ({len(http['exposed_paths'])} found)")
-            if http.get("admin_panels"):                                   active_findings.append(f"HTTP Admin Panels ({len(http['admin_panels'])} detected)")
-            if http.get("dangerous_methods"):                              active_findings.append(f"HTTP Dangerous Methods ({len(http['dangerous_methods'])} enabled)")
+            if http.get("exposed_paths"):
+                active_findings.append(
+                    f"HTTP Exposed Paths ({len(http['exposed_paths'])} found)"
+                )
+            if http.get("admin_panels"):
+                active_findings.append(
+                    f"HTTP Admin Panels ({len(http['admin_panels'])} detected)"
+                )
+            if http.get("dangerous_methods"):
+                active_findings.append(
+                    f"HTTP Dangerous Methods ({len(http['dangerous_methods'])} enabled)"
+                )
             if active_findings:
                 detail_rows.append(("Active Findings", " | ".join(active_findings)))
 
             # ── FTP Deep Probe Section ────────────────────────────────────────
             if ftp.get("open"):
                 detail_rows.append(("FTP Version", ftp.get("banner", "N/A")[:80]))
-                detail_rows.append(("FTP Anonymous Login", "YES — Unauthenticated access allowed" if ftp.get("anonymous_login") else "No"))
+                detail_rows.append(
+                    (
+                        "FTP Anonymous Login",
+                        (
+                            "YES — Unauthenticated access allowed"
+                            if ftp.get("anonymous_login")
+                            else "No"
+                        ),
+                    )
+                )
                 if ftp.get("write_access"):
-                    detail_rows.append(("FTP Write Access", "CRITICAL — Anonymous session can upload files"))
+                    detail_rows.append(
+                        (
+                            "FTP Write Access",
+                            "CRITICAL — Anonymous session can upload files",
+                        )
+                    )
                 if ftp.get("weak_credentials"):
                     cred_list = ", ".join(
-                        f"{c['user']}/{c['password']}" for c in ftp["weak_credentials"][:5]
+                        f"{c['user']}/{c['password']}"
+                        for c in ftp["weak_credentials"][:5]
                     )
                     detail_rows.append(("FTP Weak Credentials", cred_list))
                 ftp_issues = ftp.get("issues", [])
@@ -1017,57 +1333,89 @@ def _build_json_story(result: dict, scan_type: str,
                 # Dangerous methods
                 methods = http.get("dangerous_methods", [])
                 if methods:
-                    detail_rows.append(("HTTP Dangerous Methods", " | ".join(methods[:4])))
+                    detail_rows.append(
+                        ("HTTP Dangerous Methods", " | ".join(methods[:4]))
+                    )
 
             # ── SSH Info ──────────────────────────────────────────────────────
             ssh = host.get("ssh_info", {})
             if ssh.get("banner"):
                 detail_rows.append(("SSH Banner", ssh["banner"][:80]))
             if ssh.get("auth_methods"):
-                detail_rows.append(("SSH Auth Methods", ", ".join(ssh.get("auth_methods", []))))
+                detail_rows.append(
+                    ("SSH Auth Methods", ", ".join(ssh.get("auth_methods", [])))
+                )
 
             # ── SMB Info ─────────────────────────────────────────────────────
             smb = host.get("smb_info", {})
             if smb.get("open"):
                 detail_rows.append(("SMB Version", smb.get("version", "Unknown")))
                 if smb.get("null_session"):
-                    detail_rows.append(("SMB Null Session", "YES — Unauthenticated SMB connection allowed"))
+                    detail_rows.append(
+                        (
+                            "SMB Null Session",
+                            "YES — Unauthenticated SMB connection allowed",
+                        )
+                    )
 
             # ── TLS/SSL Info ─────────────────────────────────────────────────
             tls = host.get("tls_info", {})
             if tls:
                 detail_rows.append(("TLS Protocol", tls.get("protocol", "N/A")))
                 if tls.get("cert_cn"):
-                    detail_rows.append(("TLS Certificate CN", tls.get("cert_cn", "N/A")))
+                    detail_rows.append(
+                        ("TLS Certificate CN", tls.get("cert_cn", "N/A"))
+                    )
                 if tls.get("cert_expired"):
-                    detail_rows.append(("TLS Certificate", "EXPIRED — Certificate has passed its expiry date"))
+                    detail_rows.append(
+                        (
+                            "TLS Certificate",
+                            "EXPIRED — Certificate has passed its expiry date",
+                        )
+                    )
 
-            status_value = host.get("status") or ("Active" if host.get("is_active") else "Inactive")
-            detail_rows.extend([
-                ("Status",            status_value),
-                ("Response Time",     _format_response_time_ms(host.get("response_time_ms"))),
-                ("Scan Timestamp",    host.get("scan_timestamp", "N/A")),
-            ])
-
+            status_value = host.get("status") or (
+                "Active" if host.get("is_active") else "Inactive"
+            )
+            detail_rows.extend(
+                [
+                    ("Status", status_value),
+                    (
+                        "Response Time",
+                        _format_response_time_ms(host.get("response_time_ms")),
+                    ),
+                    ("Scan Timestamp", host.get("scan_timestamp", "N/A")),
+                ]
+            )
 
             card_title = Paragraph(
                 f"Host {idx}  -  {host.get('ip_address', 'N/A')}",
-                ParagraphStyle("CardTitle", fontName="Helvetica-Bold",
-                               fontSize=10, textColor=CDAC_BLUE,
-                               spaceBefore=4, spaceAfter=2))
+                ParagraphStyle(
+                    "CardTitle",
+                    fontName="Helvetica-Bold",
+                    fontSize=10,
+                    textColor=CDAC_BLUE,
+                    spaceBefore=4,
+                    spaceAfter=2,
+                ),
+            )
 
             card_tbl = _kv_table(detail_rows, styles)
 
             # Wrap in a coloured background via a 1-cell outer table
             outer = Table([[card_tbl]], colWidths=[W])
-            outer.setStyle(TableStyle([
-                ("BACKGROUND",   (0, 0), (-1, -1), card_colour),
-                ("BOX",          (0, 0), (-1, -1), 0.8, CDAC_BLUE),
-                ("TOPPADDING",   (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-                ("LEFTPADDING",  (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ]))
+            outer.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), card_colour),
+                        ("BOX", (0, 0), (-1, -1), 0.8, CDAC_BLUE),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
 
             story.append(KeepTogether([card_title, outer, Spacer(1, 3 * mm)]))
 
@@ -1078,34 +1426,43 @@ def _build_json_story(result: dict, scan_type: str,
 
             # Accumulate CVEs for the consolidated end-of-report section
             for cve in host.get("cves", []):
-                all_cve_rows.append((
-                    host.get("ip_address", "N/A"),
-                    _resolve_pdf_cve_id(cve),
-                    _resolve_pdf_cve_severity(cve),
-                    _resolve_pdf_cve_package(cve),
-                    (_resolve_pdf_cve_description(cve)[:80] +
-                     ("..." if len(_resolve_pdf_cve_description(cve)) > 80 else "")),
-                ))
-
+                all_cve_rows.append(
+                    (
+                        host.get("ip_address", "N/A"),
+                        _resolve_pdf_cve_id(cve),
+                        _resolve_pdf_cve_severity(cve),
+                        _resolve_pdf_cve_package(cve),
+                        (
+                            _resolve_pdf_cve_description(cve)[:80]
+                            + (
+                                "..."
+                                if len(_resolve_pdf_cve_description(cve)) > 80
+                                else ""
+                            )
+                        ),
+                    )
+                )
 
     # -- Subnets breakdown (scan_subnets only) --------------------------------
     if isinstance(data, list) and data and "subnet" in data[0]:
         story.append(_section_header("Per-Subnet Breakdown", styles))
         for subnet_info in data:
             if "error" in subnet_info:
-                story.append(Paragraph(
-                    f"<b>{subnet_info['subnet']}</b> - Error: {subnet_info['error']}",
-                    styles["value"]))
+                story.append(
+                    Paragraph(
+                        f"<b>{subnet_info['subnet']}</b> - Error: {subnet_info['error']}",
+                        styles["value"],
+                    )
+                )
                 story.append(Spacer(1, 2 * mm))
                 continue
             sub_rows = [
-                ("Subnet",           subnet_info.get("subnet", "N/A")),
-                ("Hosts Found",      subnet_info.get("total_found",    0)),
-                ("Active",           subnet_info.get("active_hosts",   0)),
-                ("Inactive",         subnet_info.get("inactive_hosts", 0)),
+                ("Subnet", subnet_info.get("subnet", "N/A")),
+                ("Hosts Found", subnet_info.get("total_found", 0)),
+                ("Active", subnet_info.get("active_hosts", 0)),
+                ("Inactive", subnet_info.get("inactive_hosts", 0)),
             ]
-            story.append(_kv_table(sub_rows, styles,
-                                   col_widths=[55*mm, 115*mm]))
+            story.append(_kv_table(sub_rows, styles, col_widths=[55 * mm, 115 * mm]))
             story.append(Spacer(1, 2 * mm))
 
     # -- Additional Metadata --------------------------------------------------
@@ -1130,18 +1487,25 @@ def _build_json_story(result: dict, scan_type: str,
     # all_cve_rows is populated only when active_hosts exist (guarded above).
     if active_hosts and all_cve_rows:
         story.append(PageBreak())
-        story.append(_section_header(
-            f"Vulnerabilities / CVEs  ({len(all_cve_rows)} total)", styles))
+        story.append(
+            _section_header(
+                f"Vulnerabilities / CVEs  ({len(all_cve_rows)} total)", styles
+            )
+        )
 
         # Production Grade: Dynamic header labeling
         is_cred = any(h.get("system_info") for h in active_hosts)
         pkg_header = "Package" if is_cred else "Component / Product"
 
         cve_header_style = ParagraphStyle(
-            "CVETh", fontName="Helvetica-Bold", fontSize=8,
-            textColor=WHITE, alignment=TA_CENTER)
+            "CVETh",
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            textColor=WHITE,
+            alignment=TA_CENTER,
+        )
         cve_headers = ["Host IP", "CVE ID", "Severity", pkg_header, "Description"]
-        cve_col_w   = [28*mm, 32*mm, 18*mm, 32*mm, W - 110*mm]
+        cve_col_w = [28 * mm, 32 * mm, 18 * mm, 32 * mm, W - 110 * mm]
 
         cve_table_data = [[Paragraph(h, cve_header_style) for h in cve_headers]]
         for ip, cve_id, sev, pkg, desc in all_cve_rows:
@@ -1157,29 +1521,49 @@ def _build_json_story(result: dict, scan_type: str,
                 sev_color = colors.HexColor("#1A7A3F")
             else:
                 sev_color = colors.HexColor("#555555")
-            sev_p = Paragraph(sev, ParagraphStyle(
-                "SevCell", fontName="Helvetica-Bold", fontSize=8, textColor=sev_color))
-            cve_table_data.append([
-                Paragraph(str(ip),    styles["value"]),
-                make_pdf_cve_paragraph(cve_id, styles["value"]),
-                sev_p,
-                Paragraph(str(pkg),   styles["value"]),
-                Paragraph(str(desc),  styles["value"]),
-            ])
+            sev_p = Paragraph(
+                sev,
+                ParagraphStyle(
+                    "SevCell",
+                    fontName="Helvetica-Bold",
+                    fontSize=8,
+                    textColor=sev_color,
+                ),
+            )
+            cve_table_data.append(
+                [
+                    Paragraph(str(ip), styles["value"]),
+                    make_pdf_cve_paragraph(cve_id, styles["value"]),
+                    sev_p,
+                    Paragraph(str(pkg), styles["value"]),
+                    Paragraph(str(desc), styles["value"]),
+                ]
+            )
 
         cve_tbl = Table(cve_table_data, colWidths=cve_col_w, repeatRows=1)
-        cve_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0),  TABLE_HEADER_BG),
-            ("ALIGN",         (0, 0), (-1, 0),  "CENTER"),
-            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            ("GRID",          (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
-            *[("BACKGROUND",  (0, i), (-1, i),  CDAC_ACCENT if i % 2 == 0 else WHITE)
-              for i in range(1, len(cve_table_data))],
-            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
-            ("TOPPADDING",    (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        cve_tbl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("GRID", (0, 0), (-1, -1), 0.4, BORDER_COLOUR),
+                    *[
+                        (
+                            "BACKGROUND",
+                            (0, i),
+                            (-1, i),
+                            CDAC_ACCENT if i % 2 == 0 else WHITE,
+                        )
+                        for i in range(1, len(cve_table_data))
+                    ],
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(cve_tbl)
         story.append(Spacer(1, 4 * mm))
 
@@ -1189,6 +1573,7 @@ def _build_json_story(result: dict, scan_type: str,
 # -----------------------------------------------------------------------------
 # dict -> XML helpers
 # -----------------------------------------------------------------------------
+
 
 def _dict_to_xml(data: Any, parent, doc) -> None:
     """Recursively convert a Python dict / list into XML DOM nodes."""
@@ -1211,49 +1596,53 @@ def _dict_to_xml(data: Any, parent, doc) -> None:
 
 def _result_to_pretty_xml(result: dict, scan_type: str) -> str:
     """Convert scan result dict to a pretty-printed XML string."""
-    doc  = xml.dom.minidom.getDOMImplementation().createDocument(None, "ScanReport", None)
+    doc = xml.dom.minidom.getDOMImplementation().createDocument(
+        None, "ScanReport", None
+    )
     root = doc.documentElement
-    root.setAttribute("xmlns:cdac",  "http://cdac.rtsg.in/discovery/v1")
-    root.setAttribute("scan_type",   scan_type)
-    root.setAttribute("generated",   datetime.now().isoformat())
-    root.setAttribute("tool",        "CDAC Automation Tool")
-    root.setAttribute("department",  "CDAC Bangalore RTSG")
+    root.setAttribute("xmlns:cdac", "http://cdac.rtsg.in/discovery/v1")
+    root.setAttribute("scan_type", scan_type)
+    root.setAttribute("generated", datetime.now().isoformat())
+    root.setAttribute("tool", "CDAC Automation Tool")
+    root.setAttribute("department", "CDAC Bangalore RTSG")
 
     _dict_to_xml(result, root, doc)
     return doc.toprettyxml(indent="  ", encoding=None)
 
 
-def _xml_to_story(xml_str: str, scan_type: str,
-                  timestamp: str, styles: dict, result: dict = None) -> list:
+def _xml_to_story(
+    xml_str: str, scan_type: str, timestamp: str, styles: dict, result: dict = None
+) -> list:
     """Build the ReportLab story for the XML PDF."""
     story = []
-    W     = PAGE_W - 2 * MARGIN
+    W = PAGE_W - 2 * MARGIN
 
     # Title
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(_resolve_report_title(scan_type), styles["title"]))
     story.append(Paragraph("Raw XML Data Export", styles["subtitle"]))
     story.append(Spacer(1, 3 * mm))
-    story.append(HRFlowable(width=W, thickness=1.5,
-                             color=CDAC_LIGHT_BLUE, spaceAfter=6))
+    story.append(
+        HRFlowable(width=W, thickness=1.5, color=CDAC_LIGHT_BLUE, spaceAfter=6)
+    )
 
     # Meta strip
     story.append(_section_header("Export Information", styles))
-    meta    = result.get("metadata", {}) if result else {}
+    meta = result.get("metadata", {}) if result else {}
     summary = result.get("summary", {}) if result else {}
     scan_strategy = _resolve_scan_strategy(meta, summary)
     target_value = _resolve_target(meta, summary)
-    
+
     meta_rows = [
-        ("Scan No.",       meta.get("scan_no", "N/A")),
-        ("Scan Type",      _get_scan_type_label(scan_type)),
-        ("Target",         target_value),
-        ("Scan Strategy",  scan_strategy),
-        ("Scan Date",      timestamp[:10]),
-        ("Scan Time",      timestamp[11:19]),
-        ("Export Format",  "XML - Machine-readable"),
-        ("Schema",         "http://cdac.rtsg.in/discovery/v1"),
-        ("Generated",      datetime.now().strftime("%d %b %Y  %H:%M:%S")),
+        ("Scan No.", meta.get("scan_no", "N/A")),
+        ("Scan Type", _get_scan_type_label(scan_type)),
+        ("Target", target_value),
+        ("Scan Strategy", scan_strategy),
+        ("Scan Date", timestamp[:10]),
+        ("Scan Time", timestamp[11:19]),
+        ("Export Format", "XML - Machine-readable"),
+        ("Schema", "http://cdac.rtsg.in/discovery/v1"),
+        ("Generated", datetime.now().strftime("%d %b %Y  %H:%M:%S")),
     ]
     story.append(_kv_table(meta_rows, styles))
     story.append(Spacer(1, 4 * mm))
@@ -1269,31 +1658,38 @@ def _xml_to_story(xml_str: str, scan_type: str,
             continue
 
         # Escape XML special chars for ReportLab Paragraph
-        line_safe = (line
-                     .replace("&",  "&amp;")
-                     .replace("<",  "&lt;")
-                     .replace(">",  "&gt;")
-                     .replace('"',  "&quot;"))
+        line_safe = (
+            line.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
 
         # Calculate indent as leading spaces
         n_spaces = len(raw_line) - len(raw_line.lstrip(" "))
-        indent   = n_spaces * 4  # points
+        indent = n_spaces * 4  # points
 
         # Colour-code tags vs text
         stripped = line.strip()
         if stripped.startswith("&lt;") or stripped.startswith("&amp;lt;"):
             # Looks like a tag line
             p_style = ParagraphStyle(
-                "XmlLine", parent=styles["mono"],
-                textColor=CDAC_BLUE, leftIndent=indent)
+                "XmlLine", parent=styles["mono"], textColor=CDAC_BLUE, leftIndent=indent
+            )
         elif stripped.startswith("&lt;!"):
             p_style = ParagraphStyle(
-                "XmlComment", parent=styles["mono"],
-                textColor=colors.HexColor("#888888"), leftIndent=indent)
+                "XmlComment",
+                parent=styles["mono"],
+                textColor=colors.HexColor("#888888"),
+                leftIndent=indent,
+            )
         else:
             p_style = ParagraphStyle(
-                "XmlText", parent=styles["mono"],
-                textColor=colors.HexColor("#1A1A2E"), leftIndent=indent)
+                "XmlText",
+                parent=styles["mono"],
+                textColor=colors.HexColor("#1A1A2E"),
+                leftIndent=indent,
+            )
 
         story.append(Paragraph(line_safe, p_style))
 
@@ -1303,6 +1699,7 @@ def _xml_to_story(xml_str: str, scan_type: str,
 # -----------------------------------------------------------------------------
 # Main generator class
 # -----------------------------------------------------------------------------
+
 
 class ScanReportGenerator:
     """
@@ -1332,45 +1729,40 @@ class ScanReportGenerator:
         mapping = {
             "phase1": "host_discovery",
             "host_discovery": "host_discovery",
-            
             "phase2": "asset_discovery",
             "asset_discovery": "asset_discovery",
-            
             "phase3": "vulnerability_audit",
             "phase_selective_scan": "vulnerability_audit",
             "advanced": "vulnerability_audit",
             "vulnerability_audit": "vulnerability_audit",
-            
             "credentialed": "credentialed",
             "credentialed_scan": "credentialed",
         }
-        
+
         normalized_type = str(scan_type or "").strip().lower()
         mapped_type = mapping.get(normalized_type, normalized_type)
-        
-        now   = datetime.now()
-        date  = now.strftime("%d-%m-%Y")
+
+        now = datetime.now()
+        date = now.strftime("%d-%m-%Y")
         time_ = now.strftime("%H-%M-%S")
-        safe  = mapped_type.replace(" ", "_")
+        safe = mapped_type.replace(" ", "_")
         return f"{safe}_{date}_{time_}_{fmt}.pdf"
 
     # -- JSON PDF --------------------------------------------------------------
 
-    def _generate_json_pdf(self, result: dict, scan_type: str,
-                           timestamp: str) -> str:
-        filename = os.path.join(
-            self.output_dir, self._make_filename(scan_type, "JSON"))
+    def _generate_json_pdf(self, result: dict, scan_type: str, timestamp: str) -> str:
+        filename = os.path.join(self.output_dir, self._make_filename(scan_type, "JSON"))
 
         doc = SimpleDocTemplate(
             filename,
-            pagesize     = A4,
-            leftMargin   = MARGIN,
-            rightMargin  = MARGIN,
-            topMargin    = 28 * mm,   # space for header
-            bottomMargin = 18 * mm,   # space for footer
-            title        = _resolve_report_title(scan_type),
-            author       = "CDAC Bangalore RTSG Team ",
-            subject      = f"Security Audit: {scan_type}",
+            pagesize=A4,
+            leftMargin=MARGIN,
+            rightMargin=MARGIN,
+            topMargin=28 * mm,  # space for header
+            bottomMargin=18 * mm,  # space for footer
+            title=_resolve_report_title(scan_type),
+            author="CDAC Bangalore RTSG Team ",
+            subject=f"Security Audit: {scan_type}",
         )
 
         # Attach timestamp to doc so _draw_header_footer can access it
@@ -1383,16 +1775,15 @@ class ScanReportGenerator:
         doc.report_running_header = _resolve_running_header(scan_type)
 
         story = _build_json_story(result, scan_type, timestamp, self.styles)
-        doc.build(story, onFirstPage=_draw_header_footer,
-                         onLaterPages=_draw_header_footer)
+        doc.build(
+            story, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer
+        )
         return filename
 
     # -- XML PDF ---------------------------------------------------------------
 
-    def _generate_xml_pdf(self, result: dict, scan_type: str,
-                           timestamp: str) -> str:
-        filename = os.path.join(
-            self.output_dir, self._make_filename(scan_type, "XML"))
+    def _generate_xml_pdf(self, result: dict, scan_type: str, timestamp: str) -> str:
+        filename = os.path.join(self.output_dir, self._make_filename(scan_type, "XML"))
 
         # For range/subnet scans, include all hosts (active and inactive)
         # XML export shows complete data
@@ -1400,14 +1791,14 @@ class ScanReportGenerator:
 
         doc = SimpleDocTemplate(
             filename,
-            pagesize     = A4,
-            leftMargin   = MARGIN,
-            rightMargin  = MARGIN,
-            topMargin    = 28 * mm,
-            bottomMargin = 18 * mm,
-            title        = f"{_resolve_report_title(scan_type)} - XML Format",
-            author       = "CDAC Bangalore RTSG",
-            subject      = f"Security Audit: {scan_type}",
+            pagesize=A4,
+            leftMargin=MARGIN,
+            rightMargin=MARGIN,
+            topMargin=28 * mm,
+            bottomMargin=18 * mm,
+            title=f"{_resolve_report_title(scan_type)} - XML Format",
+            author="CDAC Bangalore RTSG",
+            subject=f"Security Audit: {scan_type}",
         )
 
         # Attach timestamp to doc so _draw_header_footer can access it
@@ -1420,8 +1811,9 @@ class ScanReportGenerator:
         doc.report_running_header = _resolve_running_header(scan_type)
 
         story = _xml_to_story(xml_str, scan_type, timestamp, self.styles, result)
-        doc.build(story, onFirstPage=_draw_header_footer,
-                         onLaterPages=_draw_header_footer)
+        doc.build(
+            story, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer
+        )
         return filename
 
     # -- Public entry point ----------------------------------------------------
@@ -1443,14 +1835,14 @@ class ScanReportGenerator:
         # Extract the actual scan timestamp from the result if available
         meta = result.get("metadata", {})
         summary = result.get("summary", {})
-        
+
         timestamp = (
-            meta.get("timestamp") or 
-            meta.get("completed_at") or 
-            summary.get("completed_at") or 
-            summary.get("timestamp") or 
-            summary.get("started_at") or 
-            datetime.now().isoformat()
+            meta.get("timestamp")
+            or meta.get("completed_at")
+            or summary.get("completed_at")
+            or summary.get("timestamp")
+            or summary.get("started_at")
+            or datetime.now().isoformat()
         )
 
         try:

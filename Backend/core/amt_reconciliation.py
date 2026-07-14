@@ -7,7 +7,6 @@ Author:  Pair Engineer
 import logging
 from datetime import datetime
 from typing import Dict, Optional
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from db.models.assets import Asset, AssetChangeLog
@@ -44,17 +43,20 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
     stats = {"matched": 0, "shadow_it": 0, "updated": 0}
 
     # Fetch all scanned assets with a non-null MAC
-    scanned_assets = db.query(Asset).filter(
-        Asset.org_id == org_id,
-        Asset.mac_address != None
-    ).all()
+    scanned_assets = (
+        db.query(Asset).filter(Asset.org_id == org_id, Asset.mac_address != None).all()
+    )
 
     if not scanned_assets:
-        log.info(f"No scanned assets with MAC addresses found for org {org_id}. Skipping reconciliation.")
+        log.info(
+            f"No scanned assets with MAC addresses found for org {org_id}. Skipping reconciliation."
+        )
         return stats
 
     # Batch-fetch all AMT reference records for this organization to match by MAC address
-    amt_records = db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org_id).all()
+    amt_records = (
+        db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org_id).all()
+    )
 
     # Map both primary and secondary MAC addresses to their respective AMT record
     amt_map = {}
@@ -83,14 +85,16 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
                     custom_attrs["correlation"] = correlation
                     asset.custom_attributes = custom_attrs
                     asset.updated_at = datetime.utcnow()
-                    db.add(AssetChangeLog(
-                        asset_id=asset.id,
-                        change_type="amt_correlation_stale",
-                        field_name="custom_attributes",
-                        old_value="active",
-                        new_value="stale",
-                        detected_at=datetime.utcnow()
-                    ))
+                    db.add(
+                        AssetChangeLog(
+                            asset_id=asset.id,
+                            change_type="amt_correlation_stale",
+                            field_name="custom_attributes",
+                            old_value="active",
+                            new_value="stale",
+                            detected_at=datetime.utcnow(),
+                        )
+                    )
                     stats["updated"] += 1
             continue
 
@@ -104,19 +108,18 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
             new_owner = amt_record.asset_user.strip() if amt_record.asset_user else None
             if asset.owner != new_owner:
                 # Log the change
-                db.add(AssetChangeLog(
-                    asset_id=asset.id,
-                    change_type="owner_reassigned",
-                    field_name="owner",
-                    old_value=asset.owner,
-                    new_value=new_owner,
-                    detected_at=datetime.utcnow()
-                ))
+                db.add(
+                    AssetChangeLog(
+                        asset_id=asset.id,
+                        change_type="owner_reassigned",
+                        field_name="owner",
+                        old_value=asset.owner,
+                        new_value=new_owner,
+                        detected_at=datetime.utcnow(),
+                    )
+                )
                 asset.owner = new_owner
-                provenance["owner"] = {
-                    "source": "amt_import",
-                    "updated_at": now_str
-                }
+                provenance["owner"] = {"source": "amt_import", "updated_at": now_str}
                 updated_any = True
 
         # 2. Reconcile Device Category
@@ -127,7 +130,7 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
                 asset.device_category = new_cat
                 provenance["device_category"] = {
                     "source": "amt_import",
-                    "updated_at": now_str
+                    "updated_at": now_str,
                 }
                 updated_any = True
 
@@ -137,30 +140,29 @@ def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
             new_vendor = amt_record.vendor.strip() if amt_record.vendor else None
             if asset.vendor != new_vendor:
                 asset.vendor = new_vendor
-                provenance["vendor"] = {
-                    "source": "amt_import",
-                    "updated_at": now_str
-                }
+                provenance["vendor"] = {"source": "amt_import", "updated_at": now_str}
                 updated_any = True
 
         # 4. Enrich custom JSONB attributes
         custom_attrs = dict(asset.custom_attributes or {})
-        custom_attrs.update({
-            "amt_asset_tag": amt_record.asset_tag,
-            "amt_asset_name": amt_record.asset_name,
-            "serial_number": amt_record.serial,
-            "owner_employee_id": amt_record.emp_id,
-            "amt_status": amt_record.status,
-            "amt_location": amt_record.location,
-            "amt_location_id": amt_record.location_id,
-            "amt_company_name": amt_record.company_name,
-            "correlation": {
-                "matched_by": "mac_address",
-                "matched_at": now_str,
-                "confidence": 1.0,
-                "status": "active"
+        custom_attrs.update(
+            {
+                "amt_asset_tag": amt_record.asset_tag,
+                "amt_asset_name": amt_record.asset_name,
+                "serial_number": amt_record.serial,
+                "owner_employee_id": amt_record.emp_id,
+                "amt_status": amt_record.status,
+                "amt_location": amt_record.location,
+                "amt_location_id": amt_record.location_id,
+                "amt_company_name": amt_record.company_name,
+                "correlation": {
+                    "matched_by": "mac_address",
+                    "matched_at": now_str,
+                    "confidence": 1.0,
+                    "status": "active",
+                },
             }
-        })
+        )
         asset.custom_attributes = custom_attrs
         asset.provenance = provenance
 

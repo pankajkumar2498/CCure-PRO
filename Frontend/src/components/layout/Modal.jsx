@@ -9,7 +9,14 @@
  */
 import { useEffect } from "react";
 
-export default function Modal({ isOpen, onClose, title = "", subtitle = "", size = "large", children }) {
+export default function Modal({
+  isOpen,
+  onClose,
+  title = "",
+  subtitle = "",
+  size = "large",
+  children,
+}) {
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === "Escape") onClose();
@@ -28,17 +35,24 @@ export default function Modal({ isOpen, onClose, title = "", subtitle = "", size
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-panel modal-panel--${size}`} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal-panel modal-panel--${size}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-panel-header">
           <div>
             {title && <h2 className="modal-panel-title">{title}</h2>}
             {subtitle && <p className="modal-panel-subtitle">{subtitle}</p>}
           </div>
-          <button className="modal-panel-close" onClick={onClose} aria-label="Close">×</button>
+          <button
+            className="modal-panel-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
-        <div className="modal-panel-body">
-          {children}
-        </div>
+        <div className="modal-panel-body">{children}</div>
       </div>
     </div>
   );

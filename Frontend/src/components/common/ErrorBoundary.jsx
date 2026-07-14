@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -21,24 +21,36 @@ export default class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       // You can render any custom fallback UI
       return (
-        <div style={{
-          padding: '24px',
-          background: 'rgba(239, 68, 68, 0.05)',
-          border: '1px solid var(--danger)',
-          borderRadius: '8px',
-          color: 'var(--text)',
-          margin: '20px'
-        }}>
-          <h2 style={{ color: 'var(--danger)', marginBottom: '12px' }}>Something went wrong.</h2>
-          <details style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            <summary style={{ cursor: 'pointer', marginBottom: '8px' }}>View Error Details</summary>
+        <div
+          style={{
+            padding: "24px",
+            background: "rgba(239, 68, 68, 0.05)",
+            border: "1px solid var(--danger)",
+            borderRadius: "8px",
+            color: "var(--text)",
+            margin: "20px",
+          }}
+        >
+          <h2 style={{ color: "var(--danger)", marginBottom: "12px" }}>
+            Something went wrong.
+          </h2>
+          <details
+            style={{
+              whiteSpace: "pre-wrap",
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
+            }}
+          >
+            <summary style={{ cursor: "pointer", marginBottom: "8px" }}>
+              View Error Details
+            </summary>
             {this.state.error && this.state.error.toString()}
             <br />
             {this.state.errorInfo && this.state.errorInfo.componentStack}
           </details>
-          <button 
-            className="btn btn--outline" 
-            style={{ marginTop: '16px' }}
+          <button
+            className="btn btn--outline"
+            style={{ marginTop: "16px" }}
             onClick={() => window.location.reload()}
           >
             Reload Page
@@ -47,6 +59,6 @@ export default class ErrorBoundary extends React.Component {
       );
     }
 
-    return this.props.children; 
+    return this.props.children;
   }
 }

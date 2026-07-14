@@ -4,8 +4,8 @@ Proxy to the central database models to avoid module import errors during transi
 
 from sqlalchemy import inspect, text
 
-from db.models import Scan, ScanPhase
-from db.base import Base, engine, get_db
+from db.models import ScanPhase
+from db.base import engine
 
 
 def ensure_scan_schema():
@@ -31,7 +31,9 @@ def ensure_scan_schema():
                 conn.execute(text("ALTER TABLE scans ADD COLUMN scan_no INTEGER"))
 
         if dialect == "postgresql":
-            conn.execute(text("""
+            conn.execute(
+                text(
+                    """
                 WITH existing AS (
                     SELECT org_id, COALESCE(MAX(scan_no), 0) AS max_scan_no
                     FROM scans
@@ -55,37 +57,61 @@ def ensure_scan_schema():
                 SET scan_no = numbered.next_scan_no
                 FROM numbered
                 WHERE scans.id = numbered.id
-            """))
+            """
+                )
+            )
             conn.execute(text("DROP INDEX IF EXISTS uq_scans_org_user_scan_no_idx"))
             conn.execute(text("DROP INDEX IF EXISTS ix_scans_org_scan_no_idx"))
-            conn.execute(text("""
+            conn.execute(
+                text(
+                    """
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_scan_no_idx
                 ON scans (org_id, scan_no)
                 WHERE scan_no IS NOT NULL
-            """))
+            """
+                )
+            )
         else:
-            rows = conn.execute(text("""
+            rows = conn.execute(
+                text(
+                    """
                 SELECT id, org_id
                 FROM scans
                 WHERE scan_no IS NULL
                 ORDER BY org_id, created_at ASC, id ASC
-            """)).fetchall()
+            """
+                )
+            ).fetchall()
             counters = {}
             for scan_id, org_id in rows:
                 key = str(org_id)
                 if key not in counters:
-                    counters[key] = conn.execute(text("""
+                    counters[key] = (
+                        conn.execute(
+                            text(
+                                """
                         SELECT COALESCE(MAX(scan_no), 0)
                         FROM scans
                         WHERE org_id = :org_id
                           AND scan_no IS NOT NULL
-                    """), {"org_id": org_id}).scalar() or 0
+                    """
+                            ),
+                            {"org_id": org_id},
+                        ).scalar()
+                        or 0
+                    )
                 counters[key] += 1
-                conn.execute(text("""
+                conn.execute(
+                    text(
+                        """
                     UPDATE scans
                     SET scan_no = :scan_no
                     WHERE id = :id
-                """), {"scan_no": counters[key], "id": scan_id})
+                """
+                    ),
+                    {"scan_no": counters[key], "id": scan_id},
+                )
+
 
 # Map old ScanPhaseResult to the new ScanPhase just to satisfy imports
 ScanPhaseResult = ScanPhase

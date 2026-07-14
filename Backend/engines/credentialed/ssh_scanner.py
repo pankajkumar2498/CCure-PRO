@@ -19,7 +19,7 @@ Usage::
 import logging
 import socket
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 log = logging.getLogger("ccure.ssh_scanner")
@@ -29,6 +29,9 @@ log = logging.getLogger("ccure.ssh_scanner")
 # ---------------------------------------------------------------------------
 try:
     import paramiko
+    import paramiko.pkey
+    import paramiko.ssh_exception
+
     PARAMIKO_AVAILABLE = True
 except ImportError:
     PARAMIKO_AVAILABLE = False
@@ -41,10 +44,32 @@ except ImportError:
 @dataclass
 class CommandResult:
     """Return value from SSHScanner.run()."""
-    stdout:     str  = ""
-    stderr:     str  = ""
-    exit_code:  int  = -1
-    success:    bool = False
+
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = -1
+    success: bool = False
+
+
+from typing import Protocol
+
+
+class BaseExecutor(Protocol):
+    """
+    Protocol defining the common execution operations.
+    """
+
+    def connect(self) -> None:
+        """Establish connection to the target asset."""
+        ...
+
+    def disconnect(self) -> None:
+        """Close connection and clean up resources."""
+        ...
+
+    def run(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+        """Execute a shell command on the target asset."""
+        ...
 
 
 class SSHScanner:
@@ -69,19 +94,21 @@ class SSHScanner:
 
     def __init__(
         self,
-        ip:       str,
+        ip: str,
         username: str,
         password: Optional[str] = None,
         key_path: Optional[str] = None,
-        port:     int = 22,
-        timeout:  int = 10,
+        key_content: Optional[str] = None,
+        port: int = 22,
+        timeout: int = 10,
     ):
-        self.ip       = ip
+        self.ip = ip
         self.username = username
-        self._password = password        # leading underscore = not serialised
+        self._password = password  # leading underscore = not serialised
         self._key_path = key_path
-        self.port     = port
-        self.timeout  = timeout
+        self._key_content = key_content
+        self.port = port
+        self.timeout = timeout
         self._client: Optional["paramiko.SSHClient"] = None
         self._lock = threading.Lock()
 
@@ -107,29 +134,43 @@ class SSHScanner:
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         connect_kwargs = {
-            "hostname":    self.ip,
-            "port":        self.port,
-            "username":    self.username,
-            "timeout":     self.timeout,
+            "hostname": self.ip,
+            "port": self.port,
+            "username": self.username,
+            "timeout": self.timeout,
             "banner_timeout": self.timeout,
-            "auth_timeout":   self.timeout,
-            "look_for_keys":  False,
-            "allow_agent":    False,
+            "auth_timeout": self.timeout,
+            "look_for_keys": False,
+            "allow_agent": False,
         }
 
-        if self._key_path:
+        if self._key_content:
+            import io
+
+            try:
+                pkey = paramiko.pkey.load_private_key(io.StringIO(self._key_content))
+                connect_kwargs["pkey"] = pkey
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to parse private key content: {exc}"
+                ) from exc
+        elif self._key_path:
             connect_kwargs["key_filename"] = self._key_path
         elif self._password:
             connect_kwargs["password"] = self._password
         else:
-            raise ValueError("Either password or key_path must be provided.")
+            raise ValueError(
+                "Either password, key_path, or key_content must be provided."
+            )
 
         try:
             client.connect(**connect_kwargs)
             self._client = client
             log.info("SSH connected to %s:%s as %s", self.ip, self.port, self.username)
         except paramiko.AuthenticationException as exc:
-            raise RuntimeError(f"SSH authentication failed for {self.username}@{self.ip}: {exc}") from exc
+            raise RuntimeError(
+                f"SSH authentication failed for {self.username}@{self.ip}: {exc}"
+            ) from exc
         except (socket.timeout, paramiko.ssh_exception.NoValidConnectionsError) as exc:
             raise RuntimeError(f"Cannot reach {self.ip}:{self.port} — {exc}") from exc
         except Exception as exc:
@@ -146,6 +187,7 @@ class SSHScanner:
         # Wipe credentials — Option A: never persist, actively clear
         self._password = None
         self._key_path = None
+        self._key_content = None
 
     def run(self, command: str, timeout: Optional[int] = None) -> CommandResult:
         """
@@ -181,20 +223,20 @@ class SSHScanner:
                     chunks.append(chunk)
                 stdout_data = b"".join(chunks).decode("utf-8", errors="replace").strip()
                 stderr_data = stderr_fh.read().decode("utf-8", errors="replace").strip()
-                exit_code   = stdout_fh.channel.recv_exit_status()
+                exit_code = stdout_fh.channel.recv_exit_status()
 
                 return CommandResult(
-                    stdout    = stdout_data,
-                    stderr    = stderr_data,
-                    exit_code = exit_code,
-                    success   = (exit_code == 0),
+                    stdout=stdout_data,
+                    stderr=stderr_data,
+                    exit_code=exit_code,
+                    success=(exit_code == 0),
                 )
             except Exception as exc:
                 log.debug("Command '%s' failed on %s: %s", command, self.ip, exc)
                 return CommandResult(
-                    stderr    = str(exc),
-                    exit_code = -1,
-                    success   = False,
+                    stderr=str(exc),
+                    exit_code=-1,
+                    success=False,
                 )
 
     def is_connected(self) -> bool:

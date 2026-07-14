@@ -19,8 +19,16 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, HttpUrl
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from auth.dependencies import get_current_user
@@ -36,8 +44,11 @@ router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
 
 
 def _resolve_org(user: User, requested_org: Optional[str]) -> str:
@@ -52,6 +63,7 @@ ACTIVE_SCAN_STATUSES = {"queued", "pending", "running"}
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
+
 class WebScanScopeSchema(BaseModel):
     include_subdomains: bool = False
     exclude_paths: List[str] = Field(default_factory=list)
@@ -59,7 +71,10 @@ class WebScanScopeSchema(BaseModel):
 
 
 class WebScanAuthSchema(BaseModel):
-    type: str = Field(default="none", description="Auth type: none, form_login, bearer_token, cookie, custom_header")
+    type: str = Field(
+        default="none",
+        description="Auth type: none, form_login, bearer_token, cookie, custom_header",
+    )
     login_url: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
@@ -91,11 +106,14 @@ class StartWebScanRequest(BaseModel):
 
 
 class TriageFindingRequest(BaseModel):
-    status: str = Field(..., description="open, confirmed, false_positive, accepted_risk, fixed")
+    status: str = Field(
+        ..., description="open, confirmed, false_positive, accepted_risk, fixed"
+    )
     reason: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("", status_code=201)
 def start_web_scan(
@@ -123,24 +141,33 @@ def start_web_scan(
     # ── Validate target URL ──────────────────────────────────────────────
     # Robust cleanup: strip whitespace, hidden Unicode, and non-printable chars
     import re
+
     target_url = body.target_url.strip()
     # Remove control characters and non-printable Unicode (like zero-width space/joiner)
-    target_url = re.sub(r'[\x00-\x1F\x7F-\x9F\u2000-\u200F\u2028-\u202F\u205F-\u206F]', '', target_url)
-    
+    target_url = re.sub(
+        r"[\x00-\x1F\x7F-\x9F\u2000-\u200F\u2028-\u202F\u205F-\u206F]", "", target_url
+    )
+
     if not target_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=422, detail="target_url must start with http:// or https://")
+        raise HTTPException(
+            status_code=422, detail="target_url must start with http:// or https://"
+        )
 
     from urllib.parse import urlparse
+
     parsed = urlparse(target_url)
     target_domain = parsed.netloc
     if not target_domain:
-        raise HTTPException(status_code=422, detail="Invalid target URL — could not extract domain")
+        raise HTTPException(
+            status_code=422, detail="Invalid target URL — could not extract domain"
+        )
 
     # ── Org context ──────────────────────────────────────────────────────
     idempotency_key = _normalize_idempotency_key(idempotency_key)
     target_org_id = _resolve_org(user, org_id)
 
     from db.models.rbac import Organization
+
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
     org_slug = org.slug if org else target_org_id
 
@@ -196,6 +223,7 @@ def start_web_scan(
 
     # ── Dispatch Phase 1 (RECON) ─────────────────────────────────────────
     from core.web.tasks import run_web_recon_task
+
     task = run_web_recon_task.delay(
         user_id=user.id,
         web_scan_id=scan_id,
@@ -204,10 +232,12 @@ def start_web_scan(
         options=body.options.model_dump(),
     )
 
-    db.query(WebScan).filter(WebScan.id == scan_id).update({
-        "current_task_id": task.id,
-        "status": "running",
-    })
+    db.query(WebScan).filter(WebScan.id == scan_id).update(
+        {
+            "current_task_id": task.id,
+            "status": "running",
+        }
+    )
     db.commit()
     db.refresh(scan)
 
@@ -239,8 +269,7 @@ def list_web_scans(
 
     total = query.count()
     scans = (
-        query
-        .order_by(WebScan.created_at.desc())
+        query.order_by(WebScan.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()
@@ -332,8 +361,7 @@ def get_web_scan_findings(
 
     total = query.count()
     findings = (
-        query
-        .order_by(
+        query.order_by(
             # Critical first, then high, medium, low, info
             WebFinding.severity.desc(),
             WebFinding.created_at.desc(),
@@ -374,8 +402,7 @@ def get_web_scan_assets(
 
     total = query.count()
     assets = (
-        query
-        .order_by(WebAsset.created_at.asc())
+        query.order_by(WebAsset.created_at.asc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()
@@ -413,15 +440,20 @@ def cancel_web_scan(
     if scan.current_task_id:
         try:
             from core.celery_app import celery_app
-            celery_app.control.revoke(scan.current_task_id, terminate=True, signal="SIGKILL")
+
+            celery_app.control.revoke(
+                scan.current_task_id, terminate=True, signal="SIGKILL"
+            )
         except Exception as exc:
             log.warning("Failed to revoke task %s: %s", scan.current_task_id, exc)
 
-    db.query(WebScan).filter(WebScan.id == scan_id).update({
-        "status": "cancelled",
-        "completed_at": utcnow(),
-        "updated_at": utcnow(),
-    })
+    db.query(WebScan).filter(WebScan.id == scan_id).update(
+        {
+            "status": "cancelled",
+            "completed_at": utcnow(),
+            "updated_at": utcnow(),
+        }
+    )
     db.commit()
 
     log.info("Web scan %s cancelled by user %s", scan_id, user.id)
@@ -440,15 +472,26 @@ def triage_finding(
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
 
-    finding = db.query(WebFinding).filter(
-        WebFinding.id == finding_id,
-        WebFinding.web_scan_id == scan_id,
-    ).first()
+    finding = (
+        db.query(WebFinding)
+        .filter(
+            WebFinding.id == finding_id,
+            WebFinding.web_scan_id == scan_id,
+        )
+        .first()
+    )
 
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    valid_statuses = {"open", "confirmed", "false_positive", "accepted_risk", "fixed", "reopened"}
+    valid_statuses = {
+        "open",
+        "confirmed",
+        "false_positive",
+        "accepted_risk",
+        "fixed",
+        "reopened",
+    }
     if body.status not in valid_statuses:
         raise HTTPException(
             status_code=422,
@@ -471,7 +514,10 @@ def triage_finding(
 
     log.info(
         "Finding %s triaged to '%s' by user %s (scan %s)",
-        finding_id, body.status, user.id, scan_id,
+        finding_id,
+        body.status,
+        user.id,
+        scan_id,
     )
 
     return {"success": True, "finding_id": finding_id, "status": body.status}
@@ -519,6 +565,7 @@ def download_web_scan_report(
     assets_list = [_asset_detail(a) for a in assets]
 
     from web_pdf_generator import WebScanReportGenerator
+
     gen = WebScanReportGenerator()
     pdf_path = gen.generate(scan_dict, findings_list, assets_list)
 
@@ -533,6 +580,7 @@ def download_web_scan_report(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 @router.websocket("/{scan_id}/progress")
 async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
@@ -554,37 +602,50 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
             WebScan.id == scan_id,
             WebScan.is_deleted == False,
         )
-        if getattr(getattr(current_user, "role", None), "name", "").lower() != "superadmin":
+        if (
+            getattr(getattr(current_user, "role", None), "name", "").lower()
+            != "superadmin"
+        ):
             query = query.filter(WebScan.org_id == str(current_user.org_id))
         scan = query.first()
 
         if not scan:
-            await websocket.send_json({
-                "scan_id": scan_id,
-                "scan_type": "web",
-                "phase": "not_found",
-                "progress": {"status": "not_found", "message": "Web scan not found."},
-            })
+            await websocket.send_json(
+                {
+                    "scan_id": scan_id,
+                    "scan_type": "web",
+                    "phase": "not_found",
+                    "progress": {
+                        "status": "not_found",
+                        "message": "Web scan not found.",
+                    },
+                }
+            )
             await websocket.close(code=1008)
             return
 
-        await websocket.send_json({
-            "scan_id": scan_id,
-            "scan_type": "web",
-            "phase": scan.pipeline_phase,
-            "progress": _web_scan_progress_snapshot(scan),
-            "scan": _scan_summary(scan),
-        })
+        await websocket.send_json(
+            {
+                "scan_id": scan_id,
+                "scan_type": "web",
+                "phase": scan.pipeline_phase,
+                "progress": _web_scan_progress_snapshot(scan),
+                "scan": _scan_summary(scan),
+            }
+        )
     finally:
         db.close()
 
     from core.redis_client import redis_client
+
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")
 
     try:
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.5)
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=0.5
+            )
             if message:
                 payload = json.loads(message["data"])
                 await websocket.send_json(payload)
@@ -603,11 +664,15 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
 def _get_websocket_user(websocket: WebSocket) -> User:
     ticket = websocket.query_params.get("ticket")
     if not ticket:
-        raise HTTPException(status_code=401, detail="Authentication ticket is required.")
+        raise HTTPException(
+            status_code=401, detail="Authentication ticket is required."
+        )
 
     payload = decode_token(ticket)
     if not payload or payload.get("type") != "ticket" or not payload.get("sub"):
-        raise HTTPException(status_code=401, detail="Invalid or expired authentication.")
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired authentication."
+        )
 
     db = SessionLocal()
     try:
@@ -630,8 +695,19 @@ def _get_websocket_user(websocket: WebSocket) -> User:
 def _web_scan_progress_snapshot(scan: WebScan) -> Dict:
     status = str(scan.status or "unknown").lower()
     phase = scan.pipeline_phase or "queued"
-    phase_order = {"queued": 0, "recon": 1, "crawl": 2, "detect": 3, "audit": 4, "complete": 4}
-    percentage = 100 if status in {"complete", "completed"} else min(95, phase_order.get(phase, 0) * 25)
+    phase_order = {
+        "queued": 0,
+        "recon": 1,
+        "crawl": 2,
+        "detect": 3,
+        "audit": 4,
+        "complete": 4,
+    }
+    percentage = (
+        100
+        if status in {"complete", "completed"}
+        else min(95, phase_order.get(phase, 0) * 25)
+    )
 
     return {
         "status": scan.status,
@@ -726,13 +802,19 @@ def _start_scan_response(
     }
 
 
-def _get_scan_or_404(db: Session, scan_id: str, user: User, org_id: Optional[str] = None) -> WebScan:
+def _get_scan_or_404(
+    db: Session, scan_id: str, user: User, org_id: Optional[str] = None
+) -> WebScan:
     target_org_id = _resolve_org(user, org_id)
-    scan = db.query(WebScan).filter(
-        WebScan.id == scan_id,
-        WebScan.org_id == target_org_id,
-        WebScan.is_deleted == False,
-    ).first()
+    scan = (
+        db.query(WebScan)
+        .filter(
+            WebScan.id == scan_id,
+            WebScan.org_id == target_org_id,
+            WebScan.is_deleted == False,
+        )
+        .first()
+    )
     if not scan:
         raise HTTPException(status_code=404, detail="Web scan not found")
     return scan

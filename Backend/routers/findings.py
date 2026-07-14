@@ -17,13 +17,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_, String
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
 from db.base import get_db, utcnow
 from db.models import User
 from db.models.assets import Asset
-from db.models.findings import AssetVulnerability, VulnerabilityDefinition, Service
+from db.models.findings import AssetVulnerability, VulnerabilityDefinition
 from core.vuln_intel import compute_priority
 from core.audit import log_audit_event
 
@@ -32,7 +32,9 @@ router = APIRouter(prefix="/findings", tags=["Findings"])
 
 
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
 
 
 def _resolve_org(user: User, requested_org: Optional[str]) -> str:
@@ -43,28 +45,32 @@ def _resolve_org(user: User, requested_org: Optional[str]) -> str:
 
 # ── List Findings ─────────────────────────────────────────────────────────────
 
+
 @router.get("")
 @router.get("/")
 def list_findings(
-    severity:  Optional[str]  = Query(None),
-    status:    Optional[str]  = Query(None),
-    priority:  Optional[str]  = Query(None),
-    in_kev:    Optional[bool] = Query(None),
-    search:    Optional[str]  = Query(None),
-    asset_id:  Optional[str]  = Query(None),
-    scan_id:   Optional[str]  = Query(None),
-    sort_by:   str            = Query("priority"),
-    skip:      int            = Query(0, ge=0),
-    limit:     int            = Query(50, ge=1, le=500),
-    org_id:    Optional[str]  = Query(None),
-    db:        Session        = Depends(get_db),
-    user:      User           = Depends(require_permission("findings", "read")),
+    severity: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    in_kev: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None),
+    asset_id: Optional[str] = Query(None),
+    scan_id: Optional[str] = Query(None),
+    sort_by: str = Query("priority"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("findings", "read")),
 ):
     org = _resolve_org(user, org_id)
 
     q = (
         db.query(AssetVulnerability, VulnerabilityDefinition, Asset)
-        .join(VulnerabilityDefinition, AssetVulnerability.vuln_id == VulnerabilityDefinition.id)
+        .join(
+            VulnerabilityDefinition,
+            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
+        )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(Asset.org_id == org)
     )
@@ -74,7 +80,9 @@ def list_findings(
         q = q.filter(VulnerabilityDefinition.severity.in_(sev_list))
 
     if status:
-        q = q.filter(AssetVulnerability.status.in_([s.strip() for s in status.split(",")]))
+        q = q.filter(
+            AssetVulnerability.status.in_([s.strip() for s in status.split(",")])
+        )
     else:
         q = q.filter(AssetVulnerability.status == "open")
 
@@ -114,7 +122,7 @@ def list_findings(
 
     result = []
     for finding, vuln, asset in rows:
-        is_kev = (vuln.source == "kev")
+        is_kev = vuln.source == "kev"
         ps, pl = compute_priority(
             cvss_score=float(vuln.cvss_v3_score or 0),
             epss_score=0.0,
@@ -128,47 +136,59 @@ def list_findings(
             if pl not in allowed:
                 continue
 
-        result.append({
-            "id":             finding.id,
-            "vuln_id":        vuln.id,
-            "title":          vuln.title,
-            "severity":       vuln.severity,
-            "cvss_v3_score":  float(vuln.cvss_v3_score or 0),
-            "epss_score":     0.0,
-            "in_kev":         is_kev,
-            "has_exploit":    False,
-            "priority_score": ps,
-            "priority_label": pl,
-            "cwe_ids":        vuln.cwe_ids or [],
-            "status":         finding.status,
-            "asset": {
-                "id":         asset.id,
-                "ip_address": str(asset.ip_address),
-                "hostname":   asset.hostname,
-                "risk_score": asset.risk_score,
-            },
-            "first_found_at": finding.first_found_at.isoformat() if finding.first_found_at else None,
-            "last_found_at":  finding.last_found_at.isoformat() if finding.last_found_at else None,
-            "fixed_at":       finding.fixed_at.isoformat() if finding.fixed_at else None,
-        })
+        result.append(
+            {
+                "id": finding.id,
+                "vuln_id": vuln.id,
+                "title": vuln.title,
+                "severity": vuln.severity,
+                "cvss_v3_score": float(vuln.cvss_v3_score or 0),
+                "epss_score": 0.0,
+                "in_kev": is_kev,
+                "has_exploit": False,
+                "priority_score": ps,
+                "priority_label": pl,
+                "cwe_ids": vuln.cwe_ids or [],
+                "status": finding.status,
+                "asset": {
+                    "id": asset.id,
+                    "ip_address": str(asset.ip_address),
+                    "hostname": asset.hostname,
+                    "risk_score": asset.risk_score,
+                },
+                "first_found_at": (
+                    finding.first_found_at.isoformat()
+                    if finding.first_found_at
+                    else None
+                ),
+                "last_found_at": (
+                    finding.last_found_at.isoformat() if finding.last_found_at else None
+                ),
+                "fixed_at": finding.fixed_at.isoformat() if finding.fixed_at else None,
+            }
+        )
 
     return {"total": total, "skip": skip, "limit": limit, "findings": result}
 
 
 # ── Finding Detail ────────────────────────────────────────────────────────────
 
+
 @router.get("/{finding_id}")
 def get_finding(
     finding_id: str,
-    org_id:     Optional[str] = Query(None),
-    db:         Session       = Depends(get_db),
-    user:       User          = Depends(require_permission("findings", "read")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("findings", "read")),
 ):
     org = _resolve_org(user, org_id)
 
     row = (
         db.query(AssetVulnerability, VulnerabilityDefinition, Asset)
-        .join(VulnerabilityDefinition, AssetVulnerability.vuln_id == VulnerabilityDefinition.id)
+        .join(
+            VulnerabilityDefinition,
+            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
+        )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(AssetVulnerability.id == finding_id, Asset.org_id == org)
         .first()
@@ -182,17 +202,20 @@ def get_finding(
     if not vuln.description or not vuln.cvss_vector:
         try:
             from core.cve_database import get_cve_database
+
             cve_db = get_cve_database()
             if cve_db.db_available:
                 details = cve_db.get_cve_details(vuln.id)
                 if details:
                     vuln.description = details.get("description") or vuln.description
                     if not vuln.cvss_vector:
-                        vuln.cvss_vector = details.get("cvss_vector") or details.get("cvss_v3_vector")
-                    
+                        vuln.cvss_vector = details.get("cvss_vector") or details.get(
+                            "cvss_v3_vector"
+                        )
+
                     if details.get("cwe_ids"):
                         vuln.cwe_ids = details.get("cwe_ids")
-                    
+
                     if details.get("references"):
                         raw_refs = details.get("references")
                         clean_refs = []
@@ -205,6 +228,7 @@ def get_finding(
 
                     if details.get("published") and not vuln.published_at:
                         from datetime import datetime, date
+
                         pub = details.get("published")
                         if isinstance(pub, str):
                             try:
@@ -219,13 +243,14 @@ def get_finding(
             db.rollback()
 
     # Default values
-    is_kev = (vuln.source == "kev")
+    is_kev = vuln.source == "kev"
     epss_score = 0.0
     has_exploit = False
 
     # Fetch live intelligence details (EPSS, KEV, Exploits)
     try:
         from core.cve_database import get_cve_database
+
         cve_db = get_cve_database()
         if cve_db.db_available:
             details = cve_db.get_cve_details(vuln.id)
@@ -234,7 +259,9 @@ def get_finding(
                 is_kev = bool(details.get("in_kev") or is_kev)
                 has_exploit = bool(details.get("has_exploit") or has_exploit)
     except Exception as e:
-        log.warning("Failed to lookup real-time CVE intelligence details for %s: %s", vuln.id, e)
+        log.warning(
+            "Failed to lookup real-time CVE intelligence details for %s: %s", vuln.id, e
+        )
 
     ps, pl = compute_priority(
         cvss_score=float(vuln.cvss_v3_score or 0),
@@ -244,38 +271,44 @@ def get_finding(
     )
 
     return {
-        "id":                    finding.id,
-        "status":                finding.status,
-        "proof":                 finding.proof,
-        "plugin_output":         finding.plugin_output,
-        "remediation_notes":     finding.remediation_notes,
-        "accepted_risk_reason":  finding.accepted_risk_reason,
-        "accepted_by":           finding.accepted_by,
-        "first_found_at":  finding.first_found_at.isoformat() if finding.first_found_at else None,
-        "last_found_at":   finding.last_found_at.isoformat() if finding.last_found_at else None,
-        "fixed_at":        finding.fixed_at.isoformat() if finding.fixed_at else None,
+        "id": finding.id,
+        "status": finding.status,
+        "proof": finding.proof,
+        "plugin_output": finding.plugin_output,
+        "remediation_notes": finding.remediation_notes,
+        "accepted_risk_reason": finding.accepted_risk_reason,
+        "accepted_by": finding.accepted_by,
+        "first_found_at": (
+            finding.first_found_at.isoformat() if finding.first_found_at else None
+        ),
+        "last_found_at": (
+            finding.last_found_at.isoformat() if finding.last_found_at else None
+        ),
+        "fixed_at": finding.fixed_at.isoformat() if finding.fixed_at else None,
         "vulnerability": {
-            "id":            vuln.id,
-            "title":         vuln.title,
-            "description":   vuln.description,
-            "severity":      vuln.severity,
+            "id": vuln.id,
+            "title": vuln.title,
+            "description": vuln.description,
+            "severity": vuln.severity,
             "cvss_v3_score": float(vuln.cvss_v3_score or 0),
-            "cvss_v3_vector": vuln.cvss_vector,       # field is cvss_vector not cvss_v3_vector
-            "cvss_v2_score": float(vuln.cvss_v2_score or 0) if vuln.cvss_v2_score else None,
-            "epss_score":    epss_score,
-            "in_kev":        is_kev,
-            "has_exploit":   has_exploit,
+            "cvss_v3_vector": vuln.cvss_vector,  # field is cvss_vector not cvss_v3_vector
+            "cvss_v2_score": (
+                float(vuln.cvss_v2_score or 0) if vuln.cvss_v2_score else None
+            ),
+            "epss_score": epss_score,
+            "in_kev": is_kev,
+            "has_exploit": has_exploit,
             "priority_score": ps,
             "priority_label": pl,
-            "cwe_ids":       vuln.cwe_ids or [],
-            "references":    vuln.references or [],
-            "published_at":  str(vuln.published_at) if vuln.published_at else None,
+            "cwe_ids": vuln.cwe_ids or [],
+            "references": vuln.references or [],
+            "published_at": str(vuln.published_at) if vuln.published_at else None,
         },
         "asset": {
-            "id":         asset.id,
+            "id": asset.id,
             "ip_address": str(asset.ip_address),
-            "hostname":   asset.hostname,
-            "os_name":    asset.os_name,
+            "hostname": asset.hostname,
+            "os_name": asset.os_name,
             "risk_score": asset.risk_score,
             "risk_level": asset.risk_level,
         },
@@ -284,19 +317,20 @@ def get_finding(
 
 # ── Update Finding Status ─────────────────────────────────────────────────────
 
+
 class StatusUpdate(BaseModel):
-    status:               str
+    status: str
     accepted_risk_reason: Optional[str] = None
-    remediation_notes:    Optional[str] = None
+    remediation_notes: Optional[str] = None
 
 
 @router.patch("/{finding_id}/status")
 def update_finding_status(
     finding_id: str,
-    body:       StatusUpdate,
-    org_id:     Optional[str] = Query(None),
-    db:         Session       = Depends(get_db),
-    user:       User          = Depends(require_permission("findings", "update")),
+    body: StatusUpdate,
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("findings", "update")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -317,7 +351,7 @@ def update_finding_status(
     finding.status = body.status
 
     if body.status == "accepted":
-        finding.accepted_by          = str(user.id)
+        finding.accepted_by = str(user.id)
         finding.accepted_risk_reason = body.accepted_risk_reason
 
     if body.status == "fixed":
@@ -332,8 +366,14 @@ def update_finding_status(
     try:
         asset_id = finding.asset_id
         sev_rows = (
-            db.query(AssetVulnerability.severity, func.count(AssetVulnerability.id).label("cnt"))
-            .filter(AssetVulnerability.asset_id == asset_id, AssetVulnerability.status == "open")
+            db.query(
+                AssetVulnerability.severity,
+                func.count(AssetVulnerability.id).label("cnt"),
+            )
+            .filter(
+                AssetVulnerability.asset_id == asset_id,
+                AssetVulnerability.status == "open",
+            )
             .group_by(AssetVulnerability.severity)
             .all()
         )
@@ -342,18 +382,18 @@ def update_finding_status(
         if asset:
             asset.vuln_counts = {
                 "critical": sev_map.get("Critical", 0),
-                "high":     sev_map.get("High", 0),
-                "medium":   sev_map.get("Medium", 0),
-                "low":      sev_map.get("Low", 0),
+                "high": sev_map.get("High", 0),
+                "medium": sev_map.get("Medium", 0),
+                "low": sev_map.get("Low", 0),
             }
 
             # Recompute a simple aggregate risk score from counts (same logic as credentialed sync)
             computed = min(
                 100,
-                (asset.vuln_counts.get("critical", 0) * 25) +
-                (asset.vuln_counts.get("high", 0) * 15) +
-                (asset.vuln_counts.get("medium", 0) * 8) +
-                (asset.vuln_counts.get("low", 0) * 3)
+                (asset.vuln_counts.get("critical", 0) * 25)
+                + (asset.vuln_counts.get("high", 0) * 15)
+                + (asset.vuln_counts.get("medium", 0) * 8)
+                + (asset.vuln_counts.get("low", 0) * 3),
             )
             if computed >= int(asset.risk_score or 0):
                 asset.risk_score = int(computed)
@@ -372,7 +412,8 @@ def update_finding_status(
         db.rollback()
 
     log_audit_event(
-        db=db, user=user,
+        db=db,
+        user=user,
         action=f"finding_{body.status}",
         resource_type="finding",
         resource_id=finding_id,
@@ -384,6 +425,7 @@ def update_finding_status(
 
 # ── Update Remediation Notes ──────────────────────────────────────────────────
 
+
 class NotesUpdate(BaseModel):
     remediation_notes: str
 
@@ -391,10 +433,10 @@ class NotesUpdate(BaseModel):
 @router.patch("/{finding_id}/notes")
 def update_finding_notes(
     finding_id: str,
-    body:       NotesUpdate,
-    org_id:     Optional[str] = Query(None),
-    db:         Session       = Depends(get_db),
-    user:       User          = Depends(require_permission("findings", "update")),
+    body: NotesUpdate,
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("findings", "update")),
 ):
     org = _resolve_org(user, org_id)
     row = (

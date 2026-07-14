@@ -10,15 +10,16 @@ const Button = forwardRef(
       className = "",
       ...props
     },
-    ref
+    ref,
   ) => {
-    const variantClass = {
-      primary: "btn btn--primary",
-      ghost: "btn btn--ghost",
-      danger: "btn btn--danger",
-      info: "btn btn--info",
-      secondary: "btn btn--secondary",
-    }[variant] || "btn btn--primary";
+    const variantClass =
+      {
+        primary: "btn btn--primary",
+        ghost: "btn btn--ghost",
+        danger: "btn btn--danger",
+        info: "btn btn--info",
+        secondary: "btn btn--secondary",
+      }[variant] || "btn btn--primary";
 
     return (
       <button
@@ -32,7 +33,7 @@ const Button = forwardRef(
         <span className="btn-label">{children}</span>
       </button>
     );
-  }
+  },
 );
 
 export default Button;

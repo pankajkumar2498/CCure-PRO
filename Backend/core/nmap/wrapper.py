@@ -77,6 +77,7 @@ class _NmapProcessLimiter:
             return self._redis
         try:
             import redis
+
             self._redis = redis.from_url(
                 AppConfig.CELERY_BROKER_URL,
                 socket_timeout=3,
@@ -114,7 +115,10 @@ class _NmapProcessLimiter:
                     if redis_client.set(key, owner, nx=True, ex=self.lease_seconds):
                         return ("redis", key, owner)
                 except Exception as exc:
-                    log.warning("Redis Nmap limiter failed; falling back to local limiter: %s", exc)
+                    log.warning(
+                        "Redis Nmap limiter failed; falling back to local limiter: %s",
+                        exc,
+                    )
                     self._redis = None
                     if not self._local.acquire(timeout=self.wait_timeout):
                         raise TimeoutError(
@@ -165,9 +169,11 @@ def _nmap_process_slot(label: str):
     finally:
         _nmap_limiter.release(token)
 
+
 # ── Try importing python-nmap (preferred) ────────────────────────────────────
 try:
     import nmap as _nmap_lib
+
     _NMAP_LIB_AVAILABLE = True
 except ImportError:
     _nmap_lib = None
@@ -183,28 +189,28 @@ if not NMAP_AVAILABLE:
         "async TCP connect. Install nmap: apt install nmap / brew install nmap"
     )
 if not _NMAP_LIB_AVAILABLE:
-    log.warning(
-        "python-nmap not installed. Install it: pip install python-nmap"
-    )
+    log.warning("python-nmap not installed. Install it: pip install python-nmap")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Models returned by NmapScanner
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class NmapPortResult:
     """Single port result from Nmap."""
-    port:     int
-    protocol: str           = "tcp"        # tcp / udp
-    state:    str           = "filtered"   # open / closed / filtered / open|filtered
-    service:  str           = "unknown"
-    product:  str           = ""           # e.g. "OpenSSH"
-    version:  str           = ""           # e.g. "8.9p1"
-    extra:    str           = ""           # e.g. "Ubuntu"
-    banner:   str           = ""           # raw banner text from NSE
-    cpe:      List[str]     = field(default_factory=list)   # CPE identifiers
-    scripts:  Dict[str, str] = field(default_factory=dict)  # NSE script outputs
+
+    port: int
+    protocol: str = "tcp"  # tcp / udp
+    state: str = "filtered"  # open / closed / filtered / open|filtered
+    service: str = "unknown"
+    product: str = ""  # e.g. "OpenSSH"
+    version: str = ""  # e.g. "8.9p1"
+    extra: str = ""  # e.g. "Ubuntu"
+    banner: str = ""  # raw banner text from NSE
+    cpe: List[str] = field(default_factory=list)  # CPE identifiers
+    scripts: Dict[str, str] = field(default_factory=dict)  # NSE script outputs
 
     @property
     def full_version(self) -> str:
@@ -221,11 +227,12 @@ class NmapPortResult:
 @dataclass
 class NmapOSMatch:
     """OS detection result from Nmap."""
-    name:       str   = "Unknown"
-    accuracy:   int   = 0        # 0–100
-    os_family:  str   = ""       # Linux, Windows, Cisco, etc.
-    os_gen:     str   = ""       # 2.6.X, 10, etc.
-    cpe:        List[str] = field(default_factory=list)
+
+    name: str = "Unknown"
+    accuracy: int = 0  # 0–100
+    os_family: str = ""  # Linux, Windows, Cisco, etc.
+    os_gen: str = ""  # 2.6.X, 10, etc.
+    cpe: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -237,15 +244,16 @@ class NmapScanResult:
     Complete Nmap scan result for one host.
     This is what callers receive — no raw XML / python-nmap internals leak out.
     """
-    ip:          str
-    hostname:    str              = ""
-    state:       str              = "up"          # up / down / error / timeout / nmap_unavailable
-    error_message: Optional[str]  = None
-    ports:       List[NmapPortResult] = field(default_factory=list)
-    os_matches:  List[NmapOSMatch]    = field(default_factory=list)
-    scan_duration: float          = 0.0
-    nmap_version:  str            = ""
-    command_line:  str            = ""
+
+    ip: str
+    hostname: str = ""
+    state: str = "up"  # up / down / error / timeout / nmap_unavailable
+    error_message: Optional[str] = None
+    ports: List[NmapPortResult] = field(default_factory=list)
+    os_matches: List[NmapOSMatch] = field(default_factory=list)
+    scan_duration: float = 0.0
+    nmap_version: str = ""
+    command_line: str = ""
 
     # Convenience accessors
     @property
@@ -260,17 +268,17 @@ class NmapScanResult:
 
     def to_dict(self) -> Dict:
         d = {
-            "ip":            self.ip,
-            "hostname":      self.hostname,
-            "state":         self.state,
+            "ip": self.ip,
+            "hostname": self.hostname,
+            "state": self.state,
             "error_message": self.error_message,
-            "ports":         [p.to_dict() for p in self.ports],
-            "open_ports":    [p.to_dict() for p in self.open_ports],
-            "os_matches":    [o.to_dict() for o in self.os_matches],
-            "best_os":       self.best_os.to_dict() if self.best_os else None,
+            "ports": [p.to_dict() for p in self.ports],
+            "open_ports": [p.to_dict() for p in self.open_ports],
+            "os_matches": [o.to_dict() for o in self.os_matches],
+            "best_os": self.best_os.to_dict() if self.best_os else None,
             "scan_duration": self.scan_duration,
-            "nmap_version":  self.nmap_version,
-            "command_line":  self.command_line,
+            "nmap_version": self.nmap_version,
+            "command_line": self.command_line,
         }
         return d
 
@@ -278,6 +286,7 @@ class NmapScanResult:
 # ─────────────────────────────────────────────────────────────────────────────
 # NmapScanner — the ONLY class that calls nmap in this codebase
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class NmapScanner:
     """
@@ -307,24 +316,24 @@ class NmapScanner:
     # ── Intensity → nmap arguments mapping ───────────────────────────────────
     _INTENSITY_ARGS = {
         # Phase 2 / Asset Discovery — speed over depth
-        "basic":    "-sS -F --open -T4",
+        "basic": "-sS -F --open -T4",
         # Phase 2 / Asset Discovery — standard named ports (top-1000)
-        "normal":   "-sS --top-ports 1000 --open -T4",
+        "normal": "-sS --top-ports 1000 --open -T4",
         # Phase 2 / Asset Discovery — all 65535 ports
-        "deep":     "-sS -p- --open -T3",
+        "deep": "-sS -p- --open -T3",
         # Phase 3 / Vulnerability Audit — service + version detection
-        "service":  "-sS -sV --version-intensity 5 -T4",
+        "service": "-sS -sV --version-intensity 5 -T4",
         # Phase 3 / Vulnerability Audit — service + OS + default NSE
-        "full":     "-sS -sV -O --version-intensity 7 -T4",
+        "full": "-sS -sV -O --version-intensity 7 -T4",
         # Phase 3 / Vulnerability Audit — vuln scripts
-        "vuln":     "-sS -sV --script=vuln,safe -T4",
+        "vuln": "-sS -sV --script=vuln,safe -T4",
     }
 
     # ── Top ports by intensity for Phase 2 ───────────────────────────────────
     _TOP_PORTS = {
-        "basic":  "-F",              # Nmap top-100 ports
+        "basic": "-F",  # Nmap top-100 ports
         "normal": "--top-ports 1000",
-        "deep":   "-p-",             # all 65535
+        "deep": "-p-",  # all 65535
     }
 
     # ── Parallelism hints appended when scanning multiple hosts ───────────────
@@ -332,7 +341,12 @@ class NmapScanner:
     # dramatically reducing wall-clock time on local LAN subnets.
     _MULTI_PERF_ARGS = "--min-parallelism 64 --min-rate 500"
 
-    def __init__(self, sudo: bool = True, timeout_sec: int = 300, cache_ttl_hours: Optional[int] = None):
+    def __init__(
+        self,
+        sudo: bool = True,
+        timeout_sec: int = 300,
+        cache_ttl_hours: Optional[int] = None,
+    ):
         """
         Args:
             sudo:            Run nmap with sudo (required for SYN scan, OS detection).
@@ -343,7 +357,9 @@ class NmapScanner:
         self.timeout_sec = timeout_sec
         self.cache_ttl = (cache_ttl_hours or AppConfig.NMAP_CACHE_TTL_HOURS) * 3600
         self._redis = None
-        self._cache_enabled = self._init_redis() if AppConfig.NMAP_CACHE_ENABLED else False
+        self._cache_enabled = (
+            self._init_redis() if AppConfig.NMAP_CACHE_ENABLED else False
+        )
 
     def _init_redis(self) -> bool:
         """Initialize Redis connection for caching (non-fatal if fails)."""
@@ -395,54 +411,54 @@ class NmapScanner:
     def _serialize_nmap_result(self, result: NmapScanResult) -> dict:
         """Convert NmapScanResult to JSON-serializable dict."""
         return {
-            "ip":            result.ip,
-            "hostname":      result.hostname,
-            "state":         result.state,
+            "ip": result.ip,
+            "hostname": result.hostname,
+            "state": result.state,
             "error_message": result.error_message,
-            "ports":         [p.to_dict() for p in result.ports],
-            "os_matches":    [o.to_dict() for o in result.os_matches],
+            "ports": [p.to_dict() for p in result.ports],
+            "os_matches": [o.to_dict() for o in result.os_matches],
             "scan_duration": result.scan_duration,
-            "nmap_version":  result.nmap_version,
-            "command_line":  result.command_line,
+            "nmap_version": result.nmap_version,
+            "command_line": result.command_line,
         }
 
     def _deserialize_nmap_result(self, data: dict) -> NmapScanResult:
         """Reconstruct NmapScanResult from cached JSON."""
         ports = [
             NmapPortResult(
-                port     = p["port"],
-                protocol = p["protocol"],
-                state    = p["state"],
-                service  = p["service"],
-                product  = p["product"],
-                version  = p["version"],
-                extra    = p["extra"],
-                banner   = p["banner"],
-                cpe      = p["cpe"],
-                scripts  = p["scripts"],
+                port=p["port"],
+                protocol=p["protocol"],
+                state=p["state"],
+                service=p["service"],
+                product=p["product"],
+                version=p["version"],
+                extra=p["extra"],
+                banner=p["banner"],
+                cpe=p["cpe"],
+                scripts=p["scripts"],
             )
             for p in data.get("ports", [])
         ]
         os_matches = [
             NmapOSMatch(
-                name      = o["name"],
-                accuracy  = o["accuracy"],
-                os_family = o["os_family"],
-                os_gen    = o["os_gen"],
-                cpe       = o["cpe"],
+                name=o["name"],
+                accuracy=o["accuracy"],
+                os_family=o["os_family"],
+                os_gen=o["os_gen"],
+                cpe=o["cpe"],
             )
             for o in data.get("os_matches", [])
         ]
         return NmapScanResult(
-            ip            = data["ip"],
-            hostname      = data["hostname"],
-            state         = data["state"],
-            error_message = data.get("error_message"),
-            ports         = ports,
-            os_matches    = os_matches,
-            scan_duration = data.get("scan_duration", 0.0),
-            nmap_version  = data.get("nmap_version", ""),
-            command_line  = data.get("command_line", ""),
+            ip=data["ip"],
+            hostname=data["hostname"],
+            state=data["state"],
+            error_message=data.get("error_message"),
+            ports=ports,
+            os_matches=os_matches,
+            scan_duration=data.get("scan_duration", 0.0),
+            nmap_version=data.get("nmap_version", ""),
+            command_line=data.get("command_line", ""),
         )
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -573,7 +589,9 @@ class NmapScanner:
             port_arg = self._TOP_PORTS.get(intensity, "-F")
 
         # Merge service detection into the batch call when requested.
-        svc_arg = "-sV --version-intensity 7" if with_services and intensity != "deep" else ""
+        svc_arg = (
+            "-sV --version-intensity 7" if with_services and intensity != "deep" else ""
+        )
 
         # Append -O when OS fingerprinting is requested
         os_arg = "-O" if with_os else ""
@@ -581,10 +599,26 @@ class NmapScanner:
         # Append --exclude-ports when exclusion list is provided or exclude_ot_from_nmap is True
         exclude_list = list(exclude_ports) if exclude_ports else []
         if exclude_ot_from_nmap:
-            ot_ports = {502, 102, 44818, 47808, 20000, 4840, 2404, 18245, 9600, 5007, 2455}
+            ot_ports = {
+                502,
+                102,
+                44818,
+                47808,
+                20000,
+                4840,
+                2404,
+                18245,
+                9600,
+                5007,
+                2455,
+            }
             exclude_list = list(set(exclude_list) | ot_ports)
 
-        exclude_arg = f"--exclude-ports {','.join(str(p) for p in exclude_list)}" if exclude_list else ""
+        exclude_arg = (
+            f"--exclude-ports {','.join(str(p) for p in exclude_list)}"
+            if exclude_list
+            else ""
+        )
 
         # Adjust performance settings. If we exclude OT from Nmap, we cap the rate at 100 packets/sec
         # and reduce parallelism to prevent network saturation.
@@ -592,13 +626,24 @@ class NmapScanner:
         if exclude_ot_from_nmap:
             perf_args = "--min-parallelism 8 --max-rate 100"
 
-        args = " ".join(filter(None, [
-            "-sS", svc_arg, os_arg, port_arg, "--open", "-T4", perf_args, exclude_arg
-        ]))
+        args = " ".join(
+            filter(
+                None,
+                [
+                    "-sS",
+                    svc_arg,
+                    os_arg,
+                    port_arg,
+                    "--open",
+                    "-T4",
+                    perf_args,
+                    exclude_arg,
+                ],
+            )
+        )
 
         log.debug("scan_hosts args: %s", args)
         return self._run_multi(targets, args)
-
 
     # ── Internal execution engine ─────────────────────────────────────────────
 
@@ -611,7 +656,12 @@ class NmapScanner:
         try:
             with _nmap_process_slot(f"single:{target}"):
                 nm = _nmap_lib.PortScanner()
-                nm.scan(hosts=target, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
+                nm.scan(
+                    hosts=target,
+                    arguments=args,
+                    sudo=self.sudo,
+                    timeout=self.timeout_sec,
+                )
             duration = time.time() - t0
 
             # Extract first host (single target mode)
@@ -629,8 +679,10 @@ class NmapScanner:
             log.warning("NmapScanner._run(%s) error: %s", target, error_msg)
             ip = target.split()[0] if target else "0.0.0.0"
             return NmapScanResult(
-                ip=ip, state="error", error_message=error_msg,
-                scan_duration=time.time() - t0
+                ip=ip,
+                state="error",
+                error_message=error_msg,
+                scan_duration=time.time() - t0,
             )
 
     def _run_multi(self, targets: List[str], args: str) -> Dict[str, NmapScanResult]:
@@ -643,7 +695,12 @@ class NmapScanner:
         try:
             with _nmap_process_slot(f"multi:{len(targets)} hosts"):
                 nm = _nmap_lib.PortScanner()
-                nm.scan(hosts=target_str, arguments=args, sudo=self.sudo, timeout=self.timeout_sec)
+                nm.scan(
+                    hosts=target_str,
+                    arguments=args,
+                    sudo=self.sudo,
+                    timeout=self.timeout_sec,
+                )
             duration = time.time() - t0
 
             results = {}
@@ -662,7 +719,12 @@ class NmapScanner:
             error_msg = str(exc)
             log.warning("NmapScanner._run_multi error: %s", error_msg)
             return {
-                ip: NmapScanResult(ip=ip, state="error", error_message=error_msg, scan_duration=time.time() - t0)
+                ip: NmapScanResult(
+                    ip=ip,
+                    state="error",
+                    error_message=error_msg,
+                    scan_duration=time.time() - t0,
+                )
                 for ip in targets
             }
 
@@ -671,7 +733,9 @@ class NmapScanner:
         Subprocess fallback when python-nmap is not installed.
         Calls nmap directly and parses XML output.
         """
-        import subprocess, tempfile, os
+        import subprocess
+        import tempfile
+        import os
 
         t0 = time.time()
         with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
@@ -700,11 +764,17 @@ class NmapScanner:
             return self._parse_xml(xml_content, duration)
 
         except subprocess.TimeoutExpired:
-            log.warning("Nmap timed out scanning %s (limit=%ds)", target, self.timeout_sec)
-            return NmapScanResult(ip=target, state="timeout", scan_duration=self.timeout_sec)
+            log.warning(
+                "Nmap timed out scanning %s (limit=%ds)", target, self.timeout_sec
+            )
+            return NmapScanResult(
+                ip=target, state="timeout", scan_duration=self.timeout_sec
+            )
         except Exception as exc:
             log.warning("Nmap subprocess error (%s): %s", target, exc)
-            return NmapScanResult(ip=target, state="error", scan_duration=time.time() - t0)
+            return NmapScanResult(
+                ip=target, state="error", scan_duration=time.time() - t0
+            )
 
     # ── Parsers ───────────────────────────────────────────────────────────────
 
@@ -713,11 +783,11 @@ class NmapScanner:
     ) -> NmapScanResult:
         """Convert python-nmap result for one host into NmapScanResult."""
         host_data = nm[ip]
-        state     = host_data.state()
+        state = host_data.state()
 
         # ── Hostname ─────────────────────────────────────────────────────
         hostnames = host_data.hostnames()
-        hostname  = hostnames[0].get("name", "") if hostnames else ""
+        hostname = hostnames[0].get("name", "") if hostnames else ""
 
         # ── Ports ─────────────────────────────────────────────────────────
         ports: List[NmapPortResult] = []
@@ -725,15 +795,15 @@ class NmapScanner:
             for port_num in sorted(host_data[proto].keys()):
                 p = host_data[proto][port_num]
                 port_result = NmapPortResult(
-                    port     = port_num,
-                    protocol = proto,
-                    state    = p.get("state", "filtered"),
-                    service  = p.get("name", "unknown"),
-                    product  = p.get("product", ""),
-                    version  = p.get("version", ""),
-                    extra    = p.get("extrainfo", ""),
-                    cpe      = p.get("cpe", "").split(",") if p.get("cpe") else [],
-                    scripts  = {},
+                    port=port_num,
+                    protocol=proto,
+                    state=p.get("state", "filtered"),
+                    service=p.get("name", "unknown"),
+                    product=p.get("product", ""),
+                    version=p.get("version", ""),
+                    extra=p.get("extrainfo", ""),
+                    cpe=p.get("cpe", "").split(",") if p.get("cpe") else [],
+                    scripts={},
                 )
                 # NSE script outputs
                 if "script" in p:
@@ -753,23 +823,25 @@ class NmapScanner:
                     cpe_str = cls.get("cpe", "")
                     if cpe_str:
                         cpes.append(cpe_str)
-                os_matches.append(NmapOSMatch(
-                    name      = om.get("name", "Unknown"),
-                    accuracy  = int(om.get("accuracy", 0)),
-                    os_family = first_class.get("osfamily", ""),
-                    os_gen    = first_class.get("osgen", ""),
-                    cpe       = cpes,
-                ))
+                os_matches.append(
+                    NmapOSMatch(
+                        name=om.get("name", "Unknown"),
+                        accuracy=int(om.get("accuracy", 0)),
+                        os_family=first_class.get("osfamily", ""),
+                        os_gen=first_class.get("osgen", ""),
+                        cpe=cpes,
+                    )
+                )
 
         return NmapScanResult(
-            ip            = ip,
-            hostname      = hostname,
-            state         = state,
-            ports         = ports,
-            os_matches    = os_matches,
-            scan_duration = duration,
-            nmap_version  = nm.nmap_version() if hasattr(nm, "nmap_version") else "",
-            command_line  = nm.command_line() if hasattr(nm, "command_line") else "",
+            ip=ip,
+            hostname=hostname,
+            state=state,
+            ports=ports,
+            os_matches=os_matches,
+            scan_duration=duration,
+            nmap_version=nm.nmap_version() if hasattr(nm, "nmap_version") else "",
+            command_line=nm.command_line() if hasattr(nm, "command_line") else "",
         )
 
     def _parse_xml(self, xml_content: str, duration: float) -> NmapScanResult:
@@ -795,8 +867,8 @@ class NmapScanner:
                 break
 
         # ── State ─────────────────────────────────────────────────────────
-        status   = host_elem.find("status")
-        state    = status.get("state", "unknown") if status is not None else "unknown"
+        status = host_elem.find("status")
+        state = status.get("state", "unknown") if status is not None else "unknown"
 
         # ── Hostname ──────────────────────────────────────────────────────
         hostname = ""
@@ -809,77 +881,86 @@ class NmapScanner:
         # ── Ports ─────────────────────────────────────────────────────────
         ports: List[NmapPortResult] = []
         for port_elem in host_elem.findall(".//port"):
-            state_elem  = port_elem.find("state")
+            state_elem = port_elem.find("state")
             service_elem = port_elem.find("service")
-            port_state  = state_elem.get("state", "filtered") if state_elem is not None else "filtered"
-            service     = ""
-            product     = ""
+            port_state = (
+                state_elem.get("state", "filtered")
+                if state_elem is not None
+                else "filtered"
+            )
+            service = ""
+            product = ""
             version_str = ""
-            extra       = ""
-            cpes        = []
+            extra = ""
+            cpes = []
 
             if service_elem is not None:
-                service     = service_elem.get("name", "unknown")
-                product     = service_elem.get("product", "")
+                service = service_elem.get("name", "unknown")
+                product = service_elem.get("product", "")
                 version_str = service_elem.get("version", "")
-                extra       = service_elem.get("extrainfo", "")
+                extra = service_elem.get("extrainfo", "")
                 for cpe_elem in service_elem.findall("cpe"):
                     cpes.append(cpe_elem.text or "")
 
             # NSE scripts on port
             scripts: Dict[str, str] = {}
             for script_elem in port_elem.findall("script"):
-                script_id  = script_elem.get("id", "")
+                script_id = script_elem.get("id", "")
                 script_out = script_elem.get("output", "")
                 if script_id:
                     scripts[script_id] = script_out
 
-            ports.append(NmapPortResult(
-                port     = int(port_elem.get("portid", 0)),
-                protocol = port_elem.get("protocol", "tcp"),
-                state    = port_state,
-                service  = service,
-                product  = product,
-                version  = version_str,
-                extra    = extra,
-                cpe      = cpes,
-                scripts  = scripts,
-                banner   = scripts.get("banner", ""),
-            ))
+            ports.append(
+                NmapPortResult(
+                    port=int(port_elem.get("portid", 0)),
+                    protocol=port_elem.get("protocol", "tcp"),
+                    state=port_state,
+                    service=service,
+                    product=product,
+                    version=version_str,
+                    extra=extra,
+                    cpe=cpes,
+                    scripts=scripts,
+                    banner=scripts.get("banner", ""),
+                )
+            )
 
         # ── OS Detection ──────────────────────────────────────────────────
         os_matches: List[NmapOSMatch] = []
         for osmatch_elem in host_elem.findall(".//osmatch"):
-            name     = osmatch_elem.get("name", "Unknown")
+            name = osmatch_elem.get("name", "Unknown")
             accuracy = int(osmatch_elem.get("accuracy", 0))
             osclasses = osmatch_elem.findall("osclass")
             first_cls = osclasses[0] if osclasses else None
             os_family = first_cls.get("osfamily", "") if first_cls is not None else ""
-            os_gen    = first_cls.get("osgen", "")    if first_cls is not None else ""
-            cpes      = [
-                cpe.text for cls in osclasses
-                for cpe in cls.findall("cpe")
-                if cpe.text
+            os_gen = first_cls.get("osgen", "") if first_cls is not None else ""
+            cpes = [
+                cpe.text for cls in osclasses for cpe in cls.findall("cpe") if cpe.text
             ]
-            os_matches.append(NmapOSMatch(
-                name=name, accuracy=accuracy,
-                os_family=os_family, os_gen=os_gen, cpe=cpes,
-            ))
+            os_matches.append(
+                NmapOSMatch(
+                    name=name,
+                    accuracy=accuracy,
+                    os_family=os_family,
+                    os_gen=os_gen,
+                    cpe=cpes,
+                )
+            )
 
         # ── Scan metadata ─────────────────────────────────────────────────
-        runstats  = root.find("runstats/finished")
-        nmap_ver  = root.get("version", "")
-        cmd_line  = root.get("args", "")
+        runstats = root.find("runstats/finished")
+        nmap_ver = root.get("version", "")
+        cmd_line = root.get("args", "")
 
         return NmapScanResult(
-            ip            = ip,
-            hostname      = hostname,
-            state         = state,
-            ports         = ports,
-            os_matches    = os_matches,
-            scan_duration = duration,
-            nmap_version  = nmap_ver,
-            command_line  = cmd_line,
+            ip=ip,
+            hostname=hostname,
+            state=state,
+            ports=ports,
+            os_matches=os_matches,
+            scan_duration=duration,
+            nmap_version=nmap_ver,
+            command_line=cmd_line,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -890,16 +971,17 @@ class NmapScanner:
         if ports:
             return f"-p {','.join(str(p) for p in ports)}"
         return {
-            "basic":  "-F",
+            "basic": "-F",
             "normal": "--top-ports 1000",
-            "deep":   "-p-",
+            "deep": "-p-",
         }.get(intensity, "-F")
 
     @staticmethod
     def _unavailable_result(target: str) -> NmapScanResult:
         """Return an empty result when Nmap is not available."""
         return NmapScanResult(
-            ip=target, state="nmap_unavailable",
+            ip=target,
+            state="nmap_unavailable",
             scan_duration=0.0,
         )
 
@@ -909,6 +991,7 @@ class NmapScanner:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _scanner: Optional[NmapScanner] = None
+
 
 def get_scanner(sudo: bool = True) -> NmapScanner:
     """Return the module-level NmapScanner singleton."""

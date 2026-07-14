@@ -42,7 +42,7 @@ class NetworkLink(Base):
 
     # Source endpoint
     source_mac = Column(String(50), nullable=False)
-    source_port = Column(String(100), nullable=True)    # e.g., "GigabitEthernet1/0/14"
+    source_port = Column(String(100), nullable=True)  # e.g., "GigabitEthernet1/0/14"
     source_asset_id = Column(
         String(200),
         ForeignKey("assets.id", ondelete="SET NULL"),
@@ -60,12 +60,14 @@ class NetworkLink(Base):
     )
 
     # Enriched port details (populated from SNMP interface walks)
-    source_port_desc = Column(String(255), nullable=True)  # e.g., "GigabitEthernet1/0/24 (Uplink to Core)"
+    source_port_desc = Column(
+        String(255), nullable=True
+    )  # e.g., "GigabitEthernet1/0/24 (Uplink to Core)"
     target_port_desc = Column(String(255), nullable=True)
-    vlan_id = Column(Integer, nullable=True)                # Access VLAN for the port
-    speed_bps = Column(BigInteger, nullable=True)           # Port speed in bits per second
+    vlan_id = Column(Integer, nullable=True)  # Access VLAN for the port
+    speed_bps = Column(BigInteger, nullable=True)  # Port speed in bits per second
 
-    link_type = Column(String(50), default="physical")   # physical | logical | arp
+    link_type = Column(String(50), default="physical")  # physical | logical | arp
     created_at = Column(TIMESTAMPTZ, default=utcnow)
 
     # Relationships
@@ -99,7 +101,9 @@ def ensure_topology_schema():
 
     with engine.begin() as conn:
         if not table_exists:
-            conn.execute(text("""
+            conn.execute(
+                text(
+                    """
                 CREATE TABLE IF NOT EXISTS network_links (
                     id               VARCHAR(200) PRIMARY KEY,
                     org_id           VARCHAR(100) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -118,20 +122,34 @@ def ensure_topology_schema():
                     link_type        VARCHAR(50)  DEFAULT 'physical',
                     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-            """))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_org_id ON network_links(org_id)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_scan_id ON network_links(scan_id)"))
+            """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_network_links_org_id ON network_links(org_id)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_network_links_scan_id ON network_links(scan_id)"
+                )
+            )
         else:
             # Incremental migration: add enriched SNMP columns if missing
-            existing_cols = {col["name"] for col in inspector.get_columns("network_links")}
+            existing_cols = {
+                col["name"] for col in inspector.get_columns("network_links")
+            }
             new_columns = {
                 "source_port_desc": "VARCHAR(255)",
                 "target_port_desc": "VARCHAR(255)",
-                "vlan_id":          "INTEGER",
-                "speed_bps":        "BIGINT",
+                "vlan_id": "INTEGER",
+                "speed_bps": "BIGINT",
             }
             for col_name, col_type in new_columns.items():
                 if col_name not in existing_cols:
-                    conn.execute(text(
-                        f"ALTER TABLE network_links ADD COLUMN {col_name} {col_type}"
-                    ))
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE network_links ADD COLUMN {col_name} {col_type}"
+                        )
+                    )

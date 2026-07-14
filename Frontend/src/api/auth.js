@@ -1,6 +1,9 @@
 import axiosInstance, { authSession } from "./axiosInstance";
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 
 export const login = async (credentials) => {
   const response = await axiosInstance.post("/auth/login", {
@@ -50,7 +53,6 @@ export const disableMfa = async (password) => {
   return response.data;
 };
 
-
 export const register = async (userData) => {
   const response = await axiosInstance.post("/auth/register", {
     ...userData,
@@ -76,17 +78,23 @@ export const logout = async () => {
     await axiosInstance.post("/auth/logout", {});
   } finally {
     authSession.clear();
-    window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "logout" } }));
+    window.dispatchEvent(
+      new CustomEvent("auth:logout", { detail: { reason: "logout" } }),
+    );
   }
 };
 
 export const checkUsername = async (username) => {
-  const response = await axiosInstance.get(`/auth/check-username?q=${encodeURIComponent(username)}`);
+  const response = await axiosInstance.get(
+    `/auth/check-username?q=${encodeURIComponent(username)}`,
+  );
   return response.data;
 };
 
 export const checkEmail = async (email) => {
-  const response = await axiosInstance.get(`/auth/check-email?q=${encodeURIComponent(normalizeEmail(email))}`);
+  const response = await axiosInstance.get(
+    `/auth/check-email?q=${encodeURIComponent(normalizeEmail(email))}`,
+  );
   return response.data;
 };
 

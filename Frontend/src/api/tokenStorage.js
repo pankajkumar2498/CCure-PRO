@@ -7,7 +7,7 @@ export const setAccessToken = (token) => {
 };
 
 export const setAuthTokens = ({ access_token }) => {
-  if (typeof access_token !== 'undefined') {
+  if (typeof access_token !== "undefined") {
     setAccessToken(access_token);
   }
 };

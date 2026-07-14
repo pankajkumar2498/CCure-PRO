@@ -16,9 +16,12 @@ function strengthOf(pw) {
 
 function validate(password, confirm) {
   if (password.length < 12) return "Password must be at least 12 characters.";
-  if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter.";
-  if (!/[0-9]/.test(password)) return "Password must contain at least one digit.";
-  if (!/[^a-zA-Z0-9]/.test(password)) return "Password must contain at least one special character.";
+  if (!/[A-Z]/.test(password))
+    return "Password must contain at least one uppercase letter.";
+  if (!/[0-9]/.test(password))
+    return "Password must contain at least one digit.";
+  if (!/[^a-zA-Z0-9]/.test(password))
+    return "Password must contain at least one special character.";
   if (password !== confirm) return "Passwords do not match.";
   return null;
 }
@@ -39,7 +42,9 @@ export default function ResetPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!token) {
-      setError("Reset token is missing from the link. Please request a new one.");
+      setError(
+        "Reset token is missing from the link. Please request a new one.",
+      );
       return;
     }
 
@@ -60,12 +65,15 @@ export default function ResetPassword() {
         navigate("/login");
       }, 3000);
     } catch (err) {
-      let errMsg = "Failed to reset password. The link might be expired or invalid.";
+      let errMsg =
+        "Failed to reset password. The link might be expired or invalid.";
       if (err.response?.data?.message) {
         errMsg = err.response.data.message;
       } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       setError(errMsg);
     } finally {
@@ -106,7 +114,7 @@ export default function ResetPassword() {
               background: "rgba(16, 185, 129, 0.12)",
               color: "#a7f3d0",
               fontSize: 14,
-              lineHeight: 1.5
+              lineHeight: 1.5,
             }}
           >
             ✓ {success} Redirecting to login in a moment...
@@ -149,10 +157,14 @@ export default function ResetPassword() {
                 required
               />
               {confirm && confirm !== password && (
-                <span className="field-hint field-hint--warn">Passwords don't match</span>
+                <span className="field-hint field-hint--warn">
+                  Passwords don't match
+                </span>
               )}
               {confirm && confirm === password && password && (
-                <span className="field-hint field-hint--ok">✓ Passwords match</span>
+                <span className="field-hint field-hint--ok">
+                  ✓ Passwords match
+                </span>
               )}
             </div>
 

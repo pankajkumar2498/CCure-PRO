@@ -49,12 +49,18 @@ def test_web_scan_launch_is_idempotent(client, db_session, auth_headers, monkeyp
     assert second.json()["duplicate"] is True
     assert len(calls) == 1
 
-    scan = db_session.query(WebScan).filter(WebScan.id == first.json()["web_scan_id"]).first()
+    scan = (
+        db_session.query(WebScan)
+        .filter(WebScan.id == first.json()["web_scan_id"])
+        .first()
+    )
     assert scan is not None
     assert scan.options["_launch"]["idempotency_key"] == "launch-web-scan-001"
 
 
-def test_web_scan_launch_collapses_active_duplicate_target(client, auth_headers, monkeypatch):
+def test_web_scan_launch_collapses_active_duplicate_target(
+    client, auth_headers, monkeypatch
+):
     calls = []
 
     def fake_delay(**kwargs):

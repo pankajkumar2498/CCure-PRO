@@ -23,8 +23,14 @@ log = logging.getLogger("ccure.l2_sniffer")
 
 try:
     from scapy.all import sniff, Ether
-    from scapy.contrib.cdp import CDPv2_HDR, CDPMsgDeviceID, CDPMsgPlatform, CDPMsgPortID
+    from scapy.contrib.cdp import (
+        CDPv2_HDR,
+        CDPMsgDeviceID,
+        CDPMsgPlatform,
+        CDPMsgPortID,
+    )
     from scapy.contrib.lldp import LLDPDU, LLDPDUSystemName, LLDPDUSystemCapabilities
+
     SCAPY_L2_AVAILABLE = True
 except ImportError:
     SCAPY_L2_AVAILABLE = False
@@ -58,13 +64,17 @@ def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
     Always returns within `timeout` seconds (plus a small grace period).
     """
     if not SCAPY_L2_AVAILABLE:
-        log.warning("Scapy L2 contributions (CDP/LLDP) not available — skipping L2 sniff.")
+        log.warning(
+            "Scapy L2 contributions (CDP/LLDP) not available — skipping L2 sniff."
+        )
         return []
 
     discovered: Dict[str, Dict] = {}
     stop_event = threading.Event()
 
-    log.info(f"Sniffing for Layer 2 infrastructure protocols (CDP/LLDP/STP) for {timeout}s...")
+    log.info(
+        f"Sniffing for Layer 2 infrastructure protocols (CDP/LLDP/STP) for {timeout}s..."
+    )
 
     def packet_callback(pkt):
         """Process captured packets — filter in Python for portability."""
@@ -107,12 +117,16 @@ def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
 
             if pkt.haslayer("CDPMsgDeviceID"):
                 try:
-                    dev["hostname"] = pkt["CDPMsgDeviceID"].val.decode("utf-8", "ignore")
+                    dev["hostname"] = pkt["CDPMsgDeviceID"].val.decode(
+                        "utf-8", "ignore"
+                    )
                 except Exception:
                     pass
             if pkt.haslayer("CDPMsgPlatform"):
                 try:
-                    dev["platform"] = pkt["CDPMsgPlatform"].val.decode("utf-8", "ignore")
+                    dev["platform"] = pkt["CDPMsgPlatform"].val.decode(
+                        "utf-8", "ignore"
+                    )
                 except Exception:
                     pass
             if pkt.haslayer("CDPMsgPortID"):
@@ -136,17 +150,23 @@ def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
 
             if pkt.haslayer("LLDPDUSystemName"):
                 try:
-                    dev["hostname"] = pkt["LLDPDUSystemName"].system_name.decode("utf-8", "ignore")
+                    dev["hostname"] = pkt["LLDPDUSystemName"].system_name.decode(
+                        "utf-8", "ignore"
+                    )
                 except Exception:
                     pass
 
             if pkt.haslayer("LLDPDUSystemCapabilities"):
                 caps = pkt["LLDPDUSystemCapabilities"]
-                if getattr(caps, "mac_bridge_capable", 0) or getattr(caps, "mac_bridge_enabled", 0):
+                if getattr(caps, "mac_bridge_capable", 0) or getattr(
+                    caps, "mac_bridge_enabled", 0
+                ):
                     if "Bridge" not in dev["capabilities"]:
                         dev["capabilities"].append("Bridge")
                     dev["device_category"] = "switch"
-                elif getattr(caps, "router_capable", 0) or getattr(caps, "router_enabled", 0):
+                elif getattr(caps, "router_capable", 0) or getattr(
+                    caps, "router_enabled", 0
+                ):
                     if "Router" not in dev["capabilities"]:
                         dev["capabilities"].append("Router")
                     if dev["device_category"] == "unknown":
@@ -165,7 +185,7 @@ def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
                 sniff(
                     prn=packet_callback,
                     stop_filter=_stop_sniff,
-                    timeout=timeout + 1,   # extra grace; stop_event fires first
+                    timeout=timeout + 1,  # extra grace; stop_event fires first
                     store=0,
                 )
             else:

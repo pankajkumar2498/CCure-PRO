@@ -34,7 +34,9 @@ export default function UserForm({
 
   useEffect(() => {
     if (mode === "create" && debouncedUsername.length >= 3) {
-      checkUsername(debouncedUsername).then(res => setUsernameTaken(!res.available)).catch(() => { });
+      checkUsername(debouncedUsername)
+        .then((res) => setUsernameTaken(!res.available))
+        .catch(() => {});
     } else {
       setUsernameTaken(false);
     }
@@ -47,7 +49,9 @@ export default function UserForm({
     }
 
     if (/\S+@\S+\.\S+/.test(debouncedEmail)) {
-      checkEmail(debouncedEmail).then(res => setEmailTaken(!res.available)).catch(() => { });
+      checkEmail(debouncedEmail)
+        .then((res) => setEmailTaken(!res.available))
+        .catch(() => {});
     } else {
       setEmailTaken(false);
     }
@@ -77,11 +81,18 @@ export default function UserForm({
   const isRoleSelected = useMemo(() => !!form.role_id, [form.role_id]);
   const isOrganizationSelected = useMemo(
     () => !isSuperadmin || !!form.organization_id,
-    [form.organization_id, isSuperadmin]
+    [form.organization_id, isSuperadmin],
   );
-  const canSubmit = (mode === "create"
-    ? form.username.trim() && form.email.trim() && form.password.trim() && isRoleSelected && isOrganizationSelected
-    : form.email.trim() && isRoleSelected && isOrganizationSelected) && !usernameTaken && !emailTaken;
+  const canSubmit =
+    (mode === "create"
+      ? form.username.trim() &&
+        form.email.trim() &&
+        form.password.trim() &&
+        isRoleSelected &&
+        isOrganizationSelected
+      : form.email.trim() && isRoleSelected && isOrganizationSelected) &&
+    !usernameTaken &&
+    !emailTaken;
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -99,7 +110,9 @@ export default function UserForm({
       <div className="form-card-header">
         <div>
           <h3 className="card-title">{title}</h3>
-          <p className="card-subtitle">Manage access, role assignments, and account details.</p>
+          <p className="card-subtitle">
+            Manage access, role assignments, and account details.
+          </p>
         </div>
       </div>
 
@@ -117,7 +130,12 @@ export default function UserForm({
               required
             />
             {usernameTaken && (
-              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This username is already taken.</span>
+              <span
+                className="field-hint field-hint--error"
+                style={{ color: "var(--danger)" }}
+              >
+                This username is already taken.
+              </span>
             )}
           </FormField>
         )}
@@ -146,7 +164,12 @@ export default function UserForm({
             required
           />
           {emailTaken && (
-            <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This email is already taken.</span>
+            <span
+              className="field-hint field-hint--error"
+              style={{ color: "var(--danger)" }}
+            >
+              This email is already taken.
+            </span>
           )}
         </FormField>
 
@@ -163,7 +186,12 @@ export default function UserForm({
               required
             />
             {usernameTaken && (
-              <span className="field-hint field-hint--error" style={{ color: "var(--danger)" }}>This username is already taken.</span>
+              <span
+                className="field-hint field-hint--error"
+                style={{ color: "var(--danger)" }}
+              >
+                This username is already taken.
+              </span>
             )}
           </FormField>
         )}
@@ -181,7 +209,12 @@ export default function UserForm({
             <select
               className="field-input"
               value={form.organization_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, organization_id: event.target.value }))}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  organization_id: event.target.value,
+                }))
+              }
               disabled={busy}
               required
             >
@@ -196,10 +229,22 @@ export default function UserForm({
         )}
 
         <div className="form-action-row">
-          <Button type="button" variant="ghost" size="md" onClick={onCancel} disabled={busy}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="md"
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="md" loading={busy} disabled={!canSubmit || busy}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            loading={busy}
+            disabled={!canSubmit || busy}
+          >
             {submitLabel}
           </Button>
         </div>

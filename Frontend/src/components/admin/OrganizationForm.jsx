@@ -21,7 +21,9 @@ export default function OrganizationForm({
   const [name, setName] = useState(organization.name || "");
   const [slug, setSlug] = useState(organization.slug || "");
   const [plan, setPlan] = useState(organization.plan || "community");
-  const [status, setStatus] = useState((organization.is_active ?? true) ? "active" : "inactive");
+  const [status, setStatus] = useState(
+    organization.is_active ?? true ? "active" : "inactive",
+  );
   const [maxAssets, setMaxAssets] = useState(organization.max_assets ?? 500);
   const [maxUsers, setMaxUsers] = useState(organization.max_users ?? 10);
 
@@ -39,7 +41,9 @@ export default function OrganizationForm({
 
   useEffect(() => {
     if (mode === "create" && debouncedUsername.length >= 3) {
-      checkUsername(debouncedUsername).then(res => setUsernameTaken(!res.available)).catch(() => { });
+      checkUsername(debouncedUsername)
+        .then((res) => setUsernameTaken(!res.available))
+        .catch(() => {});
     } else {
       setUsernameTaken(false);
     }
@@ -47,7 +51,9 @@ export default function OrganizationForm({
 
   useEffect(() => {
     if (mode === "create" && /\S+@\S+\.\S+/.test(debouncedEmail)) {
-      checkEmail(debouncedEmail).then(res => setEmailTaken(!res.available)).catch(() => { });
+      checkEmail(debouncedEmail)
+        .then((res) => setEmailTaken(!res.available))
+        .catch(() => {});
     } else {
       setEmailTaken(false);
     }
@@ -57,14 +63,19 @@ export default function OrganizationForm({
     setName(organization.name || "");
     setSlug(organization.slug || "");
     setPlan(organization.plan || "community");
-    setStatus((organization.is_active ?? true) ? "active" : "inactive");
+    setStatus(organization.is_active ?? true ? "active" : "inactive");
     setMaxAssets(organization.max_assets ?? 500);
     setMaxUsers(organization.max_users ?? 10);
   }, [organization]);
 
-  const isAdminProvisioning = adminUsername.trim() || adminEmail.trim() || adminPassword.trim();
+  const isAdminProvisioning =
+    adminUsername.trim() || adminEmail.trim() || adminPassword.trim();
   const isAdminValid = isAdminProvisioning
-    ? adminUsername.trim().length >= 3 && adminEmail.includes("@") && adminPassword.length >= 6 && !usernameTaken && !emailTaken
+    ? adminUsername.trim().length >= 3 &&
+      adminEmail.includes("@") &&
+      adminPassword.length >= 6 &&
+      !usernameTaken &&
+      !emailTaken
     : true;
 
   const isValid = useMemo(
@@ -74,7 +85,7 @@ export default function OrganizationForm({
       Number(maxAssets) > 0 &&
       Number(maxUsers) > 0 &&
       (mode === "create" ? isAdminValid : true),
-    [name, slug, maxAssets, maxUsers, mode, isAdminValid]
+    [name, slug, maxAssets, maxUsers, mode, isAdminValid],
   );
 
   const handleSubmit = (event) => {
@@ -109,7 +120,10 @@ export default function OrganizationForm({
       <div className="card__header">
         <div>
           <h2>{mode === "edit" ? "Edit organization" : "Add organization"}</h2>
-          <p className="muted-text">Keep organizational metadata accurate for audit, subscription tracking, and access policies.</p>
+          <p className="muted-text">
+            Keep organizational metadata accurate for audit, subscription
+            tracking, and access policies.
+          </p>
         </div>
       </div>
 
@@ -194,10 +208,20 @@ export default function OrganizationForm({
 
       {mode === "create" && (
         <>
-          <div className="card__header" style={{ marginTop: "32px", paddingTop: "24px", borderTop: "1px solid var(--border)" }}>
+          <div
+            className="card__header"
+            style={{
+              marginTop: "32px",
+              paddingTop: "24px",
+              borderTop: "1px solid var(--border)",
+            }}
+          >
             <div>
               <h2>Initial Organization Admin</h2>
-              <p className="muted-text">Optionally provision an initial administrator for this organization.</p>
+              <p className="muted-text">
+                Optionally provision an initial administrator for this
+                organization.
+              </p>
             </div>
           </div>
 
@@ -212,7 +236,16 @@ export default function OrganizationForm({
               />
             </FormField>
             {usernameTaken && (
-              <span className="field-hint field-hint--error" style={{ color: "var(--danger)", marginTop: "-10px", display: "block" }}>This username is already taken.</span>
+              <span
+                className="field-hint field-hint--error"
+                style={{
+                  color: "var(--danger)",
+                  marginTop: "-10px",
+                  display: "block",
+                }}
+              >
+                This username is already taken.
+              </span>
             )}
 
             <FormField label="Admin email" htmlFor="admin-email">
@@ -226,7 +259,16 @@ export default function OrganizationForm({
               />
             </FormField>
             {emailTaken && (
-              <span className="field-hint field-hint--error" style={{ color: "var(--danger)", marginTop: "-10px", display: "block" }}>This email is already taken.</span>
+              <span
+                className="field-hint field-hint--error"
+                style={{
+                  color: "var(--danger)",
+                  marginTop: "-10px",
+                  display: "block",
+                }}
+              >
+                This email is already taken.
+              </span>
             )}
 
             <FormField label="Full name" htmlFor="admin-fullname">
@@ -254,17 +296,31 @@ export default function OrganizationForm({
       )}
 
       <div className="form-actions" style={{ marginTop: "32px" }}>
-        <Button type="button" variant="ghost" size="md" onClick={onCancel} disabled={busy}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="md"
+          onClick={onCancel}
+          disabled={busy}
+        >
           Cancel
         </Button>
-        <Button type="submit" variant="primary" size="md" loading={busy} disabled={!isValid || busy}>
-          {busy ? (mode === "edit" ? "Saving…" : "Creating…") : mode === "edit" ? "Save changes" : "Create organization"}
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          loading={busy}
+          disabled={!isValid || busy}
+        >
+          {busy
+            ? mode === "edit"
+              ? "Saving…"
+              : "Creating…"
+            : mode === "edit"
+              ? "Save changes"
+              : "Create organization"}
         </Button>
       </div>
     </form>
   );
 }
-
-
-
-

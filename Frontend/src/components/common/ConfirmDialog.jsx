@@ -43,14 +43,26 @@ export default function ConfirmDialog({
   };
 
   return (
-    <div className="confirm-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+    <div
+      className="confirm-overlay"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cdlg-title"
+      >
         <div className="confirm-dialog-header">
-          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+          <div
+            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
+          >
             {icon}
           </div>
           <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-title" id="cdlg-title">
+              {title}
+            </div>
             <div className="confirm-dialog-subtitle">{subtitle}</div>
           </div>
         </div>
@@ -58,13 +70,25 @@ export default function ConfirmDialog({
         {warning && <div className="confirm-dialog-warning">{warning}</div>}
 
         <div className="confirm-dialog-footer">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button
             ref={confirmRef}
             type="button"
-            variant={confirmType === "danger" ? "danger" : confirmType === "info" ? "info" : "primary"}
+            variant={
+              confirmType === "danger"
+                ? "danger"
+                : confirmType === "info"
+                  ? "info"
+                  : "primary"
+            }
             size="sm"
             loading={busy}
             onClick={handleConfirm}

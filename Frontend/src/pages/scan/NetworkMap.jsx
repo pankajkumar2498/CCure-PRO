@@ -22,28 +22,28 @@ import "../../styles/NetworkMap.css";
 
 /* ── Node/Link configurations ────────────────────────────────────────────────── */
 const GROUP_COLORS = {
-  router:          { background: "#f87171", border: "#ef4444", font: "#fff" },
-  switch:          { background: "#60a5fa", border: "#3b82f6", font: "#fff" },
-  gateway:         { background: "#fca5a5", border: "#f87171", font: "#fff" },
-  firewall:        { background: "#fb923c", border: "#f97316", font: "#fff" },
-  wireless_ap:     { background: "#2dd4bf", border: "#14b8a6", font: "#fff" },
-  server:          { background: "#c084fc", border: "#a855f7", font: "#fff" },
-  workstation:     { background: "#818cf8", border: "#6366f1", font: "#fff" },
-  desktop:         { background: "#93c5fd", border: "#3b82f6", font: "#fff" },
-  laptop:          { background: "#f472b6", border: "#ec4899", font: "#fff" },
-  endpoint:        { background: "#a78bfa", border: "#8b5cf6", font: "#fff" },
-  printer:         { background: "#fbbf24", border: "#f59e0b", font: "#fff" },
-  camera:          { background: "#34d399", border: "#10b981", font: "#fff" },
-  iot:             { background: "#a3e635", border: "#84cc16", font: "#fff" },
-  plc:             { background: "#4ade80", border: "#22c55e", font: "#fff" },
-  rtu:             { background: "#a7f3d0", border: "#34d399", font: "#fff" },
-  storage:         { background: "#94a3b8", border: "#64748b", font: "#fff" },
+  router: { background: "#f87171", border: "#ef4444", font: "#fff" },
+  switch: { background: "#60a5fa", border: "#3b82f6", font: "#fff" },
+  gateway: { background: "#fca5a5", border: "#f87171", font: "#fff" },
+  firewall: { background: "#fb923c", border: "#f97316", font: "#fff" },
+  wireless_ap: { background: "#2dd4bf", border: "#14b8a6", font: "#fff" },
+  server: { background: "#c084fc", border: "#a855f7", font: "#fff" },
+  workstation: { background: "#818cf8", border: "#6366f1", font: "#fff" },
+  desktop: { background: "#93c5fd", border: "#3b82f6", font: "#fff" },
+  laptop: { background: "#f472b6", border: "#ec4899", font: "#fff" },
+  endpoint: { background: "#a78bfa", border: "#8b5cf6", font: "#fff" },
+  printer: { background: "#fbbf24", border: "#f59e0b", font: "#fff" },
+  camera: { background: "#34d399", border: "#10b981", font: "#fff" },
+  iot: { background: "#a3e635", border: "#84cc16", font: "#fff" },
+  plc: { background: "#4ade80", border: "#22c55e", font: "#fff" },
+  rtu: { background: "#a7f3d0", border: "#34d399", font: "#fff" },
+  storage: { background: "#94a3b8", border: "#64748b", font: "#fff" },
   virtual_machine: { background: "#e879f9", border: "#d946ef", font: "#fff" },
-  mobile:          { background: "#6ee7b7", border: "#10b981", font: "#fff" },
-  load_balancer:   { background: "#fda4af", border: "#f43f5e", font: "#fff" },
-  modem:           { background: "#22d3ee", border: "#06b6d4", font: "#fff" },
-  unknown:         { background: "#cbd5e1", border: "#94a3b8", font: "#fff" },
-  subnet:          { background: "#22d3ee", border: "#0891b2", font: "#fff" },
+  mobile: { background: "#6ee7b7", border: "#10b981", font: "#fff" },
+  load_balancer: { background: "#fda4af", border: "#f43f5e", font: "#fff" },
+  modem: { background: "#22d3ee", border: "#06b6d4", font: "#fff" },
+  unknown: { background: "#cbd5e1", border: "#94a3b8", font: "#fff" },
+  subnet: { background: "#22d3ee", border: "#0891b2", font: "#fff" },
 };
 
 // Stable SVG template strings for all 21 device categories
@@ -360,61 +360,63 @@ const SUBNET_SVG = `
 
 // Map of category ID to premium SVG string
 const CATEGORY_SVGS = {
-  router:          ROUTER_SVG,
-  switch:          SWITCH_SVG,
-  gateway:         GATEWAY_SVG,
-  firewall:        FIREWALL_SVG,
-  wireless_ap:     WIRELESS_AP_SVG,
-  server:          SERVER_SVG,
-  workstation:     WORKSTATION_SVG,
-  desktop:         DESKTOP_SVG,
-  laptop:          LAPTOP_SVG,
-  endpoint:        ENDPOINT_SVG,
-  printer:         PRINTER_SVG,
-  camera:          CAMERA_SVG,
-  iot:             IOT_SVG,
-  plc:             PLC_SVG,
-  rtu:             RTU_SVG,
-  storage:         STORAGE_SVG,
+  router: ROUTER_SVG,
+  switch: SWITCH_SVG,
+  gateway: GATEWAY_SVG,
+  firewall: FIREWALL_SVG,
+  wireless_ap: WIRELESS_AP_SVG,
+  server: SERVER_SVG,
+  workstation: WORKSTATION_SVG,
+  desktop: DESKTOP_SVG,
+  laptop: LAPTOP_SVG,
+  endpoint: ENDPOINT_SVG,
+  printer: PRINTER_SVG,
+  camera: CAMERA_SVG,
+  iot: IOT_SVG,
+  plc: PLC_SVG,
+  rtu: RTU_SVG,
+  storage: STORAGE_SVG,
   virtual_machine: VIRTUAL_MACHINE_SVG,
-  mobile:          MOBILE_SVG,
-  load_balancer:   LOAD_BALANCER_SVG,
-  modem:           MODEM_SVG,
-  unknown:         UNKNOWN_SVG,
-  subnet:          SUBNET_SVG,
+  mobile: MOBILE_SVG,
+  load_balancer: LOAD_BALANCER_SVG,
+  modem: MODEM_SVG,
+  unknown: UNKNOWN_SVG,
+  subnet: SUBNET_SVG,
 };
 
-const getSvgDataUrl = (svgStr) => `data:image/svg+xml;base64,${window.btoa(svgStr.trim())}`;
+const getSvgDataUrl = (svgStr) =>
+  `data:image/svg+xml;base64,${window.btoa(svgStr.trim())}`;
 
 const CATEGORY_LABELS = {
-  router:          "Router",
-  switch:          "Switch",
-  gateway:         "Gateway",
-  firewall:        "Firewall",
-  wireless_ap:     "Wireless AP",
-  server:          "Server",
-  workstation:     "Workstation",
-  desktop:         "Desktop PC",
-  laptop:          "Laptop",
-  endpoint:        "Endpoint",
-  printer:         "Printer",
-  camera:          "IP Camera",
-  iot:             "IoT Device",
-  plc:             "PLC",
-  rtu:             "RTU",
-  storage:         "NAS / Storage",
+  router: "Router",
+  switch: "Switch",
+  gateway: "Gateway",
+  firewall: "Firewall",
+  wireless_ap: "Wireless AP",
+  server: "Server",
+  workstation: "Workstation",
+  desktop: "Desktop PC",
+  laptop: "Laptop",
+  endpoint: "Endpoint",
+  printer: "Printer",
+  camera: "IP Camera",
+  iot: "IoT Device",
+  plc: "PLC",
+  rtu: "RTU",
+  storage: "NAS / Storage",
   virtual_machine: "Virtual Machine",
-  mobile:          "Mobile Device",
-  load_balancer:   "Load Balancer",
-  modem:           "Modem",
-  unknown:         "Unknown Device",
-  host:            "Host",
+  mobile: "Mobile Device",
+  load_balancer: "Load Balancer",
+  modem: "Modem",
+  unknown: "Unknown Device",
+  host: "Host",
 };
 
 /** Format bits-per-second into a human-readable speed string. */
 const formatSpeed = (bps) => {
   if (!bps || bps <= 0) return null;
-  if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(bps % 1_000_000_000 === 0 ? 0 : 1)} Gbps`;
+  if (bps >= 1_000_000_000)
+    return `${(bps / 1_000_000_000).toFixed(bps % 1_000_000_000 === 0 ? 0 : 1)} Gbps`;
   if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(0)} Mbps`;
   if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`;
   return `${bps} bps`;
@@ -427,7 +429,7 @@ export default function NetworkMap() {
   const scanId = paramScanId || searchParams.get("scan_id") || null;
 
   const containerRef = useRef(null);
-  const networkRef   = useRef(null);
+  const networkRef = useRef(null);
 
   // Raw data from API
   const allNodesRef = useRef([]);
@@ -439,7 +441,12 @@ export default function NetworkMap() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [stats, setStats] = useState({ nodes: 0, edges: 0, subnets: 0, hosts: 0 });
+  const [stats, setStats] = useState({
+    nodes: 0,
+    edges: 0,
+    subnets: 0,
+    hosts: 0,
+  });
 
   // Sidebar / Control States
   const [subnets, setSubnets] = useState([]);
@@ -470,19 +477,20 @@ export default function NetworkMap() {
       const url = `${baseUrl}?subnet_mask=${subnetMask}`;
       const { data } = await api.get(url);
       if (!data.success) throw new Error("Failed to load topology data");
-      
+
       allNodesRef.current = data.nodes || [];
       allEdgesRef.current = data.edges || [];
       setSubnets(data.subnets || []);
 
       setStats({
-        nodes: (data.nodes || []).filter(n => n.tier !== "host").length,
+        nodes: (data.nodes || []).filter((n) => n.tier !== "host").length,
         edges: (data.edges || []).length,
         subnets: (data.subnets || []).length,
-        hosts: data.stats?.hosts || 0
+        hosts: data.stats?.hosts || 0,
       });
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || "Failed to load topology";
+      const msg =
+        err.response?.data?.detail || err.message || "Failed to load topology";
       setError(msg);
     } finally {
       setLoading(false);
@@ -519,8 +527,12 @@ export default function NetworkMap() {
           node.source_port_desc,
           node.link_type,
           node.vlan_id ? String(node.vlan_id) : "",
-          node.speed_bps ? formatSpeed(node.speed_bps) : ""
-        ].some((value) => String(value || "").toLowerCase().includes(query));
+          node.speed_bps ? formatSpeed(node.speed_bps) : "",
+        ].some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(query),
+        );
       });
   }, [selectedNode, endpointSearch]);
 
@@ -533,10 +545,16 @@ export default function NetworkMap() {
     const nodes = allNodesRef.current || [];
     const edges = allEdgesRef.current || [];
     const hostNodes = nodes.filter((node) => node.tier === "host");
-    const macOnly = hostNodes.filter((node) => isMacOnlySubnet(node.subnet)).length;
+    const macOnly = hostNodes.filter((node) =>
+      isMacOnlySubnet(node.subnet),
+    ).length;
     const ipResolved = hostNodes.filter((node) => node.ip).length;
-    const sources = new Set(hostNodes.map((node) => node.source_mac).filter(Boolean));
-    const linkTypes = new Set(edges.map((edge) => edge.link_type).filter(Boolean));
+    const sources = new Set(
+      hostNodes.map((node) => node.source_mac).filter(Boolean),
+    );
+    const linkTypes = new Set(
+      edges.map((edge) => edge.link_type).filter(Boolean),
+    );
     return {
       macOnly,
       ipResolved,
@@ -554,8 +572,14 @@ export default function NetworkMap() {
           title: "🚀 Run ARP-enabled Scan",
           content: (
             <div>
-              <p>To resolve MAC addresses to IP addresses, configure a new scan targeting your network subnets with SNMP enabled.</p>
-              <p style={{ marginTop: "12px" }}>Ensure you select <strong>🗺️ Network Topology (SNMP)</strong> during setup and specify your router credentials.</p>
+              <p>
+                To resolve MAC addresses to IP addresses, configure a new scan
+                targeting your network subnets with SNMP enabled.
+              </p>
+              <p style={{ marginTop: "12px" }}>
+                Ensure you select <strong>🗺️ Network Topology (SNMP)</strong>{" "}
+                during setup and specify your router credentials.
+              </p>
             </div>
           ),
           actionUrl: "/scan/new",
@@ -567,8 +591,15 @@ export default function NetworkMap() {
           title: "🔌 Add SNMP target",
           content: (
             <div>
-              <p>Add the default gateway router IP to your SNMP targets. The topology engine queries the gateway's ARP table to associate MAC addresses with their host IP addresses.</p>
-              <p style={{ marginTop: "12px" }}>Go to the scan setup screen to add your network router IPs as scan targets.</p>
+              <p>
+                Add the default gateway router IP to your SNMP targets. The
+                topology engine queries the gateway's ARP table to associate MAC
+                addresses with their host IP addresses.
+              </p>
+              <p style={{ marginTop: "12px" }}>
+                Go to the scan setup screen to add your network router IPs as
+                scan targets.
+              </p>
             </div>
           ),
           actionUrl: "/scan/new",
@@ -580,12 +611,21 @@ export default function NetworkMap() {
           title: "🔍 Enable ARP Table Collection",
           content: (
             <div>
-              <p>ARP (Address Resolution Protocol) mappings are critical to connect L2 physical switchports to L3 IP networks.</p>
+              <p>
+                ARP (Address Resolution Protocol) mappings are critical to
+                connect L2 physical switchports to L3 IP networks.
+              </p>
               <p style={{ marginTop: "12px" }}>To resolve this:</p>
               <ol style={{ paddingLeft: "20px", marginTop: "8px" }}>
                 <li>Configure your gateway router to allow SNMP access.</li>
-                <li>Ensure the router's SNMP configuration allows access to the standard IP-MIB ARP table (OID <code>1.3.6.1.2.1.4.22</code>).</li>
-                <li>Add the router IP address as a target in your next scan with corresponding SNMP credentials.</li>
+                <li>
+                  Ensure the router's SNMP configuration allows access to the
+                  standard IP-MIB ARP table (OID <code>1.3.6.1.2.1.4.22</code>).
+                </li>
+                <li>
+                  Add the router IP address as a target in your next scan with
+                  corresponding SNMP credentials.
+                </li>
               </ol>
             </div>
           ),
@@ -596,11 +636,31 @@ export default function NetworkMap() {
           title: "🌐 Enable LLDP/CDP Link Discovery",
           content: (
             <div>
-              <p>Physical topology mapping depends on Link Layer Discovery Protocol (LLDP) or Cisco Discovery Protocol (CDP) to discover neighbor links between managed switches.</p>
-              <p style={{ marginTop: "12px" }}>How to enable this on your infrastructure:</p>
-              <ul style={{ paddingLeft: "20px", marginTop: "8px", listStyleType: "disc" }}>
-                <li><strong>Cisco Switches/Routers:</strong> Enter global configuration mode and execute <code>cdp run</code> or <code>lldp run</code>.</li>
-                <li><strong>Other Managed Switches:</strong> Log in to your switch administration portal and enable LLDP globally and on all uplink/downlink trunk ports.</li>
+              <p>
+                Physical topology mapping depends on Link Layer Discovery
+                Protocol (LLDP) or Cisco Discovery Protocol (CDP) to discover
+                neighbor links between managed switches.
+              </p>
+              <p style={{ marginTop: "12px" }}>
+                How to enable this on your infrastructure:
+              </p>
+              <ul
+                style={{
+                  paddingLeft: "20px",
+                  marginTop: "8px",
+                  listStyleType: "disc",
+                }}
+              >
+                <li>
+                  <strong>Cisco Switches/Routers:</strong> Enter global
+                  configuration mode and execute <code>cdp run</code> or{" "}
+                  <code>lldp run</code>.
+                </li>
+                <li>
+                  <strong>Other Managed Switches:</strong> Log in to your switch
+                  administration portal and enable LLDP globally and on all
+                  uplink/downlink trunk ports.
+                </li>
               </ul>
             </div>
           ),
@@ -611,8 +671,16 @@ export default function NetworkMap() {
           title: "📋 Correlate with Asset Inventory",
           content: (
             <div>
-              <p>Some endpoints are listed as MAC-only because they haven't been resolved to active IP addresses or matched with registered corporate assets.</p>
-              <p style={{ marginTop: "12px" }}>Ensure these devices are properly registered in your asset management system, or run a credentialed scan to automatically match active hosts.</p>
+              <p>
+                Some endpoints are listed as MAC-only because they haven't been
+                resolved to active IP addresses or matched with registered
+                corporate assets.
+              </p>
+              <p style={{ marginTop: "12px" }}>
+                Ensure these devices are properly registered in your asset
+                management system, or run a credentialed scan to automatically
+                match active hosts.
+              </p>
             </div>
           ),
           actionUrl: "/assets",
@@ -625,73 +693,108 @@ export default function NetworkMap() {
   }, []);
 
   // Subnet expand/collapse logic
-  const formatNode = useCallback((n) => {
-    if (n.tier === "subnet") {
-      const isExpanded = expandedSubnetsRef.current.has(n.id);
-      const isMacOnly = isMacOnlySubnet(n.subnet);
-      
+  const formatNode = useCallback(
+    (n) => {
+      if (n.tier === "subnet") {
+        const isExpanded = expandedSubnetsRef.current.has(n.id);
+        const isMacOnly = isMacOnlySubnet(n.subnet);
+
+        return {
+          id: n.id,
+          label: isMacOnly
+            ? `MAC-only endpoints\n${n.host_count} devices`
+            : isExpanded
+              ? n.subnet
+              : `${n.subnet}\n(${n.host_count} hosts)`,
+          shape: "image",
+          image: getSvgDataUrl(SUBNET_SVG),
+          size: isMacOnly ? 42 : 36,
+          font: {
+            color: "#22d3ee",
+            size: 11,
+            bold: true,
+            face: "Inter, sans-serif",
+            strokeWidth: 3,
+            strokeColor: "#0f172a",
+            vadjust: 34,
+          },
+          level: 2,
+          title: isMacOnly
+            ? `MAC-only endpoint cluster\nDevices: ${n.host_count}\nClick to inspect evidence`
+            : `${n.subnet}\nHosts: ${n.host_count}\nClick node to ${isExpanded ? "collapse" : "expand"}`,
+          _data: n,
+        };
+      }
+
+      const group = n.group || "unknown";
+      const nodeImage = getSvgDataUrl(
+        CATEGORY_SVGS[group] || CATEGORY_SVGS.unknown,
+      );
+      const themeColor = GROUP_COLORS[group]?.border || "#cbd5e1";
+
+      if (n.tier === "host") {
+        return {
+          id: n.id,
+          label: n.label || n.ip || n.id,
+          shape: "image",
+          image: nodeImage,
+          size: 26,
+          font: {
+            color: "#cbd5e1",
+            size: 9,
+            face: "Inter, sans-serif",
+            strokeWidth: 2,
+            strokeColor: "#0f172a",
+            vadjust: 26,
+          },
+          level: 3,
+          title: `Host: ${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nSubnet: ${n.subnet || "—"}\nType: ${group}`,
+          _data: n,
+        };
+      }
+
+      // Dynamic infrastructure node formatting (routers, switches, gateways, firewalls, etc.)
+      let nodeSize = 34;
+      let nodeLevel = 1;
+
+      if (group === "router" || group === "gateway") {
+        nodeSize = 42;
+        nodeLevel = 0;
+      } else if (
+        group === "switch" ||
+        group === "firewall" ||
+        group === "load_balancer" ||
+        group === "modem"
+      ) {
+        nodeSize = 38;
+        nodeLevel = 1;
+      } else {
+        nodeSize = 34;
+        nodeLevel = 2; // servers / storage / virtual machines / etc.
+      }
+
       return {
         id: n.id,
-        label: isMacOnly
-          ? `MAC-only endpoints\n${n.host_count} devices`
-          : (isExpanded ? n.subnet : `${n.subnet}\n(${n.host_count} hosts)`),
-        shape: "image",
-        image: getSvgDataUrl(SUBNET_SVG),
-        size: isMacOnly ? 42 : 36,
-        font: { color: "#22d3ee", size: 11, bold: true, face: "Inter, sans-serif", strokeWidth: 3, strokeColor: "#0f172a", vadjust: 34 },
-        level: 2,
-        title: isMacOnly
-          ? `MAC-only endpoint cluster\nDevices: ${n.host_count}\nClick to inspect evidence`
-          : `${n.subnet}\nHosts: ${n.host_count}\nClick node to ${isExpanded ? 'collapse' : 'expand'}`,
-        _data: n,
-      };
-    }
-
-    const group = n.group || "unknown";
-    const nodeImage = getSvgDataUrl(CATEGORY_SVGS[group] || CATEGORY_SVGS.unknown);
-    const themeColor = GROUP_COLORS[group]?.border || "#cbd5e1";
-
-    if (n.tier === "host") {
-      return {
-        id: n.id,
-        label: n.label || n.ip || n.id,
+        label: n.label || n.ip || n.mac,
         shape: "image",
         image: nodeImage,
-        size: 26,
-        font: { color: "#cbd5e1", size: 9, face: "Inter, sans-serif", strokeWidth: 2, strokeColor: "#0f172a", vadjust: 26 },
-        level: 3,
-        title: `Host: ${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nSubnet: ${n.subnet || "—"}\nType: ${group}`,
+        font: {
+          color: themeColor,
+          size: 13,
+          bold: true,
+          face: "Inter, sans-serif",
+          strokeWidth: 3,
+          strokeColor: "#0f172a",
+          vadjust: 36,
+        },
+        size: nodeSize,
+        level: nodeLevel,
+        title: `${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nType: ${group}`,
         _data: n,
       };
-    }
-
-    // Dynamic infrastructure node formatting (routers, switches, gateways, firewalls, etc.)
-    let nodeSize = 34;
-    let nodeLevel = 1;
-
-    if (group === "router" || group === "gateway") {
-      nodeSize = 42;
-      nodeLevel = 0;
-    } else if (group === "switch" || group === "firewall" || group === "load_balancer" || group === "modem") {
-      nodeSize = 38;
-      nodeLevel = 1;
-    } else {
-      nodeSize = 34;
-      nodeLevel = 2; // servers / storage / virtual machines / etc.
-    }
-
-    return {
-      id: n.id,
-      label: n.label || n.ip || n.mac,
-      shape: "image",
-      image: nodeImage,
-      font: { color: themeColor, size: 13, bold: true, face: "Inter, sans-serif", strokeWidth: 3, strokeColor: "#0f172a", vadjust: 36 },
-      size: nodeSize,
-      level: nodeLevel,
-      title: `${n.label}\nIP: ${n.ip || "—"}\nMAC: ${n.mac || "—"}\nType: ${group}`,
-      _data: n,
-    };
-  }, [isMacOnlySubnet]);
+    },
+    [isMacOnlySubnet],
+  );
 
   /* ── Filter / Sync Viewable Graph ─────────────────────────────────────────── */
   const syncGraphView = useCallback(() => {
@@ -699,26 +802,29 @@ export default function NetworkMap() {
 
     // Filter subnets out
     const visibleSubnetNodes = allNodesRef.current.filter(
-      n => n.tier === "subnet" && !filteredSubnetsRef.current.has(n.subnet)
+      (n) => n.tier === "subnet" && !filteredSubnetsRef.current.has(n.subnet),
     );
 
-    const visibleInfraNodes = allNodesRef.current.filter(n => n.tier === "infra");
+    const visibleInfraNodes = allNodesRef.current.filter(
+      (n) => n.tier === "infra",
+    );
 
     // Auto-expand subnets if there is an active search query matching their children
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const subnetsToExpand = new Set();
-      allNodesRef.current.forEach(n => {
+      allNodesRef.current.forEach((n) => {
         if (n.tier === "host" && n.subnet && !isMacOnlySubnet(n.subnet)) {
-          const match = (n.label || "").toLowerCase().includes(q) ||
-                        (n.ip || "").toLowerCase().includes(q) ||
-                        (n.mac || "").toLowerCase().includes(q);
+          const match =
+            (n.label || "").toLowerCase().includes(q) ||
+            (n.ip || "").toLowerCase().includes(q) ||
+            (n.mac || "").toLowerCase().includes(q);
           if (match) {
             subnetsToExpand.add(`subnet:${n.subnet}`);
           }
         }
       });
-      subnetsToExpand.forEach(sId => {
+      subnetsToExpand.forEach((sId) => {
         expandedSubnetsRef.current.add(sId);
       });
       // Synchronize back to react state to update buttons
@@ -726,33 +832,40 @@ export default function NetworkMap() {
     }
 
     // Reconstruct list of nodes
-    const finalNodes = [...visibleInfraNodes, ...visibleSubnetNodes].map(formatNode);
+    const finalNodes = [...visibleInfraNodes, ...visibleSubnetNodes].map(
+      formatNode,
+    );
 
     // Get current expanded subnets that are still visible
-    const activeExpanded = Array.from(expandedSubnetsRef.current).filter(sNodeId => {
-      const sub = sNodeId.replace("subnet:", "");
-      return !filteredSubnetsRef.current.has(sub) && !isMacOnlySubnet(sub);
-    });
+    const activeExpanded = Array.from(expandedSubnetsRef.current).filter(
+      (sNodeId) => {
+        const sub = sNodeId.replace("subnet:", "");
+        return !filteredSubnetsRef.current.has(sub) && !isMacOnlySubnet(sub);
+      },
+    );
 
     const activeHosts = [];
     const activeHostEdges = [];
 
-    activeExpanded.forEach(sNodeId => {
+    activeExpanded.forEach((sNodeId) => {
       const subnetStr = sNodeId.replace("subnet:", "");
       let subnetHosts = allNodesRef.current.filter(
-        n => n.tier === "host" && n.subnet === subnetStr
+        (n) => n.tier === "host" && n.subnet === subnetStr,
       );
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         subnetHosts = subnetHosts.filter(
-          h => (h.label || "").toLowerCase().includes(q) || (h.ip || "").toLowerCase().includes(q) || (h.mac || "").toLowerCase().includes(q)
+          (h) =>
+            (h.label || "").toLowerCase().includes(q) ||
+            (h.ip || "").toLowerCase().includes(q) ||
+            (h.mac || "").toLowerCase().includes(q),
         );
       }
 
       // Limit to 50 hosts maximum for performance
       const capped = subnetHosts.slice(0, 50);
-      capped.forEach(h => {
+      capped.forEach((h) => {
         activeHosts.push(formatNode(h));
         activeHostEdges.push({
           id: `edge:host:${h.id}`,
@@ -760,7 +873,7 @@ export default function NetworkMap() {
           to: h.id,
           color: { color: "#475569" },
           width: 1,
-          smooth: { type: "continuous" }
+          smooth: { type: "continuous" },
         });
       });
     });
@@ -772,7 +885,7 @@ export default function NetworkMap() {
     // Build edges (infra-to-infra and infra-to-subnet)
     const validNodeIds = new Set(dsNodesRef.current.getIds());
     const visibleEdges = allEdgesRef.current
-      .filter(e => {
+      .filter((e) => {
         if (!validNodeIds.has(e.from)) return false;
         if (!validNodeIds.has(e.to)) return false;
         return true;
@@ -785,7 +898,10 @@ export default function NetworkMap() {
           thickness = Math.max(1.5, Math.min(8, Math.log(hostCount + 1) * 1.8));
         } else if (e.speed_bps) {
           // Scale: 100Mbps=2, 1Gbps=3, 10Gbps=5
-          thickness = Math.max(2, Math.min(6, Math.log10(e.speed_bps / 100_000_000 + 1) * 2.5 + 2));
+          thickness = Math.max(
+            2,
+            Math.min(6, Math.log10(e.speed_bps / 100_000_000 + 1) * 2.5 + 2),
+          );
         } else {
           thickness = 2.5;
         }
@@ -813,16 +929,20 @@ export default function NetworkMap() {
           label: e.label || "",
           width: thickness,
           color: {
-            color: e.link_type === "lldp" ? "#3b82f6"
-                 : e.link_type === "cdp" ? "#f59e0b"
-                 : e.link_type === "arp" ? "#06b6d4"
-                 : "#475569",
-            highlight: "#60a5fa"
+            color:
+              e.link_type === "lldp"
+                ? "#3b82f6"
+                : e.link_type === "cdp"
+                  ? "#f59e0b"
+                  : e.link_type === "arp"
+                    ? "#06b6d4"
+                    : "#475569",
+            highlight: "#60a5fa",
           },
           dashes: e.speed_bps && e.speed_bps < 100_000_000 ? [5, 5] : false,
           smooth: { type: "continuous" },
           font: { size: 9, color: "var(--text-faint)", strokeWidth: 0 },
-          title: hoverTitle
+          title: hoverTitle,
         };
       });
 
@@ -830,25 +950,31 @@ export default function NetworkMap() {
     dsEdgesRef.current.add([...visibleEdges, ...activeHostEdges]);
 
     // Update displayed node stats count
-    setStats(prev => ({
+    setStats((prev) => ({
       ...prev,
       nodes: dsNodesRef.current.length,
-      edges: dsEdgesRef.current.length
+      edges: dsEdgesRef.current.length,
     }));
   }, [searchQuery, formatNode, isMacOnlySubnet]);
 
   /* ── Subnet Expand / Collapse Logic ────────────────────────────────────────── */
-  const expandSubnet = useCallback((subnetNodeId) => {
-    expandedSubnetsRef.current.add(subnetNodeId);
-    setExpandedSubnets(new Set(expandedSubnetsRef.current));
-    syncGraphView();
-  }, [syncGraphView]);
+  const expandSubnet = useCallback(
+    (subnetNodeId) => {
+      expandedSubnetsRef.current.add(subnetNodeId);
+      setExpandedSubnets(new Set(expandedSubnetsRef.current));
+      syncGraphView();
+    },
+    [syncGraphView],
+  );
 
-  const collapseSubnet = useCallback((subnetNodeId) => {
-    expandedSubnetsRef.current.delete(subnetNodeId);
-    setExpandedSubnets(new Set(expandedSubnetsRef.current));
-    syncGraphView();
-  }, [syncGraphView]);
+  const collapseSubnet = useCallback(
+    (subnetNodeId) => {
+      expandedSubnetsRef.current.delete(subnetNodeId);
+      setExpandedSubnets(new Set(expandedSubnetsRef.current));
+      syncGraphView();
+    },
+    [syncGraphView],
+  );
 
   /* ── Search Apply ────────────────────────────────────────────────────────── */
   const handleSearchChange = (e) => {
@@ -861,7 +987,13 @@ export default function NetworkMap() {
 
   /* ── Initialise vis-network canvas ────────────────────────────────────────── */
   useEffect(() => {
-    if (loading || error || !allNodesRef.current.length || !containerRef.current) return;
+    if (
+      loading ||
+      error ||
+      !allNodesRef.current.length ||
+      !containerRef.current
+    )
+      return;
 
     const initNetwork = () => {
       try {
@@ -881,8 +1013,8 @@ export default function NetworkMap() {
               color: "rgba(0, 0, 0, 0.4)",
               size: 6,
               x: 0,
-              y: 4
-            }
+              y: 4,
+            },
           },
           layout: {
             hierarchical: {
@@ -894,8 +1026,8 @@ export default function NetworkMap() {
               treeSpacing: 220,
               blockShifting: true,
               edgeMinimization: true,
-              parentCentralization: true
-            }
+              parentCentralization: true,
+            },
           },
           physics: {
             enabled: !isHierarchical,
@@ -905,13 +1037,13 @@ export default function NetworkMap() {
               springLength: 90,
               springConstant: 0.04,
               damping: 0.09,
-              avoidOverlap: 1
+              avoidOverlap: 1,
             },
             stabilization: {
               enabled: true,
               iterations: 150,
-              updateInterval: 25
-            }
+              updateInterval: 25,
+            },
           },
           interaction: {
             hover: true,
@@ -919,7 +1051,7 @@ export default function NetworkMap() {
             zoomView: true,
             dragView: true,
             navigationButtons: true,
-          }
+          },
         };
 
         if (networkRef.current) {
@@ -929,13 +1061,15 @@ export default function NetworkMap() {
         const network = new Network(
           containerRef.current,
           { nodes: dsNodesRef.current, edges: dsEdgesRef.current },
-          options
+          options,
         );
         networkRef.current = network;
 
         setTimeout(() => {
           if (networkRef.current) {
-            networkRef.current.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+            networkRef.current.fit({
+              animation: { duration: 400, easingFunction: "easeInOutQuad" },
+            });
           }
         }, 300);
 
@@ -964,7 +1098,6 @@ export default function NetworkMap() {
             setSelectedNode(null);
           }
         });
-
       } catch (err) {
         console.error("Failed to load vis-network:", err);
         setError("Failed to load network engine.");
@@ -1014,14 +1147,20 @@ export default function NetworkMap() {
   };
 
   const handleExpandAll = () => {
-    const visibleSubnets = subnets.filter(s => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s));
+    const visibleSubnets = subnets.filter(
+      (s) => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s),
+    );
     if (visibleSubnets.length > 15) {
-      if (!window.confirm("Expanding more than 15 subnets simultaneously may slow down the view. Continue?")) {
+      if (
+        !window.confirm(
+          "Expanding more than 15 subnets simultaneously may slow down the view. Continue?",
+        )
+      ) {
         return;
       }
     }
     const nextExpanded = new Set(expandedSubnetsRef.current);
-    visibleSubnets.forEach(s => {
+    visibleSubnets.forEach((s) => {
       nextExpanded.add(`subnet:${s}`);
     });
     expandedSubnetsRef.current = nextExpanded;
@@ -1037,15 +1176,15 @@ export default function NetworkMap() {
 
   const legendItems = useMemo(() => {
     const activeGroups = new Set();
-    allNodesRef.current.forEach(node => {
+    allNodesRef.current.forEach((node) => {
       if (node.tier === "infra" || node.tier === "host") {
         activeGroups.add(node.group || "endpoint");
       }
     });
     return Array.from(activeGroups)
-      .map(g => ({
+      .map((g) => ({
         group: g,
-        label: CATEGORY_LABELS[g] || g.charAt(0).toUpperCase() + g.slice(1)
+        label: CATEGORY_LABELS[g] || g.charAt(0).toUpperCase() + g.slice(1),
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [allNodesRef.current]);
@@ -1064,14 +1203,19 @@ export default function NetworkMap() {
           <div className="nmap-header-actions">
             <div className="nmap-stats">
               <span className="nmap-stat">
-                <span className="nmap-stat-num">{stats.nodes}</span> Visible Nodes
+                <span className="nmap-stat-num">{stats.nodes}</span> Visible
+                Nodes
               </span>
               <span className="nmap-stat-divider">•</span>
               <span className="nmap-stat">
                 <span className="nmap-stat-num">{stats.hosts}</span> Total Hosts
               </span>
             </div>
-            <button className="nmap-btn nmap-btn--refresh" onClick={fetchTopology} disabled={loading}>
+            <button
+              className="nmap-btn nmap-btn--refresh"
+              onClick={fetchTopology}
+              disabled={loading}
+            >
               {loading ? "Syncing..." : "↻ Refresh"}
             </button>
           </div>
@@ -1080,16 +1224,28 @@ export default function NetworkMap() {
         {/* Global Controls Panel */}
         <div className="nmap-controls-bar">
           <div className="nmap-controls-left">
-            <button className="nmap-control-btn" onClick={handleFit} title="Fit Entire Network View">
+            <button
+              className="nmap-control-btn"
+              onClick={handleFit}
+              title="Fit Entire Network View"
+            >
               🔍 Fit Screen
             </button>
-            <button className="nmap-control-btn" onClick={handleExpandAll} title="Expand All Visible Subnets">
+            <button
+              className="nmap-control-btn"
+              onClick={handleExpandAll}
+              title="Expand All Visible Subnets"
+            >
               📂 Expand All
             </button>
-            <button className="nmap-control-btn" onClick={handleCollapseAll} title="Collapse All Subnets">
+            <button
+              className="nmap-control-btn"
+              onClick={handleCollapseAll}
+              title="Collapse All Subnets"
+            >
               📁 Collapse All
             </button>
-            
+
             {/* Configurable Subnet size selection */}
             <div className="nmap-control-select-group">
               <span className="nmap-control-select-label">Subnet Mask:</span>
@@ -1131,31 +1287,51 @@ export default function NetworkMap() {
           </div>
         </div>
 
-        <div className="nmap-quality-strip" role="status" aria-label="Topology data quality summary">
+        <div
+          className="nmap-quality-strip"
+          role="status"
+          aria-label="Topology data quality summary"
+        >
           <div className="nmap-quality-item">
-            <span className="nmap-quality-value">{topologyQuality.macOnly}</span>
+            <span className="nmap-quality-value">
+              {topologyQuality.macOnly}
+            </span>
             <span className="nmap-quality-label">MAC-only endpoints</span>
           </div>
           <div className="nmap-quality-item">
-            <span className="nmap-quality-value">{topologyQuality.ipResolved}</span>
+            <span className="nmap-quality-value">
+              {topologyQuality.ipResolved}
+            </span>
             <span className="nmap-quality-label">IPs resolved</span>
           </div>
           <div className="nmap-quality-item">
-            <span className="nmap-quality-value">{topologyQuality.sources}</span>
+            <span className="nmap-quality-value">
+              {topologyQuality.sources}
+            </span>
             <span className="nmap-quality-label">Topology sources</span>
           </div>
-          <div className={`nmap-quality-pill ${topologyQuality.hasArp ? "is-good" : "is-warn"}`}>
+          <div
+            className={`nmap-quality-pill ${topologyQuality.hasArp ? "is-good" : "is-warn"}`}
+          >
             {topologyQuality.hasArp ? "ARP present" : "ARP missing"}
           </div>
-          <div className={`nmap-quality-pill ${topologyQuality.hasLldpOrCdp ? "is-good" : "is-warn"}`}>
-            {topologyQuality.hasLldpOrCdp ? "LLDP/CDP present" : "LLDP/CDP unavailable"}
+          <div
+            className={`nmap-quality-pill ${topologyQuality.hasLldpOrCdp ? "is-good" : "is-warn"}`}
+          >
+            {topologyQuality.hasLldpOrCdp
+              ? "LLDP/CDP present"
+              : "LLDP/CDP unavailable"}
           </div>
         </div>
 
         {/* Main content layout */}
         <div className="nmap-body">
           {/* Graph canvas */}
-          <div className="nmap-graph-wrapper" role="region" aria-label="Interactive Topology Map View">
+          <div
+            className="nmap-graph-wrapper"
+            role="region"
+            aria-label="Interactive Topology Map View"
+          >
             {loading && (
               <div className="nmap-loading">
                 <div className="nmap-spinner" />
@@ -1166,7 +1342,11 @@ export default function NetworkMap() {
               <div className="nmap-error">
                 <span className="nmap-error-icon">⚠️</span>
                 <span>{error}</span>
-                <button className="nmap-btn nmap-btn--retry" onClick={fetchTopology} aria-label="Retry loading network topology map">
+                <button
+                  className="nmap-btn nmap-btn--retry"
+                  onClick={fetchTopology}
+                  aria-label="Retry loading network topology map"
+                >
                   Retry
                 </button>
               </div>
@@ -1175,28 +1355,56 @@ export default function NetworkMap() {
               <div className="nmap-empty">
                 <span className="nmap-empty-icon">🔍</span>
                 <h3>No Network Nodes Discovered</h3>
-                <p>Run a network scan configured with SNMP to view the device hierarchy.</p>
+                <p>
+                  Run a network scan configured with SNMP to view the device
+                  hierarchy.
+                </p>
               </div>
             )}
             <div
               ref={containerRef}
               className="nmap-canvas"
-              style={{ display: loading || error || allNodesRef.current.length === 0 ? "none" : "block" }}
+              style={{
+                display:
+                  loading || error || allNodesRef.current.length === 0
+                    ? "none"
+                    : "block",
+              }}
             />
           </div>
 
           {/* Sidebar for Filters & Detail Display */}
-          <div className="nmap-sidebar" role="complementary" aria-label="Topology controls and metadata sidebar">
+          <div
+            className="nmap-sidebar"
+            role="complementary"
+            aria-label="Topology controls and metadata sidebar"
+          >
             {/* Subnet Filtering Checkboxes */}
             <div className="nmap-filter-card">
               <h3 className="nmap-legend-title">Subnets ({subnets.length})</h3>
               <div className="nmap-filter-actions">
-                <button onClick={selectAllSubnets} className="nmap-filter-link" aria-label="Select all subnets to view on graph">Select All</button>
+                <button
+                  onClick={selectAllSubnets}
+                  className="nmap-filter-link"
+                  aria-label="Select all subnets to view on graph"
+                >
+                  Select All
+                </button>
                 <span className="nmap-filter-divider">|</span>
-                <button onClick={deselectAllSubnets} className="nmap-filter-link" aria-label="Deselect and hide all subnets on graph">Clear</button>
+                <button
+                  onClick={deselectAllSubnets}
+                  className="nmap-filter-link"
+                  aria-label="Deselect and hide all subnets on graph"
+                >
+                  Clear
+                </button>
               </div>
-              <div className="nmap-subnet-list" role="group" aria-label="Subnet filter list checkbox elements">
-                {subnets.map(subnet => (
+              <div
+                className="nmap-subnet-list"
+                role="group"
+                aria-label="Subnet filter list checkbox elements"
+              >
+                {subnets.map((subnet) => (
                   <label key={subnet} className="nmap-subnet-checkbox-item">
                     <input
                       type="checkbox"
@@ -1217,7 +1425,10 @@ export default function NetworkMap() {
                 <div key={item.group} className="nmap-legend-item">
                   <span
                     className="nmap-legend-dot"
-                    style={{ background: GROUP_COLORS[item.group]?.background || "#64748b" }}
+                    style={{
+                      background:
+                        GROUP_COLORS[item.group]?.background || "#64748b",
+                    }}
                   />
                   <span className="nmap-legend-label">{item.label}</span>
                 </div>
@@ -1240,55 +1451,80 @@ export default function NetworkMap() {
                   {selectedNode.mac && (
                     <div className="nmap-detail-row">
                       <span className="nmap-detail-key">MAC</span>
-                      <span className="nmap-detail-val" style={{ fontFamily: "var(--mono)" }}>
+                      <span
+                        className="nmap-detail-val"
+                        style={{ fontFamily: "var(--mono)" }}
+                      >
                         {selectedNode.mac}
                       </span>
                     </div>
                   )}
                   <div className="nmap-detail-row">
                     <span className="nmap-detail-key">Tier</span>
-                    <span className="nmap-detail-val" style={{ textTransform: "capitalize" }}>
+                    <span
+                      className="nmap-detail-val"
+                      style={{ textTransform: "capitalize" }}
+                    >
                       {selectedNode.tier || "host"}
                     </span>
                   </div>
                   {selectedNode.subnet && (
                     <div className="nmap-detail-row">
                       <span className="nmap-detail-key">Subnet</span>
-                      <span className="nmap-detail-val">{selectedNode.subnet}</span>
+                      <span className="nmap-detail-val">
+                        {selectedNode.subnet}
+                      </span>
                     </div>
                   )}
                   {selectedNode.tier === "subnet" && (
                     <div className="nmap-detail-row">
                       <span className="nmap-detail-key">Total Hosts</span>
-                      <span className="nmap-detail-val">{selectedNode.host_count}</span>
+                      <span className="nmap-detail-val">
+                        {selectedNode.host_count}
+                      </span>
                     </div>
                   )}
-                  {selectedNode.tier === "subnet" && selectedNode.host_count > 50 && (
-                    <div className="nmap-capped-warning" style={{ fontSize: "0.75rem", color: "#f59e0b", marginTop: "8px" }}>
-                      ⚠️ Capped at 50 hosts on graph for layout visibility. Use the search bar to locate specific hosts in this subnet.
-                    </div>
-                  )}
+                  {selectedNode.tier === "subnet" &&
+                    selectedNode.host_count > 50 && (
+                      <div
+                        className="nmap-capped-warning"
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "#f59e0b",
+                          marginTop: "8px",
+                        }}
+                      >
+                        ⚠️ Capped at 50 hosts on graph for layout visibility.
+                        Use the search bar to locate specific hosts in this
+                        subnet.
+                      </div>
+                    )}
                 </div>
-                {selectedNode.tier === "subnet" && selectedNode.data_quality && (
-                  <div className="nmap-quality-grid">
-                    <div>
-                      <strong>{selectedNode.data_quality.mac_only}</strong>
-                      <span>MAC-only</span>
+                {selectedNode.tier === "subnet" &&
+                  selectedNode.data_quality && (
+                    <div className="nmap-quality-grid">
+                      <div>
+                        <strong>{selectedNode.data_quality.mac_only}</strong>
+                        <span>MAC-only</span>
+                      </div>
+                      <div>
+                        <strong>{selectedNode.data_quality.ip_resolved}</strong>
+                        <span>IP resolved</span>
+                      </div>
+                      <div>
+                        <strong>
+                          {selectedNode.data_quality.asset_matches}
+                        </strong>
+                        <span>asset matches</span>
+                      </div>
+                      <div>
+                        <strong>
+                          {selectedNode.data_quality.source_count}
+                        </strong>
+                        <span>sources</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>{selectedNode.data_quality.ip_resolved}</strong>
-                      <span>IP resolved</span>
-                    </div>
-                    <div>
-                      <strong>{selectedNode.data_quality.asset_matches}</strong>
-                      <span>asset matches</span>
-                    </div>
-                    <div>
-                      <strong>{selectedNode.data_quality.source_count}</strong>
-                      <span>sources</span>
-                    </div>
-                  </div>
-                )}
+                  )}
 
                 {selectedNode.tier === "subnet" && (
                   <div className="nmap-endpoint-panel">
@@ -1301,10 +1537,14 @@ export default function NetworkMap() {
                       }}
                       title="Open detailed endpoint evidence table in overlay"
                     >
-                      📊 View Endpoint Evidence ({selectedEndpoints.length} devices)
+                      📊 View Endpoint Evidence ({selectedEndpoints.length}{" "}
+                      devices)
                     </button>
                     {!!selectedNode.recommended_actions?.length && (
-                      <div className="nmap-actions-panel" style={{ marginTop: "12px" }}>
+                      <div
+                        className="nmap-actions-panel"
+                        style={{ marginTop: "12px" }}
+                      >
                         <strong>Recommended Next Actions</strong>
                         {selectedNode.recommended_actions.map((action) => (
                           <button
@@ -1337,117 +1577,168 @@ export default function NetworkMap() {
         </div>
       </div>
 
-      {isEvidenceModalOpen && selectedNode && selectedNode.tier === "subnet" && (
-        <Modal
-          isOpen={isEvidenceModalOpen}
-          onClose={() => setIsEvidenceModalOpen(false)}
-          title={`📊 Endpoint Evidence — ${selectedNode.subnet === "MAC-Only / FDB" ? "MAC-Only / FDB Cluster" : selectedNode.subnet}`}
-          size="large"
-        >
-          <div className="nmap-endpoint-head">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-              <div>
-                <strong>Subnet Device List</strong>
-                <span>
-                  Showing {pagedEndpoints.length ? endpointPage * endpointPageSize + 1 : 0}
-                  -{Math.min((endpointPage + 1) * endpointPageSize, selectedEndpoints.length)}
-                  {" "}of {selectedEndpoints.length}
-                </span>
-              </div>
-            </div>
-            <div className="nmap-modal-mini-stats">
-              <div className="mini-stat-badge">
-                <span className="mini-stat-label">Total Devices:</span>
-                <span className="mini-stat-val">{selectedEndpoints.length}</span>
-              </div>
-              <div className="mini-stat-badge">
-                <span className="mini-stat-label">IPs Resolved:</span>
-                <span className="mini-stat-val">{selectedEndpoints.filter(e => e.ip).length}</span>
-              </div>
-              <div className="mini-stat-badge">
-                <span className="mini-stat-label">Asset Matches:</span>
-                <span className="mini-stat-val is-match-count">{selectedEndpoints.filter(e => e.asset_match_status === "matched").length}</span>
-              </div>
-            </div>
-            <input
-              className="nmap-endpoint-search"
-              value={endpointSearch}
-              onChange={(event) => {
-                setEndpointSearch(event.target.value);
-                setEndpointPage(0);
-              }}
-              placeholder="Search MAC, vendor, port, description, speed, VLAN..."
-              aria-label="Search endpoint evidence"
-            />
-          </div>
-          <div className="nmap-endpoint-table" role="table" aria-label="Endpoint evidence table">
-            <div className="nmap-endpoint-row nmap-endpoint-row--head" role="row">
-              <span>MAC</span>
-              <span>IP</span>
-              <span>Hostname</span>
-              <span>Vendor</span>
-              <span>Port</span>
-              <span>Port Description</span>
-              <span>VLAN</span>
-              <span>Speed</span>
-              <span>Source</span>
-              <span>Asset</span>
-            </div>
-            {pagedEndpoints.map((endpoint) => {
-              const hasResolvedHostname = endpoint.label && endpoint.label !== endpoint.ip && endpoint.label !== endpoint.mac;
-              return (
-                <div className="nmap-endpoint-row" role="row" key={endpoint.id}>
-                  <span title={endpoint.mac}>{endpoint.mac || endpoint.id}</span>
-                  <span>{endpoint.ip || "—"}</span>
-                  <span title={hasResolvedHostname ? endpoint.label : ""}>
-                    {hasResolvedHostname ? endpoint.label : "—"}
-                  </span>
-                  <span>{endpoint.vendor || "Unknown"}</span>
-                  <span>{endpoint.source_port || "—"}</span>
-                  <span title={endpoint.source_port_desc || ""}>{endpoint.source_port_desc || "—"}</span>
-                  <span>{endpoint.vlan_id || "—"}</span>
-                  <span>{formatSpeed(endpoint.speed_bps) || "—"}</span>
-                  <span style={{ textTransform: "uppercase" }}>{endpoint.link_type || "—"}</span>
+      {isEvidenceModalOpen &&
+        selectedNode &&
+        selectedNode.tier === "subnet" && (
+          <Modal
+            isOpen={isEvidenceModalOpen}
+            onClose={() => setIsEvidenceModalOpen(false)}
+            title={`📊 Endpoint Evidence — ${selectedNode.subnet === "MAC-Only / FDB" ? "MAC-Only / FDB Cluster" : selectedNode.subnet}`}
+            size="large"
+          >
+            <div className="nmap-endpoint-head">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  width: "100%",
+                }}
+              >
+                <div>
+                  <strong>Subnet Device List</strong>
                   <span>
-                    {endpoint.asset_id ? (
-                      <a
-                        href={`/assets/${endpoint.asset_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="nmap-asset-link"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        🔗 Matched
-                      </a>
-                    ) : (
-                      <span className="is-muted">Unmatched</span>
-                    )}
+                    Showing{" "}
+                    {pagedEndpoints.length
+                      ? endpointPage * endpointPageSize + 1
+                      : 0}
+                    -
+                    {Math.min(
+                      (endpointPage + 1) * endpointPageSize,
+                      selectedEndpoints.length,
+                    )}{" "}
+                    of {selectedEndpoints.length}
                   </span>
                 </div>
-              );
-            })}
-            {!pagedEndpoints.length && (
-              <div className="nmap-endpoint-empty">No endpoints match this filter.</div>
-            )}
-          </div>
-          <div className="nmap-endpoint-pager">
-            <button
-              className="btn btn--secondary"
-              onClick={() => setEndpointPage((page) => Math.max(0, page - 1))}
-              disabled={endpointPage === 0}
+              </div>
+              <div className="nmap-modal-mini-stats">
+                <div className="mini-stat-badge">
+                  <span className="mini-stat-label">Total Devices:</span>
+                  <span className="mini-stat-val">
+                    {selectedEndpoints.length}
+                  </span>
+                </div>
+                <div className="mini-stat-badge">
+                  <span className="mini-stat-label">IPs Resolved:</span>
+                  <span className="mini-stat-val">
+                    {selectedEndpoints.filter((e) => e.ip).length}
+                  </span>
+                </div>
+                <div className="mini-stat-badge">
+                  <span className="mini-stat-label">Asset Matches:</span>
+                  <span className="mini-stat-val is-match-count">
+                    {
+                      selectedEndpoints.filter(
+                        (e) => e.asset_match_status === "matched",
+                      ).length
+                    }
+                  </span>
+                </div>
+              </div>
+              <input
+                className="nmap-endpoint-search"
+                value={endpointSearch}
+                onChange={(event) => {
+                  setEndpointSearch(event.target.value);
+                  setEndpointPage(0);
+                }}
+                placeholder="Search MAC, vendor, port, description, speed, VLAN..."
+                aria-label="Search endpoint evidence"
+              />
+            </div>
+            <div
+              className="nmap-endpoint-table"
+              role="table"
+              aria-label="Endpoint evidence table"
             >
-              Previous
-            </button>
-            <button
-              className="btn btn--secondary"
-              onClick={() => setEndpointPage((page) => page + 1)}
-              disabled={(endpointPage + 1) * endpointPageSize >= selectedEndpoints.length}
-            >
-              Show next 50
-            </button>
-          </div>
-        </Modal>
-      )}
+              <div
+                className="nmap-endpoint-row nmap-endpoint-row--head"
+                role="row"
+              >
+                <span>MAC</span>
+                <span>IP</span>
+                <span>Hostname</span>
+                <span>Vendor</span>
+                <span>Port</span>
+                <span>Port Description</span>
+                <span>VLAN</span>
+                <span>Speed</span>
+                <span>Source</span>
+                <span>Asset</span>
+              </div>
+              {pagedEndpoints.map((endpoint) => {
+                const hasResolvedHostname =
+                  endpoint.label &&
+                  endpoint.label !== endpoint.ip &&
+                  endpoint.label !== endpoint.mac;
+                return (
+                  <div
+                    className="nmap-endpoint-row"
+                    role="row"
+                    key={endpoint.id}
+                  >
+                    <span title={endpoint.mac}>
+                      {endpoint.mac || endpoint.id}
+                    </span>
+                    <span>{endpoint.ip || "—"}</span>
+                    <span title={hasResolvedHostname ? endpoint.label : ""}>
+                      {hasResolvedHostname ? endpoint.label : "—"}
+                    </span>
+                    <span>{endpoint.vendor || "Unknown"}</span>
+                    <span>{endpoint.source_port || "—"}</span>
+                    <span title={endpoint.source_port_desc || ""}>
+                      {endpoint.source_port_desc || "—"}
+                    </span>
+                    <span>{endpoint.vlan_id || "—"}</span>
+                    <span>{formatSpeed(endpoint.speed_bps) || "—"}</span>
+                    <span style={{ textTransform: "uppercase" }}>
+                      {endpoint.link_type || "—"}
+                    </span>
+                    <span>
+                      {endpoint.asset_id ? (
+                        <a
+                          href={`/assets/${endpoint.asset_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="nmap-asset-link"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          🔗 Matched
+                        </a>
+                      ) : (
+                        <span className="is-muted">Unmatched</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {!pagedEndpoints.length && (
+                <div className="nmap-endpoint-empty">
+                  No endpoints match this filter.
+                </div>
+              )}
+            </div>
+            <div className="nmap-endpoint-pager">
+              <button
+                className="btn btn--secondary"
+                onClick={() => setEndpointPage((page) => Math.max(0, page - 1))}
+                disabled={endpointPage === 0}
+              >
+                Previous
+              </button>
+              <button
+                className="btn btn--secondary"
+                onClick={() => setEndpointPage((page) => page + 1)}
+                disabled={
+                  (endpointPage + 1) * endpointPageSize >=
+                  selectedEndpoints.length
+                }
+              >
+                Show next 50
+              </button>
+            </div>
+          </Modal>
+        )}
 
       {selectedActionHelp && (
         <Modal
@@ -1456,9 +1747,21 @@ export default function NetworkMap() {
           title={selectedActionHelp.title}
           size="medium"
         >
-          <div style={{ lineHeight: "1.6", fontSize: "0.9rem", color: "var(--text-mid)" }}>
+          <div
+            style={{
+              lineHeight: "1.6",
+              fontSize: "0.9rem",
+              color: "var(--text-mid)",
+            }}
+          >
             {selectedActionHelp.content}
-            <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end" }}>
+            <div
+              style={{
+                marginTop: "24px",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
               {selectedActionHelp.actionUrl ? (
                 <button
                   className="btn btn--primary"
@@ -1470,7 +1773,10 @@ export default function NetworkMap() {
                   {selectedActionHelp.actionLabel || "Proceed"}
                 </button>
               ) : (
-                <button className="btn btn--secondary" onClick={() => setSelectedActionHelp(null)}>
+                <button
+                  className="btn btn--secondary"
+                  onClick={() => setSelectedActionHelp(null)}
+                >
                   Got it
                 </button>
               )}

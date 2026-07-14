@@ -30,7 +30,6 @@ How it works
 All writes are atomic UPDATEs — safe under concurrent workers / connections.
 """
 
-import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -134,11 +133,7 @@ def read_progress(db: Session, scan_id: str, user_id: str) -> dict:
     Returns a dict safe to serialize to JSON for the client:
       - total_ips, discovered, active, status, elapsed_time, percentage
     """
-    scan = (
-        db.query(Scan)
-        .filter(Scan.id == scan_id, Scan.created_by == user_id)
-        .first()
-    )
+    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
     if not scan:
         return {"status": "not_found", "message": "Scan not found or completed"}
 
@@ -157,7 +152,9 @@ def read_progress(db: Session, scan_id: str, user_id: str) -> dict:
         if start_str:
             try:
                 started = datetime.fromisoformat(start_str)
-                elapsed = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+                elapsed = round(
+                    (datetime.now(timezone.utc) - started).total_seconds(), 2
+                )
             except (ValueError, TypeError):
                 pass
 

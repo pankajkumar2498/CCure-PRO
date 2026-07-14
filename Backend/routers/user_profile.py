@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 
 # ── Request/Response Models ───────────────────────────────────────────────────
 
+
 class ProfileUpdateRequest(BaseModel):
     """Update user profile information."""
+
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
 
@@ -50,6 +52,7 @@ class ProfileUpdateRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     """Request to change password."""
+
     current_password: str
     new_password: str
 
@@ -69,8 +72,11 @@ class ChangePasswordRequest(BaseModel):
 
 class PreferencesRequest(BaseModel):
     """Update user preferences."""
+
     theme: Optional[str] = None  # "light", "dark"
-    default_scan_type: Optional[str] = None  # "host-discovery", "asset", "vulnerability_audit", "credentialed"
+    default_scan_type: Optional[str] = (
+        None  # "host-discovery", "asset", "vulnerability_audit", "credentialed"
+    )
     email_alerts: Optional[bool] = None
     in_app_alerts: Optional[bool] = None
     timezone: Optional[str] = None
@@ -87,7 +93,13 @@ class PreferencesRequest(BaseModel):
     @field_validator("default_scan_type")
     @classmethod
     def validate_scan_type(cls, v):
-        valid_types = ["host-discovery", "asset", "vulnerability_audit", "advanced", "credentialed"]
+        valid_types = [
+            "host-discovery",
+            "asset",
+            "vulnerability_audit",
+            "advanced",
+            "credentialed",
+        ]
         if v is not None and v not in valid_types:
             raise ValueError(f"Scan type must be one of {valid_types}")
         return v
@@ -95,6 +107,7 @@ class PreferencesRequest(BaseModel):
 
 class UserProfileResponse(BaseModel):
     """User profile information."""
+
     id: str
     username: str
     email: str
@@ -112,6 +125,7 @@ class UserProfileResponse(BaseModel):
 
 class UserPreferencesResponse(BaseModel):
     """User preferences."""
+
     theme: str = "light"
     default_scan_type: str = "asset"
     email_alerts: bool = True
@@ -126,6 +140,7 @@ class UserPreferencesResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     """Active session information."""
+
     session_id: int
     ip_address: Optional[str]
     device_info: dict
@@ -138,6 +153,7 @@ class SessionResponse(BaseModel):
 
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
+
 
 def _serialize_profile(user: User) -> UserProfileResponse:
     """Convert User model to ProfileResponse."""
@@ -171,12 +187,18 @@ def _get_user_preferences(user: User) -> UserPreferencesResponse:
     return UserPreferencesResponse(**merged)
 
 
-def _extract_session_info(refresh_token_session: RefreshTokenSession, current_token_jti: Optional[str] = None) -> SessionResponse:
+def _extract_session_info(
+    refresh_token_session: RefreshTokenSession, current_token_jti: Optional[str] = None
+) -> SessionResponse:
     """Convert RefreshTokenSession to SessionResponse."""
     device_info = refresh_token_session.device_info or {}
     return SessionResponse(
         session_id=refresh_token_session.id,
-        ip_address=str(refresh_token_session.ip_address) if refresh_token_session.ip_address else None,
+        ip_address=(
+            str(refresh_token_session.ip_address)
+            if refresh_token_session.ip_address
+            else None
+        ),
         device_info=device_info,
         issued_at=refresh_token_session.issued_at,
         expires_at=refresh_token_session.expires_at,
@@ -188,13 +210,14 @@ def _extract_session_info(refresh_token_session: RefreshTokenSession, current_to
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.get("/profile", response_model=UserProfileResponse)
 def get_profile(
     current_user: User = Depends(get_current_user),
 ):
     """
     Get current user's profile information.
-    
+
     Returns user details including name, email, organization, role, and account status.
     """
     return _serialize_profile(current_user)
@@ -209,7 +232,7 @@ def update_profile(
 ):
     """
     Update user profile information (full name, email).
-    
+
     Only non-null fields in the request are updated.
     """
     changes = {}
@@ -223,7 +246,11 @@ def update_profile(
         email = normalize_email(req.email)
         if email != current_user.email:
             # Check if email is already in use
-            existing = db.query(User).filter(email_matches(User.email, email), User.id != current_user.id).first()
+            existing = (
+                db.query(User)
+                .filter(email_matches(User.email, email), User.id != current_user.id)
+                .first()
+            )
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -246,7 +273,7 @@ def update_profile(
         db.commit()
         db.refresh(current_user)
         logger.info(f"User {current_user.username} updated profile: {changes}")
-    
+
     return _serialize_profile(current_user)
 
 
@@ -259,7 +286,7 @@ def change_password(
 ):
     """
     Change the current user's password.
-    
+
     Requires verification of the current password before setting a new one.
     """
     # Verify current password
@@ -323,7 +350,7 @@ def get_preferences(
 ):
     """
     Get current user's preferences (theme, default scan type, notifications, etc.).
-    
+
     Returns merged preferences with sensible defaults.
     """
     return _get_user_preferences(current_user)
@@ -338,7 +365,7 @@ def update_preferences(
 ):
     """
     Update user preferences.
-    
+
     Only non-null fields in the request are updated. Preferences are stored in JSONB
     so you can add any custom fields without schema migration.
     """
@@ -350,7 +377,9 @@ def update_preferences(
         changes["theme"] = req.theme
         stored["theme"] = req.theme
 
-    if req.default_scan_type is not None and req.default_scan_type != stored.get("default_scan_type"):
+    if req.default_scan_type is not None and req.default_scan_type != stored.get(
+        "default_scan_type"
+    ):
         changes["default_scan_type"] = req.default_scan_type
         stored["default_scan_type"] = req.default_scan_type
 
@@ -358,7 +387,9 @@ def update_preferences(
         changes["email_alerts"] = req.email_alerts
         stored["email_alerts"] = req.email_alerts
 
-    if req.in_app_alerts is not None and req.in_app_alerts != stored.get("in_app_alerts"):
+    if req.in_app_alerts is not None and req.in_app_alerts != stored.get(
+        "in_app_alerts"
+    ):
         changes["in_app_alerts"] = req.in_app_alerts
         stored["in_app_alerts"] = req.in_app_alerts
 
@@ -366,16 +397,22 @@ def update_preferences(
         changes["timezone"] = req.timezone
         stored["timezone"] = req.timezone
 
-    if req.sidebar_collapsed is not None and req.sidebar_collapsed != stored.get("sidebar_collapsed"):
+    if req.sidebar_collapsed is not None and req.sidebar_collapsed != stored.get(
+        "sidebar_collapsed"
+    ):
         changes["sidebar_collapsed"] = req.sidebar_collapsed
         stored["sidebar_collapsed"] = req.sidebar_collapsed
 
-    if req.default_rows_per_page is not None and req.default_rows_per_page != stored.get("default_rows_per_page"):
+    if (
+        req.default_rows_per_page is not None
+        and req.default_rows_per_page != stored.get("default_rows_per_page")
+    ):
         changes["default_rows_per_page"] = req.default_rows_per_page
         stored["default_rows_per_page"] = req.default_rows_per_page
 
     if changes:
         from sqlalchemy.orm.attributes import flag_modified
+
         current_user.preferences = stored
         flag_modified(current_user, "preferences")
         log_audit_event(
@@ -402,7 +439,7 @@ def get_sessions(
 ):
     """
     List all active sessions (refresh token sessions) for the current user.
-    
+
     Includes device info, IP address, and issue/expiration times.
     Marks the current session with is_current=True.
     """
@@ -410,10 +447,15 @@ def get_sessions(
     # Note: In a real impl, you'd extract this from the JWT payload in the request
     current_token_jti = None  # TODO: Extract from request headers/context
 
-    sessions = db.query(RefreshTokenSession).filter(
-        RefreshTokenSession.user_id == current_user.id,
-        RefreshTokenSession.revoked_at == None,
-    ).order_by(RefreshTokenSession.issued_at.desc()).all()
+    sessions = (
+        db.query(RefreshTokenSession)
+        .filter(
+            RefreshTokenSession.user_id == current_user.id,
+            RefreshTokenSession.revoked_at == None,
+        )
+        .order_by(RefreshTokenSession.issued_at.desc())
+        .all()
+    )
 
     return [_extract_session_info(s, current_token_jti) for s in sessions]
 
@@ -427,13 +469,17 @@ def revoke_session(
 ):
     """
     Revoke a specific session (refresh token).
-    
+
     Prevents the session from being used for future token refreshes.
     """
-    session = db.query(RefreshTokenSession).filter(
-        RefreshTokenSession.id == session_id,
-        RefreshTokenSession.user_id == current_user.id,
-    ).first()
+    session = (
+        db.query(RefreshTokenSession)
+        .filter(
+            RefreshTokenSession.id == session_id,
+            RefreshTokenSession.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not session:
         raise HTTPException(
@@ -456,7 +502,10 @@ def revoke_session(
         str(session.id),
         request=request,
         status="success",
-        changes={"session_id": session_id, "ip": str(session.ip_address) if session.ip_address else None},
+        changes={
+            "session_id": session_id,
+            "ip": str(session.ip_address) if session.ip_address else None,
+        },
     )
     db.commit()
     logger.info(f"User {current_user.username} revoked session {session_id}")

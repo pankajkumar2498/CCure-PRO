@@ -42,6 +42,7 @@ def _resolve_gateway_ip() -> Optional[str]:
     """
     try:
         from scapy.config import conf
+
         # conf.route.route("0.0.0.0") returns (iface, gateway_ip, src_ip)
         _, gw, _ = conf.route.route("0.0.0.0")
         if gw and gw != "0.0.0.0":
@@ -52,6 +53,7 @@ def _resolve_gateway_ip() -> Optional[str]:
     # Fallback: try psutil to find the default gateway
     try:
         import psutil
+
         gateways = psutil.net_if_addrs()
         # This is a best-effort fallback
     except Exception:
@@ -65,9 +67,7 @@ def _find_asset_by_ip(db: Session, org_id: str, ip: str) -> Optional[Asset]:
     if not ip:
         return None
     return (
-        db.query(Asset)
-        .filter(Asset.org_id == org_id, Asset.ip_address == ip)
-        .first()
+        db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
     )
 
 
@@ -88,7 +88,7 @@ def _reconcile_target_asset(
     org_id: str,
     ip: Optional[str],
     mac: str,
-    hostname: Optional[str] = None
+    hostname: Optional[str] = None,
 ) -> Optional[Asset]:
     """
     3-Tiered Reconciliation Rule for Target Endpoints.
@@ -100,22 +100,22 @@ def _reconcile_target_asset(
     clean_mac = None
     if mac and not mac.startswith(("sw:", "cdp:")):
         clean_mac = mac.lower().replace("-", ":")
-    
+
     if clean_mac:
         asset = _find_asset_by_mac(db, org_id, clean_mac)
         if asset:
             return asset
-            
+
     # 2. Tier 2: IP + Hostname
     if ip and ip != "0.0.0.0" and hostname:
         asset = _find_asset_by_ip(db, org_id, ip)
         if asset and asset.hostname and asset.hostname.lower() == hostname.lower():
             return asset
-            
+
     # 3. Tier 3: IP Fallback
     if ip and ip != "0.0.0.0":
         return _find_asset_by_ip(db, org_id, ip)
-        
+
     return None
 
 
@@ -145,7 +145,10 @@ def run_topology_mapping(
     creds = SNMPCredentials.from_dict(snmp_config)
     log.info(
         "Starting topology mapping for scan=%s, org=%s, targets=%d, snmp_version=%s",
-        scan_id, org_id, len(target_ips or []), creds.version,
+        scan_id,
+        org_id,
+        len(target_ips or []),
+        creds.version,
     )
 
     # Resolve org slug for ID generation
@@ -159,7 +162,12 @@ def run_topology_mapping(
             target_ips = scan.target_hosts
         else:
             log.warning("No target IPs for topology mapping on scan %s", scan_id)
-            return {"success": True, "links_created": 0, "links_updated": 0, "errors": ["No targets"]}
+            return {
+                "success": True,
+                "links_created": 0,
+                "links_updated": 0,
+                "errors": ["No targets"],
+            }
 
     gateway_ip = _resolve_gateway_ip()
     log.info("Detected gateway IP: %s", gateway_ip)
@@ -195,12 +203,18 @@ def run_topology_mapping(
             # Helper: resolve interface details from port index
             def _iface_details(port_index_str: str) -> dict:
                 """Look up enriched interface info for a port index."""
-                iface = result.resolve_interface(port_index_str) if port_index_str else None
+                iface = (
+                    result.resolve_interface(port_index_str) if port_index_str else None
+                )
                 if iface:
                     return {
                         "port_desc": iface.display_name,
                         "speed_bps": iface.speed_bps or None,
-                        "vlan_id": iface.vlan_id if iface.vlan_id and iface.vlan_id not in (0, 4095) else None,
+                        "vlan_id": (
+                            iface.vlan_id
+                            if iface.vlan_id and iface.vlan_id not in (0, 4095)
+                            else None
+                        ),
                     }
                 return {"port_desc": None, "speed_bps": None, "vlan_id": None}
 
@@ -210,19 +224,23 @@ def run_topology_mapping(
                     continue
                 link_id = gen_network_link_id(org_slug, source_mac, arp.mac_address)
                 iface = _iface_details(arp.interface_index)
-                all_links.append({
-                    "id": link_id,
-                    "org_id": org_id,
-                    "scan_id": scan_id,
-                    "source_mac": source_mac,
-                    "source_port": f"if{arp.interface_index}" if arp.interface_index else None,
-                    "source_port_desc": iface["port_desc"],
-                    "target_mac": arp.mac_address,
-                    "target_ip": arp.ip_address,
-                    "vlan_id": iface["vlan_id"],
-                    "speed_bps": iface["speed_bps"],
-                    "link_type": "arp",
-                })
+                all_links.append(
+                    {
+                        "id": link_id,
+                        "org_id": org_id,
+                        "scan_id": scan_id,
+                        "source_mac": source_mac,
+                        "source_port": (
+                            f"if{arp.interface_index}" if arp.interface_index else None
+                        ),
+                        "source_port_desc": iface["port_desc"],
+                        "target_mac": arp.mac_address,
+                        "target_ip": arp.ip_address,
+                        "vlan_id": iface["vlan_id"],
+                        "speed_bps": iface["speed_bps"],
+                        "link_type": "arp",
+                    }
+                )
 
             # Process LLDP neighbors
             for neighbor in result.lldp_neighbors:
@@ -230,43 +248,47 @@ def run_topology_mapping(
                     continue
                 link_id = gen_network_link_id(org_slug, source_mac, neighbor.chassis_id)
                 iface = _iface_details(neighbor.local_port_index)
-                all_links.append({
-                    "id": link_id,
-                    "org_id": org_id,
-                    "scan_id": scan_id,
-                    "source_mac": source_mac,
-                    "source_port": f"lldp:{neighbor.local_port_index}",
-                    "source_port_desc": iface["port_desc"],
-                    "target_mac": neighbor.chassis_id,
-                    "target_port": neighbor.port_id or neighbor.port_desc,
-                    "target_port_desc": neighbor.port_desc or neighbor.port_id,
-                    "vlan_id": iface["vlan_id"],
-                    "speed_bps": iface["speed_bps"],
-                    "link_type": "lldp",
-                    "target_hostname": neighbor.system_name,
-                })
+                all_links.append(
+                    {
+                        "id": link_id,
+                        "org_id": org_id,
+                        "scan_id": scan_id,
+                        "source_mac": source_mac,
+                        "source_port": f"lldp:{neighbor.local_port_index}",
+                        "source_port_desc": iface["port_desc"],
+                        "target_mac": neighbor.chassis_id,
+                        "target_port": neighbor.port_id or neighbor.port_desc,
+                        "target_port_desc": neighbor.port_desc or neighbor.port_id,
+                        "vlan_id": iface["vlan_id"],
+                        "speed_bps": iface["speed_bps"],
+                        "link_type": "lldp",
+                        "target_hostname": neighbor.system_name,
+                    }
+                )
 
             # Process CDP neighbors
             for neighbor in result.cdp_neighbors:
                 target_mac = neighbor.device_id or f"cdp:{neighbor.ip_address}"
                 link_id = gen_network_link_id(org_slug, source_mac, target_mac)
                 iface = _iface_details(neighbor.local_port_index)
-                all_links.append({
-                    "id": link_id,
-                    "org_id": org_id,
-                    "scan_id": scan_id,
-                    "source_mac": source_mac,
-                    "source_port": f"cdp:{neighbor.local_port_index}",
-                    "source_port_desc": iface["port_desc"],
-                    "target_mac": target_mac,
-                    "target_ip": neighbor.ip_address,
-                    "target_port": neighbor.device_port,
-                    "target_port_desc": neighbor.device_port,
-                    "vlan_id": iface["vlan_id"],
-                    "speed_bps": iface["speed_bps"],
-                    "link_type": "cdp",
-                    "target_hostname": neighbor.device_id,
-                })
+                all_links.append(
+                    {
+                        "id": link_id,
+                        "org_id": org_id,
+                        "scan_id": scan_id,
+                        "source_mac": source_mac,
+                        "source_port": f"cdp:{neighbor.local_port_index}",
+                        "source_port_desc": iface["port_desc"],
+                        "target_mac": target_mac,
+                        "target_ip": neighbor.ip_address,
+                        "target_port": neighbor.device_port,
+                        "target_port_desc": neighbor.device_port,
+                        "vlan_id": iface["vlan_id"],
+                        "speed_bps": iface["speed_bps"],
+                        "link_type": "cdp",
+                        "target_hostname": neighbor.device_id,
+                    }
+                )
 
             # Process FDB entries (direct MAC-to-port)
             for fdb in result.fdb_table:
@@ -274,19 +296,27 @@ def run_topology_mapping(
                     continue
                 link_id = gen_network_link_id(org_slug, source_mac, fdb.mac_address)
                 iface = _iface_details(fdb.port_index)
-                fdb_vlan = iface["vlan_id"] or (fdb.vlan_id if fdb.vlan_id and fdb.vlan_id not in (0, 4095) else None)
-                all_links.append({
-                    "id": link_id,
-                    "org_id": org_id,
-                    "scan_id": scan_id,
-                    "source_mac": source_mac,
-                    "source_port": f"port:{fdb.port_index}" if fdb.port_index else None,
-                    "source_port_desc": iface["port_desc"],
-                    "target_mac": fdb.mac_address,
-                    "vlan_id": fdb_vlan,
-                    "speed_bps": iface["speed_bps"],
-                    "link_type": "fdb",
-                })
+                fdb_vlan = iface["vlan_id"] or (
+                    fdb.vlan_id
+                    if fdb.vlan_id and fdb.vlan_id not in (0, 4095)
+                    else None
+                )
+                all_links.append(
+                    {
+                        "id": link_id,
+                        "org_id": org_id,
+                        "scan_id": scan_id,
+                        "source_mac": source_mac,
+                        "source_port": (
+                            f"port:{fdb.port_index}" if fdb.port_index else None
+                        ),
+                        "source_port_desc": iface["port_desc"],
+                        "target_mac": fdb.mac_address,
+                        "vlan_id": fdb_vlan,
+                        "speed_bps": iface["speed_bps"],
+                        "link_type": "fdb",
+                    }
+                )
 
         except Exception as exc:
             err_msg = f"Walk failed for {ip}: {exc}"
@@ -306,7 +336,14 @@ def run_topology_mapping(
                 link["target_ip"] = target_ip
 
             # Preserve enriched fields from whichever entry has them
-            for field in ("source_port", "target_port", "source_port_desc", "target_port_desc", "vlan_id", "speed_bps"):
+            for field in (
+                "source_port",
+                "target_port",
+                "source_port_desc",
+                "target_port_desc",
+                "vlan_id",
+                "speed_bps",
+            ):
                 if not link.get(field) and existing.get(field):
                     link[field] = existing[field]
 
@@ -314,7 +351,8 @@ def run_topology_mapping(
 
     log.info(
         "Topology mapping produced %d unique links from %d raw entries",
-        len(unique_links), len(all_links),
+        len(unique_links),
+        len(all_links),
     )
 
     # Persist to database
@@ -324,10 +362,12 @@ def run_topology_mapping(
 
     # Pre-fetch existing link IDs for this org to accurately count created vs updated
     existing_ids = {
-        row[0] for row in db.query(NetworkLink.id).filter(
-            NetworkLink.org_id == org_id,
-            NetworkLink.id.in_(list(unique_links.keys()))
-        ).all()
+        row[0]
+        for row in db.query(NetworkLink.id)
+        .filter(
+            NetworkLink.org_id == org_id, NetworkLink.id.in_(list(unique_links.keys()))
+        )
+        .all()
     }
 
     for link_data in unique_links.values():
@@ -342,7 +382,7 @@ def run_topology_mapping(
             org_id,
             link_data.get("target_ip"),
             link_data["target_mac"],
-            link_data.get("target_hostname")
+            link_data.get("target_hostname"),
         )
 
         # Sync/Create placeholder assets for LLDP/CDP neighbors
@@ -350,13 +390,19 @@ def run_topology_mapping(
             # Classify dynamically based on hostname heuristics
             device_category = "switch"
             tgt_hostname = link_data.get("target_hostname") or ""
-            if any(r in tgt_hostname.lower() for r in ("router", "rt", "gw", "firewall")):
+            if any(
+                r in tgt_hostname.lower() for r in ("router", "rt", "gw", "firewall")
+            ):
                 device_category = "router"
 
             if not target_asset:
                 target_mac = link_data["target_mac"]
                 clean_mac = None
-                if target_mac and not target_mac.startswith("cdp:") and not target_mac.startswith("sw:"):
+                if (
+                    target_mac
+                    and not target_mac.startswith("cdp:")
+                    and not target_mac.startswith("sw:")
+                ):
                     clean_mac = target_mac.lower().replace("-", ":")
 
                 target_ip = link_data.get("target_ip")
@@ -365,6 +411,7 @@ def run_topology_mapping(
 
                 # Generate deterministic asset ID using gen_asset_id
                 from db.base import gen_asset_id
+
                 placeholder_id = gen_asset_id(org_id, target_ip or target_mac)
 
                 target_asset = Asset(
@@ -383,14 +430,22 @@ def run_topology_mapping(
                 db.flush()  # Flush so it's available for FK references
             else:
                 # Update existing asset classification if missing or generic
-                if not target_asset.device_category or target_asset.device_category in ("host", "generic", "unknown"):
+                if (
+                    not target_asset.device_category
+                    or target_asset.device_category in ("host", "generic", "unknown")
+                ):
                     target_asset.device_category = device_category
                 if not target_asset.hostname and tgt_hostname:
                     target_asset.hostname = tgt_hostname
 
         # Sync VLAN to matched asset if valid (exclude 0 and 4095 sentinels)
         resolved_vlan = link_data.get("vlan_id")
-        if resolved_vlan and resolved_vlan not in (0, 4095) and target_asset and not target_asset.vlan_id:
+        if (
+            resolved_vlan
+            and resolved_vlan not in (0, 4095)
+            and target_asset
+            and not target_asset.vlan_id
+        ):
             target_asset.vlan_id = resolved_vlan
 
         values = {
@@ -431,7 +486,10 @@ def run_topology_mapping(
 
     log.info(
         "Topology mapping complete for scan=%s: %d created, %d updated, %d errors",
-        scan_id, created, updated, len(all_errors),
+        scan_id,
+        created,
+        updated,
+        len(all_errors),
     )
 
     return {
@@ -476,7 +534,9 @@ def _is_broadcast_or_multicast(mac: str) -> bool:
     return False
 
 
-def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, subnet_mask: int = 24) -> Dict:
+def get_topology_graph(
+    db: Session, org_id: str, scan_id: Optional[str] = None, subnet_mask: int = 24
+) -> Dict:
     """
     Build a vis-network compatible clustered graph from stored NetworkLink records.
     Groups host nodes under subnet clusters (default /24) to avoid dense physics-blob display.
@@ -492,9 +552,11 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
 
     links = query.all()
 
-    infra_nodes = {}   # source switch/router/gateway nodes
-    subnet_map = {}    # "10.180.4.0/24" -> {"hosts": set(tgt_macs), "link_type": "arp" | "fdb", etc.}
-    host_nodes = {}    # target_mac -> node dict
+    infra_nodes = {}  # source switch/router/gateway nodes
+    subnet_map = (
+        {}
+    )  # "10.180.4.0/24" -> {"hosts": set(tgt_macs), "link_type": "arp" | "fdb", etc.}
+    host_nodes = {}  # target_mac -> node dict
     host_link_meta = {}  # target_mac -> latest link evidence for drill-down panels
     edges = []
 
@@ -508,7 +570,9 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
 
     def _vendor_for(asset, mac: str) -> str:
         if asset:
-            vendor = getattr(asset, "vendor", None) or getattr(asset, "manufacturer", None)
+            vendor = getattr(asset, "vendor", None) or getattr(
+                asset, "manufacturer", None
+            )
             if vendor:
                 return str(vendor)
         if lookup_vendor:
@@ -523,7 +587,7 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
         src = link.source_mac
         if src not in infra_nodes:
             src_asset = link.source_asset
-            
+
             # Label resolution: prefer hostname, then ip_address, then formatted MAC/placeholder
             label = ""
             if src_asset:
@@ -535,13 +599,21 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
                 else:
                     label = src
 
-            group = "switch" if src.startswith("sw:") else _classify_node_group(link, src_asset)
+            group = (
+                "switch"
+                if src.startswith("sw:")
+                else _classify_node_group(link, src_asset)
+            )
             infra_nodes[src] = {
                 "id": src,
                 "label": label,
                 "group": group,
                 "tier": "infra",
-                "ip": src_asset.ip_address if src_asset else (label if not src.startswith("sw:") and "." in label else ""),
+                "ip": (
+                    src_asset.ip_address
+                    if src_asset
+                    else (label if not src.startswith("sw:") and "." in label else "")
+                ),
                 "mac": src,
                 "asset_id": src_asset.id if src_asset else None,
             }
@@ -550,13 +622,21 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
         tgt = link.target_mac
         tgt_ip = link.target_ip or ""
         tgt_asset = link.target_asset
-        
+
         # If target has a defined asset, we can check if it is infrastructure
         is_target_infra = False
         tgt_group = "endpoint"
         if tgt_asset:
             tgt_group = _classify_node_group(link, tgt_asset)
-            if tgt_group in ("switch", "router", "gateway", "firewall", "wireless_ap", "load_balancer", "modem"):
+            if tgt_group in (
+                "switch",
+                "router",
+                "gateway",
+                "firewall",
+                "wireless_ap",
+                "load_balancer",
+                "modem",
+            ):
                 is_target_infra = True
         elif link.link_type in ("lldp", "cdp") or tgt.startswith("sw:"):
             tgt_group = "switch"
@@ -568,7 +648,11 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
                 if tgt_asset:
                     label = tgt_asset.hostname or tgt_asset.ip_address
                 if not label:
-                    label = tgt_ip or (tgt.replace("sw:", "").replace(":", ".") if tgt.startswith("sw:") else tgt)
+                    label = tgt_ip or (
+                        tgt.replace("sw:", "").replace(":", ".")
+                        if tgt.startswith("sw:")
+                        else tgt
+                    )
                 infra_nodes[tgt] = {
                     "id": tgt,
                     "label": label,
@@ -578,24 +662,26 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
                     "mac": tgt,
                     "asset_id": tgt_asset.id if tgt_asset else None,
                 }
-            
+
             # Infra-to-infra edge (LLDP/CDP/etc.) with deterministic ID
             edge_key = f"edge:{src}:{tgt}"
             edge_id = hashlib.md5(edge_key.encode("utf-8")).hexdigest()
-            edges.append({
-                "id": edge_id,
-                "from": src,
-                "to": tgt,
-                "label": link.link_type or "physical",
-                "link_type": link.link_type,
-                "source_port": link.source_port or "",
-                "source_port_desc": link.source_port_desc or "",
-                "target_port": link.target_port or "",
-                "target_port_desc": link.target_port_desc or "",
-                "vlan_id": link.vlan_id,
-                "speed_bps": link.speed_bps,
-                "tier": "infra"
-            })
+            edges.append(
+                {
+                    "id": edge_id,
+                    "from": src,
+                    "to": tgt,
+                    "label": link.link_type or "physical",
+                    "link_type": link.link_type,
+                    "source_port": link.source_port or "",
+                    "source_port_desc": link.source_port_desc or "",
+                    "target_port": link.target_port or "",
+                    "target_port_desc": link.target_port_desc or "",
+                    "vlan_id": link.vlan_id,
+                    "speed_bps": link.speed_bps,
+                    "tier": "infra",
+                }
+            )
             continue
 
         # Extract subnet for standard host
@@ -662,7 +748,7 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
                     "hosts": set(),
                     "ip_hosts": set(),
                     "link_types": {},  # type -> count
-                    "sources": {},     # src_mac -> {source_ports: set(), link_types: set()}
+                    "sources": {},  # src_mac -> {source_ports: set(), link_types: set()}
                     "asset_matches": set(),
                 }
             subnet_map[subnet_str]["hosts"].add(tgt)
@@ -670,15 +756,17 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
                 subnet_map[subnet_str]["ip_hosts"].add(tgt)
             if tgt_asset:
                 subnet_map[subnet_str]["asset_matches"].add(tgt)
-            
+
             ltype = link.link_type or "arp"
-            subnet_map[subnet_str]["link_types"][ltype] = subnet_map[subnet_str]["link_types"].get(ltype, 0) + 1
+            subnet_map[subnet_str]["link_types"][ltype] = (
+                subnet_map[subnet_str]["link_types"].get(ltype, 0) + 1
+            )
 
             if src not in subnet_map[subnet_str]["sources"]:
                 subnet_map[subnet_str]["sources"][src] = {
                     "ports": set(),
                     "link_types": set(),
-                    "count": 0
+                    "count": 0,
                 }
             subnet_map[subnet_str]["sources"][src]["count"] += 1
             subnet_map[subnet_str]["sources"][src]["link_types"].add(ltype)
@@ -701,72 +789,94 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
         is_mac_only_cluster = subnet_str == "MAC-Only / FDB"
         recommended_actions = []
         if mac_only_count:
-            recommended_actions.extend([
-                "Run ARP-enabled scan",
-                "Add gateway/router SNMP target",
-                "Correlate with asset inventory",
-            ])
+            recommended_actions.extend(
+                [
+                    "Run ARP-enabled scan",
+                    "Add gateway/router SNMP target",
+                    "Correlate with asset inventory",
+                ]
+            )
         if not has_arp:
             recommended_actions.append("Enable ARP table collection")
         if not (has_lldp or has_cdp):
             recommended_actions.append("Enable LLDP/CDP on infrastructure devices")
 
-        subnet_nodes.append({
-            "id": snode_id,
-            "label": (
-                f"MAC-only endpoints\n({count} devices)"
-                if is_mac_only_cluster
-                else f"{subnet_str}\n({count} hosts)"
-            ),
-            "group": "mac_only_cluster" if is_mac_only_cluster else "subnet",
-            "tier": "subnet",
-            "subnet": subnet_str,
-            "host_count": count,
-            "data_quality": {
-                "ip_resolved": ip_resolved,
-                "mac_only": mac_only_count,
-                "asset_matches": len(info["asset_matches"]),
-                "source_count": source_count,
-                "has_arp": has_arp,
-                "has_fdb": has_fdb,
-                "has_lldp": has_lldp,
-                "has_cdp": has_cdp,
-            },
-            "recommended_actions": recommended_actions,
-        })
-        
+        subnet_nodes.append(
+            {
+                "id": snode_id,
+                "label": (
+                    f"MAC-only endpoints\n({count} devices)"
+                    if is_mac_only_cluster
+                    else f"{subnet_str}\n({count} hosts)"
+                ),
+                "group": "mac_only_cluster" if is_mac_only_cluster else "subnet",
+                "tier": "subnet",
+                "subnet": subnet_str,
+                "host_count": count,
+                "data_quality": {
+                    "ip_resolved": ip_resolved,
+                    "mac_only": mac_only_count,
+                    "asset_matches": len(info["asset_matches"]),
+                    "source_count": source_count,
+                    "has_arp": has_arp,
+                    "has_fdb": has_fdb,
+                    "has_lldp": has_lldp,
+                    "has_cdp": has_cdp,
+                },
+                "recommended_actions": recommended_actions,
+            }
+        )
+
         # Link every infra source that knows about this subnet's hosts to the subnet node
         for src_id, src_info in info["sources"].items():
             edge_key = f"edge:{src_id}:{snode_id}"
             edge_id = hashlib.md5(edge_key.encode("utf-8")).hexdigest()
-            
-            # Format summarized link counts: e.g., "arp: 12, fdb: 1"
-            ltype_summary = ", ".join(f"{k}: {v}" for k, v in info["link_types"].items())
-            ports_summary = ", ".join(sorted(list(src_info["ports"]))) if src_info["ports"] else "unknown"
 
-            subnet_edges.append({
-                "id": edge_id,
-                "from": src_id,
-                "to": snode_id,
-                "link_type": list(src_info["link_types"])[0] if src_info["link_types"] else "arp",
-                "host_count": count,
-                "label": f"{src_info['count']} links" if src_info["count"] > 1 else "",
-                "source_port": ports_summary,
-                "target_port": "",
-                "tier": "subnet",
-                "link_details": {
-                    "type_counts": info["link_types"],
-                    "summary": ltype_summary,
-                    "ports": list(src_info["ports"])
+            # Format summarized link counts: e.g., "arp: 12, fdb: 1"
+            ltype_summary = ", ".join(
+                f"{k}: {v}" for k, v in info["link_types"].items()
+            )
+            ports_summary = (
+                ", ".join(sorted(list(src_info["ports"])))
+                if src_info["ports"]
+                else "unknown"
+            )
+
+            subnet_edges.append(
+                {
+                    "id": edge_id,
+                    "from": src_id,
+                    "to": snode_id,
+                    "link_type": (
+                        list(src_info["link_types"])[0]
+                        if src_info["link_types"]
+                        else "arp"
+                    ),
+                    "host_count": count,
+                    "label": (
+                        f"{src_info['count']} links" if src_info["count"] > 1 else ""
+                    ),
+                    "source_port": ports_summary,
+                    "target_port": "",
+                    "tier": "subnet",
+                    "link_details": {
+                        "type_counts": info["link_types"],
+                        "summary": ltype_summary,
+                        "ports": list(src_info["ports"]),
+                    },
                 }
-            })
+            )
 
     all_nodes = list(infra_nodes.values()) + subnet_nodes + list(host_nodes.values())
     all_edges = edges + subnet_edges
 
     log.info(
         "Topology map generated: %d links read, %d infra nodes, %d subnets, %d hosts (%d MAC-only)",
-        len(links), len(infra_nodes), len(subnet_map), len(host_nodes), mac_only_hosts
+        len(links),
+        len(infra_nodes),
+        len(subnet_map),
+        len(host_nodes),
+        mac_only_hosts,
     )
 
     return {
@@ -779,7 +889,7 @@ def get_topology_graph(db: Session, org_id: str, scan_id: Optional[str] = None, 
             "subnets": len(subnet_map),
             "hosts": len(host_nodes),
             "mac_only": mac_only_hosts,
-        }
+        },
     }
 
 
@@ -789,7 +899,9 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
         cat = (asset.device_category or "").lower()
         host = (asset.hostname or "").lower()
         os_name = (getattr(asset, "os_name", None) or "").lower()
-        vendor = (getattr(asset, "vendor", None) or getattr(asset, "manufacturer", None) or "").lower()
+        vendor = (
+            getattr(asset, "vendor", None) or getattr(asset, "manufacturer", None) or ""
+        ).lower()
 
         # 1. Check direct match or sub-classify
         if cat == "router" or "router" in cat:
@@ -800,7 +912,10 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
             return "firewall"
         if cat in ("switch", "switchport"):
             return "switch"
-        if cat in ("wireless_ap", "wireless_access_point", "wap") or "access point" in cat:
+        if (
+            cat in ("wireless_ap", "wireless_access_point", "wap")
+            or "access point" in cat
+        ):
             return "wireless_ap"
         if cat == "server" or "server" in cat:
             return "server"
@@ -816,7 +931,15 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
             return "printer"
 
         # Sub-classify generic Endpoints based on hostname/OS hints
-        if cat in ("endpoint", "workstation", "desktop", "laptop", "pc", "host", "client"):
+        if cat in (
+            "endpoint",
+            "workstation",
+            "desktop",
+            "laptop",
+            "pc",
+            "host",
+            "client",
+        ):
             if any(k in host or k in os_name for k in ("laptop", "notebook")):
                 return "laptop"
             if any(k in host or k in os_name for k in ("desktop", "pc-")):
@@ -833,7 +956,10 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
 
         # Sub-classify IoT / Embedded
         if cat in ("iot", "camera", "ip_camera", "smart"):
-            if any(k in host or k in os_name or "camera" in vendor for k in ("camera", "cam", "cctv")):
+            if any(
+                k in host or k in os_name or "camera" in vendor
+                for k in ("camera", "cam", "cctv")
+            ):
                 return "camera"
             return "iot"
 
@@ -873,11 +999,16 @@ def _classify_node_group(link, asset: Optional[Asset]) -> str:
             return "desktop"
         if "workstation" in all_hints:
             return "workstation"
-        if "phone" in all_hints or "mobile" in all_hints or "android" in all_hints or "iphone" in all_hints:
+        if (
+            "phone" in all_hints
+            or "mobile" in all_hints
+            or "android" in all_hints
+            or "iphone" in all_hints
+        ):
             return "mobile"
 
     # Infer from link type
     if link.link_type in ("lldp", "cdp"):
         return "switch"
-        
+
     return "endpoint"

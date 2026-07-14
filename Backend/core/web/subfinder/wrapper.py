@@ -8,7 +8,7 @@ search engines, DNS databases) without sending any traffic to the target.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from config import WebScanConfig
 from core.web.base_wrapper import ToolWrapper
@@ -50,10 +50,12 @@ class SubfinderWrapper(ToolWrapper):
 
         args = [
             self.binary,
-            "-d", target,
+            "-d",
+            target,
             "-json",
             "-silent",
-            "-o", output_file,
+            "-o",
+            output_file,
         ]
 
         try:
@@ -64,11 +66,13 @@ class SubfinderWrapper(ToolWrapper):
 
             # Subfinder JSON output: one JSON object per line with "host" key
             raw_results = self._parse_jsonl(raw)
-            subdomains = list(set(
-                r.get("host", "").strip().lower()
-                for r in raw_results
-                if r.get("host", "").strip()
-            ))
+            subdomains = list(
+                set(
+                    r.get("host", "").strip().lower()
+                    for r in raw_results
+                    if r.get("host", "").strip()
+                )
+            )
             subdomains.sort()
 
             log.info("Subfinder found %d subdomains for %s", len(subdomains), target)

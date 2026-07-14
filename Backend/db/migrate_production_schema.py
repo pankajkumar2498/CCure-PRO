@@ -39,6 +39,7 @@ from sqlalchemy import text
 from db.base import engine, Base, gen_org_id
 
 # Import all models to register them in Base.metadata for bootstrapping
+import db.models
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers

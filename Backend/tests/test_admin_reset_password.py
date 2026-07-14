@@ -66,12 +66,8 @@ def test_superadmin_reset_password_success(client: TestClient, db_session: Sessi
     )
     db_session.add(org)
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    analyst_role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add_all([superadmin_role, analyst_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
 
     _grant_permission(db_session, superadmin_role, "users", "update")
 
@@ -122,12 +118,8 @@ def test_org_admin_reset_password_tenant_isolation(
     )
     db_session.add_all([org_a, org_b])
 
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    analyst_role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add_all([org_admin_role, analyst_role])
-    db_session.flush()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
 
     _grant_permission(db_session, org_admin_role, "users", "update")
 
@@ -194,12 +186,8 @@ def test_reset_password_revokes_sessions(client: TestClient, db_session: Session
     )
     db_session.add(org)
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    analyst_role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add_all([superadmin_role, analyst_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
 
     _grant_permission(db_session, superadmin_role, "users", "update")
 
@@ -232,9 +220,7 @@ def test_reset_password_revokes_sessions(client: TestClient, db_session: Session
         org_id=org.id,
         token_jti="jti_1",
         token_hash="hash_1",
-        expires_at=db_session.execute(
-            db_session.select(RefreshTokenSession.expires_at)
-        ).scalar()
+        expires_at=db_session.query(RefreshTokenSession.expires_at).scalar()
         or target_user.created_at,  # any valid date
     )
     # Give expires_at dummy value in database
@@ -283,11 +269,7 @@ def test_reset_password_weak_password_validation(
     )
     db_session.add(org)
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    db_session.add(superadmin_role)
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
 
     _grant_permission(db_session, superadmin_role, "users", "update")
 

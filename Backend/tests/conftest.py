@@ -76,18 +76,17 @@ if "prod" in db_name.lower():
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 
+from main import app
+
 # ── Disable rate limiting during tests ───────────────────────────────────────
 # slowapi enforces limits based on request count. In CI, rapid parallel calls
 # to auth/login trigger 429 Too Many Requests. Disable globally for the test run.
 try:
-    from scan_helpers import limiter
-
-    limiter.enabled = False
+    app.state.limiter.enabled = False
 except Exception:
-    pass  # If import fails (e.g. module renamed), tests still run
+    pass  # If import fails (e.g. state missing), tests still run
 
 from sqlalchemy.orm import Session
-from main import app
 from db.base import get_db, engine, Base, SessionLocal
 from db.models.users import User
 from db.models.rbac import Organization, Role
@@ -156,6 +155,15 @@ UUID.bind_processor = custom_bind_processor
 # ── Database Setup ────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(scope="session", autouse=True)
+def seed_system_roles():
+    """Seed system roles once per test session to guarantee they exist."""
+    from db.migrate_production_schema import seed_rbac
+
+    with engine.begin() as conn:
+        seed_rbac(conn)
+
+
 @pytest.fixture(scope="function", autouse=True)
 def reset_database():
     """Clean up the database before and after each test to ensure isolation in PostgreSQL."""
@@ -163,10 +171,14 @@ def reset_database():
 
     def _cleanup():
         with engine.begin() as conn:
-            # Truncate organizations, users, AND roles (with CASCADE) so that
-            # Alembic-seeded roles are wiped and re-seeded on next startup.
-            # This prevents duplicate key violations on roles_name_key / roles_pkey.
-            conn.execute(text("TRUNCATE TABLE organizations, users, roles CASCADE"))
+            # Truncate organizations and users. Clean up any custom roles.
+            # Do NOT truncate system roles, as they are seeded session-wide.
+            conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
+            conn.execute(
+                text(
+                    "DELETE FROM roles WHERE name NOT IN ('superadmin', 'org_admin', 'analyst', 'viewer', 'scanner')"
+                )
+            )
 
     # Clean up before the test (in case a previous run crashed and left dirty state)
     _cleanup()
@@ -222,40 +234,12 @@ def test_org(db_session: Session) -> Organization:
 
 @pytest.fixture(scope="function")
 def test_role_admin(db_session: Session) -> Role:
-    from sqlalchemy import text
-    from db.base import utcnow
-
-    existing = db_session.query(Role).filter(Role.id == 1).first()
-    if existing:
-        return existing
-
-    db_session.execute(
-        text(
-            "INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (1, 'org_admin', 'Admin role', false, :now)"
-        ),
-        {"now": utcnow()},
-    )
-    db_session.commit()
-    return db_session.query(Role).filter(Role.id == 1).first()
+    return db_session.query(Role).filter(Role.name == "org_admin").first()
 
 
 @pytest.fixture(scope="function")
 def test_role_viewer(db_session: Session) -> Role:
-    from sqlalchemy import text
-    from db.base import utcnow
-
-    existing = db_session.query(Role).filter(Role.id == 2).first()
-    if existing:
-        return existing
-
-    db_session.execute(
-        text(
-            "INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (2, 'viewer', 'Viewer role', false, :now)"
-        ),
-        {"now": utcnow()},
-    )
-    db_session.commit()
-    return db_session.query(Role).filter(Role.id == 2).first()
+    return db_session.query(Role).filter(Role.name == "viewer").first()
 
 
 @pytest.fixture(scope="function")

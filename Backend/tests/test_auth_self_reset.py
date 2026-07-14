@@ -37,9 +37,7 @@ def test_forgot_password_registered_email_success(
     db_session.add(org)
     db_session.flush()
 
-    role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add(role)
-    db_session.flush()
+    role = db_session.query(Role).filter_by(name="analyst").first()
 
     user = User(
         id="usr_test_user_123",
@@ -95,9 +93,7 @@ def test_reset_password_success_and_revokes_sessions(
     db_session.add(org)
     db_session.flush()
 
-    role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add(role)
-    db_session.flush()
+    role = db_session.query(Role).filter_by(name="analyst").first()
 
     user = User(
         id="usr_test_user_456",
@@ -171,9 +167,7 @@ def test_reset_password_token_invalidation_on_first_use(
     db_session.add(org)
     db_session.flush()
 
-    role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add(role)
-    db_session.flush()
+    role = db_session.query(Role).filter_by(name="analyst").first()
 
     user = User(
         id="usr_test_user_789",

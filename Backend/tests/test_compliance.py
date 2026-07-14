@@ -87,7 +87,6 @@ def test_marketplace_workflow(client, db_session, test_user, auth_headers):
         code="TESTFW",
         name="Test Framework",
         version="1.0",
-        controls_count=0,
     )
     db_session.add(fw)
     db_session.commit()

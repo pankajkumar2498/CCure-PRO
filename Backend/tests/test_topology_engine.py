@@ -220,7 +220,7 @@ def test_sync_host_discovery_mac_first_and_ip_hijack(db_session, test_org):
 
 def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, test_org):
     from core.tasks import _sync_credentialed_asset_identity
-    from db.models import User
+    from db.models import User, Role
 
     # Setup test assets
     # Asset A: laptop with MAC 00:11:22:33:44:55 at IP 192.168.1.5
@@ -245,13 +245,14 @@ def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, te
     import uuid
 
     uid = uuid.uuid4().hex[:8]
+    _role = db_session.query(Role).filter_by(name="org_admin").first()
     user = User(
         id=f"scanner-user-{uid}",
         org_id=test_org.id,
         email=f"scanner-{uid}@ccurepro.com",
         username=f"scanner-{uid}",
         password_hash="...",
-        role_id=1,
+        role_id=_role.id,
     )
     db_session.add(asset_a)
     db_session.add(asset_b)

@@ -74,6 +74,7 @@ def test_create_scan_writes_audit_log(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
     user = User(
         id=user_id,
@@ -82,7 +83,7 @@ def test_create_scan_writes_audit_log(db_session: Session):
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -131,6 +132,7 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user1 = User(
         id=f"user_test_{uuid.uuid4().hex[:8]}",
         username=f"user1_{uuid.uuid4().hex[:8]}",
@@ -138,7 +140,7 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
         full_name="User One",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -149,7 +151,7 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
         full_name="User Two",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -202,6 +204,7 @@ def test_scan_completion_logs_audit_event(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
     user = User(
         id=user_id,
@@ -210,7 +213,7 @@ def test_scan_completion_logs_audit_event(db_session: Session):
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -271,6 +274,7 @@ def test_scan_failure_logs_audit_event(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
     user = User(
         id=user_id,
@@ -279,7 +283,7 @@ def test_scan_failure_logs_audit_event(db_session: Session):
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -867,6 +871,7 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
     )
     db_session.add(org)
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user = User(
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
@@ -874,7 +879,7 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -1014,6 +1019,7 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     )
     db_session.add(org)
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user = User(
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
@@ -1021,7 +1027,7 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )
@@ -1231,6 +1237,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
     )
     db_session.add(org)
 
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     user = User(
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
@@ -1238,7 +1245,7 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=3,
+        role_id=org_admin_role.id,
         is_active=True,
         is_verified=True,
     )

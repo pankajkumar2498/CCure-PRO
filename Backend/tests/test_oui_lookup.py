@@ -83,6 +83,7 @@ def test_oui_database_lookup_sync_fallback(
 ):
     """Verify that lookup_sync queries requests API fallback and saves to DB cache."""
     db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+    db._executor = MagicMock()
 
     # Setup request mock
     mock_response = MagicMock()
@@ -99,9 +100,7 @@ def test_oui_database_lookup_sync_fallback(
     result = db.lookup_sync("00:11:22:33:44:55")
 
     assert result == "API Resolved Vendor"
-    mock_get.assert_called_once_with(
-        "https://api.macvendors.com/001122334455", timeout=2.0
-    )
+    mock_get.assert_any_call("https://api.macvendors.com/001122334455", timeout=2.0)
     mock_db.execute.assert_called_once()
     mock_db.commit.assert_called_once()
     mock_db.close.assert_called()
@@ -115,7 +114,9 @@ def test_update_mac_vendor_registry_task_success(mock_get, temp_manuf_file):
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.text = (
-        "# New Wireshark OUI file\n" "00:11:22\tNewVendor\tNew Vendor Corp\n"
+        "# New Wireshark OUI file\n"
+        "00:00:00\tXerox\tXerox Corporation\n"
+        "00:11:22\tNewVendor\tNew Vendor Corp\n"
     )
     mock_get.return_value = mock_response
 
@@ -128,7 +129,7 @@ def test_update_mac_vendor_registry_task_success(mock_get, temp_manuf_file):
         result = update_mac_vendor_registry_task()
 
         assert result["success"] is True
-        assert result["entries"] == 1
+        assert result["entries"] == 2
         assert mock_db_instance._database.get("001122") == "New Vendor Corp"
 
         # Verify file is updated

@@ -20,14 +20,6 @@ from db.models import Organization, User, Role
 
 
 @pytest.fixture
-def db_session():
-    """Provide a test database session."""
-    session = SessionLocal()
-    yield session
-    session.close()
-
-
-@pytest.fixture
 def setup_org_and_users(db_session):
     """
     Create:
@@ -63,19 +55,21 @@ def setup_org_and_users(db_session):
 
     user1 = User(
         username="testuser1",
-        email="user1@testorg.local",
+        email="user1@testorg.com",
         password_hash=hash_password("TestPassword123!"),
         org_id=org.id,
         role_id=test_role.id,
         is_active=True,
+        is_verified=True,
     )
     user2 = User(
         username="testuser2",
-        email="user2@testorg.local",
+        email="user2@testorg.com",
         password_hash=hash_password("TestPassword456!"),
         org_id=org.id,
         role_id=test_role.id,
         is_active=True,
+        is_verified=True,
     )
     db_session.add(user1)
     db_session.add(user2)

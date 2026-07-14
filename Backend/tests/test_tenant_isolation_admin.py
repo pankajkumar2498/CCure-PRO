@@ -48,14 +48,8 @@ def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add_all([superadmin_role, org_admin_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     for role in (superadmin_role, org_admin_role):
         _grant_permission(db_session, role, "users", "read")
@@ -109,14 +103,8 @@ def test_superadmin_user_listing_can_see_all_users(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add_all([superadmin_role, org_admin_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     _grant_permission(db_session, superadmin_role, "users", "read")
 
@@ -175,14 +163,8 @@ def test_org_admin_audit_logs_are_tenant_scoped(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add_all([superadmin_role, org_admin_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     for role in (superadmin_role, org_admin_role):
         _grant_permission(db_session, role, "audit", "read")
@@ -250,14 +232,8 @@ def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add_all([superadmin_role, org_admin_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     _grant_permission(db_session, superadmin_role, "audit", "read")
 
@@ -309,8 +285,8 @@ def test_access_token_contains_org_and_role_claims(client, db_session):
     org = Organization(
         name="Token Org", slug="token-org", max_assets=100, max_users=10, is_active=True
     )
-    role = Role(name="org_admin", description="Org admin", is_system_role=True)
-    db_session.add_all([org, role])
+    role = db_session.query(Role).filter_by(name="org_admin").first()
+    db_session.add(org)
     db_session.flush()
 
     user = User(
@@ -346,11 +322,7 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
     )
     db_session.add(org)
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    db_session.add(superadmin_role)
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
 
     _grant_permission(db_session, superadmin_role, "users", "create")
@@ -403,11 +375,7 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    db_session.add(superadmin_role)
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
 
     _grant_permission(db_session, superadmin_role, "users", "create")
@@ -462,11 +430,7 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
     )
     db_session.add_all([org_a, org_b])
 
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add(org_admin_role)
-    db_session.flush()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
 
     _grant_permission(db_session, org_admin_role, "users", "create")
@@ -516,11 +480,7 @@ def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(
     )
     db_session.add(org)
 
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add(org_admin_role)
-    db_session.flush()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     _grant_permission(db_session, org_admin_role, "users", "read")
     _grant_permission(db_session, org_admin_role, "users", "delete")
@@ -583,11 +543,7 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     )
     db_session.add(org)
 
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add(org_admin_role)
-    db_session.flush()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     _grant_permission(db_session, org_admin_role, "users", "read")
     _grant_permission(db_session, org_admin_role, "users", "delete")
@@ -658,11 +614,7 @@ def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_se
     )
     db_session.add(org)
 
-    org_admin_role = Role(
-        name="org_admin", description="Org admin", is_system_role=True
-    )
-    db_session.add(org_admin_role)
-    db_session.flush()
+    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
 
     _grant_permission(db_session, org_admin_role, "users", "delete")
 
@@ -714,8 +666,8 @@ def test_deleted_user_cannot_log_in(client, db_session):
         max_users=10,
         is_active=True,
     )
-    role = Role(name="org_admin", description="Org admin", is_system_role=True)
-    db_session.add_all([org, role])
+    role = db_session.query(Role).filter_by(name="org_admin").first()
+    db_session.add(org)
     db_session.flush()
 
     deleted_user = User(

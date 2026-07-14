@@ -138,7 +138,7 @@ def test_port_engine_port_list_curated_hybrid_ranges():
         assert quick_port in ports_light
 
     # Scenario 2: NORMAL intensity
-    pe_normal = PortEngine(intensity=ScanIntensity.NORMAL)
+    pe_normal = PortEngine(intensity=ScanIntensity.NORMAL, exclude_ot_from_nmap=False)
     ports_normal = pe_normal._port_list()
     # Check that it contains all system ports 1-1024
     for p in range(1, 1025):

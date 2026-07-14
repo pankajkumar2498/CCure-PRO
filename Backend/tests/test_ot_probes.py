@@ -18,9 +18,10 @@ from core.discovery.techniques.ot_probes import (
 
 
 class MockSocket:
-    def __init__(self, responses=None):
+    def __init__(self, responses=None, socket_type=socket.SOCK_STREAM):
         self.responses = responses or []
         self.sent_data = []
+        self.type = socket_type
 
     def sendall(self, data):
         self.sent_data.append(data)
@@ -45,6 +46,9 @@ class MockSocket:
         pass
 
     def settimeout(self, timeout):
+        pass
+
+    def setsockopt(self, level, optname, value):
         pass
 
     def close(self):
@@ -98,7 +102,7 @@ def test_probe_ethernetip(mock_socket):
     mock_resp[62] = 12  # Name length
     mock_resp[63:75] = b"ControlLogix"
 
-    mock_sock = MockSocket(responses=[bytes(mock_resp)])
+    mock_sock = MockSocket(responses=[bytes(mock_resp)], socket_type=socket.SOCK_DGRAM)
     mock_socket.return_value = mock_sock
 
     info = probe_ethernetip("10.0.0.1")
@@ -118,7 +122,7 @@ def test_probe_bacnet(mock_socket):
     mock_resp[12] = 0x21  # 1-byte integer tag
     mock_resp[13] = 15  # Vendor: Honeywell
 
-    mock_sock = MockSocket(responses=[bytes(mock_resp)])
+    mock_sock = MockSocket(responses=[bytes(mock_resp)], socket_type=socket.SOCK_DGRAM)
     mock_socket.return_value = mock_sock
 
     info = probe_bacnet("10.0.0.1")

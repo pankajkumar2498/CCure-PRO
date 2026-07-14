@@ -208,12 +208,8 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     )
     db_session.add(org)
 
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
-    analyst_role = Role(name="analyst", description="Analyst", is_system_role=True)
-    db_session.add_all([superadmin_role, analyst_role])
-    db_session.flush()
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
 
     # Grant permissions
     permission = (
@@ -228,10 +224,17 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
         db_session.add(permission)
         db_session.flush()
 
-    db_session.add(
-        RolePermission(role_id=superadmin_role.id, permission_id=permission.id)
+    # Check if role-permission mapping already exists
+    role_permission = (
+        db_session.query(RolePermission)
+        .filter_by(role_id=superadmin_role.id, permission_id=permission.id)
+        .first()
     )
-    db_session.flush()
+    if not role_permission:
+        db_session.add(
+            RolePermission(role_id=superadmin_role.id, permission_id=permission.id)
+        )
+        db_session.flush()
 
     superadmin = User(
         id="usr_sa_mfa_admin",

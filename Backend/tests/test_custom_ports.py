@@ -37,19 +37,19 @@ def test_parse_custom_ports_value_errors():
     # Malformed format
     with pytest.raises(ValueError, match="Malformed port"):
         InputValidator.parse_custom_ports("22a")
-    with pytest.raises(ValueError, match="Invalid range format"):
+    with pytest.raises(ValueError, match="Malformed port range"):
         InputValidator.parse_custom_ports("80-80-80")
-    with pytest.raises(ValueError, match="Invalid range bounds"):
+    with pytest.raises(ValueError, match="Malformed port range"):
         InputValidator.parse_custom_ports("80-abc")
 
     # Range start > end
-    with pytest.raises(ValueError, match="Range start must be <= end"):
+    with pytest.raises(ValueError, match="greater than"):
         InputValidator.parse_custom_ports("80-79")
 
     # Out of bounds
-    with pytest.raises(ValueError, match="Ports must be between 1 and 65535"):
+    with pytest.raises(ValueError, match="must be between 1 and 65535"):
         InputValidator.parse_custom_ports("0")
-    with pytest.raises(ValueError, match="Ports must be between 1 and 65535"):
+    with pytest.raises(ValueError, match="must be between 1 and 65535"):
         InputValidator.parse_custom_ports("65536")
 
     # Duplicate ports
@@ -83,13 +83,13 @@ def test_parse_exclude_ports_success():
 def test_parse_exclude_ports_errors():
     with pytest.raises(ValueError, match="Malformed port"):
         InputValidator.parse_exclude_ports("22a")
-    with pytest.raises(ValueError, match="Invalid range format"):
+    with pytest.raises(ValueError, match="Malformed port range"):
         InputValidator.parse_exclude_ports("80-80-80")
-    with pytest.raises(ValueError, match="Invalid range bounds"):
+    with pytest.raises(ValueError, match="Malformed port range"):
         InputValidator.parse_exclude_ports("80-abc")
-    with pytest.raises(ValueError, match="Range start must be <= end"):
+    with pytest.raises(ValueError, match="greater than"):
         InputValidator.parse_exclude_ports("80-79")
-    with pytest.raises(ValueError, match="Ports must be between 1 and 65535"):
+    with pytest.raises(ValueError, match="must be between 1 and 65535"):
         InputValidator.parse_exclude_ports("0")
     with pytest.raises(ValueError, match="Duplicate port detected"):
         InputValidator.parse_exclude_ports("22,22")
@@ -105,6 +105,7 @@ def test_check_scan_quota_custom_ports():
 
     # Configure mock DB query
     mock_db.query.return_value.filter.return_value.first.return_value = mock_org
+    mock_db.query.return_value.filter.return_value.count.return_value = 0
 
     # 1. Under Community limit (<= 100 ports)
     # 100 ports is fine

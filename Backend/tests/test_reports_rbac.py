@@ -118,13 +118,11 @@ def test_superadmin_can_download_report_across_orgs(client, db_session):
         max_users=10,
         is_active=True,
     )
-    superadmin_role = Role(
-        name="superadmin", description="Platform admin", is_system_role=True
-    )
+    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
     analyst_role = Role(
         name="analyst_reports", description="Analyst", is_system_role=False
     )
-    db_session.add_all([org_a, org_b, superadmin_role, analyst_role])
+    db_session.add_all([org_a, org_b, analyst_role])
     db_session.flush()
 
     _grant_permission(db_session, analyst_role, "reports", "read")

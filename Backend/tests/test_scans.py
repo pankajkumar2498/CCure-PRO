@@ -1312,7 +1312,9 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
     assert asset.vuln_counts == {"critical": 0, "high": 0, "medium": 0, "low": 0}
 
 
-def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
+def test_host_discovery_endpoint(
+    client: TestClient, auth_headers: dict, db_session: Session
+):
     """Test the Phase 1 Host Discovery API logic and DB persistence."""
 
     # Mock the internal orchestrator to return a successful dummy result
@@ -1333,37 +1335,36 @@ def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
         },
     }
 
-    with patch("scan_helpers.HostDiscoveryAPI") as mock_api_class:
-        mock_orch = AsyncMock()
-        mock_orch.run_host_discovery_only.return_value = mock_result
-        mock_orch.generate_phase_report.return_value = {"json_pdf": "/fake/path.pdf"}
+    mock_orch = AsyncMock()
+    mock_orch.run_host_discovery_only.return_value = mock_result
+    mock_orch.generate_phase_report.return_value = {"json_pdf": "/fake/path.pdf"}
 
-        # Override the get_api() singleton
-        mock_api_instance = mock_api_class.return_value
-        mock_api_instance._orch = mock_orch
+    with patch("core.tasks._new_orchestrator", return_value=mock_orch):
+        response = client.post(
+            "/scan/host-discovery",
+            headers=auth_headers,
+            json={
+                "targets": ["10.180.6.0/24"],
+                "scan_type": "adaptive",
+                "pipeline_mode": "asset",
+            },
+        )
 
-        with patch("routers.phase_scans.get_api", return_value=mock_api_instance):
-            response = client.post(
-                "/scan/host-discovery",
-                headers=auth_headers,
-                json={
-                    "targets": ["10.180.6.0/24"],
-                    "scan_type": "adaptive",
-                    "pipeline_mode": "asset",
-                },
-            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "scan_id" in data
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "scan_id" in data
-            assert data["pipeline_mode"] == "asset"
-            assert data["summary"]["active_hosts"] == 1
+        # Query and verify DB persistence
+        scan_id = data["scan_id"]
+        db_scan = db_session.query(Scan).filter(Scan.id == scan_id).first()
+        assert db_scan is not None
+        assert db_scan.pipeline_mode == "asset"
+        assert db_scan.active_hosts == 1
+        assert db_scan.total_hosts == 1
 
-            # Ensure rate limiting header is present (slowapi adds standard X-RateLimit headers)
-            assert (
-                "X-RateLimit-Limit" in response.headers or response.status_code == 200
-            )
+        # Ensure rate limiting header is present (slowapi adds standard X-RateLimit headers)
+        assert "X-RateLimit-Limit" in response.headers or response.status_code == 200
 
 
 def test_asset_discovery_wrong_pipeline_mode(client: TestClient, auth_headers: dict):

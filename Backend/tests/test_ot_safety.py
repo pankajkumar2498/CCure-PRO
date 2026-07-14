@@ -51,7 +51,10 @@ class TestOTSafetyAndStability(unittest.TestCase):
 
             # Verify SO_LINGER is enabled with timeout=0 (sends TCP RST on close)
             linger_opt = s.getsockopt(socket.SOL_SOCKET, socket.SO_LINGER, 8)
-            onoff, linger = struct.unpack("ii", linger_opt)
+            if len(linger_opt) == 4:
+                onoff, linger = struct.unpack("hh", linger_opt)
+            else:
+                onoff, linger = struct.unpack("ii", linger_opt)
             self.assertEqual(onoff, 1)
             self.assertEqual(linger, 0)
         finally:

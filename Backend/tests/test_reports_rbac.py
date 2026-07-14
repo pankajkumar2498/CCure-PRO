@@ -41,8 +41,12 @@ def _auth_headers(user: User) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+from routers.reports import _REPORTS_DIR
+
+
 def _temp_report_path() -> str:
-    handle = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    os.makedirs(_REPORTS_DIR, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(dir=_REPORTS_DIR, delete=False, suffix=".pdf")
     try:
         handle.write(b"%PDF-1.4\n%rbac-test\n")
     finally:

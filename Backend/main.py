@@ -417,6 +417,7 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
             "error_code": "VALIDATION_ERROR",
             "message": "Request validation failed.",
             "errors": scrubbed,
+            "detail": scrubbed,
             "request_id": request_id,
         },
         headers={"X-Request-ID": request_id or ""},

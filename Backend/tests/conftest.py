@@ -264,7 +264,10 @@ def test_user(
     db_session: Session, test_org: Organization, test_role_admin: Role
 ) -> User:
     """A standard authenticated user with admin rights."""
+    from db.base import gen_user_id
+
     user = User(
+        id=gen_user_id(test_org.slug, "testadmin"),
         username="testadmin",
         email="admin@test.com",
         full_name="Test Admin",

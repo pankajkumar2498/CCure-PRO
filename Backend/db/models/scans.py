@@ -128,6 +128,15 @@ class Scan(Base):
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
+    def __init__(self, **kwargs):
+        if "id" not in kwargs:
+            from db.base import gen_scan_id
+
+            org_id = kwargs.get("org_id", "org_default")
+            org_slug = org_id.replace("org_", "") if org_id else "default"
+            kwargs["id"] = gen_scan_id(org_slug)
+        super().__init__(**kwargs)
+
     # ── Relationships ─────────────────────────────────────────────────────────
     organization = relationship("Organization", back_populates="scans")
     created_by_user = relationship(

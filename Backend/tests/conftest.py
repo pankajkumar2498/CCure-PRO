@@ -146,42 +146,29 @@ UUID.bind_processor = custom_bind_processor
 # ── Database Setup ────────────────────────────────────────────────────────────
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="function", autouse=True)
 def reset_database():
-    """Drop and recreate all tables for each test to ensure isolation."""
-    # For PostgreSQL with existing data, skip drop_all and seeding, assume DB is ready
-    if not database_url.startswith("sqlite"):
-        # Assume PostgreSQL has the schema and seed data already set up from production dump
-        return
-
-    # For SQLite, drop and recreate as before
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-
-    # Seed required defaults for /auth/register
-    from sqlalchemy.orm import Session
+    """Clean up the database before and after each test to ensure isolation in PostgreSQL."""
     from sqlalchemy import text
-    from db.base import utcnow
 
-    with Session(engine) as session:
-        session.execute(
-            text(
-                "INSERT INTO organizations (id, name, slug, plan, max_assets, max_users, is_active, settings, created_at, updated_at) "
-                "VALUES ('00000000-0000-0000-0000-000000000000', 'Default', 'default', 'community', 100, 10, true, '{}', :now, :now)"
-            ),
-            {"now": utcnow()},
-        )
-        session.execute(
-            text(
-                "INSERT INTO roles (id, name, description, is_system_role, created_at) "
-                "VALUES (3, 'analyst', 'Analyst role', false, :now)"
-            ),
-            {"now": utcnow()},
-        )
-        session.commit()
+    def _cleanup():
+        with engine.begin() as conn:
+            # Delete all organizations except the default one seeded in migrate_production_schema
+            conn.execute(text("DELETE FROM organizations WHERE id != 'org_default'"))
+            # Delete any extra users created during the test
+            conn.execute(text("DELETE FROM users WHERE username != 'testadmin'"))
+            # Delete any non-system roles created during the test
+            conn.execute(
+                text(
+                    "DELETE FROM roles WHERE name NOT IN ('superadmin', 'org_admin', 'analyst', 'viewer', 'scanner')"
+                )
+            )
 
+    # Clean up before the test (in case a previous run crashed and left dirty state)
+    _cleanup()
     yield
-    Base.metadata.drop_all(bind=engine)
+    # Clean up after the test
+    _cleanup()
 
 
 @pytest.fixture(scope="function")
@@ -234,6 +221,10 @@ def test_role_admin(db_session: Session) -> Role:
     from sqlalchemy import text
     from db.base import utcnow
 
+    existing = db_session.query(Role).filter(Role.id == 1).first()
+    if existing:
+        return existing
+
     db_session.execute(
         text(
             "INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (1, 'org_admin', 'Admin role', false, :now)"
@@ -248,6 +239,10 @@ def test_role_admin(db_session: Session) -> Role:
 def test_role_viewer(db_session: Session) -> Role:
     from sqlalchemy import text
     from db.base import utcnow
+
+    existing = db_session.query(Role).filter(Role.id == 2).first()
+    if existing:
+        return existing
 
     db_session.execute(
         text(

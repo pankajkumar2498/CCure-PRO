@@ -76,6 +76,21 @@ class Organization(Base):
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
+    def __init__(self, **kwargs):
+        if "id" not in kwargs:
+            slug = kwargs.get("slug")
+            if not slug:
+                import uuid
+
+                slug = (
+                    kwargs.get("name", "").lower().replace(" ", "-")
+                    or uuid.uuid4().hex[:8]
+                )
+            from db.base import gen_org_id
+
+            kwargs["id"] = gen_org_id(slug)
+        super().__init__(**kwargs)
+
     # ── Relationships ─────────────────────────────────────────────────────────
     users = relationship(
         "User", back_populates="organization", cascade="all, delete-orphan"

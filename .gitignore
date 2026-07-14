@@ -89,3 +89,6 @@ Backend/db/test_data/prod_schema.sql
 
 # docs/
 docs/
+
+# pre-commit cache
+.pre-commit-cache/

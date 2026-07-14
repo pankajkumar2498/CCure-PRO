@@ -61,7 +61,9 @@ export default function RoleManagement() {
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Roles & Permissions</h2>
-            <p className="page-subtitle">View system roles and their granular access control</p>
+            <p className="page-subtitle">
+              View system roles and their granular access control
+            </p>
           </div>
         </div>
 
@@ -84,7 +86,9 @@ export default function RoleManagement() {
                   onClick={() => handleSelectRole(r)}
                 >
                   <div className="role-list-item__title">{r.name}</div>
-                  <div className="role-list-item__subtitle">{r.description || "No description"}</div>
+                  <div className="role-list-item__subtitle">
+                    {r.description || "No description"}
+                  </div>
                 </Button>
               ))}
             </div>
@@ -93,8 +97,15 @@ export default function RoleManagement() {
           {/* Permissions List */}
           <div className="card">
             <div style={{ marginBottom: 20 }}>
-               <h3 style={{ fontSize: 18, marginBottom: 4 }}>Permissions for <span style={{ color: "var(--primary)" }}>{selectedRole?.name}</span></h3>
-               <p className="muted" style={{ fontSize: 14 }}>Granted capabilities for this role</p>
+              <h3 style={{ fontSize: 18, marginBottom: 4 }}>
+                Permissions for{" "}
+                <span style={{ color: "var(--primary)" }}>
+                  {selectedRole?.name}
+                </span>
+              </h3>
+              <p className="muted" style={{ fontSize: 14 }}>
+                Granted capabilities for this role
+              </p>
             </div>
 
             {loadingPerms ? (
@@ -112,16 +123,49 @@ export default function RoleManagement() {
                     </tr>
                   </thead>
                   <tbody>
-                    {permissions.map(p => (
+                    {permissions.map((p) => (
                       <tr key={p.id}>
-                        <td><code className="ip-code" style={{ background: 'rgba(37, 99, 235, 0.05)', color: 'var(--primary)' }}>{p.resource}</code></td>
-                        <td><span className="method-chip" style={{ background: p.action === 'manage' ? '#fef2f2' : '#f0f9ff', color: p.action === 'manage' ? '#dc2626' : '#0369a1' }}>{p.action}</span></td>
-                        <td style={{ fontSize: 13 }}>{p.description || "Allows access to " + p.resource}</td>
+                        <td>
+                          <code
+                            className="ip-code"
+                            style={{
+                              background: "rgba(37, 99, 235, 0.05)",
+                              color: "var(--primary)",
+                            }}
+                          >
+                            {p.resource}
+                          </code>
+                        </td>
+                        <td>
+                          <span
+                            className="method-chip"
+                            style={{
+                              background:
+                                p.action === "manage" ? "#fef2f2" : "#f0f9ff",
+                              color:
+                                p.action === "manage" ? "#dc2626" : "#0369a1",
+                            }}
+                          >
+                            {p.action}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 13 }}>
+                          {p.description || "Allows access to " + p.resource}
+                        </td>
                       </tr>
                     ))}
                     {permissions.length === 0 && (
                       <tr>
-                        <td colSpan="3" style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>No permissions assigned to this role.</td>
+                        <td
+                          colSpan="3"
+                          style={{
+                            textAlign: "center",
+                            padding: 40,
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          No permissions assigned to this role.
+                        </td>
                       </tr>
                     )}
                   </tbody>

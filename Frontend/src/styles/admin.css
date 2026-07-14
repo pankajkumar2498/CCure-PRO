@@ -24,76 +24,53 @@
   opacity: 0.45;
 }
 
-/* Light theme — matches existing form inputs */
+/* Theme-aware search and filter inputs */
 .search-input {
   width: 100%;
   padding: 8px 12px 8px 32px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #0f172a;
+  color: var(--text);
   font-size: 0.875rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .search-input::placeholder {
-  color: #94a3b8;
+  color: var(--text-faint);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 .org-filter-select {
   padding: 8px 12px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #0f172a;
+  color: var(--text);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   min-width: 190px;
 }
 
 .org-filter-select:focus {
   outline: none;
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
-}
-
-/* Dark theme overrides */
-[data-theme="dark"] .search-input {
-  background: #1e293b;
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #f1f5f9;
-}
-
-[data-theme="dark"] .search-input::placeholder {
-  color: #64748b;
-}
-
-[data-theme="dark"] .search-input:focus {
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
-}
-
-[data-theme="dark"] .org-filter-select {
-  background: #1e293b;
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #f1f5f9;
-}
-
-[data-theme="dark"] .org-filter-select:focus {
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 [data-theme="dark"] .org-filter-select option {
-  background: #1e293b;
-  color: #f1f5f9;
+  background: var(--bg-white);
+  color: var(--text);
 }
 
 .table-cell-identity {
@@ -154,4 +131,3 @@
 .cred-section-chip {
   padding: 8px 10px;
 }
-

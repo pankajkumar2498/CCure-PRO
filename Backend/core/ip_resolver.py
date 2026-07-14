@@ -50,6 +50,7 @@ def get_client_ip(request: Request) -> str:
 
     # 1. Parse X-Forwarded-For chain
     x_forwarded_for = request.headers.get("x-forwarded-for")
+    ip_to_return = None
     if x_forwarded_for:
         # Build the chain of hops: client-supplied headers + socket IP
         hops = [ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()]
@@ -59,15 +60,23 @@ def get_client_ip(request: Request) -> str:
         # Traverse right-to-left (from immediate peer back to client)
         for ip in reversed(hops):
             if not _is_trusted_proxy(ip):
-                return ip
+                ip_to_return = ip
+                break
+        else:
+            # If all hops are trusted (e.g. internal requests), return the first one (leftmost client IP)
+            ip_to_return = hops[0]
+    elif request.headers.get("x-real-ip"):
+        # 2. Fall back to X-Real-IP if no X-Forwarded-For is present
+        ip_to_return = request.headers.get("x-real-ip").strip()
+    else:
+        # 3. Fall back to socket peer IP
+        ip_to_return = socket_ip
 
-        # If all hops are trusted (e.g. internal requests), return the first one (leftmost client IP)
-        return hops[0]
+    if ip_to_return == "testclient" or not ip_to_return:
+        return "127.0.0.1"
 
-    # 2. Fall back to X-Real-IP if no X-Forwarded-For is present
-    x_real_ip = request.headers.get("x-real-ip")
-    if x_real_ip:
-        return x_real_ip.strip()
-
-    # 3. Fall back to socket peer IP
-    return socket_ip
+    try:
+        ipaddress.ip_address(ip_to_return)
+        return ip_to_return
+    except ValueError:
+        return "127.0.0.1"

@@ -31,20 +31,20 @@ log = logging.getLogger("ccure.web.nuclei")
 
 # Severity mapping: nuclei severity → our DB severity
 _SEVERITY_MAP = {
-    "info":     "info",
-    "low":      "low",
-    "medium":   "medium",
-    "high":     "high",
+    "info": "info",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
     "critical": "critical",
-    "unknown":  "info",
+    "unknown": "info",
 }
 
 # CVSS score approximation by severity (when nuclei doesn't provide exact CVSS)
 _CVSS_APPROX = {
-    "info":     0.0,
-    "low":      3.0,
-    "medium":   5.5,
-    "high":     7.5,
+    "info": 0.0,
+    "low": 3.0,
+    "medium": 5.5,
+    "high": 7.5,
     "critical": 9.5,
 }
 
@@ -124,7 +124,9 @@ class NucleiWrapper(ToolWrapper):
         effective_rate = rate_limit or WebScanConfig.SCAN_RATE_LIMIT
         if waf_detected:
             effective_rate = min(effective_rate, WebScanConfig.STEALTH_RATE_LIMIT)
-            log.info("WAF detected — reducing nuclei rate limit to %d req/s", effective_rate)
+            log.info(
+                "WAF detected — reducing nuclei rate limit to %d req/s", effective_rate
+            )
         args.extend(["-rate-limit", str(effective_rate)])
 
         # Concurrency
@@ -168,7 +170,9 @@ class NucleiWrapper(ToolWrapper):
             stats = {
                 "total_findings": len(findings),
                 "by_severity": self._count_by_severity(findings),
-                "templates_matched": len(set(f.get("template_id", "") for f in findings)),
+                "templates_matched": len(
+                    set(f.get("template_id", "") for f in findings)
+                ),
             }
 
             log.info(
@@ -191,10 +195,18 @@ class NucleiWrapper(ToolWrapper):
             return []
 
         args = [
-            self.binary, "-u", target, "-jsonl", "-silent", "-nc",
-            "-tags", "tech",
-            "-severity", "info",
-            "-rate-limit", "20",
+            self.binary,
+            "-u",
+            target,
+            "-jsonl",
+            "-silent",
+            "-nc",
+            "-tags",
+            "tech",
+            "-severity",
+            "info",
+            "-rate-limit",
+            "20",
         ]
 
         output_file = self._create_temp_file(suffix=".jsonl", prefix="nuclei_tech_")
@@ -211,12 +223,14 @@ class NucleiWrapper(ToolWrapper):
             for r in raw_results:
                 info = r.get("info", {})
                 name = info.get("name", r.get("template-id", "unknown"))
-                technologies.append({
-                    "name": name,
-                    "category": self._infer_tech_category(info),
-                    "version": r.get("matched-at", ""),
-                    "template_id": r.get("template-id", ""),
-                })
+                technologies.append(
+                    {
+                        "name": name,
+                        "category": self._infer_tech_category(info),
+                        "version": r.get("matched-at", ""),
+                        "template_id": r.get("template-id", ""),
+                    }
+                )
             return technologies
         except Exception as exc:
             log.warning("Nuclei tech detection failed: %s", exc)
@@ -233,10 +247,18 @@ class NucleiWrapper(ToolWrapper):
             return None
 
         args = [
-            self.binary, "-u", target, "-jsonl", "-silent", "-nc",
-            "-tags", "waf",
-            "-severity", "info",
-            "-rate-limit", "5",
+            self.binary,
+            "-u",
+            target,
+            "-jsonl",
+            "-silent",
+            "-nc",
+            "-tags",
+            "waf",
+            "-severity",
+            "info",
+            "-rate-limit",
+            "5",
         ]
 
         try:
@@ -286,14 +308,18 @@ class NucleiWrapper(ToolWrapper):
             if cve_ids:
                 cve_id = cve_ids[0] if isinstance(cve_ids, list) else str(cve_ids)
                 finding_type = "cve"
-            elif any(t in (info.get("tags") or []) for t in ["xss", "sqli", "ssrf", "rce"]):
+            elif any(
+                t in (info.get("tags") or []) for t in ["xss", "sqli", "ssrf", "rce"]
+            ):
                 for tag in ["xss", "sqli", "ssrf", "rce", "lfi", "rfi", "xxe", "idor"]:
                     if tag in (info.get("tags") or []):
                         finding_type = tag
                         break
             elif "default-login" in (info.get("tags") or []):
                 finding_type = "default_creds"
-            elif "panel" in (info.get("tags") or []) or "exposure" in (info.get("tags") or []):
+            elif "panel" in (info.get("tags") or []) or "exposure" in (
+                info.get("tags") or []
+            ):
                 finding_type = "exposed_panel"
             elif "tech" in (info.get("tags") or []):
                 finding_type = "technology_detected"
@@ -326,7 +352,9 @@ class NucleiWrapper(ToolWrapper):
                 "matched_at": matched_at,
                 "request_evidence": request[:5000] if request else None,
                 "response_evidence": response if response else None,
-                "payload_used": raw.get("extracted-results", raw.get("matcher-name", "")),
+                "payload_used": raw.get(
+                    "extracted-results", raw.get("matcher-name", "")
+                ),
                 "cve_id": cve_id,
                 "tags": info.get("tags", []),
                 "reference": info.get("reference", []),

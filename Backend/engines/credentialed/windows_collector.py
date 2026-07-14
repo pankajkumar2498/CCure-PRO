@@ -23,17 +23,19 @@ from engines.credentialed.ssh_scanner import SSHScanner
 log = logging.getLogger("ccure.windows_collector")
 
 # Regex to strip ANSI/VT100 escape codes from terminal output
-_ANSI_ESCAPE = re.compile(r'\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[^\[\]])')
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[^\[\]])")
+
 
 def _clean_output(raw: str) -> str:
     """Strip BOM, ANSI escape sequences, and leading non-printable garbage."""
     # Remove UTF-8 BOM
-    raw = raw.lstrip('\ufeff')
+    raw = raw.lstrip("\ufeff")
     # Strip ANSI colour/cursor codes
-    raw = _ANSI_ESCAPE.sub('', raw)
+    raw = _ANSI_ESCAPE.sub("", raw)
     # Strip Windows \r
-    raw = raw.replace('\r', '')
+    raw = raw.replace("\r", "")
     return raw.strip()
+
 
 # PowerShell commands — output as plain text or JSON
 def _subnet_from_windows_interfaces(raw: Any, target_ip: str) -> str:
@@ -44,7 +46,9 @@ def _subnet_from_windows_interfaces(raw: Any, target_ip: str) -> str:
     except ValueError:
         return ""
 
-    interfaces = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    interfaces = (
+        raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    )
     for iface in interfaces:
         ip_addr = _first_value(iface.get("IPAddress") or iface.get("IPv4Address"))
         prefix = _first_value(iface.get("PrefixLength"))
@@ -70,12 +74,14 @@ def _normalize_mac(value: str) -> str:
     if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
         return ""
     if re.fullmatch(r"[0-9a-f]{12}", text):
-        text = ":".join(text[i:i + 2] for i in range(0, 12, 2))
+        text = ":".join(text[i : i + 2] for i in range(0, 12, 2))
     return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
 
 
 def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:
-    interfaces = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    interfaces = (
+        raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    )
     fallback = ""
     for iface in interfaces:
         mac = _normalize_mac(iface.get("MacAddress"))
@@ -91,29 +97,24 @@ def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:
 
 COMMANDS: Dict[str, str] = {
     # OS info
-    "os_info":       "(Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | ConvertTo-Json)",
-    "hostname":      "hostname",
-    "uptime":        "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
-
+    "os_info": "(Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | ConvertTo-Json)",
+    "hostname": "hostname",
+    "uptime": "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
     # Hardware & Identity
     "computer_system": "(Get-CimInstance Win32_ComputerSystem | Select-Object Name, DNSHostName, Domain, PartOfDomain, Manufacturer, Model | ConvertTo-Json)",
-    "bios":            "(Get-CimInstance Win32_BIOS | Select-Object SerialNumber, SMBIOSBIOSVersion | ConvertTo-Json)",
-    "cpu":           "(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json)",
-    "memory":        "(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory | ConvertTo-Json)",
-    "disk":          "(Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free | ConvertTo-Json)",
-
+    "bios": "(Get-CimInstance Win32_BIOS | Select-Object SerialNumber, SMBIOSBIOSVersion | ConvertTo-Json)",
+    "cpu": "(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json)",
+    "memory": "(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory | ConvertTo-Json)",
+    "disk": "(Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free | ConvertTo-Json)",
     # Installed software (registry-based — most complete source)
-    "software_x64":  "(Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object {$_.DisplayName} | Select-Object DisplayName, DisplayVersion, Publisher | ConvertTo-Json)",
-    "software_x86":  "(Get-ItemProperty 'HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object {$_.DisplayName} | Select-Object DisplayName, DisplayVersion, Publisher | ConvertTo-Json)",
-
+    "software_x64": "(Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object {$_.DisplayName} | Select-Object DisplayName, DisplayVersion, Publisher | ConvertTo-Json)",
+    "software_x86": "(Get-ItemProperty 'HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object {$_.DisplayName} | Select-Object DisplayName, DisplayVersion, Publisher | ConvertTo-Json)",
     # Windows Updates / Hotfixes
-    "hotfixes":      "(Get-HotFix | Select-Object HotFixID, Description, InstalledOn | ConvertTo-Json)",
-
+    "hotfixes": "(Get-HotFix | Select-Object HotFixID, Description, InstalledOn | ConvertTo-Json)",
     # Services
-    "services":      "(Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName, StartType | ConvertTo-Json)",
-
+    "services": "(Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName, StartType | ConvertTo-Json)",
     # Network
-    "open_ports":    "netstat -ano | findstr LISTENING",
+    "open_ports": "netstat -ano | findstr LISTENING",
     "network_iface": (
         "Get-NetIPConfiguration | ForEach-Object { "
         "$ipv4=$_.IPv4Address | Select-Object -First 1; "
@@ -127,31 +128,63 @@ COMMANDS: Dict[str, str] = {
         "} } | ConvertTo-Json"
     ),
     "network_config": "(Get-NetIPConfiguration | Select-Object InterfaceAlias, IPv4Address, IPv6Address, IPv4DefaultGateway, DNSServer | ConvertTo-Json)",
-
     # Users
-    "local_users":   "(Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordRequired, PasswordLastSet | ConvertTo-Json)",
-    "local_admins":  "(Get-LocalGroupMember -Group Administrators | Select-Object Name, ObjectClass | ConvertTo-Json)",
-
+    "local_users": "(Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordRequired, PasswordLastSet | ConvertTo-Json)",
+    "local_admins": "(Get-LocalGroupMember -Group Administrators | Select-Object Name, ObjectClass | ConvertTo-Json)",
     # Security
-    "firewall":      "(Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | ConvertTo-Json)",
-    "shares":        "(Get-SmbShare | Select-Object Name, Path, Description | ConvertTo-Json)",
-    "audit_policy":  "auditpol /get /category:* 2>&1",
+    "firewall": "(Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | ConvertTo-Json)",
+    "shares": "(Get-SmbShare | Select-Object Name, Path, Description | ConvertTo-Json)",
+    "audit_policy": "auditpol /get /category:* 2>&1",
     # NOTE: Get-ItemProperty | ConvertTo-Json serialises the full RegistryKey
     # PSObject (including .NET provider metadata). Use Get-ItemPropertyValue to
     # get just the DWORD, then build a clean PSCustomObject.
-    "rdp_status":    (
+    "rdp_status": (
         "$_fDeny = Get-ItemPropertyValue "
         "'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' "
         "-Name fDenyTSConnections -ErrorAction SilentlyContinue; "
         "[PSCustomObject]@{ fDenyTSConnections = if ($_fDeny -ne $null) { [int]$_fDeny } else { 1 } } "
         "| ConvertTo-Json -Compress"
     ),
-
     # Scheduled tasks (suspicious ones — not system-signed)
     "scheduled_tasks": "(Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled' -and $_.Author -notmatch 'Microsoft'} | Select-Object TaskName, TaskPath, State | ConvertTo-Json)",
-
     # Event log — failed logins
     "failed_logins": "(Get-WinEvent -LogName Security -FilterHashtable @{Id=4625} -MaxEvents 20 -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | ConvertTo-Json)",
+    # Safe Protocol Hardening Queries
+    "smbv1_status": (
+        "$_smb1 = Get-ItemPropertyValue 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' -Name SMB1 -ErrorAction SilentlyContinue; "
+        "$_feat = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ "
+        "  SMB1 = if ($_smb1 -ne $null) { [int]$_smb1 } else { 0 }; "
+        "  FeatureEnabled = if ($_feat -ne $null -and $_feat.State -eq 'Enabled') { $true } else { $false } "
+        "} | ConvertTo-Json -Compress"
+    ),
+    "netbios_status": (
+        "Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled = True' | "
+        "Select-Object SettingID, NetbiosOptions | ConvertTo-Json"
+    ),
+    "tls_status": (
+        "$protocols = @('SSL 2.0', 'SSL 3.0', 'TLS 1.0', 'TLS 1.1'); "
+        "$res = @(); "
+        "foreach ($proto in $protocols) { "
+        "  foreach ($type in @('Client', 'Server')) { "
+        '    $val = Get-ItemPropertyValue "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\$type" -Name Enabled -ErrorAction SilentlyContinue; '
+        "    $res += [PSCustomObject]@{ Protocol = $proto; Type = $type; Enabled = if ($val -ne $null) { [int]$val } else { 1 } } "
+        "  } "
+        "}; "
+        "$res | ConvertTo-Json"
+    ),
+    "rdp_nla_status": (
+        "$_nla = Get-ItemPropertyValue 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -Name UserAuthentication -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ UserAuthentication = if ($_nla -ne $null) { [int]$_nla } else { 0 } } | ConvertTo-Json -Compress"
+    ),
+    "telnet_status": (
+        "$_svc = Get-Service -Name TlntSvr -ErrorAction SilentlyContinue; "
+        "$_feat = Get-WindowsOptionalFeature -Online -FeatureName TelnetClient -ErrorAction SilentlyContinue; "
+        "[PSCustomObject]@{ "
+        "  ServiceRunning = if ($_svc -ne $null -and $_svc.Status -eq 'Running') { $true } else { $false }; "
+        "  FeatureEnabled = if ($_feat -ne $null -and $_feat.State -eq 'Enabled') { $true } else { $false } "
+        "} | ConvertTo-Json -Compress"
+    ),
 }
 
 
@@ -198,11 +231,15 @@ class WindowsCollector:
             return cmd
         encoded = base64.b64encode(cmd.encode("utf-16-le")).decode("ascii")
         return (
-            f'{self._PS_EXE} -NoProfile -NonInteractive -ExecutionPolicy Bypass'
-            f' -EncodedCommand {encoded}'
+            f"{self._PS_EXE} -NoProfile -NonInteractive -ExecutionPolicy Bypass"
+            f" -EncodedCommand {encoded}"
         )
 
-    def collect_all(self, sections: Optional[List[str]] = None, on_section_complete: Optional[callable] = None) -> Dict[str, Any]:
+    def collect_all(
+        self,
+        sections: Optional[List[str]] = None,
+        on_section_complete: Optional[callable] = None,
+    ) -> Dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.
 
@@ -235,6 +272,7 @@ class WindowsCollector:
         result: Dict[str, Any] = {}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         with ThreadPoolExecutor(max_workers=len(tasks) or 1) as pool:
             future_map = {pool.submit(fn): name for name, fn in tasks}
             for future in as_completed(future_map):
@@ -261,24 +299,25 @@ class WindowsCollector:
 
         return result
 
-
     def _collect_system_info(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {}
 
         os_raw = self._run_json("os_info")
-        data["os_name"]       = os_raw.get("Caption", "Windows")
+        data["os_name"] = os_raw.get("Caption", "Windows")
         data["os_version_id"] = os_raw.get("Version", "")
-        data["os_build"]      = os_raw.get("BuildNumber", "")
+        data["os_build"] = os_raw.get("BuildNumber", "")
         data["kernel_version"] = os_raw.get("Version", "")
-        data["cpu_arch"]      = os_raw.get("OSArchitecture", "")
-        data["os_family"]     = "Windows"
+        data["cpu_arch"] = os_raw.get("OSArchitecture", "")
+        data["os_family"] = "Windows"
         data["os_confidence"] = 100
 
         computer_raw = self._run_json("computer_system")
         if isinstance(computer_raw, list):
             computer_raw = computer_raw[0] if computer_raw else {}
         if isinstance(computer_raw, dict):
-            dns_host = (computer_raw.get("DNSHostName") or computer_raw.get("Name") or "").strip()
+            dns_host = (
+                computer_raw.get("DNSHostName") or computer_raw.get("Name") or ""
+            ).strip()
             domain = (computer_raw.get("Domain") or "").strip()
             data["hostname_short"] = dns_host
             data["domain"] = domain
@@ -291,17 +330,17 @@ class WindowsCollector:
                 data["hostname_fqdn"] = dns_host or self._run("hostname")
         else:
             data["hostname_fqdn"] = self._run("hostname")
-        data["uptime"]        = self._run("uptime")
+        data["uptime"] = self._run("uptime")
 
         bios_raw = self._run_json("bios")
         if isinstance(bios_raw, list):
             bios_raw = bios_raw[0] if bios_raw else {}
         if isinstance(bios_raw, dict):
             data["serial_number"] = (bios_raw.get("SerialNumber") or "").strip()
-            data["bios_version"]  = (bios_raw.get("SMBIOSBIOSVersion") or "").strip()
+            data["bios_version"] = (bios_raw.get("SMBIOSBIOSVersion") or "").strip()
         else:
             data["serial_number"] = ""
-            data["bios_version"]  = ""
+            data["bios_version"] = ""
 
         cpu_raw = self._run_json("cpu")
         if isinstance(cpu_raw, list):
@@ -312,11 +351,11 @@ class WindowsCollector:
         mem_raw = self._run_json("memory")
         if mem_raw:
             total_kb = mem_raw.get("TotalVisibleMemorySize", 0)
-            free_kb  = mem_raw.get("FreePhysicalMemory", 0)
+            free_kb = mem_raw.get("FreePhysicalMemory", 0)
             data["memory_summary"] = {
-                "total":     f"{total_kb // 1024} MB",
-                "free":      f"{free_kb  // 1024} MB",
-                "used":      f"{(total_kb - free_kb) // 1024} MB",
+                "total": f"{total_kb // 1024} MB",
+                "free": f"{free_kb  // 1024} MB",
+                "used": f"{(total_kb - free_kb) // 1024} MB",
                 "available": f"{free_kb  // 1024} MB",
             }
 
@@ -325,10 +364,11 @@ class WindowsCollector:
             data["disk_usage"] = [
                 {
                     "filesystem": d.get("Name", ""),
-                    "used":       f"{(d.get('Used') or 0) // (1024**3)} GB",
-                    "available":  f"{(d.get('Free') or 0) // (1024**3)} GB",
+                    "used": f"{(d.get('Used') or 0) // (1024**3)} GB",
+                    "available": f"{(d.get('Free') or 0) // (1024**3)} GB",
                 }
-                for d in disk_raw if d.get("Name")
+                for d in disk_raw
+                if d.get("Name")
             ]
 
         return data
@@ -343,14 +383,16 @@ class WindowsCollector:
                 items = [items] if isinstance(items, dict) else []
             for item in items:
                 name = (item.get("DisplayName") or "").strip()
-                ver  = (item.get("DisplayVersion") or "").strip()
+                ver = (item.get("DisplayVersion") or "").strip()
                 if name and name not in seen:
-                    packages.append({
-                        "name":    name,
-                        "version": ver,
-                        "arch":    "",
-                        "manager": "windows_registry",
-                    })
+                    packages.append(
+                        {
+                            "name": name,
+                            "version": ver,
+                            "arch": "",
+                            "manager": "windows_registry",
+                        }
+                    )
                     seen.add(name)
 
         # Also collect Windows hotfixes as pseudo-packages
@@ -359,12 +401,14 @@ class WindowsCollector:
             for hf in hotfixes:
                 kb = hf.get("HotFixID", "")
                 if kb and kb not in seen:
-                    packages.append({
-                        "name":    kb,
-                        "version": str(hf.get("InstalledOn", "")),
-                        "arch":    "",
-                        "manager": "windows_update",
-                    })
+                    packages.append(
+                        {
+                            "name": kb,
+                            "version": str(hf.get("InstalledOn", "")),
+                            "arch": "",
+                            "manager": "windows_update",
+                        }
+                    )
                     seen.add(kb)
 
         return packages
@@ -375,11 +419,12 @@ class WindowsCollector:
             items = [items] if isinstance(items, dict) else []
         return [
             {
-                "name":        i.get("Name", ""),
+                "name": i.get("Name", ""),
                 "description": i.get("DisplayName", ""),
-                "start_type":  str(i.get("StartType", "")),
+                "start_type": str(i.get("StartType", "")),
             }
-            for i in items if i.get("Name")
+            for i in items
+            if i.get("Name")
         ]
 
     def _collect_open_ports(self) -> List[Dict[str, str]]:
@@ -390,18 +435,20 @@ class WindowsCollector:
             parts = line.split()
             if len(parts) >= 4 and "LISTENING" in parts:
                 local = parts[1]
-                port  = local.rsplit(":", 1)[-1] if ":" in local else ""
-                pid   = parts[-1]
-                ports.append({
-                    "state":      "LISTEN",
-                    "local_addr": local,
-                    "port":       port,
-                    "process":    f"PID {pid}",
-                })
+                port = local.rsplit(":", 1)[-1] if ":" in local else ""
+                pid = parts[-1]
+                ports.append(
+                    {
+                        "state": "LISTEN",
+                        "local_addr": local,
+                        "port": port,
+                        "process": f"PID {pid}",
+                    }
+                )
         return ports
 
     def _collect_users(self) -> List[Dict[str, str]]:
-        users_raw  = self._run_json("local_users")
+        users_raw = self._run_json("local_users")
         admins_raw = self._run_json("local_admins")
         admin_names = set()
         if isinstance(admins_raw, list):
@@ -415,13 +462,14 @@ class WindowsCollector:
             users_raw = [users_raw] if isinstance(users_raw, dict) else []
         return [
             {
-                "username":  u.get("Name", ""),
-                "enabled":   str(u.get("Enabled", "")),
-                "is_admin":  u.get("Name", "") in admin_names,
+                "username": u.get("Name", ""),
+                "enabled": str(u.get("Enabled", "")),
+                "is_admin": u.get("Name", "") in admin_names,
                 "last_logon": str(u.get("LastLogon", "")),
                 "pwd_required": str(u.get("PasswordRequired", "")),
             }
-            for u in users_raw if u.get("Name")
+            for u in users_raw
+            if u.get("Name")
         ]
 
     def _collect_security(self) -> Dict[str, Any]:
@@ -439,19 +487,87 @@ class WindowsCollector:
         if isinstance(shares_raw, list):
             data["smb_shares"] = shares_raw
             admin_shares = {"ADMIN$", "C$", "IPC$"}
-            extra_shares = [s["Name"] for s in shares_raw if s.get("Name") not in admin_shares]
+            extra_shares = [
+                s["Name"] for s in shares_raw if s.get("Name") not in admin_shares
+            ]
             if extra_shares:
-                issues.append(f"Non-default SMB shares found: {', '.join(extra_shares)}")
+                issues.append(
+                    f"Non-default SMB shares found: {', '.join(extra_shares)}"
+                )
 
         rdp_raw = self._run_json("rdp_status")
         rdp_enabled = rdp_raw.get("fDenyTSConnections", 1) == 0 if rdp_raw else False
         data["rdp_enabled"] = rdp_enabled
         if rdp_enabled:
-            issues.append("RDP is enabled — ensure NLA is enforced and access is restricted")
+            issues.append(
+                "RDP is enabled — ensure NLA is enforced and access is restricted"
+            )
 
         tasks_raw = self._run_json("scheduled_tasks")
         if isinstance(tasks_raw, list):
             data["suspicious_scheduled_tasks"] = tasks_raw
+
+        # Safe Protocol Hardening Checks
+        smb1_raw = self._run_json("smbv1_status")
+        smbv1_disabled = not (
+            smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False)
+        )
+        data["smbv1_disabled"] = smbv1_disabled
+        if not smbv1_disabled:
+            issues.append("Legacy SMBv1 protocol is enabled")
+
+        netbios_raw = self._run_json("netbios_status")
+        netbios_list = (
+            netbios_raw
+            if isinstance(netbios_raw, list)
+            else [netbios_raw] if isinstance(netbios_raw, dict) else []
+        )
+        netbios_disabled = True
+        if netbios_list:
+            for adapter in netbios_list:
+                # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
+                if adapter.get("NetbiosOptions") != 2:
+                    netbios_disabled = False
+                    break
+        else:
+            netbios_disabled = False
+        data["netbios_disabled"] = netbios_disabled
+        if not netbios_disabled:
+            issues.append(
+                "NetBIOS over TCP/IP is enabled on one or more network adapters"
+            )
+
+        tls_raw = self._run_json("tls_status")
+        tls_list = (
+            tls_raw
+            if isinstance(tls_raw, list)
+            else [tls_raw] if isinstance(tls_raw, dict) else []
+        )
+        legacy_tls_disabled = True
+        for proto in tls_list:
+            if proto.get("Enabled", 1) == 1:
+                legacy_tls_disabled = False
+                issues.append(
+                    f"Legacy SChannel protocol {proto.get('Protocol')} ({proto.get('Type')}) is enabled"
+                )
+        data["legacy_tls_disabled"] = legacy_tls_disabled
+
+        nla_raw = self._run_json("rdp_nla_status")
+        rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
+        data["rdp_nla_enforced"] = rdp_nla_enforced
+        if not rdp_nla_enforced and rdp_enabled:
+            issues.append(
+                "RDP is enabled but Network Level Authentication (NLA) is not enforced"
+            )
+
+        telnet_raw = self._run_json("telnet_status")
+        telnet_disabled = not (
+            telnet_raw.get("ServiceRunning", False)
+            or telnet_raw.get("FeatureEnabled", False)
+        )
+        data["telnet_disabled"] = telnet_disabled
+        if not telnet_disabled:
+            issues.append("Telnet client or server is enabled/running")
 
         data["security_issues"] = issues
         return data
@@ -460,20 +576,22 @@ class WindowsCollector:
         iface_raw = self._run_json("network_iface")
         return {
             "network_interfaces_raw": json.dumps(iface_raw) if iface_raw else "",
-            "subnet":                 _subnet_from_windows_interfaces(iface_raw, self._ssh.ip),
-            "mac_address":            _mac_from_windows_interfaces(iface_raw, self._ssh.ip),
-            "arp_table_raw":          "",
-            "env_vars_summary":       [],
+            "subnet": _subnet_from_windows_interfaces(iface_raw, self._ssh.ip),
+            "mac_address": _mac_from_windows_interfaces(iface_raw, self._ssh.ip),
+            "arp_table_raw": "",
+            "env_vars_summary": [],
         }
 
     def _collect_login_history(self) -> Dict[str, Any]:
         failed_raw = self._run_json("failed_logins")
         failed_list = failed_raw if isinstance(failed_raw, list) else []
         return {
-            "login_history_raw":     "",
-            "failed_logins_recent":  [str(f.get("TimeCreated", "")) for f in failed_list[:20]],
-            "failed_login_count":    len(failed_list),
-            "brute_force_warning":   len(failed_list) >= 10,
+            "login_history_raw": "",
+            "failed_logins_recent": [
+                str(f.get("TimeCreated", "")) for f in failed_list[:20]
+            ],
+            "failed_login_count": len(failed_list),
+            "brute_force_warning": len(failed_list) >= 10,
         }
 
     def _collect_local_groups(self) -> List[Dict[str, Any]]:
@@ -492,13 +610,8 @@ class WindowsCollector:
                 if "\\" in name:
                     name = name.split("\\")[-1]
                 admin_names.append(name)
-        
-        return [
-            {
-                "name": "Administrators",
-                "members": admin_names
-            }
-        ]
+
+        return [{"name": "Administrators", "members": admin_names}]
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -543,7 +656,5 @@ class WindowsCollector:
                 except json.JSONDecodeError:
                     continue  # try next occurrence
 
-        log.warning(
-            "Failed to parse JSON for command '%s' | raw=%.300s", key, raw
-        )
+        log.warning("Failed to parse JSON for command '%s' | raw=%.300s", key, raw)
         return {}

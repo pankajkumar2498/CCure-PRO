@@ -9,7 +9,7 @@ try {
     Write-Host "============================================================"
     Write-Host ""
     Write-Host "Stopping all containers including Web and Network workers..."
-    
+
     # --profile container-scanner ensures the workers are also stopped
     docker compose --profile container-scanner down --remove-orphans
 }

@@ -28,10 +28,10 @@ Role hierarchy (seeded in db/migrate_production_schema.py):
 """
 
 import logging
-from typing import List, Sequence, Union
+from typing import Sequence, Union
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user
 from db.base import get_db
@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # require_role — simple role-name guard
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def require_role(allowed_roles: Union[str, Sequence[str]]):
     """
@@ -70,7 +71,8 @@ def require_role(allowed_roles: Union[str, Sequence[str]]):
 
         if not role_name:
             logger.warning(
-                "RBAC denied: user %s has no role assigned.", user.id,
+                "RBAC denied: user %s has no role assigned.",
+                user.id,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -80,7 +82,9 @@ def require_role(allowed_roles: Union[str, Sequence[str]]):
         if role_name not in allowed_set:
             logger.warning(
                 "RBAC denied: user %s (role=%s) attempted action requiring %s.",
-                user.id, role_name, allowed_set,
+                user.id,
+                role_name,
+                allowed_set,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -99,6 +103,7 @@ def require_role(allowed_roles: Union[str, Sequence[str]]):
 # require_permission — granular resource×action guard
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def require_permission(resource: str, action: str):
     """
     Returns a FastAPI dependency that rejects requests from users whose
@@ -114,6 +119,7 @@ def require_permission(resource: str, action: str):
     HTTPException 403
         If the permission is not assigned to the user's role.
     """
+
     def _guard(
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
@@ -147,7 +153,10 @@ def require_permission(resource: str, action: str):
             role_name = getattr(role, "name", "unknown")
             logger.warning(
                 "RBAC denied: user %s (role=%s) lacks %s:%s.",
-                user.id, role_name, resource, action,
+                user.id,
+                role_name,
+                resource,
+                action,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

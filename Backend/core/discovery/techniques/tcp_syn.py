@@ -2,6 +2,7 @@
 core/discovery/techniques/tcp_syn.py — Scapy TCP SYN Probe
 Requires root. Detects open/closed/filtered states per port.
 """
+
 import logging
 from typing import Dict, List
 from core.constants import SCAPY_AVAILABLE
@@ -31,7 +32,7 @@ def probe(
     if not SCAPY_AVAILABLE or not ips or not ports:
         return
     try:
-        from scapy.all import sr, IP, TCP, ICMP, fragment
+        from scapy.all import sr, IP, TCP, ICMP
 
         pkts = IP(dst=ips) / TCP(dport=ports, flags="S")
         ans, unans = sr(pkts, timeout=timeout, verbose=0, multi=True)
@@ -50,20 +51,22 @@ def probe(
                 if flags & 0x12:  # SYN-ACK → open
                     results[ip]["port_states"][sport] = "open"
                     if not results[ip]["is_active"]:
-                        ttl  = rcv[IP].ttl
-                        win  = rcv[TCP].window
+                        ttl = rcv[IP].ttl
+                        win = rcv[TCP].window
                         opts = dict(rcv[TCP].options) if rcv[TCP].options else {}
                         tcp_fp = {
-                            "mss":     opts.get("MSS"),
-                            "wscale":  opts.get("WScale"),
+                            "mss": opts.get("MSS"),
+                            "wscale": opts.get("WScale"),
                             "sack_ok": "SAckOK" in opts,
-                            "window":  win,
-                            "df_bit":  bool(rcv[IP].flags & 0x02),
+                            "window": win,
+                            "df_bit": bool(rcv[IP].flags & 0x02),
                         }
                         guess, conf = fingerprint_os(ttl, win, tcp_fp)
                         results[ip].update(
-                            is_active=True, method="TCP SYN",
-                            os_guess=guess, os_confidence=conf,
+                            is_active=True,
+                            method="TCP SYN",
+                            os_guess=guess,
+                            os_confidence=conf,
                             tcp_fingerprint=tcp_fp,
                         )
                         results[ip]["confirmations"].append(f"SYN-ACK:{sport}")
@@ -75,13 +78,13 @@ def probe(
                         results[ip]["confirmations"].append(f"RST:{sport}")
 
             elif rcv.haslayer(ICMP) and rcv[ICMP].type == 3:
-                orig_port = (snd[TCP].dport if snd.haslayer(TCP) else None)
+                orig_port = snd[TCP].dport if snd.haslayer(TCP) else None
                 if orig_port:
                     results[ip]["port_states"][orig_port] = "filtered"
 
         for snd in unans:
             if snd.haslayer(IP) and snd.haslayer(TCP):
-                ip   = snd[IP].dst
+                ip = snd[IP].dst
                 port = snd[TCP].dport
                 if ip in results:
                     results[ip]["port_states"].setdefault(port, "filtered")

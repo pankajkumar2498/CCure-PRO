@@ -19,18 +19,20 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, INET, MACADDR, CIDR
 from sqlalchemy.types import String, JSON, SmallInteger, BigInteger, Integer
 import sqlalchemy.dialects.sqlite.base as sqlite_base
 
-sqlite_base.SQLiteDialect.colspecs.update({
-    UUID: String,
-    JSONB: JSON,
-    INET: String,
-    MACADDR: String,
-    CIDR: String,
-    SmallInteger: Integer,
-    BigInteger: Integer,
-})
+sqlite_base.SQLiteDialect.colspecs.update(
+    {
+        UUID: String,
+        JSONB: JSON,
+        INET: String,
+        MACADDR: String,
+        CIDR: String,
+        SmallInteger: Integer,
+        BigInteger: Integer,
+    }
+)
 
 # Add Backend to PYTHONPATH
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Load environment from Backend/.env.test if available BEFORE importing app
 dotenv_path = Path(__file__).absolute().parents[1] / ".env.test"
@@ -39,6 +41,10 @@ if dotenv_path.exists():
 
 # Prevent config.py from loading .env and overriding our test settings
 os.environ["SKIP_DOTENV_LOAD"] = "1"
+
+# Run Celery tasks synchronously under pytest so Redis is not required locally
+os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "true")
+os.environ.setdefault("CELERY_TASK_EAGER_PROPAGATES", "true")
 
 # Require PostgreSQL for pytest
 database_url = os.getenv("DATABASE_URL")
@@ -54,14 +60,15 @@ if not database_url.startswith("postgresql"):
 
 # Safety guard: refuse to run against production databases
 from urllib.parse import urlparse
+
 parsed = urlparse(database_url)
-db_name = parsed.path.lstrip('/')
-if db_name in ('ccure_db', 'prod', 'production'):
+db_name = parsed.path.lstrip("/")
+if db_name in ("ccure_db", "prod", "production"):
     raise RuntimeError(
         f"Refusing to run tests against production database '{db_name}'. "
         "Use a dedicated test database like 'ccure_test'."
     )
-if 'prod' in db_name.lower():
+if "prod" in db_name.lower():
     raise RuntimeError(
         f"Refusing to run tests against database '{db_name}' containing 'prod'. "
         "Use a dedicated test database."
@@ -69,88 +76,116 @@ if 'prod' in db_name.lower():
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 
-from sqlalchemy.orm import Session
 from main import app
+
+# ── Disable rate limiting during tests ───────────────────────────────────────
+# slowapi enforces limits based on request count. In CI, rapid parallel calls
+# to auth/login trigger 429 Too Many Requests. Disable globally for the test run.
+try:
+    app.state.limiter.enabled = False
+except Exception:
+    pass  # If import fails (e.g. state missing), tests still run
+
+from sqlalchemy.orm import Session
 from db.base import get_db, engine, Base, SessionLocal
 from db.models.users import User
 from db.models.rbac import Organization, Role
 from auth.jwt_handler import hash_password
 from sqlalchemy.ext.compiler import compiles
+
 # ── Additional SQLite Hack: @compiles ───────────────────────────────────────
 
-@compiles(UUID, 'sqlite')
+
+@compiles(UUID, "sqlite")
 def compile_uuid(element, compiler, **kw):
     return "VARCHAR(36)"
 
-@compiles(JSONB, 'sqlite')
+
+@compiles(JSONB, "sqlite")
 def compile_jsonb(element, compiler, **kw):
     return "JSON"
 
-@compiles(INET, 'sqlite')
+
+@compiles(INET, "sqlite")
 def compile_inet(element, compiler, **kw):
     return "VARCHAR(45)"
 
-@compiles(MACADDR, 'sqlite')
+
+@compiles(MACADDR, "sqlite")
 def compile_macaddr(element, compiler, **kw):
     return "VARCHAR(17)"
 
-@compiles(CIDR, 'sqlite')
+
+@compiles(CIDR, "sqlite")
 def compile_cidr(element, compiler, **kw):
     return "VARCHAR(45)"
 
+
 from sqlalchemy.types import SmallInteger, BigInteger
 
-@compiles(SmallInteger, 'sqlite')
+
+@compiles(SmallInteger, "sqlite")
 def compile_smallint(element, compiler, **kw):
     return "INTEGER"
 
-@compiles(BigInteger, 'sqlite')
+
+@compiles(BigInteger, "sqlite")
 def compile_bigint(element, compiler, **kw):
     return "INTEGER"
 
+
 # Patch UUID bind_processor to handle string UUIDs gracefully in SQLite
 original_bind_processor = UUID.bind_processor
+
+
 def custom_bind_processor(self, dialect):
-    if dialect.name == 'sqlite':
+    if dialect.name == "sqlite":
+
         def process(value):
             if value is not None:
                 return str(value)
             return value
+
         return process
     return original_bind_processor(self, dialect)
+
+
 UUID.bind_processor = custom_bind_processor
 
 # ── Database Setup ────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="function")
+
+@pytest.fixture(scope="session", autouse=True)
+def seed_system_roles():
+    """Seed system roles once per test session to guarantee they exist."""
+    from db.migrate_production_schema import seed_rbac
+
+    with engine.begin() as conn:
+        seed_rbac(conn)
+
+
+@pytest.fixture(scope="function", autouse=True)
 def reset_database():
-    """Drop and recreate all tables for each test to ensure isolation."""
-    # For PostgreSQL with existing data, skip drop_all and seeding, assume DB is ready
-    if not database_url.startswith("sqlite"):
-        # Assume PostgreSQL has the schema and seed data already set up from production dump
-        return
-    
-    # For SQLite, drop and recreate as before
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    
-    # Seed required defaults for /auth/register
-    from sqlalchemy.orm import Session
+    """Clean up the database before and after each test to ensure isolation in PostgreSQL."""
     from sqlalchemy import text
-    from db.base import utcnow
-    with Session(engine) as session:
-        session.execute(text(
-            "INSERT INTO organizations (id, name, slug, plan, max_assets, max_users, is_active, settings, created_at, updated_at) "
-            "VALUES ('00000000-0000-0000-0000-000000000000', 'Default', 'default', 'community', 100, 10, true, '{}', :now, :now)"
-        ), {"now": utcnow()})
-        session.execute(text(
-            "INSERT INTO roles (id, name, description, is_system_role, created_at) "
-            "VALUES (3, 'analyst', 'Analyst role', false, :now)"
-        ), {"now": utcnow()})
-        session.commit()
-    
+
+    def _cleanup():
+        with engine.begin() as conn:
+            # Truncate organizations and users. Clean up any custom roles.
+            # Do NOT truncate system roles, as they are seeded session-wide.
+            conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
+            conn.execute(
+                text(
+                    "DELETE FROM roles WHERE name NOT IN ('superadmin', 'org_admin', 'analyst', 'viewer', 'scanner')"
+                )
+            )
+
+    # Clean up before the test (in case a previous run crashed and left dirty state)
+    _cleanup()
     yield
-    Base.metadata.drop_all(bind=engine)
+    # Clean up after the test
+    _cleanup()
+
 
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Session, None, None]:
@@ -161,9 +196,11 @@ def db_session() -> Generator[Session, None, None]:
     finally:
         db.close()
 
+
 @pytest.fixture(scope="function")
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     """FastAPI TestClient that overrides the get_db dependency."""
+
     def override_get_db():
         yield db_session
 
@@ -175,13 +212,11 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 # ── Data Fixtures ─────────────────────────────────────────────────────────────
 
-from db.models.assets import Asset
-from db.models.findings import Service, AssetVulnerability, VulnerabilityDefinition
-from db.models.scans import Scan, ScanPhase
 
 @pytest.fixture(scope="function")
 def test_org(db_session: Session) -> Organization:
     import uuid
+
     uid = uuid.uuid4().hex[:8]
     org = Organization(
         id=f"org_{uid}",
@@ -189,7 +224,7 @@ def test_org(db_session: Session) -> Organization:
         slug=f"test-org-{uid}",
         max_assets=100,
         max_users=10,
-        is_active=True
+        is_active=True,
     )
     db_session.add(org)
     db_session.commit()
@@ -199,26 +234,23 @@ def test_org(db_session: Session) -> Organization:
 
 @pytest.fixture(scope="function")
 def test_role_admin(db_session: Session) -> Role:
-    from sqlalchemy import text
-    from db.base import utcnow
-    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (1, 'org_admin', 'Admin role', false, :now)"), {"now": utcnow()})
-    db_session.commit()
-    return db_session.query(Role).filter(Role.id == 1).first()
+    return db_session.query(Role).filter(Role.name == "org_admin").first()
 
 
 @pytest.fixture(scope="function")
 def test_role_viewer(db_session: Session) -> Role:
-    from sqlalchemy import text
-    from db.base import utcnow
-    db_session.execute(text("INSERT INTO roles (id, name, description, is_system_role, created_at) VALUES (2, 'viewer', 'Viewer role', false, :now)"), {"now": utcnow()})
-    db_session.commit()
-    return db_session.query(Role).filter(Role.id == 2).first()
+    return db_session.query(Role).filter(Role.name == "viewer").first()
 
 
 @pytest.fixture(scope="function")
-def test_user(db_session: Session, test_org: Organization, test_role_admin: Role) -> User:
+def test_user(
+    db_session: Session, test_org: Organization, test_role_admin: Role
+) -> User:
     """A standard authenticated user with admin rights."""
+    from db.base import gen_user_id
+
     user = User(
+        id=gen_user_id(test_org.slug, "testadmin"),
         username="testadmin",
         email="admin@test.com",
         full_name="Test Admin",
@@ -226,7 +258,7 @@ def test_user(db_session: Session, test_org: Organization, test_role_admin: Role
         org_id=test_org.id,
         role_id=test_role_admin.id,
         is_active=True,
-        is_verified=True
+        is_verified=True,
     )
     db_session.add(user)
     db_session.commit()
@@ -238,9 +270,70 @@ def test_user(db_session: Session, test_org: Organization, test_role_admin: Role
 def auth_headers(client: TestClient, test_user: User) -> dict:
     """Returns headers containing a valid JWT for the test_user."""
     response = client.post(
-        "/auth/login",
-        json={"email": "admin@test.com", "password": "securepassword123"}
+        "/auth/login", json={"email": "admin@test.com", "password": "securepassword123"}
     )
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="function", autouse=True)
+def detect_process_leaks():
+    """Autouse fixture that checks for orphaned child processes (e.g. nmap, nuclei) after each test."""
+    try:
+        import psutil
+    except ImportError:
+        # Fallback if psutil is not installed locally
+        yield
+        return
+
+    current_proc = psutil.Process()
+    # Collect existing child processes before test run
+    before_children = set(current_proc.children(recursive=True))
+
+    yield
+
+    # Collect children after test run
+    after_children = set(current_proc.children(recursive=True))
+    new_orphans = after_children - before_children
+
+    if new_orphans:
+        leak_details = []
+        for proc in new_orphans:
+            try:
+                name = proc.name()
+                pid = proc.pid
+                leak_details.append(f"{name} (PID {pid})")
+                proc.terminate()
+            except Exception:
+                pass
+        # Fail the test if orphaned processes are detected
+        assert (
+            False
+        ), f"Resource Leak: Active subprocesses left running: {', '.join(leak_details)}"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def global_scanner_mocking():
+    """Globally mocks scanners if MOCK_SCANNERS=true is set in the environment."""
+    if os.getenv("MOCK_SCANNERS") == "true":
+        from unittest.mock import patch, MagicMock
+
+        # Mock SSH connections
+        ssh_patcher = patch(
+            "engines.credentialed.ssh_scanner.SSHScanner.connect", return_value=True
+        )
+        ssh_patcher.start()
+
+        # Mock Nmap executable dependency check/command runner
+        nmap_mock = MagicMock()
+        nmap_mock.scan.return_value = {"nmap": {"scanstats": {"uphosts": "1"}}}
+        nmap_patcher = patch("nmap.PortScanner", return_value=nmap_mock)
+        nmap_patcher.start()
+
+        yield
+
+        ssh_patcher.stop()
+        nmap_patcher.stop()
+    else:
+        yield

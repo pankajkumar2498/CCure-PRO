@@ -1,6 +1,7 @@
 export function parseDate(value) {
   if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? null : value;
 
   let text = String(value).trim();
   if (!text || text.toLowerCase() === "invalid date") return null;

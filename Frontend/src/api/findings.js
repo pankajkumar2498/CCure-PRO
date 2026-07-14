@@ -5,20 +5,30 @@
 import api from "./axiosInstance";
 
 export const getFindings = ({
-  severity, status, priority, in_kev, search,
-  asset_id, scan_id, sort_by = "priority",
-  skip = 0, limit = 50, org_id,
+  severity,
+  status,
+  priority,
+  in_kev,
+  search,
+  asset_id,
+  scan_id,
+  sort_by = "priority",
+  skip = 0,
+  limit = 50,
+  org_id,
 } = {}) =>
   api.get("/findings", {
     params: {
-      ...(severity  ? { severity }  : {}),
-      ...(status    ? { status }    : {}),
-      ...(priority  ? { priority }  : {}),
-      ...(in_kev    !== undefined ? { in_kev } : {}),
-      ...(search    ? { search }    : {}),
-      ...(asset_id  ? { asset_id }  : {}),
-      ...(scan_id   ? { scan_id }   : {}),
-      sort_by, skip, limit,
+      ...(severity ? { severity } : {}),
+      ...(status ? { status } : {}),
+      ...(priority ? { priority } : {}),
+      ...(in_kev !== undefined ? { in_kev } : {}),
+      ...(search ? { search } : {}),
+      ...(asset_id ? { asset_id } : {}),
+      ...(scan_id ? { scan_id } : {}),
+      sort_by,
+      skip,
+      limit,
       ...(org_id ? { org_id } : {}),
     },
   });
@@ -30,7 +40,7 @@ export const updateFindingStatus = (id, status, reason, notes) =>
   api.patch(`/findings/${id}/status`, {
     status,
     accepted_risk_reason: reason,
-    remediation_notes:    notes,
+    remediation_notes: notes,
   });
 
 export const updateFindingNotes = (id, remediation_notes) =>

@@ -6,7 +6,13 @@ import ConfirmDialog from "../../components/common/ConfirmDialog";
 import EmptyState from "../../components/common/EmptyState";
 import Loader from "../../components/common/Loader";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
-import { listOrganizations, listRoles, listUsers, purgeUser, restoreUser } from "../../api/admin";
+import {
+  listOrganizations,
+  listRoles,
+  listUsers,
+  purgeUser,
+  restoreUser,
+} from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
@@ -18,13 +24,18 @@ function formatDate(value) {
 }
 
 function resolveOrganizationName(user, organizations) {
-  return organizations.find(
-    (organization) => String(organization.id) === String(user.organization_id || user.org_id)
-  )?.name || "—";
+  return (
+    organizations.find(
+      (organization) =>
+        String(organization.id) === String(user.organization_id || user.org_id),
+    )?.name || "—"
+  );
 }
 
 function resolveRoleName(user, roles) {
-  return roles.find((role) => String(role.id) === String(user.role_id))?.name || "—";
+  return (
+    roles.find((role) => String(role.id) === String(user.role_id))?.name || "—"
+  );
 }
 
 export default function DeletedUsers() {
@@ -45,13 +56,16 @@ export default function DeletedUsers() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
-    const isSuperadmin = currentUser?.role?.name?.toLowerCase() === "superadmin";
+    const isSuperadmin =
+      currentUser?.role?.name?.toLowerCase() === "superadmin";
 
     try {
       const [usersData, rolesData, organizationsData] = await Promise.all([
         listUsers({ skip: 0, limit: 100, scope: "deleted" }),
         listRoles(),
-        isSuperadmin ? listOrganizations().catch(() => null) : Promise.resolve(null),
+        isSuperadmin
+          ? listOrganizations().catch(() => null)
+          : Promise.resolve(null),
       ]);
 
       setUsers(usersData.users || []);
@@ -79,7 +93,13 @@ export default function DeletedUsers() {
     return users.filter((user) => {
       const organizationName = resolveOrganizationName(user, organizations);
       const roleName = resolveRoleName(user, roles);
-      return [user.username, user.full_name, user.email, organizationName, roleName]
+      return [
+        user.username,
+        user.full_name,
+        user.email,
+        organizationName,
+        roleName,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -88,9 +108,15 @@ export default function DeletedUsers() {
 
   const totalCount = filteredUsers.length;
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const pagedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pagedUsers = filteredUsers.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
+  );
   const startIndex = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const endIndex = totalCount === 0 ? 0 : Math.min(startIndex + pagedUsers.length - 1, totalCount);
+  const endIndex =
+    totalCount === 0
+      ? 0
+      : Math.min(startIndex + pagedUsers.length - 1, totalCount);
 
   useEffect(() => {
     if (page > pageCount) {
@@ -106,7 +132,8 @@ export default function DeletedUsers() {
     setConfirmConfig({
       title: `Restore ${user.username}`,
       subtitle: "This will return the account to the normal user list.",
-      warning: "For safety, restored users stay inactive until an admin explicitly activates them.",
+      warning:
+        "For safety, restored users stay inactive until an admin explicitly activates them.",
       confirmLabel: "Restore user",
       confirmType: "info",
       icon: "↺",
@@ -116,9 +143,15 @@ export default function DeletedUsers() {
         try {
           await restoreUser(user.id);
           setUsers((prev) => prev.filter((entry) => entry.id !== user.id));
-          pushToast("User restored successfully. The account remains inactive.", "success");
+          pushToast(
+            "User restored successfully. The account remains inactive.",
+            "success",
+          );
         } catch (err) {
-          pushToast(err?.response?.data?.detail || "Failed to restore user.", "error");
+          pushToast(
+            err?.response?.data?.detail || "Failed to restore user.",
+            "error",
+          );
         } finally {
           setBusyId(null);
           setConfirmConfig(null);
@@ -135,8 +168,10 @@ export default function DeletedUsers() {
     }
     setConfirmConfig({
       title: `Permanently delete ${user.username}?`,
-      subtitle: "This action cannot be undone. The user record will be removed from the system.",
-      warning: "Audit and ownership history will be preserved where supported, but the user account itself cannot be recovered after purge.",
+      subtitle:
+        "This action cannot be undone. The user record will be removed from the system.",
+      warning:
+        "Audit and ownership history will be preserved where supported, but the user account itself cannot be recovered after purge.",
       confirmLabel: "Delete permanently",
       confirmType: "danger",
       icon: "🗑️",
@@ -148,7 +183,10 @@ export default function DeletedUsers() {
           setUsers((prev) => prev.filter((entry) => entry.id !== user.id));
           pushToast("User permanently deleted.", "success");
         } catch (err) {
-          pushToast(err?.response?.data?.detail || "Failed to permanently delete user.", "error");
+          pushToast(
+            err?.response?.data?.detail || "Failed to permanently delete user.",
+            "error",
+          );
         } finally {
           setBusyId(null);
           setConfirmConfig(null);
@@ -164,14 +202,32 @@ export default function DeletedUsers() {
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Deleted Users</h2>
-            <p className="page-subtitle">{users.length} deleted user{users.length !== 1 ? "s" : ""} available for restore or permanent deletion</p>
-            <p className="page-note">This works like the scan Recycle Bin. Only deleted users in your allowed organization scope appear here.</p>
+            <p className="page-subtitle">
+              {users.length} deleted user{users.length !== 1 ? "s" : ""}{" "}
+              available for restore or permanent deletion
+            </p>
+            <p className="page-note">
+              This works like the scan Recycle Bin. Only deleted users in your
+              allowed organization scope appear here.
+            </p>
           </div>
           <div className="page-actions-row">
-            <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/users")} disabled={busyId !== null}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/admin/users")}
+              disabled={busyId !== null}
+            >
               Active users
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={loadData} disabled={loading || busyId !== null}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={loadData}
+              disabled={loading || busyId !== null}
+            >
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
@@ -183,7 +239,10 @@ export default function DeletedUsers() {
           <div className="table-card-header">
             <div>
               <h3 className="card-title">Deleted Users</h3>
-              <p className="card-subtitle">Restore accounts safely or permanently delete them from the database.</p>
+              <p className="card-subtitle">
+                Restore accounts safely or permanently delete them from the
+                database.
+              </p>
             </div>
             <div className="table-controls">
               <label className="field-label" htmlFor="deleted-user-search">
@@ -233,7 +292,9 @@ export default function DeletedUsers() {
                       <tr key={user.id}>
                         <td>
                           <div className="table-cell-identity">
-                            <span className="table-username">{user.username}</span>
+                            <span className="table-username">
+                              {user.username}
+                            </span>
                             <span className="table-subtext">{user.email}</span>
                           </div>
                         </td>
@@ -281,13 +342,25 @@ export default function DeletedUsers() {
                   Showing {startIndex}-{endIndex} of {totalCount} deleted users
                 </div>
                 <div className="pagination-controls">
-                  <Button type="button" variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage(page - 1)}
+                  >
                     Prev
                   </Button>
                   <span className="pagination-page">
                     Page {page} of {pageCount}
                   </span>
-                  <Button type="button" variant="ghost" size="sm" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={page >= pageCount}
+                    onClick={() => setPage(page + 1)}
+                  >
                     Next
                   </Button>
                 </div>

@@ -20,14 +20,19 @@ export default function ForgotPassword() {
 
     try {
       const res = await forgotPassword(email);
-      setSuccess(res.detail || "If this email is registered, you will receive a reset link shortly.");
+      setSuccess(
+        res.detail ||
+          "If this email is registered, you will receive a reset link shortly.",
+      );
     } catch (err) {
       let errMsg = "An error occurred. Please try again.";
       if (err.response?.data?.message) {
         errMsg = err.response.data.message;
       } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       setError(errMsg);
     } finally {
@@ -68,7 +73,7 @@ export default function ForgotPassword() {
               background: "rgba(16, 185, 129, 0.12)",
               color: "#a7f3d0",
               fontSize: 14,
-              lineHeight: 1.5
+              lineHeight: 1.5,
             }}
           >
             ✓ {success}
@@ -89,7 +94,11 @@ export default function ForgotPassword() {
             </div>
 
             <button type="submit" className="auth-btn" disabled={loading}>
-              {loading ? <span className="btn-spinner" /> : "Send recovery link →"}
+              {loading ? (
+                <span className="btn-spinner" />
+              ) : (
+                "Send recovery link →"
+              )}
             </button>
           </form>
         )}

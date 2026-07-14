@@ -90,7 +90,7 @@ services:
     profiles: ["container-scanner"]
     # The worker MUST run as root to perform raw-socket scans (Scapy/Nmap)
     user: root
-    command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner,default", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner,default,compliance", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}

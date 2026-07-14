@@ -1,6 +1,6 @@
 # Ccure Audit Pro
 
-> **Network security scanner built entirely on Python stdlib.**  
+> **Network security scanner built entirely on Python stdlib.**
 > Zero mandatory external dependencies. Drop-in plugin architecture. Production-ready.
 
 ---
@@ -188,7 +188,7 @@ python cli.py
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate   
+.venv\Scripts\activate
 pip install -r requirements.txt
 
 python -m pip install --no-cache-dir -r requirements.txt
@@ -528,7 +528,7 @@ Without the required privileges the scanner automatically falls back to TCP Conn
 pip install fastapi uvicorn
 ```
 
-**`WARNING: Scapy not found. Raw-socket scans disabled.`**  
+**`WARNING: Scapy not found. Raw-socket scans disabled.`**
 Only `adaptive` and `tcp` modes work. Install Scapy if raw-packet scans are needed:
 ```bash
 pip install scapy
@@ -536,16 +536,16 @@ pip install scapy
 # Windows: also install Npcap from https://npcap.com
 ```
 
-**OS detection stays unknown**  
+**OS detection stays unknown**
 The strongest OS fingerprints come from raw packets (ARP/ICMP/SYN via Scapy). In TCP-only mode the scanner falls back to service inference from open ports and banners, but ambiguous hosts may still remain unknown.
 
-**All hosts showing as inactive**  
+**All hosts showing as inactive**
 Check firewall is not blocking outbound TCP on the target ports. Try `scan_type="tcp"` explicitly. Increase timeout by using `intensity="deep"`.
 
-**SNMP not detecting community strings**  
+**SNMP not detecting community strings**
 SNMP uses UDP — some firewalls silently drop UDP. Ensure UDP 161 is reachable.
 
-**CORS error in browser console**  
+**CORS error in browser console**
 Update `allow_origins` in `main.py` to include your frontend URL and restart the server.
 
 **PDF report not generating**

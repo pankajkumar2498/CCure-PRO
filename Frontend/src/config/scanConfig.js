@@ -42,11 +42,12 @@ export const SCAN_PIPELINES = {
   asset: {
     id: "asset",
     label: "Asset Discovery",
-    description: "Identifies Assets in the Network with Open Ports Information.",
+    description:
+      "Identifies Assets in the Network with Open Ports Information.",
     phases: [1, 2],
-    entryRoute: "/scan",           // always starts at /scan, not /scan/asset-discovery
+    entryRoute: "/scan", // always starts at /scan, not /scan/asset-discovery
     badge: "Phase 1 → 2",
-    alwaysRestart: true,            // signals: never jump to asset-discovery using cached host-discovery data
+    alwaysRestart: true, // signals: never jump to asset-discovery using cached host-discovery data
   },
 
   /**
@@ -57,7 +58,8 @@ export const SCAN_PIPELINES = {
   vulnerability_audit: {
     id: "vulnerability_audit",
     label: "Vulnerability Audit",
-    description: "Full vulnerability audit pipeline with host, port, and risk assessment.",
+    description:
+      "Full vulnerability audit pipeline with host, port, and risk assessment.",
     phases: [1, 2, 3],
     entryRoute: "/scan",
     badge: "Full Pipeline",
@@ -65,7 +67,8 @@ export const SCAN_PIPELINES = {
   advanced: {
     id: "advanced",
     label: "Vulnerability Audit",
-    description: "Full vulnerability audit pipeline with host, port, and risk assessment.",
+    description:
+      "Full vulnerability audit pipeline with host, port, and risk assessment.",
     phases: [1, 2, 3],
     entryRoute: "/scan",
     badge: "Full Pipeline",

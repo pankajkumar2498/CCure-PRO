@@ -1,6 +1,7 @@
 """
 core/discovery/techniques/udp_probe.py — Scapy UDP Service Discovery
 """
+
 import logging
 from typing import Dict, List
 from core.constants import SCAPY_AVAILABLE
@@ -45,15 +46,20 @@ def probe(
         for snd, rcv in ans:
             if not (snd.haslayer(IP) and snd.haslayer(UDP)):
                 continue
-            ip   = snd[IP].dst
+            ip = snd[IP].dst
             port = snd[UDP].dport
             if ip not in results:
                 continue
 
             from scapy.all import ICMP
+
             if rcv.haslayer(ICMP) and rcv[ICMP].type == 3:
                 code = rcv[ICMP].code
-                state = "closed" if code == 3 else (("filtered" if code in _FILTERED_CODES else "filtered"))
+                state = (
+                    "closed"
+                    if code == 3
+                    else (("filtered" if code in _FILTERED_CODES else "filtered"))
+                )
                 results[ip]["port_states"][port] = state
                 # RST from ICMP still confirms host existence
                 if code == 3 and not results[ip]["is_active"]:
@@ -67,7 +73,7 @@ def probe(
 
         for snd in unans:
             if snd.haslayer(IP) and snd.haslayer(UDP):
-                ip   = snd[IP].dst
+                ip = snd[IP].dst
                 port = snd[UDP].dport
                 if ip in results:
                     results[ip]["port_states"].setdefault(port, "open|filtered")

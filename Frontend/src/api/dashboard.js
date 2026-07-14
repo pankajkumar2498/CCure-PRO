@@ -19,23 +19,35 @@ export const getRiskBreakdown = (orgId) =>
 
 // ── 3. Vuln Trends (line chart) ───────────────────────────────────────────────
 export const getVulnTrends = (days = 30, orgId) =>
-  api.get("/dashboard/vuln-trends", params({ days, ...(orgId ? { org_id: orgId } : {}) }));
+  api.get(
+    "/dashboard/vuln-trends",
+    params({ days, ...(orgId ? { org_id: orgId } : {}) }),
+  );
 
 // ── 4. Top Assets ─────────────────────────────────────────────────────────────
 export const getTopAssets = (limit = 10, orgId) =>
-  api.get("/dashboard/top-assets", params({ limit, ...(orgId ? { org_id: orgId } : {}) }));
+  api.get(
+    "/dashboard/top-assets",
+    params({ limit, ...(orgId ? { org_id: orgId } : {}) }),
+  );
 
 // ── 5. Top CVEs ───────────────────────────────────────────────────────────────
 export const getTopCVEs = (limit = 10, severity, orgId) =>
-  api.get("/dashboard/top-cves", params({
-    limit,
-    ...(severity ? { severity } : {}),
-    ...(orgId ? { org_id: orgId } : {}),
-  }));
+  api.get(
+    "/dashboard/top-cves",
+    params({
+      limit,
+      ...(severity ? { severity } : {}),
+      ...(orgId ? { org_id: orgId } : {}),
+    }),
+  );
 
 // ── 6. Service Exposure ───────────────────────────────────────────────────────
 export const getServicesExposure = (orgId) =>
-  api.get("/dashboard/services-exposure", params(orgId ? { org_id: orgId } : {}));
+  api.get(
+    "/dashboard/services-exposure",
+    params(orgId ? { org_id: orgId } : {}),
+  );
 
 // ── 7. TLS Health ─────────────────────────────────────────────────────────────
 export const getTLSHealth = (orgId) =>
@@ -55,7 +67,10 @@ export const getAssetBreakdown = (orgId) =>
 
 // ── 11. Scan Activity ─────────────────────────────────────────────────────────
 export const getScanActivity = (limit = 8, orgId) =>
-  api.get("/dashboard/scan-activity", params({ limit, ...(orgId ? { org_id: orgId } : {}) }));
+  api.get(
+    "/dashboard/scan-activity",
+    params({ limit, ...(orgId ? { org_id: orgId } : {}) }),
+  );
 
 // ── 12. Insights ──────────────────────────────────────────────────────────────
 export const getInsights = (orgId) =>

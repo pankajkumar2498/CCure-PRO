@@ -29,7 +29,10 @@ from typing import Dict, List, Optional
 # ── New implementation ────────────────────────────────────────────────────────
 from core.discovery.engine import DiscoveryEngine as _NewDiscoveryEngine
 from core.discovery.profiles import (
-    FAST, BALANCED, AGGRESSIVE, DiscoveryProfile, get_profile
+    FAST,
+    BALANCED,
+    AGGRESSIVE,
+    DiscoveryProfile,
 )
 from core.models import DiscoveryScanType
 
@@ -38,20 +41,20 @@ log = logging.getLogger("ccure.discovery.shim")
 # ── scan_type string → DiscoveryProfile ──────────────────────────────────────
 _SCAN_TYPE_TO_PROFILE: Dict[str, DiscoveryProfile] = {
     # New pipeline modes
-    "fast":       FAST,
-    "basic":      FAST,
-    "balanced":   BALANCED,
-    "asset":      BALANCED,
+    "fast": FAST,
+    "basic": FAST,
+    "balanced": BALANCED,
+    "asset": BALANCED,
     "aggressive": AGGRESSIVE,
-    "advanced":   AGGRESSIVE,
+    "advanced": AGGRESSIVE,
     "vulnerability_audit": AGGRESSIVE,
     # Legacy DiscoveryScanType values
-    "ping":       BALANCED,    # ICMP → BALANCED covers it
-    "arp":        FAST,        # ARP only → FAST is appropriate
-    "tcp":        BALANCED,    # TCP SYN → BALANCED
-    "full":       AGGRESSIVE,  # All techniques → AGGRESSIVE
-    "adaptive":   BALANCED,    # Adaptive heuristic → BALANCED
-    "stealth":    AGGRESSIVE,  # Stealth → AGGRESSIVE (includes stealth escalation)
+    "ping": BALANCED,  # ICMP → BALANCED covers it
+    "arp": FAST,  # ARP only → FAST is appropriate
+    "tcp": BALANCED,  # TCP SYN → BALANCED
+    "full": AGGRESSIVE,  # All techniques → AGGRESSIVE
+    "adaptive": BALANCED,  # Adaptive heuristic → BALANCED
+    "stealth": AGGRESSIVE,  # Stealth → AGGRESSIVE (includes stealth escalation)
 }
 
 
@@ -82,21 +85,21 @@ class DiscoveryEngine:
 
     def __init__(
         self,
-        has_privileges:    bool = False,
-        stealth_mode:      bool = False,
-        timing_level:      int  = 3,
-        scan_technique:    str  = "syn",
-        decoy_count:       int  = 0,
-        source_port:       Optional[int] = None,
-        fragment_mtu:      Optional[int] = None,
-        randomize_ports:   bool = False,
+        has_privileges: bool = False,
+        stealth_mode: bool = False,
+        timing_level: int = 3,
+        scan_technique: str = "syn",
+        decoy_count: int = 0,
+        source_port: Optional[int] = None,
+        fragment_mtu: Optional[int] = None,
+        randomize_ports: bool = False,
         enable_l2_sniffer: bool = False,
         # New optional parameter — callers can pass profile directly
-        profile:           Optional[DiscoveryProfile] = None,
+        profile: Optional[DiscoveryProfile] = None,
     ):
         self._has_privileges = has_privileges
-        self._stealth_mode   = stealth_mode
-        self._profile        = profile  # kept None until run() selects per scan_type
+        self._stealth_mode = stealth_mode
+        self._profile = profile  # kept None until run() selects per scan_type
 
         if stealth_mode:
             log.debug(
@@ -106,7 +109,7 @@ class DiscoveryEngine:
 
     async def run(
         self,
-        ip_list:   List[str],
+        ip_list: List[str],
         scan_type: "DiscoveryScanType | str" = DiscoveryScanType.ADAPTIVE,
     ) -> List[Dict]:
         """
@@ -120,7 +123,8 @@ class DiscoveryEngine:
             profile = self._profile
         else:
             scan_type_str = (
-                scan_type.value if isinstance(scan_type, DiscoveryScanType)
+                scan_type.value
+                if isinstance(scan_type, DiscoveryScanType)
                 else str(scan_type).lower()
             )
             # Stealth mode always escalates to AGGRESSIVE
@@ -131,12 +135,14 @@ class DiscoveryEngine:
 
         log.debug(
             "DiscoveryEngine shim: scan_type=%s → profile=%s (%d IPs)",
-            scan_type, profile.name, len(ip_list),
+            scan_type,
+            profile.name,
+            len(ip_list),
         )
 
         engine = _NewDiscoveryEngine(
-            profile        = profile,
-            has_privileges = self._has_privileges,
-            stealth_mode   = self._stealth_mode,
+            profile=profile,
+            has_privileges=self._has_privileges,
+            stealth_mode=self._stealth_mode,
         )
         return await engine.run(ip_list)

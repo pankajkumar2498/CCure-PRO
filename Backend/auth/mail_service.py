@@ -13,6 +13,7 @@ from config import AppConfig
 
 logger = logging.getLogger(__name__)
 
+
 def send_password_reset_email(email_to: str, username: str, reset_link: str) -> None:
     """
     Sends a password reset link to the specified email address.
@@ -83,7 +84,9 @@ CCure Audit PRO Team
     password = AppConfig.SMTP_PASSWORD
     secure = AppConfig.SMTP_SECURE
 
-    logger.info(f"Connecting to SMTP server at {host}:{port} (secure={secure}) to send reset email to {email_to}")
+    logger.info(
+        f"Connecting to SMTP server at {host}:{port} (secure={secure}) to send reset email to {email_to}"
+    )
 
     # Connect to the SMTP Server
     try:
@@ -108,7 +111,9 @@ CCure Audit PRO Team
         server.quit()
         logger.info(f"Successfully sent password reset email to {email_to}")
     except Exception as e:
-        logger.error(f"Failed to send password reset email to {email_to}: {e}", exc_info=True)
+        logger.error(
+            f"Failed to send password reset email to {email_to}: {e}", exc_info=True
+        )
         raise
 
 
@@ -177,7 +182,9 @@ CCure Audit PRO Team
     password = AppConfig.SMTP_PASSWORD
     secure = AppConfig.SMTP_SECURE
 
-    logger.info(f"Connecting to SMTP server at {host}:{port} (secure={secure}) to send MFA verification email to {email_to}")
+    logger.info(
+        f"Connecting to SMTP server at {host}:{port} (secure={secure}) to send MFA verification email to {email_to}"
+    )
 
     try:
         if secure:
@@ -200,6 +207,7 @@ CCure Audit PRO Team
         server.quit()
         logger.info(f"Successfully sent MFA verification email to {email_to}")
     except Exception as e:
-        logger.error(f"Failed to send MFA verification email to {email_to}: {e}", exc_info=True)
+        logger.error(
+            f"Failed to send MFA verification email to {email_to}: {e}", exc_info=True
+        )
         raise
-

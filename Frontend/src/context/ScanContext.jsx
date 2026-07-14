@@ -10,17 +10,29 @@
  *
  * Session storage is used for persistence across page refreshes.
  */
-import { createContext, useContext, useState, useRef, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 
 const ScanContext = createContext(null);
 
 const SS_KEYS = [
-  "cc_scanId", "cc_scanNo", "cc_target", "cc_scanType",
+  "cc_scanId",
+  "cc_scanNo",
+  "cc_target",
+  "cc_scanType",
   "cc_pipelineMode",
-  "cc_phase1Hosts", "cc_phase1Summary",
-  "cc_phase2Hosts", "cc_phase2Summary",
+  "cc_phase1Hosts",
+  "cc_phase1Summary",
+  "cc_phase2Hosts",
+  "cc_phase2Summary",
   "cc_phase2Results",
-  "cc_phase3Results", "cc_phase3Summary",
+  "cc_phase3Results",
+  "cc_phase3Summary",
   "cc_phase3AuditResults",
   "cc_saveStatus",
   "cc_pipelineState",
@@ -44,10 +56,14 @@ function ssGet(key, fallback) {
   try {
     const raw = sessionStorage.getItem(key);
     return raw !== null ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
+  } catch {
+    return fallback;
+  }
 }
 function ssSet(key, value) {
-  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {}
 }
 function ssClear() {
   SS_KEYS.forEach((k) => sessionStorage.removeItem(k));
@@ -56,87 +72,154 @@ function ssClear() {
 /* ── Pipeline state enum ─────────────────────────────────────────────────── */
 
 export const PIPELINE_STATES = {
-  IDLE:          "IDLE",
-  DISCOVERY:     "DISCOVERY",
-  PORT_SCAN:     "PORT_SCAN",
-  VULN_SCAN:     "VULN_SCAN",
-  TOPOLOGY_MAP:  "TOPOLOGY_MAP",
-  REPORT_READY:  "REPORT_READY",
-  COMPLETE:      "COMPLETE",
-  ERROR:         "ERROR",
-  CANCELLED:     "CANCELLED",
-  PAUSED:        "PAUSED",
+  IDLE: "IDLE",
+  DISCOVERY: "DISCOVERY",
+  PORT_SCAN: "PORT_SCAN",
+  VULN_SCAN: "VULN_SCAN",
+  TOPOLOGY_MAP: "TOPOLOGY_MAP",
+  REPORT_READY: "REPORT_READY",
+  COMPLETE: "COMPLETE",
+  ERROR: "ERROR",
+  CANCELLED: "CANCELLED",
+  PAUSED: "PAUSED",
 };
 
 /* ── Provider ─────────────────────────────────────────────────────────────── */
 
 export function ScanProvider({ children }) {
-  const [scanId,              setScanIdRaw]              = useState(() => ssGet("cc_scanId",             null));
-  const [scanNo,              setScanNoRaw]              = useState(() => ssGet("cc_scanNo",             null));
-  const [target,              setTargetRaw]              = useState(() => ssGet("cc_target",             ""));
-  const [scanType,            setScanTypeRaw]            = useState(() => ssGet("cc_scanType",           "adaptive"));
-  const [pipelineMode,        setPipelineModeRaw]        = useState(() => ssGet("cc_pipelineMode",       "basic"));
-  const [phase1Hosts,         setPhase1HostsRaw]         = useState(() => ssGet("cc_phase1Hosts",        []));
-  const [phase1Summary,       setPhase1SummaryRaw]       = useState(() => ssGet("cc_phase1Summary",      null));
-  const [phase2Hosts,         setPhase2HostsRaw]         = useState(() => ssGet("cc_phase2Hosts",        []));
-  const [phase2Summary,       setPhase2SummaryRaw]       = useState(() => ssGet("cc_phase2Summary",      null));
-  const [phase2Results,       setPhase2ResultsRaw]       = useState(() => ssGet("cc_phase2Results",      []));
-  const [phase3Results,       setPhase3ResultsRaw]       = useState(() => ssGet("cc_phase3Results",      []));
-  const [phase3Summary,       setPhase3SummaryRaw]       = useState(() => ssGet("cc_phase3Summary",      null));
-  const [phase3AuditResults,  setPhase3AuditResultsRaw]  = useState(() => ssGet("cc_phase3AuditResults", []));
-  const [saveStatus,          setSaveStatusRaw]          = useState(() => ssGet("cc_saveStatus",         ""));
-  const [intensity,           setIntensityRaw]           = useState(() => ssGet("cc_intensity",          "normal"));
-  const [osDetection,         setOsDetectionRaw]         = useState(() => ssGet("cc_osDetection",        true));
+  const [scanId, setScanIdRaw] = useState(() => ssGet("cc_scanId", null));
+  const [scanNo, setScanNoRaw] = useState(() => ssGet("cc_scanNo", null));
+  const [target, setTargetRaw] = useState(() => ssGet("cc_target", ""));
+  const [scanType, setScanTypeRaw] = useState(() =>
+    ssGet("cc_scanType", "adaptive"),
+  );
+  const [pipelineMode, setPipelineModeRaw] = useState(() =>
+    ssGet("cc_pipelineMode", "basic"),
+  );
+  const [phase1Hosts, setPhase1HostsRaw] = useState(() =>
+    ssGet("cc_phase1Hosts", []),
+  );
+  const [phase1Summary, setPhase1SummaryRaw] = useState(() =>
+    ssGet("cc_phase1Summary", null),
+  );
+  const [phase2Hosts, setPhase2HostsRaw] = useState(() =>
+    ssGet("cc_phase2Hosts", []),
+  );
+  const [phase2Summary, setPhase2SummaryRaw] = useState(() =>
+    ssGet("cc_phase2Summary", null),
+  );
+  const [phase2Results, setPhase2ResultsRaw] = useState(() =>
+    ssGet("cc_phase2Results", []),
+  );
+  const [phase3Results, setPhase3ResultsRaw] = useState(() =>
+    ssGet("cc_phase3Results", []),
+  );
+  const [phase3Summary, setPhase3SummaryRaw] = useState(() =>
+    ssGet("cc_phase3Summary", null),
+  );
+  const [phase3AuditResults, setPhase3AuditResultsRaw] = useState(() =>
+    ssGet("cc_phase3AuditResults", []),
+  );
+  const [saveStatus, setSaveStatusRaw] = useState(() =>
+    ssGet("cc_saveStatus", ""),
+  );
+  const [intensity, setIntensityRaw] = useState(() =>
+    ssGet("cc_intensity", "normal"),
+  );
+  const [osDetection, setOsDetectionRaw] = useState(() =>
+    ssGet("cc_osDetection", true),
+  );
   // Asset Discovery Phase 1 intensity (light | normal | deep) — separate from port-scan intensity
-  const [discoveryIntensity,  setDiscoveryIntensityRaw]  = useState(() => ssGet("cc_discoveryIntensity",  "normal"));
+  const [discoveryIntensity, setDiscoveryIntensityRaw] = useState(() =>
+    ssGet("cc_discoveryIntensity", "normal"),
+  );
   // Asset Discovery Phase 2 port scan intensity (light | normal | deep) — configured upfront on setup screen
-  const [portScanIntensity,   setPortScanIntensityRaw]   = useState(() => ssGet("cc_portScanIntensity",   "normal"));
-  const [autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTargetRaw] = useState(() => ssGet("cc_autoRunAdvancedSingleTarget", false));
-  const [executionMode,       setExecutionModeRaw]       = useState(() => ssGet("cc_executionMode",       "automatic"));
-  const [portScanMode,        setPortScanModeRaw]        = useState(() => ssGet("cc_portScanMode",        "intensity"));
-  const [customPorts,         setCustomPortsRaw]         = useState(() => ssGet("cc_customPorts",         ""));
-  const [portProfile,         setPortProfileRaw]         = useState(() => ssGet("cc_portProfile",         "it"));
-  const [excludePorts,        setExcludePortsRaw]        = useState(() => ssGet("cc_excludePorts",        ""));
-  const [excludeIps,          setExcludeIpsRaw]          = useState(() => ssGet("cc_excludeIps",          ""));
+  const [portScanIntensity, setPortScanIntensityRaw] = useState(() =>
+    ssGet("cc_portScanIntensity", "normal"),
+  );
+  const [autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTargetRaw] =
+    useState(() => ssGet("cc_autoRunAdvancedSingleTarget", false));
+  const [executionMode, setExecutionModeRaw] = useState(() =>
+    ssGet("cc_executionMode", "automatic"),
+  );
+  const [portScanMode, setPortScanModeRaw] = useState(() =>
+    ssGet("cc_portScanMode", "intensity"),
+  );
+  const [customPorts, setCustomPortsRaw] = useState(() =>
+    ssGet("cc_customPorts", ""),
+  );
+  const [portProfile, setPortProfileRaw] = useState(() =>
+    ssGet("cc_portProfile", "it"),
+  );
+  const [excludePorts, setExcludePortsRaw] = useState(() =>
+    ssGet("cc_excludePorts", ""),
+  );
+  const [excludeIps, setExcludeIpsRaw] = useState(() =>
+    ssGet("cc_excludeIps", ""),
+  );
 
   // Pipeline state machine
-  const [pipelineState,       setPipelineStateRaw]       = useState(() => ssGet("cc_pipelineState",      PIPELINE_STATES.IDLE));
-  const [pipelineError,       setPipelineErrorRaw]       = useState(() => ssGet("cc_pipelineError",      null));
-  const [pipelinePhaseTimings, setPipelinePhaseTimingsRaw] = useState(() => ssGet("cc_pipelinePhaseTimings", {}));
+  const [pipelineState, setPipelineStateRaw] = useState(() =>
+    ssGet("cc_pipelineState", PIPELINE_STATES.IDLE),
+  );
+  const [pipelineError, setPipelineErrorRaw] = useState(() =>
+    ssGet("cc_pipelineError", null),
+  );
+  const [pipelinePhaseTimings, setPipelinePhaseTimingsRaw] = useState(() =>
+    ssGet("cc_pipelinePhaseTimings", {}),
+  );
 
   // Abort controller for cancellation
   const abortRef = useRef(null);
 
-  const mk = (key, setter) => (v) => { ssSet(key, v); setter(v); };
+  const mk = (key, setter) => (v) => {
+    ssSet(key, v);
+    setter(v);
+  };
 
-  const setScanId             = mk("cc_scanId",             setScanIdRaw);
-  const setScanNo             = mk("cc_scanNo",             setScanNoRaw);
-  const setTarget             = mk("cc_target",             setTargetRaw);
-  const setScanType           = mk("cc_scanType",           setScanTypeRaw);
-  const setPipelineMode       = mk("cc_pipelineMode",       setPipelineModeRaw);
-  const setPhase1Hosts        = mk("cc_phase1Hosts",        setPhase1HostsRaw);
-  const setPhase1Summary      = mk("cc_phase1Summary",      setPhase1SummaryRaw);
-  const setPhase2Hosts        = mk("cc_phase2Hosts",        setPhase2HostsRaw);
-  const setPhase2Summary      = mk("cc_phase2Summary",      setPhase2SummaryRaw);
-  const setPhase2Results      = mk("cc_phase2Results",      setPhase2ResultsRaw);
-  const setPhase3Results      = mk("cc_phase3Results",      setPhase3ResultsRaw);
-  const setPhase3Summary      = mk("cc_phase3Summary",      setPhase3SummaryRaw);
-  const setPhase3AuditResults = mk("cc_phase3AuditResults", setPhase3AuditResultsRaw);
-  const setSaveStatus         = mk("cc_saveStatus",         setSaveStatusRaw);
-  const setIntensity          = mk("cc_intensity",          setIntensityRaw);
-  const setOsDetection        = mk("cc_osDetection",        setOsDetectionRaw);
-  const setDiscoveryIntensity = mk("cc_discoveryIntensity", setDiscoveryIntensityRaw);
-  const setPortScanIntensity  = mk("cc_portScanIntensity",  setPortScanIntensityRaw);
-  const setAutoRunAdvancedSingleTarget = mk("cc_autoRunAdvancedSingleTarget", setAutoRunAdvancedSingleTargetRaw);
-  const setExecutionMode      = mk("cc_executionMode",      setExecutionModeRaw);
-  const setPortScanMode       = mk("cc_portScanMode",       setPortScanModeRaw);
-  const setCustomPorts        = mk("cc_customPorts",        setCustomPortsRaw);
-  const setPortProfile        = mk("cc_portProfile",        setPortProfileRaw);
-  const setExcludePorts       = mk("cc_excludePorts",       setExcludePortsRaw);
-  const setExcludeIps         = mk("cc_excludeIps",         setExcludeIpsRaw);
-  const setPipelineState      = mk("cc_pipelineState",      setPipelineStateRaw);
-  const setPipelineError      = mk("cc_pipelineError",      setPipelineErrorRaw);
-  const setPipelinePhaseTimings = mk("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw);
+  const setScanId = mk("cc_scanId", setScanIdRaw);
+  const setScanNo = mk("cc_scanNo", setScanNoRaw);
+  const setTarget = mk("cc_target", setTargetRaw);
+  const setScanType = mk("cc_scanType", setScanTypeRaw);
+  const setPipelineMode = mk("cc_pipelineMode", setPipelineModeRaw);
+  const setPhase1Hosts = mk("cc_phase1Hosts", setPhase1HostsRaw);
+  const setPhase1Summary = mk("cc_phase1Summary", setPhase1SummaryRaw);
+  const setPhase2Hosts = mk("cc_phase2Hosts", setPhase2HostsRaw);
+  const setPhase2Summary = mk("cc_phase2Summary", setPhase2SummaryRaw);
+  const setPhase2Results = mk("cc_phase2Results", setPhase2ResultsRaw);
+  const setPhase3Results = mk("cc_phase3Results", setPhase3ResultsRaw);
+  const setPhase3Summary = mk("cc_phase3Summary", setPhase3SummaryRaw);
+  const setPhase3AuditResults = mk(
+    "cc_phase3AuditResults",
+    setPhase3AuditResultsRaw,
+  );
+  const setSaveStatus = mk("cc_saveStatus", setSaveStatusRaw);
+  const setIntensity = mk("cc_intensity", setIntensityRaw);
+  const setOsDetection = mk("cc_osDetection", setOsDetectionRaw);
+  const setDiscoveryIntensity = mk(
+    "cc_discoveryIntensity",
+    setDiscoveryIntensityRaw,
+  );
+  const setPortScanIntensity = mk(
+    "cc_portScanIntensity",
+    setPortScanIntensityRaw,
+  );
+  const setAutoRunAdvancedSingleTarget = mk(
+    "cc_autoRunAdvancedSingleTarget",
+    setAutoRunAdvancedSingleTargetRaw,
+  );
+  const setExecutionMode = mk("cc_executionMode", setExecutionModeRaw);
+  const setPortScanMode = mk("cc_portScanMode", setPortScanModeRaw);
+  const setCustomPorts = mk("cc_customPorts", setCustomPortsRaw);
+  const setPortProfile = mk("cc_portProfile", setPortProfileRaw);
+  const setExcludePorts = mk("cc_excludePorts", setExcludePortsRaw);
+  const setExcludeIps = mk("cc_excludeIps", setExcludeIpsRaw);
+  const setPipelineState = mk("cc_pipelineState", setPipelineStateRaw);
+  const setPipelineError = mk("cc_pipelineError", setPipelineErrorRaw);
+  const setPipelinePhaseTimings = mk(
+    "cc_pipelinePhaseTimings",
+    setPipelinePhaseTimingsRaw,
+  );
 
   const cancelPipeline = useCallback(() => {
     if (abortRef.current) {
@@ -156,11 +239,18 @@ export function ScanProvider({ children }) {
       abortRef.current = null;
     }
     ssClear();
-    setScanIdRaw(null);         setScanNoRaw(null);       setTargetRaw("");         setScanTypeRaw("adaptive");
+    setScanIdRaw(null);
+    setScanNoRaw(null);
+    setTargetRaw("");
+    setScanTypeRaw("adaptive");
     setPipelineModeRaw("basic");
-    setPhase1HostsRaw([]);      setPhase1SummaryRaw(null);
-    setPhase2HostsRaw([]);      setPhase2SummaryRaw(null);
-    setPhase2ResultsRaw([]);    setPhase3ResultsRaw([]);    setPhase3SummaryRaw(null);
+    setPhase1HostsRaw([]);
+    setPhase1SummaryRaw(null);
+    setPhase2HostsRaw([]);
+    setPhase2SummaryRaw(null);
+    setPhase2ResultsRaw([]);
+    setPhase3ResultsRaw([]);
+    setPhase3SummaryRaw(null);
     setPhase3AuditResultsRaw([]);
     setSaveStatusRaw("");
     setIntensityRaw("normal");
@@ -180,40 +270,70 @@ export function ScanProvider({ children }) {
   };
 
   return (
-    <ScanContext.Provider value={{
-      scanId, setScanId,
-      scanNo, setScanNo,
-      target, setTarget,
-      scanType, setScanType,
-      pipelineMode, setPipelineMode,
-      phase1Hosts, setPhase1Hosts,
-      phase1Summary, setPhase1Summary,
-      phase2Hosts, setPhase2Hosts,
-      phase2Summary, setPhase2Summary,
-      phase2Results, setPhase2Results,
-      phase3Results, setPhase3Results,
-      phase3Summary, setPhase3Summary,
-      phase3AuditResults, setPhase3AuditResults,
-      saveStatus, setSaveStatus,
-      intensity, setIntensity,
-      osDetection, setOsDetection,
-      discoveryIntensity, setDiscoveryIntensity,
-      portScanIntensity, setPortScanIntensity,
-      autoRunAdvancedSingleTarget, setAutoRunAdvancedSingleTarget,
-      executionMode, setExecutionMode,
-      portScanMode, setPortScanMode,
-      customPorts, setCustomPorts,
-      portProfile, setPortProfile,
-      excludePorts, setExcludePorts,
-      excludeIps, setExcludeIps,
-      pipelineState, setPipelineState,
-      pipelineError, setPipelineError,
-      pipelinePhaseTimings, setPipelinePhaseTimings,
-      abortRef,
-      cancelPipeline,
-      pausePipeline,
-      resetScan,
-    }}>
+    <ScanContext.Provider
+      value={{
+        scanId,
+        setScanId,
+        scanNo,
+        setScanNo,
+        target,
+        setTarget,
+        scanType,
+        setScanType,
+        pipelineMode,
+        setPipelineMode,
+        phase1Hosts,
+        setPhase1Hosts,
+        phase1Summary,
+        setPhase1Summary,
+        phase2Hosts,
+        setPhase2Hosts,
+        phase2Summary,
+        setPhase2Summary,
+        phase2Results,
+        setPhase2Results,
+        phase3Results,
+        setPhase3Results,
+        phase3Summary,
+        setPhase3Summary,
+        phase3AuditResults,
+        setPhase3AuditResults,
+        saveStatus,
+        setSaveStatus,
+        intensity,
+        setIntensity,
+        osDetection,
+        setOsDetection,
+        discoveryIntensity,
+        setDiscoveryIntensity,
+        portScanIntensity,
+        setPortScanIntensity,
+        autoRunAdvancedSingleTarget,
+        setAutoRunAdvancedSingleTarget,
+        executionMode,
+        setExecutionMode,
+        portScanMode,
+        setPortScanMode,
+        customPorts,
+        setCustomPorts,
+        portProfile,
+        setPortProfile,
+        excludePorts,
+        setExcludePorts,
+        excludeIps,
+        setExcludeIps,
+        pipelineState,
+        setPipelineState,
+        pipelineError,
+        setPipelineError,
+        pipelinePhaseTimings,
+        setPipelinePhaseTimings,
+        abortRef,
+        cancelPipeline,
+        pausePipeline,
+        resetScan,
+      }}
+    >
       {children}
     </ScanContext.Provider>
   );

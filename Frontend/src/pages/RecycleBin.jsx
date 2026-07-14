@@ -9,11 +9,31 @@ import { can, denyMessage } from "../auth/permissions";
 import { SCAN_PIPELINES } from "../config/scanConfig";
 
 const STATUS_STYLE = {
-  complete: { color: "#22c55e", bg: "rgba(34,197,94,.1)", border: "rgba(34,197,94,.25)" },
-  running:  { color: "#f59e0b", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.25)" },
-  failed:   { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
-  cancelled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
-  canceled: { color: "#ef4444", bg: "rgba(239,68,68,.1)", border: "rgba(239,68,68,.25)" },
+  complete: {
+    color: "#22c55e",
+    bg: "rgba(34,197,94,.1)",
+    border: "rgba(34,197,94,.25)",
+  },
+  running: {
+    color: "#f59e0b",
+    bg: "rgba(245,158,11,.1)",
+    border: "rgba(245,158,11,.25)",
+  },
+  failed: {
+    color: "#ef4444",
+    bg: "rgba(239,68,68,.1)",
+    border: "rgba(239,68,68,.25)",
+  },
+  cancelled: {
+    color: "#ef4444",
+    bg: "rgba(239,68,68,.1)",
+    border: "rgba(239,68,68,.25)",
+  },
+  canceled: {
+    color: "#ef4444",
+    bg: "rgba(239,68,68,.1)",
+    border: "rgba(239,68,68,.25)",
+  },
 };
 
 const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
@@ -22,14 +42,19 @@ const isCred = (scan) => scan.scan_type === "credentialed";
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
 const phaseLabel = (scan) =>
-  isCred(scan) ? "Credentialed Audit" : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
+  isCred(scan)
+    ? "Credentialed Audit"
+    : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
 
 const scanTypeLabel = (scan) => {
   if (!scan) return "Unknown";
   if (isCred(scan)) return "Credentialed Scan";
   const mode = scan.pipeline_mode || "basic";
   const pipeline = SCAN_PIPELINES[mode];
-  return pipeline?.label || String(scan.pipeline_mode || scan.scan_type || "Unknown").replace(/_/g, " ");
+  return (
+    pipeline?.label ||
+    String(scan.pipeline_mode || scan.scan_type || "Unknown").replace(/_/g, " ")
+  );
 };
 
 const fmtDate = (iso) =>
@@ -41,7 +66,11 @@ const fmtDate = (iso) =>
   });
 
 const fmtDur = (sec) =>
-  !sec ? "-" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
+  !sec
+    ? "-"
+    : sec < 60
+      ? `${sec.toFixed(1)}s`
+      : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
 
 function StatusBadge({ status }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.running;
@@ -68,43 +97,72 @@ function StatusBadge({ status }) {
    CONFIRMATION DIALOG
    ══════════════════════════════════════════════════════════════════════════ */
 function ConfirmDialog({ config, onConfirm, onCancel }) {
-  const { title, subtitle, warning, confirmLabel, confirmClass, icon, iconClass } = config;
+  const {
+    title,
+    subtitle,
+    warning,
+    confirmLabel,
+    confirmClass,
+    icon,
+    iconClass,
+  } = config;
   const [busy, setBusy] = useState(false);
   const btnRef = useRef(null);
 
   // Focus confirm button on mount
-  useEffect(() => { btnRef.current?.focus(); }, []);
+  useEffect(() => {
+    btnRef.current?.focus();
+  }, []);
 
   // ESC to cancel
   useEffect(() => {
-    const onKey = e => { if (e.key === "Escape") onCancel(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onCancel();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
   const handleConfirm = async () => {
     setBusy(true);
-    try { await onConfirm(); }
-    finally { setBusy(false); }
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="confirm-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
-      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+    <div
+      className="confirm-overlay"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cdlg-title"
+      >
         {/* Header */}
         <div className="confirm-dialog-header">
-          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+          <div
+            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
+          >
             {icon}
           </div>
           <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-title" id="cdlg-title">
+              {title}
+            </div>
             <div className="confirm-dialog-subtitle">{subtitle}</div>
           </div>
         </div>
 
         {/* Warning banner */}
         {warning && (
-          <div className={`confirm-dialog-warning confirm-dialog-warning--danger`}>
+          <div
+            className={`confirm-dialog-warning confirm-dialog-warning--danger`}
+          >
             <span style={{ flexShrink: 0 }}>⚠️</span>
             <span>{warning}</span>
           </div>
@@ -112,7 +170,11 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
 
         {/* Footer */}
         <div className="confirm-dialog-footer">
-          <button className="confirm-btn confirm-btn--cancel" onClick={onCancel} disabled={busy}>
+          <button
+            className="confirm-btn confirm-btn--cancel"
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </button>
           <button
@@ -175,7 +237,10 @@ export default function RecycleBin() {
       setTotal((prev) => Math.max(prev - 1, 0));
       pushToast("Scan restored successfully.", "success");
     } catch (err) {
-      pushToast(err.response?.data?.detail || "Failed to restore scan.", "error");
+      pushToast(
+        err.response?.data?.detail || "Failed to restore scan.",
+        "error",
+      );
     } finally {
       setRestoringId(null);
     }
@@ -186,16 +251,18 @@ export default function RecycleBin() {
       pushToast(denyMessage, "error");
       return;
     }
-    const scan = scans.find(s => s.id === id);
+    const scan = scans.find((s) => s.id === id);
     if (!scan) return;
-    
+
     setModal({
       config: {
         icon: "🗑️",
         iconClass: "danger",
         title: `Permanently Delete Scan No. ${scanNo(scan)}?`,
-        subtitle: "This action cannot be undone. The scan record will be completely removed from the system.",
-        warning: "Once deleted, you cannot recover this scan or its associated data. This is irreversible.",
+        subtitle:
+          "This action cannot be undone. The scan record will be completely removed from the system.",
+        warning:
+          "Once deleted, you cannot recover this scan or its associated data. This is irreversible.",
         confirmLabel: "Delete Permanently",
         confirmClass: "danger",
       },
@@ -210,7 +277,7 @@ export default function RecycleBin() {
       return;
     }
     if (!modal?.scanId) return;
-    
+
     const id = modal.scanId;
     setPurgingId(id);
     try {
@@ -221,7 +288,10 @@ export default function RecycleBin() {
       pushToast("Scan permanently deleted.", "success");
     } catch (err) {
       setModal(null);
-      pushToast(err.response?.data?.detail || "Failed to delete scan permanently.", "error");
+      pushToast(
+        err.response?.data?.detail || "Failed to delete scan permanently.",
+        "error",
+      );
     } finally {
       setPurgingId(null);
     }
@@ -234,15 +304,27 @@ export default function RecycleBin() {
           <div>
             <h2 className="page-title">Recycle Bin</h2>
             <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
-              {total} scan{total !== 1 ? "s" : ""} ready for permanent deletion - {user?.username}
+              {total} scan{total !== 1 ? "s" : ""} ready for permanent deletion
+              - {user?.username}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn--ghost" onClick={() => navigate("/history")}>
+            <button
+              className="btn btn--ghost"
+              onClick={() => navigate("/history")}
+            >
               My Scan Jobs
             </button>
-            <button className="btn btn--ghost" onClick={load} disabled={loading}>
-              {loading ? <span className="btn-spinner btn-spinner--dark" /> : "Refresh"}
+            <button
+              className="btn btn--ghost"
+              onClick={load}
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="btn-spinner btn-spinner--dark" />
+              ) : (
+                "Refresh"
+              )}
             </button>
           </div>
         </div>
@@ -250,7 +332,9 @@ export default function RecycleBin() {
         {error && <div className="alert alert--error">{error}</div>}
 
         {loading && (
-          <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+          <div
+            style={{ display: "flex", justifyContent: "center", padding: 60 }}
+          >
             <div className="spinner" />
           </div>
         )}
@@ -259,7 +343,11 @@ export default function RecycleBin() {
           <div className="empty-state">
             <span className="empty-state-icon">-</span>
             <p className="empty-state-title">Recycle Bin is empty.</p>
-            <button className="btn btn--primary" style={{ marginTop: 16 }} onClick={() => navigate("/history")}>
+            <button
+              className="btn btn--primary"
+              style={{ marginTop: 16 }}
+              onClick={() => navigate("/history")}
+            >
               Back to Scan Jobs
             </button>
           </div>
@@ -284,31 +372,57 @@ export default function RecycleBin() {
                 {scans.map((scan) => (
                   <tr key={scan.id}>
                     <td>
-                      <code className="ip-code" style={{ fontSize: 12 }}>{scanNo(scan)}</code>
+                      <code className="ip-code" style={{ fontSize: 12 }}>
+                        {scanNo(scan)}
+                      </code>
                     </td>
                     <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
+                      <span
+                        style={{
+                          fontFamily: "var(--mono)",
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
                         {scan.target}
                       </span>
                     </td>
-                    <td><span className="method-chip">{scanTypeLabel(scan)}</span></td>
-                    <td><StatusBadge status={scan.status} /></td>
                     <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtDur(scan.scan_duration)}</span>
+                      <span className="method-chip">{scanTypeLabel(scan)}</span>
                     </td>
                     <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-muted)" }}>
+                      <StatusBadge status={scan.status} />
+                    </td>
+                    <td>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>
+                        {fmtDur(scan.scan_duration)}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          fontFamily: "var(--mono)",
+                          fontSize: 12,
+                          color: "var(--text-muted)",
+                        }}
+                      >
                         {fmtDate(scan.deleted_at)}
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-muted)" }}>
+                      <span
+                        style={{
+                          fontFamily: "var(--mono)",
+                          fontSize: 12,
+                          color: "var(--text-muted)",
+                        }}
+                      >
                         {fmtDate(scan.created_at)}
                       </span>
                     </td>
                     <td>
                       <div className="action-btns">
-                        {(canRestoreScans || canPurgeScans) ? (
+                        {canRestoreScans || canPurgeScans ? (
                           <>
                             {canRestoreScans && (
                               <button
@@ -325,7 +439,9 @@ export default function RecycleBin() {
                                 onClick={() => handlePermanentDelete(scan.id)}
                                 disabled={purgingId === scan.id}
                               >
-                                {purgingId === scan.id ? "..." : "Delete Permanently"}
+                                {purgingId === scan.id
+                                  ? "..."
+                                  : "Delete Permanently"}
                               </button>
                             )}
                           </>

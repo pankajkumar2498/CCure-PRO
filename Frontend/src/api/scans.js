@@ -4,40 +4,41 @@
  */
 import api, { authSession } from "./axiosInstance";
 
-export const getScans = (skip = 0, limit = 50, scope = "active", created_by) => {
+export const getScans = (
+  skip = 0,
+  limit = 50,
+  scope = "active",
+  created_by,
+) => {
   const params = { skip, limit, scope };
   if (created_by) params.created_by = created_by;
   return api.get("/scans", { params });
 };
 
-export const getScan = (id) =>
-  api.get(`/scans/${id}`);
+export const getScan = (id) => api.get(`/scans/${id}`);
 
-export const deleteScan = (id) =>
-  api.delete(`/scans/${id}`);
+export const deleteScan = (id) => api.delete(`/scans/${id}`);
 
-export const archiveScan = (id) =>
-  api.post(`/scans/${id}/archive`);
+export const archiveScan = (id) => api.post(`/scans/${id}/archive`);
 
-export const stopScan = (id) =>
-  api.post(`/scans/${id}/stop`);
+export const stopScan = (id) => api.post(`/scans/${id}/stop`);
 
-export const restoreScan = (id) =>
-  api.post(`/scans/${id}/restore`);
+export const restoreScan = (id) => api.post(`/scans/${id}/restore`);
 
-export const purgeScan = (id) =>
-  api.delete(`/scans/${id}/purge`);
+export const purgeScan = (id) => api.delete(`/scans/${id}/purge`);
 
-export const deleteReport = (id) =>
-  api.delete(`/reports/${id}`);
+export const deleteReport = (id) => api.delete(`/reports/${id}`);
 
 /** GET /scan/quota — returns the org's current quota status */
-export const getScanQuota = () =>
-  api.get("/scan/quota");
+export const getScanQuota = () => api.get("/scan/quota");
 
-
-
-const streamUrl = ({ scope = "active", skip = 0, limit = 200, interval = 2, created_by } = {}) => {
+const streamUrl = ({
+  scope = "active",
+  skip = 0,
+  limit = 200,
+  interval = 2,
+  created_by,
+} = {}) => {
   const baseURL = api.defaults.baseURL || "";
   const prefix = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
   const params = new URLSearchParams({

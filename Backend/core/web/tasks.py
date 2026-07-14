@@ -15,13 +15,14 @@ Phase results are persisted to PostgreSQL after each phase completes.
 
 import asyncio
 import logging
-import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
 from db.base import (
-    SessionLocal, utcnow,
-    gen_web_asset_id, gen_web_finding_id,
+    SessionLocal,
+    utcnow,
+    gen_web_asset_id,
+    gen_web_finding_id,
 )
 from db.models.web_scans import WebScan, WebAsset, WebFinding
 
@@ -55,7 +56,6 @@ def _run_async(coro):
         return asyncio.run(coro)
 
 
-
 def _check_cancelled(db, web_scan_id: str) -> bool:
     """Check if the web scan has been cancelled."""
     scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
@@ -67,13 +67,16 @@ def _emit_progress(web_scan_id: str, phase: str, data: Dict) -> None:
     try:
         from core.redis_client import get_redis_client
         import json
+
         client = get_redis_client()
-        message = json.dumps({
-            "scan_id": web_scan_id,
-            "scan_type": "web",
-            "phase": phase,
-            "progress": data,
-        })
+        message = json.dumps(
+            {
+                "scan_id": web_scan_id,
+                "scan_type": "web",
+                "phase": phase,
+                "progress": data,
+            }
+        )
         client.publish(f"scan_progress:{web_scan_id}", message)
     except Exception as exc:
         log.debug("Progress publish failed: %s", exc)
@@ -160,10 +163,14 @@ def _persist_web_findings(
         # Find matching web asset
         web_asset_id = None
         if matched_at:
-            asset = db.query(WebAsset).filter(
-                WebAsset.web_scan_id == web_scan_id,
-                WebAsset.url == matched_at.split("?")[0],
-            ).first()
+            asset = (
+                db.query(WebAsset)
+                .filter(
+                    WebAsset.web_scan_id == web_scan_id,
+                    WebAsset.url == matched_at.split("?")[0],
+                )
+                .first()
+            )
             if asset:
                 web_asset_id = asset.id
 
@@ -217,19 +224,16 @@ def _persist_web_findings(
 
 def _update_scan_stats(db, web_scan_id: str) -> None:
     """Recalculate aggregate stats on the WebScan record."""
-    from sqlalchemy import func
 
     scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
     if not scan:
         return
 
-    total_endpoints = db.query(WebAsset).filter(
-        WebAsset.web_scan_id == web_scan_id
-    ).count()
+    total_endpoints = (
+        db.query(WebAsset).filter(WebAsset.web_scan_id == web_scan_id).count()
+    )
 
-    findings = db.query(WebFinding).filter(
-        WebFinding.web_scan_id == web_scan_id
-    ).all()
+    findings = db.query(WebFinding).filter(WebFinding.web_scan_id == web_scan_id).all()
 
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for f in findings:
@@ -258,6 +262,7 @@ def _is_api_url(url: str) -> bool:
 # Phase 1: RECON
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @celery_app.task(
     name="ccure.web.run_recon",
     queue="web_recon",
@@ -281,21 +286,33 @@ def run_web_recon_task(
 
         now = utcnow()
         _update_scan_phase_status(
-            db, web_scan_id, "recon", "running",
+            db,
+            web_scan_id,
+            "recon",
+            "running",
             started_at=now,
         )
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({"status": "running", "started_at": now})
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {"status": "running", "started_at": now}
+        )
         db.commit()
-        _emit_progress(web_scan_id, "recon", {"status": "running", "message": "Starting reconnaissance..."})
+        _emit_progress(
+            web_scan_id,
+            "recon",
+            {"status": "running", "message": "Starting reconnaissance..."},
+        )
 
         from orchestrator.web_orchestrator import WebScanOrchestrator
+
         orch = WebScanOrchestrator(silent=False)
-        result = _run_async(orch.run_recon(
-            web_scan_id=web_scan_id,
-            target_url=target_url,
-            scan_scope=scan_scope,
-            options=options,
-        ))
+        result = _run_async(
+            orch.run_recon(
+                web_scan_id=web_scan_id,
+                target_url=target_url,
+                scan_scope=scan_scope,
+                options=options,
+            )
+        )
 
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
@@ -303,30 +320,45 @@ def run_web_recon_task(
         if not result.get("success"):
             fail_time = utcnow()
             _update_scan_phase_status(
-                db, web_scan_id, "recon", "failed",
+                db,
+                web_scan_id,
+                "recon",
+                "failed",
                 completed_at=fail_time,
             )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed",
-                "failure_reason": result.get("error", "RECON phase failed"),
-                "completed_at": fail_time,
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": result.get("error", "RECON phase failed"),
+                    "completed_at": fail_time,
+                }
+            )
             db.commit()
-            _emit_progress(web_scan_id, "recon", {"status": "failed", "message": result.get("error", "")})
+            _emit_progress(
+                web_scan_id,
+                "recon",
+                {"status": "failed", "message": result.get("error", "")},
+            )
             return result
 
         # Persist RECON results to scan record
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-            "waf_detected": result.get("waf_detected"),
-            "tech_stack": result.get("tech_stack", []),
-            "subdomains": result.get("subdomains", []),
-            "recon_status": "complete",
-            "recon_completed_at": utcnow(),
-            "updated_at": utcnow(),
-        })
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {
+                "waf_detected": result.get("waf_detected"),
+                "tech_stack": result.get("tech_stack", []),
+                "subdomains": result.get("subdomains", []),
+                "recon_status": "complete",
+                "recon_completed_at": utcnow(),
+                "updated_at": utcnow(),
+            }
+        )
         db.commit()
 
-        _emit_progress(web_scan_id, "recon", {"status": "complete", "message": "Reconnaissance complete"})
+        _emit_progress(
+            web_scan_id,
+            "recon",
+            {"status": "complete", "message": "Reconnaissance complete"},
+        )
 
         # Chain to CRAWL phase
         next_task = run_web_crawl_task.delay(
@@ -335,26 +367,42 @@ def run_web_recon_task(
             target_url=target_url,
             scan_scope=scan_scope,
             options=options,
-            auth_config=db.query(WebScan).filter(WebScan.id == web_scan_id).first().auth_config or {},
+            auth_config=db.query(WebScan)
+            .filter(WebScan.id == web_scan_id)
+            .first()
+            .auth_config
+            or {},
             sitemap_urls=result.get("sitemap_urls", []),
             waf_detected=result.get("waf_detected"),
         )
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-            "current_task_id": next_task.id,
-        })
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {
+                "current_task_id": next_task.id,
+            }
+        )
         db.commit()
 
-        return {"success": True, "web_scan_id": web_scan_id, "chained_task": next_task.id}
+        return {
+            "success": True,
+            "web_scan_id": web_scan_id,
+            "chained_task": next_task.id,
+        }
 
     except Exception as exc:
         log.exception("Web RECON task failed for %s", web_scan_id)
         try:
             _update_scan_phase_status(
-                db, web_scan_id, "recon", "failed",
+                db,
+                web_scan_id,
+                "recon",
+                "failed",
             )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed", "failure_reason": str(exc)[:1000],
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": str(exc)[:1000],
+                }
+            )
             db.commit()
         except Exception:
             log.debug("Failed to update scan status after error")
@@ -366,6 +414,7 @@ def run_web_recon_task(
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2: CRAWL
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @celery_app.task(
     name="ccure.web.run_crawl",
@@ -391,20 +440,29 @@ def run_web_crawl_task(
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
 
-        _update_scan_phase_status(db, web_scan_id, "crawl", "running", started_at=utcnow())
-        _emit_progress(web_scan_id, "crawl", {"status": "running", "message": "Crawling web application..."})
+        _update_scan_phase_status(
+            db, web_scan_id, "crawl", "running", started_at=utcnow()
+        )
+        _emit_progress(
+            web_scan_id,
+            "crawl",
+            {"status": "running", "message": "Crawling web application..."},
+        )
 
         from orchestrator.web_orchestrator import WebScanOrchestrator
+
         orch = WebScanOrchestrator(silent=False)
-        result = _run_async(orch.run_crawl(
-            web_scan_id=web_scan_id,
-            target_url=target_url,
-            scan_scope=scan_scope,
-            options=options,
-            auth_config=auth_config,
-            sitemap_urls=sitemap_urls,
-            waf_detected=waf_detected,
-        ))
+        result = _run_async(
+            orch.run_crawl(
+                web_scan_id=web_scan_id,
+                target_url=target_url,
+                scan_scope=scan_scope,
+                options=options,
+                auth_config=auth_config,
+                sitemap_urls=sitemap_urls,
+                waf_detected=waf_detected,
+            )
+        )
 
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
@@ -412,14 +470,19 @@ def run_web_crawl_task(
         if not result.get("success"):
             fail_time = utcnow()
             _update_scan_phase_status(
-                db, web_scan_id, "crawl", "failed",
+                db,
+                web_scan_id,
+                "crawl",
+                "failed",
                 completed_at=fail_time,
             )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed",
-                "failure_reason": result.get("error", "CRAWL phase failed"),
-                "completed_at": fail_time,
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": result.get("error", "CRAWL phase failed"),
+                    "completed_at": fail_time,
+                }
+            )
             db.commit()
             return result
 
@@ -430,18 +493,26 @@ def run_web_crawl_task(
         scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
         if scan and result.get("sensitive_findings"):
             _persist_web_findings(
-                db, web_scan_id, scan.org_id,
+                db,
+                web_scan_id,
+                scan.org_id,
                 result["sensitive_findings"],
             )
 
-        _update_scan_phase_status(db, web_scan_id, "crawl", "complete", completed_at=utcnow())
+        _update_scan_phase_status(
+            db, web_scan_id, "crawl", "complete", completed_at=utcnow()
+        )
         _update_scan_stats(db, web_scan_id)
         db.commit()
 
-        _emit_progress(web_scan_id, "crawl", {
-            "status": "complete",
-            "message": f"Found {len(result.get('endpoints', []))} endpoints",
-        })
+        _emit_progress(
+            web_scan_id,
+            "crawl",
+            {
+                "status": "complete",
+                "message": f"Found {len(result.get('endpoints', []))} endpoints",
+            },
+        )
 
         # Chain to DETECT phase
         next_task = run_web_detect_task.delay(
@@ -454,20 +525,29 @@ def run_web_crawl_task(
             auth_config=auth_config,
             waf_detected=waf_detected,
         )
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-            "current_task_id": next_task.id,
-        })
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {
+                "current_task_id": next_task.id,
+            }
+        )
         db.commit()
 
-        return {"success": True, "web_scan_id": web_scan_id, "chained_task": next_task.id}
+        return {
+            "success": True,
+            "web_scan_id": web_scan_id,
+            "chained_task": next_task.id,
+        }
 
     except Exception as exc:
         log.exception("Web CRAWL task failed for %s", web_scan_id)
         try:
             _update_scan_phase_status(db, web_scan_id, "crawl", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed", "failure_reason": str(exc)[:1000],
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": str(exc)[:1000],
+                }
+            )
             db.commit()
         except Exception:
             log.debug("Failed to update scan status after error")
@@ -479,6 +559,7 @@ def run_web_crawl_task(
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 3: DETECT
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @celery_app.task(
     name="ccure.web.run_detect",
@@ -504,20 +585,29 @@ def run_web_detect_task(
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
 
-        _update_scan_phase_status(db, web_scan_id, "detect", "running", started_at=utcnow())
-        _emit_progress(web_scan_id, "detect", {"status": "running", "message": "Scanning for vulnerabilities..."})
+        _update_scan_phase_status(
+            db, web_scan_id, "detect", "running", started_at=utcnow()
+        )
+        _emit_progress(
+            web_scan_id,
+            "detect",
+            {"status": "running", "message": "Scanning for vulnerabilities..."},
+        )
 
         from orchestrator.web_orchestrator import WebScanOrchestrator
+
         orch = WebScanOrchestrator(silent=False)
-        result = _run_async(orch.run_detect(
-            web_scan_id=web_scan_id,
-            target_url=target_url,
-            endpoints=endpoints,
-            forms=forms,
-            options=options,
-            auth_config=auth_config,
-            waf_detected=waf_detected,
-        ))
+        result = _run_async(
+            orch.run_detect(
+                web_scan_id=web_scan_id,
+                target_url=target_url,
+                endpoints=endpoints,
+                forms=forms,
+                options=options,
+                auth_config=auth_config,
+                waf_detected=waf_detected,
+            )
+        )
 
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
@@ -525,30 +615,43 @@ def run_web_detect_task(
         if not result.get("success"):
             fail_time = utcnow()
             _update_scan_phase_status(
-                db, web_scan_id, "detect", "failed",
+                db,
+                web_scan_id,
+                "detect",
+                "failed",
                 completed_at=fail_time,
             )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed",
-                "failure_reason": result.get("error", "DETECT phase failed"),
-                "completed_at": fail_time,
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": result.get("error", "DETECT phase failed"),
+                    "completed_at": fail_time,
+                }
+            )
             db.commit()
             return result
 
         # Persist findings
         scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
         if scan:
-            _persist_web_findings(db, web_scan_id, scan.org_id, result.get("findings", []))
+            _persist_web_findings(
+                db, web_scan_id, scan.org_id, result.get("findings", [])
+            )
 
-        _update_scan_phase_status(db, web_scan_id, "detect", "complete", completed_at=utcnow())
+        _update_scan_phase_status(
+            db, web_scan_id, "detect", "complete", completed_at=utcnow()
+        )
         _update_scan_stats(db, web_scan_id)
         db.commit()
 
-        _emit_progress(web_scan_id, "detect", {
-            "status": "complete",
-            "message": f"Found {len(result.get('findings', []))} vulnerabilities",
-        })
+        _emit_progress(
+            web_scan_id,
+            "detect",
+            {
+                "status": "complete",
+                "message": f"Found {len(result.get('findings', []))} vulnerabilities",
+            },
+        )
 
         # Chain to AUDIT phase
         next_task = run_web_audit_task.delay(
@@ -559,20 +662,29 @@ def run_web_detect_task(
             endpoints=endpoints,
             options=options,
         )
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-            "current_task_id": next_task.id,
-        })
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {
+                "current_task_id": next_task.id,
+            }
+        )
         db.commit()
 
-        return {"success": True, "web_scan_id": web_scan_id, "chained_task": next_task.id}
+        return {
+            "success": True,
+            "web_scan_id": web_scan_id,
+            "chained_task": next_task.id,
+        }
 
     except Exception as exc:
         log.exception("Web DETECT task failed for %s", web_scan_id)
         try:
             _update_scan_phase_status(db, web_scan_id, "detect", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed", "failure_reason": str(exc)[:1000],
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": str(exc)[:1000],
+                }
+            )
             db.commit()
         except Exception:
             log.debug("Failed to update scan status after error")
@@ -584,6 +696,7 @@ def run_web_detect_task(
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 4: AUDIT
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @celery_app.task(
     name="ccure.web.run_audit",
@@ -607,30 +720,44 @@ def run_web_audit_task(
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
 
-        _update_scan_phase_status(db, web_scan_id, "audit", "running", started_at=utcnow())
-        _emit_progress(web_scan_id, "audit", {"status": "running", "message": "Running security audit..."})
+        _update_scan_phase_status(
+            db, web_scan_id, "audit", "running", started_at=utcnow()
+        )
+        _emit_progress(
+            web_scan_id,
+            "audit",
+            {"status": "running", "message": "Running security audit..."},
+        )
 
         from orchestrator.web_orchestrator import WebScanOrchestrator
+
         orch = WebScanOrchestrator(silent=False)
-        result = _run_async(orch.run_audit(
-            web_scan_id=web_scan_id,
-            target_url=target_url,
-            findings=findings,
-            endpoints=endpoints,
-            options=options,
-        ))
+        result = _run_async(
+            orch.run_audit(
+                web_scan_id=web_scan_id,
+                target_url=target_url,
+                findings=findings,
+                endpoints=endpoints,
+                options=options,
+            )
+        )
 
         if not result.get("success"):
             fail_time = utcnow()
             _update_scan_phase_status(
-                db, web_scan_id, "audit", "failed",
+                db,
+                web_scan_id,
+                "audit",
+                "failed",
                 completed_at=fail_time,
             )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed",
-                "failure_reason": result.get("error", "AUDIT phase failed"),
-                "completed_at": fail_time,
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": result.get("error", "AUDIT phase failed"),
+                    "completed_at": fail_time,
+                }
+            )
             db.commit()
             return result
 
@@ -639,12 +766,14 @@ def run_web_audit_task(
         if scan and result.get("findings"):
             # Only persist new TLS findings not already in DB
             existing_ids = {
-                f.id for f in db.query(WebFinding.id).filter(
-                    WebFinding.web_scan_id == web_scan_id
-                ).all()
+                f.id
+                for f in db.query(WebFinding.id)
+                .filter(WebFinding.web_scan_id == web_scan_id)
+                .all()
             }
             new_findings = [
-                f for f in result["findings"]
+                f
+                for f in result["findings"]
                 if f.get("detected_by") in ("sslyze", "custom")
             ]
             _persist_web_findings(db, web_scan_id, scan.org_id, new_findings)
@@ -656,24 +785,30 @@ def run_web_audit_task(
         if scan and scan.started_at:
             duration = (now - scan.started_at).total_seconds()
 
-        db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-            "audit_status": "complete",
-            "audit_completed_at": now,
-            "status": "complete",
-            "pipeline_phase": "complete",
-            "completed_at": now,
-            "duration_seconds": duration,
-            "updated_at": now,
-        })
+        db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+            {
+                "audit_status": "complete",
+                "audit_completed_at": now,
+                "status": "complete",
+                "pipeline_phase": "complete",
+                "completed_at": now,
+                "duration_seconds": duration,
+                "updated_at": now,
+            }
+        )
 
         _update_scan_stats(db, web_scan_id)
         db.commit()
 
-        _emit_progress(web_scan_id, "audit", {
-            "status": "complete",
-            "message": "Web application scan complete",
-            "risk_score": result.get("risk_score", 0),
-        })
+        _emit_progress(
+            web_scan_id,
+            "audit",
+            {
+                "status": "complete",
+                "message": "Web application scan complete",
+                "risk_score": result.get("risk_score", 0),
+            },
+        )
 
         log.info("Web scan %s completed successfully", web_scan_id)
         return {"success": True, "web_scan_id": web_scan_id}
@@ -682,9 +817,12 @@ def run_web_audit_task(
         log.exception("Web AUDIT task failed for %s", web_scan_id)
         try:
             _update_scan_phase_status(db, web_scan_id, "audit", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update({
-                "status": "failed", "failure_reason": str(exc)[:1000],
-            })
+            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
+                {
+                    "status": "failed",
+                    "failure_reason": str(exc)[:1000],
+                }
+            )
             db.commit()
         except Exception:
             log.debug("Failed to update scan status after error")

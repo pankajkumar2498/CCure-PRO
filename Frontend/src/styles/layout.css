@@ -21,9 +21,10 @@
   z-index: 200;
   flex-shrink: 0;
   overflow: hidden;
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-              min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-              left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -83,8 +84,12 @@
 }
 
 @keyframes backdropFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ── Collapse toggle button ── */
@@ -140,7 +145,9 @@
   display: flex;
   flex-direction: column;
   line-height: 1.1;
-  transition: opacity 0.2s, width 0.28s;
+  transition:
+    opacity 0.2s,
+    width 0.28s;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -184,7 +191,11 @@
   text-transform: uppercase;
   padding: 14px 16px 4px;
   white-space: nowrap;
-  transition: opacity 0.2s, color 0.2s, height 0.2s, padding 0.2s;
+  transition:
+    opacity 0.2s,
+    color 0.2s,
+    height 0.2s,
+    padding 0.2s;
   flex-shrink: 0;
 }
 
@@ -204,7 +215,10 @@
   width: 100%;
   text-align: left;
   text-decoration: none;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
   position: relative;
   min-height: 36px;
 }
@@ -312,7 +326,10 @@
 .sidebar-footer-quota {
   padding: 10px 14px 6px;
   overflow: hidden;
-  transition: opacity 0.2s, max-height 0.28s, padding 0.2s;
+  transition:
+    opacity 0.2s,
+    max-height 0.28s,
+    padding 0.2s;
   max-height: 100px;
 }
 
@@ -341,7 +358,9 @@
 .quota-bar-fill {
   height: 100%;
   border-radius: 2px;
-  transition: width 0.4s ease, background 0.3s;
+  transition:
+    width 0.4s ease,
+    background 0.3s;
 }
 
 .sidebar-footer-bottom {
@@ -536,7 +555,9 @@
   color: var(--text-muted);
   font-size: 0.8rem;
   font-family: var(--font);
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .btn-icon:hover {
@@ -613,8 +634,14 @@
 }
 
 @keyframes dropIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .pd-header {

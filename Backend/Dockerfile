@@ -105,7 +105,7 @@ COPY . .
 RUN chown -R ccure:ccure /app
 
 # Grant nmap binary the ability to perform raw socket scans without root
-# This allows the worker to run with fewer privileges if desired, 
+# This allows the worker to run with fewer privileges if desired,
 # though running worker as root in container is often acceptable.
 RUN setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip /usr/bin/nmap
 

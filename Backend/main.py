@@ -43,12 +43,14 @@ from routers.audit import router as audit_router
 from routers.user_profile import router as user_profile_router
 from routers.notifications import router as notifications_router
 from routers.dashboard import router as dashboard_router
-from routers.assets    import router as assets_router
-from routers.findings  import router as findings_router
+from routers.assets import router as assets_router
+from routers.findings import router as findings_router
 from routers.web_scans import router as web_scans_router
-from routers.topology  import router as topology_router
+from routers.topology import router as topology_router
+from routers.compliance import router as compliance_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
+
 
 class _JsonFormatter(logging.Formatter):
     """Emit every log record as a single-line JSON object."""
@@ -83,52 +85,61 @@ else:
     )
 
 logging.basicConfig(level=_log_level, handlers=[_handler])
-logging.getLogger("uvicorn.access").setLevel(os.getenv("ACCESS_LOG_LEVEL", "WARNING").upper())
+logging.getLogger("uvicorn.access").setLevel(
+    os.getenv("ACCESS_LOG_LEVEL", "WARNING").upper()
+)
 log = logging.getLogger("ccure.api")
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from sqlalchemy import inspect, text
+    from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
-    from db.base import engine, Base
+    from db.base import engine
     from config import AppConfig
-    
+
     # 0. Health check: Test database connectivity
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         log.info("Database connection verified")
-        
+
         # Run additive migrations
         try:
             ensure_user_schema()
             ensure_scan_schema()
-            
+
             from db.models.topology import ensure_topology_schema
             from db.models.assets import ensure_mac_vendor_schema
+
             ensure_topology_schema()
             ensure_mac_vendor_schema()
-            
-            log.info("User, scan, topology, and mac vendor schemas verified and migrated")
+
+            log.info(
+                "User, scan, topology, and mac vendor schemas verified and migrated"
+            )
         except Exception as e:
             log.error(f"Failed to execute additive schema updates: {e}")
     except OperationalError as e:
         log.error(f"Database connection failed. Is the database running? Error: {e}")
         # We no longer raise RuntimeError to allow the container to start.
         # The app will likely fail on requests, but the container stays alive for debugging/migration.
-    
+
     # 1. Ensure basic roles and default organization exist (Data Seeding)
     # This assumes Alembic migrations have already run.
     from db.migrate_production_schema import seed_default_org, seed_rbac
+
     try:
         with engine.begin() as conn:
             seed_rbac(conn)
             seed_default_org(conn)
     except Exception as e:
-        log.warning(f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}")
+        log.warning(
+            f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}"
+        )
 
     # 1.6. Ensure first admin exists
     from db.models.users import User
@@ -140,9 +151,17 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         if AppConfig.DEFAULT_ADMIN_EMAIL and AppConfig.DEFAULT_ADMIN_PASSWORD:
             admin_email = normalize_email(AppConfig.DEFAULT_ADMIN_EMAIL)
-            if not db.query(User).filter(email_matches(User.email, admin_email)).first():
+            if (
+                not db.query(User)
+                .filter(email_matches(User.email, admin_email))
+                .first()
+            ):
                 log.info(f"Seeding default admin user: {admin_email}")
-                org = db.query(Organization).filter(Organization.slug == "default").first()
+                org = (
+                    db.query(Organization)
+                    .filter(Organization.slug == "default")
+                    .first()
+                )
                 role = db.query(Role).filter(Role.name == "superadmin").first()
                 if org and role:
                     admin = User(
@@ -150,33 +169,37 @@ async def lifespan(app: FastAPI):
                         username="admin",
                         email=admin_email,
                         password_hash=hash_password(AppConfig.DEFAULT_ADMIN_PASSWORD),
-                    org_id=org.id,
-                    role_id=role.id,
-                    is_active=True,
-                    is_verified=True
-                )
-                db.add(admin)
-                try:
-                    db.commit()
-                    log.info(f"Successfully seeded admin user: {admin_email}")
-                except Exception as e:
-                    db.rollback()
-                    log.error(f"Failed to seed admin: {e}")
+                        org_id=org.id,
+                        role_id=role.id,
+                        is_active=True,
+                        is_verified=True,
+                    )
+                    db.add(admin)
+                    try:
+                        db.commit()
+                        log.info(f"Successfully seeded admin user: {admin_email}")
+                    except Exception as e:
+                        db.rollback()
+                        log.error(f"Failed to seed admin: {e}")
             else:
-                log.warning("Could not seed admin: default org or superadmin role missing.")
+                log.warning(
+                    "Could not seed admin: default org or superadmin role missing."
+                )
         else:
             if db.query(User).count() == 0:
-                log.warning("Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded.")
-    
+                log.warning(
+                    "Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded."
+                )
+
     # 3. Initialize scan engines
     api = HostDiscoveryAPI(silent=False)
     set_api(api)
     log.info("HostDiscoveryAPI initialised")
-    
+
     # 4. Start background report cleanup
     from routers.reports import cleanup_old_reports
     import asyncio
-    
+
     async def cleanup_loop():
         while True:
             try:
@@ -188,25 +211,34 @@ async def lifespan(app: FastAPI):
                 from db.base import SessionLocal
                 from db.models import PasswordResetToken
                 from datetime import datetime, timezone
+
                 db = SessionLocal()
                 try:
                     now = datetime.now(timezone.utc)
-                    deleted_count = db.query(PasswordResetToken).filter(PasswordResetToken.expires_at <= now).delete()
+                    deleted_count = (
+                        db.query(PasswordResetToken)
+                        .filter(PasswordResetToken.expires_at <= now)
+                        .delete()
+                    )
                     if deleted_count > 0:
                         db.commit()
-                        log.info(f"Purged {deleted_count} expired password reset tokens.")
+                        log.info(
+                            f"Purged {deleted_count} expired password reset tokens."
+                        )
                 except Exception as db_exc:
                     db.rollback()
-                    log.error("Failed to prune expired password reset tokens: %s", db_exc)
+                    log.error(
+                        "Failed to prune expired password reset tokens: %s", db_exc
+                    )
                 finally:
                     db.close()
             except Exception as e:
                 log.error("Password reset token cleanup failed: %s", e)
 
             await asyncio.sleep(86400)  # 24 hours
-            
+
     cleanup_task = asyncio.create_task(cleanup_loop())
-    
+
     yield
     cleanup_task.cancel()
     log.info("Shutting down")
@@ -217,13 +249,13 @@ async def lifespan(app: FastAPI):
 is_prod = os.getenv("ENV", "development").lower() == "production"
 
 app = FastAPI(
-    title       = "CCure Pro Audit",
-    description = "CDAC RTSG Vulnerability Scanner.",
-    version     = "1.0.0",
-    lifespan    = lifespan,
-    docs_url    = None if is_prod else "/docs",
-    redoc_url   = None if is_prod else "/redoc",
-    openapi_url = None if is_prod else "/openapi.json",
+    title="CCure Pro Audit",
+    description="CDAC RTSG Vulnerability Scanner.",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url=None if is_prod else "/docs",
+    redoc_url=None if is_prod else "/redoc",
+    openapi_url=None if is_prod else "/openapi.json",
 )
 
 
@@ -240,7 +272,9 @@ _default_origins = [
 _configured_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 allow_origins = [
     origin.strip()
-    for origin in (_configured_origins.split(",") if _configured_origins else _default_origins)
+    for origin in (
+        _configured_origins.split(",") if _configured_origins else _default_origins
+    )
     if origin.strip()
 ]
 
@@ -256,7 +290,6 @@ app.add_middleware(
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from scan_helpers import limiter
 
@@ -283,30 +316,42 @@ app.add_exception_handler(RateLimitExceeded, _make_rate_limit_response)
 
 # ── Request-ID correlation middleware ────────────────────────────────────────────
 
+
 @app.middleware("http")
 async def _request_id_middleware(request: Request, call_next):
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
-    
+
     # Handle Private Network Access (PNA) preflight requests
-    if request.method == "OPTIONS" and request.headers.get("Access-Control-Request-Private-Network"):
+    if request.method == "OPTIONS" and request.headers.get(
+        "Access-Control-Request-Private-Network"
+    ):
         response = Response()
         response.headers["Access-Control-Allow-Private-Network"] = "true"
-        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get(
+            "Origin", "*"
+        )
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        )
         response.headers["Access-Control-Allow-Headers"] = "*"
         return response
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = req_id
     if response.status_code >= 500:
-        log.error("%s %s returned %s", request.method, request.url.path, response.status_code)
+        log.error(
+            "%s %s returned %s", request.method, request.url.path, response.status_code
+        )
     elif response.status_code >= 400:
-        log.warning("%s %s returned %s", request.method, request.url.path, response.status_code)
+        log.warning(
+            "%s %s returned %s", request.method, request.url.path, response.status_code
+        )
     return response
 
 
 # ── Global HTTP exception handler (unified error envelope) ───────────────────────
+
 
 @app.exception_handler(HTTPException)
 async def _http_exception_handler(request: Request, exc: HTTPException):
@@ -325,16 +370,14 @@ async def _http_exception_handler(request: Request, exc: HTTPException):
     """
     request_id = getattr(request.state, "request_id", None)
     # Allow endpoints to pass a custom error_code via exc.headers
-    error_code = (
-        (exc.headers or {}).get("X-Error-Code")
-        or f"HTTP_{exc.status_code}"
-    )
+    error_code = (exc.headers or {}).get("X-Error-Code") or f"HTTP_{exc.status_code}"
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
             "error_code": error_code,
             "message": exc.detail,
+            "detail": exc.detail,
             "request_id": request_id,
         },
         headers={"X-Request-ID": request_id or ""},
@@ -374,6 +417,7 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
             "error_code": "VALIDATION_ERROR",
             "message": "Request validation failed.",
             "errors": scrubbed,
+            "detail": scrubbed,
             "request_id": request_id,
         },
         headers={"X-Request-ID": request_id or ""},
@@ -400,10 +444,12 @@ app.include_router(assets_router)
 app.include_router(findings_router)
 app.include_router(web_scans_router)
 app.include_router(topology_router)
+app.include_router(compliance_router)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

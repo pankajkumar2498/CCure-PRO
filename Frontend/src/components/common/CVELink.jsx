@@ -1,14 +1,22 @@
 export default function CVELink({ cveId, className = "cve-id", style = {} }) {
   if (!cveId || cveId === "N/A" || cveId === "Unknown") {
-    return <span className={className} style={style}>{cveId}</span>;
+    return (
+      <span className={className} style={style}>
+        {cveId}
+      </span>
+    );
   }
 
   const cleanId = String(cveId).trim();
-  
+
   // Guard check to make sure it matches standard CVE structure
   const isCveFormat = /^CVE-\d{4}-\d{4,}$/i.test(cleanId);
   if (!isCveFormat) {
-    return <span className={className} style={style}>{cleanId}</span>;
+    return (
+      <span className={className} style={style}>
+        {cleanId}
+      </span>
+    );
   }
 
   const url = `https://nvd.nist.gov/vuln/detail/${cleanId.toUpperCase()}`;
@@ -30,7 +38,7 @@ export default function CVELink({ cveId, className = "cve-id", style = {} }) {
         textDecoration: "none",
         fontWeight: "inherit",
         cursor: "pointer",
-        ...style
+        ...style,
       }}
     >
       {cleanId}

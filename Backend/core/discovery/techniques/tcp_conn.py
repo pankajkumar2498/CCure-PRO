@@ -1,6 +1,7 @@
 """
 core/discovery/techniques/tcp_conn.py — Async TCP Connect (no root required)
 """
+
 import asyncio
 import logging
 import ssl
@@ -54,7 +55,12 @@ async def probe(
                     try:
                         await writer.wait_closed()
                     except Exception as exc:
-                        log.debug("Failed to cleanly close TCP writer for %s:%d - %s", ip, port, exc)
+                        log.debug(
+                            "Failed to cleanly close TCP writer for %s:%d - %s",
+                            ip,
+                            port,
+                            exc,
+                        )
                     elapsed = (time.time() - t0) * 1000
                     if not results[ip]["is_active"]:
                         results[ip].update(
@@ -63,16 +69,14 @@ async def probe(
                             elapsed_ms=elapsed,
                         )
                         results[ip]["confirmations"].append(f"TCP:{port}")
-                    return   # success — don't retry
+                    return  # success — don't retry
                 except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
                     pass
                 except Exception as exc:
-                    log.debug("Unexpected error in TCP connect to %s:%d - %s", ip, port, exc)
+                    log.debug(
+                        "Unexpected error in TCP connect to %s:%d - %s", ip, port, exc
+                    )
                     return
 
-    tasks = [
-        _one(ip, port)
-        for ip in ips
-        for port in ports
-    ]
+    tasks = [_one(ip, port) for ip in ips for port in ports]
     await asyncio.gather(*tasks)

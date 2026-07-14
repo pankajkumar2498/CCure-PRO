@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getCurrentUser,
@@ -16,7 +24,10 @@ const syncActiveOrgId = (user) => {
     localStorage.removeItem("activeOrgId");
     return;
   }
-  const roleName = (user.role?.name || "").trim().toLowerCase().replace(/\s+/g, "_");
+  const roleName = (user.role?.name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
   if (roleName === "superadmin") {
     if (!localStorage.getItem("activeOrgId") && user.org_id) {
       localStorage.setItem("activeOrgId", user.org_id);
@@ -188,7 +199,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       refreshUser: syncCurrentUser,
     }),
-    [user, authState, authMessage, login, register, logout, syncCurrentUser]
+    [user, authState, authMessage, login, register, logout, syncCurrentUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

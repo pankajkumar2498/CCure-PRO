@@ -1,4 +1,3 @@
-import pytest
 from core.device_classifier import classify_device
 
 
@@ -8,7 +7,7 @@ def test_classify_vmware_oui():
         "mac": "00:50:56:12:34:56",  # VMware prefix
         "mac_vendor": "VMware, Inc.",
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "virtual_machine"
@@ -20,11 +19,9 @@ def test_classify_vmware_oui():
 def test_classify_netbios_server_service():
     """Verify NetBIOS <20> (Server) maps to server category with Medium confidence Windows OS fallback."""
     host = {
-        "netbios_names": [
-            {"name": "MYSERVER", "type": 0x20, "flags": 0}
-        ],
+        "netbios_names": [{"name": "MYSERVER", "type": 0x20, "flags": 0}],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "server"
@@ -36,11 +33,9 @@ def test_classify_netbios_server_service():
 def test_classify_netbios_master_browser():
     """Verify NetBIOS <1D> (Master Browser) maps to server category with High confidence Windows OS fallback."""
     host = {
-        "netbios_names": [
-            {"name": "MYDOMAIN", "type": 0x1D, "flags": 0x8000}
-        ],
+        "netbios_names": [{"name": "MYDOMAIN", "type": 0x1D, "flags": 0x8000}],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "server"
@@ -52,11 +47,9 @@ def test_classify_netbios_master_browser():
 def test_classify_netbios_workstation_only():
     """Verify NetBIOS <00> (Workstation) without <20> maps to endpoint category."""
     host = {
-        "netbios_names": [
-            {"name": "MYLAPTOP", "type": 0x00, "flags": 0}
-        ],
+        "netbios_names": [{"name": "MYLAPTOP", "type": 0x00, "flags": 0}],
         "os_family": "",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "endpoint"
@@ -70,7 +63,7 @@ def test_classify_mdns_printer():
     host = {
         "mdns_services": ["_printer._tcp.local"],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "printer"
@@ -85,7 +78,7 @@ def test_classify_mdns_workstation_apple():
         "mdns_services": ["_workstation._tcp.local"],
         "mac_vendor": "Apple, Inc.",
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "endpoint"
@@ -100,7 +93,7 @@ def test_classify_mdns_workstation_generic():
         "mdns_services": ["_workstation._tcp.local"],
         "mac_vendor": "Intel Corporation",
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "endpoint"
@@ -113,11 +106,9 @@ def test_priority_mdns_over_netbios():
     """Verify that mDNS (Signal 2) takes precedence over NetBIOS (Signal 3)."""
     host = {
         "mdns_services": ["_printer._tcp.local"],
-        "netbios_names": [
-            {"name": "MYSERVER", "type": 0x20, "flags": 0}
-        ],
+        "netbios_names": [{"name": "MYSERVER", "type": 0x20, "flags": 0}],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "printer"
@@ -129,7 +120,7 @@ def test_classify_nmap_cpe():
     host = {
         "os_cpe": ["cpe:/o:fortinet:fortios:6.4"],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "firewall"
@@ -138,7 +129,7 @@ def test_classify_nmap_cpe():
     host2 = {
         "os_cpe": ["cpe:/o:cisco:ios:15.2"],
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category2 = classify_device(host2)
     assert category2 == "router"
@@ -152,10 +143,10 @@ def test_classify_snmp_info_lightweight():
             "open": True,
             "ip_forwarding": 1,
             "if_count": 8,
-            "bridge_mib": False
+            "bridge_mib": False,
         },
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "router"
@@ -166,10 +157,10 @@ def test_classify_snmp_info_lightweight():
             "open": True,
             "ip_forwarding": 2,
             "if_count": 8,
-            "bridge_mib": True
+            "bridge_mib": True,
         },
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category2 = classify_device(host2)
     assert category2 == "switch"
@@ -180,12 +171,10 @@ def test_priority_netbios_over_cpe_over_ports():
     """Verify signal priority order: NetBIOS > CPE > Port Profile."""
     # NetBIOS takes precedence over CPE
     host = {
-        "netbios_names": [
-            {"name": "MYSERVER", "type": 0x20, "flags": 0}
-        ],
-        "os_cpe": ["cpe:/o:cisco:ios:15.2"], # cpe maps to router, netbios to server
+        "netbios_names": [{"name": "MYSERVER", "type": 0x20, "flags": 0}],
+        "os_cpe": ["cpe:/o:cisco:ios:15.2"],  # cpe maps to router, netbios to server
         "os_family": "Unknown",
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "server"
@@ -193,8 +182,8 @@ def test_priority_netbios_over_cpe_over_ports():
 
     # CPE takes precedence over Port Profile
     host2 = {
-        "os_cpe": ["cpe:/o:fortinet:fortios:6.4"], # cpe maps to firewall
-        "open_ports": [{"port": 179}] # BGP port maps to router
+        "os_cpe": ["cpe:/o:fortinet:fortios:6.4"],  # cpe maps to firewall
+        "open_ports": [{"port": 179}],  # BGP port maps to router
     }
     category2 = classify_device(host2)
     assert category2 == "firewall"
@@ -205,25 +194,17 @@ def test_classify_scada_ics():
     """Verify that Modbus/S7comm ports, Siemens vendor name, and scada keywords map to scada_ics category."""
     # Test port profile
     for p in (502, 102, 20000, 44818, 47808, 4840, 2404, 18245, 9600, 5007, 2455):
-        host_port = {
-            "open_ports": [{"port": p}]
-        }
+        host_port = {"open_ports": [{"port": p}]}
         assert classify_device(host_port) == "scada_ics"
         assert host_port["device_category_signal"] == "port_profile"
 
     # Test vendor OUI classification
-    host_vendor = {
-        "mac_vendor": "Siemens AG",
-        "os_family": "Unknown",
-        "open_ports": []
-    }
+    host_vendor = {"mac_vendor": "Siemens AG", "os_family": "Unknown", "open_ports": []}
     assert classify_device(host_vendor) == "scada_ics"
     assert host_vendor["device_category_signal"] == "oui"
 
     # Test banner keyword
-    host_banner = {
-        "open_ports": [{"port": 80, "banner": "PLC s7-1200 Web Server"}]
-    }
+    host_banner = {"open_ports": [{"port": 80, "banner": "PLC s7-1200 Web Server"}]}
     assert classify_device(host_banner) == "scada_ics"
     assert host_banner["device_category_signal"] == "banner"
 
@@ -240,7 +221,7 @@ def test_docker_host_ip_forwarding_not_router():
             "ip_forwarding": 1,
             "sys_descr": "Linux ubuntu 5.15.0-generic #117-Ubuntu SMP x86_64",
         },
-        "open_ports": []
+        "open_ports": [],
     }
     category = classify_device(host)
     assert category == "endpoint"
@@ -250,10 +231,7 @@ def test_docker_host_ip_forwarding_not_router():
 def test_weak_signals_remain_unknown():
     """Verify that signals yielding a score below 40 are categorized as unknown."""
     # Only TTL is present (yields 30 points)
-    host = {
-        "tcp_fingerprint": {"ttl": 64},
-        "open_ports": []
-    }
+    host = {"tcp_fingerprint": {"ttl": 64}, "open_ports": []}
     category = classify_device(host)
     assert category == "unknown"
     assert host["device_category_signal"] == "none"
@@ -266,7 +244,7 @@ def test_credentialed_classification_override():
         "os_family": "Windows Server",
         "os_name": "Windows Server 2022 Datacenter",
         "hostname": "win-server-ad",
-        "open_ports": [{"port": 179}]  # Port 179 usually maps to router
+        "open_ports": [{"port": 179}],  # Port 179 usually maps to router
     }
     category = classify_device(host)
     assert category == "server"
@@ -279,9 +257,9 @@ def test_classify_ot_info_override():
         "ot_info": {
             "protocol": "modbus",
             "vendor": "Schneider Electric",
-            "model": "Modicon M221"
+            "model": "Modicon M221",
         },
-        "open_ports": [{"port": 80}]  # Usually maps to server
+        "open_ports": [{"port": 80}],  # Usually maps to server
     }
     category = classify_device(host)
     assert category == "scada_ics"
@@ -309,4 +287,3 @@ if __name__ == "__main__":
     test_credentialed_classification_override()
     test_classify_ot_info_override()
     print("All device classifier tests passed successfully!")
-

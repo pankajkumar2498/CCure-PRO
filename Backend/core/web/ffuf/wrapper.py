@@ -18,16 +18,32 @@ log = logging.getLogger("ccure.web.ffuf")
 
 # Interesting findings that should be flagged as security issues
 _SENSITIVE_PATHS = {
-    ".git", ".git/config", ".git/HEAD",
-    ".env", ".env.bak", ".env.local", ".env.production",
-    ".htaccess", ".htpasswd",
-    "wp-admin", "wp-login.php",
-    "admin", "administrator", "phpmyadmin",
-    "backup", "backup.zip", "backup.tar.gz", "backup.sql",
-    "server-status", "server-info",
-    ".DS_Store", "Thumbs.db",
-    "web.config", "crossdomain.xml",
-    "robots.txt", "sitemap.xml",
+    ".git",
+    ".git/config",
+    ".git/HEAD",
+    ".env",
+    ".env.bak",
+    ".env.local",
+    ".env.production",
+    ".htaccess",
+    ".htpasswd",
+    "wp-admin",
+    "wp-login.php",
+    "admin",
+    "administrator",
+    "phpmyadmin",
+    "backup",
+    "backup.zip",
+    "backup.tar.gz",
+    "backup.sql",
+    "server-status",
+    "server-info",
+    ".DS_Store",
+    "Thumbs.db",
+    "web.config",
+    "crossdomain.xml",
+    "robots.txt",
+    "sitemap.xml",
 }
 
 
@@ -100,11 +116,15 @@ class FfufWrapper(ToolWrapper):
 
         args = [
             self.binary,
-            "-u", fuzz_url,
-            "-w", effective_wordlist,
-            "-o", output_file,
-            "-of", "json",
-            "-s",           # silent mode
+            "-u",
+            fuzz_url,
+            "-w",
+            effective_wordlist,
+            "-o",
+            output_file,
+            "-of",
+            "json",
+            "-s",  # silent mode
             "-noninteractive",
         ]
 
@@ -162,14 +182,22 @@ class FfufWrapper(ToolWrapper):
                 # Check if this is a sensitive path
                 fuzz_value = path_info["path"].lower().strip("/")
                 if fuzz_value in _SENSITIVE_PATHS or any(
-                    fuzz_value.endswith(ext) for ext in [".bak", ".sql", ".tar.gz", ".zip"]
+                    fuzz_value.endswith(ext)
+                    for ext in [".bak", ".sql", ".tar.gz", ".zip"]
                 ):
-                    sensitive_findings.append({
-                        **path_info,
-                        "finding_type": "information_disclosure",
-                        "title": f"Sensitive file/directory exposed: {path_info['path']}",
-                        "severity": "high" if fuzz_value.startswith(".git") or fuzz_value.startswith(".env") else "medium",
-                    })
+                    sensitive_findings.append(
+                        {
+                            **path_info,
+                            "finding_type": "information_disclosure",
+                            "title": f"Sensitive file/directory exposed: {path_info['path']}",
+                            "severity": (
+                                "high"
+                                if fuzz_value.startswith(".git")
+                                or fuzz_value.startswith(".env")
+                                else "medium"
+                            ),
+                        }
+                    )
 
             stats = {
                 "total_discovered": len(discovered_paths),
@@ -179,7 +207,8 @@ class FfufWrapper(ToolWrapper):
 
             log.info(
                 "ffuf complete: %d paths discovered, %d sensitive",
-                len(discovered_paths), len(sensitive_findings),
+                len(discovered_paths),
+                len(sensitive_findings),
             )
 
             return {

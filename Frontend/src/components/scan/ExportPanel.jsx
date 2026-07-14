@@ -27,27 +27,38 @@ export default function ExportPanel({
 }) {
   const { user } = useAuth();
   const canReadReports = can(user, "reports", "read");
-  const [copied,     setCopied]     = useState(false);
+  const [copied, setCopied] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError,   setPdfError]   = useState("");
+  const [pdfError, setPdfError] = useState("");
   const displayNo = scanNo ?? "N/A";
   const fileNo = scanNo ?? Date.now();
 
   // Detect if this is Phase 1 (discovery), Phase 2 (port scan), or Phase 3 (vulnerability) data
   const isPhase3 = pipelineMode
-    ? (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit")
-    : (results.length > 0 && !!results[0].host_risk_level && results[0].host_risk_score !== undefined && results[0].host_risk_score > 0);
+    ? pipelineMode === "advanced" || pipelineMode === "vulnerability_audit"
+    : results.length > 0 &&
+      !!results[0].host_risk_level &&
+      results[0].host_risk_score !== undefined &&
+      results[0].host_risk_score > 0;
   const isPhase2 = pipelineMode
-    ? (pipelineMode === "asset")
-    : (results.length > 0 && !isPhase3 && !!results[0].open_ports);
+    ? pipelineMode === "asset"
+    : results.length > 0 && !isPhase3 && !!results[0].open_ports;
   const isPhase1 = pipelineMode
-    ? (pipelineMode === "basic")
-    : (results.length > 0 && !isPhase2 && !isPhase3);
-  const isFinalAdvancedExport = (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") && isPhase3 && phase1Hosts.length > 0 && phase2Results.length > 0;
+    ? pipelineMode === "basic"
+    : results.length > 0 && !isPhase2 && !isPhase3;
+  const isFinalAdvancedExport =
+    (pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") &&
+    isPhase3 &&
+    phase1Hosts.length > 0 &&
+    phase2Results.length > 0;
 
   // Resolve descriptive scan type for client-side downloads
   const getDescriptiveScanType = () => {
-    if (isPhase3 || pipelineMode === "advanced" || pipelineMode === "vulnerability_audit") {
+    if (
+      isPhase3 ||
+      pipelineMode === "advanced" ||
+      pipelineMode === "vulnerability_audit"
+    ) {
       return "vulnerability_audit";
     }
     if (isPhase2 || pipelineMode === "asset") {
@@ -63,7 +74,7 @@ export default function ExportPanel({
     const pad = (n) => String(n).padStart(2, "0");
     const dateStr = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}`;
     const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-    
+
     return `${scanType}_scan-${fileNo}_${dateStr}_${timeStr}.${ext}`;
   };
 
@@ -93,7 +104,9 @@ export default function ExportPanel({
         hosts: results,
       },
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
     trigger(blob, getExportFilename("json"));
   };
 
@@ -118,7 +131,10 @@ export default function ExportPanel({
         rows.push(["Total hosts", phase1Summary.total_hosts ?? ""]);
         rows.push(["Active hosts", phase1Summary.active_hosts ?? ""]);
         rows.push(["Inactive hosts", phase1Summary.inactive_hosts ?? ""]);
-        rows.push(["Duration (s)", phase1Summary.scan_duration?.toFixed(1) ?? ""]);
+        rows.push([
+          "Duration (s)",
+          phase1Summary.scan_duration?.toFixed(1) ?? "",
+        ]);
         rows.push([]);
       }
 
@@ -126,7 +142,10 @@ export default function ExportPanel({
         rows.push(["Phase 2 — Port Scan Summary"]);
         rows.push(["Hosts scanned", phase2Summary.total_hosts ?? ""]);
         rows.push(["Hosts with ports", phase2Summary.hosts_with_ports ?? ""]);
-        rows.push(["Duration (s)", phase2Summary.scan_duration?.toFixed(1) ?? ""]);
+        rows.push([
+          "Duration (s)",
+          phase2Summary.scan_duration?.toFixed(1) ?? "",
+        ]);
         rows.push([]);
       }
 
@@ -137,81 +156,145 @@ export default function ExportPanel({
       rows.push(["Duration (s)", summary?.scan_duration?.toFixed(1) ?? ""]);
       rows.push([]);
 
-      rows.push(["IP", "Hostname", "MAC Address", "Vendor", "Open Ports", "OS", "CVE Count", "Device Category", "Risk Level", "Risk Score", "Status"]);
-      results.filter(h => h.is_active).forEach(h => {
-        rows.push([
-          h.ip_address,
-          h.hostname || "",
-          h.mac_address || "",
-          h.vendor || "",
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          h.os_guess || "",
-          (h.cves || []).length,
-          h.device_category || h.snmp_device_type || "",
-          h.host_risk_level || "Info",
-          h.host_risk_score || 0,
-          h.is_active ? "Active" : "Inactive"
-        ]);
-      });
-    } else if (isPhase1) {
-      if (pipelineMode === "basic") {
-        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Status"]];
-        results.filter(h => h.is_active).forEach(h => {
+      rows.push([
+        "IP",
+        "Hostname",
+        "MAC Address",
+        "Vendor",
+        "Open Ports",
+        "OS",
+        "CVE Count",
+        "Device Category",
+        "Risk Level",
+        "Risk Score",
+        "Status",
+      ]);
+      results
+        .filter((h) => h.is_active)
+        .forEach((h) => {
           rows.push([
             h.ip_address,
             h.hostname || "",
             h.mac_address || "",
             h.vendor || "",
-            h.is_active ? "Active" : "Inactive"
+            (h.open_ports || [])
+              .map((p) => `${p.port}/${p.service}`)
+              .join("; "),
+            h.os_guess || "",
+            (h.cves || []).length,
+            h.device_category || h.snmp_device_type || "",
+            h.host_risk_level || "Info",
+            h.host_risk_score || 0,
+            h.is_active ? "Active" : "Inactive",
           ]);
         });
+    } else if (isPhase1) {
+      if (pipelineMode === "basic") {
+        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Status"]];
+        results
+          .filter((h) => h.is_active)
+          .forEach((h) => {
+            rows.push([
+              h.ip_address,
+              h.hostname || "",
+              h.mac_address || "",
+              h.vendor || "",
+              h.is_active ? "Active" : "Inactive",
+            ]);
+          });
       } else {
-        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Device Category", "Status"]];
-        results.filter(h => h.is_active).forEach(h => {
+        rows = [
+          [
+            "IP",
+            "Hostname",
+            "MAC Address",
+            "Vendor",
+            "Device Category",
+            "Status",
+          ],
+        ];
+        results
+          .filter((h) => h.is_active)
+          .forEach((h) => {
+            rows.push([
+              h.ip_address,
+              h.hostname || "",
+              h.mac_address || "",
+              h.vendor || "",
+              h.device_category || h.snmp_device_type || "",
+              h.is_active ? "Active" : "Inactive",
+            ]);
+          });
+      }
+    } else if (isPhase2) {
+      rows = [
+        [
+          "IP",
+          "Hostname",
+          "MAC Address",
+          "Vendor",
+          "Device Category",
+          "Open Ports",
+          "Critical Ports",
+          "Status",
+        ],
+      ];
+      results
+        .filter((h) => h.is_active)
+        .forEach((h) => {
           rows.push([
             h.ip_address,
             h.hostname || "",
             h.mac_address || "",
             h.vendor || "",
             h.device_category || h.snmp_device_type || "",
-            h.is_active ? "Active" : "Inactive"
+            (h.open_ports || [])
+              .map((p) => `${p.port}/${p.service}`)
+              .join("; "),
+            (h.open_ports || []).filter((p) => p.risk === "Critical").length,
+            h.is_active ? "Active" : "Inactive",
           ]);
         });
-      }
-    } else if (isPhase2) {
-      rows = [["IP", "Hostname", "MAC Address", "Vendor", "Device Category", "Open Ports", "Critical Ports", "Status"]];
-      results.filter(h => h.is_active).forEach(h => {
-        rows.push([
-          h.ip_address,
-          h.hostname || "",
-          h.mac_address || "",
-          h.vendor || "",
-          h.device_category || h.snmp_device_type || "",
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          (h.open_ports || []).filter(p => p.risk === "Critical").length,
-          h.is_active ? "Active" : "Inactive"
-        ]);
-      });
     } else {
-      rows = [["IP", "Hostname", "MAC Address", "Vendor", "Open Ports", "OS", "CVE Count", "Device Category", "Risk Level", "Risk Score", "Status"]];
-      results.filter(h => h.is_active).forEach(h => {
-        rows.push([
-          h.ip_address,
-          h.hostname || "",
-          h.mac_address || "",
-          h.vendor || "",
-          (h.open_ports || []).map(p => `${p.port}/${p.service}`).join("; "),
-          h.os_guess || "",
-          (h.cves || []).length,
-          h.device_category || h.snmp_device_type || "",
-          h.host_risk_level || "Info",
-          h.host_risk_score || 0,
-          h.is_active ? "Active" : "Inactive"
-        ]);
-      });
+      rows = [
+        [
+          "IP",
+          "Hostname",
+          "MAC Address",
+          "Vendor",
+          "Open Ports",
+          "OS",
+          "CVE Count",
+          "Device Category",
+          "Risk Level",
+          "Risk Score",
+          "Status",
+        ],
+      ];
+      results
+        .filter((h) => h.is_active)
+        .forEach((h) => {
+          rows.push([
+            h.ip_address,
+            h.hostname || "",
+            h.mac_address || "",
+            h.vendor || "",
+            (h.open_ports || [])
+              .map((p) => `${p.port}/${p.service}`)
+              .join("; "),
+            h.os_guess || "",
+            (h.cves || []).length,
+            h.device_category || h.snmp_device_type || "",
+            h.host_risk_level || "Info",
+            h.host_risk_score || 0,
+            h.is_active ? "Active" : "Inactive",
+          ]);
+        });
     }
 
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const csv = rows
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
     trigger(new Blob([csv], { type: "text/csv" }), getExportFilename("csv"));
   };
 
@@ -230,15 +313,25 @@ export default function ExportPanel({
     setPdfLoading(true);
     setPdfError("");
     try {
-      const res      = await api.get(`/reports/download/${scanId}`, { params: { fmt }, responseType: "blob" });
-      const disp     = res.headers["content-disposition"] || "";
-      const match    = disp.match(/filename="?([^";\n]+)"?/i);
+      const res = await api.get(`/reports/download/${scanId}`, {
+        params: { fmt },
+        responseType: "blob",
+      });
+      const disp = res.headers["content-disposition"] || "";
+      const match = disp.match(/filename="?([^";\n]+)"?/i);
       const filename = match ? match[1] : `ccure-report-${fileNo}-${fmt}.pdf`;
       trigger(new Blob([res.data], { type: "application/pdf" }), filename);
     } catch (err) {
-      const detail = err?.response?.data instanceof Blob
-        ? await err.response.data.text().then(t => { try { return JSON.parse(t).detail; } catch { return t; } })
-        : err?.response?.data?.detail || "Failed to download PDF.";
+      const detail =
+        err?.response?.data instanceof Blob
+          ? await err.response.data.text().then((t) => {
+              try {
+                return JSON.parse(t).detail;
+              } catch {
+                return t;
+              }
+            })
+          : err?.response?.data?.detail || "Failed to download PDF.";
       setPdfError(detail);
       setTimeout(() => setPdfError(""), 4000);
     } finally {
@@ -258,7 +351,7 @@ export default function ExportPanel({
       isPhase1,
       isPhase2,
       isPhase3,
-      results: results.slice(0, 1)
+      results: results.slice(0, 1),
     });
     let lines;
     if (isPhase1) {
@@ -276,12 +369,14 @@ export default function ExportPanel({
         `Duration:       ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
         "",
         "── Active Hosts ──────────────────────",
-        ...results.filter(h => h.is_active).map(h => {
-          if (pipelineMode === "basic") {
-            return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)}`;
-          }
-          return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)} Type: ${(h.device_category || h.snmp_device_type || "—").padEnd(10)} Domain: ${h.netbios_workgroup || "—"}`;
-        }),
+        ...results
+          .filter((h) => h.is_active)
+          .map((h) => {
+            if (pipelineMode === "basic") {
+              return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)}`;
+            }
+            return `${h.ip_address.padEnd(16)} ${(h.hostname || "—").padEnd(20)} MAC: ${(h.mac_address || "—").padEnd(17)} Type: ${(h.device_category || h.snmp_device_type || "—").padEnd(10)} Domain: ${h.netbios_workgroup || "—"}`;
+          }),
       ];
     } else if (isPhase2) {
       // Calculate risk counts across ports/services for Phase 2 (Asset Discovery)
@@ -291,18 +386,20 @@ export default function ExportPanel({
       let lowPorts = 0;
       let totalCves = 0;
 
-      results.filter(h => h.is_active).forEach(h => {
-        const ports = h.open_ports || [];
-        const udps = h.udp_services || [];
-        [...ports, ...udps].forEach(p => {
-          const r = (p.risk || "Info").toLowerCase();
-          if (r === "critical") criticalPorts++;
-          else if (r === "high") highPorts++;
-          else if (r === "medium") mediumPorts++;
-          else if (r === "low") lowPorts++;
+      results
+        .filter((h) => h.is_active)
+        .forEach((h) => {
+          const ports = h.open_ports || [];
+          const udps = h.udp_services || [];
+          [...ports, ...udps].forEach((p) => {
+            const r = (p.risk || "Info").toLowerCase();
+            if (r === "critical") criticalPorts++;
+            else if (r === "high") highPorts++;
+            else if (r === "medium") mediumPorts++;
+            else if (r === "low") lowPorts++;
+          });
+          totalCves += (h.cves || []).length;
         });
-        totalCves += (h.cves || []).length;
-      });
 
       lines = [
         "CCure Audit PRO — Asset Discovery Report",
@@ -321,16 +418,28 @@ export default function ExportPanel({
         `Duration:              ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
         "",
         "── Host Risk Overview ────────────────",
-        ...results.filter(h => h.is_active).map(h => {
-          const ports = h.open_ports || [];
-          const udps = h.udp_services || [];
-          const hostCrit = ports.filter(p => (p.risk || "").toLowerCase() === "critical").length + udps.filter(p => (p.risk || "").toLowerCase() === "critical").length;
-          const hostHigh = ports.filter(p => (p.risk || "").toLowerCase() === "high").length + udps.filter(p => (p.risk || "").toLowerCase() === "high").length;
-          const cveCount = (h.cves || []).length;
-          const portsStr = ports.map(p => `${p.port}/${p.service}`).join(", ");
-          
-          return `${h.ip_address.padEnd(16)} ${(h.device_category || h.snmp_device_type || "Info").padEnd(10)} CVEs: ${cveCount.toString().padEnd(4)} Critical: ${hostCrit.toString().padEnd(2)} High: ${hostHigh.toString().padEnd(2)} Ports: ${portsStr}`;
-        }),
+        ...results
+          .filter((h) => h.is_active)
+          .map((h) => {
+            const ports = h.open_ports || [];
+            const udps = h.udp_services || [];
+            const hostCrit =
+              ports.filter((p) => (p.risk || "").toLowerCase() === "critical")
+                .length +
+              udps.filter((p) => (p.risk || "").toLowerCase() === "critical")
+                .length;
+            const hostHigh =
+              ports.filter((p) => (p.risk || "").toLowerCase() === "high")
+                .length +
+              udps.filter((p) => (p.risk || "").toLowerCase() === "high")
+                .length;
+            const cveCount = (h.cves || []).length;
+            const portsStr = ports
+              .map((p) => `${p.port}/${p.service}`)
+              .join(", ");
+
+            return `${h.ip_address.padEnd(16)} ${(h.device_category || h.snmp_device_type || "Info").padEnd(10)} CVEs: ${cveCount.toString().padEnd(4)} Critical: ${hostCrit.toString().padEnd(2)} High: ${hostHigh.toString().padEnd(2)} Ports: ${portsStr}`;
+          }),
       ];
     } else {
       // Phase 3 summary
@@ -347,9 +456,12 @@ export default function ExportPanel({
         `Duration:    ${summary?.scan_duration?.toFixed(1) ?? "—"}s`,
         "",
         "── Host Risk Overview ────────────────",
-        ...results.filter(h => h.is_active).map(h =>
-          `${h.ip_address.padEnd(16)} ${(h.host_risk_level || "Info").padEnd(10)} ${h.host_risk_score ?? 0}/100  CVEs: ${(h.cves || []).length.toString().padEnd(4)} Active Findings: ${[ h.heartbleed_info?.vulnerable?"Heartbleed":"", h.smb_ms17010_info?.ms17010_likely?"MS17-010":"", h.ldap_info?.anonymous_bind?.allowed?"LDAP":"", h.dns_info?.zone_transfer?.vulnerable?"AXFR":"" ].filter(Boolean).join(",") || "None"}`
-        ),
+        ...results
+          .filter((h) => h.is_active)
+          .map(
+            (h) =>
+              `${h.ip_address.padEnd(16)} ${(h.host_risk_level || "Info").padEnd(10)} ${h.host_risk_score ?? 0}/100  CVEs: ${(h.cves || []).length.toString().padEnd(4)} Active Findings: ${[h.heartbleed_info?.vulnerable ? "Heartbleed" : "", h.smb_ms17010_info?.ms17010_likely ? "MS17-010" : "", h.ldap_info?.anonymous_bind?.allowed ? "LDAP" : "", h.dns_info?.zone_transfer?.vulnerable ? "AXFR" : ""].filter(Boolean).join(",") || "None"}`,
+          ),
       ];
     }
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
@@ -360,46 +472,108 @@ export default function ExportPanel({
 
   const trigger = (blob, filename) => {
     const url = URL.createObjectURL(blob);
-    const a   = document.createElement("a");
-    a.href = url; a.download = filename; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
   const btnStyle = {
-    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-    padding: "10px 16px", borderRadius: 8,
-    border: "1px solid var(--border)", background: "var(--bg-white)",
-    cursor: "pointer", fontFamily: "var(--font)", transition: "all 0.15s",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    padding: "10px 16px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-white)",
+    cursor: "pointer",
+    fontFamily: "var(--font)",
+    transition: "all 0.15s",
     minWidth: 80,
   };
 
   return (
     <div className="export-panel">
-      <p className="section-title" style={{ marginBottom: 12 }}>⬇ Export Results</p>
+      <p className="section-title" style={{ marginBottom: 12 }}>
+        ⬇ Export Results
+      </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {[
-          { label: "JSON",     icon: "{ }",   sub: "Full data",    action: downloadJSON, disabled: !canReadReports },
-          { label: "CSV",      icon: "⊞",     sub: "Spreadsheet",  action: downloadCSV, disabled: !canReadReports },
-          { label: "PDF",      icon: pdfLoading ? "⏳" : "📄", sub: "Report",  action: () => downloadPDF("JSON"), disabled: pdfLoading || !canReadReports },
-          { label: "PDF/XML",  icon: pdfLoading ? "⏳" : "🗂", sub: "XML report", action: () => downloadPDF("XML"),  disabled: pdfLoading || !canReadReports },
-          { label: copied ? "Copied!" : "Copy", icon: copied ? "✓" : "⎘", sub: "Summary", action: copySummary, disabled: !canReadReports },
+          {
+            label: "JSON",
+            icon: "{ }",
+            sub: "Full data",
+            action: downloadJSON,
+            disabled: !canReadReports,
+          },
+          {
+            label: "CSV",
+            icon: "⊞",
+            sub: "Spreadsheet",
+            action: downloadCSV,
+            disabled: !canReadReports,
+          },
+          {
+            label: "PDF",
+            icon: pdfLoading ? "⏳" : "📄",
+            sub: "Report",
+            action: () => downloadPDF("JSON"),
+            disabled: pdfLoading || !canReadReports,
+          },
+          {
+            label: "PDF/XML",
+            icon: pdfLoading ? "⏳" : "🗂",
+            sub: "XML report",
+            action: () => downloadPDF("XML"),
+            disabled: pdfLoading || !canReadReports,
+          },
+          {
+            label: copied ? "Copied!" : "Copy",
+            icon: copied ? "✓" : "⎘",
+            sub: "Summary",
+            action: copySummary,
+            disabled: !canReadReports,
+          },
         ].map((b) => (
           <button
             key={b.label}
-            style={{ ...btnStyle, opacity: b.disabled ? 0.6 : 1, cursor: b.disabled ? "not-allowed" : "pointer" }}
+            style={{
+              ...btnStyle,
+              opacity: b.disabled ? 0.6 : 1,
+              cursor: b.disabled ? "not-allowed" : "pointer",
+            }}
             onClick={b.action}
             disabled={b.disabled}
-            onMouseEnter={e => { if (!b.disabled) e.currentTarget.style.background = "var(--bg-app)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-white)"; }}
+            onMouseEnter={(e) => {
+              if (!b.disabled)
+                e.currentTarget.style.background = "var(--bg-app)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--bg-white)";
+            }}
           >
             <span style={{ fontSize: "1.1rem" }}>{b.icon}</span>
-            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-mid)" }}>{b.label}</span>
-            <span style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}>{b.sub}</span>
+            <span
+              style={{
+                fontSize: "0.8rem",
+                fontWeight: 700,
+                color: "var(--text-mid)",
+              }}
+            >
+              {b.label}
+            </span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}>
+              {b.sub}
+            </span>
           </button>
         ))}
       </div>
       {pdfError && (
-        <div className="alert alert--error" style={{ marginTop: 10 }}>⚠ {pdfError}</div>
+        <div className="alert alert--error" style={{ marginTop: 10 }}>
+          ⚠ {pdfError}
+        </div>
       )}
     </div>
   );

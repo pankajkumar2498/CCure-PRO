@@ -12,33 +12,41 @@ redis_client = async_redis.from_url(AppConfig.CELERY_BROKER_URL)
 # Sync client for Celery workers / Thread pools (Publishing)
 _sync_redis_client = sync_redis.from_url(AppConfig.CELERY_BROKER_URL)
 
+
 def get_redis_client():
     """Return the synchronous Redis client."""
     return _sync_redis_client
 
+
 async def publish_progress(scan_id: str, phase: int, progress: dict):
     """Async progress publishing for async engines (Discovery, Port)."""
     l = logging.getLogger("ccure.redis")
-    message = json.dumps({
-        "scan_id": scan_id,
-        "phase": phase,
-        "progress": progress
-    })
-    l.info("[TRACE][REDIS][%s] Publishing progress (ASYNC) for scan %s, phase %d, status %s", 
-           datetime.datetime.now().isoformat(), scan_id, phase, progress.get("status"))
+    message = json.dumps({"scan_id": scan_id, "phase": phase, "progress": progress})
+    l.info(
+        "[TRACE][REDIS][%s] Publishing progress (ASYNC) for scan %s, phase %d, status %s",
+        datetime.datetime.now().isoformat(),
+        scan_id,
+        phase,
+        progress.get("status"),
+    )
     import asyncio
-    await asyncio.to_thread(_sync_redis_client.publish, f"scan_progress:{scan_id}", message)
+
+    await asyncio.to_thread(
+        _sync_redis_client.publish, f"scan_progress:{scan_id}", message
+    )
+
 
 def publish_progress_sync(scan_id: str, phase: int, progress: dict):
     """Synchronous progress publishing for threaded engines (Vulnerability) or Celery tasks."""
     l = logging.getLogger("ccure.redis")
-    message = json.dumps({
-        "scan_id": scan_id,
-        "phase": phase,
-        "progress": progress
-    })
-    l.info("[TRACE][REDIS][%s] Publishing progress (SYNC) for scan %s, phase %d, status %s", 
-           datetime.datetime.now().isoformat(), scan_id, phase, progress.get("status"))
+    message = json.dumps({"scan_id": scan_id, "phase": phase, "progress": progress})
+    l.info(
+        "[TRACE][REDIS][%s] Publishing progress (SYNC) for scan %s, phase %d, status %s",
+        datetime.datetime.now().isoformat(),
+        scan_id,
+        phase,
+        progress.get("status"),
+    )
     _sync_redis_client.publish(f"scan_progress:{scan_id}", message)
 
 
@@ -48,6 +56,12 @@ def publish_notification_sync(user_id: str, event: dict) -> None:
     channel = f"notifications:user:{user_id}"
     try:
         _sync_redis_client.publish(channel, json.dumps(event, default=str))
-        logger.debug("Published notification event %s for user %s", event.get("event"), user_id)
+        logger.debug(
+            "Published notification event %s for user %s", event.get("event"), user_id
+        )
     except RedisError as exc:
-        logger.warning("Notification realtime publish failed for user %s: %s", user_id, exc.__class__.__name__)
+        logger.warning(
+            "Notification realtime publish failed for user %s: %s",
+            user_id,
+            exc.__class__.__name__,
+        )

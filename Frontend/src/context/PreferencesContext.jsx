@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { getPreferences } from "../api/user";
 import { useAuth } from "./AuthContext";
 
@@ -23,7 +29,7 @@ export function PreferencesProvider({ children }) {
       setLoading(false);
       return;
     }
-    
+
     try {
       const prefs = await getPreferences();
       setPreferences(prefs);
@@ -52,7 +58,14 @@ export function PreferencesProvider({ children }) {
   }, []);
 
   return (
-    <PreferencesContext.Provider value={{ preferences, loading, updateLocalPreferences, refreshPreferences: loadPreferences }}>
+    <PreferencesContext.Provider
+      value={{
+        preferences,
+        loading,
+        updateLocalPreferences,
+        refreshPreferences: loadPreferences,
+      }}
+    >
       {children}
     </PreferencesContext.Provider>
   );

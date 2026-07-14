@@ -38,7 +38,10 @@
   color: var(--text-muted);
   font-family: var(--font);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
   white-space: nowrap;
 }
 
@@ -199,7 +202,9 @@
   font-family: var(--mono);
   color: var(--text);
   outline: none;
-  transition: border-color 0.18s, box-shadow 0.18s;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
 }
 
 .ns-browse-btn {
@@ -248,8 +253,14 @@
 }
 
 @keyframes nsSlideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ns-summary-content {
@@ -302,7 +313,9 @@
   font-weight: 600;
   color: #dc2626;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .ns-export-btn:hover {
@@ -458,7 +471,7 @@
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
 }
 
-.ns-input:focus+.ns-input-icon,
+.ns-input:focus + .ns-input-icon,
 .ns-input-wrap:focus-within .ns-input-icon {
   color: var(--accent);
 }
@@ -502,7 +515,6 @@
 }
 
 @keyframes nsPulse {
-
   0%,
   100% {
     opacity: 0.25;
@@ -544,7 +556,11 @@
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 0.13s, border-color 0.13s, color 0.13s, transform 0.1s;
+  transition:
+    background 0.13s,
+    border-color 0.13s,
+    color 0.13s,
+    transform 0.1s;
   white-space: nowrap;
   user-select: none;
 }
@@ -641,7 +657,7 @@
 
 /* Active check mark in top-right corner */
 .ns-int-card--active::after {
-  content: '✓';
+  content: "✓";
   position: absolute;
   top: 8px;
   right: 10px;
@@ -650,7 +666,9 @@
   color: var(--accent);
   opacity: 0;
   transform: scale(0.5);
-  transition: opacity 0.15s, transform 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
 }
 
 .ns-int-card--active.ns-int--light::after {
@@ -760,10 +778,14 @@
 
 /* Subtle shimmer on hover */
 .ns-start-btn::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.15) 0%,
+    transparent 70%
+  );
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -869,7 +891,6 @@
     padding: 13px 16px;
   }
 }
-
 
 /* ── Basic Scan Info Notice ────────────────────────────────────────────────── */
 .ns-info-notice {
@@ -1099,7 +1120,9 @@
 .sqb-fill {
   height: 100%;
   border-radius: 99px;
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+  transition:
+    width 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.3s;
   min-width: 3px;
 }
 
@@ -1252,7 +1275,10 @@
   color: #0ea5e9;
   cursor: pointer;
   font-family: var(--font);
-  transition: background 0.18s, border-color 0.18s, transform 0.12s;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    transform 0.12s;
   white-space: nowrap;
 }
 
@@ -1275,7 +1301,11 @@
   color: var(--text-muted);
   cursor: pointer;
   font-family: var(--font);
-  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.12s;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    color 0.18s,
+    transform 0.12s;
   white-space: nowrap;
 }
 
@@ -1735,7 +1765,6 @@
 }
 
 @keyframes amBlink {
-
   0%,
   100% {
     opacity: 1;
@@ -1782,7 +1811,10 @@
   color: #fff;
   cursor: pointer;
   font-family: var(--font);
-  transition: opacity 0.18s, transform 0.12s, box-shadow 0.18s;
+  transition:
+    opacity 0.18s,
+    transform 0.12s,
+    box-shadow 0.18s;
   box-shadow: 0 3px 12px rgba(14, 165, 233, 0.3);
 }
 
@@ -2033,8 +2065,14 @@
 }
 
 @keyframes amRadarExpand {
-  0% { transform: scale(0.3); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 0; }
+  0% {
+    transform: scale(0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 
 .am-hosts-empty-text {
@@ -2072,7 +2110,10 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   border-radius: 6px;
   animation: amHostAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .am-host-card:hover {
@@ -2096,24 +2137,40 @@
 /* New-host glow animation */
 .am-host-card--new {
   border-color: rgba(34, 197, 94, 0.4);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1), 0 0 16px rgba(34, 197, 94, 0.15);
-  animation: amHostAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both, amHostGlow 2.5s ease forwards;
+  box-shadow:
+    0 0 0 2px rgba(34, 197, 94, 0.1),
+    0 0 16px rgba(34, 197, 94, 0.15);
+  animation:
+    amHostAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    amHostGlow 2.5s ease forwards;
 }
 
 :root[data-theme="dark"] .am-host-card--new {
   border-color: rgba(34, 197, 94, 0.35);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.08), 0 0 16px rgba(34, 197, 94, 0.12);
-  animation: amHostAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both, amHostGlowDark 2.5s ease forwards;
+  box-shadow:
+    0 0 0 2px rgba(34, 197, 94, 0.08),
+    0 0 16px rgba(34, 197, 94, 0.12);
+  animation:
+    amHostAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    amHostGlowDark 2.5s ease forwards;
 }
 
 @keyframes amHostAppear {
-  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes amHostGlow {
   0% {
-    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1), 0 0 20px rgba(34, 197, 94, 0.18);
+    box-shadow:
+      0 0 0 2px rgba(34, 197, 94, 0.1),
+      0 0 20px rgba(34, 197, 94, 0.18);
     border-color: rgba(34, 197, 94, 0.5);
   }
   100% {
@@ -2124,7 +2181,9 @@
 
 @keyframes amHostGlowDark {
   0% {
-    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.08), 0 0 20px rgba(34, 197, 94, 0.18);
+    box-shadow:
+      0 0 0 2px rgba(34, 197, 94, 0.08),
+      0 0 20px rgba(34, 197, 94, 0.18);
     border-color: rgba(34, 197, 94, 0.5);
   }
   100% {
@@ -2195,7 +2254,8 @@
 
 /* Skeleton loading animation */
 @keyframes amSkeleton {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.4;
   }
   50% {
@@ -2215,7 +2275,8 @@
 
 /* Pulsing dot for resolving state */
 @keyframes amResolvingPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.5;
   }
   50% {
@@ -2238,7 +2299,7 @@
 }
 
 .am-host-field-resolving::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 3px;
   height: 3px;
@@ -2255,7 +2316,9 @@
 /* Smoothly update when field becomes available */
 .am-host-col-hostname.am-enriching,
 .am-host-col-mac.am-enriching {
-  transition: color 0.3s ease-out, opacity 0.3s ease-out;
+  transition:
+    color 0.3s ease-out,
+    opacity 0.3s ease-out;
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
@@ -2395,7 +2458,9 @@
   z-index: 1000;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.22s ease, visibility 0.22s ease;
+  transition:
+    opacity 0.22s ease,
+    visibility 0.22s ease;
 }
 
 .ns-drawer-backdrop--open {
@@ -2502,7 +2567,9 @@
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.15s, box-shadow 0.15s;
+  transition:
+    background-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .ns-drawer-save-btn:hover {
@@ -2664,7 +2731,9 @@ input:checked + .ns-slider:before {
   appearance: none;
   outline: none;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .ns-select:focus {
@@ -2719,8 +2788,14 @@ input:checked + .ns-slider:before {
 
 .ns-type-card--selected {
   border-color: var(--accent);
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.03) 0%, rgba(139, 92, 246, 0.02) 100%);
-  box-shadow: 0 0 0 2px var(--accent), 0 0 20px rgba(14, 165, 233, 0.15);
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.03) 0%,
+    rgba(139, 92, 246, 0.02) 100%
+  );
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 20px rgba(14, 165, 233, 0.15);
   animation: cardGlow 2s ease-in-out infinite alternate;
 }
 
@@ -2894,11 +2969,25 @@ input:checked + .ns-slider:before {
 
 /* Animations */
 @keyframes pillFadeIn {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes cardGlow {
-  0% { box-shadow: 0 0 0 2px var(--accent), 0 0 10px rgba(14, 165, 233, 0.1); }
-  100% { box-shadow: 0 0 0 2px var(--accent), 0 0 20px rgba(14, 165, 233, 0.25); }
+  0% {
+    box-shadow:
+      0 0 0 2px var(--accent),
+      0 0 10px rgba(14, 165, 233, 0.1);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px var(--accent),
+      0 0 20px rgba(14, 165, 233, 0.25);
+  }
 }

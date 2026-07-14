@@ -5,20 +5,35 @@
  */
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { canPermission, canAny, canAll, isSuperAdmin } from "../auth/permissions";
+import {
+  canPermission,
+  canAny,
+  canAll,
+  isSuperAdmin,
+} from "../auth/permissions";
 
 const fallbackPathFor = (user, currentPath) => {
   const candidates = [
-    { path: "/dashboard", permission: { resource: "scans", action: "execute" } },
+    {
+      path: "/dashboard",
+      permission: { resource: "scans", action: "execute" },
+    },
     { path: "/history", permission: { resource: "scans", action: "read" } },
     { path: "/reports", permission: { resource: "reports", action: "read" } },
     { path: "/admin/users", permission: { resource: "users", action: "read" } },
-    { path: "/admin/audit-logs", permission: { resource: "audit", action: "read" } },
+    {
+      path: "/admin/audit-logs",
+      permission: { resource: "audit", action: "read" },
+    },
   ];
 
-  return candidates.find(
-    (candidate) => candidate.path !== currentPath && canPermission(user, candidate.permission)
-  )?.path || "/login";
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate.path !== currentPath &&
+        canPermission(user, candidate.permission),
+    )?.path || "/login"
+  );
 };
 
 export default function PrivateRoute({
@@ -29,17 +44,19 @@ export default function PrivateRoute({
   superadminOnly = false,
 }) {
   const { user, loading, authState, authMessage } = useAuth();
-  const location          = useLocation();
+  const location = useLocation();
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#1a2332",
-      }}>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#1a2332",
+        }}
+      >
         <div className="spinner" />
       </div>
     );

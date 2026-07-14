@@ -1,3 +1,9 @@
+param(
+    [switch]$Rebuild,
+    [switch]$Recreate,
+    [string]$Service
+)
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -15,13 +21,38 @@ try {
     Write-Host "============================================================"
     Write-Host ""
     Write-Host "[1/2] Starting Docker Services..."
-    Write-Host "      - Includes: Redis, API, Frontend"
-    Write-Host "      - Includes: Web Application Worker (Linux-based)"
+    if ($Service) {
+        Write-Host "      - Targeting service: $Service"
+    } else {
+        Write-Host "      - Includes: Redis, API, Frontend"
+        Write-Host "      - Includes: Web Application Worker (Linux-based)"
+    }
     Write-Host ""
-    
-    # We start only the services that should live in Docker.
-    # We explicitly include 'web-worker' but EXCLUDE 'worker' (network).
-    docker compose up -d --build redis api frontend web-worker
+
+    $composeArgs = @("compose", "up", "-d")
+    if ($Rebuild) {
+        $composeArgs += "--build"
+        if ($Service) {
+            Write-Host "Rebuild mode enabled for service: $Service"
+        } else {
+            Write-Host "Rebuild mode enabled for api/frontend/web-worker"
+        }
+    }
+    elseif ($Recreate) {
+        $composeArgs += "--force-recreate"
+        Write-Host "Force recreate mode enabled"
+    }
+    else {
+        $composeArgs += "--no-recreate"
+        Write-Host "Reuse existing containers and images"
+    }
+
+    if ($Service) {
+        $composeArgs += $Service
+    } else {
+        $composeArgs += @("redis", "api", "frontend", "web-worker")
+    }
+    docker @composeArgs
 }
 finally {
     Pop-Location

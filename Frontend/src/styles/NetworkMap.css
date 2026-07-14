@@ -25,9 +25,11 @@
   background: var(--bg-white);
   border: 1px solid var(--border);
   color: var(--text);
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
-
 
 /* ── Header ────────────────────────────────────────────────────────────────── */
 .nmap-header {
@@ -277,14 +279,22 @@
 
 .nmap-btn--asset {
   width: 100%;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(139, 92, 246, 0.08));
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.08),
+    rgba(139, 92, 246, 0.08)
+  );
   color: var(--accent);
   border: 1px solid rgba(14, 165, 233, 0.25);
   margin-top: 12px;
   text-align: center;
 }
 .nmap-btn--asset:hover {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(139, 92, 246, 0.15));
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.15),
+    rgba(139, 92, 246, 0.15)
+  );
   border-color: var(--accent);
   transform: translateY(-1px);
 }
@@ -340,7 +350,9 @@
 }
 
 @keyframes nmap-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .nmap-error {
@@ -599,7 +611,9 @@
   padding: 8px 12px;
   font-size: 0.82rem;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .nmap-endpoint-search:focus {
@@ -615,7 +629,13 @@
 
 .nmap-endpoint-row {
   display: grid;
-  grid-template-columns: minmax(110px, 1.4fr) minmax(90px, 1.1fr) minmax(110px, 1.3fr) minmax(76px, 0.9fr) minmax(60px, 0.6fr) minmax(90px, 1.1fr) minmax(42px, 0.4fr) minmax(55px, 0.5fr) minmax(55px, 0.5fr) minmax(65px, 0.6fr);
+  grid-template-columns:
+    minmax(110px, 1.4fr) minmax(90px, 1.1fr) minmax(110px, 1.3fr)
+    minmax(76px, 0.9fr) minmax(60px, 0.6fr) minmax(90px, 1.1fr) minmax(
+      42px,
+      0.4fr
+    )
+    minmax(55px, 0.5fr) minmax(55px, 0.5fr) minmax(65px, 0.6fr);
   gap: 8px;
   align-items: center;
   padding: 8px 12px;

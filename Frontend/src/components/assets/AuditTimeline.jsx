@@ -6,8 +6,16 @@ function ago(iso) {
   const date = new Date(iso);
   if (isNaN(date.getTime())) return "—";
   const now = new Date();
-  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dateMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const nowMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const dateMidnight = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
   const d = Math.round((nowMidnight - dateMidnight) / 86400000);
   if (d <= 0) return "Today";
   if (d === 1) return "Yesterday";
@@ -33,37 +41,45 @@ function TechDetailsPanel({ rawEvent }) {
 
 function EventRow({ event, rawEvent }) {
   const [showTech, setShowTech] = useState(false);
-  const sevClass = event.severity ? `audit-sev-badge--${event.severity.toLowerCase()}` : "audit-sev-badge--info";
+  const sevClass = event.severity
+    ? `audit-sev-badge--${event.severity.toLowerCase()}`
+    : "audit-sev-badge--info";
 
   return (
     <div className="audit-event-row">
       <div className="audit-event-indicator">{event.icon || "📌"}</div>
-      
+
       <div className="audit-event-content">
         <div className="audit-event-header">
           <div className="audit-event-title">
             {event.event_title}
             {event.is_new_discovery && (
-              <span style={{ 
-                display: "inline-block", 
-                width: 6, height: 6, 
-                borderRadius: "50%", 
-                background: "var(--ok)", 
-                marginLeft: 4, 
-                boxShadow: "0 0 4px var(--ok)"
-              }} title="New Discovery" />
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--ok)",
+                  marginLeft: 4,
+                  boxShadow: "0 0 4px var(--ok)",
+                }}
+                title="New Discovery"
+              />
             )}
           </div>
           <div className="audit-event-badges">
-            <span className={`audit-sev-badge ${sevClass}`}>{event.severity}</span>
-            <span className="audit-category-badge">{event.category.replace("_", " ")}</span>
+            <span className={`audit-sev-badge ${sevClass}`}>
+              {event.severity}
+            </span>
+            <span className="audit-category-badge">
+              {event.category.replace("_", " ")}
+            </span>
           </div>
         </div>
 
         {event.is_new_discovery ? (
-          <div className="audit-discovery-text">
-            {event.event_description}
-          </div>
+          <div className="audit-discovery-text">{event.event_description}</div>
         ) : event.change_type === "field_update" ? (
           <div className="audit-change-display">
             <div className="audit-value-box audit-value-box--old">
@@ -75,13 +91,15 @@ function EventRow({ event, rawEvent }) {
             </div>
           </div>
         ) : (
-          <div className="audit-discovery-text">
-            {event.event_description}
-          </div>
+          <div className="audit-discovery-text">{event.event_description}</div>
         )}
 
         <div className="audit-tech-toggle">
-          <button type="button" className="audit-tech-btn" onClick={() => setShowTech(!showTech)}>
+          <button
+            type="button"
+            className="audit-tech-btn"
+            onClick={() => setShowTech(!showTech)}
+          >
             {showTech ? "Hide Technical Details" : "View Technical Details"}
           </button>
           {showTech && <TechDetailsPanel rawEvent={rawEvent} />}
@@ -93,14 +111,19 @@ function EventRow({ event, rawEvent }) {
 
 function ScanGroupCard({ group, rawChangelog }) {
   const [expanded, setExpanded] = useState(false);
-  
-  const sevClass = group.highest_severity 
-    ? `audit-group-card--${group.highest_severity.toLowerCase()}` 
+
+  const sevClass = group.highest_severity
+    ? `audit-group-card--${group.highest_severity.toLowerCase()}`
     : "audit-group-card--info";
 
   return (
-    <div className={`audit-group-card ${sevClass} ${expanded ? "expanded" : ""}`}>
-      <div className="audit-group-header" onClick={() => setExpanded(!expanded)}>
+    <div
+      className={`audit-group-card ${sevClass} ${expanded ? "expanded" : ""}`}
+    >
+      <div
+        className="audit-group-header"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="audit-group-info">
           <div className="audit-group-icon">{group.group_icon}</div>
           <div>
@@ -113,7 +136,16 @@ function ScanGroupCard({ group, rawChangelog }) {
             {ago(group.detected_at)} ({formatTime(group.detected_at)})
           </div>
           <div className="audit-group-chevron">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </div>
@@ -123,8 +155,10 @@ function ScanGroupCard({ group, rawChangelog }) {
       {expanded && (
         <div className="audit-group-body">
           {group.events.map((event) => {
-            const rawEvent = rawChangelog.find(r => r.id === event.id);
-            return <EventRow key={event.id} event={event} rawEvent={rawEvent} />;
+            const rawEvent = rawChangelog.find((r) => r.id === event.id);
+            return (
+              <EventRow key={event.id} event={event} rawEvent={rawEvent} />
+            );
           })}
         </div>
       )}
@@ -154,18 +188,23 @@ export default function AuditTimeline({ changelogData }) {
       <div className="audit-empty">
         <div className="audit-empty-icon">📭</div>
         <div className="audit-empty-title">No Audit Logs</div>
-        <div className="audit-empty-text">No activity or changes have been recorded for this asset yet.</div>
+        <div className="audit-empty-text">
+          No activity or changes have been recorded for this asset yet.
+        </div>
       </div>
     );
   }
 
   // Filter groups if a category is selected
-  const filteredTimeline = activeCategory === "all" 
-    ? timeline 
-    : timeline.map(group => ({
-        ...group,
-        events: group.events.filter(e => e.category === activeCategory)
-      })).filter(group => group.events.length > 0);
+  const filteredTimeline =
+    activeCategory === "all"
+      ? timeline
+      : timeline
+          .map((group) => ({
+            ...group,
+            events: group.events.filter((e) => e.category === activeCategory),
+          }))
+          .filter((group) => group.events.length > 0);
 
   return (
     <div className="audit-timeline-container">
@@ -177,13 +216,13 @@ export default function AuditTimeline({ changelogData }) {
         </div>
         <div className="audit-controls">
           <div className="db-tabs" style={{ marginBottom: 0 }}>
-            <button 
+            <button
               className={`db-tab ${viewMode === "timeline" ? "active" : ""}`}
               onClick={() => setViewMode("timeline")}
             >
               Activity Timeline
             </button>
-            <button 
+            <button
               className={`db-tab ${viewMode === "admin" ? "active" : ""}`}
               onClick={() => setViewMode("admin")}
             >
@@ -198,7 +237,7 @@ export default function AuditTimeline({ changelogData }) {
           {/* Category Filter Pills */}
           {category_meta && Object.keys(category_meta).length > 0 && (
             <div className="audit-filter-bar">
-              <button 
+              <button
                 className={`audit-filter-pill ${activeCategory === "all" ? "active" : ""}`}
                 onClick={() => setActiveCategory("all")}
               >
@@ -208,12 +247,13 @@ export default function AuditTimeline({ changelogData }) {
                 // Only show categories that exist in our data
                 if (!changelogData.categories?.includes(catId)) return null;
                 return (
-                  <button 
+                  <button
                     key={catId}
                     className={`audit-filter-pill ${activeCategory === catId ? "active" : ""}`}
                     onClick={() => setActiveCategory(catId)}
                   >
-                    <span className="audit-filter-icon">{meta.icon}</span> {meta.label}
+                    <span className="audit-filter-icon">{meta.icon}</span>{" "}
+                    {meta.label}
                   </button>
                 );
               })}
@@ -226,9 +266,11 @@ export default function AuditTimeline({ changelogData }) {
               <div className="audit-empty" style={{ padding: "40px 20px" }}>
                 <div className="audit-empty-icon">🗂️</div>
                 <div className="audit-empty-title">No events match filter</div>
-                <div className="audit-empty-text">Try selecting a different category or viewing all events.</div>
-                <button 
-                  className="db-btn" 
+                <div className="audit-empty-text">
+                  Try selecting a different category or viewing all events.
+                </div>
+                <button
+                  className="db-btn"
                   style={{ marginTop: 16 }}
                   onClick={() => setActiveCategory("all")}
                 >
@@ -236,11 +278,11 @@ export default function AuditTimeline({ changelogData }) {
                 </button>
               </div>
             ) : (
-              filteredTimeline.map(group => (
-                <ScanGroupCard 
-                  key={group.group_id} 
-                  group={group} 
-                  rawChangelog={raw_changelog} 
+              filteredTimeline.map((group) => (
+                <ScanGroupCard
+                  key={group.group_id}
+                  group={group}
+                  rawChangelog={raw_changelog}
                 />
               ))
             )}
@@ -248,16 +290,28 @@ export default function AuditTimeline({ changelogData }) {
         </>
       ) : (
         /* Administrative Audit Trail View */
-        <div style={{ position: "relative", paddingLeft: 20, borderLeft: "2px solid var(--border)", marginTop: 20 }}>
-          {(!admin_logs || admin_logs.length === 0) ? (
+        <div
+          style={{
+            position: "relative",
+            paddingLeft: 20,
+            borderLeft: "2px solid var(--border)",
+            marginTop: 20,
+          }}
+        >
+          {!admin_logs || admin_logs.length === 0 ? (
             <div className="audit-empty" style={{ padding: "40px 20px" }}>
               <div className="audit-empty-icon">🛡️</div>
               <div className="audit-empty-title">No Administrative Actions</div>
-              <div className="audit-empty-text">No users have performed administrative actions on this asset.</div>
+              <div className="audit-empty-text">
+                No users have performed administrative actions on this asset.
+              </div>
             </div>
           ) : (
             admin_logs.map((log_entry) => (
-              <div key={log_entry.id} style={{ marginBottom: 20, position: "relative" }}>
+              <div
+                key={log_entry.id}
+                style={{ marginBottom: 20, position: "relative" }}
+              >
                 <div
                   style={{
                     position: "absolute",
@@ -270,26 +324,72 @@ export default function AuditTimeline({ changelogData }) {
                     border: "3px solid var(--bg-white)",
                   }}
                 />
-                <div style={{ fontSize: "0.65rem", color: "var(--text-faint)", marginBottom: 4 }}>
+                <div
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--text-faint)",
+                    marginBottom: 4,
+                  }}
+                >
                   {formatTime(log_entry.created_at)}
                 </div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
-                  {log_entry.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
-                  <span className={`audit-sev-badge ${log_entry.status === 'success' ? 'audit-sev-badge--low' : 'audit-sev-badge--critical'}`}>
+                <div
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: 700,
+                    color: "var(--text)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  {log_entry.action
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (l) => l.toUpperCase())}
+                  <span
+                    className={`audit-sev-badge ${log_entry.status === "success" ? "audit-sev-badge--low" : "audit-sev-badge--critical"}`}
+                  >
                     {log_entry.status}
                   </span>
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-mid)", marginTop: 4 }}>
-                  Actor: <span style={{ fontWeight: 600 }}>{log_entry.user_email}</span>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-mid)",
+                    marginTop: 4,
+                  }}
+                >
+                  Actor:{" "}
+                  <span style={{ fontWeight: 600 }}>
+                    {log_entry.user_email}
+                  </span>
                 </div>
-                {log_entry.changes && Object.keys(log_entry.changes).length > 0 && (
-                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 8 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Changes:</div>
-                    <pre style={{ margin: 0, background: "var(--bg-app)", padding: 8, borderRadius: 6, fontSize: "0.7rem", color: "var(--text-mid)" }}>
-                      {JSON.stringify(log_entry.changes, null, 2)}
-                    </pre>
-                  </div>
-                )}
+                {log_entry.changes &&
+                  Object.keys(log_entry.changes).length > 0 && (
+                    <div
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "var(--text-muted)",
+                        marginTop: 8,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                        Changes:
+                      </div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          background: "var(--bg-app)",
+                          padding: 8,
+                          borderRadius: 6,
+                          fontSize: "0.7rem",
+                          color: "var(--text-mid)",
+                        }}
+                      >
+                        {JSON.stringify(log_entry.changes, null, 2)}
+                      </pre>
+                    </div>
+                  )}
               </div>
             ))
           )}

@@ -8,7 +8,12 @@ import axiosInstance from "./axiosInstance";
 import { authSession } from "./axiosInstance";
 
 /** Get notifications list (supports filtering & pagination) */
-export const getNotifications = ({ category, unread_only = false, limit = 50, offset = 0 } = {}) => {
+export const getNotifications = ({
+  category,
+  unread_only = false,
+  limit = 50,
+  offset = 0,
+} = {}) => {
   const params = { unread_only, limit, offset };
   if (category) params.category = category;
   return axiosInstance.get("/notifications", { params }).then((r) => r.data);

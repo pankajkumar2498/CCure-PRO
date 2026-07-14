@@ -20,13 +20,15 @@ def _selected_env_file() -> Path:
     Prioritizes .env if it exists, falling back to .env.test.
     If explicitly in a test environment, checks for .env.test first.
     """
-    app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))).lower()
-    
+    app_env = os.getenv(
+        "APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))
+    ).lower()
+
     if app_env in {"test", "testing"}:
         test_env = BACKEND_DIR / ".env.test"
         if test_env.exists():
             return test_env
-            
+
     # Default to .env if it exists, otherwise fall back to .env.test
     if (BACKEND_DIR / ".env").exists():
         return BACKEND_DIR / ".env"
@@ -47,7 +49,7 @@ def _normalize_database_url(database_url: str) -> str:
     raw_path = database_url.replace("sqlite:///", "", 1)
     if raw_path == ":memory:":
         return database_url
-        
+
     sqlite_path = Path(raw_path)
 
     if not sqlite_path.is_absolute():
@@ -60,10 +62,7 @@ class DatabaseConfig:
     """Database configuration with SQLite/PostgreSQL support."""
 
     DATABASE_URL: str = _normalize_database_url(
-        os.getenv(
-            "DATABASE_URL",
-            f"sqlite:///{DEFAULT_SQLITE_DB.as_posix()}"
-        )
+        os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_DB.as_posix()}")
     )
 
     @staticmethod
@@ -74,10 +73,10 @@ class DatabaseConfig:
         elif DatabaseConfig.DATABASE_URL.startswith("postgresql"):
             # PostgreSQL-specific optimizations
             return {
-                "pool_pre_ping": True,              # Test connections before using
-                "pool_size": 10,                    # Connection pool size
-                "max_overflow": 20,                 # Additional connections allowed
-                "pool_recycle": 3600,               # Recycle connections every hour
+                "pool_pre_ping": True,  # Test connections before using
+                "pool_size": 10,  # Connection pool size
+                "max_overflow": 20,  # Additional connections allowed
+                "pool_recycle": 3600,  # Recycle connections every hour
             }
         return {}
 
@@ -87,12 +86,13 @@ class JWTConfig:
 
     SECRET_KEY: str = os.getenv(
         "JWT_SECRET_KEY",
-        "dev-secret-key-change-in-production"  # ⚠️ Never use in production
+        "dev-secret-key-change-in-production",  # ⚠️ Never use in production
     )
-    ACCESS_TOKEN_EXPIRES_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30"))
+    ACCESS_TOKEN_EXPIRES_MINUTES: int = int(
+        os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30")
+    )
     REFRESH_TOKEN_EXPIRES_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7"))
     MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", SECRET_KEY)
-
 
 
 class ScanConfig:
@@ -105,8 +105,9 @@ class ScanConfig:
     NMAP_CACHE_ENABLED: bool = os.getenv("NMAP_CACHE_ENABLED", "True").lower() == "true"
     NMAP_CACHE_TTL_HOURS: int = int(os.getenv("NMAP_CACHE_TTL_HOURS", "72"))
     SCAN_IP_BLACKLIST: str = os.getenv("SCAN_IP_BLACKLIST", "")
-    PASSIVE_FIRST_DEFAULT: bool = os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
-
+    PASSIVE_FIRST_DEFAULT: bool = (
+        os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
+    )
 
 
 class CeleryConfig:
@@ -117,7 +118,9 @@ class CeleryConfig:
     WORKER_CONCURRENCY: int = int(
         os.getenv("SCANNER_WORKER_CONCURRENCY", os.getenv("NMAP_THREADS", "20"))
     )
-    WORKER_PREFETCH_MULTIPLIER: int = int(os.getenv("SCANNER_WORKER_PREFETCH_MULTIPLIER", "1"))
+    WORKER_PREFETCH_MULTIPLIER: int = int(
+        os.getenv("SCANNER_WORKER_PREFETCH_MULTIPLIER", "1")
+    )
 
 
 class VulnIntelConfig:
@@ -142,34 +145,40 @@ class WebScanConfig:
 
     # ── External Tool Binaries ────────────────────────────────────────────────
     NUCLEI_BINARY: str = os.getenv("NUCLEI_BINARY", "nuclei")
-    NUCLEI_TEMPLATES_DIR: str = os.getenv("NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates")
+    NUCLEI_TEMPLATES_DIR: str = os.getenv(
+        "NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates"
+    )
     SUBFINDER_BINARY: str = os.getenv("SUBFINDER_BINARY", "subfinder")
     FFUF_BINARY: str = os.getenv("FFUF_BINARY", "ffuf")
     FFUF_WORDLIST: str = os.getenv("FFUF_WORDLIST", "/opt/wordlists/common.txt")
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────
-    PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "60000"))       # ms
+    PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "60000"))  # ms
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
     MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
     CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "3"))
 
     # ── Scan Limits ───────────────────────────────────────────────────────────
-    WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))           # 4 hours
-    SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "5"))            # req/sec
-    STEALTH_RATE_LIMIT: int = int(os.getenv("WEB_STEALTH_RATE_LIMIT", "2"))       # req/sec (WAF mode)
-    MAX_RESPONSE_BODY_SIZE: int = int(os.getenv("MAX_RESPONSE_BODY_SIZE", "10240"))  # 10KB evidence cap
+    WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))  # 4 hours
+    SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "5"))  # req/sec
+    STEALTH_RATE_LIMIT: int = int(
+        os.getenv("WEB_STEALTH_RATE_LIMIT", "2")
+    )  # req/sec (WAF mode)
+    MAX_RESPONSE_BODY_SIZE: int = int(
+        os.getenv("MAX_RESPONSE_BODY_SIZE", "10240")
+    )  # 10KB evidence cap
 
     # ── Nuclei Specific ───────────────────────────────────────────────────────
     NUCLEI_SEVERITY: str = os.getenv("NUCLEI_SEVERITY", "medium,high,critical")
     NUCLEI_CONCURRENCY: int = int(os.getenv("NUCLEI_CONCURRENCY", "25"))
     NUCLEI_BULK_SIZE: int = int(os.getenv("NUCLEI_BULK_SIZE", "25"))
-    NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))               # 2 hours
+    NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))  # 2 hours
 
     # ── SQLMap Specific ───────────────────────────────────────────────────────
     SQLMAP_LEVEL: int = int(os.getenv("SQLMAP_LEVEL", "2"))
     SQLMAP_RISK: int = int(os.getenv("SQLMAP_RISK", "2"))
-    SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))                 # 10 min per URL
+    SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))  # 10 min per URL
 
 
 class AdminConfig:
@@ -198,9 +207,9 @@ class AppConfig:
 
     # Trusted proxies for client IP resolution (prevents IP spoofing)
     TRUSTED_PROXIES: list = [
-        ip.strip() for ip in os.getenv(
-            "TRUSTED_PROXIES",
-            "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        ip.strip()
+        for ip in os.getenv(
+            "TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
         ).split(",")
         if ip.strip()
     ]
@@ -216,13 +225,13 @@ class AppConfig:
     MFA_ENCRYPTION_KEY = JWTConfig.MFA_ENCRYPTION_KEY
 
     # Derived Fernet key (32 bytes urlsafe base64 encoded)
-    MFA_KEY: bytes = (lambda key=JWTConfig.MFA_ENCRYPTION_KEY: (
-        __import__("base64").urlsafe_b64encode(
-            __import__("hashlib").sha256(key.encode()).digest()
+    MFA_KEY: bytes = (
+        lambda key=JWTConfig.MFA_ENCRYPTION_KEY: (
+            __import__("base64").urlsafe_b64encode(
+                __import__("hashlib").sha256(key.encode()).digest()
+            )
         )
-    ))()
-
-
+    )()
 
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT
@@ -238,6 +247,7 @@ class AppConfig:
     _raw_blacklist = ScanConfig.SCAN_IP_BLACKLIST
     if _raw_blacklist:
         import ipaddress
+
         for _item in _raw_blacklist.split(","):
             _item = _item.strip()
             if _item:

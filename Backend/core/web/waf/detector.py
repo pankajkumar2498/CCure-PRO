@@ -25,47 +25,36 @@ _WAF_HEADER_SIGNATURES: List[Tuple[str, str, str]] = [
     ("server", "cloudflare", "Cloudflare"),
     ("cf-ray", "", "Cloudflare"),
     ("cf-cache-status", "", "Cloudflare"),
-
     # AWS WAF / CloudFront
     ("x-amz-cf-id", "", "AWS CloudFront"),
     ("x-amzn-waf-action", "", "AWS WAF"),
     ("x-amz-apigw-id", "", "AWS API Gateway"),
-
     # Akamai
     ("x-akamai-transformed", "", "Akamai"),
     ("server", "akamaighost", "Akamai"),
-
     # Imperva / Incapsula
     ("x-cdn", "incapsula", "Imperva Incapsula"),
     ("x-iinfo", "", "Imperva Incapsula"),
-
     # F5 BIG-IP
     ("server", "big-ip", "F5 BIG-IP"),
     ("x-wa-info", "", "F5 BIG-IP"),
-
     # Sucuri
     ("server", "sucuri", "Sucuri"),
     ("x-sucuri-id", "", "Sucuri"),
     ("x-sucuri-cache", "", "Sucuri"),
-
     # Barracuda
     ("server", "barracuda", "Barracuda WAF"),
-
     # Fastly
     ("x-fastly-request-id", "", "Fastly"),
     ("via", "varnish", "Fastly/Varnish"),
-
     # Azure WAF / Front Door
     ("x-azure-ref", "", "Azure Front Door"),
     ("x-ms-ref", "", "Azure WAF"),
-
     # Google Cloud
     ("server", "google frontend", "Google Cloud"),
     ("via", "google", "Google Cloud"),
-
     # DDoS-Guard
     ("server", "ddos-guard", "DDoS-Guard"),
-
     # ModSecurity
     ("server", "modsecurity", "ModSecurity"),
 ]
@@ -124,7 +113,12 @@ class WAFDetector:
             import httpx
         except ImportError:
             log.warning("httpx not installed — WAF detection disabled")
-            return {"waf_detected": False, "waf_name": None, "confidence": "none", "evidence": []}
+            return {
+                "waf_detected": False,
+                "waf_name": None,
+                "confidence": "none",
+                "evidence": [],
+            }
 
         async with httpx.AsyncClient(
             verify=False,
@@ -139,11 +133,13 @@ class WAFDetector:
                 waf_from_headers = self._check_headers(dict(resp.headers))
                 if waf_from_headers:
                     detected_wafs.append(waf_from_headers)
-                    evidence.append({
-                        "probe": "normal_get",
-                        "waf": waf_from_headers,
-                        "method": "header_fingerprint",
-                    })
+                    evidence.append(
+                        {
+                            "probe": "normal_get",
+                            "waf": waf_from_headers,
+                            "method": "header_fingerprint",
+                        }
+                    )
             except Exception as exc:
                 log.debug("WAF probe 1 failed: %s", exc)
 
@@ -157,12 +153,14 @@ class WAFDetector:
                 for pattern, waf_name in _WAF_BODY_PATTERNS:
                     if pattern in body_lower:
                         detected_wafs.append(waf_name)
-                        evidence.append({
-                            "probe": "sqli_trigger",
-                            "waf": waf_name,
-                            "method": "body_pattern",
-                            "status_code": resp2.status_code,
-                        })
+                        evidence.append(
+                            {
+                                "probe": "sqli_trigger",
+                                "waf": waf_name,
+                                "method": "body_pattern",
+                                "status_code": resp2.status_code,
+                            }
+                        )
                         break
 
                 # 403 response to probe is also a WAF indicator
@@ -170,11 +168,13 @@ class WAFDetector:
                     waf_from_headers = self._check_headers(dict(resp2.headers))
                     if waf_from_headers:
                         detected_wafs.append(waf_from_headers)
-                        evidence.append({
-                            "probe": "sqli_trigger",
-                            "waf": waf_from_headers,
-                            "method": "header_fingerprint_on_block",
-                        })
+                        evidence.append(
+                            {
+                                "probe": "sqli_trigger",
+                                "waf": waf_from_headers,
+                                "method": "header_fingerprint_on_block",
+                            }
+                        )
 
             except Exception as exc:
                 log.debug("WAF probe 2 failed: %s", exc)
@@ -187,11 +187,13 @@ class WAFDetector:
                     waf_from_headers = self._check_headers(dict(resp3.headers))
                     if waf_from_headers and waf_from_headers not in detected_wafs:
                         detected_wafs.append(waf_from_headers)
-                        evidence.append({
-                            "probe": "xss_trigger",
-                            "waf": waf_from_headers,
-                            "method": "block_response",
-                        })
+                        evidence.append(
+                            {
+                                "probe": "xss_trigger",
+                                "waf": waf_from_headers,
+                                "method": "block_response",
+                            }
+                        )
             except Exception as exc:
                 log.debug("WAF probe 3 failed: %s", exc)
 
@@ -199,10 +201,16 @@ class WAFDetector:
         if detected_wafs:
             # Use the most frequently detected WAF name
             from collections import Counter
+
             waf_name = Counter(detected_wafs).most_common(1)[0][0]
             confidence = "high" if len(evidence) >= 2 else "medium"
 
-            log.info("WAF detected: %s (confidence=%s, %d probes matched)", waf_name, confidence, len(evidence))
+            log.info(
+                "WAF detected: %s (confidence=%s, %d probes matched)",
+                waf_name,
+                confidence,
+                len(evidence),
+            )
 
             return {
                 "waf_detected": True,

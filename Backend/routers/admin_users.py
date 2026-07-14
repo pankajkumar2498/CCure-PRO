@@ -27,7 +27,9 @@ log = logging.getLogger(__name__)
 
 
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
 
 
 def _serialize_user(user: User) -> dict:
@@ -57,16 +59,23 @@ def _scoped_users_query(db: Session, current_user: User, scope: str = "active"):
     elif scope == "deleted":
         query = query.filter(User.is_deleted.is_(True))
     elif scope != "all":
-        raise HTTPException(status_code=400, detail="Invalid scope. Use active, deleted, or all.")
+        raise HTTPException(
+            status_code=400, detail="Invalid scope. Use active, deleted, or all."
+        )
     return query
 
 
-def _resolve_target_org_id(db: Session, current_user: User, requested_org_id: Optional[str]) -> str:
+def _resolve_target_org_id(
+    db: Session, current_user: User, requested_org_id: Optional[str]
+) -> str:
     if not _is_superadmin(current_user):
         return str(current_user.org_id)
 
     if not requested_org_id:
-        raise HTTPException(status_code=400, detail="organization_id is required when superadmin creates a user")
+        raise HTTPException(
+            status_code=400,
+            detail="organization_id is required when superadmin creates a user",
+        )
 
     org = db.query(Organization).filter(Organization.id == requested_org_id).first()
     if not org:
@@ -144,6 +153,7 @@ def _notify_user_admin_action(
             exc_info=True,
         )
 
+
 class UserCreateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -154,22 +164,26 @@ class UserCreateSchema(BaseModel):
     password: str
     organization_id: Optional[str] = None
 
+
 class UserUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
 
+
 class UserRoleUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role_id: int
+
 
 class UserStatusUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_active: Optional[bool] = None
     locked_until: Optional[datetime] = None
+
 
 class UserResetPasswordSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -179,6 +193,7 @@ class UserResetPasswordSchema(BaseModel):
     @classmethod
     def password_strength(cls, v: str) -> str:
         return validate_password_strength(v)
+
 
 @router.get("")
 @router.get("/")
@@ -191,7 +206,7 @@ def list_users(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "read"))
+    current_user: User = Depends(require_permission("users", "read")),
 ):
     query = _scoped_users_query(db, current_user, scope=scope)
 
@@ -208,9 +223,9 @@ def list_users(
     if q:
         term = f"%{q}%"
         query = query.filter(
-            (User.username.ilike(term)) |
-            (User.email.ilike(term)) |
-            (User.full_name.ilike(term))
+            (User.username.ilike(term))
+            | (User.email.ilike(term))
+            | (User.full_name.ilike(term))
         )
 
     total = query.count()
@@ -225,13 +240,14 @@ def list_users(
         "users": [_serialize_user(u) for u in users],
     }
 
+
 @router.post("")
 @router.post("/")
 def create_user(
     request: Request,
-    user_data: UserCreateSchema, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(require_permission("users", "create"))
+    user_data: UserCreateSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "create")),
 ):
     target_org_id = _resolve_target_org_id(db, current_user, user_data.organization_id)
     email = normalize_email(user_data.email)
@@ -240,7 +256,7 @@ def create_user(
         raise HTTPException(status_code=400, detail="Username already exists")
     if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=400, detail="Email already exists")
-        
+
     role = db.query(Role).filter(Role.id == user_data.role_id).first()
     if not role:
         raise HTTPException(status_code=400, detail="Invalid role_id")
@@ -254,14 +270,14 @@ def create_user(
     org_slug = org.slug if org else target_org_id
 
     new_user = User(
-        id=gen_user_id(org_slug, user_data.username),   # e.g. usr_acm_alice_x9v1
+        id=gen_user_id(org_slug, user_data.username),  # e.g. usr_acm_alice_x9v1
         username=user_data.username,
         email=email,
         full_name=user_data.full_name,
         role_id=user_data.role_id,
         org_id=target_org_id,
         password_hash=hash_password(user_data.password),
-        is_active=True
+        is_active=True,
     )
     db.add(new_user)
     db.flush()
@@ -272,11 +288,11 @@ def create_user(
         action="user.created",
         resource_type="user",
         resource_id=str(new_user.id),
-        request=request
+        request=request,
     )
     db.commit()
     db.refresh(new_user)
-    
+
     _notify_user_admin_action(
         db=db,
         current_user=current_user,
@@ -286,12 +302,16 @@ def create_user(
         fan_out_message=f"Admin {current_user.username} created new user account: {new_user.username}",
     )
 
-    return {"id": str(new_user.id), "username": new_user.username, "organization_id": str(new_user.org_id)}
+    return {
+        "id": str(new_user.id),
+        "username": new_user.username,
+        "organization_id": str(new_user.org_id),
+    }
 
 
 class UserMoveOrgSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    organization_id: str   # Target org ID (e.g. "org_acme_corp")
+    organization_id: str  # Target org ID (e.g. "org_acme_corp")
 
 
 @router.patch("/{user_id}/organization")
@@ -301,7 +321,7 @@ def move_user_to_organization(
     request: Request,
     body: UserMoveOrgSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update"))
+    current_user: User = Depends(require_permission("users", "update")),
 ):
     """
     Move a user to a different organization.
@@ -320,11 +340,13 @@ def move_user_to_organization(
     if not _is_superadmin(current_user):
         raise HTTPException(
             status_code=403,
-            detail="Only superadmins can move users between organizations."
+            detail="Only superadmins can move users between organizations.",
         )
 
     if str(user_id) == str(current_user.id):
-        raise HTTPException(status_code=400, detail="You cannot move yourself to another organization.")
+        raise HTTPException(
+            status_code=400, detail="You cannot move yourself to another organization."
+        )
 
     # Load the target user
     user = db.query(User).filter(User.id == user_id, User.is_deleted.is_(False)).first()
@@ -332,11 +354,17 @@ def move_user_to_organization(
         raise HTTPException(status_code=404, detail="User not found.")
 
     # Validate target org
-    target_org = db.query(Organization).filter(Organization.id == body.organization_id).first()
+    target_org = (
+        db.query(Organization).filter(Organization.id == body.organization_id).first()
+    )
     if not target_org:
-        raise HTTPException(status_code=404, detail=f"Organization '{body.organization_id}' not found.")
+        raise HTTPException(
+            status_code=404, detail=f"Organization '{body.organization_id}' not found."
+        )
     if not target_org.is_active:
-        raise HTTPException(status_code=400, detail=f"Organization '{target_org.name}' is deactivated.")
+        raise HTTPException(
+            status_code=400, detail=f"Organization '{target_org.name}' is deactivated."
+        )
 
     # No-op if already in that org
     if str(user.org_id) == str(body.organization_id):
@@ -353,9 +381,9 @@ def move_user_to_organization(
     user.org_id = body.organization_id
 
     # Revoke all active sessions — next login will get a fresh token with new org context
-    db.query(RefreshTokenSession).filter(
-        RefreshTokenSession.user_id == user.id
-    ).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
     log_audit_event(
         db=db,
@@ -381,6 +409,7 @@ def move_user_to_organization(
         "sessions_revoked": True,
     }
 
+
 @router.put("/{user_id}")
 @router.put("/{user_id}/")
 def update_user(
@@ -388,29 +417,41 @@ def update_user(
     request: Request,
     user_data: UserUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update"))
+    current_user: User = Depends(require_permission("users", "update")),
 ):
-    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
-        
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     changes = {}
     if user_data.full_name is not None and user.full_name != user_data.full_name:
         changes["full_name"] = {"old": user.full_name, "new": user_data.full_name}
         user.full_name = user_data.full_name
     if user_data.email is not None:
         email = normalize_email(user_data.email)
-        if user.email != email and db.query(User).filter(email_matches(User.email, email), User.id != user.id).first():
+        if (
+            user.email != email
+            and db.query(User)
+            .filter(email_matches(User.email, email), User.id != user.id)
+            .first()
+        ):
             raise HTTPException(status_code=400, detail="Email already in use")
         if user.email != email:
             changes["email"] = {"old": user.email, "new": email}
             user.email = email
-        
+
     if changes:
-        log_audit_event(db, current_user, "user.updated", "user", str(user.id), changes, request)
+        log_audit_event(
+            db, current_user, "user.updated", "user", str(user.id), changes, request
+        )
         db.commit()
     return {"detail": "User updated successfully"}
+
 
 @router.patch("/{user_id}/role")
 @router.patch("/{user_id}/role/")
@@ -419,25 +460,32 @@ def change_role(
     request: Request,
     role_data: UserRoleUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update"))
+    current_user: User = Depends(require_permission("users", "update")),
 ):
-    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
-        
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     role = db.query(Role).filter(Role.id == role_data.role_id).first()
     if not role:
         raise HTTPException(status_code=400, detail="Invalid role_id")
-        
+
     if role.name == "superadmin" and current_user.role.name != "superadmin":
         raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
-        
+
     changes = {"role_id": {"old": user.role_id, "new": role.id}}
     user.role_id = role.id
-    log_audit_event(db, current_user, "user.role_changed", "user", str(user.id), changes, request)
+    log_audit_event(
+        db, current_user, "user.role_changed", "user", str(user.id), changes, request
+    )
     db.commit()
     return {"detail": "User role updated successfully"}
+
 
 @router.patch("/{user_id}/status")
 @router.patch("/{user_id}/status/")
@@ -446,29 +494,43 @@ def change_status(
     request: Request,
     status_data: UserStatusUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update"))
+    current_user: User = Depends(require_permission("users", "update")),
 ):
-    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
-        
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     if str(user.id) == str(current_user.id) and status_data.is_active is False:
-        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
-        
+        raise HTTPException(
+            status_code=400, detail="You cannot deactivate your own account."
+        )
+
     changes = {}
     if status_data.is_active is not None and user.is_active != status_data.is_active:
         changes["is_active"] = {"old": user.is_active, "new": status_data.is_active}
         user.is_active = status_data.is_active
-    
+
     # Manual unlock
     if status_data.locked_until is None and user.locked_until is not None:
         changes["locked_until"] = {"old": str(user.locked_until), "new": None}
         user.locked_until = None
         user.failed_login_count = 0
-        
+
     if changes:
-        log_audit_event(db, current_user, "user.status_changed", "user", str(user.id), changes, request)
+        log_audit_event(
+            db,
+            current_user,
+            "user.status_changed",
+            "user",
+            str(user.id),
+            changes,
+            request,
+        )
         db.commit()
 
         if "is_active" in changes:
@@ -484,19 +546,24 @@ def change_status(
 
     return {"detail": "User status updated successfully"}
 
+
 @router.delete("/{user_id}")
 @router.delete("/{user_id}/")
 def delete_user(
     user_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "delete"))
+    current_user: User = Depends(require_permission("users", "delete")),
 ):
-    user = _scoped_users_query(db, current_user, scope="all").filter(User.id == user_id).first()
-        
+    user = (
+        _scoped_users_query(db, current_user, scope="all")
+        .filter(User.id == user_id)
+        .first()
+    )
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     if str(user.id) == str(current_user.id):
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
@@ -511,7 +578,9 @@ def delete_user(
     user.deleted_at = utcnow()
     user.is_active = False
     user.updated_at = utcnow()
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
+        synchronize_session=False
+    )
     log_audit_event(
         db,
         current_user,
@@ -526,7 +595,7 @@ def delete_user(
         request,
     )
     db.commit()
-    
+
     _notify_user_admin_action(
         db=db,
         current_user=current_user,
@@ -550,7 +619,11 @@ def restore_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users", "delete")),
 ):
-    user = _scoped_users_query(db, current_user, scope="deleted").filter(User.id == user_id).first()
+    user = (
+        _scoped_users_query(db, current_user, scope="deleted")
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="Deleted user not found")
 
@@ -583,7 +656,9 @@ def restore_user(
         fan_out_message=f"Admin {current_user.username} restored user account: {user.username}",
     )
 
-    return {"detail": "User restored. The account remains inactive until explicitly reactivated."}
+    return {
+        "detail": "User restored. The account remains inactive until explicitly reactivated."
+    }
 
 
 @router.delete("/{user_id}/purge")
@@ -594,22 +669,40 @@ def purge_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users", "delete")),
 ):
-    user = _scoped_users_query(db, current_user, scope="deleted").filter(User.id == user_id).first()
+    user = (
+        _scoped_users_query(db, current_user, scope="deleted")
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="Deleted user not found")
 
     target_user_id = user.id
-    db.query(AuditLog).filter(AuditLog.user_id == target_user_id).update({AuditLog.user_id: None}, synchronize_session=False)
-    db.query(AssetNote).filter(AssetNote.user_id == target_user_id).update({AssetNote.user_id: None}, synchronize_session=False)
-    db.query(AssetTag).filter(AssetTag.created_by_id == target_user_id).update({AssetTag.created_by_id: None}, synchronize_session=False)
-    db.query(Scan).filter(Scan.created_by == target_user_id).update({Scan.created_by: None}, synchronize_session=False)
-    db.query(AssetVulnerability).filter(AssetVulnerability.accepted_by == target_user_id).update(
+    db.query(AuditLog).filter(AuditLog.user_id == target_user_id).update(
+        {AuditLog.user_id: None}, synchronize_session=False
+    )
+    db.query(AssetNote).filter(AssetNote.user_id == target_user_id).update(
+        {AssetNote.user_id: None}, synchronize_session=False
+    )
+    db.query(AssetTag).filter(AssetTag.created_by_id == target_user_id).update(
+        {AssetTag.created_by_id: None}, synchronize_session=False
+    )
+    db.query(Scan).filter(Scan.created_by == target_user_id).update(
+        {Scan.created_by: None}, synchronize_session=False
+    )
+    db.query(AssetVulnerability).filter(
+        AssetVulnerability.accepted_by == target_user_id
+    ).update(
         {AssetVulnerability.accepted_by: None},
         synchronize_session=False,
     )
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == target_user_id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(
+        RefreshTokenSession.user_id == target_user_id
+    ).delete(synchronize_session=False)
 
-    log_audit_event(db, current_user, "user.purged", "user", str(target_user_id), request=request)
+    log_audit_event(
+        db, current_user, "user.purged", "user", str(target_user_id), request=request
+    )
     db.delete(user)
     db.commit()
     return {"detail": "User permanently deleted"}
@@ -630,7 +723,11 @@ def reset_password(
     Org admins can only reset users in their own organization.
     All active refresh tokens/sessions for the user are deleted immediately.
     """
-    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -638,7 +735,9 @@ def reset_password(
     user.password_hash = hash_password(body.password)
 
     # Invalidate all active sessions for that user
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
     log_audit_event(
         db=db,
@@ -668,7 +767,11 @@ def reset_mfa(
     Org admins can only reset users in their own organization.
     All active refresh tokens/sessions for the user are deleted immediately.
     """
-    user = _scoped_users_query(db, current_user, scope="active").filter(User.id == user_id).first()
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -678,7 +781,9 @@ def reset_mfa(
     user.mfa_backup_codes = None
 
     # Invalidate all active sessions for that user
-    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(synchronize_session=False)
+    db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
     log_audit_event(
         db=db,
@@ -689,7 +794,7 @@ def reset_mfa(
         changes={
             "mfa_enabled": {"old": True, "new": False},
             "totp_secret": "cleared",
-            "mfa_backup_codes": "cleared"
+            "mfa_backup_codes": "cleared",
         },
         request=request,
     )

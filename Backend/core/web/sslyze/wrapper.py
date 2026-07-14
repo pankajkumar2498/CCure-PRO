@@ -41,6 +41,7 @@ class SSLyzeWrapper:
             return self._sslyze_available
         try:
             import sslyze  # noqa: F401
+
             self._sslyze_available = True
             return True
         except ImportError:
@@ -59,7 +60,12 @@ class SSLyzeWrapper:
             {"findings": [...], "certificate": {...}, "protocols": {...}, "stats": {...}}
         """
         if not self.is_available():
-            return {"findings": [], "certificate": {}, "protocols": {}, "error": "sslyze not installed"}
+            return {
+                "findings": [],
+                "certificate": {},
+                "protocols": {},
+                "error": "sslyze not installed",
+            }
 
         # Parse hostname and port from URL
         hostname, port = self._parse_target(target)
@@ -115,42 +121,48 @@ class SSLyzeWrapper:
                 hb_result = result.scan_result.heartbleed
                 if hb_result and hb_result.status.name == "COMPLETED":
                     if hb_result.result.is_vulnerable_to_heartbleed:
-                        findings.append({
-                            "finding_type": "tls_issue",
-                            "title": "Heartbleed Vulnerability (CVE-2014-0160)",
-                            "description": "Server is vulnerable to Heartbleed. Attacker can read server memory.",
-                            "severity": "critical",
-                            "cvss_score": 9.8,
-                            "cve_id": "CVE-2014-0160",
-                            "detected_by": "sslyze",
-                        })
+                        findings.append(
+                            {
+                                "finding_type": "tls_issue",
+                                "title": "Heartbleed Vulnerability (CVE-2014-0160)",
+                                "description": "Server is vulnerable to Heartbleed. Attacker can read server memory.",
+                                "severity": "critical",
+                                "cvss_score": 9.8,
+                                "cve_id": "CVE-2014-0160",
+                                "detected_by": "sslyze",
+                            }
+                        )
 
                 # Check for ROBOT
                 robot_result = result.scan_result.robot
                 if robot_result and robot_result.status.name == "COMPLETED":
                     robot_enum = robot_result.result.robot_result
                     if "VULNERABLE" in robot_enum.name:
-                        findings.append({
-                            "finding_type": "tls_issue",
-                            "title": "ROBOT Attack Vulnerability",
-                            "description": "Server is vulnerable to Return Of Bleichenbacher's Oracle Threat.",
-                            "severity": "high",
-                            "cvss_score": 7.5,
-                            "detected_by": "sslyze",
-                        })
+                        findings.append(
+                            {
+                                "finding_type": "tls_issue",
+                                "title": "ROBOT Attack Vulnerability",
+                                "description": "Server is vulnerable to Return Of Bleichenbacher's Oracle Threat.",
+                                "severity": "high",
+                                "cvss_score": 7.5,
+                                "detected_by": "sslyze",
+                            }
+                        )
 
                 # Check TLS compression (CRIME attack)
                 comp_result = result.scan_result.tls_compression
                 if comp_result and comp_result.status.name == "COMPLETED":
                     if comp_result.result.supports_compression:
-                        findings.append({
-                            "finding_type": "tls_issue",
-                            "title": "TLS Compression Enabled (CRIME Attack)",
-                            "description": "TLS compression is enabled, making the server vulnerable to the CRIME attack.",
-                            "severity": "medium",
-                            "cvss_score": 5.9,
-                            "detected_by": "sslyze",
-                        })
+                        findings.append(
+                            {
+                                "finding_type": "tls_issue",
+                                "title": "TLS Compression Enabled (CRIME Attack)",
+                                "description": "TLS compression is enabled, making the server vulnerable to the CRIME attack.",
+                                "severity": "medium",
+                                "cvss_score": 5.9,
+                                "detected_by": "sslyze",
+                            }
+                        )
 
             stats = {
                 "total_findings": len(findings),
@@ -158,7 +170,12 @@ class SSLyzeWrapper:
                 "port": port,
             }
 
-            log.info("SSLyze audit complete for %s:%d — %d findings", hostname, port, len(findings))
+            log.info(
+                "SSLyze audit complete for %s:%d — %d findings",
+                hostname,
+                port,
+                len(findings),
+            )
 
             return {
                 "findings": findings,
@@ -169,7 +186,12 @@ class SSLyzeWrapper:
 
         except Exception as exc:
             log.warning("SSLyze audit failed for %s: %s", target, exc)
-            return {"findings": [], "certificate": {}, "protocols": {}, "error": str(exc)}
+            return {
+                "findings": [],
+                "certificate": {},
+                "protocols": {},
+                "error": str(exc),
+            }
 
     # ── Internal Processing ───────────────────────────────────────────────────
 
@@ -203,10 +225,22 @@ class SSLyzeWrapper:
                 info = {
                     "subject": str(leaf.subject),
                     "issuer": str(leaf.issuer),
-                    "not_before": leaf.not_valid_before_utc.isoformat() if hasattr(leaf, 'not_valid_before_utc') else str(leaf.not_valid_before),
-                    "not_after": leaf.not_valid_after_utc.isoformat() if hasattr(leaf, 'not_valid_after_utc') else str(leaf.not_valid_after),
+                    "not_before": (
+                        leaf.not_valid_before_utc.isoformat()
+                        if hasattr(leaf, "not_valid_before_utc")
+                        else str(leaf.not_valid_before)
+                    ),
+                    "not_after": (
+                        leaf.not_valid_after_utc.isoformat()
+                        if hasattr(leaf, "not_valid_after_utc")
+                        else str(leaf.not_valid_after)
+                    ),
                     "serial_number": str(leaf.serial_number),
-                    "signature_algorithm": leaf.signature_hash_algorithm.name if leaf.signature_hash_algorithm else "unknown",
+                    "signature_algorithm": (
+                        leaf.signature_hash_algorithm.name
+                        if leaf.signature_hash_algorithm
+                        else "unknown"
+                    ),
                     "chain_length": len(deployment.received_certificate_chain),
                     "is_leaf_ev": deployment.leaf_certificate_is_ev,
                 }
@@ -250,31 +284,36 @@ class SSLyzeWrapper:
         not_after = cert_info.get("not_after", "")
         if not_after:
             from datetime import datetime, timezone
+
             try:
                 expiry = datetime.fromisoformat(not_after.replace("Z", "+00:00"))
                 if expiry < datetime.now(timezone.utc):
-                    findings.append({
-                        "finding_type": "tls_issue",
-                        "title": "Expired TLS Certificate",
-                        "description": f"Certificate expired on {not_after}",
-                        "severity": "high",
-                        "cvss_score": 7.0,
-                        "detected_by": "sslyze",
-                    })
+                    findings.append(
+                        {
+                            "finding_type": "tls_issue",
+                            "title": "Expired TLS Certificate",
+                            "description": f"Certificate expired on {not_after}",
+                            "severity": "high",
+                            "cvss_score": 7.0,
+                            "detected_by": "sslyze",
+                        }
+                    )
             except (ValueError, TypeError):
                 pass
 
         # Check for weak signature algorithm
         sig_algo = cert_info.get("signature_algorithm", "").lower()
         if sig_algo in ("md5", "sha1"):
-            findings.append({
-                "finding_type": "tls_issue",
-                "title": f"Weak Certificate Signature Algorithm: {sig_algo.upper()}",
-                "description": f"Certificate uses {sig_algo.upper()} which is considered cryptographically weak.",
-                "severity": "medium",
-                "cvss_score": 5.0,
-                "detected_by": "sslyze",
-            })
+            findings.append(
+                {
+                    "finding_type": "tls_issue",
+                    "title": f"Weak Certificate Signature Algorithm: {sig_algo.upper()}",
+                    "description": f"Certificate uses {sig_algo.upper()} which is considered cryptographically weak.",
+                    "severity": "medium",
+                    "cvss_score": 5.0,
+                    "detected_by": "sslyze",
+                }
+            )
 
         return findings
 
@@ -291,26 +330,30 @@ class SSLyzeWrapper:
         for proto, (name, severity, cvss) in deprecated.items():
             info = protocols.get(proto, {})
             if info.get("supported"):
-                findings.append({
-                    "finding_type": "tls_issue",
-                    "title": f"Deprecated Protocol Supported: {name}",
-                    "description": f"Server supports {name} ({info.get('cipher_count', 0)} ciphers). This protocol is deprecated and insecure.",
-                    "severity": severity,
-                    "cvss_score": cvss,
-                    "detected_by": "sslyze",
-                })
+                findings.append(
+                    {
+                        "finding_type": "tls_issue",
+                        "title": f"Deprecated Protocol Supported: {name}",
+                        "description": f"Server supports {name} ({info.get('cipher_count', 0)} ciphers). This protocol is deprecated and insecure.",
+                        "severity": severity,
+                        "cvss_score": cvss,
+                        "detected_by": "sslyze",
+                    }
+                )
 
         # Check if modern TLS is NOT supported
         tls13 = protocols.get("tls_1_3", {})
         tls12 = protocols.get("tls_1_2", {})
         if not tls13.get("supported") and not tls12.get("supported"):
-            findings.append({
-                "finding_type": "tls_issue",
-                "title": "No Modern TLS Protocol Supported",
-                "description": "Server does not support TLS 1.2 or TLS 1.3. All connections are insecure.",
-                "severity": "critical",
-                "cvss_score": 9.0,
-                "detected_by": "sslyze",
-            })
+            findings.append(
+                {
+                    "finding_type": "tls_issue",
+                    "title": "No Modern TLS Protocol Supported",
+                    "description": "Server does not support TLS 1.2 or TLS 1.3. All connections are insecure.",
+                    "severity": "critical",
+                    "cvss_score": 9.0,
+                    "detected_by": "sslyze",
+                }
+            )
 
         return findings

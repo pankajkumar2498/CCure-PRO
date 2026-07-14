@@ -19,10 +19,18 @@ import { getScanQuota } from "../../api/scans";
 
 /* ── Plan colour palette ────────────────────────────────────────────────── */
 const PLAN_META = {
-  community:  { label: "Community",  color: "#64748b", glow: "rgba(100,116,139,0.25)" },
-  pro:        { label: "Pro",         color: "#8b5cf6", glow: "rgba(139,92,246,0.25)"  },
-  enterprise: { label: "Enterprise", color: "#f59e0b", glow: "rgba(245,158,11,0.25)"  },
-  unknown:    { label: "Free",        color: "#64748b", glow: "rgba(100,116,139,0.25)" },
+  community: {
+    label: "Community",
+    color: "#64748b",
+    glow: "rgba(100,116,139,0.25)",
+  },
+  pro: { label: "Pro", color: "#8b5cf6", glow: "rgba(139,92,246,0.25)" },
+  enterprise: {
+    label: "Enterprise",
+    color: "#f59e0b",
+    glow: "rgba(245,158,11,0.25)",
+  },
+  unknown: { label: "Free", color: "#64748b", glow: "rgba(100,116,139,0.25)" },
 };
 
 /* ── Helper ─────────────────────────────────────────────────────────────── */
@@ -32,17 +40,17 @@ function pct(used, limit) {
 }
 
 function barColor(p) {
-  if (p >= 100) return "#ef4444";   // red   — limit hit
-  if (p >= 80)  return "#f59e0b";   // amber — warning
-  if (p >= 50)  return "#0ea5e9";   // blue  — normal
-  return "#22c55e";                  // green — plenty of quota left
+  if (p >= 100) return "#ef4444"; // red   — limit hit
+  if (p >= 80) return "#f59e0b"; // amber — warning
+  if (p >= 50) return "#0ea5e9"; // blue  — normal
+  return "#22c55e"; // green — plenty of quota left
 }
 
 /* ── Component ──────────────────────────────────────────────────────────── */
 export default function ScanQuotaBar({ className = "", onQuotaChange }) {
-  const [quota, setQuota]       = useState(null);
-  const [visible, setVisible]   = useState(false);
-  const intervalRef             = useRef(null);
+  const [quota, setQuota] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const intervalRef = useRef(null);
 
   const fetchQuota = async () => {
     try {
@@ -50,7 +58,7 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
       setQuota(data);
       setVisible(true);
       onQuotaChange?.({
-        quota_exceeded:      data.quota_exceeded,
+        quota_exceeded: data.quota_exceeded,
         concurrent_exceeded: data.concurrent_exceeded,
       });
     } catch {
@@ -67,13 +75,15 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
 
   if (!visible || !quota) return null;
 
-  const plan        = PLAN_META[quota.plan] || PLAN_META.unknown;
+  const plan = PLAN_META[quota.plan] || PLAN_META.unknown;
   const isUnlimited = quota.scans_limit_24h === null;
-  const dailyPct    = isUnlimited ? 0 : pct(quota.scans_used_24h, quota.scans_limit_24h);
-  const dailyColor  = isUnlimited ? "#22c55e" : barColor(dailyPct);
-  const concPct     = pct(quota.concurrent_running, quota.concurrent_limit);
-  const concColor   = barColor(concPct);
-  const isBlocked   = quota.quota_exceeded || quota.concurrent_exceeded;
+  const dailyPct = isUnlimited
+    ? 0
+    : pct(quota.scans_used_24h, quota.scans_limit_24h);
+  const dailyColor = isUnlimited ? "#22c55e" : barColor(dailyPct);
+  const concPct = pct(quota.concurrent_running, quota.concurrent_limit);
+  const concColor = barColor(concPct);
+  const isBlocked = quota.quota_exceeded || quota.concurrent_exceeded;
 
   return (
     <div
@@ -86,7 +96,11 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
         <div className="sqb-header-left">
           <span
             className="sqb-plan-badge"
-            style={{ background: `${plan.color}18`, color: plan.color, borderColor: `${plan.color}40` }}
+            style={{
+              background: `${plan.color}18`,
+              color: plan.color,
+              borderColor: `${plan.color}40`,
+            }}
           >
             {plan.label}
           </span>
@@ -95,9 +109,21 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
 
         <div className="sqb-limits-row">
           {/* Max IPs per scan */}
-          <span className="sqb-pill sqb-pill--ip" title="Maximum IPs per scan target">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><path d="M12 8v4l2 2"/>
+          <span
+            className="sqb-pill sqb-pill--ip"
+            title="Maximum IPs per scan target"
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4l2 2" />
             </svg>
             Max {quota.max_ips_per_scan?.toLocaleString()} IPs/scan
           </span>
@@ -107,8 +133,16 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
             className={`sqb-pill ${quota.concurrent_exceeded ? "sqb-pill--warn" : "sqb-pill--ok"}`}
             title="Active concurrent scans"
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
             {quota.concurrent_running}/{quota.concurrent_limit} running
           </span>
@@ -121,9 +155,7 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
           <span>Scans today (24 h)</span>
           <span className="sqb-track-count" style={{ color: dailyColor }}>
             {quota.scans_used_24h}
-            {!isUnlimited && (
-              <> / {quota.scans_limit_24h} used</>
-            )}
+            {!isUnlimited && <> / {quota.scans_limit_24h} used</>}
             {isUnlimited && " (unlimited)"}
           </span>
         </div>
@@ -131,7 +163,11 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
           <div className="sqb-track">
             <div
               className="sqb-fill"
-              style={{ width: `${dailyPct}%`, background: dailyColor, boxShadow: `0 0 6px ${dailyColor}60` }}
+              style={{
+                width: `${dailyPct}%`,
+                background: dailyColor,
+                boxShadow: `0 0 6px ${dailyColor}60`,
+              }}
               role="progressbar"
               aria-valuenow={dailyPct}
               aria-valuemin={0}
@@ -152,7 +188,11 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
         <div className="sqb-track">
           <div
             className="sqb-fill"
-            style={{ width: `${concPct}%`, background: concColor, boxShadow: `0 0 6px ${concColor}60` }}
+            style={{
+              width: `${concPct}%`,
+              background: concColor,
+              boxShadow: `0 0 6px ${concColor}60`,
+            }}
             role="progressbar"
             aria-valuenow={concPct}
             aria-valuemin={0}

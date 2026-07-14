@@ -17,7 +17,6 @@ Used by: FAST, BALANCED, AGGRESSIVE profiles (LAN zone only).
 """
 
 import logging
-import time
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE

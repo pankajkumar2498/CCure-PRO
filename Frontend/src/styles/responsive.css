@@ -1,5 +1,5 @@
 /* ── Responsive ── */
-@media (max-width:768px) {
+@media (max-width: 768px) {
   :root {
     --sidebar-w: 0px;
   }
@@ -46,4 +46,3 @@
    All animations use transform/opacity for GPU compositing (no layout thrash).
    Respects prefers-reduced-motion.
    ============================================================================ */
-

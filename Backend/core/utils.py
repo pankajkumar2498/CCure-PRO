@@ -26,11 +26,14 @@ from core.constants import CVE_HINTS, VER_PATTERNS, CVE_DB
 # Privilege Manager
 # =============================================================================
 
+
 class PrivilegeManager:
     @staticmethod
     def get_platform() -> str:
         s = platform.system().lower()
-        return {"windows": "windows", "linux": "linux", "darwin": "macos"}.get(s, "unknown")
+        return {"windows": "windows", "linux": "linux", "darwin": "macos"}.get(
+            s, "unknown"
+        )
 
     @staticmethod
     def is_admin() -> bool:
@@ -46,8 +49,8 @@ class PrivilegeManager:
     def info() -> Dict:
         admin = PrivilegeManager.is_admin()
         return {
-            "platform":        PrivilegeManager.get_platform(),
-            "has_privileges":  admin,
+            "platform": PrivilegeManager.get_platform(),
+            "has_privileges": admin,
             "privilege_level": "Administrator/Root" if admin else "Limited",
         }
 
@@ -56,8 +59,9 @@ class PrivilegeManager:
 # Input Validator
 # =============================================================================
 
+
 class InputValidator:
-    _SAFE_RE  = re.compile(r'^[\w.\-:/\[\]]+$')
+    _SAFE_RE = re.compile(r"^[\w.\-:/\[\]]+$")
     MAX_HOSTS = 4096
 
     @staticmethod
@@ -103,12 +107,15 @@ class InputValidator:
                 if "." in parts[1]:
                     end_ip = ipaddress.ip_address(parts[1])
                 else:
-                    base   = str(start_ip).rsplit(".", 1)[0]
+                    base = str(start_ip).rsplit(".", 1)[0]
                     end_ip = ipaddress.ip_address(f"{base}.{parts[1]}")
                 if int(end_ip) < int(start_ip):
                     return {"valid": False, "error": "Start IP > End IP."}
                 if int(end_ip) - int(start_ip) > InputValidator.MAX_HOSTS:
-                    return {"valid": False, "error": f"Range too large. Max {InputValidator.MAX_HOSTS}."}
+                    return {
+                        "valid": False,
+                        "error": f"Range too large. Max {InputValidator.MAX_HOSTS}.",
+                    }
                 return {"valid": True}
             except ValueError as e:
                 return {"valid": False, "error": str(e)}
@@ -135,8 +142,10 @@ class InputValidator:
         resolved = InputValidator.resolve_hostname(target)
         if resolved:
             return {
-                "resolved": resolved, "original": target,
-                "type": "hostname", "resolved_ip": resolved,
+                "resolved": resolved,
+                "original": target,
+                "type": "hostname",
+                "resolved_ip": resolved,
             }
         return {"error": f"Cannot resolve hostname: '{target}'"}
 
@@ -149,10 +158,12 @@ class InputValidator:
                 end = ipaddress.ip_address(parts[1])
             else:
                 base = str(start).rsplit(".", 1)[0]
-                end  = ipaddress.ip_address(f"{base}.{parts[1]}")
+                end = ipaddress.ip_address(f"{base}.{parts[1]}")
             if int(end) < int(start):
                 return []
-            return [str(ipaddress.ip_address(i)) for i in range(int(start), int(end) + 1)]
+            return [
+                str(ipaddress.ip_address(i)) for i in range(int(start), int(end) + 1)
+            ]
         except Exception as exc:
             log.debug("Failed to expand IP range '%s': %s", target, exc)
             return []
@@ -165,7 +176,9 @@ class InputValidator:
             return []
         t = res["type"]
         if t == "cidr":
-            return [str(ip) for ip in ipaddress.ip_network(target, strict=False).hosts()]
+            return [
+                str(ip) for ip in ipaddress.ip_network(target, strict=False).hosts()
+            ]
         if t == "range":
             return InputValidator.expand_ip_range(target)
         return [res["resolved"]]
@@ -181,7 +194,9 @@ class InputValidator:
 
         for token in tokens:
             if not token:
-                raise ValueError("Malformed input: empty token in port list (check for consecutive or trailing commas).")
+                raise ValueError(
+                    "Malformed input: empty token in port list (check for consecutive or trailing commas)."
+                )
 
             # Strip internal spaces for range tolerance (e.g. "80 - 83" → "80-83")
             token = token.replace(" ", "")
@@ -190,26 +205,38 @@ class InputValidator:
             if "-" in token:
                 range_match = re.match(r"^(\d+)-(\d+)$", token)
                 if not range_match:
-                    raise ValueError(f"Malformed port range: '{token}'. Use format 'start-end' (e.g. 80-90).")
+                    raise ValueError(
+                        f"Malformed port range: '{token}'. Use format 'start-end' (e.g. 80-90)."
+                    )
                 start_p, end_p = int(range_match.group(1)), int(range_match.group(2))
                 if not (1 <= start_p <= 65535) or not (1 <= end_p <= 65535):
-                    raise ValueError(f"Port numbers in range '{token}' must be between 1 and 65535.")
+                    raise ValueError(
+                        f"Port numbers in range '{token}' must be between 1 and 65535."
+                    )
                 if start_p > end_p:
-                    raise ValueError(f"Invalid range '{token}': start port {start_p} is greater than end port {end_p}.")
+                    raise ValueError(
+                        f"Invalid range '{token}': start port {start_p} is greater than end port {end_p}."
+                    )
 
                 for p in range(start_p, end_p + 1):
                     if p in seen_ports:
-                        raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                        raise ValueError(
+                            f"Duplicate port detected: {p} is specified more than once."
+                        )
                     seen_ports.add(p)
                     ports_list.append(p)
             else:
                 if not token.isdigit():
-                    raise ValueError(f"Malformed port: '{token}'. Must be a number between 1 and 65535.")
+                    raise ValueError(
+                        f"Malformed port: '{token}'. Must be a number between 1 and 65535."
+                    )
                 p = int(token)
                 if not (1 <= p <= 65535):
                     raise ValueError(f"Port '{token}' must be between 1 and 65535.")
                 if p in seen_ports:
-                    raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                    raise ValueError(
+                        f"Duplicate port detected: {p} is specified more than once."
+                    )
                 seen_ports.add(p)
                 ports_list.append(p)
 
@@ -240,7 +267,9 @@ class InputValidator:
 
         for token in tokens:
             if not token:
-                raise ValueError("Malformed input: empty token in exclude list (check for consecutive or trailing commas).")
+                raise ValueError(
+                    "Malformed input: empty token in exclude list (check for consecutive or trailing commas)."
+                )
 
             # Strip internal spaces for range tolerance
             token = token.replace(" ", "")
@@ -248,31 +277,42 @@ class InputValidator:
             if "-" in token:
                 range_match = re.match(r"^(\d+)-(\d+)$", token)
                 if not range_match:
-                    raise ValueError(f"Malformed port range: '{token}'. Use format 'start-end' (e.g. 80-90).")
+                    raise ValueError(
+                        f"Malformed port range: '{token}'. Use format 'start-end' (e.g. 80-90)."
+                    )
                 start_p, end_p = int(range_match.group(1)), int(range_match.group(2))
                 if not (1 <= start_p <= 65535) or not (1 <= end_p <= 65535):
-                    raise ValueError(f"Port numbers in range '{token}' must be between 1 and 65535.")
+                    raise ValueError(
+                        f"Port numbers in range '{token}' must be between 1 and 65535."
+                    )
                 if start_p > end_p:
-                    raise ValueError(f"Invalid range '{token}': start port {start_p} is greater than end port {end_p}.")
+                    raise ValueError(
+                        f"Invalid range '{token}': start port {start_p} is greater than end port {end_p}."
+                    )
 
                 for p in range(start_p, end_p + 1):
                     if p in seen_ports:
-                        raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                        raise ValueError(
+                            f"Duplicate port detected: {p} is specified more than once."
+                        )
                     seen_ports.add(p)
                     ports_list.append(p)
             else:
                 if not token.isdigit():
-                    raise ValueError(f"Malformed port: '{token}'. Must be a number between 1 and 65535.")
+                    raise ValueError(
+                        f"Malformed port: '{token}'. Must be a number between 1 and 65535."
+                    )
                 p = int(token)
                 if not (1 <= p <= 65535):
                     raise ValueError(f"Port '{token}' must be between 1 and 65535.")
                 if p in seen_ports:
-                    raise ValueError(f"Duplicate port detected: {p} is specified more than once.")
+                    raise ValueError(
+                        f"Duplicate port detected: {p} is specified more than once."
+                    )
                 seen_ports.add(p)
                 ports_list.append(p)
 
         return sorted(ports_list)
-
 
 
 # =============================================================================
@@ -281,47 +321,51 @@ class InputValidator:
 
 import threading
 
+
 class TokenBucket:
     def __init__(self, rate: float = 100.0, capacity: float = 200.0):
-        self.rate     = rate        # tokens per second
+        self.rate = rate  # tokens per second
         self.capacity = capacity
-        self.tokens   = capacity
-        self._last    = time.monotonic()
-        self._lock    = threading.Lock()
+        self.tokens = capacity
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
 
     def consume(self, n: float = 1.0):
         with self._lock:
-            now          = time.monotonic()
-            self.tokens  = min(self.capacity, self.tokens + (now - self._last) * self.rate)
-            self._last   = now
+            now = time.monotonic()
+            self.tokens = min(
+                self.capacity, self.tokens + (now - self._last) * self.rate
+            )
+            self._last = now
             if self.tokens >= n:
                 self.tokens -= n
                 sleep_time = 0
             else:
-                sleep_time  = (n - self.tokens) / self.rate
+                sleep_time = (n - self.tokens) / self.rate
                 self.tokens = 0
-        
+
         if sleep_time > 0:
             time.sleep(sleep_time)
 
 
 from functools import lru_cache
 
+
 @lru_cache(maxsize=1024)
 def lookup_cve(banner: str) -> List[Dict]:
     """
     Match a banner / service string against CVE database.
     Falls back to hardcoded hints if database is unavailable.
-    
-    Cashed with LRU to prevent redundant DB hits for common services 
+
+    Cashed with LRU to prevent redundant DB hits for common services
     (e.g. many ports running the same web server).
     """
     if not banner:
         return []
-        
+
     banner_lc = banner.lower()
     found: List[Dict] = []
-    
+
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
         try:
@@ -330,19 +374,20 @@ def lookup_cve(banner: str) -> List[Dict]:
                 found.extend(db_results)
         except Exception as e:
             log.debug("CVE DB search error for '%s': %s", banner, e)
-    
+
     # Fallback to hardcoded hints if no database results
     if not found:
         for key, hints in CVE_HINTS.items():
             if key in banner_lc:
                 found.extend(hints)
-    
+
     return found
 
 
 # =============================================================================
 # Version Extraction
 # =============================================================================
+
 
 def extract_version(banner: str, service: str = "") -> str:
     for pat in VER_PATTERNS:
@@ -355,6 +400,7 @@ def extract_version(banner: str, service: str = "") -> str:
 # =============================================================================
 # Local Host Helpers
 # =============================================================================
+
 
 def get_local_ips() -> set:
     local = {"127.0.0.1"}
@@ -385,7 +431,9 @@ def get_local_mac() -> str:
         import socket
         import psutil
 
-        AF_LINK = psutil.AF_LINK  # = 17 on Linux, 18 on macOS, -1000 on Windows (still works)
+        AF_LINK = (
+            psutil.AF_LINK
+        )  # = 17 on Linux, 18 on macOS, -1000 on Windows (still works)
 
         # Find which interface carries the default route
         gw_iface = None
@@ -432,13 +480,11 @@ def get_local_mac() -> str:
         return "N/A"
 
 
-
-
 #  after a successful PING/TCP response, try an ARP cache lookup as a best-effort fallback. This works when the target is on the same subnet:
 
 import subprocess
 import re
-import platform
+
 
 def get_mac_from_arp_cache(ip: str) -> str:
     """
@@ -451,27 +497,57 @@ def get_mac_from_arp_cache(ip: str) -> str:
 
         if system == "windows":
             out = subprocess.check_output(
-                ["arp", "-a", ip], timeout=3,
-                stderr=subprocess.DEVNULL
+                ["arp", "-a", ip], timeout=3, stderr=subprocess.DEVNULL
             ).decode(errors="ignore")
             match = re.search(
-                r'(\b' + re.escape(ip) + r'\b)\s+([\da-fA-F:-]{11,17})',
-                out
+                r"(\b" + re.escape(ip) + r"\b)\s+([\da-fA-F:-]{11,17})", out
             )
         else:
+            # 1. Primary path for Linux: Parse /proc/net/arp directly (no subprocess/tools needed)
+            if os.path.exists("/proc/net/arp"):
+                try:
+                    with open(
+                        "/proc/net/arp", "r", encoding="utf-8", errors="ignore"
+                    ) as f:
+                        for line in f:
+                            parts = line.split()
+                            if len(parts) >= 4 and parts[0] == ip:
+                                raw_mac = parts[3]
+                                if raw_mac and raw_mac != "00:00:00:00:00:00":
+                                    mac = re.sub(r"[^a-fA-F0-9]", "", raw_mac)
+                                    if len(mac) == 12:
+                                        return ":".join(
+                                            mac[i : i + 2].upper()
+                                            for i in range(0, 12, 2)
+                                        )
+                except Exception as proc_exc:
+                    log.debug("Failed to read /proc/net/arp: %s", proc_exc)
+
+            # 2. Secondary path: 'ip neigh show <ip>' (standard on modern Linux)
+            try:
+                out = subprocess.check_output(
+                    ["ip", "neigh", "show", ip], timeout=3, stderr=subprocess.DEVNULL
+                ).decode(errors="ignore")
+                match = re.search(r"([\da-fA-F]{2}[:\-]){5}[\da-fA-F]{2}", out)
+                if match:
+                    raw_mac = match.group(0)
+                    mac = re.sub(r"[^a-fA-F0-9]", "", raw_mac)
+                    if len(mac) == 12:
+                        return ":".join(mac[i : i + 2].upper() for i in range(0, 12, 2))
+            except Exception as ip_exc:
+                log.debug("Failed to run 'ip neigh show': %s", ip_exc)
+
+            # 3. Tertiary path: arp -n <ip> (requires net-tools)
             out = subprocess.check_output(
-                ["arp", "-n", ip], timeout=3,
-                stderr=subprocess.DEVNULL
+                ["arp", "-n", ip], timeout=3, stderr=subprocess.DEVNULL
             ).decode(errors="ignore")
-            match = re.search(
-                r'([\da-fA-F]{2}[:\-]){5}[\da-fA-F]{2}',
-                out
-            )
+            match = re.search(r"([\da-fA-F]{2}[:\-]){5}[\da-fA-F]{2}", out)
 
         if match:
             raw_mac = match.group(0) if system != "windows" else match.group(2)
-            mac = re.sub(r'[^a-fA-F0-9]', '', raw_mac)
-            return ':'.join(mac[i:i+2].upper() for i in range(0, 12, 2))
+            mac = re.sub(r"[^a-fA-F0-9]", "", raw_mac)
+            if len(mac) == 12:
+                return ":".join(mac[i : i + 2].upper() for i in range(0, 12, 2))
 
     except Exception as exc:
         log.debug("Failed to read MAC from ARP cache for %s: %s", ip, exc)
@@ -487,13 +563,11 @@ def normalize_mac(mac: str) -> Optional[str]:
     """
     if not mac:
         return None
-    
+
     # Strip common separators
     temp = mac.strip().replace(":", "").replace("-", "").replace(".", "")
     # Check that it consists of exactly 12 hexadecimal characters
     if len(temp) != 12 or not all(c in "0123456789abcdefABCDEF" for c in temp):
         return None
-        
-    return ":".join(temp[i:i+2].upper() for i in range(0, 12, 2))
 
-
+    return ":".join(temp[i : i + 2].upper() for i in range(0, 12, 2))

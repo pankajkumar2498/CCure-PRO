@@ -44,9 +44,9 @@ log = logging.getLogger("ccure.quota")
 
 _PLAN_LIMITS = {
     # plan         max_scans_per_day  max_concurrent  max_prefix  max_ips_per_scan  max_ports
-    "community":  (5,                1,              24,         254,              100),
-    "pro":        (50,               5,              16,         65_534,           1000),
-    "enterprise": (None,             20,             8,          16_777_214,       65535),
+    "community": (5, 1, 24, 254, 100),
+    "pro": (50, 5, 16, 65_534, 1000),
+    "enterprise": (None, 20, 8, 16_777_214, 65535),
 }
 
 _DEFAULT_PLAN = "community"
@@ -60,6 +60,7 @@ def _limits(plan: str) -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 # IP count helper
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _count_target_ips(targets: List[str]) -> int:
     """
@@ -85,7 +86,7 @@ def _count_target_ips(targets: List[str]) -> int:
                     except ValueError:
                         # Format: full-ip-full-ip  e.g. 10.180.6.14-192.168.1.50
                         start_ip = ipaddress.ip_address(parts[0].strip())
-                        end_ip   = ipaddress.ip_address(parts[1].strip())
+                        end_ip = ipaddress.ip_address(parts[1].strip())
                         count = int(end_ip) - int(start_ip) + 1
                     total += max(count, 1)
             else:
@@ -118,9 +119,11 @@ def _smallest_prefix(targets: List[str]) -> int:
 # DB queries
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _scans_in_last_24h(db: Session, org_id: str) -> int:
     """Count non-deleted scans started in the last 24 hours for this org."""
     from db.models.scans import Scan
+
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     return (
         db.query(Scan)
@@ -136,6 +139,7 @@ def _scans_in_last_24h(db: Session, org_id: str) -> int:
 def _running_scans(db: Session, org_id: str) -> int:
     """Count scans currently in 'running' status for this org."""
     from db.models.scans import Scan
+
     return (
         db.query(Scan)
         .filter(
@@ -150,6 +154,7 @@ def _running_scans(db: Session, org_id: str) -> int:
 def _get_org(db: Session, org_id: str):
     """Return the Organisation ORM row (or None)."""
     from db.models.rbac import Organization
+
     return db.query(Organization).filter(Organization.id == org_id).first()
 
 
@@ -162,6 +167,7 @@ def _get_org_plan(db: Session, org_id: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def check_scan_quota(
     db: Session,
@@ -205,6 +211,7 @@ def check_scan_quota(
     # ── 1b. Custom Ports limit check ──────────────────────────────────────────
     if custom_ports:
         from core.utils import InputValidator
+
         try:
             parsed_ports = InputValidator.parse_custom_ports(custom_ports)
             ports_count = len(parsed_ports)
@@ -215,7 +222,7 @@ def check_scan_quota(
                         f"Your '{plan}' plan allows a maximum of {max_ports:,} ports per custom scan. "
                         f"The requested scan contains {ports_count:,} ports. "
                         f"Please reduce the number of ports or upgrade your plan."
-                    )
+                    ),
                 )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -272,7 +279,10 @@ def check_scan_quota(
 
     log.info(
         "Quota OK — org=%s plan=%s running=%d/%d daily_used=%s/%s targets=%s",
-        org_id, plan, running, max_concurrent,
+        org_id,
+        plan,
+        running,
+        max_concurrent,
         _scans_in_last_24h(db, org_id) if max_day else "∞",
         max_day or "∞",
         targets,
@@ -303,25 +313,30 @@ def get_quota_status(db: Session, org_id: str) -> dict:
         max_day, max_concurrent, max_prefix, max_ips, max_ports = _limits(plan)
 
         used_day = _scans_in_last_24h(db, org_id)
-        running  = _running_scans(db, org_id)
+        running = _running_scans(db, org_id)
 
         return {
-            "plan":                plan,
-            "scans_used_24h":      used_day,
-            "scans_limit_24h":     max_day,        # None = unlimited
-            "concurrent_running":  running,
-            "concurrent_limit":    max_concurrent,
-            "max_ips_per_scan":    max_ips,
-            "max_subnet_prefix":   max_prefix,
-            "max_ports_per_scan":  max_ports,
-            "quota_exceeded":      (max_day is not None and used_day >= max_day),
+            "plan": plan,
+            "scans_used_24h": used_day,
+            "scans_limit_24h": max_day,  # None = unlimited
+            "concurrent_running": running,
+            "concurrent_limit": max_concurrent,
+            "max_ips_per_scan": max_ips,
+            "max_subnet_prefix": max_prefix,
+            "max_ports_per_scan": max_ports,
+            "quota_exceeded": (max_day is not None and used_day >= max_day),
             "concurrent_exceeded": (running >= max_concurrent),
         }
     except Exception as exc:
         log.warning("get_quota_status failed for org=%s: %s", org_id, exc)
         return {
-            "plan": "unknown", "scans_used_24h": 0, "scans_limit_24h": None,
-            "concurrent_running": 0, "concurrent_limit": 1,
-            "max_ips_per_scan": 254, "max_subnet_prefix": 24,
-            "quota_exceeded": False, "concurrent_exceeded": False,
+            "plan": "unknown",
+            "scans_used_24h": 0,
+            "scans_limit_24h": None,
+            "concurrent_running": 0,
+            "concurrent_limit": 1,
+            "max_ips_per_scan": 254,
+            "max_subnet_prefix": 24,
+            "quota_exceeded": False,
+            "concurrent_exceeded": False,
         }

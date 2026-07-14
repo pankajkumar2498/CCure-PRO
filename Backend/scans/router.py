@@ -14,7 +14,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -29,8 +37,8 @@ log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
 
 TERMINAL_PHASE_BY_MODE = {
-    "basic":              1,
-    "asset":              2,
+    "basic": 1,
+    "asset": 2,
     "vulnerability_audit": 3,
 }
 
@@ -39,8 +47,11 @@ TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
 
 
 def _resolve_org(user: User, requested_org: Optional[str]) -> str:
@@ -68,9 +79,7 @@ def _public_summary(summary: dict) -> dict:
     if not isinstance(summary, dict):
         return {}
     return {
-        key: value
-        for key, value in summary.items()
-        if not str(key).startswith("_")
+        key: value for key, value in summary.items() if not str(key).startswith("_")
     }
 
 
@@ -84,7 +93,9 @@ def _scan_summary(scan: Scan) -> dict:
     return summary
 
 
-def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: bool = False) -> dict:
+def _scan_to_dict(
+    scan: Scan, db: Optional[Session] = None, include_results: bool = False
+) -> dict:
     """Serialize a Scan row to a JSON-safe dict."""
     pipeline_mode = getattr(scan, "pipeline_mode", "basic") or "basic"
     creator = getattr(scan, "created_by_user", None)
@@ -93,32 +104,32 @@ def _scan_to_dict(scan: Scan, db: Optional[Session] = None, include_results: boo
     creator_role = getattr(getattr(creator, "role", None), "name", None)
 
     d = {
-        "id":            str(scan.id),
-        "scan_no":       scan.scan_no,
-        "display_id":    scan.scan_no,
-        "target":        scan.target_str,
-        "targets":       scan.target_hosts or [],
-        "scan_type":     scan.scan_type,
-        "phase":         scan.phases[-1].phase_order if scan.phases else 1,
-        "status":        scan.status,
+        "id": str(scan.id),
+        "scan_no": scan.scan_no,
+        "display_id": scan.scan_no,
+        "target": scan.target_str,
+        "targets": scan.target_hosts or [],
+        "scan_type": scan.scan_type,
+        "phase": scan.phases[-1].phase_order if scan.phases else 1,
+        "status": scan.status,
         "scan_duration": scan.duration_seconds,
-        "created_at":    _as_utc_iso(scan.created_at),
-        "updated_at":    _as_utc_iso(scan.updated_at),
-        "is_archived":   bool(scan.is_archived),
-        "archived_at":   _as_utc_iso(scan.archived_at),
-        "is_deleted":    bool(scan.is_deleted),
-        "deleted_at":    _as_utc_iso(scan.deleted_at),
+        "created_at": _as_utc_iso(scan.created_at),
+        "updated_at": _as_utc_iso(scan.updated_at),
+        "is_archived": bool(scan.is_archived),
+        "archived_at": _as_utc_iso(scan.archived_at),
+        "is_deleted": bool(scan.is_deleted),
+        "deleted_at": _as_utc_iso(scan.deleted_at),
         "pipeline_mode": pipeline_mode,
         "has_json_report": bool(getattr(scan, "report_json_path", None)),
-        "has_xml_report":  bool(getattr(scan, "report_xml_path", None)),
-        "summary":       _scan_summary(scan),
-        "created_by":    str(scan.created_by) if scan.created_by else None,
+        "has_xml_report": bool(getattr(scan, "report_xml_path", None)),
+        "summary": _scan_summary(scan),
+        "created_by": str(scan.created_by) if scan.created_by else None,
         "started_by": {
-            "user_id":      str(scan.created_by) if scan.created_by else None,
-            "username":     creator_username,
-            "full_name":    creator_full_name,
+            "user_id": str(scan.created_by) if scan.created_by else None,
+            "username": creator_username,
+            "full_name": creator_full_name,
             "display_name": creator_full_name or creator_username,
-            "role":         creator_role,
+            "role": creator_role,
         },
     }
     d["progress_percentage"] = _scan_progress_percentage(scan, pipeline_mode)
@@ -143,9 +154,15 @@ def _user_can_read_all_scans(user: User, db: Session) -> bool:
     ) is not None
 
 
-def _get_scan_or_404(scan_id: str, user: User, db: Session, org_id: Optional[str] = None) -> Scan:
+def _get_scan_or_404(
+    scan_id: str, user: User, db: Session, org_id: Optional[str] = None
+) -> Scan:
     target_org_id = _resolve_org(user, org_id)
-    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.id == scan_id, Scan.org_id == target_org_id)
+    query = (
+        db.query(Scan)
+        .options(joinedload(Scan.created_by_user))
+        .filter(Scan.id == scan_id, Scan.org_id == target_org_id)
+    )
     if not _user_can_read_all_scans(user, db):
         query = query.filter(Scan.created_by == str(user.id))
 
@@ -174,8 +191,14 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     return percentage
 
 
-def _build_scans_query(db: Session, user: User, org_id: str, scope: str, created_by: Optional[str] = None):
-    query = db.query(Scan).options(joinedload(Scan.created_by_user)).filter(Scan.org_id == org_id)
+def _build_scans_query(
+    db: Session, user: User, org_id: str, scope: str, created_by: Optional[str] = None
+):
+    query = (
+        db.query(Scan)
+        .options(joinedload(Scan.created_by_user))
+        .filter(Scan.org_id == org_id)
+    )
 
     if created_by:
         if created_by == "me":
@@ -183,7 +206,10 @@ def _build_scans_query(db: Session, user: User, org_id: str, scope: str, created
         elif _user_can_read_all_scans(user, db):
             query = query.filter(Scan.created_by == created_by)
         else:
-            raise HTTPException(status_code=403, detail="Insufficient privileges to view other users' scans.")
+            raise HTTPException(
+                status_code=403,
+                detail="Insufficient privileges to view other users' scans.",
+            )
     elif not _user_can_read_all_scans(user, db):
         query = query.filter(Scan.created_by == str(user.id))
 
@@ -194,7 +220,10 @@ def _build_scans_query(db: Session, user: User, org_id: str, scope: str, created
     elif scope == "deleted":
         query = query.filter(Scan.is_deleted.is_(True))
     elif scope != "all":
-        raise HTTPException(status_code=400, detail="Invalid scope. Use active, archived, deleted, or all.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid scope. Use active, archived, deleted, or all.",
+        )
 
     order_by = [Scan.created_at.desc()]
     if scope == "archived":
@@ -205,15 +234,17 @@ def _build_scans_query(db: Session, user: User, org_id: str, scope: str, created
     return query, order_by
 
 
-def _scan_history_snapshot(db: Session, user: User, org_id: str, scope: str, skip: int, limit: int, created_by: Optional[str] = None) -> dict:
+def _scan_history_snapshot(
+    db: Session,
+    user: User,
+    org_id: str,
+    scope: str,
+    skip: int,
+    limit: int,
+    created_by: Optional[str] = None,
+) -> dict:
     query, order_by = _build_scans_query(db, user, org_id, scope, created_by)
-    scans = (
-        query
-        .order_by(*order_by)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    scans = query.order_by(*order_by).offset(skip).limit(limit).all()
     total = query.count()
     rows = [_scan_to_dict(s) for s in scans]
     version_parts = [
@@ -237,15 +268,22 @@ def _get_websocket_user(websocket: WebSocket) -> User:
     ticket = websocket.query_params.get("ticket")
 
     if not ticket:
-        raise HTTPException(status_code=401, detail="Authentication ticket is required for WebSocket connections.")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication ticket is required for WebSocket connections.",
+        )
 
     payload = decode_token(ticket)
     if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired authentication.")
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired authentication."
+        )
 
     token_type = payload.get("type")
     if token_type != "ticket":
-        raise HTTPException(status_code=401, detail="Unsupported token type for WebSocket.")
+        raise HTTPException(
+            status_code=401, detail="Unsupported token type for WebSocket."
+        )
 
     user_id = payload.get("sub")
     if not user_id:
@@ -287,15 +325,16 @@ def _format_sse(event: str, payload: dict) -> str:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("")
 def list_scans(
-    skip:       int = Query(0,  ge=0),
-    limit:      int = Query(50, ge=1, le=200),
-    scope:      str = Query("active"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    scope: str = Query("active"),
     created_by: Optional[str] = Query(None),
-    org_id:     Optional[str] = Query(None),
-    db:         Session = Depends(get_db),
-    user:       User    = Depends(require_permission("scans", "read")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
@@ -313,7 +352,7 @@ async def stream_scan_history(
     limit: int = Query(200, ge=1, le=200),
     interval: float = Query(2.0, ge=0.5, le=15.0),
     created_by: Optional[str] = Query(None),
-    org_id:     Optional[str] = Query(None),
+    org_id: Optional[str] = Query(None),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
@@ -321,7 +360,10 @@ async def stream_scan_history(
     Uses adaptive polling based on active running scans.
     """
     if scope not in {"active", "archived", "deleted", "all"}:
-        raise HTTPException(status_code=400, detail="Invalid scope. Use active, archived, deleted, or all.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid scope. Use active, archived, deleted, or all.",
+        )
 
     org = _resolve_org(user, org_id)
 
@@ -329,14 +371,25 @@ async def stream_scan_history(
         last_version = None
         yield _format_sse("connected", {"ok": True, "scope": scope})
 
-        while not await request.is_disconnected():
+        while True:
             db = SessionLocal()
             try:
-                snapshot = await asyncio.to_thread(_scan_history_snapshot, db, user, org, scope, skip, limit, created_by)
+                snapshot = await asyncio.to_thread(
+                    _scan_history_snapshot,
+                    db,
+                    user,
+                    org,
+                    scope,
+                    skip,
+                    limit,
+                    created_by,
+                )
             finally:
                 db.close()
 
-            has_running_scans = any(s.get("status") == "running" for s in snapshot.get("scans", []))
+            has_running_scans = any(
+                s.get("status") == "running" for s in snapshot.get("scans", [])
+            )
             current_interval = 0.5 if has_running_scans else 2.0
 
             if snapshot["version"] != last_version:
@@ -386,33 +439,47 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
             # Send status of the most recent phase
             latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
             latest_summary = _public_summary(latest_phase.summary)
-            await websocket.send_json({
-                "scan_id": scan_id,
-                "phase": latest_phase.phase_order,
-                "progress": {
-                    "status": latest_phase.status,
-                    "summary": latest_summary,
-                    # Include enough data to satisfy frontend checks
-                    "discovered": latest_phase.hosts_processed,
-                    "total_ips": latest_summary.get("total_hosts", 0)
+            await websocket.send_json(
+                {
+                    "scan_id": scan_id,
+                    "phase": latest_phase.phase_order,
+                    "progress": {
+                        "status": latest_phase.status,
+                        "summary": latest_summary,
+                        # Include enough data to satisfy frontend checks
+                        "discovered": latest_phase.hosts_processed,
+                        "total_ips": latest_summary.get("total_hosts", 0),
+                    },
                 }
-            })
+            )
     finally:
         db.close()
 
     from core.redis_client import redis_client
+
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")
-    
-    log.info("[TRACE][WS][%s] WS Subscribed to Redis for scan %s", datetime.now().isoformat(), scan_id)
+
+    log.info(
+        "[TRACE][WS][%s] WS Subscribed to Redis for scan %s",
+        datetime.now().isoformat(),
+        scan_id,
+    )
     try:
         while True:
             # Reduce timeout and sleep for higher responsiveness
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=0.1
+            )
             if message:
                 data = json.loads(message["data"])
-                log.info("[TRACE][WS][%s] WS Relaying message for scan %s, phase %d, status %s", 
-                         datetime.now().isoformat(), scan_id, data.get("phase"), data.get("progress", {}).get("status"))
+                log.info(
+                    "[TRACE][WS][%s] WS Relaying message for scan %s, phase %d, status %s",
+                    datetime.now().isoformat(),
+                    scan_id,
+                    data.get("phase"),
+                    data.get("progress", {}).get("status"),
+                )
                 await websocket.send_json(data)
             else:
                 await asyncio.sleep(0.01)
@@ -426,9 +493,9 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
 @router.get("/{scan_id}")
 def get_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "read")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -438,14 +505,16 @@ def get_scan(
 @router.post("/{scan_id}/archive")
 def archive_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "archive")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "archive")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.is_deleted:
-        raise HTTPException(status_code=400, detail="Cannot archive a scan from the recycle bin.")
+        raise HTTPException(
+            status_code=400, detail="Cannot archive a scan from the recycle bin."
+        )
     if scan.is_archived:
         return {
             "detail": f"Scan {scan_id} is already archived",
@@ -466,9 +535,9 @@ def archive_scan(
 @router.post("/{scan_id}/stop")
 def stop_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "execute")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "execute")),
 ):
     """
     Terminates an active scan session.
@@ -477,23 +546,27 @@ def stop_scan(
     """
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     if scan.status in TERMINAL_STATUSES:
-        return {"detail": f"Scan {scan_id} is already in a terminal state ({scan.status})", "stopped": False}
+        return {
+            "detail": f"Scan {scan_id} is already in a terminal state ({scan.status})",
+            "stopped": False,
+        }
 
     # 1. Update DB Status
     scan.status = "cancelled"
     scan.updated_at = utcnow()
-    
+
     # Mark all non-terminal phases as cancelled
     for phase in scan.phases:
         if phase.status not in ("complete", "failed", "skipped", "cancelled"):
             phase.status = "cancelled"
             phase.completed_at = utcnow()
-            
+
     # 2. Revoke Celery Task
     if scan.current_task_id:
         try:
             from core.celery_app import celery_app
-            # On Windows, terminate=True might not work for all pool types, 
+
+            # On Windows, terminate=True might not work for all pool types,
             # but revoke() will at least prevent the task from starting if it's queued.
             # We omit the signal param to use the OS default (SIGTERM on Linux, N/A on Windows).
             celery_app.control.revoke(scan.current_task_id, terminate=True)
@@ -510,9 +583,9 @@ def stop_scan(
 @router.post("/{scan_id}/restore")
 def restore_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "restore")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "restore")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -551,9 +624,9 @@ def restore_scan(
 @router.delete("/{scan_id}")
 def delete_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "recycle")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "recycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -577,9 +650,9 @@ def delete_scan(
 @router.delete("/{scan_id}/purge")
 def purge_scan(
     scan_id: str,
-    org_id:  Optional[str] = Query(None),
-    db:   Session = Depends(get_db),
-    user: User    = Depends(require_permission("scans", "purge")),
+    org_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)

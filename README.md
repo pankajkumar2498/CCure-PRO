@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 
 # For Running Worker for Nmap Scans locally
-.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker 
+.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker
 
 # Scanner worker concurrency
 # Default is 20 parallel scan tasks. Override before starting the worker if needed:
@@ -71,17 +71,66 @@ Restart-Computer
 
 
 
-Your Windows scanning will only work if the target has OpenSSH Server configured correctly. You should surface this to users in the UI and/or docs. The target Windows machine needs:
-powershell# Install OpenSSH Server (run as Administrator on target)
-Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+
+# If Fresh Machine came into Network then follow below Procedure to make it successfull scan through Credentialed Scan
+# Enable OpenSSH Server (Manually on Traget Machine)
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
 Start-Service sshd
 Set-Service -Name sshd -StartupType 'Automatic'
 
-# Set PowerShell as default shell (required for your PS commands to work)
-New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" `
-    -Name DefaultShell `
-    -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
-    -PropertyType String -Force
+# Set PowerShell as default shell
+New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -PropertyType String -Force
+
+# Open Firewall Port 22
+New-NetFirewallRule -Name "OpenSSH-In" -DisplayName "Allow OpenSSH Port 22" -Enabled True -Profile Any -Direction Inbound -Action Allow -Protocol TCP -LocalPort 22 -ErrorAction SilentlyContinue
+
+#
+Restart-Service sshd
+
+
+# Run inside Powershell (On Target Machine)
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "LocalAccountTokenFilterPolicy" -Value 1 -PropertyType DWord -Force
+
+
+
+
+
+# Do it from Source Machine (Prerequisite - SSH should be enabled on Target Machine to run below commands)
+# First take SSH of Target Machine bu using :
+  ssh username@IP
+
+Option 1: Start PowerShell first (Recommended)
+
+1.  Switch shell:
+    Type powershell in cmd terminal your SSH session to switch to a PowerShell environment, then run the commands:
+    powershell
+
+2.  Run the commands:
+    New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -PropertyType String -Force
+Restart-Service sshd
+
+
+Option 2: Alternatively, we can run them directly from your current cmd prompt by wrapping them in powershell -Command:
+
+powershell -Command "New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -PropertyType String -Force"
+
+powershell -Command "Restart-Service sshd"
+
+# IMPORTANT
+Because you are modifying registry keys under HKLM (Local Machine) and restarting a system service (sshd), the cdac user account must have Administrator privileges, and UAC must allow remote elevation. If you receive an "Access Denied" error, make sure you ran the LocalAccountTokenFilterPolicy registry fix first.
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -220,3 +269,280 @@ Copy-Item -Path "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\scrip
 # 2. Restart the Nginx Windows service to apply the new configuration
 Restart-Service -Name CCureNginx
 Once Nginx restarts, you should be able to access the application again at http://10.180.6.14/login
+
+
+
+
+
+
+
+
+
+
+## Running the Application Stack
+
+### Startup Commands
+
+To start the hybrid docker/host stack, run the following PowerShell scripts:
+
+* **Normal Startup (Instant)**:
+  Reuses existing containers. Use this for regular day-to-day development:
+  ```powershell
+  .\scripts\start_host_scan_stack.ps1
+  ```
+* **Full Rebuild**:
+  Rebuilds all container images from scratch. Use this only when dependency configs (`requirements.txt`, `package.json`) or Docker files change:
+  ```powershell
+  .\scripts\start_host_scan_stack.ps1 -Rebuild
+  ```
+* **Targeted Rebuild**:
+  Rebuilds and starts a specific service container (e.g. `frontend` or `api`):
+  ```powershell
+  .\scripts\start_host_scan_stack.ps1 -Rebuild -Service frontend
+  ```
+* **Force Recreate**:
+  Forces recreation of all containers without rebuilding images:
+  ```powershell
+  .\scripts\start_host_scan_stack.ps1 -Recreate
+  ```
+
+### Optimized Local Development Workflow (Industry Standard)
+
+To avoid rebuilding/restarting all containers for minor frontend or backend edits, use these targeted developer commands:
+
+1. **For Frontend Development (React / CSS / JSX)**:
+   - Start the backend dependencies in Docker:
+     ```powershell
+     .\scripts\start_host_scan_stack.ps1
+     ```
+   - Run the hot-reloading development server directly on your host machine:
+     ```powershell
+     cd Frontend
+     npm run dev
+     ```
+     * Vite will serve the frontend at `http://localhost:3000` with instant Hot Module Replacement (under 100ms) and route API queries automatically to Docker on `http://localhost:8000`.
+
+2. **For Backend Development (FastAPI)**:
+   - The backend codebase (`./Backend`) is mounted as a container volume. Changes are live instantly inside Docker.
+   - If you want to force restart only the API worker to reload the code:
+     ```powershell
+     docker compose restart api
+     ```
+   - To monitor container logs live in real-time:
+     ```powershell
+     docker compose logs -f api
+     ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# CI/CD Pipeline
+Here is the step-by-step guide to verifying all the newly implemented QA and regression components locally on your machine.
+
+Since you are running Windows with PowerShell and have your virtual environment active, run these commands inside your terminal:
+
+Step 1: Run the Automated Regression Test Suite
+First, we will run the new test cases we added to verify that RBAC mapping, the Maker-Checker self-approval block, the PDF report visual layout, and the process leak detection fixture are all working perfectly.
+
+Run the following in your PowerShell terminal:
+
+powershell
+# Ensure you are in the Backend folder
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
+# Enable local scanner mocking so you don't need nmap/scapy binaries installed on your host OS
+$env:MOCK_SCANNERS="true"
+# Execute our new regression test modules
+pytest tests/test_rbac_routes.py tests/test_remediation_safety.py tests/test_report_limits.py -v
+Expected Output: All three test suites should execute and print PASSED.
+
+Step 2: Register and Verify Git Pre-commit Hooks
+Next, install and register the local pre-commit hooks so formatting and AST security scans run automatically before every Git commit:
+
+powershell
+# 1. Move to the repository root directory
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO"
+# 2. Install pre-commit tool (via your active python virtualenv)
+pip install pre-commit
+# 3. Register the hooks in your local .git directory
+pre-commit install
+# 4. (Optional) Run all checks manually across existing files to verify setup:
+pre-commit run --all-files
+Expected Output: You should see pre-commit download and run checks (Black, Ruff, Bandit, Prettier, ESLint) across the codebase.
+
+Step 3: Establish the OpenAPI Schema Baseline
+To enable the CI/CD pipeline to catch breaking API changes, generate the baseline openapi.json contract file:
+
+powershell
+# Move to the Backend folder
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
+# Generate the initial schema definition file
+python -c "import json; from main import app; print(json.dumps(app.openapi()))" > openapi.json
+Verification: This creates a file named openapi.json in your Backend/ folder. Add and commit this file to your git repository (git add openapi.json). Any future PR that changes paths or formats will now be checked against this file in CI.
+
+Step 4: Verify CI/CD Automation
+To verify the GitHub Actions setup, simply push your changes to a branch or open a Pull Request. GitHub will automatically spin up PostgreSQL and Redis service containers, run the Alembic migration integrity loops, perform the security/dependency audits, and run the test suite inside the test container.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Step 1: Start Backend & Scanner Stack
+Run this command once in your Administrator PowerShell window:
+    .\scripts\start_host_scan_stack.ps1
+
+What this does: It instantly starts the containerized database, Redis, API server, and web worker, and also starts your Windows host scanner worker.
+
+Step 2: Start Frontend Dev Server
+Open a new, separate PowerShell window (it does not need to be Administrator), navigate to the Frontend folder, and start the Vite dev server:
+
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Frontend"
+    npm run dev
+What this does: It launches the hot-reloading React dev server on your host machine.
+Access the App: Open your browser and go to: http://localhost:3000
+
+How Changes Reflect Immediately:
+1. Editing Frontend Files (CSS / JSX / JS)
+What to do: Just edit and save the files in your editor (e.g. VS Code).
+How it reflects: Instantly (under 100ms). Vite will hot-reload only the modified components in your browser tab at http://localhost:3000 without rebuilding any containers or reloading the page.
+
+2. Editing Backend Files (Python)
+What to do: Just edit and save your Python code.
+How it reflects: Instantly. Because the ./Backend directory is volume-mounted directly into the API container, Uvicorn detects your changes and hot-reloads the Python server automatically.
+
+3. Adding New Packages/Dependencies (Only when needed)
+If you change Python requirements: Rebuild only the API container:
+
+.\scripts\start_host_scan_stack.ps1 -Rebuild -Service api
+
+If you add Frontend npm packages: Press Ctrl+C in your frontend terminal to stop Vite, run npm install, and then restart with npm run dev.
+
+
+
+
+
+For the Frontend (PowerShell version)
+Run the commands separated by ;:
+
+docker compose build frontend; docker compose up -d frontend
+(Or simply run docker compose build frontend first, then run docker compose up -d frontend after it finishes).
+
+For the Backend / Workers Restart
+Since worker and web-worker use Docker profiles (profiles: ["container-scanner"]), standard docker compose commands might ignore them if the profile isn't explicitly active. To make sure they are restarted, include the --profile flag:
+
+docker compose --profile container-scanner restart api worker web-worker
+
+
+OR
+
+ .\scripts\start_host_scan_stack.ps1
+
+ docker compose --profile container-scanner restart api worker web-worker
+
+ docker compose build frontend; docker compose up -d frontend
+
+ docker compose --profile container-scanner up -d worker  (Celery worker)
+
+ docker compose down -v
+
+ docker compose restart api
+
+
+
+
+
+
+
+
+
+
+ Backend\.venv\Scripts\python -m scripts.seed_real_rules

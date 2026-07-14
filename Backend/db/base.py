@@ -21,8 +21,7 @@ import re
 import string
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, event, text, DateTime
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, event, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # TIMESTAMPTZ alias — maps to TIMESTAMP WITH TIME ZONE in PostgreSQL
@@ -33,25 +32,31 @@ from config import AppConfig
 
 # ─── Engine ───────────────────────────────────────────────────────────────────
 
-engine = create_engine(
-    AppConfig.DATABASE_URL,
-    **AppConfig.DATABASE_ENGINE_KWARGS
-)
+engine = create_engine(AppConfig.DATABASE_URL, **AppConfig.DATABASE_ENGINE_KWARGS)
 
 # ─── Enable pg_trgm extension for fast text search ───────────────────────────
+
 
 @event.listens_for(engine, "connect")
 def _set_extensions(dbapi_connection, connection_record):
     """Enable useful PostgreSQL extensions on first connection."""
+    old_autocommit = dbapi_connection.autocommit
+    dbapi_connection.autocommit = True
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
         cursor.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-    except Exception:
-        pass  # Extensions may already exist
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("db.base").warning(
+            "Failed to create postgres extensions: %s", exc
+        )
     finally:
         cursor.close()
+        dbapi_connection.autocommit = old_autocommit
+
 
 # ─── Session & Base ──────────────────────────────────────────────────────────
 
@@ -78,7 +83,9 @@ def _safe_id_part(value: str, max_len: int = 20) -> str:
 
 def _stable_hash(value: str, length: int = 8) -> str:
     """Generate a stable hex digest for a value, useful for namespace tokens."""
-    return hashlib.blake2b(str(value).encode("utf-8"), digest_size=(length + 1) // 2).hexdigest()[:length]
+    return hashlib.blake2b(
+        str(value).encode("utf-8"), digest_size=(length + 1) // 2
+    ).hexdigest()[:length]
 
 
 def gen_org_token(org_identifier: str) -> str:
@@ -97,10 +104,12 @@ def gen_org_token(org_identifier: str) -> str:
 def gen_uuid() -> str:
     """Fallback UUID — only used for tables that don't need readable IDs."""
     import uuid
+
     return str(uuid.uuid4())
 
 
 # ─── Stripe-Style ID Generators ───────────────────────────────────────────────
+
 
 def gen_org_id(slug: str) -> str:
     """
@@ -190,6 +199,7 @@ def gen_vuln_finding_id(asset_id: str, vuln_id: str) -> str:
 
 # ─── Web Scan ID Generators ──────────────────────────────────────────────────
 
+
 def gen_web_scan_id(org_slug: str) -> str:
     """
     Generate a readable WebScan ID.
@@ -238,12 +248,31 @@ def gen_network_link_id(org_slug: str, src_mac: str, dst_mac: str) -> str:
     return f"lnk_{org_part}_{clean_src}_{clean_dst}"
 
 
+def gen_compliance_credential_id(org_slug: str) -> str:
+    """
+    Generate a readable Compliance Credential ID.
+    Example: ccrd_defa_1a2b3c4d_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    return f"ccrd_{org_part}_{_rand()}"
+
+
+def gen_compliance_remediation_request_id(org_slug: str) -> str:
+    """
+    Generate a readable Compliance Remediation Request ID.
+    Example: crrq_defa_1a2b3c4d_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    return f"crrq_{org_part}_{_rand()}"
+
+
 def utcnow() -> datetime:
     """Return the current UTC datetime (timezone-aware)."""
     return datetime.now(timezone.utc)
 
 
 # ─── FastAPI dependency ───────────────────────────────────────────────────────
+
 
 def get_db():
     """FastAPI dependency: yields a scoped DB session."""

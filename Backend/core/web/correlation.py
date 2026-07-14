@@ -14,7 +14,7 @@ Correlation rules:
 """
 
 import logging
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set
 
 log = logging.getLogger("ccure.web.correlation")
 
@@ -57,7 +57,9 @@ def deduplicate_findings(findings: List[Dict]) -> List[Dict]:
 
     log.info(
         "Deduplication: %d findings → %d (removed %d duplicates)",
-        len(findings), len(deduplicated), len(findings) - len(deduplicated),
+        len(findings),
+        len(deduplicated),
+        len(findings) - len(deduplicated),
     )
     return deduplicated
 
@@ -110,8 +112,8 @@ def _merge_finding_group(group: List[Dict]) -> Dict:
     if len(tools_used) > 1:
         merged["is_verified"] = True
         merged["description"] = (
-            (merged.get("description") or "") +
-            f"\n\n[Confirmed by {len(tools_used)} tools: {', '.join(sorted(tools_used))}]"
+            (merged.get("description") or "")
+            + f"\n\n[Confirmed by {len(tools_used)} tools: {', '.join(sorted(tools_used))}]"
         ).strip()
 
     return merged
@@ -135,9 +137,7 @@ def correlate_with_network_findings(
         Enhanced web findings with cross-reference notes
     """
     network_cve_ids: Set[str] = {
-        cve.get("cve_id", "").upper()
-        for cve in network_cves
-        if cve.get("cve_id")
+        cve.get("cve_id", "").upper() for cve in network_cves if cve.get("cve_id")
     }
 
     if not network_cve_ids:
@@ -148,8 +148,8 @@ def correlate_with_network_findings(
         if cve_id and cve_id in network_cve_ids:
             f["is_verified"] = True
             f["description"] = (
-                (f.get("description") or "") +
-                f"\n\n[Cross-confirmed: also found by network vulnerability scan]"
+                (f.get("description") or "")
+                + "\n\n[Cross-confirmed: also found by network vulnerability scan]"
             ).strip()
             log.info(
                 "Cross-correlation: %s confirmed by both web and network scans",

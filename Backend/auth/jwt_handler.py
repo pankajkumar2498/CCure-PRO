@@ -60,6 +60,7 @@ argon2_hasher = PasswordHasher()
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
+
 def validate_password_strength(password: str) -> str:
     """
     Validate that the password meets complexity requirements:
@@ -106,6 +107,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -122,7 +124,12 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_access_token(user_id: int, username: str, role: Optional[str] = None, org_id: Optional[str] = None) -> str:
+def create_access_token(
+    user_id: int,
+    username: str,
+    role: Optional[str] = None,
+    org_id: Optional[str] = None,
+) -> str:
     payload = {"sub": str(user_id), "username": username, "type": "access"}
     if role is not None:
         payload["role"] = role
@@ -134,13 +141,14 @@ def create_access_token(user_id: int, username: str, role: Optional[str] = None,
     )
 
 
-def create_mfa_challenge_token(user_id: Union[str, int], username: str, role: Optional[str] = None, org_id: Optional[str] = None) -> str:
+def create_mfa_challenge_token(
+    user_id: Union[str, int],
+    username: str,
+    role: Optional[str] = None,
+    org_id: Optional[str] = None,
+) -> str:
     """Create a short-lived (5 minutes) challenge token for multi-factor authentication step-up."""
-    payload = {
-        "sub": str(user_id),
-        "username": username,
-        "type": "mfa_challenge"
-    }
+    payload = {"sub": str(user_id), "username": username, "type": "mfa_challenge"}
     if role is not None:
         payload["role"] = role
     if org_id is not None:
@@ -149,7 +157,6 @@ def create_mfa_challenge_token(user_id: Union[str, int], username: str, role: Op
         payload,
         timedelta(minutes=5),
     )
-
 
 
 def create_download_ticket(user_id: str, username: str) -> str:
@@ -161,10 +168,12 @@ def create_download_ticket(user_id: str, username: str) -> str:
     )
 
 
-def create_refresh_token(user_id, db: Optional[Session] = None, request: Optional[Request] = None) -> str:
+def create_refresh_token(
+    user_id, db: Optional[Session] = None, request: Optional[Request] = None
+) -> str:
     """
     Create a new refresh token for a user.
-    
+
     Organization Status Check:
     - User must belong to an active organization.
     - This prevents token creation for deactivated organizations.
@@ -178,14 +187,19 @@ def create_refresh_token(user_id, db: Optional[Session] = None, request: Optiona
             raise ValueError("User not found")
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
             raise ValueError("User account is not eligible for refresh tokens")
-        
+
         # ─ Organization Status Check ────────────────────────────────────────
         # Prevent token creation for users in deactivated organizations.
         from db.models import Organization
-        organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+
+        organization = (
+            db.query(Organization).filter(Organization.id == user.org_id).first()
+        )
         if organization and not organization.is_active:
-            raise ValueError("User's organization is deactivated; cannot create refresh token")
-        
+            raise ValueError(
+                "User's organization is deactivated; cannot create refresh token"
+            )
+
         jti = secrets.token_urlsafe(32)
         expires_at = _utcnow() + REFRESH_TOKEN_EXPIRE
         token = _create_token(
@@ -222,7 +236,9 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-def _get_refresh_session(db: Session, refresh_token: str) -> Optional[RefreshTokenSession]:
+def _get_refresh_session(
+    db: Session, refresh_token: str
+) -> Optional[RefreshTokenSession]:
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         return None
@@ -232,9 +248,11 @@ def _get_refresh_session(db: Session, refresh_token: str) -> Optional[RefreshTok
     if not token_jti or not token_sub:
         return None
 
-    session_row = db.query(RefreshTokenSession).filter(
-        RefreshTokenSession.token_jti == token_jti
-    ).first()
+    session_row = (
+        db.query(RefreshTokenSession)
+        .filter(RefreshTokenSession.token_jti == token_jti)
+        .first()
+    )
     if not session_row:
         return None
 
@@ -274,11 +292,13 @@ def revoke_refresh_token(refresh_token: str, db: Optional[Session] = None) -> bo
             db.close()
 
 
-def refresh_access_token(refresh_token: str, db: Optional[Session] = None, request: Optional[Request] = None) -> Optional[dict]:
+def refresh_access_token(
+    refresh_token: str, db: Optional[Session] = None, request: Optional[Request] = None
+) -> Optional[dict]:
     """
     Given a valid refresh token, rotate it and return fresh access/refresh tokens.
     Returns None if the refresh token is invalid, expired, revoked, unknown, or from a deactivated org.
-    
+
     Organization Status Check:
     - If the user's organization has been deactivated, refresh fails immediately.
     - This prevents token rotation for users in inactive organizations.
@@ -301,7 +321,10 @@ def refresh_access_token(refresh_token: str, db: Optional[Session] = None, reque
         # Prevent token refresh if organization is deactivated.
         # This ensures session termination for deactivated organizations.
         from db.models import Organization
-        organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+
+        organization = (
+            db.query(Organization).filter(Organization.id == user.org_id).first()
+        )
         if organization and not organization.is_active:
             return None
 

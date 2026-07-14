@@ -654,25 +654,24 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                     exc,
                 )
 
-            if not vlan_port_map:
-                # Fallback to Cisco vmVlan
-                try:
-                    vm_rows = await _snmp_walk_async(
-                        engine, auth, transport, context, OID_CISCO_VM_VLAN
-                    )
-                    for oid_str, val in vm_rows:
-                        if_index = _get_oid_suffix(oid_str, OID_CISCO_VM_VLAN)
-                        if if_index:
-                            try:
-                                vlan_port_map[if_index] = int(val)
-                            except (ValueError, TypeError):
-                                pass
-                except Exception as exc:
-                    log.debug(
-                        "SNMP walk [%s]: vmVlan walk failed (may not be supported): %s",
-                        target_ip,
-                        exc,
-                    )
+            # Cisco vmVlan query (merge results with dot1qPvid)
+            try:
+                vm_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_CISCO_VM_VLAN
+                )
+                for oid_str, val in vm_rows:
+                    if_index = _get_oid_suffix(oid_str, OID_CISCO_VM_VLAN)
+                    if if_index and if_index not in vlan_port_map:
+                        try:
+                            vlan_port_map[if_index] = int(val)
+                        except (ValueError, TypeError):
+                            pass
+            except Exception as exc:
+                log.debug(
+                    "SNMP walk [%s]: vmVlan walk failed (may not be supported): %s",
+                    target_ip,
+                    exc,
+                )
 
             # Merge VLAN IDs into interface_table entries
             for port_or_idx, vlan_id in vlan_port_map.items():

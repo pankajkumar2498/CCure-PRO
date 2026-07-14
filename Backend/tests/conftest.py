@@ -153,10 +153,8 @@ def reset_database():
 
     def _cleanup():
         with engine.begin() as conn:
-            # Delete all organizations except the default one seeded in migrate_production_schema
-            conn.execute(text("DELETE FROM organizations WHERE id != 'org_default'"))
-            # Delete any extra users created during the test
-            conn.execute(text("DELETE FROM users WHERE username != 'testadmin'"))
+            # Truncate organizations and users tables and cascade to all dependent tables
+            conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
             # Delete any non-system roles created during the test
             conn.execute(
                 text(

@@ -58,7 +58,7 @@ def test_format_mac():
 
 def test_format_ip_from_bytes():
     # Native bytes 4-byte IP
-    assert _format_ip_from_bytes(b"\xc0\xa8\x01\x01") == "10.180.6.14"
+    assert _format_ip_from_bytes(b"\xc0\xa8\x01\x01") == "192.168.1.1"
 
     # Mock PyASN1 4-byte IP
     mock_ip = MockOctetString(b"\x0a\xb4\x06\x0e")

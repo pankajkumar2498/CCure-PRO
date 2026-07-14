@@ -20,36 +20,40 @@ from typing import Dict
 # ─────────────────────────────────────────────────────────────────────────────
 
 UDP_SERVICES: Dict[int, Dict] = {
-    53:   {"service": "dns",         "risk": "High",   "probe": "dns"},
-    67:   {"service": "dhcp",        "risk": "High",   "probe": "dhcp"},
-    69:   {"service": "tftp",        "risk": "High",   "probe": "tftp"},
-    88:   {"service": "kerberos",    "risk": "High",   "probe": "generic"},
-    123:  {"service": "ntp",         "risk": "Medium", "probe": "ntp"},
-    137:  {"service": "netbios-ns",  "risk": "High",   "probe": "netbios"},
-    138:  {"service": "netbios-dgm", "risk": "Medium", "probe": "generic"},
-    161:  {"service": "snmp",        "risk": "High",   "probe": "snmp"},
-    162:  {"service": "snmp-trap",   "risk": "Medium", "probe": "snmp"},
-    389:  {"service": "ldap",        "risk": "High",   "probe": "generic"},
-    500:  {"service": "ike",         "risk": "High",   "probe": "ike"},
-    514:  {"service": "syslog",      "risk": "Medium", "probe": "syslog"},
-    520:  {"service": "rip",         "risk": "Medium", "probe": "generic"},
-    623:  {"service": "ipmi",        "risk": "High",   "probe": "ipmi"},
-    1900: {"service": "upnp",        "risk": "Medium", "probe": "upnp"},
-    5353: {"service": "mdns",        "risk": "Low",    "probe": "mdns"},
+    53: {"service": "dns", "risk": "High", "probe": "dns"},
+    67: {"service": "dhcp", "risk": "High", "probe": "dhcp"},
+    69: {"service": "tftp", "risk": "High", "probe": "tftp"},
+    88: {"service": "kerberos", "risk": "High", "probe": "generic"},
+    123: {"service": "ntp", "risk": "Medium", "probe": "ntp"},
+    137: {"service": "netbios-ns", "risk": "High", "probe": "netbios"},
+    138: {"service": "netbios-dgm", "risk": "Medium", "probe": "generic"},
+    161: {"service": "snmp", "risk": "High", "probe": "snmp"},
+    162: {"service": "snmp-trap", "risk": "Medium", "probe": "snmp"},
+    389: {"service": "ldap", "risk": "High", "probe": "generic"},
+    500: {"service": "ike", "risk": "High", "probe": "ike"},
+    514: {"service": "syslog", "risk": "Medium", "probe": "syslog"},
+    520: {"service": "rip", "risk": "Medium", "probe": "generic"},
+    623: {"service": "ipmi", "risk": "High", "probe": "ipmi"},
+    1900: {"service": "upnp", "risk": "Medium", "probe": "upnp"},
+    5353: {"service": "mdns", "risk": "Low", "probe": "mdns"},
 }
 
 
-def add_udp_result(host: Dict, port: int, service_info: Dict, state: str, banner: str) -> None:
+def add_udp_result(
+    host: Dict, port: int, service_info: Dict, state: str, banner: str
+) -> None:
     """Append a UDP result to the host dict, deduplicating by port."""
     existing = {s.get("port") for s in host.get("udp_services", [])}
     if port not in existing:
-        host.setdefault("udp_services", []).append({
-            "port":    port,
-            "service": service_info.get("service", "unknown"),
-            "state":   state,
-            "banner":  banner,
-            "risk":    service_info.get("risk", "Info"),
-        })
+        host.setdefault("udp_services", []).append(
+            {
+                "port": port,
+                "service": service_info.get("service", "unknown"),
+                "state": state,
+                "banner": banner,
+                "risk": service_info.get("risk", "Info"),
+            }
+        )
 
 
 def build_payload(port: int, probe_type: str) -> bytes:
@@ -60,12 +64,37 @@ def build_payload(port: int, probe_type: str) -> bytes:
     """
     if probe_type == "dns":
         # Standard DNS A query for "localhost"
-        return bytes([
-            0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x09, 0x6c, 0x6f, 0x63,
-            0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x00, 0x00,
-            0x01, 0x00, 0x01,
-        ])
+        return bytes(
+            [
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x09,
+                0x6C,
+                0x6F,
+                0x63,
+                0x61,
+                0x6C,
+                0x68,
+                0x6F,
+                0x73,
+                0x74,
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x01,
+            ]
+        )
 
     if probe_type == "snmp":
         # SNMPv2c GetRequest — community "public", OID 1.3.6.1.2.1.1.1.0
@@ -102,25 +131,69 @@ def build_payload(port: int, probe_type: str) -> bytes:
     if probe_type == "ike":
         # IKEv1 Phase-1 Main Mode SA initiation (28-byte header)
         return (
-            b"\x00" * 8 +
-            b"\x00" * 8 +
-            b"\x01\x10\x02\x00\x00\x00\x00\x00\x00\x00\x00\x1c"
+            b"\x00" * 8
+            + b"\x00" * 8
+            + b"\x01\x10\x02\x00\x00\x00\x00\x00\x00\x00\x00\x1c"
         )
 
     if probe_type == "ipmi":
         # RMCP ASF Presence Ping
-        return bytes([0x06, 0x00, 0xff, 0x06, 0x00, 0x00, 0x11, 0xbe, 0x80, 0x00, 0x00, 0x00])
+        return bytes(
+            [0x06, 0x00, 0xFF, 0x06, 0x00, 0x00, 0x11, 0xBE, 0x80, 0x00, 0x00, 0x00]
+        )
 
     if probe_type == "mdns":
         # mDNS PTR query for _services._dns-sd._udp.local
-        return bytes([
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x09, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73,
-            0x07, 0x5f, 0x64, 0x6e, 0x73, 0x2d, 0x73, 0x64,
-            0x04, 0x5f, 0x75, 0x64, 0x70,
-            0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c,
-            0x00, 0x00, 0x0c, 0x00, 0x01,
-        ])
+        return bytes(
+            [
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x09,
+                0x5F,
+                0x73,
+                0x65,
+                0x72,
+                0x76,
+                0x69,
+                0x63,
+                0x65,
+                0x73,
+                0x07,
+                0x5F,
+                0x64,
+                0x6E,
+                0x73,
+                0x2D,
+                0x73,
+                0x64,
+                0x04,
+                0x5F,
+                0x75,
+                0x64,
+                0x70,
+                0x05,
+                0x6C,
+                0x6F,
+                0x63,
+                0x61,
+                0x6C,
+                0x00,
+                0x00,
+                0x0C,
+                0x00,
+                0x01,
+            ]
+        )
 
     if probe_type == "syslog":
         return b"<34>1 - - - - - CCure-probe\n"
@@ -134,4 +207,4 @@ def build_payload(port: int, probe_type: str) -> bytes:
             b"ST: ssdp:all\r\n\r\n"
         )
 
-    return b""   # generic / unknown
+    return b""  # generic / unknown

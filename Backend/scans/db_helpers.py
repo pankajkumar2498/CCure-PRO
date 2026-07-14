@@ -1,13 +1,12 @@
 """
 scans/db_helpers.py
 ───────────────────────────────────────────────────────────────────────────────
-Functions called from main.py endpoints to create / update Scan rows 
+Functions called from main.py endpoints to create / update Scan rows
 and track execution phases natively in the production PostgreSQL schema.
 
 Automatically runs Identity Resolution (AssetSyncer) internally.
 """
 
-from datetime import datetime
 from typing import Optional, List, Any
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -15,15 +14,17 @@ from sqlalchemy.orm import Session
 from db.models.users import User
 from db.models.rbac import Organization
 from db.models.scans import Scan, ScanPhase
-from scans.asset_syncer import sync_host_discovery, sync_asset_discovery, sync_vulnerability_audit
+from scans.asset_syncer import (
+    sync_host_discovery,
+    sync_asset_discovery,
+    sync_vulnerability_audit,
+)
 from core.audit import log_audit_event
 from db.base import utcnow, gen_scan_id, gen_scan_phase_id
 
 
 _UNSAFE_JSONB_CHARS = {
-    codepoint: None
-    for codepoint in range(32)
-    if codepoint not in (9, 10, 13)
+    codepoint: None for codepoint in range(32) if codepoint not in (9, 10, 13)
 }
 
 
@@ -59,9 +60,7 @@ def _public_phase_summary(summary: Any) -> dict:
     if not isinstance(summary, dict):
         return {}
     return {
-        key: value
-        for key, value in summary.items()
-        if not str(key).startswith("_")
+        key: value for key, value in summary.items() if not str(key).startswith("_")
     }
 
 
@@ -81,10 +80,16 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
     # Map phases to friendly keys for the frontend
     phases_data = {}
     for phase in scan.phases:
-        key = "phase1" if phase.phase_order == 1 else \
-              "phase2" if phase.phase_order == 2 else \
-              "phase3" if phase.phase_order == 3 else f"phase{phase.phase_order}"
-        
+        key = (
+            "phase1"
+            if phase.phase_order == 1
+            else (
+                "phase2"
+                if phase.phase_order == 2
+                else "phase3" if phase.phase_order == 3 else f"phase{phase.phase_order}"
+            )
+        )
+
         # Identity resolve phase data (this recreates the 'data' field from Assets)
         # For performance, in production we'd use the legacy_json_builder
         phases_data[key] = {
@@ -95,19 +100,31 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
 
     # Use the existing legacy builder to get the 'data' (hosts list) correctly
     from scans.legacy_json_builder import build_legacy_scan_results
+
     full_results = build_legacy_scan_results(db, scan_id)
 
     return {
-        "id":               str(scan.id),
-        "scan_no":          scan.scan_no,
-        "status":           scan.status,
-        "pipeline_mode":    scan.pipeline_mode,
+        "id": str(scan.id),
+        "scan_no": scan.scan_no,
+        "status": scan.status,
+        "pipeline_mode": scan.pipeline_mode,
         "report_json_path": scan.report_json_path,
-        "report_xml_path":  scan.report_xml_path,
-        "phase1":           {**phases_data.get("phase1", {}), "data": full_results.get("phase1", {}).get("data", [])},
-        "phase2":           {**phases_data.get("phase2", {}), "data": full_results.get("phase2", {}).get("data", [])},
-        "phase3":           {**phases_data.get("phase3", {}), "data": full_results.get("phase3", {}).get("data", [])},
+        "report_xml_path": scan.report_xml_path,
+        "phase1": {
+            **phases_data.get("phase1", {}),
+            "data": full_results.get("phase1", {}).get("data", []),
+        },
+        "phase2": {
+            **phases_data.get("phase2", {}),
+            "data": full_results.get("phase2", {}).get("data", []),
+        },
+        "phase3": {
+            **phases_data.get("phase3", {}),
+            "data": full_results.get("phase3", {}).get("data", []),
+        },
     }
+
+
 def _get_org_id(db: Session, user_id: str) -> str:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -129,11 +146,7 @@ def _next_scan_no(db: Session, org_id: str, user_id: str) -> int:
             {"lock_key": f"scan_no:{org_id}"},
         )
 
-    current = (
-        db.query(func.max(Scan.scan_no))
-        .filter(Scan.org_id == org_id)
-        .scalar()
-    )
+    current = db.query(func.max(Scan.scan_no)).filter(Scan.org_id == org_id).scalar()
     return int(current or 0) + 1
 
 
@@ -152,7 +165,7 @@ def create_scan(
         org_id = _get_org_id(db, user_id)
     org = db.query(Organization).filter(Organization.id == org_id).first()
     org_slug = org.slug if org else org_id
-    
+
     scan = Scan(
         id=gen_scan_id(org_slug),
         org_id=org_id,
@@ -182,7 +195,7 @@ def create_scan(
                 "scan_no": scan.scan_no,
                 "pipeline_mode": pipeline_mode,
                 "targets": targets,
-            }
+            },
         )
         db.commit()
 
@@ -190,13 +203,13 @@ def create_scan(
 
 
 def update_scan_phase1(
-    db:                Session,
-    scan_id:           str,
-    user_id:           str,
-    phase1_data:       dict,
-    is_final:          bool = False,
-    report_json_path:  Optional[str] = None,
-    report_xml_path:   Optional[str] = None,
+    db: Session,
+    scan_id: str,
+    user_id: str,
+    phase1_data: dict,
+    is_final: bool = False,
+    report_json_path: Optional[str] = None,
+    report_xml_path: Optional[str] = None,
 ) -> Optional[Scan]:
     """
     Called right after /scan/host-discovery succeeds. Updates the existing scan.
@@ -218,7 +231,7 @@ def update_scan_phase1(
 
     # Default terminal status
     scan.status = "complete" if is_final else "running"
-    
+
     # ATOMIC UNREACHABLE DETECTION
     if active == 0 and total > 0:
         scan.status = "unreachable"
@@ -228,8 +241,10 @@ def update_scan_phase1(
         scan.completed_at = utcnow()
 
     scan.duration_seconds = duration
-    if report_json_path: scan.report_json_path = report_json_path
-    if report_xml_path: scan.report_xml_path = report_xml_path
+    if report_json_path:
+        scan.report_json_path = report_json_path
+    if report_xml_path:
+        scan.report_xml_path = report_xml_path
 
     # Full payload embedded in summary
     full_summary = _phase_summary_payload(summary, hosts_data)
@@ -244,7 +259,7 @@ def update_scan_phase1(
         hosts_processed=len(hosts_data),
         summary=full_summary,
         started_at=utcnow(),
-        completed_at=utcnow()
+        completed_at=utcnow(),
     )
     db.add(phase_row)
     db.flush()
@@ -266,17 +281,23 @@ def update_scan_phase1(
                     "target": scan.target_str,
                     "duration_seconds": duration,
                     "phase": 1,
-                }
+                },
             )
             db.commit()
 
     # Asset Sync in background (AFTER commit to avoid FK race condition)
     from core.tasks import sync_host_discovery_task
+
     sync_host_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
 
     if is_final:
         try:
-            from routers.notifications import create_notification, NotificationType, NotificationCategory
+            from routers.notifications import (
+                create_notification,
+                NotificationType,
+                NotificationCategory,
+            )
+
             create_notification(
                 db=db,
                 user_id=scan.created_by,
@@ -284,24 +305,24 @@ def update_scan_phase1(
                 category=NotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Host Discovery scan on {scan.target_str} has finished. Found {scan.active_hosts} active hosts.",
-                related_scan_id=str(scan.id)
+                related_scan_id=str(scan.id),
             )
-        except Exception as e:
-            pass # Silent fail for notifications
+        except Exception:
+            pass  # Silent fail for notifications
 
     return scan
 
 
 def update_scan_phase(
-    db:               Session,
-    scan_id:          str,
-    user_id:          str,
-    phase:            int,
-    phase_data:       dict,
-    is_final:         bool          = False,
-    pipeline_mode:    Optional[str] = None,
+    db: Session,
+    scan_id: str,
+    user_id: str,
+    phase: int,
+    phase_data: dict,
+    is_final: bool = False,
+    pipeline_mode: Optional[str] = None,
     report_json_path: Optional[str] = None,
-    report_xml_path:  Optional[str] = None,
+    report_xml_path: Optional[str] = None,
 ) -> Optional[Scan]:
     """
     Called after /scan/asset-discovery (phase=2) or /scan/vulnerability-audit (phase=3).
@@ -336,7 +357,12 @@ def update_scan_phase(
             scan.status = "running"
 
     # Track phase
-    phase_key_map = {2: "asset_discovery", 3: "vulnerability_assessment", 4: "topology_mapping", 5: "credentialed"}
+    phase_key_map = {
+        2: "asset_discovery",
+        3: "vulnerability_assessment",
+        4: "topology_mapping",
+        5: "credentialed",
+    }
     phase_key = phase_key_map.get(phase, f"phase{phase}")
 
     # Embed raw data into summary to ensure 100% historical fidelity without schema changes
@@ -374,27 +400,29 @@ def update_scan_phase(
                 hosts_processed=len(hosts_data),
                 summary=full_summary_payload,
                 started_at=now,
-                completed_at=now
+                completed_at=now,
             )
             db.add(phase_row)
             db.commit()
-    except Exception as e:
+    except Exception:
         # If a collision occurred (another worker finished first), just update the existing one
         db.rollback()
         db.query(ScanPhase).filter(
-            ScanPhase.scan_id == scan.id, 
-            ScanPhase.phase_key == phase_key
-        ).update({
-            "status": "complete",
-            "duration_seconds": duration,
-            "hosts_processed": len(hosts_data),
-            "summary": full_summary_payload,
-            "updated_at": utcnow()
-        })
+            ScanPhase.scan_id == scan.id, ScanPhase.phase_key == phase_key
+        ).update(
+            {
+                "status": "complete",
+                "duration_seconds": duration,
+                "hosts_processed": len(hosts_data),
+                "summary": full_summary_payload,
+                "updated_at": utcnow(),
+            }
+        )
         db.commit()
 
     if is_final:
         from scan_helpers import resolve_pipeline_mode
+
         current_mode = resolve_pipeline_mode(pipeline_mode or scan.pipeline_mode)
 
         if current_mode == "vulnerability_audit":
@@ -403,11 +431,19 @@ def update_scan_phase(
             for h in hosts_data:
                 all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
 
-            critical_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical")
-            high_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "high")
-            medium_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium")
-            low_count = sum(1 for v in all_vulns if str(v.get("severity", "")).lower() == "low")
-            
+            critical_count = sum(
+                1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical"
+            )
+            high_count = sum(
+                1 for v in all_vulns if str(v.get("severity", "")).lower() == "high"
+            )
+            medium_count = sum(
+                1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium"
+            )
+            low_count = sum(
+                1 for v in all_vulns if str(v.get("severity", "")).lower() == "low"
+            )
+
             scan.critical_count = critical_count
             scan.high_count = high_count
             scan.medium_count = medium_count
@@ -441,22 +477,29 @@ def update_scan_phase(
                     "target": scan.target_str,
                     "duration_seconds": scan.duration_seconds,
                     "phase": phase,
-                }
+                },
             )
             db.commit()
 
     # Synchronization (AFTER commit to avoid FK race condition)
     if phase == 2:
         from core.tasks import sync_asset_discovery_task
+
         sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
     elif phase >= 3:
         from core.tasks import sync_vulnerability_audit_task
+
         sync_vulnerability_audit_task.delay(str(scan.id), org_id, user_id, hosts_data)
 
     if is_final:
         try:
-            from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
-            
+            from routers.notifications import (
+                create_notification,
+                fan_out_notification,
+                NotificationType,
+                NotificationCategory,
+            )
+
             # Additional logic: if critical vulns were found, send a Security notification
             if getattr(scan, "critical_count", 0) > 0:
                 create_notification(
@@ -464,11 +507,11 @@ def update_scan_phase(
                     user_id=scan.created_by,
                     notification_type=NotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
-                    title=f"Critical Vulnerabilities Found",
+                    title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
-                    related_scan_id=str(scan.id)
+                    related_scan_id=str(scan.id),
                 )
-                
+
                 # ESCALATION RULE: Fan-out to leadership
                 fan_out_notification(
                     db=db,
@@ -476,10 +519,10 @@ def update_scan_phase(
                     target_roles=["superadmin", "org_admin"],
                     notification_type=NotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
-                    title=f"Critical Vulnerabilities Found",
+                    title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
                     related_scan_id=str(scan.id),
-                    exclude_user_id=str(scan.created_by)
+                    exclude_user_id=str(scan.created_by),
                 )
             else:
                 create_notification(
@@ -489,20 +532,20 @@ def update_scan_phase(
                     category=NotificationCategory.SCAN,
                     title=f"Scan {scan.scan_no} Completed",
                     message=f"Scan on {scan.target_str} has finished successfully.",
-                    related_scan_id=str(scan.id)
+                    related_scan_id=str(scan.id),
                 )
-        except Exception as e:
+        except Exception:
             pass
 
     return scan
 
 
 def mark_scan_failed(
-    db:      Session,
+    db: Session,
     scan_id: str,
     user_id: str,
-    reason:  str,
-    status:  str = "failed",
+    reason: str,
+    status: str = "failed",
 ) -> Optional[Scan]:
     scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
@@ -526,17 +569,22 @@ def mark_scan_failed(
             changes={
                 "reason": reason,
             },
-            status="failure"
+            status="failure",
         )
         db.commit()
 
     try:
-        from routers.notifications import create_notification, NotificationType, NotificationCategory
+        from routers.notifications import (
+            create_notification,
+            NotificationType,
+            NotificationCategory,
+        )
+
         ntype = NotificationType.SCAN_FAILED
         title = f"Scan {scan.scan_no} Failed"
         if status == "unreachable":
             title = f"Scan {scan.scan_no} Unreachable"
-        
+
         create_notification(
             db=db,
             user_id=scan.created_by,
@@ -544,7 +592,7 @@ def mark_scan_failed(
             category=NotificationCategory.SCAN,
             title=title,
             message=f"Scan on {scan.target_str} {status}: {reason}",
-            related_scan_id=str(scan.id)
+            related_scan_id=str(scan.id),
         )
     except Exception:
         pass
@@ -553,20 +601,20 @@ def mark_scan_failed(
 
 
 def create_completed_scan(
-    db:               Session,
-    user_id:          str,
-    target:           str,
-    targets:          Optional[List[str]],
-    scan_type:        str,
-    phase:            int,
-    results:          dict,
-    summary:          dict,
-    scan_duration:    Optional[float] = None,
-    report_json_path: Optional[str]   = None,
-    report_xml_path:  Optional[str]   = None,
-    pipeline_mode:    str             = "vulnerability_audit",
-    scan_id:          Optional[str]   = None,
-    commit:           bool            = True,
+    db: Session,
+    user_id: str,
+    target: str,
+    targets: Optional[List[str]],
+    scan_type: str,
+    phase: int,
+    results: dict,
+    summary: dict,
+    scan_duration: Optional[float] = None,
+    report_json_path: Optional[str] = None,
+    report_xml_path: Optional[str] = None,
+    pipeline_mode: str = "vulnerability_audit",
+    scan_id: Optional[str] = None,
+    commit: bool = True,
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
     base_targets = targets or [target]
@@ -635,7 +683,11 @@ def create_completed_scan(
     db.flush()
 
     for phase_key, payload in (results or {}).items():
-        phase_order = 3 if phase_key == "credentialed" else int(phase_key.replace("phase", "") or 0)
+        phase_order = (
+            3
+            if phase_key == "credentialed"
+            else int(phase_key.replace("phase", "") or 0)
+        )
         phase_summary = payload.get("summary", {})
         hosts_data = payload.get("data", [])
         if phase_key == "credentialed" and payload.get("report"):
@@ -655,12 +707,12 @@ def create_completed_scan(
             hosts_processed=len(hosts_data),
             summary=_phase_summary_payload(phase_summary, hosts_data),
             started_at=utcnow(),
-            completed_at=utcnow()
+            completed_at=utcnow(),
         )
         db.add(phase_row)
         if phase_key == "credentialed":
             continue
-        
+
         # Apply sync manually
         if phase_order == 1:
             sync_host_discovery(db, str(scan.id), org_id, user_id, hosts_data)
@@ -685,7 +737,7 @@ def create_completed_scan(
                 "scan_no": scan.scan_no,
                 "pipeline_mode": pipeline_mode,
                 "targets": base_targets,
-            }
+            },
         )
         log_audit_event(
             db=db,
@@ -698,29 +750,40 @@ def create_completed_scan(
                 "target": scan.target_str,
                 "duration_seconds": scan.duration_seconds,
                 "phase": phase,
-            }
+            },
         )
         if commit:
             db.commit()
 
     try:
-        from routers.notifications import create_notification, fan_out_notification, NotificationType, NotificationCategory
-        
+        from routers.notifications import (
+            create_notification,
+            fan_out_notification,
+            NotificationType,
+            NotificationCategory,
+        )
+
         # Check if credentialed report has criticals
-        vulns = (scan.options or {}).get("credentialed_report", {}).get("vulnerabilities", [])
-        critical_count = sum(1 for v in vulns if str(v.get("severity", "")).lower() == "critical")
-        
+        vulns = (
+            (scan.options or {})
+            .get("credentialed_report", {})
+            .get("vulnerabilities", [])
+        )
+        critical_count = sum(
+            1 for v in vulns if str(v.get("severity", "")).lower() == "critical"
+        )
+
         if critical_count > 0:
             create_notification(
                 db=db,
                 user_id=scan.created_by,
                 notification_type=NotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
-                title=f"Critical Vulnerabilities Found",
+                title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
-                related_scan_id=str(scan.id)
+                related_scan_id=str(scan.id),
             )
-            
+
             # ESCALATION RULE: Fan-out to leadership
             fan_out_notification(
                 db=db,
@@ -728,10 +791,10 @@ def create_completed_scan(
                 target_roles=["superadmin", "org_admin"],
                 notification_type=NotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
-                title=f"Critical Vulnerabilities Found",
+                title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
                 related_scan_id=str(scan.id),
-                exclude_user_id=str(scan.created_by)
+                exclude_user_id=str(scan.created_by),
             )
         else:
             create_notification(
@@ -741,7 +804,7 @@ def create_completed_scan(
                 category=NotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Credentialed scan on {scan.target_str} has finished successfully.",
-                related_scan_id=str(scan.id)
+                related_scan_id=str(scan.id),
             )
     except Exception:
         pass
@@ -750,9 +813,13 @@ def create_completed_scan(
     if commit:
         try:
             from core.amt_reconciliation import reconcile_amt_inventory
+
             reconcile_amt_inventory(db, org_id)
         except Exception as amt_exc:
             import logging
-            logging.getLogger("ccure.scans.db_helpers").warning("Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc)
+
+            logging.getLogger("ccure.scans.db_helpers").warning(
+                "Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc
+            )
 
     return scan

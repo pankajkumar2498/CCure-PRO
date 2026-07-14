@@ -9,7 +9,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 from functools import lru_cache
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -105,7 +105,8 @@ def extract_search_terms(raw_text: str, include_aliases: bool = True) -> List[st
     terms: List[str] = []
     for canonical, aliases in SERVICE_ALIASES.items():
         matched_aliases = [
-            alias for alias in aliases
+            alias
+            for alias in aliases
             if re.search(rf"(^|[^a-z0-9]){re.escape(alias)}([^a-z0-9]|$)", text)
         ]
         if matched_aliases:
@@ -236,7 +237,7 @@ def build_sql_or_clauses(
 ) -> Tuple[str, Dict[str, str]]:
     """
     Build SQL OR clauses for searching multiple values across columns.
-    
+
     Parameters
     ----------
     column_expressions : Column expressions to search (e.g., "LOWER(p.product)")
@@ -244,7 +245,7 @@ def build_sql_or_clauses(
     param_prefix : Prefix for parameter names
     use_exact : If True, use exact match (=) instead of LIKE wildcards (%)
                Use this when indexes exist on the columns for better performance
-    
+
     Returns
     -------
     Tuple of (WHERE clause string, parameter dict)

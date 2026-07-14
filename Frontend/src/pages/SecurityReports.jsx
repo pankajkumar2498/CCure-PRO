@@ -15,70 +15,111 @@ import { useToasts, ToastContainer } from "../components/common/Toast";
 import { can, denyMessage } from "../auth/permissions";
 import "../styles/SecurityReports.css";
 
-
 /* ── Constants & Helpers ─────────────────────────────────────────────────── */
 
 const REPORT_TYPE_LABELS = {
-  basic:    "Host Discovery",
-  asset:    "Asset Discovery",
+  basic: "Host Discovery",
+  asset: "Asset Discovery",
   advanced: "Vulnerability Audit",
   vulnerability_audit: "Vulnerability Audit",
-  credentialed: "SSH Credentialed Audit"
+  credentialed: "SSH Credentialed Audit",
 };
 
-const scanNo = scan => scan.scan_no ?? scan.display_id ?? "-";
+const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
-const fmtDate = iso => 
-  iso ? new Date(iso).toLocaleString(undefined, { 
-    month: "short", day: "numeric", year: "numeric", 
-    hour: "2-digit", minute: "2-digit" 
-  }) : "—";
+const fmtDate = (iso) =>
+  iso
+    ? new Date(iso).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
 
-const fmtDur = sec =>
-  !sec ? "—" : sec < 60 ? `${sec.toFixed(1)}s` : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
+const fmtDur = (sec) =>
+  !sec
+    ? "—"
+    : sec < 60
+      ? `${sec.toFixed(1)}s`
+      : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
 
 /* ── CONFIRMATION DIALOG COMPONENT ──────────────────────────────────────── */
 function ConfirmDialog({ config, onConfirm, onCancel }) {
-  const { title, subtitle, warning, confirmLabel, confirmClass, icon, iconClass } = config;
+  const {
+    title,
+    subtitle,
+    warning,
+    confirmLabel,
+    confirmClass,
+    icon,
+    iconClass,
+  } = config;
   const [busy, setBusy] = useState(false);
   const btnRef = useRef(null);
 
-  useEffect(() => { btnRef.current?.focus(); }, []);
+  useEffect(() => {
+    btnRef.current?.focus();
+  }, []);
 
   useEffect(() => {
-    const onKey = e => { if (e.key === "Escape") onCancel(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onCancel();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
   const handleConfirm = async () => {
     setBusy(true);
-    try { await onConfirm(); }
-    finally { setBusy(false); }
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="confirm-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
-      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cdlg-title">
+    <div
+      className="confirm-overlay"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cdlg-title"
+      >
         <div className="confirm-dialog-header">
-          <div className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}>
+          <div
+            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
+          >
             {icon}
           </div>
           <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">{title}</div>
+            <div className="confirm-dialog-title" id="cdlg-title">
+              {title}
+            </div>
             <div className="confirm-dialog-subtitle">{subtitle}</div>
           </div>
         </div>
 
         {warning && (
-          <div className={`confirm-dialog-warning confirm-dialog-warning--danger`}>
+          <div
+            className={`confirm-dialog-warning confirm-dialog-warning--danger`}
+          >
             <span style={{ flexShrink: 0 }}>⚠️</span>
             <span>{warning}</span>
           </div>
         )}
 
         <div className="confirm-dialog-footer">
-          <button className="confirm-btn confirm-btn--cancel" onClick={onCancel} disabled={busy}>
+          <button
+            className="confirm-btn confirm-btn--cancel"
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </button>
           <button
@@ -131,10 +172,10 @@ export default function SecurityReports() {
       ];
 
       // Filter for scans that actually completed and have reports
-      const reportableScans = allScans.filter(s => 
-        (s.status === "complete" || s.has_json_report || s.has_xml_report)
+      const reportableScans = allScans.filter(
+        (s) => s.status === "complete" || s.has_json_report || s.has_xml_report,
       );
-      
+
       setScans(reportableScans);
     } catch {
       setError("Failed to synchronize with the report repository.");
@@ -143,7 +184,9 @@ export default function SecurityReports() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleDownload = async (scanId, format) => {
     if (!canReadReports) {
@@ -153,29 +196,32 @@ export default function SecurityReports() {
     try {
       const response = await api.get(`/reports/download/${scanId}`, {
         params: { fmt: format },
-        responseType: 'blob'
+        responseType: "blob",
       });
 
       // Create a blob URL and trigger download
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      
+
       // Filename from header or fallback
-      const contentDisposition = response.headers['content-disposition'];
+      const contentDisposition = response.headers["content-disposition"];
       let fileName = `report_${scanId}_${format.toLowerCase()}.pdf`;
       if (contentDisposition) {
         const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
         if (matches && matches[1]) fileName = matches[1];
       }
-      
-      link.setAttribute('download', fileName);
+
+      link.setAttribute("download", fileName);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      pushToast("Failed to download report. The session may have expired.", "error");
+      pushToast(
+        "Failed to download report. The session may have expired.",
+        "error",
+      );
     }
   };
 
@@ -184,16 +230,18 @@ export default function SecurityReports() {
       pushToast(denyMessage, "error");
       return;
     }
-    const scan = scans.find(s => s.id === scanId);
+    const scan = scans.find((s) => s.id === scanId);
     if (!scan) return;
-    
+
     setModal({
       config: {
         icon: "🗑️",
         iconClass: "danger",
         title: `Permanently Delete Report for Scan No. ${scanNo(scan)}?`,
-        subtitle: "This action cannot be undone. The scan record and its report will be completely removed.",
-        warning: "Once deleted, you cannot recover this report or its associated data. This is irreversible.",
+        subtitle:
+          "This action cannot be undone. The scan record and its report will be completely removed.",
+        warning:
+          "Once deleted, you cannot recover this report or its associated data. This is irreversible.",
         confirmLabel: "Delete Permanently",
         confirmClass: "danger",
       },
@@ -208,11 +256,11 @@ export default function SecurityReports() {
       return;
     }
     if (!modal?.scanId) return;
-    
+
     const scanId = modal.scanId;
     try {
       await deleteReport(scanId);
-      setScans(prev => prev.filter(s => s.id !== scanId));
+      setScans((prev) => prev.filter((s) => s.id !== scanId));
       setModal(null);
     } catch {
       setModal(null);
@@ -220,24 +268,28 @@ export default function SecurityReports() {
     }
   };
 
-  const filtered = scans.filter(s => {
+  const filtered = scans.filter((s) => {
     const searchText = search.toLowerCase();
-    const matchesSearch = s.target.toLowerCase().includes(searchText) ||
-                          String(s.scan_no ?? s.display_id ?? "").includes(searchText);
-    const matchesType = filterType === "all" || s.pipeline_mode === filterType || (filterType === "credentialed" && s.scan_type === "credentialed");
+    const matchesSearch =
+      s.target.toLowerCase().includes(searchText) ||
+      String(s.scan_no ?? s.display_id ?? "").includes(searchText);
+    const matchesType =
+      filterType === "all" ||
+      s.pipeline_mode === filterType ||
+      (filterType === "credentialed" && s.scan_type === "credentialed");
     return matchesSearch && matchesType;
   });
 
   return (
     <AppLayout pageTitle="Security Reports">
       <div className="page-inner">
-        
         {/* Header Section */}
         <div className="reports-header-box">
           <div className="rh-left">
             <h2 className="page-title">Digital Report Cabinet</h2>
             <p className="page-subtitle">
-              Securely store and retrieve historical audit archives for compliance and sharing.
+              Securely store and retrieve historical audit archives for
+              compliance and sharing.
             </p>
           </div>
           <div className="rh-stats">
@@ -247,7 +299,11 @@ export default function SecurityReports() {
             </div>
             <div className="rh-stat-item">
               <span className="rh-stat-val">
-                {scans.filter(s => dateTimeMs(s.created_at) > Date.now() - 8.64e7).length}
+                {
+                  scans.filter(
+                    (s) => dateTimeMs(s.created_at) > Date.now() - 8.64e7,
+                  ).length
+                }
               </span>
               <span className="rh-stat-lab">New Today</span>
             </div>
@@ -255,16 +311,24 @@ export default function SecurityReports() {
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ margin: "0 -32px 24px", padding: "0 32px", borderBottom: "1px solid var(--border)", display: "flex", gap: 24 }}>
+        <div
+          style={{
+            margin: "0 -32px 24px",
+            padding: "0 32px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            gap: 24,
+          }}
+        >
           {[
             { id: "", label: "Report Cabinet" },
             { id: "executive", label: "Executive Report" },
             { id: "compliance", label: "Compliance" },
             { id: "trends", label: "Risk Trends" },
-          ].map(tab => {
+          ].map((tab) => {
             const active = currentTab === tab.id;
             return (
-              <div 
+              <div
                 key={tab.id}
                 onClick={() => setSearchParams(tab.id ? { tab: tab.id } : {})}
                 style={{
@@ -274,7 +338,7 @@ export default function SecurityReports() {
                   color: active ? "var(--accent)" : "var(--text-muted)",
                   borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
                   cursor: "pointer",
-                  transition: "all 0.2s"
+                  transition: "all 0.2s",
                 }}
               >
                 {tab.label}
@@ -289,28 +353,34 @@ export default function SecurityReports() {
             <div className="reports-filter-bar">
               <div className="search-input-wrap">
                 <span className="search-icon">🔍</span>
-                <input 
-                  type="text" 
-                  placeholder="Search by target IP or Scan No..." 
+                <input
+                  type="text"
+                  placeholder="Search by target IP or Scan No..."
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  onChange={(e) => setSearch(e.target.value)}
                   className="search-input"
                 />
               </div>
               <div className="filter-select-wrap">
-                <select 
-                  value={filterType} 
-                  onChange={e => setFilterType(e.target.value)}
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
                   className="filter-select"
                 >
                   <option value="all">All Report Types</option>
                   <option value="basic">Host Discovery</option>
                   <option value="asset">Asset Discovery</option>
-                  <option value="vulnerability_audit">Vulnerability Audits</option>
+                  <option value="vulnerability_audit">
+                    Vulnerability Audits
+                  </option>
                   <option value="credentialed">Credentialed Audits</option>
                 </select>
               </div>
-              <button className="btn btn--ghost" onClick={load} disabled={loading}>
+              <button
+                className="btn btn--ghost"
+                onClick={load}
+                disabled={loading}
+              >
                 {loading ? "Syncing..." : "Refresh Cabinet"}
               </button>
             </div>
@@ -325,15 +395,20 @@ export default function SecurityReports() {
             ) : filtered.length === 0 ? (
               <div className="empty-state">
                 <span className="empty-state-icon">📁</span>
-                <p className="empty-state-title">No reports found in this section.</p>
-                <p className="empty-state-subtitle">Complete a scan to automatically generate and store a report here.</p>
+                <p className="empty-state-title">
+                  No reports found in this section.
+                </p>
+                <p className="empty-state-subtitle">
+                  Complete a scan to automatically generate and store a report
+                  here.
+                </p>
               </div>
             ) : (
               <div className="reports-grid">
-                {filtered.map(scan => (
-                  <ReportCard 
-                    key={scan.id} 
-                    scan={scan} 
+                {filtered.map((scan) => (
+                  <ReportCard
+                    key={scan.id}
+                    scan={scan}
                     onDownload={handleDownload}
                     onDelete={handleDelete}
                     canReadReports={canReadReports}
@@ -346,32 +421,103 @@ export default function SecurityReports() {
         )}
 
         {currentTab === "executive" && (
-          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--text-muted)",
+            }}
+          >
             <div style={{ fontSize: "3rem", marginBottom: 16 }}>📊</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Executive Report Generation</h3>
-            <p>Generate high-level, business-focused security posture summaries for stakeholders.</p>
-            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
+              Executive Report Generation
+            </h3>
+            <p>
+              Generate high-level, business-focused security posture summaries
+              for stakeholders.
+            </p>
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: 16,
+                padding: "4px 8px",
+                background: "rgba(14,165,233,0.1)",
+                color: "var(--accent)",
+                borderRadius: 4,
+                fontSize: "0.75rem",
+                fontWeight: 700,
+              }}
+            >
+              AVAILABLE SOON
+            </div>
           </div>
         )}
 
         {currentTab === "compliance" && (
-          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--text-muted)",
+            }}
+          >
             <div style={{ fontSize: "3rem", marginBottom: 16 }}>✅</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Compliance Auditing</h3>
-            <p>Map scan findings to standard compliance frameworks (CIS, SOC 2, ISO 27001).</p>
-            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
+              Compliance Auditing
+            </h3>
+            <p>
+              Map scan findings to standard compliance frameworks (CIS, SOC 2,
+              ISO 27001).
+            </p>
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: 16,
+                padding: "4px 8px",
+                background: "rgba(14,165,233,0.1)",
+                color: "var(--accent)",
+                borderRadius: 4,
+                fontSize: "0.75rem",
+                fontWeight: 700,
+              }}
+            >
+              AVAILABLE SOON
+            </div>
           </div>
         )}
 
         {currentTab === "trends" && (
-          <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--text-muted)",
+            }}
+          >
             <div style={{ fontSize: "3rem", marginBottom: 16 }}>📈</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>Risk Trends Analytics</h3>
-            <p>Visualize organizational risk over time, MTTR (Mean Time to Remediate), and vulnerability velocity.</p>
-            <div style={{ display: "inline-block", marginTop: 16, padding: "4px 8px", background: "rgba(14,165,233,0.1)", color: "var(--accent)", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700 }}>AVAILABLE SOON</div>
+            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
+              Risk Trends Analytics
+            </h3>
+            <p>
+              Visualize organizational risk over time, MTTR (Mean Time to
+              Remediate), and vulnerability velocity.
+            </p>
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: 16,
+                padding: "4px 8px",
+                background: "rgba(14,165,233,0.1)",
+                color: "var(--accent)",
+                borderRadius: 4,
+                fontSize: "0.75rem",
+                fontWeight: 700,
+              }}
+            >
+              AVAILABLE SOON
+            </div>
           </div>
         )}
-
       </div>
 
       {/* Confirmation modal for permanent deletion */}
@@ -387,10 +533,19 @@ export default function SecurityReports() {
   );
 }
 
-function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteReports }) {
-  const typeLabel = (scan.scan_type === "credentialed" ? REPORT_TYPE_LABELS.credentialed : null) || 
-                    REPORT_TYPE_LABELS[scan.pipeline_mode] || 
-                    "Security Audit";
+function ReportCard({
+  scan,
+  onDownload,
+  onDelete,
+  canReadReports,
+  canDeleteReports,
+}) {
+  const typeLabel =
+    (scan.scan_type === "credentialed"
+      ? REPORT_TYPE_LABELS.credentialed
+      : null) ||
+    REPORT_TYPE_LABELS[scan.pipeline_mode] ||
+    "Security Audit";
 
   return (
     <div className="report-card">
@@ -401,8 +556,14 @@ function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteRepor
 
       <div className="rc-body">
         <div className="rc-target">{scan.target}</div>
-        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
-          {formatDateTime(scan.created_at, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+        <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: 2 }}>
+          {formatDateTime(scan.created_at, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </div>
       </div>
 
@@ -421,17 +582,17 @@ function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteRepor
       </div>
 
       <div className="rc-actions">
-        <button 
-          className="download-btn download-btn--json" 
-          onClick={() => onDownload(scan.id, 'JSON')}
+        <button
+          className="download-btn download-btn--json"
+          onClick={() => onDownload(scan.id, "JSON")}
           disabled={!canReadReports}
           title="Download Professional PDF Report with formatted tables"
         >
           <span>📄</span> Official Report
         </button>
-        <button 
-          className="download-btn download-btn--xml" 
-          onClick={() => onDownload(scan.id, 'XML')}
+        <button
+          className="download-btn download-btn--xml"
+          onClick={() => onDownload(scan.id, "XML")}
           disabled={!canReadReports}
           title="Download Technical PDF containing raw audit data"
         >
@@ -447,12 +608,18 @@ function ReportCard({ scan, onDownload, onDelete, canReadReports, canDeleteRepor
           </button>
         )}
       </div>
-      
+
       {/* Visual indicate for "Stored in Cabinet" */}
-      <div style={{ 
-        position: 'absolute', right: -15, bottom: -15, 
-        fontSize: '40px', opacity: 0.03, pointerEvents: 'none' 
-      }}>
+      <div
+        style={{
+          position: "absolute",
+          right: -15,
+          bottom: -15,
+          fontSize: "40px",
+          opacity: 0.03,
+          pointerEvents: "none",
+        }}
+      >
         🛡️
       </div>
     </div>

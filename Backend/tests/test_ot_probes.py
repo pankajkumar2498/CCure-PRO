@@ -1,12 +1,21 @@
 import socket
 from unittest.mock import MagicMock, patch
-import pytest
 
 from core.discovery.techniques.ot_probes import (
-    probe_modbus, probe_s7, probe_ethernetip, probe_bacnet, probe_dnp3,
-    probe_opcua, probe_iec104, probe_ge_srtp, probe_fins, probe_melsec,
-    probe_codesys, probe_mms
+    probe_modbus,
+    probe_s7,
+    probe_ethernetip,
+    probe_bacnet,
+    probe_dnp3,
+    probe_opcua,
+    probe_iec104,
+    probe_ge_srtp,
+    probe_fins,
+    probe_melsec,
+    probe_codesys,
+    probe_mms,
 )
+
 
 class MockSocket:
     def __init__(self, responses=None):
@@ -68,7 +77,7 @@ def test_probe_s7(mock_connect):
     resp_setup = b"\x03\x00\x00\x1b\x02\xf0\x80\x32\x03\x00\x00\x00\x01\x00\x08\x00\x00\x00\x00\xf0\x00\x00\x01\x00\x01\x03\xc0"
     # 3. Read SZL System Identification (contains "CPU 1214C")
     resp_szl = b"\x03\x00\x00\x35\x02\xf0\x80\x32\x07\x00\x00\x00\x01\x00\x08\x00\x08\x00\x01\x12\x04\x11\x44\x01\x00\xff\x09\x00\x18\x00\x1c\x00\x00\x00\x01\x00\x01\x00\x14\x05\x01\x43\x50\x55\x20\x31\x32\x31\x34\x43"
-    
+
     mock_sock = MockSocket(responses=[resp_cotp, resp_setup, resp_szl])
     mock_connect.return_value = mock_sock
 
@@ -86,9 +95,9 @@ def test_probe_ethernetip(mock_socket):
     mock_resp[0:2] = b"\x63\x00"
     mock_resp[48:50] = b"\x01\x00"  # Rockwell Automation
     mock_resp[50:52] = b"\x0e\x00"  # PLC Device Type
-    mock_resp[62] = 12               # Name length
+    mock_resp[62] = 12  # Name length
     mock_resp[63:75] = b"ControlLogix"
-    
+
     mock_sock = MockSocket(responses=[bytes(mock_resp)])
     mock_socket.return_value = mock_sock
 
@@ -107,8 +116,8 @@ def test_probe_bacnet(mock_socket):
     mock_resp[10] = 0x91  # Segmentation tag
     mock_resp[11] = 0x00
     mock_resp[12] = 0x21  # 1-byte integer tag
-    mock_resp[13] = 15    # Vendor: Honeywell
-    
+    mock_resp[13] = 15  # Vendor: Honeywell
+
     mock_sock = MockSocket(responses=[bytes(mock_resp)])
     mock_socket.return_value = mock_sock
 

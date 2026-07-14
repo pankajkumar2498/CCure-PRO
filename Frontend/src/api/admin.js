@@ -1,6 +1,9 @@
 import axiosInstance from "./axiosInstance";
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 const withNormalizedEmail = (payload, key = "email") => {
   if (!payload || payload[key] == null) return payload;
   return { ...payload, [key]: normalizeEmail(payload[key]) };
@@ -12,27 +15,41 @@ export const listUsers = async (params) => {
 };
 
 export const createUser = async (userData) => {
-  const response = await axiosInstance.post("/admin/users/", withNormalizedEmail(userData));
+  const response = await axiosInstance.post(
+    "/admin/users/",
+    withNormalizedEmail(userData),
+  );
   return response.data;
 };
 
 export const updateUser = async (userId, userData) => {
-  const response = await axiosInstance.put(`/admin/users/${userId}/`, withNormalizedEmail(userData));
+  const response = await axiosInstance.put(
+    `/admin/users/${userId}/`,
+    withNormalizedEmail(userData),
+  );
   return response.data;
 };
 
 export const changeUserRole = async (userId, roleId) => {
-  const response = await axiosInstance.patch(`/admin/users/${userId}/role/`, { role_id: roleId });
+  const response = await axiosInstance.patch(`/admin/users/${userId}/role/`, {
+    role_id: roleId,
+  });
   return response.data;
 };
 
 export const moveUserOrganization = async (userId, orgId) => {
-  const response = await axiosInstance.patch(`/admin/users/${userId}/organization/`, { organization_id: orgId });
+  const response = await axiosInstance.patch(
+    `/admin/users/${userId}/organization/`,
+    { organization_id: orgId },
+  );
   return response.data;
 };
 
 export const changeUserStatus = async (userId, statusData) => {
-  const response = await axiosInstance.patch(`/admin/users/${userId}/status/`, statusData);
+  const response = await axiosInstance.patch(
+    `/admin/users/${userId}/status/`,
+    statusData,
+  );
   return response.data;
 };
 
@@ -52,12 +69,17 @@ export const purgeUser = async (userId) => {
 };
 
 export const resetUserPassword = async (userId, password) => {
-  const response = await axiosInstance.post(`/admin/users/${userId}/reset-password/`, { password });
+  const response = await axiosInstance.post(
+    `/admin/users/${userId}/reset-password/`,
+    { password },
+  );
   return response.data;
 };
 
 export const resetUserMfa = async (userId) => {
-  const response = await axiosInstance.post(`/admin/users/${userId}/reset-mfa/`);
+  const response = await axiosInstance.post(
+    `/admin/users/${userId}/reset-mfa/`,
+  );
   return response.data;
 };
 
@@ -67,7 +89,9 @@ export const listRoles = async () => {
 };
 
 export const listRolePermissions = async (roleId) => {
-  const response = await axiosInstance.get(`/admin/roles/${roleId}/permissions/`);
+  const response = await axiosInstance.get(
+    `/admin/roles/${roleId}/permissions/`,
+  );
   return response.data;
 };
 
@@ -77,17 +101,26 @@ export const listOrganizations = async () => {
 };
 
 export const createOrganization = async (orgData) => {
-  const response = await axiosInstance.post("/admin/organizations/", withNormalizedEmail(orgData, "admin_email"));
+  const response = await axiosInstance.post(
+    "/admin/organizations/",
+    withNormalizedEmail(orgData, "admin_email"),
+  );
   return response.data;
 };
 
 export const updateOrganization = async (orgId, orgData) => {
-  const response = await axiosInstance.put(`/admin/organizations/${orgId}/`, orgData);
+  const response = await axiosInstance.put(
+    `/admin/organizations/${orgId}/`,
+    orgData,
+  );
   return response.data;
 };
 
 export const changeOrganizationStatus = async (orgId, statusData) => {
-  const response = await axiosInstance.patch(`/admin/organizations/${orgId}/status/`, statusData);
+  const response = await axiosInstance.patch(
+    `/admin/organizations/${orgId}/status/`,
+    statusData,
+  );
   return response.data;
 };
 

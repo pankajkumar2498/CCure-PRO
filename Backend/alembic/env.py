@@ -15,7 +15,9 @@ from dotenv import load_dotenv
 # Prefer explicit DATABASE_URL from environment. Otherwise load the same
 # Backend env file as the app: .env.test for development, .env for production.
 backend_dir = Path(__file__).resolve().parents[1]
-app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))).lower()
+app_env = os.getenv(
+    "APP_ENV", os.getenv("ENVIRONMENT", os.getenv("ENV", "development"))
+).lower()
 env_path = backend_dir / (".env" if app_env in {"production", "prod"} else ".env.test")
 if "DATABASE_URL" not in os.environ and env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -27,16 +29,6 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # Import models for autogenerate
 from db.base import Base
-from db.models.rbac          import Organization, Role, Permission, RolePermission
-from db.models.users         import User, RefreshTokenSession, AuditLog, PasswordResetToken
-from db.models.assets        import Asset, AssetTag, AssetNote, AssetChangeLog
-from db.models.scans         import Scan, ScanPhase
-from db.models.findings      import (
-    Service, TLSDetail, HttpSecurityDetail,
-    VulnerabilityDefinition, AssetVulnerability,
-)
-from db.models.notifications import Notification
-from db.models.web_scans     import WebScan, WebAsset, WebFinding
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -127,11 +119,12 @@ def include_object(object, name, type_, reflected, compare_to):
         return False
 
     if type_ == "index":
-        if compare_to is not None and hasattr(compare_to, 'table'):
-            tbl = getattr(compare_to, 'table')
+        if compare_to is not None and hasattr(compare_to, "table"):
+            tbl = getattr(compare_to, "table")
             if tbl is not None and re.match(r".*_p[0-9]+$", tbl.name):
                 return False
     return True
+
 
 if context.is_offline_mode():
     run_migrations_offline()

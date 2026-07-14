@@ -16,8 +16,18 @@ from db.models.findings import AssetVulnerability, VulnerabilityDefinition
 from auth.jwt_handler import hash_password
 from db.base import utcnow, gen_asset_id
 from routers.findings import StatusUpdate, update_finding_status
-from scans.db_helpers import _phase_summary_payload, _public_phase_summary, create_scan, update_scan_phase1, mark_scan_failed
-from scans.asset_syncer import sync_vulnerability_audit, sync_asset_discovery, sync_host_discovery
+from scans.db_helpers import (
+    _phase_summary_payload,
+    _public_phase_summary,
+    create_scan,
+    update_scan_phase1,
+    mark_scan_failed,
+)
+from scans.asset_syncer import (
+    sync_vulnerability_audit,
+    sync_asset_discovery,
+    sync_host_discovery,
+)
 
 
 def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
@@ -38,16 +48,19 @@ def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
 
 
 def test_public_phase_summary_hides_internal_phase_data():
-    summary = _public_phase_summary({
-        "total_hosts": 254,
-        "_phase_data": [{"ip_address": "10.180.6.140"}],
-    })
+    summary = _public_phase_summary(
+        {
+            "total_hosts": 254,
+            "_phase_data": [{"ip_address": "10.180.6.140"}],
+        }
+    )
 
     assert summary == {"total_hosts": 254}
 
 
 def test_create_scan_writes_audit_log(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -87,7 +100,11 @@ def test_create_scan_writes_audit_log(db_session: Session):
 
     audit_entry = (
         db_session.query(AuditLog)
-        .filter(AuditLog.action == "scan.created", AuditLog.resource_type == "scan", AuditLog.resource_id == str(scan.id))
+        .filter(
+            AuditLog.action == "scan.created",
+            AuditLog.resource_type == "scan",
+            AuditLog.resource_id == str(scan.id),
+        )
         .one_or_none()
     )
 
@@ -100,6 +117,7 @@ def test_create_scan_writes_audit_log(db_session: Session):
 
 def test_global_org_scan_numbering_across_users(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -170,6 +188,7 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
 
 def test_scan_completion_logs_audit_event(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -222,7 +241,11 @@ def test_scan_completion_logs_audit_event(db_session: Session):
 
     completion_log = (
         db_session.query(AuditLog)
-        .filter(AuditLog.action == "scan.completed", AuditLog.resource_type == "scan", AuditLog.resource_id == str(scan.id))
+        .filter(
+            AuditLog.action == "scan.completed",
+            AuditLog.resource_type == "scan",
+            AuditLog.resource_id == str(scan.id),
+        )
         .one_or_none()
     )
 
@@ -234,6 +257,7 @@ def test_scan_completion_logs_audit_event(db_session: Session):
 
 def test_scan_failure_logs_audit_event(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -271,11 +295,17 @@ def test_scan_failure_logs_audit_event(db_session: Session):
         pipeline_mode="basic",
     )
 
-    mark_scan_failed(db=db_session, scan_id=str(scan.id), user_id=str(user.id), reason="test failure")
+    mark_scan_failed(
+        db=db_session, scan_id=str(scan.id), user_id=str(user.id), reason="test failure"
+    )
 
     failure_log = (
         db_session.query(AuditLog)
-        .filter(AuditLog.action == "scan.failed", AuditLog.resource_type == "scan", AuditLog.resource_id == str(scan.id))
+        .filter(
+            AuditLog.action == "scan.failed",
+            AuditLog.resource_type == "scan",
+            AuditLog.resource_id == str(scan.id),
+        )
         .one_or_none()
     )
 
@@ -286,6 +316,7 @@ def test_scan_failure_logs_audit_event(db_session: Session):
 
 def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -333,13 +364,19 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
                     "cvss": 1.0,
                     "plugin_output": "Test output",
                 }
-            ]
+            ],
         }
     ]
 
-    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(
+        db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts
+    )
 
-    finding = db_session.query(AssetVulnerability).filter(AssetVulnerability.asset_id == asset.id).one()
+    finding = (
+        db_session.query(AssetVulnerability)
+        .filter(AssetVulnerability.asset_id == asset.id)
+        .one()
+    )
     assert finding.org_id == org.id
     assert finding.scan_id == scan_id
     assert finding.vuln_id == "CVE-9999-0001"
@@ -349,6 +386,7 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
 
 def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -411,7 +449,9 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
         }
     ]
 
-    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(
+        db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts
+    )
 
     db_session.refresh(asset)
     assert asset.vuln_counts == {"critical": 0, "high": 1, "medium": 0, "low": 1}
@@ -419,7 +459,9 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
     assert asset.risk_level == "Low"
 
 
-def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(db_session: Session):
+def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(
+    db_session: Session,
+):
     import uuid
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -445,20 +487,26 @@ def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(db_se
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+                "hostname": {
+                    "source": "credentialed",
+                    "scan_id": "scn_cred",
+                    "at": utcnow().isoformat(),
+                }
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="192.168.1.20",
-        scan_type="adaptive",
-        pipeline_mode="basic",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="192.168.1.20",
+            scan_type="adaptive",
+            pipeline_mode="basic",
+        )
+    )
     db_session.commit()
 
     sync_host_discovery(
@@ -466,14 +514,18 @@ def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(db_se
         scan_id=scan_id,
         org_id=org.id,
         user_id=None,
-        hosts=[{"ip_address": "192.168.1.20", "hostname": "basic-host", "is_active": True}],
+        hosts=[
+            {"ip_address": "192.168.1.20", "hostname": "basic-host", "is_active": True}
+        ],
     )
 
     db_session.refresh(asset)
     assert asset.hostname == "credentialed-host"
 
 
-def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostname(db_session: Session):
+def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostname(
+    db_session: Session,
+):
     import uuid
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -500,21 +552,31 @@ def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostnam
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()},
-                "fqdn": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()},
+                "hostname": {
+                    "source": "credentialed",
+                    "scan_id": "scn_cred",
+                    "at": utcnow().isoformat(),
+                },
+                "fqdn": {
+                    "source": "credentialed",
+                    "scan_id": "scn_cred",
+                    "at": utcnow().isoformat(),
+                },
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="192.168.1.23",
-        scan_type="adaptive",
-        pipeline_mode="basic",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="192.168.1.23",
+            scan_type="adaptive",
+            pipeline_mode="basic",
+        )
+    )
     db_session.commit()
 
     sync_host_discovery(
@@ -538,7 +600,120 @@ def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostnam
     assert asset.dns_name == "atharv-desktop.blr.cdac.in"
 
 
-def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(db_session: Session):
+def test_duplicate_phase1_host_entries_do_not_create_two_assets(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="192.168.1.20",
+            scan_type="adaptive",
+            pipeline_mode="host_discovery",
+        )
+    )
+    db_session.commit()
+
+    hosts = [
+        {"ip_address": "192.168.1.20", "hostname": "first-host", "is_active": True},
+        {"ip_address": "192.168.1.20", "hostname": "second-host", "is_active": True},
+    ]
+
+    sync_host_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=hosts,
+    )
+
+    assets = (
+        db_session.query(Asset)
+        .filter(Asset.org_id == org.id, Asset.ip_address == "192.168.1.20")
+        .all()
+    )
+    assert len(assets) == 1
+    assert assets[0].hostname in {"first-host", "second-host"}
+
+
+def test_reuses_existing_asset_row_without_ip_for_same_phase1_host(db_session: Session):
+    import uuid
+
+    org_id = f"org_test_{uuid.uuid4().hex[:8]}"
+    org = Organization(
+        id=org_id,
+        name=f"Test Org {uuid.uuid4().hex[:8]}",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+        settings={},
+    )
+    db_session.add(org)
+    db_session.commit()
+
+    asset_id = gen_asset_id(org.id, "10.180.6.97")
+    asset = Asset(
+        id=asset_id,
+        org_id=org.id,
+        ip_address=None,
+        hostname="orphaned-host",
+        discovery_method="discovery",
+        last_seen_at=utcnow(),
+    )
+    db_session.add(asset)
+
+    scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="10.180.6.97",
+            scan_type="adaptive",
+            pipeline_mode="host_discovery",
+        )
+    )
+    db_session.commit()
+
+    sync_host_discovery(
+        db_session,
+        scan_id=scan_id,
+        org_id=org.id,
+        user_id=None,
+        hosts=[
+            {
+                "ip_address": "10.180.6.97",
+                "hostname": "recovered-host",
+                "is_active": True,
+            }
+        ],
+    )
+
+    db_session.refresh(asset)
+    assert asset.id == asset_id
+    assert asset.ip_address == "10.180.6.97"
+    assert asset.hostname == "recovered-host"
+
+
+def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(
+    db_session: Session,
+):
     import uuid
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -564,20 +739,26 @@ def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hos
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+                "hostname": {
+                    "source": "credentialed",
+                    "scan_id": "scn_cred",
+                    "at": utcnow().isoformat(),
+                }
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="10.180.6.45",
-        scan_type="adaptive",
-        pipeline_mode="vulnerability_audit",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="10.180.6.45",
+            scan_type="adaptive",
+            pipeline_mode="vulnerability_audit",
+        )
+    )
     db_session.commit()
 
     sync_vulnerability_audit(
@@ -585,11 +766,13 @@ def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hos
         scan_id=scan_id,
         org_id=org.id,
         user_id=None,
-        hosts=[{
-            "ip_address": "10.180.6.45",
-            "hostname": "atharv-desktop.blr.cdac.in",
-            "vulnerabilities": [],
-        }],
+        hosts=[
+            {
+                "ip_address": "10.180.6.45",
+                "hostname": "atharv-desktop.blr.cdac.in",
+                "vulnerabilities": [],
+            }
+        ],
     )
 
     db_session.refresh(asset)
@@ -598,7 +781,9 @@ def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hos
     assert asset.dns_name == "atharv-desktop.blr.cdac.in"
 
 
-def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(db_session: Session):
+def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentialed_hostname(
+    db_session: Session,
+):
     import uuid
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -624,20 +809,26 @@ def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentia
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "hostname": {"source": "credentialed", "scan_id": "scn_cred", "at": utcnow().isoformat()}
+                "hostname": {
+                    "source": "credentialed",
+                    "scan_id": "scn_cred",
+                    "at": utcnow().isoformat(),
+                }
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="10.180.6.45",
-        scan_type="adaptive",
-        pipeline_mode="asset",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="10.180.6.45",
+            scan_type="adaptive",
+            pipeline_mode="asset",
+        )
+    )
     db_session.commit()
 
     sync_asset_discovery(
@@ -645,11 +836,13 @@ def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentia
         scan_id=scan_id,
         org_id=org.id,
         user_id=None,
-        hosts=[{
-            "ip_address": "10.180.6.45",
-            "hostname": "atharv-desktop.blr.cdac.in",
-            "ports": [],
-        }],
+        hosts=[
+            {
+                "ip_address": "10.180.6.45",
+                "hostname": "atharv-desktop.blr.cdac.in",
+                "ports": [],
+            }
+        ],
     )
 
     db_session.refresh(asset)
@@ -699,21 +892,31 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "fqdn": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()},
-                "dns_name": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()},
+                "fqdn": {
+                    "source": "vulnerability_audit",
+                    "scan_id": "scn_adv",
+                    "at": utcnow().isoformat(),
+                },
+                "dns_name": {
+                    "source": "vulnerability_audit",
+                    "scan_id": "scn_adv",
+                    "at": utcnow().isoformat(),
+                },
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="10.180.6.45",
-        scan_type="credentialed",
-        pipeline_mode="credentialed",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="10.180.6.45",
+            scan_type="credentialed",
+            pipeline_mode="credentialed",
+        )
+    )
     db_session.commit()
 
     _sync_credentialed_asset_identity(
@@ -743,9 +946,11 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
 def test_credentialed_short_hostname_is_not_treated_as_fqdn():
     from core.tasks import _extract_credentialed_identity_names
 
-    hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names({
-        "hostname_fqdn": "superusr-HP3",
-    })
+    hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(
+        {
+            "hostname_fqdn": "superusr-HP3",
+        }
+    )
 
     assert hostname == "superusr-HP3"
     assert fqdn == ""
@@ -769,8 +974,16 @@ def test_credentialed_windows_interface_parser_extracts_target_mac():
     from engines.credentialed.windows_collector import _mac_from_windows_interfaces
 
     raw = [
-        {"IPAddress": "10.180.6.44", "PrefixLength": 22, "MacAddress": "AA-BB-CC-DD-EE-FF"},
-        {"IPAddress": "10.180.6.45", "PrefixLength": 22, "MacAddress": "2C-58-B9-87-0B-B3"},
+        {
+            "IPAddress": "10.180.6.44",
+            "PrefixLength": 22,
+            "MacAddress": "AA-BB-CC-DD-EE-FF",
+        },
+        {
+            "IPAddress": "10.180.6.45",
+            "PrefixLength": 22,
+            "MacAddress": "2C-58-B9-87-0B-B3",
+        },
     ]
 
     assert _mac_from_windows_interfaces(raw, "10.180.6.45") == "2c:58:b9:87:0b:b3"
@@ -824,14 +1037,16 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     db_session.add(asset)
 
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="192.168.1.24",
-        scan_type="credentialed",
-        pipeline_mode="credentialed",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="192.168.1.24",
+            scan_type="credentialed",
+            pipeline_mode="credentialed",
+        )
+    )
     db_session.commit()
 
     _sync_credentialed_asset_identity(
@@ -890,20 +1105,26 @@ def test_asset_discovery_does_not_overwrite_advanced_os(db_session: Session):
         last_seen_at=utcnow(),
         custom_attributes={
             "provenance": {
-                "os_name": {"source": "vulnerability_audit", "scan_id": "scn_adv", "at": utcnow().isoformat()}
+                "os_name": {
+                    "source": "vulnerability_audit",
+                    "scan_id": "scn_adv",
+                    "at": utcnow().isoformat(),
+                }
             }
         },
     )
     db_session.add(asset)
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
-    db_session.add(Scan(
-        id=scan_id,
-        org_id=org.id,
-        created_by=None,
-        target_str="192.168.1.21",
-        scan_type="adaptive",
-        pipeline_mode="basic",
-    ))
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=org.id,
+            created_by=None,
+            target_str="192.168.1.21",
+            scan_type="adaptive",
+            pipeline_mode="basic",
+        )
+    )
     db_session.commit()
 
     sync_asset_discovery(
@@ -1062,8 +1283,14 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         }
     ]
 
-    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
-    finding = db_session.query(AssetVulnerability).filter(AssetVulnerability.asset_id == asset.id).one()
+    sync_vulnerability_audit(
+        db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts
+    )
+    finding = (
+        db_session.query(AssetVulnerability)
+        .filter(AssetVulnerability.asset_id == asset.id)
+        .one()
+    )
     assert finding.status == "open"
 
     update_finding_status(
@@ -1080,23 +1307,34 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
 
 def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
     """Test the Phase 1 Host Discovery API logic and DB persistence."""
-    
+
     # Mock the internal orchestrator to return a successful dummy result
     mock_result = {
         "success": True,
-        "data": [{"ip_address": "10.180.6.140", "status": "up", "mac_address": "AA:BB:CC:DD:EE:FF"}],
-        "summary": {"total_hosts": 1, "active_hosts": 1, "inactive_hosts": 0, "scan_duration": 0.5}
+        "data": [
+            {
+                "ip_address": "10.180.6.140",
+                "status": "up",
+                "mac_address": "AA:BB:CC:DD:EE:FF",
+            }
+        ],
+        "summary": {
+            "total_hosts": 1,
+            "active_hosts": 1,
+            "inactive_hosts": 0,
+            "scan_duration": 0.5,
+        },
     }
-    
+
     with patch("scan_helpers.HostDiscoveryAPI") as mock_api_class:
         mock_orch = AsyncMock()
         mock_orch.run_host_discovery_only.return_value = mock_result
         mock_orch.generate_phase_report.return_value = {"json_pdf": "/fake/path.pdf"}
-        
+
         # Override the get_api() singleton
         mock_api_instance = mock_api_class.return_value
         mock_api_instance._orch = mock_orch
-        
+
         with patch("routers.phase_scans.get_api", return_value=mock_api_instance):
             response = client.post(
                 "/scan/host-discovery",
@@ -1104,10 +1342,10 @@ def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
                 json={
                     "targets": ["10.180.6.0/24"],
                     "scan_type": "adaptive",
-                    "pipeline_mode": "asset"
-                }
+                    "pipeline_mode": "asset",
+                },
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -1116,7 +1354,9 @@ def test_host_discovery_endpoint(client: TestClient, auth_headers: dict):
             assert data["summary"]["active_hosts"] == 1
 
             # Ensure rate limiting header is present (slowapi adds standard X-RateLimit headers)
-            assert "X-RateLimit-Limit" in response.headers or response.status_code == 200
+            assert (
+                "X-RateLimit-Limit" in response.headers or response.status_code == 200
+            )
 
 
 def test_asset_discovery_wrong_pipeline_mode(client: TestClient, auth_headers: dict):
@@ -1127,38 +1367,38 @@ def test_asset_discovery_wrong_pipeline_mode(client: TestClient, auth_headers: d
         json={
             "hosts": [{"ip_address": "10.180.6.140"}],
             "intensity": "normal",
-            "pipeline_mode": "basic"  # Basic pipeline only allows Phase 1
-        }
+            "pipeline_mode": "basic",  # Basic pipeline only allows Phase 1
+        },
     )
-    
+
     assert response.status_code == 400
     assert "not part of the 'basic' pipeline" in response.json()["detail"]
 
 
 def test_credentialed_scan_validation_scrubbing(client: TestClient, auth_headers: dict):
     """
-    Test that the global RequestValidationError handler scrubs sensitive fields 
+    Test that the global RequestValidationError handler scrubs sensitive fields
     like 'password' from 422 Unprocessable Entity responses.
     """
     # Missing required 'ip' and 'username' fields, but providing a bad password type
     response = client.post(
         "/scan/credentialed",
         headers=auth_headers,
-        json={
-            "password": ["this_is_an_invalid_type_for_a_password_field"] 
-        }
+        json={"password": ["this_is_an_invalid_type_for_a_password_field"]},
     )
-    
+
     assert response.status_code == 422
     data = response.json()
-    
+
     # Check that the raw input isn't leaked in the response
     detail_str = str(data["detail"])
     assert "this_is_an_invalid_type_for_a_password_field" not in detail_str
     assert "Value redacted for security." in detail_str
 
 
-def test_scan_history_includes_started_by_metadata(client: TestClient, auth_headers: dict, test_user: User, db_session: Session):
+def test_scan_history_includes_started_by_metadata(
+    client: TestClient, auth_headers: dict, test_user: User, db_session: Session
+):
     """Test that scan history exposes scan starter metadata for the scan list."""
     scan = Scan(
         org_id=test_user.org_id,
@@ -1177,7 +1417,9 @@ def test_scan_history_includes_started_by_metadata(client: TestClient, auth_head
     assert response.status_code == 200
     data = response.json()
 
-    found = next((item for item in data.get("scans", []) if item.get("id") == scan.id), None)
+    found = next(
+        (item for item in data.get("scans", []) if item.get("id") == scan.id), None
+    )
     assert found is not None
     assert found["created_by"] == str(test_user.id)
     assert found["started_by"]["user_id"] == str(test_user.id)
@@ -1186,7 +1428,9 @@ def test_scan_history_includes_started_by_metadata(client: TestClient, auth_head
     assert found["started_by"]["display_name"] == test_user.full_name
 
 
-def test_scan_history_owner_filter_returns_only_my_scans(client: TestClient, auth_headers: dict, test_user: User, db_session: Session):
+def test_scan_history_owner_filter_returns_only_my_scans(
+    client: TestClient, auth_headers: dict, test_user: User, db_session: Session
+):
     other_user = User(
         username="otheruser",
         email="other@test.com",
@@ -1231,7 +1475,9 @@ def test_scan_history_owner_filter_returns_only_my_scans(client: TestClient, aut
     assert str(other_scan.id) not in ids
 
 
-def test_scan_progress_requires_scan_read_permission(client: TestClient, db_session: Session, test_org: Organization):
+def test_scan_progress_requires_scan_read_permission(
+    client: TestClient, db_session: Session, test_org: Organization
+):
     """Users without scans:read should be denied access to scan progress."""
     role = Role(name="limited", description="Limited role", is_system_role=False)
     db_session.add(role)
@@ -1267,14 +1513,13 @@ def test_scan_progress_requires_scan_read_permission(client: TestClient, db_sess
 
     response = client.post(
         "/auth/login",
-        json={"email": "limited@example.com", "password": "securepassword"}
+        json={"email": "limited@example.com", "password": "securepassword"},
     )
     assert response.status_code == 200
     token = response.json()["access_token"]
 
     progress_response = client.get(
-        f"/scan/progress/{scan.id}",
-        headers={"Authorization": f"Bearer {token}"}
+        f"/scan/progress/{scan.id}", headers={"Authorization": f"Bearer {token}"}
     )
 
     assert progress_response.status_code == 403
@@ -1283,6 +1528,7 @@ def test_scan_progress_requires_scan_read_permission(client: TestClient, db_sess
 
 def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
     import uuid
+
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
         id=org_id,
@@ -1320,6 +1566,7 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
 
     from db.models.findings import Service, TLSDetail
     from db.base import gen_service_id
+
     service_id = gen_service_id(asset.id, 443, "tcp")
     service = Service(
         id=service_id,
@@ -1356,13 +1603,17 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
                 "weak_cipher": False,
                 "score": "A",
                 "issues": [],
-            }
+            },
         }
     ]
 
-    sync_vulnerability_audit(db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts)
+    sync_vulnerability_audit(
+        db_session, scan_id=scan_id, org_id=org.id, user_id=None, hosts=hosts
+    )
 
-    tls_entry = db_session.query(TLSDetail).filter(TLSDetail.service_id == service_id).first()
+    tls_entry = (
+        db_session.query(TLSDetail).filter(TLSDetail.service_id == service_id).first()
+    )
     assert tls_entry is not None
     assert tls_entry.is_enabled is True
     assert tls_entry.protocol_version == "TLSv1.3"
@@ -1372,4 +1623,3 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
     assert tls_entry.cert_issuer == {"common_name": "GTS CA 1C3"}
     assert tls_entry.cert_is_expired is False
     assert tls_entry.cert_is_self_signed is False
-

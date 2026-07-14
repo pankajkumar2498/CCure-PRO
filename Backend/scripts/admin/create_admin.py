@@ -1,4 +1,3 @@
-
 import sys
 import os
 
@@ -14,13 +13,14 @@ from db.models.users import User
 from db.models.rbac import Organization, Role
 from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
-from db.base import SessionLocal, gen_user_id
+from db.base import gen_user_id
+
 
 def create_admin():
     email = normalize_email("admin@ccurepro.com")
     username = "admin"
     password = "AdminCdac@123"
-    
+
     db: Session = SessionLocal()
     try:
         # 1. Check if user already exists
@@ -32,9 +32,11 @@ def create_admin():
         # 2. Get default org and admin role
         org = db.query(Organization).filter(Organization.slug == "default").first()
         role = db.query(Role).filter(Role.name == "superadmin").first()
-        
+
         if not org or not role:
-            print("Error: Default Organization or superadmin Role not found. Please run migrations first.")
+            print(
+                "Error: Default Organization or superadmin Role not found. Please run migrations first."
+            )
             return
 
         # 3. Create user
@@ -46,17 +48,18 @@ def create_admin():
             org_id=org.id,
             role_id=role.id,
             is_active=True,
-            is_verified=True
+            is_verified=True,
         )
         db.add(new_user)
         db.commit()
         print(f"Successfully created admin user: {email}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error creating user: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     create_admin()

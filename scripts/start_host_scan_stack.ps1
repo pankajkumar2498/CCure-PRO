@@ -28,7 +28,7 @@ try {
         Write-Host "      - Includes: Web Application Worker (Linux-based)"
     }
     Write-Host ""
-    
+
     $composeArgs = @("compose", "up", "-d")
     if ($Rebuild) {
         $composeArgs += "--build"

@@ -6,12 +6,11 @@ OTP fallback, backup codes, and session revocation).
 """
 
 import pyotp
-import secrets
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from db.models.users import User, RefreshTokenSession
-from auth.jwt_handler import hash_password, verify_password
-from auth.router import encrypt_secret, decrypt_secret
+from auth.jwt_handler import hash_password
+from auth.router import decrypt_secret
 
 
 def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
@@ -21,8 +20,7 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     """
     # ── 1. Setup access headers for test_user ────────────────────────────────
     login_res = client.post(
-        "/auth/login",
-        json={"email": test_user.email, "password": "securepassword123"}
+        "/auth/login", json={"email": test_user.email, "password": "securepassword123"}
     )
     assert login_res.status_code == 200
     token = login_res.json()["access_token"]
@@ -41,7 +39,7 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     assert enable_data["qr_code"].startswith("data:image/png;base64,")
 
     totp_secret = enable_data["secret"]
-    
+
     # Verify secret was encrypted in DB
     db_session.refresh(test_user)
     assert test_user.totp_secret is not None
@@ -49,9 +47,7 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
 
     # ── 3. Confirm MFA with invalid code ─────────────────────────────────────
     confirm_res = client.post(
-        "/auth/mfa/confirm",
-        headers=headers,
-        json={"code": "000000"}
+        "/auth/mfa/confirm", headers=headers, json={"code": "000000"}
     )
     assert confirm_res.status_code == 400
     assert "Invalid verification code" in confirm_res.json()["detail"]
@@ -66,15 +62,13 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
         org_id=test_user.org_id,
         token_jti="dummy_jti",
         token_hash="dummy_hash",
-        expires_at=test_user.created_at # just a dummy time
+        expires_at=test_user.created_at,  # just a dummy time
     )
     db_session.add(dummy_session)
     db_session.commit()
 
     confirm_res = client.post(
-        "/auth/mfa/confirm",
-        headers=headers,
-        json={"code": valid_code}
+        "/auth/mfa/confirm", headers=headers, json={"code": valid_code}
     )
     assert confirm_res.status_code == 200
     confirm_data = confirm_res.json()
@@ -87,13 +81,16 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     assert len(test_user.mfa_backup_codes) == 8
 
     # Assert session isolation (dummy session revoked/deleted)
-    sessions = db_session.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == test_user.id).all()
+    sessions = (
+        db_session.query(RefreshTokenSession)
+        .filter(RefreshTokenSession.user_id == test_user.id)
+        .all()
+    )
     assert len(sessions) == 0
 
     # ── 5. Login Credentials Verification (MFA Required) ────────────────────
     login_res = client.post(
-        "/auth/login",
-        json={"email": test_user.email, "password": "securepassword123"}
+        "/auth/login", json={"email": test_user.email, "password": "securepassword123"}
     )
     assert login_res.status_code == 200
     login_data = login_res.json()
@@ -105,8 +102,7 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     # ── 6. Verify MFA using TOTP Code ────────────────────────────────────────
     verify_code = totp.now()
     verify_res = client.post(
-        "/auth/login/verify-mfa",
-        json={"mfa_token": mfa_token, "code": verify_code}
+        "/auth/login/verify-mfa", json={"mfa_token": mfa_token, "code": verify_code}
     )
     assert verify_res.status_code == 200
     verify_data = verify_res.json()
@@ -117,16 +113,12 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     # ── 7. Email Fallback OTP flow ──────────────────────────────────────────
     # Trigger login again to get a new challenge token
     login_res = client.post(
-        "/auth/login",
-        json={"email": test_user.email, "password": "securepassword123"}
+        "/auth/login", json={"email": test_user.email, "password": "securepassword123"}
     )
     mfa_token = login_res.json()["mfa_token"]
 
     # Trigger email OTP
-    email_res = client.post(
-        "/auth/login/send-email-otp",
-        json={"mfa_token": mfa_token}
-    )
+    email_res = client.post("/auth/login/send-email-otp", json={"mfa_token": mfa_token})
     assert email_res.status_code == 200
     assert email_res.json()["success"] is True
 
@@ -144,8 +136,7 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
 
     # Verify using email OTP code
     verify_res = client.post(
-        "/auth/login/verify-mfa",
-        json={"mfa_token": mfa_token, "code": known_code}
+        "/auth/login/verify-mfa", json={"mfa_token": mfa_token, "code": known_code}
     )
     assert verify_res.status_code == 200
     assert "access_token" in verify_res.json()
@@ -158,16 +149,14 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     # ── 8. Login using Backup Recovery Code ──────────────────────────────────
     # Trigger login again
     login_res = client.post(
-        "/auth/login",
-        json={"email": test_user.email, "password": "securepassword123"}
+        "/auth/login", json={"email": test_user.email, "password": "securepassword123"}
     )
     mfa_token = login_res.json()["mfa_token"]
 
     # Use first backup recovery code from confirmation step
     backup_code = confirm_data["backup_codes"][0]
     verify_res = client.post(
-        "/auth/login/verify-mfa",
-        json={"mfa_token": mfa_token, "code": backup_code}
+        "/auth/login/verify-mfa", json={"mfa_token": mfa_token, "code": backup_code}
     )
     assert verify_res.status_code == 200
     assert "access_token" in verify_res.json()
@@ -185,8 +174,8 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
     disable_res = client.post(
         "/auth/mfa/disable",
         headers=auth_headers,
-        json={"password": "securepassword123"}
-      )
+        json={"password": "securepassword123"},
+    )
     assert disable_res.status_code == 200
     assert disable_res.json()["success"] is True
 
@@ -199,28 +188,51 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
 
 def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     """Test that a superadmin can successfully reset another user's MFA."""
-    from db.models import Organization, Role, User, RefreshTokenSession, Permission, RolePermission
+    from db.models import (
+        Organization,
+        Role,
+        User,
+        RefreshTokenSession,
+        Permission,
+        RolePermission,
+    )
     from auth.jwt_handler import create_access_token
     from datetime import datetime, timezone, timedelta
-    
-    org = Organization(name="MFA Reset Org", slug="mfa-reset-org", max_assets=100, max_users=10, is_active=True)
+
+    org = Organization(
+        name="MFA Reset Org",
+        slug="mfa-reset-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add(org)
-    
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
+
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
     analyst_role = Role(name="analyst", description="Analyst", is_system_role=True)
     db_session.add_all([superadmin_role, analyst_role])
     db_session.flush()
-    
+
     # Grant permissions
-    permission = db_session.query(Permission).filter(Permission.resource == "users", Permission.action == "update").first()
+    permission = (
+        db_session.query(Permission)
+        .filter(Permission.resource == "users", Permission.action == "update")
+        .first()
+    )
     if not permission:
-        permission = Permission(resource="users", action="update", description="users:update")
+        permission = Permission(
+            resource="users", action="update", description="users:update"
+        )
         db_session.add(permission)
         db_session.flush()
-    
-    db_session.add(RolePermission(role_id=superadmin_role.id, permission_id=permission.id))
+
+    db_session.add(
+        RolePermission(role_id=superadmin_role.id, permission_id=permission.id)
+    )
     db_session.flush()
-    
+
     superadmin = User(
         id="usr_sa_mfa_admin",
         username="sa-mfa-admin",
@@ -242,25 +254,30 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
         is_verified=True,
         mfa_enabled=True,
         totp_secret="encryptedsecretkey",
-        mfa_backup_codes=["code1", "code2"]
+        mfa_backup_codes=["code1", "code2"],
     )
     db_session.add_all([superadmin, target_user])
     db_session.flush()
-    
+
     # Create active session for target user
     session = RefreshTokenSession(
         user_id=target_user.id,
         org_id=org.id,
         token_jti="jti_mfa_1",
         token_hash="hash_mfa_1",
-        expires_at=datetime.now(timezone.utc) + timedelta(days=1)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
     )
     db_session.add(session)
     db_session.commit()
-    
+
     # Verify pre-conditions
-    assert db_session.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == target_user.id).count() == 1
-    
+    assert (
+        db_session.query(RefreshTokenSession)
+        .filter(RefreshTokenSession.user_id == target_user.id)
+        .count()
+        == 1
+    )
+
     token = create_access_token(
         superadmin.id,
         superadmin.username,
@@ -268,19 +285,23 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
         org_id=superadmin.org_id,
     )
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     # Act
-    res = client.post(
-        f"/admin/users/{target_user.id}/reset-mfa/",
-        headers=headers
-    )
-    
+    res = client.post(f"/admin/users/{target_user.id}/reset-mfa/", headers=headers)
+
     # Assert
     assert res.status_code == 200
     db_session.refresh(target_user)
     assert not target_user.mfa_enabled
     assert target_user.totp_secret is None
-    assert target_user.mfa_backup_codes is None or len(target_user.mfa_backup_codes) == 0
-    
+    assert (
+        target_user.mfa_backup_codes is None or len(target_user.mfa_backup_codes) == 0
+    )
+
     # Check sessions are revoked
-    assert db_session.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == target_user.id).count() == 0
+    assert (
+        db_session.query(RefreshTokenSession)
+        .filter(RefreshTokenSession.user_id == target_user.id)
+        .count()
+        == 0
+    )

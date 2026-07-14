@@ -61,16 +61,27 @@ class CVEDatabase:
         self.sqlite_available = self.db_path.exists()
         self.postgres_available = can_connect_vuln_db()
         self.db_available = self.postgres_available or self.sqlite_available
-        self.backend = "postgresql" if self.postgres_available else ("sqlite" if self.sqlite_available else "fallback")
+        self.backend = (
+            "postgresql"
+            if self.postgres_available
+            else ("sqlite" if self.sqlite_available else "fallback")
+        )
 
         if self.backend == "postgresql":
             logger.info("CVE Database: using PostgreSQL vulnerability-intel database")
         elif self.backend == "sqlite":
-            logger.warning("CVE Database: PostgreSQL unavailable, falling back to SQLite at %s", self.db_path)
+            logger.warning(
+                "CVE Database: PostgreSQL unavailable, falling back to SQLite at %s",
+                self.db_path,
+            )
         else:
-            logger.warning("CVE Database: no database available, using hardcoded fallback hints")
+            logger.warning(
+                "CVE Database: no database available, using hardcoded fallback hints"
+            )
 
-    def search_cves_for_service(self, service_name: str, version: str = "") -> List[Dict]:
+    def search_cves_for_service(
+        self, service_name: str, version: str = ""
+    ) -> List[Dict]:
         if self.backend == "postgresql":
             return self._search_postgres(service_name, version)
         if self.backend == "sqlite":
@@ -265,7 +276,9 @@ class CVEDatabase:
         )
         try:
             with get_vuln_engine().connect() as conn:
-                rows = conn.execute(query, {"severity": severity.upper()}).mappings().all()
+                rows = (
+                    conn.execute(query, {"severity": severity.upper()}).mappings().all()
+                )
             return [self._format_postgres_row(row) for row in rows]
         except SQLAlchemyError as exc:
             logger.error("PostgreSQL severity lookup failed for %s: %s", severity, exc)
@@ -278,7 +291,9 @@ class CVEDatabase:
             "cve_id": row.get("cve_id"),
             "description": row.get("description") or "",
             "cvss_score": float(row.get("cvss_score") or 0.0),
-            "severity": title_case_severity(row.get("cvss_severity"), row.get("cvss_score")),
+            "severity": title_case_severity(
+                row.get("cvss_severity"), row.get("cvss_score")
+            ),
             "cvss_version": row.get("cvss_version"),
             "cvss_vector": row.get("cvss_vector"),
             "published": row.get("published_date"),

@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 # Import SQLAlchemy session and models
 # Ensure the root of the project is in python path
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.base import SessionLocal
 from db.models.compliance import ComplianceFramework, ComplianceControl
+
 
 def seed_framework_and_controls(db: Session, seed_file_path: str):
     """Parses the JSON seed file and upserts records into PostgreSQL."""
@@ -30,7 +32,11 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
     framework_id = f"cfw_{fw_data['code'].lower()}"
 
     # 1. Seed Compliance Framework
-    framework = db.query(ComplianceFramework).filter(ComplianceFramework.id == framework_id).first()
+    framework = (
+        db.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == framework_id)
+        .first()
+    )
     if not framework:
         framework = ComplianceFramework(
             id=framework_id,
@@ -38,7 +44,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             code=fw_data["code"],
             name=fw_data["name"],
             version=fw_data["version"],
-            is_active=True
+            is_active=True,
         )
         db.add(framework)
         print(f"Seeding framework: {fw_data['name']} ({framework_id})")
@@ -51,8 +57,12 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
     controls_seeded = 0
     for ctrl in data["controls"]:
         control_id = f"cct_{fw_data['code'].lower()}_{ctrl['id']}"
-        control = db.query(ComplianceControl).filter(ComplianceControl.id == control_id).first()
-        
+        control = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.id == control_id)
+            .first()
+        )
+
         # Determine description
         description = ctrl.get("note", ctrl["title"])
 
@@ -65,7 +75,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
                 title=ctrl["title"],
                 description=description,
                 scannability=ctrl["scannability"],
-                scan_module_hint=ctrl.get("scan_module_hint")
+                scan_module_hint=ctrl.get("scan_module_hint"),
             )
             db.add(control)
             controls_seeded += 1
@@ -77,15 +87,23 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             control.scan_module_hint = ctrl.get("scan_module_hint")
 
     db.commit()
-    print(f"Successfully seeded/synchronized {controls_seeded} compliance controls for {fw_data['code']}.")
+    print(
+        f"Successfully seeded/synchronized {controls_seeded} compliance controls for {fw_data['code']}."
+    )
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Seed compliance controls standard catalog.")
+    parser = argparse.ArgumentParser(
+        description="Seed compliance controls standard catalog."
+    )
     parser.add_argument(
         "--seed-file",
         type=str,
-        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "iso27001_2022_controls_seed.json"),
-        help="Path to the JSON seed file containing controls metadata."
+        default=os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "iso27001_2022_controls_seed.json",
+        ),
+        help="Path to the JSON seed file containing controls metadata.",
     )
     args = parser.parse_args()
 

@@ -10,13 +10,18 @@ def _grant_permission(db_session, role: Role, resource: str, action: str) -> Non
         .first()
     )
     if permission is None:
-        permission = Permission(resource=resource, action=action, description=f"{resource}:{action}")
+        permission = Permission(
+            resource=resource, action=action, description=f"{resource}:{action}"
+        )
         db_session.add(permission)
         db_session.flush()
 
     exists = (
         db_session.query(RolePermission)
-        .filter(RolePermission.role_id == role.id, RolePermission.permission_id == permission.id)
+        .filter(
+            RolePermission.role_id == role.id,
+            RolePermission.permission_id == permission.id,
+        )
         .first()
     )
     if exists is None:
@@ -35,12 +40,20 @@ def _auth_headers(user: User) -> dict:
 
 
 def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
-    org_a = Organization(name="Org A", slug="org-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Org B", slug="org-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Org A", slug="org-a", max_assets=100, max_users=10, is_active=True
+    )
+    org_b = Organization(
+        name="Org B", slug="org-b", max_assets=100, max_users=10, is_active=True
+    )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add_all([superadmin_role, org_admin_role])
     db_session.flush()
 
@@ -88,12 +101,20 @@ def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
 
 
 def test_superadmin_user_listing_can_see_all_users(client, db_session):
-    org_a = Organization(name="Org SA A", slug="org-sa-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Org SA B", slug="org-sa-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Org SA A", slug="org-sa-a", max_assets=100, max_users=10, is_active=True
+    )
+    org_b = Organization(
+        name="Org SA B", slug="org-sa-b", max_assets=100, max_users=10, is_active=True
+    )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add_all([superadmin_role, org_admin_role])
     db_session.flush()
 
@@ -138,12 +159,28 @@ def test_superadmin_user_listing_can_see_all_users(client, db_session):
 
 
 def test_org_admin_audit_logs_are_tenant_scoped(client, db_session):
-    org_a = Organization(name="Audit Org A", slug="audit-org-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Audit Org B", slug="audit-org-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Audit Org A",
+        slug="audit-org-a",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    org_b = Organization(
+        name="Audit Org B",
+        slug="audit-org-b",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add_all([superadmin_role, org_admin_role])
     db_session.flush()
 
@@ -197,12 +234,28 @@ def test_org_admin_audit_logs_are_tenant_scoped(client, db_session):
 
 
 def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
-    org_a = Organization(name="Audit SA A", slug="audit-sa-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Audit SA B", slug="audit-sa-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Audit SA A",
+        slug="audit-sa-a",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    org_b = Organization(
+        name="Audit SA B",
+        slug="audit-sa-b",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add_all([superadmin_role, org_admin_role])
     db_session.flush()
 
@@ -253,7 +306,9 @@ def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
 
 
 def test_access_token_contains_org_and_role_claims(client, db_session):
-    org = Organization(name="Token Org", slug="token-org", max_assets=100, max_users=10, is_active=True)
+    org = Organization(
+        name="Token Org", slug="token-org", max_assets=100, max_users=10, is_active=True
+    )
     role = Role(name="org_admin", description="Org admin", is_system_role=True)
     db_session.add_all([org, role])
     db_session.flush()
@@ -282,10 +337,18 @@ def test_access_token_contains_org_and_role_claims(client, db_session):
 
 
 def test_superadmin_create_user_requires_explicit_organization(client, db_session):
-    org = Organization(name="Create Org", slug="create-org", max_assets=100, max_users=10, is_active=True)
+    org = Organization(
+        name="Create Org",
+        slug="create-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add(org)
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
     db_session.add(superadmin_role)
     db_session.flush()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
@@ -317,15 +380,32 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "organization_id is required when superadmin creates a user"
+    assert (
+        response.json()["detail"]
+        == "organization_id is required when superadmin creates a user"
+    )
 
 
 def test_superadmin_create_user_assigns_selected_organization(client, db_session):
-    org_a = Organization(name="Create Org A", slug="create-org-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Create Org B", slug="create-org-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Create Org A",
+        slug="create-org-a",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    org_b = Organization(
+        name="Create Org B",
+        slug="create-org-b",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
     db_session.add(superadmin_role)
     db_session.flush()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
@@ -358,17 +438,33 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     )
 
     assert response.status_code == 200
-    created_user = db_session.query(User).filter(User.username == "assigned-user").first()
+    created_user = (
+        db_session.query(User).filter(User.username == "assigned-user").first()
+    )
     assert created_user is not None
     assert str(created_user.org_id) == str(org_b.id)
 
 
 def test_org_admin_create_user_is_forced_into_own_organization(client, db_session):
-    org_a = Organization(name="Forced Org A", slug="forced-org-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="Forced Org B", slug="forced-org-b", max_assets=100, max_users=10, is_active=True)
+    org_a = Organization(
+        name="Forced Org A",
+        slug="forced-org-a",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    org_b = Organization(
+        name="Forced Org B",
+        slug="forced-org-b",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add_all([org_a, org_b])
 
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add(org_admin_role)
     db_session.flush()
     analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
@@ -401,16 +497,28 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
     )
 
     assert response.status_code == 200
-    created_user = db_session.query(User).filter(User.username == "forced-org-user").first()
+    created_user = (
+        db_session.query(User).filter(User.username == "forced-org-user").first()
+    )
     assert created_user is not None
     assert str(created_user.org_id) == str(org_a.id)
 
 
-def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(client, db_session):
-    org = Organization(name="Deleted Scope Org", slug="deleted-scope-org", max_assets=100, max_users=10, is_active=True)
+def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(
+    client, db_session
+):
+    org = Organization(
+        name="Deleted Scope Org",
+        slug="deleted-scope-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add(org)
 
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add(org_admin_role)
     db_session.flush()
 
@@ -450,19 +558,34 @@ def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(c
     db_session.refresh(admin)
 
     active_response = client.get("/admin/users/", headers=_auth_headers(admin))
-    deleted_response = client.get("/admin/users/?scope=deleted", headers=_auth_headers(admin))
+    deleted_response = client.get(
+        "/admin/users/?scope=deleted", headers=_auth_headers(admin)
+    )
 
     assert active_response.status_code == 200
     assert deleted_response.status_code == 200
-    assert {item["username"] for item in active_response.json()["users"]} == {"deleted-scope-admin", "active-user"}
-    assert {item["username"] for item in deleted_response.json()["users"]} == {"deleted-user"}
+    assert {item["username"] for item in active_response.json()["users"]} == {
+        "deleted-scope-admin",
+        "active-user",
+    }
+    assert {item["username"] for item in deleted_response.json()["users"]} == {
+        "deleted-user"
+    }
 
 
 def test_soft_delete_restore_and_purge_user_flow(client, db_session):
-    org = Organization(name="Lifecycle Org", slug="lifecycle-org", max_assets=100, max_users=10, is_active=True)
+    org = Organization(
+        name="Lifecycle Org",
+        slug="lifecycle-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add(org)
 
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add(org_admin_role)
     db_session.flush()
 
@@ -492,7 +615,9 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     db_session.refresh(admin)
     db_session.refresh(target)
 
-    delete_response = client.delete(f"/admin/users/{target.id}/", headers=_auth_headers(admin))
+    delete_response = client.delete(
+        f"/admin/users/{target.id}/", headers=_auth_headers(admin)
+    )
     db_session.refresh(target)
 
     assert delete_response.status_code == 200
@@ -500,7 +625,9 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     assert target.is_active is False
     assert target.deleted_at is not None
 
-    restore_response = client.post(f"/admin/users/{target.id}/restore/", headers=_auth_headers(admin))
+    restore_response = client.post(
+        f"/admin/users/{target.id}/restore/", headers=_auth_headers(admin)
+    )
     db_session.refresh(target)
 
     assert restore_response.status_code == 200
@@ -508,20 +635,32 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     assert target.deleted_at is None
     assert target.is_active is False
 
-    second_delete_response = client.delete(f"/admin/users/{target.id}/", headers=_auth_headers(admin))
+    second_delete_response = client.delete(
+        f"/admin/users/{target.id}/", headers=_auth_headers(admin)
+    )
     assert second_delete_response.status_code == 200
 
     target_id = str(target.id)
-    purge_response = client.delete(f"/admin/users/{target.id}/purge/", headers=_auth_headers(admin))
+    purge_response = client.delete(
+        f"/admin/users/{target.id}/purge/", headers=_auth_headers(admin)
+    )
     assert purge_response.status_code == 200
     assert db_session.query(User).filter(User.id == target_id).first() is None
 
 
 def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_session):
-    org = Organization(name="Purge Audit Org", slug="purge-audit-org", max_assets=100, max_users=10, is_active=True)
+    org = Organization(
+        name="Purge Audit Org",
+        slug="purge-audit-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     db_session.add(org)
 
-    org_admin_role = Role(name="org_admin", description="Org admin", is_system_role=True)
+    org_admin_role = Role(
+        name="org_admin", description="Org admin", is_system_role=True
+    )
     db_session.add(org_admin_role)
     db_session.flush()
 
@@ -557,7 +696,9 @@ def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_se
     assert audit_log is not None
 
     target_id = str(target.id)
-    response = client.delete(f"/admin/users/{target.id}/purge/", headers=_auth_headers(admin))
+    response = client.delete(
+        f"/admin/users/{target.id}/purge/", headers=_auth_headers(admin)
+    )
     db_session.refresh(audit_log)
 
     assert response.status_code == 200
@@ -566,7 +707,13 @@ def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_se
 
 
 def test_deleted_user_cannot_log_in(client, db_session):
-    org = Organization(name="Deleted Login Org", slug="deleted-login-org", max_assets=100, max_users=10, is_active=True)
+    org = Organization(
+        name="Deleted Login Org",
+        slug="deleted-login-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
     role = Role(name="org_admin", description="Org admin", is_system_role=True)
     db_session.add_all([org, role])
     db_session.flush()

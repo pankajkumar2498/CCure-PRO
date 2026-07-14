@@ -7,8 +7,11 @@
   align-items: center;
   justify-content: center;
   background: #020617;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0px, transparent 50%),
+  background-image: radial-gradient(
+      at 0% 0%,
+      rgba(14, 165, 233, 0.15) 0px,
+      transparent 50%
+    ),
     radial-gradient(at 100% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(14, 165, 233, 0.1) 0px, transparent 50%);
   position: relative;
@@ -21,8 +24,10 @@
   content: "";
   position: absolute;
   inset: -100%;
-  background-image: 
-    linear-gradient(rgba(14, 165, 233, 0.05) 1px, transparent 1px),
+  background-image: linear-gradient(
+      rgba(14, 165, 233, 0.05) 1px,
+      transparent 1px
+    ),
     linear-gradient(90deg, rgba(14, 165, 233, 0.05) 1px, transparent 1px);
   background-size: 60px 60px;
   transform: perspective(1000px) rotateX(60deg) translateY(0);
@@ -32,8 +37,12 @@
 }
 
 @keyframes grid-move {
-  0% { transform: perspective(1000px) rotateX(60deg) translateY(0); }
-  100% { transform: perspective(1000px) rotateX(60deg) translateY(60px); }
+  0% {
+    transform: perspective(1000px) rotateX(60deg) translateY(0);
+  }
+  100% {
+    transform: perspective(1000px) rotateX(60deg) translateY(60px);
+  }
 }
 
 .auth-page::after {
@@ -50,13 +59,21 @@
 }
 
 @keyframes top-scan {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes scan {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(400%); }
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(400%);
+  }
 }
 
 .auth-card .field-input {
@@ -91,7 +108,7 @@
   padding: 64px 56px 48px;
   width: 540px;
   max-width: calc(100vw - 32px);
-  box-shadow: 
+  box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.6),
     0 0 0 1px rgba(14, 165, 233, 0.1);
   overflow: hidden;
@@ -99,8 +116,13 @@
 }
 
 @keyframes card-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 /* Animated Gradient Border */
@@ -120,16 +142,24 @@
   );
   background-size: 200% 200%;
   animation: shimmer 4s linear infinite;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   mask-composite: exclude;
   -webkit-mask-composite: destination-out;
   pointer-events: none;
 }
 
 @keyframes shimmer {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 200% 200%; }
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 200%;
+  }
 }
 
 .auth-card--wide {
@@ -282,7 +312,9 @@
   color: var(--text);
   font-family: var(--font);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .field input:focus,
@@ -382,4 +414,3 @@
   opacity: 0.65;
   cursor: not-allowed;
 }
-

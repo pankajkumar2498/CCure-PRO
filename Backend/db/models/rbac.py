@@ -18,8 +18,14 @@ ID Convention (Stripe-Style)
 """
 
 from sqlalchemy import (
-    Boolean, Column, ForeignKey, Integer, SmallInteger,
-    String, Text, UniqueConstraint, Index,
+    Boolean,
+    Column,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -30,6 +36,7 @@ from db.base import Base, TIMESTAMPTZ, utcnow
 # ─────────────────────────────────────────────────────────────────────────────
 # Organizations  (top-level multi-tenant boundary)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class Organization(Base):
     """
@@ -47,31 +54,38 @@ class Organization(Base):
     max_assets   — Hard cap enforced at scan save time
     settings     — JSONB bag for per-org feature flags (e.g. {"sso_enabled": true})
     """
+
     __tablename__ = "organizations"
 
     # Stripe-style readable ID: "org_default", "org_acme"
-    id          = Column(String(100), primary_key=True)
-    name        = Column(String(255), nullable=False, unique=True)
-    slug        = Column(String(100), nullable=False, unique=True)  # URL-safe short name
-    plan        = Column(String(50),  nullable=False, default="community")
-    max_assets  = Column(Integer, nullable=False, default=500)
-    max_users   = Column(Integer, nullable=False, default=10)
+    id = Column(String(100), primary_key=True)
+    name = Column(String(255), nullable=False, unique=True)
+    slug = Column(String(100), nullable=False, unique=True)  # URL-safe short name
+    plan = Column(String(50), nullable=False, default="community")
+    max_assets = Column(Integer, nullable=False, default=500)
+    max_users = Column(Integer, nullable=False, default=10)
 
     # ── Scan Quota Overrides (NULL = use plan default from core/quota.py) ──────
     # Superadmins can set per-org overrides that take precedence over plan limits.
-    max_scans_per_day    = Column(Integer, nullable=True)  # rolling 24-h window
+    max_scans_per_day = Column(Integer, nullable=True)  # rolling 24-h window
     max_concurrent_scans = Column(Integer, nullable=True)  # simultaneous running scans
 
-    is_active   = Column(Boolean, nullable=False, default=True)
-    settings    = Column(JSONB,   nullable=False, default=dict)
+    is_active = Column(Boolean, nullable=False, default=True)
+    settings = Column(JSONB, nullable=False, default=dict)
 
-    created_at  = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
-    updated_at  = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    users  = relationship("User",  back_populates="organization", cascade="all, delete-orphan")
-    assets = relationship("Asset", back_populates="organization", cascade="all, delete-orphan")
-    scans  = relationship("Scan",  back_populates="organization", cascade="all, delete-orphan")
+    users = relationship(
+        "User", back_populates="organization", cascade="all, delete-orphan"
+    )
+    assets = relationship(
+        "Asset", back_populates="organization", cascade="all, delete-orphan"
+    )
+    scans = relationship(
+        "Scan", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Organization {self.id!r} plan={self.plan!r}>"
@@ -81,23 +95,27 @@ class Organization(Base):
 # Roles
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class Role(Base):
     """
     System-wide role definitions.  Five built-in roles mirror Tenable / Nessus.
     Roles keep SmallInteger PKs — they are seeded once and never renamed by users.
     """
+
     __tablename__ = "roles"
 
-    id             = Column(SmallInteger, primary_key=True, autoincrement=True)
-    name           = Column(String(50),  nullable=False, unique=True)
-    description    = Column(Text, nullable=True)
+    id = Column(SmallInteger, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
     is_system_role = Column(Boolean, nullable=False, default=False)
 
-    created_at     = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    users       = relationship("User",           back_populates="role")
-    permissions = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="role")
+    permissions = relationship(
+        "RolePermission", back_populates="role", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Role {self.name!r}>"
@@ -107,19 +125,23 @@ class Role(Base):
 # Permissions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class Permission(Base):
     """Atomic permission tokens: resource × action."""
+
     __tablename__ = "permissions"
     __table_args__ = (
         UniqueConstraint("resource", "action", name="uq_permissions_resource_action"),
     )
 
-    id       = Column(SmallInteger, primary_key=True, autoincrement=True)
+    id = Column(SmallInteger, primary_key=True, autoincrement=True)
     resource = Column(String(100), nullable=False)
-    action   = Column(String(50),  nullable=False)
+    action = Column(String(50), nullable=False)
     description = Column(Text, nullable=True)
 
-    roles = relationship("RolePermission", back_populates="permission", cascade="all, delete-orphan")
+    roles = relationship(
+        "RolePermission", back_populates="permission", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Permission {self.resource}:{self.action}>"
@@ -129,12 +151,18 @@ class Permission(Base):
 # Role ↔ Permission Bridge
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class RolePermission(Base):
     """Many-to-many bridge between roles and permissions."""
+
     __tablename__ = "role_permissions"
 
-    role_id       = Column(SmallInteger, ForeignKey("roles.id",       ondelete="CASCADE"), primary_key=True)
-    permission_id = Column(SmallInteger, ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True)
+    role_id = Column(
+        SmallInteger, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+    permission_id = Column(
+        SmallInteger, ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True
+    )
 
-    role       = relationship("Role",       back_populates="permissions")
+    role = relationship("Role", back_populates="permissions")
     permission = relationship("Permission", back_populates="roles")

@@ -158,7 +158,7 @@ def get_current_user_flexible(
         return _load_auth_context_from_payload(payload, db).user
 
     final_token = credentials.credentials if credentials else None
-    
+
     if not final_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

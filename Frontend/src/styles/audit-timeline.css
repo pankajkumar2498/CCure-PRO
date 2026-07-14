@@ -94,12 +94,24 @@
 }
 
 /* Dynamic Left Border based on severity */
-.audit-group-card { border-left-width: 4px; }
-.audit-group-card--info     { border-left-color: var(--info); }
-.audit-group-card--low      { border-left-color: var(--ok); }
-.audit-group-card--medium   { border-left-color: var(--warn); }
-.audit-group-card--high     { border-left-color: #f97316; } /* Tailwind orange-500 */
-.audit-group-card--critical { border-left-color: var(--danger); }
+.audit-group-card {
+  border-left-width: 4px;
+}
+.audit-group-card--info {
+  border-left-color: var(--info);
+}
+.audit-group-card--low {
+  border-left-color: var(--ok);
+}
+.audit-group-card--medium {
+  border-left-color: var(--warn);
+}
+.audit-group-card--high {
+  border-left-color: #f97316;
+} /* Tailwind orange-500 */
+.audit-group-card--critical {
+  border-left-color: var(--danger);
+}
 
 /* Card Header (Clickable) */
 .audit-group-header {
@@ -243,11 +255,26 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.audit-sev-badge--critical { background: rgba(239,68,68,0.1); color: #ef4444; }
-.audit-sev-badge--high     { background: rgba(249,115,22,0.1); color: #f97316; }
-.audit-sev-badge--medium   { background: rgba(234,179,8,0.1); color: #eab308; }
-.audit-sev-badge--low      { background: rgba(34,197,94,0.1); color: #22c55e; }
-.audit-sev-badge--info     { background: rgba(99,102,241,0.1); color: #6366f1; }
+.audit-sev-badge--critical {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+.audit-sev-badge--high {
+  background: rgba(249, 115, 22, 0.1);
+  color: #f97316;
+}
+.audit-sev-badge--medium {
+  background: rgba(234, 179, 8, 0.1);
+  color: #eab308;
+}
+.audit-sev-badge--low {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+.audit-sev-badge--info {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
 
 .audit-category-badge {
   font-size: 0.65rem;
@@ -385,18 +412,18 @@
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .audit-group-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .audit-group-meta {
     width: 100%;
     justify-content: space-between;
   }
-  
+
   .audit-event-header {
     flex-direction: column;
     align-items: flex-start;

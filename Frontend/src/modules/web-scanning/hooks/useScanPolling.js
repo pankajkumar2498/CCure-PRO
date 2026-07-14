@@ -54,7 +54,11 @@ export function useScanPolling(scanId, intervalMs = 5000) {
       const poll = async () => {
         timerRef.current = null;
         const currentScan = await fetchScan();
-        const isActive = currentScan && ["running", "pending", "queued"].includes(String(currentScan.status || "").toLowerCase());
+        const isActive =
+          currentScan &&
+          ["running", "pending", "queued"].includes(
+            String(currentScan.status || "").toLowerCase(),
+          );
 
         if (isActive && isMountedRef.current) {
           timerRef.current = setTimeout(poll, intervalMs);
@@ -73,7 +77,9 @@ export function useScanPolling(scanId, intervalMs = 5000) {
         const ticket = ticketResponse.data?.ticket;
         if (!ticket) throw new Error("Missing progress ticket");
 
-        const ws = new WebSocket(webScansApi.getProgressSocketUrl(scanId, ticket));
+        const ws = new WebSocket(
+          webScansApi.getProgressSocketUrl(scanId, ticket),
+        );
         socketRef.current = ws;
 
         ws.onopen = () => {
@@ -89,29 +95,45 @@ export function useScanPolling(scanId, intervalMs = 5000) {
             const partialScan = payload.scan || {};
             const phase = progress.phase || payload.phase;
 
-            setLiveEvents((prev) => [
-              {
-                id: `${Date.now()}-${prev.length}`,
-                phase,
-                status: progress.status,
-                message: progress.message || `Phase ${phase || "scan"} updated.`,
-                emitted_at: progress.updated_at || new Date().toISOString(),
-              },
-              ...prev,
-            ].slice(0, 12));
+            setLiveEvents((prev) =>
+              [
+                {
+                  id: `${Date.now()}-${prev.length}`,
+                  phase,
+                  status: progress.status,
+                  message:
+                    progress.message || `Phase ${phase || "scan"} updated.`,
+                  emitted_at: progress.updated_at || new Date().toISOString(),
+                },
+                ...prev,
+              ].slice(0, 12),
+            );
 
             setScan((prev) => ({
               ...(prev || {}),
               ...partialScan,
               status: progress.status || partialScan.status || prev?.status,
-              pipeline_phase: phase || partialScan.pipeline_phase || prev?.pipeline_phase,
-              total_endpoints: progress.total_endpoints ?? partialScan.total_endpoints ?? prev?.total_endpoints,
-              total_findings: progress.total_findings ?? partialScan.total_findings ?? prev?.total_findings,
+              pipeline_phase:
+                phase || partialScan.pipeline_phase || prev?.pipeline_phase,
+              total_endpoints:
+                progress.total_endpoints ??
+                partialScan.total_endpoints ??
+                prev?.total_endpoints,
+              total_findings:
+                progress.total_findings ??
+                partialScan.total_findings ??
+                prev?.total_findings,
               live_progress: progress,
             }));
 
-            const nextStatus = String(progress.status || partialScan.status || "").toLowerCase();
-            if (["complete", "completed", "failed", "cancelled"].includes(nextStatus)) {
+            const nextStatus = String(
+              progress.status || partialScan.status || "",
+            ).toLowerCase();
+            if (
+              ["complete", "completed", "failed", "cancelled"].includes(
+                nextStatus,
+              )
+            ) {
               terminalRef.current = true;
               fetchScan();
               ws.close();
@@ -133,9 +155,14 @@ export function useScanPolling(scanId, intervalMs = 5000) {
             setLiveStatus("closed");
             return;
           }
-          setLiveStatus((current) => current === "connected" ? "reconnecting" : "degraded");
+          setLiveStatus((current) =>
+            current === "connected" ? "reconnecting" : "degraded",
+          );
           startPollingFallback();
-          reconnectTimerRef.current = setTimeout(connectLiveProgress, Math.max(intervalMs, 5000));
+          reconnectTimerRef.current = setTimeout(
+            connectLiveProgress,
+            Math.max(intervalMs, 5000),
+          );
         };
       } catch (err) {
         if (!isMountedRef.current) return;

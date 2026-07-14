@@ -2,12 +2,15 @@ import os
 import sys
 
 # Ensure the root of the project is in python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from db.base import SessionLocal
 from db.models import User, Asset
 from db.models.rbac import Organization
 from db.models.compliance import ComplianceScore, ComplianceFinding
+
 
 def diagnostics():
     db = SessionLocal()
@@ -30,18 +33,23 @@ def diagnostics():
         print("\n=== Compliance Scores ===")
         scores = db.query(ComplianceScore).all()
         for s in scores:
-            print(f"ID: {s.id} | Tenant ID: {s.tenant_id} | Asset ID: {s.asset_id} | Score: {s.score_pct}% | Weighted: {s.weighted_score_pct}%")
+            print(
+                f"ID: {s.id} | Tenant ID: {s.tenant_id} | Asset ID: {s.asset_id} | Score: {s.score_pct}% | Weighted: {s.weighted_score_pct}%"
+            )
 
         print("\n=== Compliance Findings ===")
         findings = db.query(ComplianceFinding).all()
         print(f"Total findings in database: {len(findings)}")
         for f in findings[:10]:
-            print(f"ID: {f.id} | Tenant ID: {f.tenant_id} | Control: {f.control_id} | Status: {f.status}")
+            print(
+                f"ID: {f.id} | Tenant ID: {f.tenant_id} | Control: {f.control_id} | Status: {f.status}"
+            )
 
     except Exception as e:
         print(f"Error: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     diagnostics()

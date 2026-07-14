@@ -13,8 +13,6 @@ This crawler handles:
   - Scope enforcement (stay within target domain/path)
 """
 
-import asyncio
-import hashlib
 import logging
 import re
 from collections import deque
@@ -28,18 +26,46 @@ log = logging.getLogger("ccure.web.crawler")
 # Regex patterns for extracting API endpoints from JavaScript
 _JS_ENDPOINT_PATTERNS = [
     re.compile(r"""(?:fetch|axios|XMLHttpRequest)\s*\(\s*['"`]([^'"`]+)['"`]"""),
-    re.compile(r"""(?:url|endpoint|api|path)\s*[:=]\s*['"`]([^'"`]+)['"`]""", re.IGNORECASE),
+    re.compile(
+        r"""(?:url|endpoint|api|path)\s*[:=]\s*['"`]([^'"`]+)['"`]""", re.IGNORECASE
+    ),
     re.compile(r"""(?:GET|POST|PUT|DELETE|PATCH)\s*['"`]\s*([/][^'"`\s]+)"""),
 ]
 
 # File extensions to skip during crawling
 _SKIP_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".ico", ".webp", ".bmp",
-    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".webm",
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt",
-    ".zip", ".tar", ".gz", ".rar", ".7z",
-    ".woff", ".woff2", ".ttf", ".eot", ".otf",
-    ".css", ".map",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".svg",
+    ".ico",
+    ".webp",
+    ".bmp",
+    ".mp3",
+    ".mp4",
+    ".wav",
+    ".avi",
+    ".mov",
+    ".webm",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".rar",
+    ".7z",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".css",
+    ".map",
 }
 
 
@@ -143,7 +169,9 @@ class PlaywrightCrawler:
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            log.error("Playwright not installed. Install via: pip install playwright && playwright install chromium")
+            log.error(
+                "Playwright not installed. Install via: pip install playwright && playwright install chromium"
+            )
             result.errors.append("Playwright not installed")
             return result
 
@@ -188,13 +216,17 @@ class PlaywrightCrawler:
                     try:
                         url = response.url
                         if self._is_api_call(url):
-                            network_apis.append({
-                                "url": url,
-                                "method": response.request.method,
-                                "status": response.status,
-                                "content_type": response.headers.get("content-type", ""),
-                                "source": "network_intercept",
-                            })
+                            network_apis.append(
+                                {
+                                    "url": url,
+                                    "method": response.request.method,
+                                    "status": response.status,
+                                    "content_type": response.headers.get(
+                                        "content-type", ""
+                                    ),
+                                    "source": "network_intercept",
+                                }
+                            )
                     except Exception:
                         pass
 
@@ -218,7 +250,9 @@ class PlaywrightCrawler:
                     result.pages_visited += 1
 
                     try:
-                        response = await page.goto(url, wait_until="networkidle", timeout=self.timeout)
+                        response = await page.goto(
+                            url, wait_until="networkidle", timeout=self.timeout
+                        )
                         if not response:
                             continue
 
@@ -278,8 +312,10 @@ class PlaywrightCrawler:
 
         log.info(
             "Crawl complete: %d pages, %d endpoints, %d forms, %d JS endpoints",
-            result.pages_visited, len(result.endpoints),
-            len(result.forms), len(result.js_endpoints),
+            result.pages_visited,
+            len(result.endpoints),
+            len(result.forms),
+            len(result.js_endpoints),
         )
 
         return result
@@ -314,7 +350,9 @@ class PlaywrightCrawler:
 
                 # Extract input fields
                 inputs = []
-                input_elements = await form.query_selector_all("input, textarea, select")
+                input_elements = await form.query_selector_all(
+                    "input, textarea, select"
+                )
                 has_file_upload = False
                 has_password = False
 
@@ -328,21 +366,25 @@ class PlaywrightCrawler:
                     if input_type == "password":
                         has_password = True
 
-                    inputs.append({
-                        "name": input_name,
-                        "type": input_type,
-                        "id": input_id,
-                    })
+                    inputs.append(
+                        {
+                            "name": input_name,
+                            "type": input_type,
+                            "id": input_id,
+                        }
+                    )
 
-                forms.append({
-                    "url": action_url,
-                    "method": method,
-                    "inputs": inputs,
-                    "has_file_upload": has_file_upload,
-                    "has_password": has_password,
-                    "source": "crawler",
-                    "page_url": current_url,
-                })
+                forms.append(
+                    {
+                        "url": action_url,
+                        "method": method,
+                        "inputs": inputs,
+                        "has_file_upload": has_file_upload,
+                        "has_password": has_password,
+                        "source": "crawler",
+                        "page_url": current_url,
+                    }
+                )
         except Exception:
             pass
         return forms
@@ -368,13 +410,15 @@ class PlaywrightCrawler:
                 else:
                     continue
 
-                endpoints.append({
-                    "url": full_url,
-                    "method": "GET",
-                    "source": "js_parse",
-                    "content_type": "",
-                    "response_code": None,
-                })
+                endpoints.append(
+                    {
+                        "url": full_url,
+                        "method": "GET",
+                        "source": "js_parse",
+                        "content_type": "",
+                        "response_code": None,
+                    }
+                )
         return endpoints
 
     @staticmethod
@@ -382,11 +426,15 @@ class PlaywrightCrawler:
         """Detect technologies from HTTP response headers."""
         server = headers.get("server", "")
         if server:
-            result.technologies.append({"name": server, "category": "server", "source": "header"})
+            result.technologies.append(
+                {"name": server, "category": "server", "source": "header"}
+            )
 
         powered_by = headers.get("x-powered-by", "")
         if powered_by:
-            result.technologies.append({"name": powered_by, "category": "framework", "source": "header"})
+            result.technologies.append(
+                {"name": powered_by, "category": "framework", "source": "header"}
+            )
 
         # HSTS check
         if not headers.get("strict-transport-security"):
@@ -395,7 +443,9 @@ class PlaywrightCrawler:
     # ── Scope & Filtering ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _is_in_scope(url: str, allowed_domains: Set[str], exclude_patterns: List) -> bool:
+    def _is_in_scope(
+        url: str, allowed_domains: Set[str], exclude_patterns: List
+    ) -> bool:
         parsed = urlparse(url)
         if parsed.netloc not in allowed_domains:
             return False

@@ -25,6 +25,7 @@ router = APIRouter()
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
+
 @router.get("/", tags=["Health"])
 async def root():
     return get_api().get_system_info()
@@ -32,11 +33,12 @@ async def root():
 
 # ── Real-time progress ───────────────────────────────────────────────────────
 
+
 @router.get("/scan/progress/{scan_id}", tags=["Progress"])
 async def get_scan_progress(
     scan_id: str,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(require_permission("scans", "read")),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Get real-time progress for an ongoing scan (multi-worker safe).
@@ -58,6 +60,7 @@ async def get_scan_progress(
 
 # ── Documentation ─────────────────────────────────────────────────────────────
 
+
 @router.get("/api/pipeline-modes", tags=["Documentation"])
 async def pipeline_modes():
     """
@@ -67,11 +70,11 @@ async def pipeline_modes():
     return {
         "pipeline_modes": {
             mode: {
-                "phases":         phases,
+                "phases": phases,
                 "terminal_phase": max(phases),
                 "description": {
-                    "basic":              "Host Discovery only. Scan is marked complete after Phase 1.",
-                    "asset":              "Host Discovery then Port Scanning. Marked complete after Phase 2.",
+                    "basic": "Host Discovery only. Scan is marked complete after Phase 1.",
+                    "asset": "Host Discovery then Port Scanning. Marked complete after Phase 2.",
                     "vulnerability_audit": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
                 }[mode],
             }
@@ -85,10 +88,13 @@ async def workflow_example():
     return {
         "workflow": "Frontend-Driven Phase Orchestration",
         "pipeline_modes": {
-            "basic":              {"phases": [1], "description": "Host Discovery only"},
-            "asset":              {"phases": [1, 2], "description": "Discovery → Port Scan"},
-            "vulnerability_audit": {"phases": [1, 2, 3, 4], "description": "Full pipeline"},
+            "basic": {"phases": [1], "description": "Host Discovery only"},
+            "asset": {"phases": [1, 2], "description": "Discovery → Port Scan"},
+            "vulnerability_audit": {
+                "phases": [1, 2, 3, 4],
+                "description": "Full pipeline",
+            },
         },
         "note": "Each phase endpoint now validates that the incoming phase is "
-                "part of the declared pipeline_mode.",
+        "part of the declared pipeline_mode.",
     }

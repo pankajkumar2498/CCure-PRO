@@ -19,11 +19,11 @@ export const runCredentialedScan = ({
   api.post("/scan/credentialed", {
     ip,
     username,
-    password:    authMethod === "password" ? password  : undefined,
-    key_path:    authMethod === "key"      ? keyPath   : undefined,
+    password: authMethod === "password" ? password : undefined,
+    key_path: authMethod === "key" ? keyPath : undefined,
     port,
     auth_method: authMethod,
     sections,
-    os_type:     osType,
+    os_type: osType,
     credential_id: credentialId,
   });

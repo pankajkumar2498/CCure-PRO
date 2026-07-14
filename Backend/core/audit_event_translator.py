@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 
@@ -26,38 +26,50 @@ from typing import Any, Optional
 
 FIELD_EVENT_MAP: dict[str, tuple[str, str, str, str]] = {
     # ── Asset Identification ──────────────────────────────────────────────────
-    "hostname":         ("Hostname Updated",                "asset_identification", "🖥️",  "LOW"),
-    "fqdn":             ("FQDN Resolved",                   "asset_identification", "🌐",  "LOW"),
-    "dns_name":         ("DNS Name Resolved",               "asset_identification", "🔗",  "LOW"),
-    "netbios_name":     ("NetBIOS Name Discovered",         "asset_identification", "📛",  "LOW"),
-    "mac_address":      ("Network Interface Identified",    "asset_identification", "📡",  "LOW"),
-    "vendor":           ("Vendor Identified",               "asset_identification", "🏷️",  "LOW"),
-    "manufacturer":     ("Manufacturer Identified",         "asset_identification", "🏭",  "MEDIUM"),
-    "device_category":  ("Device Classification Updated",   "asset_identification", "📂",  "HIGH"),
-    "ip_address":       ("IP Address Changed",              "network",              "🔀",  "MEDIUM"),
-
+    "hostname": ("Hostname Updated", "asset_identification", "🖥️", "LOW"),
+    "fqdn": ("FQDN Resolved", "asset_identification", "🌐", "LOW"),
+    "dns_name": ("DNS Name Resolved", "asset_identification", "🔗", "LOW"),
+    "netbios_name": ("NetBIOS Name Discovered", "asset_identification", "📛", "LOW"),
+    "mac_address": (
+        "Network Interface Identified",
+        "asset_identification",
+        "📡",
+        "LOW",
+    ),
+    "vendor": ("Vendor Identified", "asset_identification", "🏷️", "LOW"),
+    "manufacturer": ("Manufacturer Identified", "asset_identification", "🏭", "MEDIUM"),
+    "device_category": (
+        "Device Classification Updated",
+        "asset_identification",
+        "📂",
+        "HIGH",
+    ),
+    "ip_address": ("IP Address Changed", "network", "🔀", "MEDIUM"),
     # ── Operating System ──────────────────────────────────────────────────────
-    "os_name":          ("Operating System Identified",     "operating_system",     "💻",  "MEDIUM"),
-    "os_version":       ("OS Version Updated",              "operating_system",     "🔄",  "MEDIUM"),
-    "os_family":        ("OS Family Classified",            "operating_system",     "🗂️",  "MEDIUM"),
-    "os_confidence":    ("OS Detection Confidence Updated", "operating_system",     "📊",  "INFO"),
-
+    "os_name": ("Operating System Identified", "operating_system", "💻", "MEDIUM"),
+    "os_version": ("OS Version Updated", "operating_system", "🔄", "MEDIUM"),
+    "os_family": ("OS Family Classified", "operating_system", "🗂️", "MEDIUM"),
+    "os_confidence": (
+        "OS Detection Confidence Updated",
+        "operating_system",
+        "📊",
+        "INFO",
+    ),
     # ── Network ───────────────────────────────────────────────────────────────
-    "subnet":           ("Network Classification Updated",  "network",              "🌍",  "LOW"),
-    "response_time_ms": ("Response Time Updated",           "network",              "⏱️",  "INFO"),
-    "vlan_id":          ("VLAN Assignment Updated",         "network",              "🔌",  "LOW"),
-
+    "subnet": ("Network Classification Updated", "network", "🌍", "LOW"),
+    "response_time_ms": ("Response Time Updated", "network", "⏱️", "INFO"),
+    "vlan_id": ("VLAN Assignment Updated", "network", "🔌", "LOW"),
     # ── Lifecycle ─────────────────────────────────────────────────────────────
-    "discovery_method": ("Discovery Method Updated",        "lifecycle",            "🔍",  "INFO"),
+    "discovery_method": ("Discovery Method Updated", "lifecycle", "🔍", "INFO"),
 }
 
 # Special change_type events (not field_update)
 CHANGE_TYPE_EVENT_MAP: dict[str, tuple[str, str, str, str]] = {
-    "lifecycle":              ("Asset Lifecycle Event",      "lifecycle", "♻️",  "LOW"),
-    "vulnerability_fixed":    ("Vulnerability Remediated",   "security",  "✅",  "MEDIUM"),
-    "vulnerability_reopened": ("Vulnerability Reopened",     "security",  "🔓",  "CRITICAL"),
-    "port_opened":            ("Open Port Detected",         "security",  "🚪",  "MEDIUM"),
-    "port_closed":            ("Port Closed",                "security",  "🔒",  "LOW"),
+    "lifecycle": ("Asset Lifecycle Event", "lifecycle", "♻️", "LOW"),
+    "vulnerability_fixed": ("Vulnerability Remediated", "security", "✅", "MEDIUM"),
+    "vulnerability_reopened": ("Vulnerability Reopened", "security", "🔓", "CRITICAL"),
+    "port_opened": ("Open Port Detected", "security", "🚪", "MEDIUM"),
+    "port_closed": ("Port Closed", "security", "🔒", "LOW"),
 }
 
 
@@ -66,11 +78,15 @@ CHANGE_TYPE_EVENT_MAP: dict[str, tuple[str, str, str, str]] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 CATEGORY_META: dict[str, dict[str, str]] = {
-    "asset_identification": {"label": "Asset Identification", "icon": "🖥️", "color": "#3b82f6"},
-    "operating_system":     {"label": "Operating System",     "icon": "💻", "color": "#8b5cf6"},
-    "network":              {"label": "Network",              "icon": "🌐", "color": "#06b6d4"},
-    "security":             {"label": "Security",             "icon": "🛡️", "color": "#ef4444"},
-    "lifecycle":            {"label": "Lifecycle",            "icon": "♻️", "color": "#22c55e"},
+    "asset_identification": {
+        "label": "Asset Identification",
+        "icon": "🖥️",
+        "color": "#3b82f6",
+    },
+    "operating_system": {"label": "Operating System", "icon": "💻", "color": "#8b5cf6"},
+    "network": {"label": "Network", "icon": "🌐", "color": "#06b6d4"},
+    "security": {"label": "Security", "icon": "🛡️", "color": "#ef4444"},
+    "lifecycle": {"label": "Lifecycle", "icon": "♻️", "color": "#22c55e"},
 }
 
 
@@ -87,10 +103,10 @@ SEVERITY_RANK: dict[str, int] = {
 }
 
 SEVERITY_COLORS: dict[str, str] = {
-    "INFO":     "#6366f1",
-    "LOW":      "#22c55e",
-    "MEDIUM":   "#eab308",
-    "HIGH":     "#f97316",
+    "INFO": "#6366f1",
+    "LOW": "#22c55e",
+    "MEDIUM": "#eab308",
+    "HIGH": "#f97316",
     "CRITICAL": "#ef4444",
 }
 
@@ -98,6 +114,7 @@ SEVERITY_COLORS: dict[str, str] = {
 # ─────────────────────────────────────────────────────────────────────────────
 # Source Classification
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _classify_event_source(change_type: str) -> str:
     """Determine the event source from the change type."""
@@ -111,14 +128,15 @@ def _classify_event_source(change_type: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCAN_TYPE_LABELS: dict[str, tuple[str, str]] = {
-    "credentialed":       ("Credentialed Scan Completed",    "🔑"),
-    "discovery":          ("Host Discovery Completed",       "📡"),
-    "host_discovery":     ("Host Discovery Completed",       "📡"),
-    "asset_discovery":    ("Asset Discovery Completed",      "🔎"),
-    "fingerprinting":     ("Service Fingerprinting Completed", "🔬"),
-    "vulnerability_audit":("Vulnerability Audit Completed",  "🛡️"),
-    "scanner":            ("Network Scan Completed",         "📡"),
+    "credentialed": ("Credentialed Scan Completed", "🔑"),
+    "discovery": ("Host Discovery Completed", "📡"),
+    "host_discovery": ("Host Discovery Completed", "📡"),
+    "asset_discovery": ("Asset Discovery Completed", "🔎"),
+    "fingerprinting": ("Service Fingerprinting Completed", "🔬"),
+    "vulnerability_audit": ("Vulnerability Audit Completed", "🛡️"),
+    "scanner": ("Network Scan Completed", "📡"),
 }
+
 
 def _scan_type_from_id(scan_id: Optional[str]) -> str:
     """Infer scan type from scan_id prefix convention."""
@@ -134,6 +152,7 @@ def _scan_type_from_id(scan_id: Optional[str]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Value Formatting
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _extract_display_value(raw_value: Any) -> Optional[str]:
     """
@@ -208,6 +227,7 @@ def _format_field_value(field_name: str, display_value: Optional[str]) -> str:
 # Dynamic Severity Escalation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _compute_dynamic_severity(
     field_name: str,
     base_severity: str,
@@ -247,14 +267,15 @@ def _compute_dynamic_severity(
 # ─────────────────────────────────────────────────────────────────────────────
 
 LIFECYCLE_LABELS: dict[str, str] = {
-    "discovered":                      "Asset first discovered on the network",
-    "bootstrapped_via_credentialed":   "Asset record created via credentialed scan",
+    "discovered": "Asset first discovered on the network",
+    "bootstrapped_via_credentialed": "Asset record created via credentialed scan",
 }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core Translation
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def translate_changelog_entry(entry: dict) -> dict:
     """
@@ -308,9 +329,13 @@ def translate_changelog_entry(entry: dict) -> dict:
     elif change_type in ("vulnerability_fixed", "vulnerability_reopened"):
         cve_id = new_display or old_display or "Unknown CVE"
         if change_type == "vulnerability_fixed":
-            event_description = f"{cve_id} has been remediated and is no longer detected"
+            event_description = (
+                f"{cve_id} has been remediated and is no longer detected"
+            )
         else:
-            event_description = f"{cve_id} has been re-detected after previous remediation"
+            event_description = (
+                f"{cve_id} has been re-detected after previous remediation"
+            )
     elif is_new_discovery:
         event_description = f"{(field_name or '').replace('_', ' ').title()} detected as {new_formatted}"
     else:
@@ -326,7 +351,6 @@ def translate_changelog_entry(entry: dict) -> dict:
         "field_name": field_name,
         "scan_id": entry.get("scan_id"),
         "detected_at": entry.get("detected_at"),
-
         # Enriched fields
         "event_title": event_title,
         "event_description": event_description,
@@ -334,7 +358,6 @@ def translate_changelog_entry(entry: dict) -> dict:
         "severity": severity,
         "severity_color": SEVERITY_COLORS.get(severity, "#64748b"),
         "icon": icon,
-
         # Formatted values
         "old_value": old_raw,
         "new_value": new_raw,
@@ -428,10 +451,16 @@ def group_changelog_by_scan(
         # Build subtitle
         parts = []
         if discoveries:
-            parts.append(f"{discoveries} new attribute{'s' if discoveries != 1 else ''} discovered")
+            parts.append(
+                f"{discoveries} new attribute{'s' if discoveries != 1 else ''} discovered"
+            )
         if changes:
             parts.append(f"{changes} attribute{'s' if changes != 1 else ''} updated")
-        summary_subtitle = " · ".join(parts) if parts else f"{len(events)} event{'s' if len(events) != 1 else ''}"
+        summary_subtitle = (
+            " · ".join(parts)
+            if parts
+            else f"{len(events)} event{'s' if len(events) != 1 else ''}"
+        )
 
         # Highest severity in group
         max_sev = max(
@@ -443,27 +472,33 @@ def group_changelog_by_scan(
         )
 
         # Category breakdown
-        categories_in_group = list({e.get("category") for e in events if e.get("category")})
+        categories_in_group = list(
+            {e.get("category") for e in events if e.get("category")}
+        )
 
         # Stable group ID
         group_id = hashlib.md5(key.encode()).hexdigest()[:12]
 
-        groups.append({
-            "group_id": f"grp_{group_id}",
-            "scan_id": scan_id,
-            "scan_type": scan_type,
-            "group_icon": group_icon,
-            "detected_at": detected_at,
-            "event_count": len(events),
-            "discovery_count": discoveries,
-            "change_count": changes,
-            "summary_title": summary_title,
-            "summary_subtitle": summary_subtitle,
-            "highest_severity": highest_severity,
-            "highest_severity_color": SEVERITY_COLORS.get(highest_severity, "#64748b"),
-            "categories": categories_in_group,
-            "events": events,
-        })
+        groups.append(
+            {
+                "group_id": f"grp_{group_id}",
+                "scan_id": scan_id,
+                "scan_type": scan_type,
+                "group_icon": group_icon,
+                "detected_at": detected_at,
+                "event_count": len(events),
+                "discovery_count": discoveries,
+                "change_count": changes,
+                "summary_title": summary_title,
+                "summary_subtitle": summary_subtitle,
+                "highest_severity": highest_severity,
+                "highest_severity_color": SEVERITY_COLORS.get(
+                    highest_severity, "#64748b"
+                ),
+                "categories": categories_in_group,
+                "events": events,
+            }
+        )
 
     # 3. Sort groups by detected_at descending (newest first)
     groups.sort(key=lambda g: g.get("detected_at") or "", reverse=True)
@@ -474,6 +509,7 @@ def group_changelog_by_scan(
 # ─────────────────────────────────────────────────────────────────────────────
 # Main Orchestrator
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def translate_and_group_changelog(
     raw_entries: list[dict],
@@ -504,7 +540,13 @@ def translate_and_group_changelog(
     # 3. Compute stats
     categories_set: set[str] = set()
     by_category: dict[str, int] = {}
-    by_severity: dict[str, int] = {"INFO": 0, "LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
+    by_severity: dict[str, int] = {
+        "INFO": 0,
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "CRITICAL": 0,
+    }
 
     for event in translated:
         cat = event.get("category", "lifecycle")

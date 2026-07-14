@@ -29,13 +29,14 @@ from core.constants import SCAPY_AVAILABLE
 log = logging.getLogger("ccure.discovery.enrichment")
 
 from concurrent.futures import ThreadPoolExecutor
+
 _OT_POOL = ThreadPoolExecutor(max_workers=128)
 
 # SNMP OIDs for device classification
 _SNMP_OIDS = {
-    "ip_forwarding": "1.3.6.1.2.1.4.1.0",     # 1=router, 2=host
-    "bridge_mib":    "1.3.6.1.2.1.17.1.1.0",  # present → switch
-    "sys_obj_id":    "1.3.6.1.2.1.1.2.0",      # enterprise OID
+    "ip_forwarding": "1.3.6.1.2.1.4.1.0",  # 1=router, 2=host
+    "bridge_mib": "1.3.6.1.2.1.17.1.1.0",  # present → switch
+    "sys_obj_id": "1.3.6.1.2.1.1.2.0",  # enterprise OID
 }
 
 # Try to import Scapy SNMP extensions (optional — may not be present)
@@ -43,6 +44,7 @@ _SNMP_AVAILABLE = False
 if SCAPY_AVAILABLE:
     try:
         from scapy.all import SNMP, SNMPget, SNMPvarbind, ASN1_OID
+
         _SNMP_AVAILABLE = True
     except ImportError:
         pass
@@ -52,7 +54,10 @@ if SCAPY_AVAILABLE:
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
-def enrich_host(ip: str, result: Dict, ot_enrichment: bool = True, register_ports: bool = True) -> None:
+
+def enrich_host(
+    ip: str, result: Dict, ot_enrichment: bool = True, register_ports: bool = True
+) -> None:
     """
     Run all enrichment probes for one active host.
 
@@ -68,10 +73,15 @@ def enrich_host(ip: str, result: Dict, ot_enrichment: bool = True, register_port
     result["_register_ports"] = register_ports
     try:
         basic_probes = [_ptr_lookup, _netbios_query, _mdns_query]
-        deep_probes = [_snmp_lightweight_probe, _ot_protocol_probes, _mdns_service_query, _os_probe_full]
-        
+        deep_probes = [
+            _snmp_lightweight_probe,
+            _ot_protocol_probes,
+            _mdns_service_query,
+            _os_probe_full,
+        ]
+
         probes = basic_probes + (deep_probes if ot_enrichment else [])
-        
+
         for fn in probes:
             try:
                 fn(ip, result)
@@ -81,28 +91,38 @@ def enrich_host(ip: str, result: Dict, ot_enrichment: bool = True, register_port
         result.pop("_register_ports", None)
 
 
-def _register_open_port(result: dict, port: int, service: str, banner: str = "", version: str = "", product: str = "") -> None:
+def _register_open_port(
+    result: dict,
+    port: int,
+    service: str,
+    banner: str = "",
+    version: str = "",
+    product: str = "",
+) -> None:
     """Helper to register an open port / service dynamically on the host result."""
     if not result.get("_register_ports", True):
         return
-        
+
     port_states = result.setdefault("port_states", {})
     port_states[port] = "open"
     port_states[str(port)] = "open"
-    
+
     open_ports = result.setdefault("open_ports", [])
     if not any(p.get("port") == port for p in open_ports):
         from core.constants import PORT_DB
         from core.utils import lookup_cve
-        
-        meta = PORT_DB.get(port, {
-            "service": service,
-            "risk": "Info",
-            "note": "",
-        })
-        
+
+        meta = PORT_DB.get(
+            port,
+            {
+                "service": service,
+                "risk": "Info",
+                "note": "",
+            },
+        )
+
         cves = lookup_cve(banner or service.lower())
-        
+
         port_dict = {
             "port": port,
             "service": service or meta.get("service", "unknown"),
@@ -111,10 +131,10 @@ def _register_open_port(result: dict, port: int, service: str, banner: str = "",
             "version": version[:200] if version else "",
             "product": product[:255] if product else "",
             "risk": meta.get("risk", "Info"),
-            "cves": cves
+            "cves": cves,
         }
         open_ports.append(port_dict)
-        
+
         if cves:
             result.setdefault("cves", []).extend(cves)
 
@@ -139,17 +159,26 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
     result["_ot_probed"] = True
 
     from core.discovery.techniques.ot_probes import (
-        probe_modbus, probe_s7, probe_ethernetip, probe_bacnet, probe_dnp3,
-        probe_opcua, probe_iec104, probe_ge_srtp, probe_fins, probe_melsec,
-        probe_codesys, probe_mms
+        probe_modbus,
+        probe_s7,
+        probe_ethernetip,
+        probe_bacnet,
+        probe_dnp3,
+        probe_opcua,
+        probe_iec104,
+        probe_ge_srtp,
+        probe_fins,
+        probe_melsec,
+        probe_codesys,
+        probe_mms,
     )
 
     # Port mapping for each protocol (MMS and S7 both share port 102, so handled separately)
     port_map = {
-        "modbus": (502, True),       # (port, is_tcp)
-        "ethernetip": (44818, False), # UDP
-        "bacnet": (47808, False),    # UDP
-        "dnp3": (20000, True),       # TCP (fallback to UDP inside probe)
+        "modbus": (502, True),  # (port, is_tcp)
+        "ethernetip": (44818, False),  # UDP
+        "bacnet": (47808, False),  # UDP
+        "dnp3": (20000, True),  # TCP (fallback to UDP inside probe)
         "opcua": (4840, True),
         "iec104": (2404, True),
         "ge_srtp": (18245, True),
@@ -162,18 +191,18 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
 
     # Pre-filter: determine which protocols we should actually probe
     candidate_probes = []
-    
+
     # 1. Check TCP / UDP mapped probes
     for name, (port, is_tcp) in port_map.items():
         state = port_states.get(port) or port_states.get(str(port))
         if state not in ("open", "open|filtered", "filtered", None):
             continue
-            
+
         # Fast TCP pre-connection check
         if is_tcp and state is None:
             if not _is_port_connectable(ip, port, timeout=1.0):
                 continue
-                
+
         # If UDP, or TCP connection succeeded, or port state already confirmed open, add to candidates
         if name == "modbus":
             candidate_probes.append((name, probe_modbus))
@@ -237,7 +266,9 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
         try:
             info = func(ip, 1.0)
             if info:
-                audit_log.info(f"[AUDIT] Successfully identified {info['protocol'].upper()} device on {ip}")
+                audit_log.info(
+                    f"[AUDIT] Successfully identified {info['protocol'].upper()} device on {ip}"
+                )
                 result["ot_info"] = info
                 result["device_category"] = "scada_ics"
                 if "vendor" in info:
@@ -245,19 +276,30 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                 if "model" in info:
                     # Avoid clobbering real hostnames and avoid generic protocol/service labels in hostname
                     current_host = result.get("hostname")
-                    is_unresolved = not current_host or current_host in ("Unknown", "N/A", "")
+                    is_unresolved = not current_host or current_host in (
+                        "Unknown",
+                        "N/A",
+                        "",
+                    )
                     generic_labels = {
-                        "OPC UA Server", "Modbus TCP Controller", "BACnet Hvac/Sensor", 
-                        "DNP3 Outstation", "IEC 60870-5-104 Device", "MMS Telecontrol",
-                        "CoDeSys PLC Runtime", "GE Series PLC", "Omron Sysmac PLC",
-                        "S7-Compatible PLC"
+                        "OPC UA Server",
+                        "Modbus TCP Controller",
+                        "BACnet Hvac/Sensor",
+                        "DNP3 Outstation",
+                        "IEC 60870-5-104 Device",
+                        "MMS Telecontrol",
+                        "CoDeSys PLC Runtime",
+                        "GE Series PLC",
+                        "Omron Sysmac PLC",
+                        "S7-Compatible PLC",
                     }
                     if is_unresolved and info["model"] not in generic_labels:
                         result["hostname"] = info["model"]
-                    
+
                     vendor_part = info.get("vendor", "")
                     proto_part = info.get("protocol", "").upper()
                     import re
+
                     norm_vendor = re.sub(r"[^a-zA-Z0-9]", "", vendor_part.lower())
                     norm_proto = re.sub(r"[^a-zA-Z0-9]", "", proto_part.lower())
                     if norm_proto in norm_vendor or norm_vendor in norm_proto:
@@ -266,12 +308,12 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                         result["os_guess"] = f"{vendor_part} {proto_part} Device"
                     result["os_family"] = "Embedded"
                     result["os_confidence"] = "High"
-                
+
                 proto_label = info["protocol"].upper()
                 if proto_label not in result["confirmations"]:
                     result["confirmations"].append(proto_label)
                 result["method"] = proto_label
-                
+
                 real_proto_map_reverse = {
                     "modbus": 502,
                     "s7": 102,
@@ -293,7 +335,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
                         result,
                         port=port,
                         service=proto_name.upper() if proto_name != "s7" else "s7comm",
-                        banner=f"Protocol: {proto_name.upper()}, Vendor: {info.get('vendor')}, Model: {info.get('model')}"
+                        banner=f"Protocol: {proto_name.upper()}, Vendor: {info.get('vendor')}, Model: {info.get('model')}",
                     )
                 break
         except Exception as exc:
@@ -304,6 +346,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
 # Individual probe functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
     """
     Query port 161 (SNMP) using community 'public' for system details to identify
@@ -311,28 +354,39 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
     """
     if result.get("snmp_info"):
         return  # Skip duplicate probe if already queried
-        
+
     # Only probe if SNMP UDP port 161 is open or likely open (not explicitly closed)
     port_states = result.get("port_states", {})
-    if port_states and port_states.get(161) not in ("open", "open|filtered", None) and port_states.get("161") not in ("open", "open|filtered", None):
+    if (
+        port_states
+        and port_states.get(161) not in ("open", "open|filtered", None)
+        and port_states.get("161") not in ("open", "open|filtered", None)
+    ):
         return
 
     try:
         from engines.vulnerability.plugins.snmp_probe import (
-            _snmp_get_raw, _extract_oid_value, _extract_string, _extract_integer,
-            _OID_SYS_OBJ_ID, _OID_SYS_DESCR, _OID_IP_FORWARD, _OID_IF_NUMBER, _OID_BRIDGE_ADDR,
-            _ENTERPRISE_VENDORS
+            _snmp_get_raw,
+            _extract_oid_value,
+            _extract_string,
+            _extract_integer,
+            _OID_SYS_OBJ_ID,
+            _OID_SYS_DESCR,
+            _OID_IP_FORWARD,
+            _OID_IF_NUMBER,
+            _OID_BRIDGE_ADDR,
+            _ENTERPRISE_VENDORS,
         )
-        
+
         # Query sysObjectID using community 'public'
         data = _snmp_get_raw(ip, "public", _OID_SYS_OBJ_ID, timeout=1.0)
         if not data:
             return
-            
+
         sys_obj = _extract_oid_value(data)
         if not sys_obj:
             return
-            
+
         snmp_info = {
             "open": True,
             "community": "public",
@@ -351,12 +405,12 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
             "interfaces": [],
             "ip_addresses": [],
         }
-        
+
         # Get sysDescr
         descr_data = _snmp_get_raw(ip, "public", _OID_SYS_DESCR, timeout=1.0)
         if descr_data:
             snmp_info["sys_descr"] = _extract_string(descr_data)
-            
+
         # Parse sysObjectID to get enterprise ID and vendor/vendor_device
         parts = sys_obj.split(".")
         prefix = ".".join(parts[:6])
@@ -370,29 +424,30 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
                     snmp_info["vendor_device"] = vendor_info[1]
             except ValueError:
                 pass
-                
+
         # Parse device-type OIDs
         fwd_data = _snmp_get_raw(ip, "public", _OID_IP_FORWARD, timeout=1.0)
         if fwd_data:
             snmp_info["ip_forwarding"] = _extract_integer(fwd_data)
-            
+
         ifn_data = _snmp_get_raw(ip, "public", _OID_IF_NUMBER, timeout=1.0)
         if ifn_data:
             snmp_info["if_count"] = _extract_integer(ifn_data) or 0
-            
+
         bridge_data = _snmp_get_raw(ip, "public", _OID_BRIDGE_ADDR, timeout=1.0)
         if bridge_data:
             idx = bridge_data.rfind(b"\x04")
             snmp_info["bridge_mib"] = idx != -1 and len(bridge_data) > idx + 2
-            
+
         result["snmp_info"] = snmp_info
         _register_open_port(
             result,
             port=161,
             service="snmp",
-            banner=snmp_info.get("sys_descr", "") or f"SNMPv1/v2c, Community: {snmp_info.get('community')}"
+            banner=snmp_info.get("sys_descr", "")
+            or f"SNMPv1/v2c, Community: {snmp_info.get('community')}",
         )
-        
+
     except Exception as exc:
         log.debug("_snmp_lightweight_probe(%s) error: %s", ip, exc)
 
@@ -422,10 +477,9 @@ def _mdns_query(ip: str, result: Dict) -> None:
         return
     try:
         from scapy.all import sr1, IP, UDP, DNS, DNSQR
+
         rev = ".".join(reversed(ip.split("."))) + ".in-addr.arpa."
-        pkt = IP(dst=ip) / UDP(dport=5353) / DNS(
-            rd=0, qd=DNSQR(qname=rev, qtype="PTR")
-        )
+        pkt = IP(dst=ip) / UDP(dport=5353) / DNS(rd=0, qd=DNSQR(qname=rev, qtype="PTR"))
         resp = sr1(pkt, timeout=1, verbose=0)
         if resp and resp.haslayer(DNS) and resp[DNS].ancount > 0:
             name = resp[DNS].an.rrname
@@ -435,10 +489,7 @@ def _mdns_query(ip: str, result: Dict) -> None:
             if name:
                 result["mdns_name"] = name
                 _register_open_port(
-                    result,
-                    port=5353,
-                    service="mdns",
-                    banner=f"mDNS Name: {name}"
+                    result, port=5353, service="mdns", banner=f"mDNS Name: {name}"
                 )
     except Exception as exc:
         log.debug("_mdns_query(%s) error: %s", ip, exc)
@@ -453,6 +504,7 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
         return
     try:
         from scapy.all import sr1, IP, UDP, DNS, DNSQR
+
         services = [
             "_printer._tcp.local",
             "_ipp._tcp.local",
@@ -461,8 +513,10 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
         ]
         found = []
         for svc in services:
-            pkt = IP(dst=ip) / UDP(dport=5353) / DNS(
-                rd=0, qd=DNSQR(qname=svc + ".", qtype="PTR")
+            pkt = (
+                IP(dst=ip)
+                / UDP(dport=5353)
+                / DNS(rd=0, qd=DNSQR(qname=svc + ".", qtype="PTR"))
             )
             # Use 0.4s timeout per query to stay extremely lightweight and fast
             resp = sr1(pkt, timeout=0.4, verbose=0)
@@ -474,7 +528,7 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
                 result,
                 port=5353,
                 service="mdns",
-                banner=f"mDNS Services Discovered: {', '.join(found)}"
+                banner=f"mDNS Services Discovered: {', '.join(found)}",
             )
     except Exception as exc:
         log.debug("_mdns_service_query(%s) error: %s", ip, exc)
@@ -487,7 +541,7 @@ def _netbios_query(ip: str, result: Dict) -> None:
     """
     if result.get("netbios_names"):
         return  # Skip duplicate probe if NetBIOS was already queried during discovery
-        
+
     _NBSTAT = (
         b"\xa2\x48\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
         b"\x20\x43\x4b\x41\x41\x41\x41\x41\x41\x41\x41\x41"
@@ -516,10 +570,10 @@ def _netbios_query(ip: str, result: Dict) -> None:
         offset = 57 + i * 18
         if offset + 18 > len(data):
             break
-        raw  = data[offset:offset + 15]
+        raw = data[offset : offset + 15]
         name_type = data[offset + 15] if offset + 15 < len(data) else 0
-        flags = struct.unpack(">H", data[offset + 16:offset + 18])[0]
-        name  = raw.decode("ascii", errors="ignore").strip()
+        flags = struct.unpack(">H", data[offset + 16 : offset + 18])[0]
+        name = raw.decode("ascii", errors="ignore").strip()
         if name:
             names.append({"name": name, "flags": flags, "type": name_type})
             # Computer name: type 0x00, not a group (bit 15 clear)
@@ -530,29 +584,28 @@ def _netbios_query(ip: str, result: Dict) -> None:
                 workgroup = name
 
     if names:
-        result["netbios_names"]    = names
+        result["netbios_names"] = names
         result["netbios_computer"] = computer_name
         result["netbios_workgroup"] = workgroup
-        if computer_name and (not result.get("hostname") or result["hostname"] in ("Unknown", "")):
+        if computer_name and (
+            not result.get("hostname") or result["hostname"] in ("Unknown", "")
+        ):
             result["hostname"] = computer_name
         _register_open_port(
             result,
             port=137,
             service="netbios-ns",
-            banner=f"NetBIOS Computer: {computer_name}, Workgroup: {workgroup}"
+            banner=f"NetBIOS Computer: {computer_name}, Workgroup: {workgroup}",
         )
 
     # MAC from NetBIOS response (last 6 bytes starting at offset 57 + num_names*18)
     mac_offset = 57 + num_names * 18
     if mac_offset + 6 <= len(data):
-        mac_bytes = data[mac_offset:mac_offset + 6]
+        mac_bytes = data[mac_offset : mac_offset + 6]
         if any(b != 0 for b in mac_bytes):
             mac_str = ":".join(f"{b:02x}" for b in mac_bytes)
             if result.get("mac", "N/A") == "N/A":
                 result["mac"] = mac_str
-
-
-
 
 
 def _os_probe_full(ip: str, result: Dict) -> None:
@@ -569,24 +622,28 @@ def _os_probe_full(ip: str, result: Dict) -> None:
         return  # Already have a high-confidence fingerprint
 
     # Gate: skip if no open ports (all timeouts guaranteed)
-    open_ports = [p for p, state in result.get("port_states", {}).items() if state == "open"]
+    open_ports = [
+        p for p, state in result.get("port_states", {}).items() if state == "open"
+    ]
     if not open_ports:
         return
 
     try:
         from scapy.all import sr, IP, TCP
         from core.risk import fingerprint_os
+
         pkt = IP(dst=ip) / TCP(
-            dport=80, flags="S",
+            dport=80,
+            flags="S",
             options=[
-                ("MSS",       1460),
-                ("NOP",       None),
-                ("WScale",    6),
-                ("NOP",       None),
-                ("NOP",       None),
-                ("SAckOK",    b""),
+                ("MSS", 1460),
+                ("NOP", None),
+                ("WScale", 6),
+                ("NOP", None),
+                ("NOP", None),
+                ("SAckOK", b""),
                 ("Timestamp", (0, 0)),
-                ("EOL",       None),
+                ("EOL", None),
             ],
         )
         ans, _ = sr(pkt, timeout=2, verbose=0)
@@ -594,20 +651,23 @@ def _os_probe_full(ip: str, result: Dict) -> None:
             if not rcv.haslayer(TCP):
                 continue
             opts = dict(rcv[TCP].options) if rcv[TCP].options else {}
-            ts   = opts.get("Timestamp")
+            ts = opts.get("Timestamp")
             tcp_fp = {
-                "ttl":     rcv[IP].ttl,
-                "window":  rcv[TCP].window,
-                "mss":     opts.get("MSS"),
-                "wscale":  opts.get("WScale"),
+                "ttl": rcv[IP].ttl,
+                "window": rcv[TCP].window,
+                "mss": opts.get("MSS"),
+                "wscale": opts.get("WScale"),
                 "sack_ok": "SAckOK" in opts,
-                "ts_val":  ts[0] if isinstance(ts, (tuple, list)) else None,
-                "df_bit":  bool(rcv[IP].flags & 0x02),
+                "ts_val": ts[0] if isinstance(ts, (tuple, list)) else None,
+                "df_bit": bool(rcv[IP].flags & 0x02),
             }
             guess, conf = fingerprint_os(tcp_fp["ttl"], tcp_fp["window"], tcp_fp)
             result["tcp_fingerprint"] = tcp_fp
-            if conf in ("High", "Medium") or result.get("os_confidence", "Low") == "Low":
-                result["os_guess"]      = guess
+            if (
+                conf in ("High", "Medium")
+                or result.get("os_confidence", "Low") == "Low"
+            ):
+                result["os_guess"] = guess
                 result["os_confidence"] = conf
     except Exception as exc:
         log.debug("_os_probe_full(%s) error: %s", ip, exc)

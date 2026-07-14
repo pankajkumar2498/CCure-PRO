@@ -9,8 +9,6 @@ since the lifespan function in main.py also depends on these symbols.
 
 import json
 import logging
-import os
-import time
 from typing import Optional, List, Dict
 
 from sqlalchemy.orm import Session
@@ -18,10 +16,7 @@ from sqlalchemy.orm import Session
 from api.host_discovery_api import HostDiscoveryAPI
 from db.models import Scan
 from scans.progress import (
-    init_progress   as _db_init_progress,
-    update_progress as _db_update_progress,
     finish_progress as _db_finish_progress,
-    read_progress   as _db_read_progress,
 )
 
 from slowapi import Limiter
@@ -32,10 +27,7 @@ log = logging.getLogger("ccure.api")
 
 # ─── Rate limiter (shared across routers) ────────────────────────────────────
 # Uses the same Redis instance as Celery for persistence
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=AppConfig.CELERY_BROKER_URL
-)
+limiter = Limiter(key_func=get_remote_address, storage_uri=AppConfig.CELERY_BROKER_URL)
 
 # ─── Application state ──────────────────────────────────────────────────────
 _api_instance: Optional[HostDiscoveryAPI] = None
@@ -50,6 +42,7 @@ def set_api(api: HostDiscoveryAPI) -> None:
 def get_api() -> HostDiscoveryAPI:
     """Return the HostDiscoveryAPI singleton or raise 503."""
     from fastapi import HTTPException
+
     if _api_instance is None:
         raise HTTPException(status_code=503, detail="API not initialised yet.")
     return _api_instance
@@ -59,8 +52,8 @@ def get_api() -> HostDiscoveryAPI:
 # Phase 4 (topology_mapping) is eligible to run at the end of any pipeline.
 # It is only executed if SNMP credentials are provided in scan.options.
 PIPELINE_PHASES: Dict[str, List[int]] = {
-    "basic":               [1, 4],
-    "asset":               [1, 2, 4],
+    "basic": [1, 4],
+    "asset": [1, 2, 4],
     "vulnerability_audit": [1, 2, 3, 4],
 }
 
@@ -109,15 +102,18 @@ def resolve_pipeline_mode(raw: Optional[str]) -> str:
 
 # ─── Misc helpers ────────────────────────────────────────────────────────────
 
+
 def validate_total_targets(targets: List[str]) -> None:
     from core.utils import InputValidator
     from fastapi import HTTPException
+
     total = sum(len(InputValidator.expand_target(t)) for t in targets)
     if total > InputValidator.MAX_HOSTS:
         raise HTTPException(
             status_code=400,
-            detail=f"Total requested hosts ({total}) exceeds the global limit of {InputValidator.MAX_HOSTS}."
+            detail=f"Total requested hosts ({total}) exceeds the global limit of {InputValidator.MAX_HOSTS}.",
         )
+
 
 def _safe_json_loads(text: Optional[str], default):
     try:
@@ -175,6 +171,7 @@ def _scan_method_from_hosts(hosts: List[dict]) -> Optional[str]:
 
 # ─── Report context resolution ───────────────────────────────────────────────
 
+
 def resolve_report_context(
     db: Session,
     user_id: str,
@@ -205,17 +202,23 @@ def resolve_report_context(
 
     # Target priority: request targets > scan row target/original_targets > host list
     if requested_targets:
-        context["target"] = ", ".join([str(t).strip() for t in requested_targets if str(t).strip()])
+        context["target"] = ", ".join(
+            [str(t).strip() for t in requested_targets if str(t).strip()]
+        )
         context["original_targets"] = requested_targets
     elif scan_row:
         target = (scan_row.target_str or "").strip()
         if target:
             context["target"] = target
-        original_targets = summary_blob.get("original_targets") or (scan_row.target_hosts or [])
+        original_targets = summary_blob.get("original_targets") or (
+            scan_row.target_hosts or []
+        )
         if original_targets:
             context["original_targets"] = original_targets
             if "target" not in context:
-                context["target"] = ", ".join([str(t).strip() for t in original_targets if str(t).strip()])
+                context["target"] = ", ".join(
+                    [str(t).strip() for t in original_targets if str(t).strip()]
+                )
     elif hosts:
         host_target = _target_from_hosts(hosts)
         if host_target:
@@ -259,9 +262,7 @@ def apply_phase1_summary_hints(
     if not scan_id:
         return
     scan_row = (
-        db.query(Scan)
-        .filter(Scan.id == scan_id, Scan.created_by == user_id)
-        .first()
+        db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
     )
     if not scan_row:
         return
@@ -275,8 +276,7 @@ def apply_phase1_summary_hints(
             summary[key] = phase1_summary[key]
 
     discovery_scan_method = _normalize_scan_method(
-        phase1_summary.get("discovery_scan_method")
-        or phase1_summary.get("scan_type")
+        phase1_summary.get("discovery_scan_method") or phase1_summary.get("scan_type")
     )
     if discovery_scan_method:
         summary["discovery_scan_method"] = discovery_scan_method
@@ -291,6 +291,7 @@ def finish_progress(scan_id: str, db: Session = None):
         _db_finish_progress(db, scan_id)
     else:
         from db.base import SessionLocal
+
         session = SessionLocal()
         try:
             _db_finish_progress(session, scan_id)
@@ -319,7 +320,7 @@ def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":
 
     safe_id = html.escape(clean_id.upper())
     url = f"https://nvd.nist.gov/vuln/detail/{safe_id}"
-    
+
     # Branded blue link markup
     link_html = f'<a href="{url}" color="#0066CC"><b>{safe_id}</b></a>'
     return Paragraph(link_html, style)

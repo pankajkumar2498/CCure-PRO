@@ -12,13 +12,18 @@ def _grant_permission(db_session, role: Role, resource: str, action: str) -> Non
         .first()
     )
     if permission is None:
-        permission = Permission(resource=resource, action=action, description=f"{resource}:{action}")
+        permission = Permission(
+            resource=resource, action=action, description=f"{resource}:{action}"
+        )
         db_session.add(permission)
         db_session.flush()
 
     link = (
         db_session.query(RolePermission)
-        .filter(RolePermission.role_id == role.id, RolePermission.permission_id == permission.id)
+        .filter(
+            RolePermission.role_id == role.id,
+            RolePermission.permission_id == permission.id,
+        )
         .first()
     )
     if link is None:
@@ -46,8 +51,16 @@ def _temp_report_path() -> str:
 
 
 def test_report_download_requires_reports_read_permission(client, db_session):
-    org = Organization(name="Reports Org", slug="reports-org", max_assets=100, max_users=10, is_active=True)
-    role = Role(name="limited_reports", description="No report read", is_system_role=False)
+    org = Organization(
+        name="Reports Org",
+        slug="reports-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    role = Role(
+        name="limited_reports", description="No report read", is_system_role=False
+    )
     db_session.add_all([org, role])
     db_session.flush()
 
@@ -80,7 +93,9 @@ def test_report_download_requires_reports_read_permission(client, db_session):
     db_session.refresh(user)
 
     try:
-        response = client.get(f"/reports/download/{scan.id}", headers=_auth_headers(user))
+        response = client.get(
+            f"/reports/download/{scan.id}", headers=_auth_headers(user)
+        )
         assert response.status_code == 403
         assert "reports:read" in response.json()["detail"]
     finally:
@@ -89,10 +104,26 @@ def test_report_download_requires_reports_read_permission(client, db_session):
 
 
 def test_superadmin_can_download_report_across_orgs(client, db_session):
-    org_a = Organization(name="SA Reports A", slug="sa-reports-a", max_assets=100, max_users=10, is_active=True)
-    org_b = Organization(name="SA Reports B", slug="sa-reports-b", max_assets=100, max_users=10, is_active=True)
-    superadmin_role = Role(name="superadmin", description="Platform admin", is_system_role=True)
-    analyst_role = Role(name="analyst_reports", description="Analyst", is_system_role=False)
+    org_a = Organization(
+        name="SA Reports A",
+        slug="sa-reports-a",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    org_b = Organization(
+        name="SA Reports B",
+        slug="sa-reports-b",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    superadmin_role = Role(
+        name="superadmin", description="Platform admin", is_system_role=True
+    )
+    analyst_role = Role(
+        name="analyst_reports", description="Analyst", is_system_role=False
+    )
     db_session.add_all([org_a, org_b, superadmin_role, analyst_role])
     db_session.flush()
 
@@ -137,7 +168,9 @@ def test_superadmin_can_download_report_across_orgs(client, db_session):
     db_session.refresh(superadmin)
 
     try:
-        response = client.get(f"/reports/download/{scan.id}", headers=_auth_headers(superadmin))
+        response = client.get(
+            f"/reports/download/{scan.id}", headers=_auth_headers(superadmin)
+        )
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("application/pdf")
     finally:
@@ -146,8 +179,16 @@ def test_superadmin_can_download_report_across_orgs(client, db_session):
 
 
 def test_report_delete_requires_reports_delete_permission(client, db_session):
-    org = Organization(name="Reports Delete Org", slug="reports-delete-org", max_assets=100, max_users=10, is_active=True)
-    role = Role(name="report-reader-only", description="Read-only reports", is_system_role=False)
+    org = Organization(
+        name="Reports Delete Org",
+        slug="reports-delete-org",
+        max_assets=100,
+        max_users=10,
+        is_active=True,
+    )
+    role = Role(
+        name="report-reader-only", description="Read-only reports", is_system_role=False
+    )
     db_session.add_all([org, role])
     db_session.flush()
 
@@ -189,4 +230,3 @@ def test_report_delete_requires_reports_delete_permission(client, db_session):
     finally:
         if os.path.exists(report_path):
             os.remove(report_path)
-

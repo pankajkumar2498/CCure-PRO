@@ -5,12 +5,17 @@ Translates raw scans and asset findings into normalized payloads for rule check 
 
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
 from db.models.assets import Asset
-from db.models.findings import Service, TLSDetail, AssetVulnerability, VulnerabilityDefinition
+from db.models.findings import (
+    Service,
+    TLSDetail,
+    AssetVulnerability,
+    VulnerabilityDefinition,
+)
 from db.models.topology import NetworkLink
 from core.redis_client import get_redis_client
 
@@ -26,7 +31,9 @@ class ComplianceEvidenceProvider:
         return f"compliance:evidence:{asset_id}:{source}"
 
     @classmethod
-    def get_normalized_evidence(cls, db: Session, asset_id: str, source: str) -> Dict[str, Any]:
+    def get_normalized_evidence(
+        cls, db: Session, asset_id: str, source: str
+    ) -> Dict[str, Any]:
         """Resolves normalise evidence, utilizing Redis cache."""
         cache_key = cls.get_cache_key(asset_id, source)
         try:
@@ -38,7 +45,9 @@ class ComplianceEvidenceProvider:
             log.warning(f"Failed to query Redis cache: {str(e)}")
 
         # Cache miss - fetch and translate
-        log.info(f"Cache miss. Resolving raw findings for asset {asset_id}, source {source}")
+        log.info(
+            f"Cache miss. Resolving raw findings for asset {asset_id}, source {source}"
+        )
         payload = cls._fetch_and_translate(db, asset_id, source)
 
         try:
@@ -49,7 +58,9 @@ class ComplianceEvidenceProvider:
         return payload
 
     @classmethod
-    def _fetch_and_translate(cls, db: Session, asset_id: str, source: str) -> Dict[str, Any]:
+    def _fetch_and_translate(
+        cls, db: Session, asset_id: str, source: str
+    ) -> Dict[str, Any]:
         """Routes to specific scanner adapters based on source."""
         if source == "vulnerability_audit":
             return cls._adapt_vulnerability_audit(db, asset_id)
@@ -65,20 +76,31 @@ class ComplianceEvidenceProvider:
             return cls._adapt_credential_validation(db, asset_id)
         elif source == "offline_configuration":
             return cls._adapt_offline_configuration(db, asset_id)
-        
+
         return {}
 
     # ── 1. Vulnerability Audit Mapping ──────────────────────────────────────────
     @staticmethod
     def _adapt_vulnerability_audit(db: Session, asset_id: str) -> Dict[str, Any]:
-        vulns = db.query(AssetVulnerability).join(VulnerabilityDefinition).filter(
-            AssetVulnerability.asset_id == asset_id
-        ).all()
+        vulns = (
+            db.query(AssetVulnerability)
+            .join(VulnerabilityDefinition)
+            .filter(AssetVulnerability.asset_id == asset_id)
+            .all()
+        )
 
-        critical_count = sum(1 for v in vulns if (v.vulnerability.severity or "").lower() == "critical")
-        high_count = sum(1 for v in vulns if (v.vulnerability.severity or "").lower() == "high")
-        medium_count = sum(1 for v in vulns if (v.vulnerability.severity or "").lower() == "medium")
-        low_count = sum(1 for v in vulns if (v.vulnerability.severity or "").lower() == "low")
+        critical_count = sum(
+            1 for v in vulns if (v.vulnerability.severity or "").lower() == "critical"
+        )
+        high_count = sum(
+            1 for v in vulns if (v.vulnerability.severity or "").lower() == "high"
+        )
+        medium_count = sum(
+            1 for v in vulns if (v.vulnerability.severity or "").lower() == "medium"
+        )
+        low_count = sum(
+            1 for v in vulns if (v.vulnerability.severity or "").lower() == "low"
+        )
 
         return {
             "total_vulnerabilities": len(vulns),
@@ -89,11 +111,15 @@ class ComplianceEvidenceProvider:
             "vulnerabilities": [
                 {
                     "cve_id": v.vulnerability.cve_id,
-                    "cvss_score": float(v.vulnerability.cvss_v3_score) if v.vulnerability.cvss_v3_score else 0.0,
-                    "severity": v.vulnerability.severity
+                    "cvss_score": (
+                        float(v.vulnerability.cvss_v3_score)
+                        if v.vulnerability.cvss_v3_score
+                        else 0.0
+                    ),
+                    "severity": v.vulnerability.severity,
                 }
                 for v in vulns
-            ]
+            ],
         }
 
     # ── 2. Malware Scan Mapping ───────────────────────────────────────────────
@@ -101,8 +127,15 @@ class ComplianceEvidenceProvider:
     def _adapt_malware_scan(db: Session, asset_id: str) -> Dict[str, Any]:
         # Checks if anti-malware services are present and active
         services = db.query(Service).filter(Service.asset_id == asset_id).all()
-        malware_processes = ["defender", "clamav", "sentinel", "mcafee", "symantec", "crowdstrike"]
-        
+        malware_processes = [
+            "defender",
+            "clamav",
+            "sentinel",
+            "mcafee",
+            "symantec",
+            "crowdstrike",
+        ]
+
         active_av_agents = []
         for svc in services:
             svc_name = (svc.service_name or "").lower()
@@ -125,7 +158,7 @@ class ComplianceEvidenceProvider:
         return {
             "malware_detected": False,  # Managed by agent alerts
             "anti_malware_agents_active": len(active_av_agents) > 0,
-            "agents_list": active_av_agents
+            "agents_list": active_av_agents,
         }
 
     # ── 3. Services & Ports Mapping ───────────────────────────────────────────
@@ -133,20 +166,22 @@ class ComplianceEvidenceProvider:
     def _adapt_services_ports(db: Session, asset_id: str) -> Dict[str, Any]:
         services = db.query(Service).filter(Service.asset_id == asset_id).all()
         ports_list = [svc.port for svc in services if svc.state == "open"]
-        
+
         return {
             "open_ports_count": len(ports_list),
             "open_ports": ports_list,
             "services_list": [
                 {"port": s.port, "protocol": s.protocol, "name": s.service_name}
                 for s in services
-            ]
+            ],
         }
 
     # ── 4. TLS & Certificates Mapping ────────────────────────────────────────
     @staticmethod
     def _adapt_tls_certificates(db: Session, asset_id: str) -> Dict[str, Any]:
-        tls_certs = db.query(TLSDetail).join(Service).filter(Service.asset_id == asset_id).all()
+        tls_certs = (
+            db.query(TLSDetail).join(Service).filter(Service.asset_id == asset_id).all()
+        )
 
         expired_count = sum(1 for t in tls_certs if t.cert_is_expired)
         weak_ciphers = sum(1 for t in tls_certs if t.is_weak_cipher)
@@ -159,45 +194,62 @@ class ComplianceEvidenceProvider:
             "expired_certificates_count": expired_count,
             "weak_ciphers_count": weak_ciphers,
             "self_signed_count": self_signed,
-            "supported_protocols": protocols
+            "supported_protocols": protocols,
         }
 
     # ── 5. Network Topology Mapping ───────────────────────────────────────────
     @staticmethod
     def _adapt_network_topology(db: Session, asset_id: str) -> Dict[str, Any]:
-        links = db.query(NetworkLink).filter(
-            or_(NetworkLink.source_asset_id == asset_id, NetworkLink.target_asset_id == asset_id)
-        ).all()
+        links = (
+            db.query(NetworkLink)
+            .filter(
+                or_(
+                    NetworkLink.source_asset_id == asset_id,
+                    NetworkLink.target_asset_id == asset_id,
+                )
+            )
+            .all()
+        )
 
         return {
             "connections_count": len(links),
             "network_neighbors": [
                 {"source": l.source_ip, "target": l.target_ip, "type": l.link_type}
                 for l in links
-            ]
+            ],
         }
 
     # ── 6. Credential Validation Mapping ──────────────────────────────────────
     @staticmethod
     def _adapt_credential_validation(db: Session, asset_id: str) -> Dict[str, Any]:
         asset = db.query(Asset).filter(Asset.id == asset_id).first()
-        creds_status = (asset.custom_attributes or {}).get("credentialed_status", "unknown") if asset else "unknown"
+        creds_status = (
+            (asset.custom_attributes or {}).get("credentialed_status", "unknown")
+            if asset
+            else "unknown"
+        )
 
         # Check if auth/password configuration baselines are checked in custom_attributes
-        pwd_attrs = (asset.custom_attributes or {}).get("password_policy", {}) if asset else {}
+        pwd_attrs = (
+            (asset.custom_attributes or {}).get("password_policy", {}) if asset else {}
+        )
 
         return {
             "credentialed_scan_successful": creds_status == "success",
             "password_complexity_configured": pwd_attrs.get("complexity", False),
             "password_history_length": pwd_attrs.get("history_length", 0),
-            "minimum_password_length": pwd_attrs.get("min_length", 8)
+            "minimum_password_length": pwd_attrs.get("min_length", 8),
         }
 
     # ── 7. Offline Configuration Scan Mapping ─────────────────────────────────
     @staticmethod
     def _adapt_offline_configuration(db: Session, asset_id: str) -> Dict[str, Any]:
         asset = db.query(Asset).filter(Asset.id == asset_id).first()
-        registry_attrs = (asset.custom_attributes or {}).get("registry_hardening", {}) if asset else {}
+        registry_attrs = (
+            (asset.custom_attributes or {}).get("registry_hardening", {})
+            if asset
+            else {}
+        )
 
         rdp_disabled = registry_attrs.get("rdp_disabled", False)
         rdp_nla_enforced = registry_attrs.get("rdp_nla_enforced", False) or rdp_disabled
@@ -207,7 +259,6 @@ class ComplianceEvidenceProvider:
             "firewall_profile_active": registry_attrs.get("firewall_active", False),
             "remote_desktop_disabled": rdp_disabled,
             "audit_policy_configured": registry_attrs.get("audit_configured", False),
-            
             # New normalized protocol hardening attributes
             "smbv1_disabled": registry_attrs.get("smbv1_disabled", False),
             "netbios_disabled": registry_attrs.get("netbios_disabled", False),

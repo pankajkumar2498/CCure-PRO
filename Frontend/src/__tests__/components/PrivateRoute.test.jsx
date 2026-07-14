@@ -14,14 +14,16 @@ describe("PrivateRoute Component", () => {
             <Route
               path="/dashboard"
               element={
-                <PrivateRoute requiredPermission={{ resource: "scans", action: "execute" }}>
+                <PrivateRoute
+                  requiredPermission={{ resource: "scans", action: "execute" }}
+                >
                   <div>Dashboard Area</div>
                 </PrivateRoute>
               }
             />
           </Routes>
         </MemoryRouter>
-      </AuthContext.Provider>
+      </AuthContext.Provider>,
     );
   };
 

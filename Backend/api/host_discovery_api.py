@@ -7,10 +7,8 @@ Exactly mirrors the interface from host_discovery_api.py so callers
 require zero changes.  All heavy lifting lives in ScanOrchestrator.
 """
 
-import json
 import logging
 import os
-import socket
 
 from typing import Optional
 from core.constants import SCAPY_AVAILABLE, PDF_AVAILABLE
@@ -34,11 +32,11 @@ class HostDiscoveryAPI:
 
     def __init__(
         self,
-        silent:       bool  = True,
-        reports_dir:  Optional[str] = None,
-        intensity:    str   = "normal",
-        rate_limit:   float = 200.0,
-        stealth_mode: bool  = False,
+        silent: bool = True,
+        reports_dir: Optional[str] = None,
+        intensity: str = "normal",
+        rate_limit: float = 200.0,
+        stealth_mode: bool = False,
     ):
         if not SCAPY_AVAILABLE:
             log.warning("Scapy not found. Raw-socket scans disabled. TCP-only mode.")
@@ -48,17 +46,17 @@ class HostDiscoveryAPI:
             reports_dir = os.path.join(backend_dir, "reports")
 
         self._orch = ScanOrchestrator(
-            silent       = silent,
-            reports_dir  = reports_dir,
-            intensity    = intensity,
-            rate_limit   = rate_limit,
-            stealth_mode = stealth_mode,
+            silent=silent,
+            reports_dir=reports_dir,
+            intensity=intensity,
+            rate_limit=rate_limit,
+            stealth_mode=stealth_mode,
         )
         # Expose for callers that read these directly
-        self.platform       = self._orch.platform
+        self.platform = self._orch.platform
         self.has_privileges = self._orch.has_priv
-        self.intensity      = self._orch.intensity
-        self.silent         = silent
+        self.intensity = self._orch.intensity
+        self.silent = silent
 
     # ------------------------------------------------------------------
     # System info
@@ -66,14 +64,14 @@ class HostDiscoveryAPI:
 
     def get_system_info(self) -> dict:
         return {
-            "platform":    self.platform,
-            "privileges":  PrivilegeManager.info(),
+            "platform": self.platform,
+            "privileges": PrivilegeManager.info(),
             "scanner_runtime": os.getenv("SCANNER_RUNTIME", "unknown"),
-            "scapy":       {"installed": SCAPY_AVAILABLE},
-            "pdf":         {"installed": PDF_AVAILABLE},
-            "scan_types":  [s.value for s in DiscoveryScanType],
+            "scapy": {"installed": SCAPY_AVAILABLE},
+            "pdf": {"installed": PDF_AVAILABLE},
+            "scan_types": [s.value for s in DiscoveryScanType],
             "intensities": [s.value for s in ScanIntensity],
-            "version":     "1.0",
+            "version": "1.0",
             # "pro_features": [
             #     "TLS/SSL Certificate Inspector",
             #     "HTTP Security Header Audit",
@@ -108,8 +106,8 @@ class HostDiscoveryAPI:
 
     async def scan_subnets_of_subnet(
         self,
-        target:        str,
+        target: str,
         subnet_prefix: int = 24,
-        scan_type:     str = "adaptive",
+        scan_type: str = "adaptive",
     ) -> dict:
         return await self._orch.scan_subnets_of_subnet(target, subnet_prefix, scan_type)

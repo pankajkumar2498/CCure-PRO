@@ -12,8 +12,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = 'e6f7g8h9i0j1'
-down_revision = 'd5e6f7g8h9i0'
+revision = "e6f7g8h9i0j1"
+down_revision = "d5e6f7g8h9i0"
 branch_labels = None
 depends_on = None
 
@@ -22,7 +22,9 @@ def upgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_scans_org_user_scan_no_idx")
     op.execute("DROP INDEX IF EXISTS ix_scans_org_scan_no_idx")
 
-    op.execute(sa.text("""
+    op.execute(
+        sa.text(
+            """
         DO $$
         DECLARE
             org_row RECORD;
@@ -51,24 +53,38 @@ def upgrade() -> None:
                 END LOOP;
             END LOOP;
         END$$;
-    """))
+    """
+        )
+    )
 
-    op.execute(sa.text("""
+    op.execute(
+        sa.text(
+            """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_scan_no_idx
         ON scans (org_id, scan_no)
         WHERE scan_no IS NOT NULL
-    """))
+    """
+        )
+    )
 
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_scans_org_scan_no_idx")
     op.execute("DROP INDEX IF EXISTS ix_scans_org_scan_no_idx")
-    op.execute(sa.text("""
+    op.execute(
+        sa.text(
+            """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_user_scan_no_idx
         ON scans (org_id, created_by, scan_no)
         WHERE scan_no IS NOT NULL
-    """))
-    op.execute(sa.text("""
+    """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
         CREATE INDEX IF NOT EXISTS ix_scans_org_scan_no_idx
         ON scans (org_id, scan_no)
-    """))
+    """
+        )
+    )

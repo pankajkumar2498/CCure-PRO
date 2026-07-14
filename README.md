@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 
 # For Running Worker for Nmap Scans locally
-.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker 
+.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker
 
 # Scanner worker concurrency
 # Default is 20 parallel scan tasks. Override before starting the worker if needed:
@@ -102,7 +102,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies
 Option 1: Start PowerShell first (Recommended)
 
 1.  Switch shell:
-    Type powershell in cmd terminal your SSH session to switch to a PowerShell environment, then run the commands: 
+    Type powershell in cmd terminal your SSH session to switch to a PowerShell environment, then run the commands:
     powershell
 
 2.  Run the commands:
@@ -340,6 +340,142 @@ To avoid rebuilding/restarting all containers for minor frontend or backend edit
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# CI/CD Pipeline
+Here is the step-by-step guide to verifying all the newly implemented QA and regression components locally on your machine.
+
+Since you are running Windows with PowerShell and have your virtual environment active, run these commands inside your terminal:
+
+Step 1: Run the Automated Regression Test Suite
+First, we will run the new test cases we added to verify that RBAC mapping, the Maker-Checker self-approval block, the PDF report visual layout, and the process leak detection fixture are all working perfectly.
+
+Run the following in your PowerShell terminal:
+
+powershell
+# Ensure you are in the Backend folder
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
+# Enable local scanner mocking so you don't need nmap/scapy binaries installed on your host OS
+$env:MOCK_SCANNERS="true"
+# Execute our new regression test modules
+pytest tests/test_rbac_routes.py tests/test_remediation_safety.py tests/test_report_limits.py -v
+Expected Output: All three test suites should execute and print PASSED.
+
+Step 2: Register and Verify Git Pre-commit Hooks
+Next, install and register the local pre-commit hooks so formatting and AST security scans run automatically before every Git commit:
+
+powershell
+# 1. Move to the repository root directory
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO"
+# 2. Install pre-commit tool (via your active python virtualenv)
+pip install pre-commit
+# 3. Register the hooks in your local .git directory
+pre-commit install
+# 4. (Optional) Run all checks manually across existing files to verify setup:
+pre-commit run --all-files
+Expected Output: You should see pre-commit download and run checks (Black, Ruff, Bandit, Prettier, ESLint) across the codebase.
+
+Step 3: Establish the OpenAPI Schema Baseline
+To enable the CI/CD pipeline to catch breaking API changes, generate the baseline openapi.json contract file:
+
+powershell
+# Move to the Backend folder
+cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
+# Generate the initial schema definition file
+python -c "import json; from main import app; print(json.dumps(app.openapi()))" > openapi.json
+Verification: This creates a file named openapi.json in your Backend/ folder. Add and commit this file to your git repository (git add openapi.json). Any future PR that changes paths or formats will now be checked against this file in CI.
+
+Step 4: Verify CI/CD Automation
+To verify the GitHub Actions setup, simply push your changes to a branch or open a Pull Request. GitHub will automatically spin up PostgreSQL and Redis service containers, run the Alembic migration integrity loops, perform the security/dependency audits, and run the test suite inside the test container.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Step 1: Start Backend & Scanner Stack
 Run this command once in your Administrator PowerShell window:
     .\scripts\start_host_scan_stack.ps1
@@ -388,7 +524,7 @@ docker compose --profile container-scanner restart api worker web-worker
 
 OR
 
- .\scripts\start_host_scan_stack.ps1  
+ .\scripts\start_host_scan_stack.ps1
 
  docker compose --profile container-scanner restart api worker web-worker
 
@@ -398,7 +534,7 @@ OR
 
  docker compose down -v
 
- docker compose restart api 
+ docker compose restart api
 
 
 

@@ -19,7 +19,9 @@ try:
         print("User 'admin' not found. Checking all active users:")
         users = db.query(User).all()
         for idx, usr in enumerate(users):
-            print(f"{idx+1}. Username: {usr.username} | Email: {usr.email} | Org: {usr.org_id}")
+            print(
+                f"{idx+1}. Username: {usr.username} | Email: {usr.email} | Org: {usr.org_id}"
+            )
 except Exception as e:
     print(f"Error querying user: {str(e)}")
 finally:

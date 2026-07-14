@@ -8,46 +8,45 @@ Endpoints
   POST /scan/credentialed → SSH-based system inspection + CVE matching
 """
 
-import logging
 import os
-import time
 from pathlib import Path
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field, SecretStr, field_validator
-from sqlalchemy.orm import Session
 
-from db.base import get_db, SessionLocal
+from db.base import SessionLocal
 from db.models import User, ComplianceCredential
 from auth.rbac import require_permission
 from scans.db_helpers import create_scan
-from scan_helpers import get_api, limiter, log
+from scan_helpers import limiter, log
 
-from engines.credentialed.ssh_scanner       import SSHScanner, PARAMIKO_AVAILABLE
-from engines.credentialed.linux_collector   import LinuxCollector
-from engines.credentialed.windows_collector import WindowsCollector
-from engines.credentialed.vuln_matcher      import VulnMatcher
+from engines.credentialed.ssh_scanner import SSHScanner, PARAMIKO_AVAILABLE
 
 router = APIRouter(tags=["Credentialed Scans"])
 
 
 # ── Request model ─────────────────────────────────────────────────────────────
 
+
 class CredentialedScanRequest(BaseModel):
-    ip:            str                 = Field(..., examples=["10.180.6.140"])
-    username:      Optional[str]       = Field(None, examples=["root"])
-    password:      Optional[SecretStr] = Field(None)
-    key_path:      Optional[str]       = Field(None)
-    port:          int                 = Field(22, ge=1, le=65535)
-    auth_method:   str                 = Field("password")
-    sections:      Optional[List[str]] = Field(None)
-    os_type:       str                 = Field("auto", description="'linux' | 'windows' | 'auto'")
-    credential_id: Optional[str]       = Field(None)
+    ip: str = Field(..., examples=["10.180.6.140"])
+    username: Optional[str] = Field(None, examples=["root"])
+    password: Optional[SecretStr] = Field(None)
+    key_path: Optional[str] = Field(None)
+    port: int = Field(22, ge=1, le=65535)
+    auth_method: str = Field("password")
+    sections: Optional[List[str]] = Field(None)
+    os_type: str = Field("auto", description="'linux' | 'windows' | 'auto'")
+    credential_id: Optional[str] = Field(None)
 
     model_config = {
         # Never include password in JSON serialisation or __repr__
-        "json_schema_extra": {"examples": [{"ip": "10.180.6.140", "username": "root", "auth_method": "password"}]},
+        "json_schema_extra": {
+            "examples": [
+                {"ip": "10.180.6.140", "username": "root", "auth_method": "password"}
+            ]
+        },
     }
 
     @field_validator("key_path")
@@ -60,10 +59,14 @@ class CredentialedScanRequest(BaseModel):
         # Only allow paths within a designated key directory
         # Defaults to the system user's home directory if SCAN_KEY_DIR is not set.
         allowed_str = os.getenv("SCAN_KEY_DIR")
-        allowed_base = Path(allowed_str).resolve() if allowed_str else Path.home().resolve()
+        allowed_base = (
+            Path(allowed_str).resolve() if allowed_str else Path.home().resolve()
+        )
 
         if not str(p).startswith(str(allowed_base)):
-            raise ValueError(f"key_path must be within the allowed directory ({allowed_base})")
+            raise ValueError(
+                f"key_path must be within the allowed directory ({allowed_base})"
+            )
 
         if not p.exists():
             raise ValueError("key_path does not exist")
@@ -74,6 +77,7 @@ class CredentialedScanRequest(BaseModel):
 
 
 # ── OS detection ──────────────────────────────────────────────────────────────
+
 
 def _detect_os(ssh) -> str:
     """
@@ -132,13 +136,14 @@ def _detect_os(ssh) -> str:
 
 from core.tasks import run_credentialed_scan_task
 
+
 @router.post("/scan/credentialed")
 @limiter.limit("5/minute")
 async def scan_credentialed(
     request: Request,
-    req:  CredentialedScanRequest,
+    req: CredentialedScanRequest,
     org_id: Optional[str] = Query(None),
-    user: User    = Depends(require_permission("scans", "execute")),
+    user: User = Depends(require_permission("scans", "execute")),
 ):
     """
     SSH Credentialed Scan (Trigger Background Task).
@@ -153,23 +158,40 @@ async def scan_credentialed(
     target_port = req.port
     if not req.credential_id:
         if not req.username:
-            raise HTTPException(status_code=400, detail="Username is required when not using stored credentials.")
+            raise HTTPException(
+                status_code=400,
+                detail="Username is required when not using stored credentials.",
+            )
         if req.auth_method == "password" and not req.password:
-            raise HTTPException(status_code=400, detail="Password is required for password authentication.")
+            raise HTTPException(
+                status_code=400,
+                detail="Password is required for password authentication.",
+            )
         if req.auth_method == "key" and not req.key_path:
-            raise HTTPException(status_code=400, detail="Key path is required for key authentication.")
+            raise HTTPException(
+                status_code=400, detail="Key path is required for key authentication."
+            )
     else:
         # Verify stored credential exists and fetch its port
         db = SessionLocal()
         try:
             role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-            target_org_id = org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-            cred = db.query(ComplianceCredential).filter(
-                ComplianceCredential.id == req.credential_id,
-                ComplianceCredential.tenant_id == target_org_id
-            ).first()
+            target_org_id = (
+                org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
+            )
+            cred = (
+                db.query(ComplianceCredential)
+                .filter(
+                    ComplianceCredential.id == req.credential_id,
+                    ComplianceCredential.tenant_id == target_org_id,
+                )
+                .first()
+            )
             if not cred:
-                raise HTTPException(status_code=404, detail="Stored credential not found or access denied.")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Stored credential not found or access denied.",
+                )
             target_port = cred.port
         finally:
             db.close()
@@ -184,7 +206,9 @@ async def scan_credentialed(
     db = SessionLocal()
     try:
         role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-        target_org_id = org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
+        target_org_id = (
+            org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
+        )
         scan = create_scan(
             db=db,
             user_id=str(user.id),
@@ -200,20 +224,29 @@ async def scan_credentialed(
         db.close()
 
     task = run_credentialed_scan_task.delay(
-        user_id     = str(user.id),
-        ip          = req.ip,
-        username    = req.username,
-        password    = req.password.get_secret_value() if req.auth_method == "password" and req.password else None,
-        key_path    = req.key_path  if req.auth_method == "key"      else None,
-        port        = target_port,
-        auth_method = req.auth_method,
-        sections    = req.sections,
-        os_type_req = req.os_type,
-        scan_id     = scan_id,
-        credential_id = req.credential_id,
+        user_id=str(user.id),
+        ip=req.ip,
+        username=req.username,
+        password=(
+            req.password.get_secret_value()
+            if req.auth_method == "password" and req.password
+            else None
+        ),
+        key_path=req.key_path if req.auth_method == "key" else None,
+        port=target_port,
+        auth_method=req.auth_method,
+        sections=req.sections,
+        os_type_req=req.os_type,
+        scan_id=scan_id,
+        credential_id=req.credential_id,
     )
 
-    log.info("Credentialed scan queued — target=%s scan_id=%s task_id=%s", req.ip, scan_id, task.id)
+    log.info(
+        "Credentialed scan queued — target=%s scan_id=%s task_id=%s",
+        req.ip,
+        scan_id,
+        task.id,
+    )
 
     return {
         "success": True,
@@ -221,4 +254,3 @@ async def scan_credentialed(
         "scan_no": scan_no,
         "status": "running",
     }
-

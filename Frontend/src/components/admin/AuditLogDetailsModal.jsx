@@ -41,7 +41,10 @@ export default function AuditLogDetailsModal({ isOpen, onClose, log }) {
       }
 
       // Check if it is a UTC ISO datetime string
-      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
+      if (
+        typeof v === "string" &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)
+      ) {
         try {
           return new Date(v).toLocaleString();
         } catch {
@@ -66,7 +69,11 @@ export default function AuditLogDetailsModal({ isOpen, onClose, log }) {
 
   const renderChangesTable = (changes) => {
     if (!changes || Object.keys(changes).length === 0) {
-      return <p className="muted" style={{ fontSize: 13 }}>No changes recorded.</p>;
+      return (
+        <p className="muted" style={{ fontSize: 13 }}>
+          No changes recorded.
+        </p>
+      );
     }
 
     return (
@@ -81,7 +88,15 @@ export default function AuditLogDetailsModal({ isOpen, onClose, log }) {
           <tbody>
             {Object.entries(changes).map(([key, value]) => (
               <tr key={key}>
-                <td style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>{getFriendlyField(key)}</td>
+                <td
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 13,
+                    color: "var(--text)",
+                  }}
+                >
+                  {getFriendlyField(key)}
+                </td>
                 <td style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   {getFriendlyValue(key, value)}
                 </td>
@@ -94,41 +109,65 @@ export default function AuditLogDetailsModal({ isOpen, onClose, log }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Audit log details" size="medium">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Audit log details"
+      size="medium"
+    >
       <section className="stack gap-16">
-        <div className="detail-grid" style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "16px",
-          background: "var(--surface-50)",
-          padding: "16px",
-          borderRadius: "8px",
-          border: "1px solid var(--border)"
-        }}>
+        <div
+          className="detail-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+            background: "var(--surface-50)",
+            padding: "16px",
+            borderRadius: "8px",
+            border: "1px solid var(--border)",
+          }}
+        >
           <div>
             <span className="meta-label">Event</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{log._displayAction || log.action || "Unknown action"}</div>
+            <div style={{ fontWeight: 500, marginTop: 4 }}>
+              {log._displayAction || log.action || "Unknown action"}
+            </div>
           </div>
           <div>
             <span className="meta-label">User</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{log._displayActor || log.user || "System"}</div>
+            <div style={{ fontWeight: 500, marginTop: 4 }}>
+              {log._displayActor || log.user || "System"}
+            </div>
           </div>
           <div>
             <span className="meta-label">Timestamp</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{log._displayTime || (log.timestamp ? new Date(log.timestamp).toLocaleString() : "Invalid Date")}</div>
+            <div style={{ fontWeight: 500, marginTop: 4 }}>
+              {log._displayTime ||
+                (log.timestamp
+                  ? new Date(log.timestamp).toLocaleString()
+                  : "Invalid Date")}
+            </div>
           </div>
           <div>
             <span className="meta-label">Target</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{log._displayTarget || log.target || "n/a"}</div>
+            <div style={{ fontWeight: 500, marginTop: 4 }}>
+              {log._displayTarget || log.target || "n/a"}
+            </div>
           </div>
         </div>
 
         <div className="section-card">
-          <p className="meta-label" style={{ marginBottom: 8 }}>Change details</p>
+          <p className="meta-label" style={{ marginBottom: 8 }}>
+            Change details
+          </p>
           {renderChangesTable(log.details || log.changes || log.payload || {})}
         </div>
 
-        <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+        <div
+          className="modal-actions"
+          style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}
+        >
           <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>

@@ -1,12 +1,19 @@
 const normalizeRoleName = (roleName = "") =>
-  String(roleName || "").trim().toLowerCase().replace(/\s+/g, "_");
+  String(roleName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 
 const permissionKey = (permission) => {
   if (!permission) return "";
   if (typeof permission === "string") return permission.trim().toLowerCase();
 
-  const resource = String(permission.resource || "").trim().toLowerCase();
-  const action = String(permission.action || "").trim().toLowerCase();
+  const resource = String(permission.resource || "")
+    .trim()
+    .toLowerCase();
+  const action = String(permission.action || "")
+    .trim()
+    .toLowerCase();
   return resource && action ? `${resource}:${action}` : "";
 };
 
@@ -27,12 +34,16 @@ export const getPermissionSet = (user) => {
 export const can = (user, resource, action) => {
   if (isSuperAdmin(user)) return true;
 
-  const normalizedResource = String(resource || "").trim().toLowerCase();
+  const normalizedResource = String(resource || "")
+    .trim()
+    .toLowerCase();
   const key = permissionKey({ resource: normalizedResource, action });
   if (!key) return false;
 
   const permissionSet = getPermissionSet(user);
-  return permissionSet.has(key) || permissionSet.has(`${normalizedResource}:manage`);
+  return (
+    permissionSet.has(key) || permissionSet.has(`${normalizedResource}:manage`)
+  );
 };
 
 export const canPermission = (user, permission) => {

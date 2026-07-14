@@ -16,7 +16,9 @@ log = logging.getLogger("ccure.compliance.crypto")
 RAW_KEY = os.environ.get("COMPLIANCE_ENCRYPTION_KEY")
 
 if not RAW_KEY:
-    log.warning("COMPLIANCE_ENCRYPTION_KEY is not set. Generating a temporary key for fallback.")
+    log.warning(
+        "COMPLIANCE_ENCRYPTION_KEY is not set. Generating a temporary key for fallback."
+    )
     # Use a warning fallback string for local development environments
     RAW_KEY = "CCURE_AUDIT_PRO_DEFAULT_FALLBACK_KEY_DO_NOT_USE_IN_PRODUCTION"
 

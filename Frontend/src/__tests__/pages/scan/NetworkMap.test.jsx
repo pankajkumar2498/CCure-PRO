@@ -15,7 +15,7 @@ vi.mock("vis-network/standalone", () => {
     destroy: vi.fn(),
     fit: vi.fn(),
     on: vi.fn(),
-    once: vi.fn()
+    once: vi.fn(),
   }));
   const mockDataSet = vi.fn().mockImplementation(() => ({
     clear: vi.fn(),
@@ -23,22 +23,27 @@ vi.mock("vis-network/standalone", () => {
     remove: vi.fn(),
     get: vi.fn(),
     getIds: vi.fn().mockReturnValue([]),
-    length: 0
+    length: 0,
   }));
   return {
     Network: mockNetwork,
-    DataSet: mockDataSet
+    DataSet: mockDataSet,
   };
 });
 
 describe("NetworkMap Component", () => {
   const mockUser = { role: { name: "admin" } };
-  
+
   const mockTopologyResponse = {
     success: true,
     graph_version: 2,
     nodes: [
-      { id: "sw:10:180:4:1", label: "10.180.4.1", group: "switch", tier: "infra" },
+      {
+        id: "sw:10:180:4:1",
+        label: "10.180.4.1",
+        group: "switch",
+        tier: "infra",
+      },
       {
         id: "subnet:10.180.4.0/24",
         label: "10.180.4.0/24\n(2 hosts)",
@@ -46,17 +51,52 @@ describe("NetworkMap Component", () => {
         tier: "subnet",
         subnet: "10.180.4.0/24",
         host_count: 2,
-        data_quality: { ip_resolved: 2, mac_only: 0, asset_matches: 1, source_count: 1, has_arp: true, has_fdb: false },
-        recommended_actions: []
+        data_quality: {
+          ip_resolved: 2,
+          mac_only: 0,
+          asset_matches: 1,
+          source_count: 1,
+          has_arp: true,
+          has_fdb: false,
+        },
+        recommended_actions: [],
       },
-      { id: "host:1", label: "10.180.4.15", group: "host", tier: "host", ip: "10.180.4.15", mac: "00:11:22:33:44:55", vendor: "Acme", subnet: "10.180.4.0/24", source_port: "if1", asset_match_status: "matched" },
-      { id: "host:2", label: "10.180.4.16", group: "host", tier: "host", ip: "10.180.4.16", mac: "00:11:22:33:44:66", vendor: "", subnet: "10.180.4.0/24", source_port: "if2", asset_match_status: "unmatched" }
+      {
+        id: "host:1",
+        label: "10.180.4.15",
+        group: "host",
+        tier: "host",
+        ip: "10.180.4.15",
+        mac: "00:11:22:33:44:55",
+        vendor: "Acme",
+        subnet: "10.180.4.0/24",
+        source_port: "if1",
+        asset_match_status: "matched",
+      },
+      {
+        id: "host:2",
+        label: "10.180.4.16",
+        group: "host",
+        tier: "host",
+        ip: "10.180.4.16",
+        mac: "00:11:22:33:44:66",
+        vendor: "",
+        subnet: "10.180.4.0/24",
+        source_port: "if2",
+        asset_match_status: "unmatched",
+      },
     ],
     edges: [
-      { id: "edge-1", from: "sw:10:180:4:1", to: "subnet:10.180.4.0/24", tier: "subnet", host_count: 2 }
+      {
+        id: "edge-1",
+        from: "sw:10:180:4:1",
+        to: "subnet:10.180.4.0/24",
+        tier: "subnet",
+        host_count: 2,
+      },
     ],
     subnets: ["10.180.4.0/24"],
-    stats: { infrastructure: 1, subnets: 1, hosts: 2, mac_only: 0 }
+    stats: { infrastructure: 1, subnets: 1, hosts: 2, mac_only: 0 },
   };
 
   const renderComponent = () => {
@@ -67,7 +107,7 @@ describe("NetworkMap Component", () => {
             <NetworkMap />
           </MemoryRouter>
         </PreferencesProvider>
-      </AuthContext.Provider>
+      </AuthContext.Provider>,
     );
   };
 
@@ -110,7 +150,9 @@ describe("NetworkMap Component", () => {
   it("updates search query matching inputs on search fields", async () => {
     renderComponent();
     await waitFor(() => {
-      const searchInput = screen.getByPlaceholderText(/Search IP, Hostname, MAC/i);
+      const searchInput = screen.getByPlaceholderText(
+        /Search IP, Hostname, MAC/i,
+      );
       fireEvent.change(searchInput, { target: { value: "10.180.4.15" } });
       expect(searchInput.value).toBe("10.180.4.15");
     });

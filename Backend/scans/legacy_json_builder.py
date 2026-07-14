@@ -1,7 +1,7 @@
 """
 scans/legacy_json_builder.py
 ───────────────────────────────────────────────────────────────────────────────
-Dynamically reconstructs the legacy JSON payload from the normalized 
+Dynamically reconstructs the legacy JSON payload from the normalized
 relational database tables (Assets, Services, Vulnerabilities).
 Ensures the frontend UI requires no changes to display newly stored scans.
 """
@@ -22,6 +22,7 @@ from db.models.scans import Scan, ScanPhase
 BACKEND_DIR = Path(__file__).absolute().parents[1]
 
 from typing import Optional, List, Tuple, Dict
+
 
 def _resolve_backend_path(path_value: Optional[str]) -> Optional[Path]:
     if not path_value:
@@ -69,7 +70,7 @@ def _extract_reportlab_pdf_strings(path_value: Optional[str]) -> List[str]:
         if start < 0:
             break
         stream_start = start + len(b"stream")
-        while data[stream_start:stream_start + 1] in (b"\r", b"\n"):
+        while data[stream_start : stream_start + 1] in (b"\r", b"\n"):
             stream_start += 1
         stream_end = data.find(b"endstream", stream_start)
         if stream_end < 0:
@@ -96,7 +97,8 @@ def _extract_reportlab_pdf_strings(path_value: Optional[str]) -> List[str]:
 
 def _is_pdf_header_token(token: str) -> bool:
     return (
-        token in {
+        token
+        in {
             "CDAC Automation Tool",
             "Host Discovery Report",
             "Copyright@CDAC Bangalore RTSG",
@@ -138,8 +140,12 @@ def _count_from_title(strings: List[str], prefix: str) -> int:
     return 0
 
 
-def _section(strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]) -> List[str]:
-    start = next((i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1)
+def _section(
+    strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]
+) -> List[str]:
+    start = next(
+        (i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1
+    )
     if start < 0:
         return []
     end = len(strings)
@@ -147,11 +153,19 @@ def _section(strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...
         if any(strings[i].startswith(prefix) for prefix in end_prefixes):
             end = i
             break
-    return [token for token in strings[start + 1:end] if token and not _is_pdf_header_token(token)]
+    return [
+        token
+        for token in strings[start + 1 : end]
+        if token and not _is_pdf_header_token(token)
+    ]
 
 
-def _raw_section(strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]) -> List[str]:
-    start = next((i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1)
+def _raw_section(
+    strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]
+) -> List[str]:
+    start = next(
+        (i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1
+    )
     if start < 0:
         return []
     end = len(strings)
@@ -159,7 +173,7 @@ def _raw_section(strings: List[str], start_prefix: str, end_prefixes: Tuple[str,
         if any(strings[i].startswith(prefix) for prefix in end_prefixes):
             end = i
             break
-    return [token for token in strings[start + 1:end] if token]
+    return [token for token in strings[start + 1 : end] if token]
 
 
 def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
@@ -168,7 +182,11 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
         return None
 
     target = getattr(scan, "target_str", None) or _first_after(strings, "Target")
-    system_tokens = _raw_section(strings, "System Information (Credentialed)", ("System Users", "Running Services"))
+    system_tokens = _raw_section(
+        strings,
+        "System Information (Credentialed)",
+        ("System Users", "Running Services"),
+    )
     system_info = {
         "os_name": _first_after(system_tokens, "OS"),
         "os_version_id": _first_after(system_tokens, "Version"),
@@ -180,14 +198,18 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
 
     users = []
     user_tokens = _section(strings, "System Users", ("Running Services",))
-    user_tokens = [t for t in user_tokens if t not in {"Username", "UID", "Shell", "Type"}]
+    user_tokens = [
+        t for t in user_tokens if t not in {"Username", "UID", "Shell", "Type"}
+    ]
     for i in range(0, len(user_tokens) - 3, 4):
-        users.append({
-            "username": user_tokens[i],
-            "uid": user_tokens[i + 1],
-            "shell": user_tokens[i + 2],
-            "type": user_tokens[i + 3],
-        })
+        users.append(
+            {
+                "username": user_tokens[i],
+                "uid": user_tokens[i + 1],
+                "shell": user_tokens[i + 2],
+                "type": user_tokens[i + 3],
+            }
+        )
 
     running_services = []
     service_tokens = _section(strings, "Running Services", ("Installed Packages",))
@@ -196,40 +218,56 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
         if service_tokens[i].startswith("... and"):
             i += 1
             continue
-        running_services.append({
-            "name": service_tokens[i],
-            "sub_state": service_tokens[i + 1],
-            "description": service_tokens[i + 2],
-        })
+        running_services.append(
+            {
+                "name": service_tokens[i],
+                "sub_state": service_tokens[i + 1],
+                "description": service_tokens[i + 2],
+            }
+        )
         i += 3
 
     packages = []
-    package_tokens = _section(strings, "Installed Packages", ("Security Audit Findings", "Vulnerabilities / CVEs"))
+    package_tokens = _section(
+        strings,
+        "Installed Packages",
+        ("Security Audit Findings", "Vulnerabilities / CVEs"),
+    )
     i = 0
     while i + 2 < len(package_tokens):
         if package_tokens[i].startswith("... and"):
             i += 1
             continue
-        packages.append({
-            "name": package_tokens[i],
-            "version": package_tokens[i + 1],
-            "has_cve": package_tokens[i + 2].upper() == "YES",
-        })
+        packages.append(
+            {
+                "name": package_tokens[i],
+                "version": package_tokens[i + 1],
+                "has_cve": package_tokens[i + 2].upper() == "YES",
+            }
+        )
         i += 3
 
     security_issues = []
-    security_tokens = _section(strings, "Security Audit Findings", ("Vulnerabilities / CVEs",))
+    security_tokens = _section(
+        strings, "Security Audit Findings", ("Vulnerabilities / CVEs",)
+    )
     for i, token in enumerate(security_tokens):
         if token == "Misconfiguration" and i + 1 < len(security_tokens):
             security_issues.append(_clean_pdf_text(security_tokens[i + 1]))
 
     cves = []
-    cve_count = _count_from_title(strings, "  Vulnerabilities / CVEs") or _count_from_title(strings, "Vulnerabilities / CVEs")
+    cve_count = _count_from_title(
+        strings, "  Vulnerabilities / CVEs"
+    ) or _count_from_title(strings, "Vulnerabilities / CVEs")
     severity_summary = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
     severities = set(severity_summary)
     i = 0
     while i < len(strings):
-        if strings[i] != target or i + 3 >= len(strings) or not strings[i + 1].startswith("CVE-"):
+        if (
+            strings[i] != target
+            or i + 3 >= len(strings)
+            or not strings[i + 1].startswith("CVE-")
+        ):
             i += 1
             continue
         cve_id = strings[i + 1]
@@ -239,18 +277,24 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
         i += 4
         while i < len(strings):
             token = strings[i]
-            if token == target and i + 1 < len(strings) and strings[i + 1].startswith("CVE-"):
+            if (
+                token == target
+                and i + 1 < len(strings)
+                and strings[i + 1].startswith("CVE-")
+            ):
                 break
             if not _is_pdf_header_token(token):
                 desc_parts.append(token)
             i += 1
         severity_summary[severity] = severity_summary.get(severity, 0) + 1
-        cves.append({
-            "cve_id": cve_id,
-            "severity": severity,
-            "package": package,
-            "description": " ".join(desc_parts).strip(),
-        })
+        cves.append(
+            {
+                "cve_id": cve_id,
+                "severity": severity,
+                "package": package,
+                "description": " ".join(desc_parts).strip(),
+            }
+        )
 
     scan_duration = getattr(scan, "duration_seconds", None)
     if scan_duration is None:
@@ -261,10 +305,15 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
     return {
         "scan_type": "credentialed",
         "target": target,
-        "detected_os": "windows" if "windows" in (system_info.get("os_name") or "").lower() else "linux",
+        "detected_os": (
+            "windows"
+            if "windows" in (system_info.get("os_name") or "").lower()
+            else "linux"
+        ),
         "system_info": system_info,
         "packages": packages,
-        "package_count": _count_from_title(strings, "Installed Packages") or len(packages),
+        "package_count": _count_from_title(strings, "Installed Packages")
+        or len(packages),
         "running_services": running_services,
         "open_ports_credentialed": [],
         "users": users,
@@ -274,7 +323,9 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
         "sudo_rules_raw": "",
         "cron_info_raw": "",
         "security_issues": security_issues,
-        "failed_login_count": int(_first_after(strings, "Failed Logins", "0").split(" ", 1)[0] or 0),
+        "failed_login_count": int(
+            _first_after(strings, "Failed Logins", "0").split(" ", 1)[0] or 0
+        ),
         "brute_force_warning": False,
         "failed_logins_recent": [],
         "network_interfaces_raw": "",
@@ -286,6 +337,7 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
         "recovered_from_report_pdf": True,
     }
 
+
 def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
     """
     Reconstructs the multi-phase JSON blob shape expected by the React frontend:
@@ -296,10 +348,15 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
     }
     """
     results_out = {}
-    
+
     # 1. Fetch all phases for this scan
-    phases = db.query(ScanPhase).filter(ScanPhase.scan_id == scan_id).order_by(ScanPhase.phase_order.asc()).all()
-    
+    phases = (
+        db.query(ScanPhase)
+        .filter(ScanPhase.scan_id == scan_id)
+        .order_by(ScanPhase.phase_order.asc())
+        .all()
+    )
+
     if not phases:
         return results_out
 
@@ -311,16 +368,21 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
 
     def _lazy_load_db_relations():
         nonlocal assets, services_by_asset, vulns_by_asset
-        if assets is not None: return
-        assets = db.query(Asset).outerjoin(Service, Service.asset_id == Asset.id).outerjoin(
-            AssetVulnerability, AssetVulnerability.asset_id == Asset.id
-        ).filter(
-            or_(
-                Asset.last_scan_id == scan_id,
-                Service.scan_id == scan_id,
-                AssetVulnerability.scan_id == scan_id
+        if assets is not None:
+            return
+        assets = (
+            db.query(Asset)
+            .outerjoin(Service, Service.asset_id == Asset.id)
+            .outerjoin(AssetVulnerability, AssetVulnerability.asset_id == Asset.id)
+            .filter(
+                or_(
+                    Asset.last_scan_id == scan_id,
+                    Service.scan_id == scan_id,
+                    AssetVulnerability.scan_id == scan_id,
+                )
             )
-        ).all()
+            .all()
+        )
 
         services_by_asset = {}
         db_services = db.query(Service).filter(Service.scan_id == scan_id).all()
@@ -328,21 +390,27 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
             services_by_asset.setdefault(db_svc.asset_id, []).append(db_svc)
 
         vulns_by_asset = {}
-        db_vulns = db.query(
-            AssetVulnerability, VulnerabilityDefinition
-        ).join(
-            VulnerabilityDefinition, AssetVulnerability.vuln_id == VulnerabilityDefinition.id
-        ).filter(AssetVulnerability.scan_id == scan_id).all()
-        
+        db_vulns = (
+            db.query(AssetVulnerability, VulnerabilityDefinition)
+            .join(
+                VulnerabilityDefinition,
+                AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
+            )
+            .filter(AssetVulnerability.scan_id == scan_id)
+            .all()
+        )
+
         for av, vdef in db_vulns:
-            vulns_by_asset.setdefault(av.asset_id, []).append({
-                "cve_id": vdef.cve_id,
-                "title": vdef.title,
-                "description": vdef.description,
-                "severity": vdef.severity,
-                "cvss": float(vdef.cvss_v3_score or 0.0),
-                "status": av.status
-            })
+            vulns_by_asset.setdefault(av.asset_id, []).append(
+                {
+                    "cve_id": vdef.cve_id,
+                    "title": vdef.title,
+                    "description": vdef.description,
+                    "severity": vdef.severity,
+                    "cvss": float(vdef.cvss_v3_score or 0.0),
+                    "status": av.status,
+                }
+            )
 
     # 3. Reconstruct Phase payloads based on the actual DB records
     for p in phases:
@@ -352,22 +420,21 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
             "host_discovery": "phase1",
             "asset_discovery": "phase2",
             "vulnerability_assessment": "phase3",
-            "credentialed": "credentialed"
+            "credentialed": "credentialed",
         }
         out_key = legacy_key_map.get(phase_key, phase_key)
-        
+
         # Extract raw data if it was embedded in the summary (ensures deep probe fidelity)
         raw_data = []
         clean_summary = p.summary or {}
         if isinstance(clean_summary, dict) and "_phase_data" in clean_summary:
             raw_data = clean_summary["_phase_data"]
             # Remove internal key so it doesn't leak to frontend as summary data
-            clean_summary = {k: v for k, v in clean_summary.items() if k != "_phase_data"}
+            clean_summary = {
+                k: v for k, v in clean_summary.items() if k != "_phase_data"
+            }
 
-        phase_dict = {
-            "summary": clean_summary,
-            "data": raw_data
-        }
+        phase_dict = {"summary": clean_summary, "data": raw_data}
 
         if out_key == "credentialed":
             report = None
@@ -401,7 +468,9 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
                     "network_interfaces_raw": "",
                     "env_vars_flagged": [],
                     "cves": [],
-                    "cve_count": (p.summary or {}).get("cve_count", getattr(scan, "total_vulns", 0) or 0),
+                    "cve_count": (p.summary or {}).get(
+                        "cve_count", getattr(scan, "total_vulns", 0) or 0
+                    ),
                     "severity_summary": {
                         "Critical": getattr(scan, "critical_count", 0) or 0,
                         "High": getattr(scan, "high_count", 0) or 0,
@@ -424,50 +493,56 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
         _lazy_load_db_relations()
         for asset in assets:
             if out_key == "phase1":
-                phase_dict["data"].append({
-                    "ip": asset.ip_address,
-                    "mac": asset.mac_address,
-                    "hostname": asset.hostname,
-                    "vendor": asset.vendor or "Unknown",
-                    "state": "up" if asset.is_active else "down",
-                    # Modern keys used by Phase1Results.jsx and Phase2Results.jsx:
-                    "ip_address": asset.ip_address,
-                    "mac_address": asset.mac_address,
-                    "is_active": asset.is_active,
-                    "discovery_method": asset.discovery_method,
-                    "response_time_ms": asset.response_time_ms,
-                })
-            
+                phase_dict["data"].append(
+                    {
+                        "ip": asset.ip_address,
+                        "mac": asset.mac_address,
+                        "hostname": asset.hostname,
+                        "vendor": asset.vendor or "Unknown",
+                        "state": "up" if asset.is_active else "down",
+                        # Modern keys used by Phase1Results.jsx and Phase2Results.jsx:
+                        "ip_address": asset.ip_address,
+                        "mac_address": asset.mac_address,
+                        "is_active": asset.is_active,
+                        "discovery_method": asset.discovery_method,
+                        "response_time_ms": asset.response_time_ms,
+                    }
+                )
+
             elif out_key == "phase2":
                 asset_services = services_by_asset.get(asset.id, [])
-                if asset_services or asset.last_scan_id == scan_id: 
+                if asset_services or asset.last_scan_id == scan_id:
                     # Include if it had services or was active in this scan
                     ports_list = []
                     for svc in asset_services:
-                        ports_list.append({
-                            "port": svc.port,
-                            "protocol": svc.protocol,
-                            "service": svc.service_name,
-                            "product": svc.service_product,
-                            "version": svc.service_version,
-                            "extra": svc.service_extra,
-                            "banner": svc.banner,
-                            "state": svc.state or "open",
-                        })
-                    
+                        ports_list.append(
+                            {
+                                "port": svc.port,
+                                "protocol": svc.protocol,
+                                "service": svc.service_name,
+                                "product": svc.service_product,
+                                "version": svc.service_version,
+                                "extra": svc.service_extra,
+                                "banner": svc.banner,
+                                "state": svc.state or "open",
+                            }
+                        )
+
                     if ports_list:
-                        phase_dict["data"].append({
-                            "ip": asset.ip_address,
-                            "mac": asset.mac_address,
-                            "hostname": asset.hostname,
-                            "vendor": asset.vendor,
-                            "os_guess": asset.os_name,
-                            "open_ports": ports_list,
-                            # Modern keys:
-                            "ip_address": asset.ip_address,
-                            "mac_address": asset.mac_address,
-                            "is_active": asset.is_active,
-                        })
+                        phase_dict["data"].append(
+                            {
+                                "ip": asset.ip_address,
+                                "mac": asset.mac_address,
+                                "hostname": asset.hostname,
+                                "vendor": asset.vendor,
+                                "os_guess": asset.os_name,
+                                "open_ports": ports_list,
+                                # Modern keys:
+                                "ip_address": asset.ip_address,
+                                "mac_address": asset.mac_address,
+                                "is_active": asset.is_active,
+                            }
+                        )
 
             elif out_key == "phase3":
                 asset_vulns = vulns_by_asset.get(asset.id, [])
@@ -475,32 +550,36 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
                     asset_services = services_by_asset.get(asset.id, [])
                     ports_list = []
                     for svc in asset_services:
-                        ports_list.append({
-                            "port": svc.port,
-                            "protocol": svc.protocol,
-                            "service": svc.service_name,
-                            "product": svc.service_product,
-                            "version": svc.service_version,
-                            "extra": svc.service_extra,
-                            "banner": svc.banner,
-                            "state": svc.state or "open",
-                        })
-                    phase_dict["data"].append({
-                        "ip": asset.ip_address,
-                        "ip_address": asset.ip_address,
-                        "hostname": asset.hostname,
-                        "mac": asset.mac_address,
-                        "mac_address": asset.mac_address,
-                        "vendor": asset.vendor,
-                        "is_active": asset.is_active,
-                        "open_ports": ports_list,
-                        "os_guess": asset.os_name,
-                        "device_category": asset.device_category,
-                        "cves": asset_vulns,
-                        "vulnerabilities": asset_vulns,
-                        "host_risk_score": asset.risk_score or 0,
-                        "host_risk_level": (asset.risk_level or "info").title(),
-                    })
+                        ports_list.append(
+                            {
+                                "port": svc.port,
+                                "protocol": svc.protocol,
+                                "service": svc.service_name,
+                                "product": svc.service_product,
+                                "version": svc.service_version,
+                                "extra": svc.service_extra,
+                                "banner": svc.banner,
+                                "state": svc.state or "open",
+                            }
+                        )
+                    phase_dict["data"].append(
+                        {
+                            "ip": asset.ip_address,
+                            "ip_address": asset.ip_address,
+                            "hostname": asset.hostname,
+                            "mac": asset.mac_address,
+                            "mac_address": asset.mac_address,
+                            "vendor": asset.vendor,
+                            "is_active": asset.is_active,
+                            "open_ports": ports_list,
+                            "os_guess": asset.os_name,
+                            "device_category": asset.device_category,
+                            "cves": asset_vulns,
+                            "vulnerabilities": asset_vulns,
+                            "host_risk_score": asset.risk_score or 0,
+                            "host_risk_level": (asset.risk_level or "info").title(),
+                        }
+                    )
 
         results_out[out_key] = phase_dict
 

@@ -31,8 +31,8 @@ MAX_FDB_ENTRIES = 2000
 
 # ARP Table (ipNetToMediaTable) — RFC 2011
 OID_ARP_TABLE = "1.3.6.1.2.1.4.22.1"
-OID_ARP_PHYS_ADDRESS = "1.3.6.1.2.1.4.22.1.2"   # MAC address
-OID_ARP_NET_ADDRESS = "1.3.6.1.2.1.4.22.1.3"     # IP address
+OID_ARP_PHYS_ADDRESS = "1.3.6.1.2.1.4.22.1.2"  # MAC address
+OID_ARP_NET_ADDRESS = "1.3.6.1.2.1.4.22.1.3"  # IP address
 
 # LLDP Remote Systems (lldpRemTable) — IEEE 802.1AB
 OID_LLDP_REM_CHASSIS_ID = "1.0.8802.1.1.2.1.4.1.1.5"
@@ -53,21 +53,21 @@ OID_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
 # System description (sysDescr / sysName / sysServices)
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
-OID_SYS_SERVICES = "1.3.6.1.2.1.1.7.0"       # Layer bitmask (L2=2, L3=4, L7=64)
+OID_SYS_SERVICES = "1.3.6.1.2.1.1.7.0"  # Layer bitmask (L2=2, L3=4, L7=64)
 
 # Interface Table (ifTable / ifXTable) — RFC 2863
-OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"          # e.g., "GigabitEthernet1/0/5"
-OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"          # 32-bit speed (bps), caps at ~4.29 Gbps
-OID_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"        # Short name (ifXTable)
-OID_IF_HIGH_SPEED = "1.3.6.1.2.1.31.1.1.1.15" # Speed in Mbps (for >4 Gbps links)
-OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"      # Operator-configured description
+OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"  # e.g., "GigabitEthernet1/0/5"
+OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"  # 32-bit speed (bps), caps at ~4.29 Gbps
+OID_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"  # Short name (ifXTable)
+OID_IF_HIGH_SPEED = "1.3.6.1.2.1.31.1.1.1.15"  # Speed in Mbps (for >4 Gbps links)
+OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"  # Operator-configured description
 
 # Bridge Port to ifIndex mapping — RFC 1493
 OID_BRIDGE_PORT_IF_INDEX = "1.3.6.1.2.1.17.1.4.1.2"  # dot1dBasePortIfIndex
 
 # VLAN tables
-OID_DOT1Q_PVID = "1.3.6.1.2.1.17.7.1.4.5.1.1"       # 802.1Q port native VLAN
-OID_CISCO_VM_VLAN = "1.3.6.1.4.1.9.9.68.1.2.2.1.2"   # Cisco vmVlan (access VLAN)
+OID_DOT1Q_PVID = "1.3.6.1.2.1.17.7.1.4.5.1.1"  # 802.1Q port native VLAN
+OID_CISCO_VM_VLAN = "1.3.6.1.4.1.9.9.68.1.2.2.1.2"  # Cisco vmVlan (access VLAN)
 
 
 @dataclass
@@ -79,17 +79,18 @@ class SNMPCredentials:
     For v3: username + auth_protocol + auth_passphrase are required.
              priv_protocol + priv_passphrase are optional (for authPriv).
     """
-    version: str = "v2c"             # "v1", "v2c", "v3"
-    community: str = "public"        # v1/v2c community string
-    username: str = ""               # v3 USM username
-    auth_protocol: str = ""          # v3: "MD5", "SHA", "SHA256", "SHA512"
-    auth_passphrase: str = ""        # v3 auth passphrase
-    priv_protocol: str = ""          # v3: "DES", "AES128", "AES256"
-    priv_passphrase: str = ""        # v3 priv passphrase
-    context_name: str = ""           # v3 context name (e.g., VLAN-aware switches)
-    port: int = 161                  # SNMP agent port
-    timeout: float = 1.5             # seconds per request
-    retries: int = 1                 # retry count
+
+    version: str = "v2c"  # "v1", "v2c", "v3"
+    community: str = "public"  # v1/v2c community string
+    username: str = ""  # v3 USM username
+    auth_protocol: str = ""  # v3: "MD5", "SHA", "SHA256", "SHA512"
+    auth_passphrase: str = ""  # v3 auth passphrase
+    priv_protocol: str = ""  # v3: "DES", "AES128", "AES256"
+    priv_passphrase: str = ""  # v3 priv passphrase
+    context_name: str = ""  # v3 context name (e.g., VLAN-aware switches)
+    port: int = 161  # SNMP agent port
+    timeout: float = 1.5  # seconds per request
+    retries: int = 1  # retry count
 
     @classmethod
     def from_dict(cls, data: dict) -> "SNMPCredentials":
@@ -114,6 +115,7 @@ class SNMPCredentials:
 @dataclass
 class ARPEntry:
     """One row from ipNetToMediaTable."""
+
     ip_address: str
     mac_address: str
     interface_index: str = ""
@@ -122,40 +124,44 @@ class ARPEntry:
 @dataclass
 class LLDPNeighbor:
     """One LLDP neighbor discovered on a local port."""
-    chassis_id: str           # Usually a MAC address
-    port_id: str              # Remote port
-    system_name: str = ""     # Remote hostname
-    port_desc: str = ""       # Remote port description
+
+    chassis_id: str  # Usually a MAC address
+    port_id: str  # Remote port
+    system_name: str = ""  # Remote hostname
+    port_desc: str = ""  # Remote port description
     local_port_index: str = ""
 
 
 @dataclass
 class CDPNeighbor:
     """One CDP neighbor (Cisco-specific)."""
-    device_id: str           # Remote device hostname
-    ip_address: str = ""     # Remote management IP
-    device_port: str = ""    # Remote port
-    platform: str = ""       # Remote platform string
+
+    device_id: str  # Remote device hostname
+    ip_address: str = ""  # Remote management IP
+    device_port: str = ""  # Remote port
+    platform: str = ""  # Remote platform string
     local_port_index: str = ""
 
 
 @dataclass
 class FDBEntry:
     """One MAC forwarding table entry."""
+
     mac_address: str
     port_index: str
-    vlan_id: int = 0           # Populated during VLAN-indexed walks
+    vlan_id: int = 0  # Populated during VLAN-indexed walks
 
 
 @dataclass
 class InterfaceInfo:
     """Cached metadata for a single interface, keyed by ifIndex."""
+
     if_index: str
-    descr: str = ""            # ifDescr (e.g., "GigabitEthernet1/0/5")
-    name: str = ""             # ifName  (e.g., "Gi1/0/5")
-    alias: str = ""            # ifAlias (operator label, e.g., "Uplink to Core")
-    speed_bps: int = 0         # Normalized speed in bps
-    vlan_id: int = 0           # Access VLAN for this port
+    descr: str = ""  # ifDescr (e.g., "GigabitEthernet1/0/5")
+    name: str = ""  # ifName  (e.g., "Gi1/0/5")
+    alias: str = ""  # ifAlias (operator label, e.g., "Uplink to Core")
+    speed_bps: int = 0  # Normalized speed in bps
+    vlan_id: int = 0  # Access VLAN for this port
 
     @property
     def display_name(self) -> str:
@@ -169,21 +175,31 @@ class InterfaceInfo:
 @dataclass
 class SNMPWalkResult:
     """Aggregated results from all SNMP walks against a single target."""
+
     target_ip: str
     sys_name: str = ""
     sys_descr: str = ""
-    sys_services: int = 0                                            # Layer bitmask
+    sys_services: int = 0  # Layer bitmask
     arp_table: List[ARPEntry] = field(default_factory=list)
     lldp_neighbors: List[LLDPNeighbor] = field(default_factory=list)
     cdp_neighbors: List[CDPNeighbor] = field(default_factory=list)
     fdb_table: List[FDBEntry] = field(default_factory=list)
-    interface_table: Dict[str, InterfaceInfo] = field(default_factory=dict)  # ifIndex -> InterfaceInfo
-    bridge_port_map: Dict[str, str] = field(default_factory=dict)            # bridge_port -> ifIndex
+    interface_table: Dict[str, InterfaceInfo] = field(
+        default_factory=dict
+    )  # ifIndex -> InterfaceInfo
+    bridge_port_map: Dict[str, str] = field(
+        default_factory=dict
+    )  # bridge_port -> ifIndex
     errors: List[str] = field(default_factory=list)
 
     @property
     def has_data(self) -> bool:
-        return bool(self.arp_table or self.lldp_neighbors or self.cdp_neighbors or self.fdb_table)
+        return bool(
+            self.arp_table
+            or self.lldp_neighbors
+            or self.cdp_neighbors
+            or self.fdb_table
+        )
 
     def resolve_interface(self, port_index: str) -> Optional[InterfaceInfo]:
         """Resolve a bridge/FDB port index to its InterfaceInfo via bridge_port_map."""
@@ -192,6 +208,7 @@ class SNMPWalkResult:
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _get_oid_suffix(oid_str: str, base_oid: str) -> str:
     """
@@ -205,7 +222,7 @@ def _get_oid_suffix(oid_str: str, base_oid: str) -> str:
         return ""
     prefix_dot = clean_base + "."
     if clean_oid.startswith(prefix_dot):
-        return clean_oid[len(prefix_dot):]
+        return clean_oid[len(prefix_dot) :]
     return ""
 
 
@@ -224,7 +241,7 @@ def _format_mac(raw_bytes) -> str:
     # Already formatted (e.g., "aa:bb:cc:dd:ee:ff")
     compact = text.lower().replace(":", "").replace("-", "").replace(".", "")
     if len(compact) == 12 and all(c in "0123456789abcdef" for c in compact):
-        return ":".join(compact[i:i + 2] for i in range(0, 12, 2))
+        return ":".join(compact[i : i + 2] for i in range(0, 12, 2))
     return text
 
 
@@ -248,19 +265,20 @@ def _format_ip_from_bytes(raw_bytes) -> str:
 def _oid_to_tuple(oid_str: str) -> tuple:
     """Convert dotted OID string to integer tuple for correct numeric comparison."""
     try:
-        return tuple(int(x) for x in oid_str.strip('.').split('.') if x.isdigit())
+        return tuple(int(x) for x in oid_str.strip(".").split(".") if x.isdigit())
     except Exception:
         return ()
 
 
 # ─── SNMP Engine Builder ─────────────────────────────────────────────────────
 
+
 def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
     """
     Build pysnmp transport target + auth data objects.
     Returns (snmp_engine, auth_data, transport_target, context_data).
-    
-    Lazy-imports pysnmp so the module doesn't fail on import 
+
+    Lazy-imports pysnmp so the module doesn't fail on import
     if pysnmp is not installed (e.g., during unit tests).
     """
     from pysnmp.hlapi.asyncio import (
@@ -297,13 +315,16 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
                 usmHMAC128SHA224AuthProtocol,
                 usmHMAC192SHA256AuthProtocol,
             )
+
             AUTH_MAP = {
                 "md5": usmHMACMD5AuthProtocol,
                 "sha": usmHMACSHAAuthProtocol,
                 "sha224": usmHMAC128SHA224AuthProtocol,
                 "sha256": usmHMAC192SHA256AuthProtocol,
             }
-            auth_proto = AUTH_MAP.get(creds.auth_protocol.lower(), usmHMACSHAAuthProtocol)
+            auth_proto = AUTH_MAP.get(
+                creds.auth_protocol.lower(), usmHMACSHAAuthProtocol
+            )
 
         if creds.priv_protocol:
             from pysnmp.hlapi.asyncio import (
@@ -311,6 +332,7 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
                 usmAesCfb128Protocol,
                 usmAesCfb256Protocol,
             )
+
             PRIV_MAP = {
                 "des": usmDESPrivProtocol,
                 "aes": usmAesCfb128Protocol,
@@ -332,11 +354,13 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
     return engine, auth, transport, context
 
 
-async def _snmp_walk_async(engine, auth, transport, context, oid: str, max_rows: int = 0) -> List[tuple]:
+async def _snmp_walk_async(
+    engine, auth, transport, context, oid: str, max_rows: int = 0
+) -> List[tuple]:
     """
     Perform an asynchronous SNMP walk starting from `oid`.
     Returns list of (oid_str, value) tuples.
-    
+
     If max_rows > 0, stops after max_rows results (safety cap).
     """
     from pysnmp.hlapi.asyncio import walkCmd, ObjectType, ObjectIdentity
@@ -347,7 +371,10 @@ async def _snmp_walk_async(engine, auth, transport, context, oid: str, max_rows:
 
     try:
         async for errorIndication, errorStatus, errorIndex, varBinds in walkCmd(
-            engine, auth, transport, context,
+            engine,
+            auth,
+            transport,
+            context,
             ObjectType(ObjectIdentity(oid)),
             lexicographicMode=False,
         ):
@@ -366,7 +393,11 @@ async def _snmp_walk_async(engine, auth, transport, context, oid: str, max_rows:
                 oid_tuple = _oid_to_tuple(oid_str)
                 # Infinite loop prevention: check if OID is not strictly increasing numerically
                 if previous_oid is not None and oid_tuple <= previous_oid:
-                    log.warning("SNMP walk: detected non-increasing OID (%s -> %s). Terminating walk to prevent infinite loop.", previous_oid, oid_tuple)
+                    log.warning(
+                        "SNMP walk: detected non-increasing OID (%s -> %s). Terminating walk to prevent infinite loop.",
+                        previous_oid,
+                        oid_tuple,
+                    )
                     stop_walk = True
                     break
 
@@ -393,7 +424,10 @@ async def _snmp_get_async(engine, auth, transport, context, oid: str):
 
     try:
         errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
-            engine, auth, transport, context,
+            engine,
+            auth,
+            transport,
+            context,
             ObjectType(ObjectIdentity(oid)),
         )
 
@@ -409,6 +443,7 @@ async def _snmp_get_async(engine, auth, transport, context, oid: str):
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 
+
 def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
     """
     Run the full SNMP discovery against a single target IP.
@@ -423,6 +458,7 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
     Each walk is independent; a failure in one does not affect the others.
     """
     import asyncio
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -441,42 +477,81 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
             # 1. System identity + sysServices
             log.info("SNMP walk [%s]: querying system identity...", target_ip)
             try:
-                val = await _snmp_get_async(engine, auth, transport, context, OID_SYS_NAME)
+                val = await _snmp_get_async(
+                    engine, auth, transport, context, OID_SYS_NAME
+                )
                 if val:
-                    result.sys_name = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
-                val = await _snmp_get_async(engine, auth, transport, context, OID_SYS_DESCR)
+                    result.sys_name = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
+                val = await _snmp_get_async(
+                    engine, auth, transport, context, OID_SYS_DESCR
+                )
                 if val:
-                    result.sys_descr = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
-                val = await _snmp_get_async(engine, auth, transport, context, OID_SYS_SERVICES)
+                    result.sys_descr = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
+                val = await _snmp_get_async(
+                    engine, auth, transport, context, OID_SYS_SERVICES
+                )
                 if val:
                     try:
                         result.sys_services = int(val)
                     except (ValueError, TypeError):
                         pass
-                log.info("SNMP walk [%s]: system identity retrieved (name='%s', services=%d)", target_ip, result.sys_name, result.sys_services)
+                log.info(
+                    "SNMP walk [%s]: system identity retrieved (name='%s', services=%d)",
+                    target_ip,
+                    result.sys_name,
+                    result.sys_services,
+                )
             except Exception as exc:
                 result.errors.append(f"System identity walk failed: {exc}")
-                log.warning("SNMP walk [%s]: system identity walk failed: %s", target_ip, exc)
+                log.warning(
+                    "SNMP walk [%s]: system identity walk failed: %s", target_ip, exc
+                )
 
             # 1b. Interface table (ifDescr, ifName, ifAlias, ifSpeed, ifHighSpeed)
             log.info("SNMP walk [%s]: walking interface table...", target_ip)
             try:
-                descr_rows = await _snmp_walk_async(engine, auth, transport, context, OID_IF_DESCR)
-                name_rows = await _snmp_walk_async(engine, auth, transport, context, OID_IF_NAME)
-                alias_rows = await _snmp_walk_async(engine, auth, transport, context, OID_IF_ALIAS)
-                speed_rows = await _snmp_walk_async(engine, auth, transport, context, OID_IF_SPEED)
-                high_speed_rows = await _snmp_walk_async(engine, auth, transport, context, OID_IF_HIGH_SPEED)
+                descr_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_IF_DESCR
+                )
+                name_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_IF_NAME
+                )
+                alias_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_IF_ALIAS
+                )
+                speed_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_IF_SPEED
+                )
+                high_speed_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_IF_HIGH_SPEED
+                )
 
                 # Build lookup maps keyed by ifIndex suffix
                 name_map = {}
                 for oid_str, val in name_rows:
                     sfx = _get_oid_suffix(oid_str, OID_IF_NAME)
-                    name_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    name_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 alias_map = {}
                 for oid_str, val in alias_rows:
                     sfx = _get_oid_suffix(oid_str, OID_IF_ALIAS)
-                    alias_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    alias_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 speed_map = {}
                 for oid_str, val in speed_rows:
@@ -498,12 +573,20 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                     if_index = _get_oid_suffix(oid_str, OID_IF_DESCR)
                     if not if_index:
                         continue
-                    descr = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    descr = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                     # Normalize speed: prefer ifHighSpeed when ifSpeed is 0, missing, or sentinel 4294967295
                     raw_speed = speed_map.get(if_index, 0)
                     high_speed = high_speed_map.get(if_index, 0)
-                    if raw_speed == 0 or raw_speed == 4294967295 or (high_speed and high_speed > 0):
+                    if (
+                        raw_speed == 0
+                        or raw_speed == 4294967295
+                        or (high_speed and high_speed > 0)
+                    ):
                         speed_bps = high_speed * 1_000_000 if high_speed else raw_speed
                     else:
                         speed_bps = raw_speed
@@ -516,29 +599,47 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                         speed_bps=speed_bps,
                     )
 
-                log.info("SNMP walk [%s]: interface table built (%d interfaces)", target_ip, len(result.interface_table))
+                log.info(
+                    "SNMP walk [%s]: interface table built (%d interfaces)",
+                    target_ip,
+                    len(result.interface_table),
+                )
             except Exception as exc:
                 result.errors.append(f"Interface table walk failed: {exc}")
-                log.warning("SNMP walk [%s]: interface table walk failed: %s", target_ip, exc)
+                log.warning(
+                    "SNMP walk [%s]: interface table walk failed: %s", target_ip, exc
+                )
 
             # 1c. Bridge port to ifIndex mapping (dot1dBasePortIfIndex)
             log.info("SNMP walk [%s]: walking bridge port mapping...", target_ip)
             try:
-                bridge_rows = await _snmp_walk_async(engine, auth, transport, context, OID_BRIDGE_PORT_IF_INDEX)
+                bridge_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_BRIDGE_PORT_IF_INDEX
+                )
                 for oid_str, val in bridge_rows:
                     bridge_port = _get_oid_suffix(oid_str, OID_BRIDGE_PORT_IF_INDEX)
                     if bridge_port:
                         result.bridge_port_map[bridge_port] = str(val).strip()
-                log.info("SNMP walk [%s]: bridge port mapping built (%d ports)", target_ip, len(result.bridge_port_map))
+                log.info(
+                    "SNMP walk [%s]: bridge port mapping built (%d ports)",
+                    target_ip,
+                    len(result.bridge_port_map),
+                )
             except Exception as exc:
                 result.errors.append(f"Bridge port mapping walk failed: {exc}")
-                log.warning("SNMP walk [%s]: bridge port mapping walk failed: %s", target_ip, exc)
+                log.warning(
+                    "SNMP walk [%s]: bridge port mapping walk failed: %s",
+                    target_ip,
+                    exc,
+                )
 
             # 1d. VLAN tables (dot1qPvid + Cisco vmVlan)
             log.info("SNMP walk [%s]: walking VLAN tables...", target_ip)
             vlan_port_map: Dict[str, int] = {}  # ifIndex/bridge_port -> vlan_id
             try:
-                pvid_rows = await _snmp_walk_async(engine, auth, transport, context, OID_DOT1Q_PVID)
+                pvid_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_DOT1Q_PVID
+                )
                 for oid_str, val in pvid_rows:
                     port_idx = _get_oid_suffix(oid_str, OID_DOT1Q_PVID)
                     if port_idx:
@@ -547,12 +648,18 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                         except (ValueError, TypeError):
                             pass
             except Exception as exc:
-                log.debug("SNMP walk [%s]: dot1qPvid walk failed (may not be supported): %s", target_ip, exc)
+                log.debug(
+                    "SNMP walk [%s]: dot1qPvid walk failed (may not be supported): %s",
+                    target_ip,
+                    exc,
+                )
 
             if not vlan_port_map:
                 # Fallback to Cisco vmVlan
                 try:
-                    vm_rows = await _snmp_walk_async(engine, auth, transport, context, OID_CISCO_VM_VLAN)
+                    vm_rows = await _snmp_walk_async(
+                        engine, auth, transport, context, OID_CISCO_VM_VLAN
+                    )
                     for oid_str, val in vm_rows:
                         if_index = _get_oid_suffix(oid_str, OID_CISCO_VM_VLAN)
                         if if_index:
@@ -561,7 +668,11 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                             except (ValueError, TypeError):
                                 pass
                 except Exception as exc:
-                    log.debug("SNMP walk [%s]: vmVlan walk failed (may not be supported): %s", target_ip, exc)
+                    log.debug(
+                        "SNMP walk [%s]: vmVlan walk failed (may not be supported): %s",
+                        target_ip,
+                        exc,
+                    )
 
             # Merge VLAN IDs into interface_table entries
             for port_or_idx, vlan_id in vlan_port_map.items():
@@ -573,12 +684,18 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                     mapped_idx = result.bridge_port_map.get(port_or_idx)
                     if mapped_idx and mapped_idx in result.interface_table:
                         result.interface_table[mapped_idx].vlan_id = vlan_id
-            log.info("SNMP walk [%s]: VLAN mapping completed (%d entries)", target_ip, len(vlan_port_map))
+            log.info(
+                "SNMP walk [%s]: VLAN mapping completed (%d entries)",
+                target_ip,
+                len(vlan_port_map),
+            )
 
             # 2. ARP Table
             log.info("SNMP walk [%s]: walking ARP table...", target_ip)
             try:
-                rows = await _snmp_walk_async(engine, auth, transport, context, OID_ARP_PHYS_ADDRESS)
+                rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_ARP_PHYS_ADDRESS
+                )
                 for oid_str, value in rows:
                     mac = _format_mac(value)
                     # Extract IP from OID suffix
@@ -588,12 +705,18 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                         # Extract interface index from OID
                         parts = suffix.strip(".").split(".")
                         iface_idx = parts[0] if parts else ""
-                        result.arp_table.append(ARPEntry(
-                            ip_address=ip,
-                            mac_address=mac,
-                            interface_index=iface_idx,
-                        ))
-                log.info("SNMP walk [%s]: ARP walk completed (%d entries)", target_ip, len(result.arp_table))
+                        result.arp_table.append(
+                            ARPEntry(
+                                ip_address=ip,
+                                mac_address=mac,
+                                interface_index=iface_idx,
+                            )
+                        )
+                log.info(
+                    "SNMP walk [%s]: ARP walk completed (%d entries)",
+                    target_ip,
+                    len(result.arp_table),
+                )
             except Exception as exc:
                 result.errors.append(f"ARP walk failed: {exc}")
                 log.warning("SNMP walk [%s]: ARP walk failed: %s", target_ip, exc)
@@ -601,36 +724,56 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
             # 3. LLDP Neighbors
             log.info("SNMP walk [%s]: walking LLDP neighbors...", target_ip)
             try:
-                chassis_rows = await _snmp_walk_async(engine, auth, transport, context, OID_LLDP_REM_CHASSIS_ID)
-                port_rows = await _snmp_walk_async(engine, auth, transport, context, OID_LLDP_REM_PORT_ID)
-                name_rows = await _snmp_walk_async(engine, auth, transport, context, OID_LLDP_REM_SYS_NAME)
+                chassis_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_LLDP_REM_CHASSIS_ID
+                )
+                port_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_LLDP_REM_PORT_ID
+                )
+                name_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_LLDP_REM_SYS_NAME
+                )
 
                 # Build index maps keyed by OID suffix
                 port_map = {}
                 for oid, val in port_rows:
                     sfx = _get_oid_suffix(str(oid), OID_LLDP_REM_PORT_ID)
-                    port_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    port_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 name_map = {}
                 for oid, val in name_rows:
                     sfx = _get_oid_suffix(str(oid), OID_LLDP_REM_SYS_NAME)
-                    name_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    name_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 for oid_str, value in chassis_rows:
                     suffix = _get_oid_suffix(oid_str, OID_LLDP_REM_CHASSIS_ID)
                     chassis_id = _format_mac(value)
-                    
+
                     parts = suffix.strip(".").split(".")
                     # Index is [TimeFilter].[LocalPortNum].[RemIndex]
                     local_port = parts[1] if len(parts) >= 2 else ""
-                    
-                    result.lldp_neighbors.append(LLDPNeighbor(
-                        chassis_id=chassis_id,
-                        port_id=port_map.get(suffix, ""),
-                        system_name=name_map.get(suffix, ""),
-                        local_port_index=local_port,
-                    ))
-                log.info("SNMP walk [%s]: LLDP walk completed (%d neighbors)", target_ip, len(result.lldp_neighbors))
+
+                    result.lldp_neighbors.append(
+                        LLDPNeighbor(
+                            chassis_id=chassis_id,
+                            port_id=port_map.get(suffix, ""),
+                            system_name=name_map.get(suffix, ""),
+                            local_port_index=local_port,
+                        )
+                    )
+                log.info(
+                    "SNMP walk [%s]: LLDP walk completed (%d neighbors)",
+                    target_ip,
+                    len(result.lldp_neighbors),
+                )
             except Exception as exc:
                 result.errors.append(f"LLDP walk failed: {exc}")
                 log.warning("SNMP walk [%s]: LLDP walk failed: %s", target_ip, exc)
@@ -638,42 +781,68 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
             # 4. CDP Neighbors
             log.info("SNMP walk [%s]: walking CDP neighbors...", target_ip)
             try:
-                addr_rows = await _snmp_walk_async(engine, auth, transport, context, OID_CDP_CACHE_ADDRESS)
-                dev_rows = await _snmp_walk_async(engine, auth, transport, context, OID_CDP_CACHE_DEVICE_ID)
-                port_rows = await _snmp_walk_async(engine, auth, transport, context, OID_CDP_CACHE_DEVICE_PORT)
-                plat_rows = await _snmp_walk_async(engine, auth, transport, context, OID_CDP_CACHE_PLATFORM)
+                addr_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_CDP_CACHE_ADDRESS
+                )
+                dev_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_CDP_CACHE_DEVICE_ID
+                )
+                port_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_CDP_CACHE_DEVICE_PORT
+                )
+                plat_rows = await _snmp_walk_async(
+                    engine, auth, transport, context, OID_CDP_CACHE_PLATFORM
+                )
 
                 dev_map = {}
                 for oid, val in dev_rows:
                     sfx = _get_oid_suffix(str(oid), OID_CDP_CACHE_DEVICE_ID)
-                    dev_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    dev_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 port_map = {}
                 for oid, val in port_rows:
                     sfx = _get_oid_suffix(str(oid), OID_CDP_CACHE_DEVICE_PORT)
-                    port_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    port_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 plat_map = {}
                 for oid, val in plat_rows:
                     sfx = _get_oid_suffix(str(oid), OID_CDP_CACHE_PLATFORM)
-                    plat_map[sfx] = val.asOctets().decode("utf-8", errors="ignore").strip() if hasattr(val, "asOctets") else str(val).strip()
+                    plat_map[sfx] = (
+                        val.asOctets().decode("utf-8", errors="ignore").strip()
+                        if hasattr(val, "asOctets")
+                        else str(val).strip()
+                    )
 
                 for oid_str, value in addr_rows:
                     suffix = _get_oid_suffix(oid_str, OID_CDP_CACHE_ADDRESS)
                     ip = _format_ip_from_bytes(value)
-                    
+
                     parts = suffix.strip(".").split(".")
                     # Index is [cdpCacheIfIndex].[cdpCacheDeviceIndex]
                     local_port = parts[0] if parts else ""
-                    
-                    result.cdp_neighbors.append(CDPNeighbor(
-                        device_id=dev_map.get(suffix, ""),
-                        ip_address=ip,
-                        device_port=port_map.get(suffix, ""),
-                        platform=plat_map.get(suffix, ""),
-                        local_port_index=local_port,
-                    ))
-                log.info("SNMP walk [%s]: CDP walk completed (%d neighbors)", target_ip, len(result.cdp_neighbors))
+
+                    result.cdp_neighbors.append(
+                        CDPNeighbor(
+                            device_id=dev_map.get(suffix, ""),
+                            ip_address=ip,
+                            device_port=port_map.get(suffix, ""),
+                            platform=plat_map.get(suffix, ""),
+                            local_port_index=local_port,
+                        )
+                    )
+                log.info(
+                    "SNMP walk [%s]: CDP walk completed (%d neighbors)",
+                    target_ip,
+                    len(result.cdp_neighbors),
+                )
             except Exception as exc:
                 result.errors.append(f"CDP walk failed: {exc}")
                 log.warning("SNMP walk [%s]: CDP walk failed: %s", target_ip, exc)
@@ -682,8 +851,22 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
             log.info("SNMP walk [%s]: walking FDB forwarding table...", target_ip)
             try:
                 # Default/VLAN 1 walk
-                mac_rows = await _snmp_walk_async(engine, auth, transport, context, OID_FDB_ADDRESS, max_rows=MAX_FDB_ENTRIES)
-                port_rows = await _snmp_walk_async(engine, auth, transport, context, OID_FDB_PORT, max_rows=MAX_FDB_ENTRIES)
+                mac_rows = await _snmp_walk_async(
+                    engine,
+                    auth,
+                    transport,
+                    context,
+                    OID_FDB_ADDRESS,
+                    max_rows=MAX_FDB_ENTRIES,
+                )
+                port_rows = await _snmp_walk_async(
+                    engine,
+                    auth,
+                    transport,
+                    context,
+                    OID_FDB_PORT,
+                    max_rows=MAX_FDB_ENTRIES,
+                )
 
                 port_map = {}
                 for oid_str, val in port_rows:
@@ -695,25 +878,55 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                     suffix = _get_oid_suffix(oid_str, OID_FDB_ADDRESS)
                     port_idx = port_map.get(suffix, "")
                     if mac:
-                        result.fdb_table.append(FDBEntry(mac_address=mac, port_index=port_idx, vlan_id=1))
+                        result.fdb_table.append(
+                            FDBEntry(mac_address=mac, port_index=port_idx, vlan_id=1)
+                        )
 
                 # Multi-VLAN / Context-based walking for other active non-default VLANs
-                active_vlans = sorted(list({v for v in vlan_port_map.values() if v and v not in (0, 1, 4095)}))
+                active_vlans = sorted(
+                    list(
+                        {
+                            v
+                            for v in vlan_port_map.values()
+                            if v and v not in (0, 1, 4095)
+                        }
+                    )
+                )
                 for vlan_id in active_vlans:
-                    log.info("SNMP walk [%s]: walking FDB for VLAN %d...", target_ip, vlan_id)
+                    log.info(
+                        "SNMP walk [%s]: walking FDB for VLAN %d...", target_ip, vlan_id
+                    )
                     if creds.version in ("v1", "v2c"):
                         from pysnmp.hlapi.asyncio import CommunityData
+
                         mpmodel = 0 if creds.version == "v1" else 1
-                        vlan_auth = CommunityData(f"{creds.community}@{vlan_id}", mpModel=mpmodel)
+                        vlan_auth = CommunityData(
+                            f"{creds.community}@{vlan_id}", mpModel=mpmodel
+                        )
                         vlan_context = context
                     else:
                         from pysnmp.hlapi.asyncio import ContextData
+
                         vlan_auth = auth
                         vlan_context = ContextData(contextName=str(vlan_id))
 
                     try:
-                        vlan_mac_rows = await _snmp_walk_async(engine, vlan_auth, transport, vlan_context, OID_FDB_ADDRESS, max_rows=MAX_FDB_ENTRIES)
-                        vlan_port_rows = await _snmp_walk_async(engine, vlan_auth, transport, vlan_context, OID_FDB_PORT, max_rows=MAX_FDB_ENTRIES)
+                        vlan_mac_rows = await _snmp_walk_async(
+                            engine,
+                            vlan_auth,
+                            transport,
+                            vlan_context,
+                            OID_FDB_ADDRESS,
+                            max_rows=MAX_FDB_ENTRIES,
+                        )
+                        vlan_port_rows = await _snmp_walk_async(
+                            engine,
+                            vlan_auth,
+                            transport,
+                            vlan_context,
+                            OID_FDB_PORT,
+                            max_rows=MAX_FDB_ENTRIES,
+                        )
 
                         vlan_port_map_local = {}
                         for oid_str, val in vlan_port_rows:
@@ -725,11 +938,26 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
                             suffix = _get_oid_suffix(oid_str, OID_FDB_ADDRESS)
                             port_idx = vlan_port_map_local.get(suffix, "")
                             if mac:
-                                result.fdb_table.append(FDBEntry(mac_address=mac, port_index=port_idx, vlan_id=vlan_id))
+                                result.fdb_table.append(
+                                    FDBEntry(
+                                        mac_address=mac,
+                                        port_index=port_idx,
+                                        vlan_id=vlan_id,
+                                    )
+                                )
                     except Exception as exc:
-                        log.debug("SNMP walk [%s]: FDB walk for VLAN %d failed or not supported: %s", target_ip, vlan_id, exc)
+                        log.debug(
+                            "SNMP walk [%s]: FDB walk for VLAN %d failed or not supported: %s",
+                            target_ip,
+                            vlan_id,
+                            exc,
+                        )
 
-                log.info("SNMP walk [%s]: FDB walk completed (%d total entries)", target_ip, len(result.fdb_table))
+                log.info(
+                    "SNMP walk [%s]: FDB walk completed (%d total entries)",
+                    target_ip,
+                    len(result.fdb_table),
+                )
             except Exception as exc:
                 result.errors.append(f"FDB walk failed: {exc}")
                 log.warning("SNMP walk [%s]: FDB walk failed: %s", target_ip, exc)
@@ -749,7 +977,7 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
         log.info("SNMP walk [%s]: SNMP discovery complete", target_ip)
         return result
     finally:
-        if 'engine' in locals():
+        if "engine" in locals():
             try:
                 engine.transportDispatcher.closeDispatcher()
             except Exception as exc:

@@ -5,7 +5,6 @@ and resolve duplicate UI cards.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add Backend to PYTHONPATH
@@ -49,7 +48,9 @@ def purge_legacy_findings():
         ).delete(synchronize_session=False)
 
         db.commit()
-        print(f"[SUCCESS] Successfully purged {len(bad_finding_ids)} old findings and their history trails.")
+        print(
+            f"[SUCCESS] Successfully purged {len(bad_finding_ids)} old findings and their history trails."
+        )
 
     except Exception as e:
         db.rollback()

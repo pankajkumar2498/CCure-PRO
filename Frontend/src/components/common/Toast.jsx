@@ -10,14 +10,28 @@ export function useToasts() {
     setToasts((prev) => [...prev, { id, message, type }]);
 
     setTimeout(() => {
-      setToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, exiting: true } : toast)));
-      setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 220);
+      setToasts((prev) =>
+        prev.map((toast) =>
+          toast.id === id ? { ...toast, exiting: true } : toast,
+        ),
+      );
+      setTimeout(
+        () => setToasts((prev) => prev.filter((toast) => toast.id !== id)),
+        220,
+      );
     }, duration);
   }, []);
 
   const dismiss = useCallback((id) => {
-    setToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, exiting: true } : toast)));
-    setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 220);
+    setToasts((prev) =>
+      prev.map((toast) =>
+        toast.id === id ? { ...toast, exiting: true } : toast,
+      ),
+    );
+    setTimeout(
+      () => setToasts((prev) => prev.filter((toast) => toast.id !== id)),
+      220,
+    );
   }, []);
 
   return { toasts, push, dismiss };

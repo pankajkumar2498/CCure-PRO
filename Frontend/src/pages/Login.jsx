@@ -6,14 +6,20 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { verifyMfa as verifyMfaApi, sendEmailOtp as sendEmailOtpApi } from "../api/auth";
+import {
+  verifyMfa as verifyMfaApi,
+  sendEmailOtp as sendEmailOtpApi,
+} from "../api/auth";
 
 export default function Login() {
   const { login, refreshUser, authMessage } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const fromLocation = location.state?.from;
-  const savedRedirect = location.state?.reason === "expired" ? sessionStorage.getItem("postLoginRedirect") : "";
+  const savedRedirect =
+    location.state?.reason === "expired"
+      ? sessionStorage.getItem("postLoginRedirect")
+      : "";
   const from = fromLocation
     ? `${fromLocation.pathname || "/dashboard"}${fromLocation.search || ""}${fromLocation.hash || ""}`
     : savedRedirect || "/dashboard";
@@ -67,7 +73,9 @@ export default function Login() {
         errMsg = err.response.data.message;
       } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       setError(errMsg);
     } finally {
@@ -89,7 +97,9 @@ export default function Login() {
       let errMsg = "Verification failed.";
       if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       setError(errMsg);
     } finally {
@@ -111,7 +121,9 @@ export default function Login() {
       let errMsg = "Failed to send email verification code.";
       if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       setError(errMsg);
       setResendCooldown(0); // reset on failure
@@ -141,7 +153,10 @@ export default function Login() {
         {showMfa ? (
           <>
             <h1 className="auth-title">Verification Code</h1>
-            <p className="auth-sub">Enter the code from your authenticator app, email OTP, or a backup code.</p>
+            <p className="auth-sub">
+              Enter the code from your authenticator app, email OTP, or a backup
+              code.
+            </p>
 
             {error && (
               <div className="auth-error" role="alert">
@@ -166,7 +181,10 @@ export default function Login() {
               </div>
             )}
 
-            <form onSubmit={handleMfaSubmit} className="auth-form form-horizontal">
+            <form
+              onSubmit={handleMfaSubmit}
+              className="auth-form form-horizontal"
+            >
               <div className="field">
                 <label htmlFor="mfaCode">Verification Code</label>
                 <input
@@ -270,7 +288,13 @@ export default function Login() {
 
               <div className="field">
                 <label htmlFor="password">Password</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
                   <input
                     id="password"
                     type="password"
@@ -281,7 +305,15 @@ export default function Login() {
                     required
                   />
                   <div style={{ textAlign: "right" }}>
-                    <Link to="/forgot-password" style={{ fontSize: "12px", color: "#818cf8", textDecoration: "none", fontWeight: 500 }}>
+                    <Link
+                      to="/forgot-password"
+                      style={{
+                        fontSize: "12px",
+                        color: "#818cf8",
+                        textDecoration: "none",
+                        fontWeight: 500,
+                      }}
+                    >
                       Forgot password?
                     </Link>
                   </div>
@@ -302,4 +334,3 @@ export default function Login() {
     </div>
   );
 }
-

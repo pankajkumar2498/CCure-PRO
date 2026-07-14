@@ -21,8 +21,7 @@ import re
 import string
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, event, text, DateTime
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, event, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # TIMESTAMPTZ alias — maps to TIMESTAMP WITH TIME ZONE in PostgreSQL
@@ -33,12 +32,10 @@ from config import AppConfig
 
 # ─── Engine ───────────────────────────────────────────────────────────────────
 
-engine = create_engine(
-    AppConfig.DATABASE_URL,
-    **AppConfig.DATABASE_ENGINE_KWARGS
-)
+engine = create_engine(AppConfig.DATABASE_URL, **AppConfig.DATABASE_ENGINE_KWARGS)
 
 # ─── Enable pg_trgm extension for fast text search ───────────────────────────
+
 
 @event.listens_for(engine, "connect")
 def _set_extensions(dbapi_connection, connection_record):
@@ -52,6 +49,7 @@ def _set_extensions(dbapi_connection, connection_record):
         pass  # Extensions may already exist
     finally:
         cursor.close()
+
 
 # ─── Session & Base ──────────────────────────────────────────────────────────
 
@@ -78,7 +76,9 @@ def _safe_id_part(value: str, max_len: int = 20) -> str:
 
 def _stable_hash(value: str, length: int = 8) -> str:
     """Generate a stable hex digest for a value, useful for namespace tokens."""
-    return hashlib.blake2b(str(value).encode("utf-8"), digest_size=(length + 1) // 2).hexdigest()[:length]
+    return hashlib.blake2b(
+        str(value).encode("utf-8"), digest_size=(length + 1) // 2
+    ).hexdigest()[:length]
 
 
 def gen_org_token(org_identifier: str) -> str:
@@ -97,10 +97,12 @@ def gen_org_token(org_identifier: str) -> str:
 def gen_uuid() -> str:
     """Fallback UUID — only used for tables that don't need readable IDs."""
     import uuid
+
     return str(uuid.uuid4())
 
 
 # ─── Stripe-Style ID Generators ───────────────────────────────────────────────
+
 
 def gen_org_id(slug: str) -> str:
     """
@@ -190,6 +192,7 @@ def gen_vuln_finding_id(asset_id: str, vuln_id: str) -> str:
 
 # ─── Web Scan ID Generators ──────────────────────────────────────────────────
 
+
 def gen_web_scan_id(org_slug: str) -> str:
     """
     Generate a readable WebScan ID.
@@ -262,6 +265,7 @@ def utcnow() -> datetime:
 
 
 # ─── FastAPI dependency ───────────────────────────────────────────────────────
+
 
 def get_db():
     """FastAPI dependency: yields a scoped DB session."""

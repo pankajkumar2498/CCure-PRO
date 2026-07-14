@@ -72,8 +72,14 @@ const normalizeStartPayload = (data = {}) => ({
   options: {
     enable_sqli: data.options?.enable_sqli ?? true,
     enable_xss: data.options?.enable_xss ?? true,
-    nuclei_severity: data.options?.nuclei_severity || ["medium", "high", "critical"],
-    rate_limit: Number(data.options?.concurrency || data.options?.rate_limit || 10),
+    nuclei_severity: data.options?.nuclei_severity || [
+      "medium",
+      "high",
+      "critical",
+    ],
+    rate_limit: Number(
+      data.options?.concurrency || data.options?.rate_limit || 10,
+    ),
   },
 });
 
@@ -81,7 +87,9 @@ export const webScansApi = {
   // Scans
   startScan: (data) =>
     axiosInstance.post("/web-scans", normalizeStartPayload(data), {
-      headers: data?._idempotencyKey ? { "Idempotency-Key": data._idempotencyKey } : undefined,
+      headers: data?._idempotencyKey
+        ? { "Idempotency-Key": data._idempotencyKey }
+        : undefined,
     }),
   getScans: (params) => axiosInstance.get("/web-scans", { params }),
   getScan: (id) => axiosInstance.get(`/web-scans/${id}`),
@@ -90,19 +98,25 @@ export const webScansApi = {
     `${wsBase()}/web-scans/${encodeURIComponent(id)}/progress?ticket=${encodeURIComponent(ticket)}`,
   cancelScan: (id) => axiosInstance.post(`/web-scans/${id}/cancel`),
   deleteScan: (id) => axiosInstance.delete(`/web-scans/${id}`),
-  downloadReport: (id) => axiosInstance.get(`/web-scans/${id}/report`, { responseType: 'blob' }),
+  downloadReport: (id) =>
+    axiosInstance.get(`/web-scans/${id}/report`, { responseType: "blob" }),
 
   // Findings
-  getFindings: (id, params) => axiosInstance.get(`/web-scans/${id}/findings`, { params }),
-  updateFindingStatus: (id, findingId, statusData) => 
+  getFindings: (id, params) =>
+    axiosInstance.get(`/web-scans/${id}/findings`, { params }),
+  updateFindingStatus: (id, findingId, statusData) =>
     axiosInstance.patch(`/web-scans/${id}/findings/${findingId}`, statusData),
 
   // Assets
-  getAssets: (id, params) => axiosInstance.get(`/web-scans/${id}/assets`, { params }),
+  getAssets: (id, params) =>
+    axiosInstance.get(`/web-scans/${id}/assets`, { params }),
 };
 
 export const webDashboardApi = {
-  getSummary: (params) => axiosInstance.get("/dashboard/web-scan-summary", { params }),
-  getOwaspScorecard: (params) => axiosInstance.get("/dashboard/web-owasp-scorecard", { params }),
-  getTrends: (params) => axiosInstance.get("/dashboard/web-scan-trends", { params }),
+  getSummary: (params) =>
+    axiosInstance.get("/dashboard/web-scan-summary", { params }),
+  getOwaspScorecard: (params) =>
+    axiosInstance.get("/dashboard/web-owasp-scorecard", { params }),
+  getTrends: (params) =>
+    axiosInstance.get("/dashboard/web-scan-trends", { params }),
 };

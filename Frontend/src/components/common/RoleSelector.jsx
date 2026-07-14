@@ -1,4 +1,10 @@
-export default function RoleSelector({ roles = [], value = "", onChange, disabled = false, label = "Role" }) {
+export default function RoleSelector({
+  roles = [],
+  value = "",
+  onChange,
+  disabled = false,
+  label = "Role",
+}) {
   const selectedRole = roles.find((role) => String(role.id) === String(value));
 
   return (
@@ -8,7 +14,9 @@ export default function RoleSelector({ roles = [], value = "", onChange, disable
         <select
           className="field-input"
           value={value ?? ""}
-          onChange={(event) => onChange(event.target.value ? Number(event.target.value) : "")}
+          onChange={(event) =>
+            onChange(event.target.value ? Number(event.target.value) : "")
+          }
           disabled={disabled}
         >
           <option value="">Select role</option>

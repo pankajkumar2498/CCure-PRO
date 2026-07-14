@@ -35,7 +35,12 @@ def _resolve_org(user: User, requested_org: Optional[str]) -> str:
 def get_topology_map(
     org_id: Optional[str] = Query(None),
     scan_id: Optional[str] = Query(None, description="Filter by a specific scan ID"),
-    subnet_mask: int = Query(24, ge=8, le=30, description="Subnet mask size for clustering (e.g. 16, 22, 23, 24)"),
+    subnet_mask: int = Query(
+        24,
+        ge=8,
+        le=30,
+        description="Subnet mask size for clustering (e.g. 16, 22, 23, 24)",
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
@@ -55,18 +60,25 @@ def get_topology_map(
         scan = db.query(Scan).filter(Scan.id == scan_id).first()
         if not scan:
             raise HTTPException(status_code=404, detail="Scan not found")
-            
+
         # Ensure scan belongs to the user's organization
         if str(scan.org_id) != resolved_org:
-            raise HTTPException(status_code=403, detail="Access denied to this scan's organization")
+            raise HTTPException(
+                status_code=403, detail="Access denied to this scan's organization"
+            )
 
         role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
         if role_name != "superadmin" and role_name != "org_admin":
             if str(scan.created_by) != str(user.id):
-                raise HTTPException(status_code=403, detail="Access denied to this scan")
+                raise HTTPException(
+                    status_code=403, detail="Access denied to this scan"
+                )
 
     from core.topology.engine import get_topology_graph
-    graph = get_topology_graph(db, org_id=resolved_org, scan_id=scan_id, subnet_mask=subnet_mask)
+
+    graph = get_topology_graph(
+        db, org_id=resolved_org, scan_id=scan_id, subnet_mask=subnet_mask
+    )
 
     return {
         "success": True,
@@ -77,7 +89,12 @@ def get_topology_map(
 @router.get("/topology/map/{scan_id}")
 def get_topology_map_by_scan(
     scan_id: str,
-    subnet_mask: int = Query(24, ge=8, le=30, description="Subnet mask size for clustering (e.g. 16, 22, 23, 24)"),
+    subnet_mask: int = Query(
+        24,
+        ge=8,
+        le=30,
+        description="Subnet mask size for clustering (e.g. 16, 22, 23, 24)",
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
@@ -91,7 +108,9 @@ def get_topology_map_by_scan(
 
     resolved_org = _resolve_org(user, None)
     if str(scan.org_id) != resolved_org:
-         raise HTTPException(status_code=403, detail="Access denied to this scan's organization")
+        raise HTTPException(
+            status_code=403, detail="Access denied to this scan's organization"
+        )
 
     role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     if role_name != "superadmin" and role_name != "org_admin":
@@ -99,7 +118,10 @@ def get_topology_map_by_scan(
             raise HTTPException(status_code=403, detail="Access denied to this scan")
 
     from core.topology.engine import get_topology_graph
-    graph = get_topology_graph(db, org_id=resolved_org, scan_id=scan_id, subnet_mask=subnet_mask)
+
+    graph = get_topology_graph(
+        db, org_id=resolved_org, scan_id=scan_id, subnet_mask=subnet_mask
+    )
 
     return {
         "success": True,

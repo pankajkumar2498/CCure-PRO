@@ -14,11 +14,9 @@ Tests verify that:
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from db.base import SessionLocal
-from db.models import Organization, User, Role, RefreshTokenSession
-from auth.jwt_handler import create_access_token, create_refresh_token
+from db.models import Organization, User, Role
 
 
 @pytest.fixture
@@ -96,7 +94,9 @@ def setup_org_and_users(db_session):
 class TestOrgDeactivationLoginFlow:
     """Test login behavior with org deactivation."""
 
-    def test_login_succeeds_with_active_org(self, client: TestClient, setup_org_and_users):
+    def test_login_succeeds_with_active_org(
+        self, client: TestClient, setup_org_and_users
+    ):
         """User can log in when org is active."""
         user = setup_org_and_users["user1"]
         password = setup_org_and_users["password1"]
@@ -110,7 +110,9 @@ class TestOrgDeactivationLoginFlow:
         assert "access_token" in response.json()
         assert "refresh_token" in response.json()
 
-    def test_login_fails_with_deactivated_org(self, client: TestClient, db_session, setup_org_and_users):
+    def test_login_fails_with_deactivated_org(
+        self, client: TestClient, db_session, setup_org_and_users
+    ):
         """User cannot log in when org is deactivated."""
         org = setup_org_and_users["org"]
         user = setup_org_and_users["user1"]
@@ -396,28 +398,40 @@ class TestOrgDeactivationMultipleUsers:
         token2 = login2.json()["access_token"]
 
         # Both should work initially
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token1}"},
-        ).status_code == 200
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token2}"},
-        ).status_code == 200
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token1}"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token2}"},
+            ).status_code
+            == 200
+        )
 
         # Deactivate org
         org.is_active = False
         db_session.commit()
 
         # Both users blocked
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token1}"},
-        ).status_code == 403
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token2}"},
-        ).status_code == 403
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token1}"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token2}"},
+            ).status_code
+            == 403
+        )
 
     def test_all_users_restored_when_org_reactivated(
         self, client: TestClient, db_session, setup_org_and_users
@@ -446,25 +460,37 @@ class TestOrgDeactivationMultipleUsers:
         db_session.commit()
 
         # Both blocked
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token1}"},
-        ).status_code == 403
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token2}"},
-        ).status_code == 403
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token1}"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token2}"},
+            ).status_code
+            == 403
+        )
 
         # Reactivate org
         org.is_active = True
         db_session.commit()
 
         # Both restored
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token1}"},
-        ).status_code == 200
-        assert client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token2}"},
-        ).status_code == 200
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token1}"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token2}"},
+            ).status_code
+            == 200
+        )

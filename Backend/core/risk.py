@@ -7,7 +7,13 @@ Pure logic - no I/O, no imports from engines.
 
 from typing import Dict, List, Optional, Tuple
 
-from core.constants import OS_TTL_MAP, TCP_WINDOW_OS, TCP_OPTIONS_FINGERPRINT, RISK_WEIGHTS, RISK_LEVELS
+from core.constants import (
+    OS_TTL_MAP,
+    TCP_WINDOW_OS,
+    TCP_OPTIONS_FINGERPRINT,
+    RISK_WEIGHTS,
+    RISK_LEVELS,
+)
 from core.vuln_intel import compute_priority, merge_alias_fields
 
 
@@ -15,9 +21,10 @@ from core.vuln_intel import compute_priority, merge_alias_fields
 # OS Fingerprinting
 # =============================================================================
 
+
 def fingerprint_os(
-    ttl:      int,
-    window:   Optional[int]  = None,
+    ttl: int,
+    window: Optional[int] = None,
     tcp_opts: Optional[Dict] = None,
 ) -> Tuple[str, str]:
     """
@@ -49,10 +56,10 @@ def fingerprint_os(
         win_os = TCP_WINDOW_OS[window]
         if "Windows" in guess and "Windows" in win_os:
             guess = win_os
-            conf  = "High"
+            conf = "High"
         elif "Linux" in guess and "Linux" in win_os:
             guess = win_os
-            conf  = "High"
+            conf = "High"
         else:
             conf = "Medium"
     elif window:
@@ -60,16 +67,16 @@ def fingerprint_os(
 
     # Step 3: TCP options fingerprint (Priority 2-D)
     if tcp_opts:
-        mss     = tcp_opts.get("mss")
-        wscale  = tcp_opts.get("wscale")   # may be 0 (explicit) or None (absent)
+        mss = tcp_opts.get("mss")
+        wscale = tcp_opts.get("wscale")  # may be 0 (explicit) or None (absent)
         sack_ok = bool(tcp_opts.get("sack_ok", False))
-        for (mss_lo, mss_hi, ws, sack, label, opt_conf) in TCP_OPTIONS_FINGERPRINT:
-            mss_ok  = (mss is None) or (mss_lo <= mss <= mss_hi)
-            ws_ok   = (ws is None) or (wscale == ws)
-            sack_ok_match = (sack_ok == sack)
+        for mss_lo, mss_hi, ws, sack, label, opt_conf in TCP_OPTIONS_FINGERPRINT:
+            mss_ok = (mss is None) or (mss_lo <= mss <= mss_hi)
+            ws_ok = (ws is None) or (wscale == ws)
+            sack_ok_match = sack_ok == sack
             if mss_ok and ws_ok and sack_ok_match:
                 guess = label
-                conf  = opt_conf
+                conf = opt_conf
                 break
 
     return guess, conf
@@ -84,7 +91,7 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
     packet fingerprints, that result is preserved.
     """
     current_guess = host.get("os_guess", "Unknown")
-    current_conf  = host.get("os_confidence", "Low")
+    current_conf = host.get("os_confidence", "Low")
     if current_guess not in ("", "Unknown"):
         return current_guess, current_conf
 
@@ -94,23 +101,27 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
         port = port_info.get("port")
         if isinstance(port, int):
             open_ports.add(port)
-        texts.extend([
-            str(port_info.get("service", "")),
-            str(port_info.get("banner", "")),
-            str(port_info.get("version", "")),
-        ])
+        texts.extend(
+            [
+                str(port_info.get("service", "")),
+                str(port_info.get("banner", "")),
+                str(port_info.get("version", "")),
+            ]
+        )
 
-    ssh_info  = host.get("ssh_info", {}) or {}
+    ssh_info = host.get("ssh_info", {}) or {}
     http_audit = host.get("http_audit", {}) or {}
-    smb_info  = host.get("smb_info", {}) or {}
+    smb_info = host.get("smb_info", {}) or {}
     snmp_info = host.get("snmp_info", {}) or {}
 
-    texts.extend([
-        str(ssh_info.get("banner", "")),
-        str(ssh_info.get("version", "")),
-        str(http_audit.get("server_header", "")),
-        str(snmp_info.get("sys_descr", "")),
-    ])
+    texts.extend(
+        [
+            str(ssh_info.get("banner", "")),
+            str(ssh_info.get("version", "")),
+            str(http_audit.get("server_header", "")),
+            str(snmp_info.get("sys_descr", "")),
+        ]
+    )
     text_blob = " ".join(texts).lower()
 
     explicit_markers = [
@@ -118,13 +129,21 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
         ("Windows (WinRM)", ["winrm", "microsoft-httpapi"], "High"),
         ("Linux (Ubuntu)", ["ubuntu"], "High"),
         ("Linux (Debian)", ["debian"], "High"),
-        ("Linux (CentOS/RHEL)", ["centos", "red hat", "redhat", "rhel", "rocky linux", "alma linux"], "High"),
+        (
+            "Linux (CentOS/RHEL)",
+            ["centos", "red hat", "redhat", "rhel", "rocky linux", "alma linux"],
+            "High",
+        ),
         ("Linux (Alpine)", ["alpine"], "High"),
         ("FreeBSD", ["freebsd"], "High"),
         ("OpenBSD", ["openbsd"], "High"),
         ("NetBSD", ["netbsd"], "High"),
         ("macOS", ["darwin", "macos", "mac os x"], "High"),
-        ("Cisco IOS / Network Appliance", ["cisco ios", "routeros", "junos", "fortios"], "High"),
+        (
+            "Cisco IOS / Network Appliance",
+            ["cisco ios", "routeros", "junos", "fortios"],
+            "High",
+        ),
     ]
     for label, markers, conf in explicit_markers:
         if any(marker in text_blob for marker in markers):
@@ -166,7 +185,11 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
     if any(term in text_blob for term in ("cisco", "routeros", "junos", "fortinet")):
         scores["Network Appliance"] += 4
 
-    if smb_info.get("open") and smb_info.get("version") == "SMBv2/3" and (135 in open_ports or 3389 in open_ports):
+    if (
+        smb_info.get("open")
+        and smb_info.get("version") == "SMBv2/3"
+        and (135 in open_ports or 3389 in open_ports)
+    ):
         scores["Windows"] += 2
 
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
@@ -199,11 +222,12 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
 # Host Risk Scoring
 # =============================================================================
 
+
 def calculate_risk(
     open_ports: List[Dict],
-    cves:       List[Dict],
+    cves: List[Dict],
     http_audit: Dict,
-    tls_info:   Dict,
+    tls_info: Dict,
 ) -> Tuple[int, str]:
     """
     Returns (score 0-100, risk_level string).
@@ -218,20 +242,28 @@ def calculate_risk(
     # CVE CVSS scores
     for c in cves:
         cvss = normalize_cve(c).get("cvss_score", 0)
-        if cvss >= 9.0:    score += 20
-        elif cvss >= 7.0:  score += 10
-        elif cvss >= 4.0:  score += 5
-        else:              score += 2
+        if cvss >= 9.0:
+            score += 20
+        elif cvss >= 7.0:
+            score += 10
+        elif cvss >= 4.0:
+            score += 5
+        else:
+            score += 2
 
     # HTTP header issues
     if http_audit.get("issues"):
         score += len(http_audit["issues"]) * 2
 
     # TLS problems
-    if tls_info.get("cert_expired"):     score += 15
-    if tls_info.get("cert_self_signed"): score += 10
-    if tls_info.get("weak_cipher"):      score += 10
-    if tls_info.get("score") == "F":     score += 20
+    if tls_info.get("cert_expired"):
+        score += 15
+    if tls_info.get("cert_self_signed"):
+        score += 10
+    if tls_info.get("weak_cipher"):
+        score += 10
+    if tls_info.get("score") == "F":
+        score += 20
 
     score = min(score, 100)
 

@@ -17,10 +17,15 @@ from db.base import SessionLocal
 from db.models import User
 from db.models.rbac import Organization
 from db.models.compliance import (
-    ComplianceFramework, ComplianceTenantFramework, ComplianceControl,
-    CompliancePolicy, ComplianceFinding, ComplianceScore, ComplianceScanRun
+    ComplianceFramework,
+    ComplianceTenantFramework,
+    ComplianceControl,
+    CompliancePolicy,
+    ComplianceFinding,
+    ComplianceScanRun,
 )
 from core.compliance_tasks import _calculate_compliance_score
+
 
 def seed_mock_compliance_data():
     db = SessionLocal()
@@ -32,12 +37,22 @@ def seed_mock_compliance_data():
             return
 
         framework_id = "cfw_iso27001_2022"
-        framework = db.query(ComplianceFramework).filter(ComplianceFramework.id == framework_id).first()
+        framework = (
+            db.query(ComplianceFramework)
+            .filter(ComplianceFramework.id == framework_id)
+            .first()
+        )
         if not framework:
-            print("Error: ISO 27001 framework not found. Please run seed_compliance first.")
+            print(
+                "Error: ISO 27001 framework not found. Please run seed_compliance first."
+            )
             return
 
-        controls = db.query(ComplianceControl).filter(ComplianceControl.framework_id == framework_id).all()
+        controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == framework_id)
+            .all()
+        )
         if not controls:
             print("Error: No controls found. Please run seed_compliance first.")
             return
@@ -45,7 +60,9 @@ def seed_mock_compliance_data():
         now = datetime.now(timezone.utc)
 
         for org in orgs:
-            print(f"\n--- Seeding compliance data for Organization: {org.name} ({org.id}) ---")
+            print(
+                f"\n--- Seeding compliance data for Organization: {org.name} ({org.id}) ---"
+            )
 
             # Find a user belonging to this org
             user = db.query(User).filter(User.org_id == org.id).first()
@@ -59,10 +76,14 @@ def seed_mock_compliance_data():
             print(f"  - Using User: {user.username} ({user.id})")
 
             # Register Framework
-            tenant_fw = db.query(ComplianceTenantFramework).filter(
-                ComplianceTenantFramework.tenant_id == org.id,
-                ComplianceTenantFramework.framework_id == framework_id
-            ).first()
+            tenant_fw = (
+                db.query(ComplianceTenantFramework)
+                .filter(
+                    ComplianceTenantFramework.tenant_id == org.id,
+                    ComplianceTenantFramework.framework_id == framework_id,
+                )
+                .first()
+            )
 
             if not tenant_fw:
                 tenant_fw_id = f"ctf_{org.id}_{framework_id}"
@@ -72,14 +93,18 @@ def seed_mock_compliance_data():
                     framework_id=framework_id,
                     is_enabled=True,
                     enabled_by=user.id,
-                    enabled_at=now
+                    enabled_at=now,
                 )
                 db.add(tenant_fw)
-                print(f"  - Registered framework to org.")
+                print("  - Registered framework to org.")
 
             # Create Policy
             policy_id = f"cpl_{org.id}_iso_v1"
-            policy = db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id).first()
+            policy = (
+                db.query(CompliancePolicy)
+                .filter(CompliancePolicy.id == policy_id)
+                .first()
+            )
             if not policy:
                 policy = CompliancePolicy(
                     id=policy_id,
@@ -92,7 +117,7 @@ def seed_mock_compliance_data():
                     status="active",
                     is_active=True,
                     created_by=user.id,
-                    created_at=now
+                    created_at=now,
                 )
                 db.add(policy)
                 print(f"  - Created compliance policy: {policy.name}")
@@ -101,7 +126,11 @@ def seed_mock_compliance_data():
 
             # Create Scan Run
             scan_run_id = f"run_mock_{org.id}"
-            run = db.query(ComplianceScanRun).filter(ComplianceScanRun.id == scan_run_id).first()
+            run = (
+                db.query(ComplianceScanRun)
+                .filter(ComplianceScanRun.id == scan_run_id)
+                .first()
+            )
             if not run:
                 run = ComplianceScanRun(
                     id=scan_run_id,
@@ -111,7 +140,7 @@ def seed_mock_compliance_data():
                     status="completed",
                     scope={},
                     started_at=now - timedelta(hours=1),
-                    finished_at=now
+                    finished_at=now,
                 )
                 db.add(run)
                 print(f"  - Created scan run record: {scan_run_id}")
@@ -122,11 +151,13 @@ def seed_mock_compliance_data():
             findings_seeded = 0
             for idx, ctrl in enumerate(controls):
                 # Ensure the finding_id is unique and fits within 100 characters
-                short_ctrl_id = ctrl.id.split('_')[-1]
+                short_ctrl_id = ctrl.id.split("_")[-1]
                 finding_id = f"cfnd_{org.id[:15]}_{short_ctrl_id}"
-                
+
                 # Delete old finding if exists to overwrite
-                db.query(ComplianceFinding).filter(ComplianceFinding.id == finding_id).delete()
+                db.query(ComplianceFinding).filter(
+                    ComplianceFinding.id == finding_id
+                ).delete()
 
                 if idx % 10 in (0, 1):
                     status = "fail"
@@ -146,7 +177,7 @@ def seed_mock_compliance_data():
                     status=status,
                     evidence={"message": "Mock verification matching criteria."},
                     first_seen=now - timedelta(days=2),
-                    last_seen=now
+                    last_seen=now,
                 )
                 db.add(finding)
                 findings_seeded += 1
@@ -155,7 +186,9 @@ def seed_mock_compliance_data():
 
             # Calculate score
             _calculate_compliance_score(db, org.id, framework_id, None, scan_run_id)
-            print(f"  - Seeded {findings_seeded} findings and calculated org compliance scores.")
+            print(
+                f"  - Seeded {findings_seeded} findings and calculated org compliance scores."
+            )
 
         db.commit()
         print("\nAll organizations successfully seeded/synchronized!")
@@ -165,6 +198,7 @@ def seed_mock_compliance_data():
         print(f"Error seeding mock data: {str(e)}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     seed_mock_compliance_data()

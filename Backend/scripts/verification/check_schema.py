@@ -1,9 +1,13 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
-os.environ["DATABASE_URL"] = "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test"
+os.environ["DATABASE_URL"] = (
+    "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test"
+)
 
 from sqlalchemy import text, create_engine
 
@@ -12,25 +16,35 @@ print("Checking PostgreSQL Database Schema")
 print("=" * 60)
 
 try:
-    engine = create_engine("postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_db")
+    engine = create_engine(
+        "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_db"
+    )
     with engine.connect() as conn:
         print("\n✓ Connected to PostgreSQL")
-        
+
         # Check if new permissions exist
-        result = conn.execute(text("""
-            SELECT COUNT(*) FROM permissions 
+        result = conn.execute(
+            text(
+                """
+            SELECT COUNT(*) FROM permissions
             WHERE resource IN ('roles', 'organizations', 'audit')
-        """))
+        """
+            )
+        )
         count = result.scalar()
-        
+
         print(f"\nNew permissions found: {count}")
-        
+
         if count > 0:
-            result = conn.execute(text("""
-                SELECT resource, action FROM permissions 
+            result = conn.execute(
+                text(
+                    """
+                SELECT resource, action FROM permissions
                 WHERE resource IN ('roles', 'organizations', 'audit')
                 ORDER BY resource, action
-            """))
+            """
+                )
+            )
             print("\n✓ Existing new permissions:")
             for row in result:
                 print(f"    - {row[0]}:{row[1]}")
@@ -38,9 +52,11 @@ try:
             sys.exit(0)
         else:
             print("\n❌ New permissions NOT found in database")
-            print("    Database has OLD schema without roles/organizations/audit permissions")
+            print(
+                "    Database has OLD schema without roles/organizations/audit permissions"
+            )
             sys.exit(1)
-            
+
 except Exception as e:
     print(f"\n❌ Error: {e}")
     print("Make sure PostgreSQL is running on localhost:5432")

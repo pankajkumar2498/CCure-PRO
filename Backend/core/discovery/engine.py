@@ -42,12 +42,19 @@ Returns::
 import asyncio
 import ipaddress
 import logging
-import time
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
 from core.discovery.profiles import DiscoveryProfile, BALANCED, Technique
-from core.discovery.techniques import arp, icmp, tcp_syn, tcp_conn, udp_probe, nbns, arp_cache
+from core.discovery.techniques import (
+    arp,
+    icmp,
+    tcp_syn,
+    tcp_conn,
+    udp_probe,
+    nbns,
+    arp_cache,
+)
 
 log = logging.getLogger("ccure.discovery.engine")
 
@@ -56,25 +63,26 @@ log = logging.getLogger("ccure.discovery.engine")
 # Result Model
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _blank_result(ip: str) -> Dict:
     """Return an empty host result dict for one IP."""
     return {
-        "ip":                 ip,
-        "ip_address":         ip,   # alias used by HostResult / orchestrator
-        "is_active":          False,
-        "mac":                "N/A",
-        "method":             "N/A",
-        "elapsed_ms":         None,
-        "confirmations":      [],
+        "ip": ip,
+        "ip_address": ip,  # alias used by HostResult / orchestrator
+        "is_active": False,
+        "mac": "N/A",
+        "method": "N/A",
+        "elapsed_ms": None,
+        "confirmations": [],
         # These are enriched in later phases / enrichment step:
-        "os_guess":           "Unknown",
-        "os_confidence":      "Low",
-        "port_states":        {},
-        "device_category":    "unknown",
-        "tcp_fingerprint":    {},
-        "snmp_device_type":   None,
-        "mdns_name":          None,
-        "netbios_names":      [],
+        "os_guess": "Unknown",
+        "os_confidence": "Low",
+        "port_states": {},
+        "device_category": "unknown",
+        "tcp_fingerprint": {},
+        "snmp_device_type": None,
+        "mdns_name": None,
+        "netbios_names": [],
         "os_fingerprint_full": {},
     }
 
@@ -90,17 +98,22 @@ def _first_netbios_name(r: Dict) -> str:
     return ""
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Batch sizing (matches existing production logic)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _batch_size(total: int) -> int:
-    if total <= 20:   return total
-    if total <= 100:  return 50
-    if total <= 254:  return 128
-    if total <= 510:  return 256
-    if total <= 1024: return 512
+    if total <= 20:
+        return total
+    if total <= 100:
+        return 50
+    if total <= 254:
+        return 128
+    if total <= 510:
+        return 256
+    if total <= 1024:
+        return 512
     return 1024
 
 
@@ -108,19 +121,23 @@ def _batch_size(total: int) -> int:
 # LAN / WAN zone detection (reused from existing production code)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _local_subnets() -> List[ipaddress.IPv4Network]:
     """Return directly-attached interface subnets via psutil."""
     subnets: List[ipaddress.IPv4Network] = []
     try:
         import psutil
+
         for _, addrs in psutil.net_if_addrs().items():
             for addr in addrs:
                 if addr.family != 2 or not addr.netmask:
                     continue
                 try:
-                    subnets.append(ipaddress.IPv4Network(
-                        f"{addr.address}/{addr.netmask}", strict=False
-                    ))
+                    subnets.append(
+                        ipaddress.IPv4Network(
+                            f"{addr.address}/{addr.netmask}", strict=False
+                        )
+                    )
                 except ValueError:
                     pass
     except Exception as exc:
@@ -139,9 +156,12 @@ def _is_public(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
         return (
-            not addr.is_private and not addr.is_loopback
-            and not addr.is_link_local and not addr.is_multicast
-            and not addr.is_reserved and not addr.is_unspecified
+            not addr.is_private
+            and not addr.is_loopback
+            and not addr.is_link_local
+            and not addr.is_multicast
+            and not addr.is_reserved
+            and not addr.is_unspecified
         )
     except ValueError:
         return False
@@ -150,6 +170,7 @@ def _is_public(ip: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 # Discovery Engine
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class DiscoveryEngine:
     """
@@ -171,18 +192,18 @@ class DiscoveryEngine:
 
     def __init__(
         self,
-        profile:        DiscoveryProfile = BALANCED,
+        profile: DiscoveryProfile = BALANCED,
         has_privileges: bool = False,
-        stealth_mode:   bool = False,
-        rate_limit:     Optional[float] = None,
+        stealth_mode: bool = False,
+        rate_limit: Optional[float] = None,
         concurrency_override: Optional[int] = None,
     ):
-        self.profile       = profile
-        self.has_priv      = has_privileges
-        self.stealth_mode  = stealth_mode
-        self.rate_limit    = rate_limit
+        self.profile = profile
+        self.has_priv = has_privileges
+        self.stealth_mode = stealth_mode
+        self.rate_limit = rate_limit
         self.concurrency_override = concurrency_override
-        self._local_nets   = []   # populated in run()
+        self._local_nets = []  # populated in run()
 
         can_raw = has_privileges and SCAPY_AVAILABLE
         if not can_raw and any(
@@ -193,12 +214,16 @@ class DiscoveryEngine:
                 "Profile '%s' requests raw-socket techniques but "
                 "privileges=%s / scapy_available=%s. "
                 "Raw techniques will be skipped; TCP connect will cover fallback.",
-                profile.name, has_privileges, SCAPY_AVAILABLE,
+                profile.name,
+                has_privileges,
+                SCAPY_AVAILABLE,
             )
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, ip_list: List[str], scan_id: Optional[str] = None) -> List[Dict]:
+    async def run(
+        self, ip_list: List[str], scan_id: Optional[str] = None
+    ) -> List[Dict]:
         """
         Discover all IPs in ip_list using the configured profile.
 
@@ -218,6 +243,7 @@ class DiscoveryEngine:
 
         # ── Stealth mode: randomize probe order ────────────────────────────
         import random
+
         scan_order = list(ip_list)
         if self.stealth_mode:
             random.shuffle(scan_order)
@@ -226,52 +252,75 @@ class DiscoveryEngine:
         batch_sz = _batch_size(len(scan_order))
         log.info(
             "DiscoveryEngine [%s]: %d IPs, batch=%d, priv=%s",
-            self.profile.name, len(scan_order), batch_sz, self.has_priv,
+            self.profile.name,
+            len(scan_order),
+            batch_sz,
+            self.has_priv,
         )
 
         from core.redis_client import publish_progress
+
         total_ips = len(scan_order)
         discovered = 0
 
         # ── Process in batches ─────────────────────────────────────────────
         for i in range(0, len(scan_order), batch_sz):
-            batch = scan_order[i:i + batch_sz]
-            
+            batch = scan_order[i : i + batch_sz]
+
             monitor_task = None
             if scan_id:
+
                 async def _live_publisher():
-                    last_active_count = sum(1 for r in results.values() if r["is_active"])
+                    last_active_count = sum(
+                        1 for r in results.values() if r["is_active"]
+                    )
                     while True:
                         await asyncio.sleep(0.15)
                         active_hosts_snapshot = [
                             {
-                                "ip_address":   r.get("ip_address") or r.get("ip", ""),
-                                "hostname":     (
+                                "ip_address": r.get("ip_address") or r.get("ip", ""),
+                                "hostname": (
                                     r.get("hostname")
                                     or r.get("mdns_name")
                                     or _first_netbios_name(r)
                                     or ""
                                 ),
-                                "mac_address":  r.get("mac") or r.get("mac_address") or "",
-                                "vendor":       r.get("vendor", ""),
+                                "mac_address": r.get("mac")
+                                or r.get("mac_address")
+                                or "",
+                                "vendor": r.get("vendor", ""),
                                 "response_time": r.get("elapsed_ms"),
-                                "is_active":    True,
+                                "is_active": True,
                             }
-                            for r in results.values() if r["is_active"]
+                            for r in results.values()
+                            if r["is_active"]
                         ]
                         if len(active_hosts_snapshot) > last_active_count:
                             last_active_count = len(active_hosts_snapshot)
-                            await publish_progress(scan_id, 1, {
-                                "discovered": discovered + (last_active_count - sum(1 for r in list(results.values())[:discovered] if r["is_active"])), # approximate progress
-                                "active": len(active_hosts_snapshot),
-                                "total_ips": total_ips,
-                                "status": "running",
-                                "hosts": active_hosts_snapshot,
-                            })
+                            await publish_progress(
+                                scan_id,
+                                1,
+                                {
+                                    "discovered": discovered
+                                    + (
+                                        last_active_count
+                                        - sum(
+                                            1
+                                            for r in list(results.values())[:discovered]
+                                            if r["is_active"]
+                                        )
+                                    ),  # approximate progress
+                                    "active": len(active_hosts_snapshot),
+                                    "total_ips": total_ips,
+                                    "status": "running",
+                                    "hosts": active_hosts_snapshot,
+                                },
+                            )
+
                 monitor_task = asyncio.create_task(_live_publisher())
 
             await self._probe_batch(batch, results)
-            
+
             if monitor_task:
                 monitor_task.cancel()
                 try:
@@ -283,33 +332,37 @@ class DiscoveryEngine:
             # Final batch publish — NBNS has now completed so netbios_names is populated
             active_hosts_snapshot = [
                 {
-                    "ip_address":   r.get("ip_address") or r.get("ip", ""),
-                    "hostname":     (
+                    "ip_address": r.get("ip_address") or r.get("ip", ""),
+                    "hostname": (
                         r.get("hostname")
                         or r.get("mdns_name")
                         or _first_netbios_name(r)
                         or ""
                     ),
-                    "mac_address":  r.get("mac") or r.get("mac_address") or "",
-                    "vendor":       r.get("vendor", ""),
+                    "mac_address": r.get("mac") or r.get("mac_address") or "",
+                    "vendor": r.get("vendor", ""),
                     "response_time": r.get("elapsed_ms"),
-                    "is_active":    True,
+                    "is_active": True,
                 }
                 for r in results.values()
                 if r["is_active"]
             ]
             if scan_id:
-                await publish_progress(scan_id, 1, {
-                    "discovered": discovered,
-                    "active": len(active_hosts_snapshot),
-                    "total_ips": total_ips,
-                    "status": "running",
-                    "hosts": active_hosts_snapshot,
-                })
+                await publish_progress(
+                    scan_id,
+                    1,
+                    {
+                        "discovered": discovered,
+                        "active": len(active_hosts_snapshot),
+                        "total_ips": total_ips,
+                        "status": "running",
+                        "hosts": active_hosts_snapshot,
+                    },
+                )
 
             # ── Hostile-env auto-escalation ───────────────────────────────
             if (
-                i == 0                             # only after first batch
+                i == 0  # only after first batch
                 and self.profile.stealth_auto
                 and not self.stealth_mode
                 and self._hostile_network(results, len(batch))
@@ -327,10 +380,17 @@ class DiscoveryEngine:
                 await self._enrich_active(active_ips, results)
 
         # ── Passive L2 Sniffing (BALANCED and AGGRESSIVE profiles) ──────────
-        if self.profile.name in ("BALANCED", "AGGRESSIVE") and self.has_priv and SCAPY_AVAILABLE:
+        if (
+            self.profile.name in ("BALANCED", "AGGRESSIVE")
+            and self.has_priv
+            and SCAPY_AVAILABLE
+        ):
             try:
                 from engines.discovery.l2_sniffer import sniff_l2_infrastructure
-                l2_devices = await asyncio.to_thread(sniff_l2_infrastructure, timeout=3.0)
+
+                l2_devices = await asyncio.to_thread(
+                    sniff_l2_infrastructure, timeout=3.0
+                )
                 for dev in l2_devices:
                     mac_clean = dev["mac"].lower()
                     for ip, host in results.items():
@@ -338,7 +398,11 @@ class DiscoveryEngine:
                         if h_mac == mac_clean:
                             host["device_category"] = dev["device_category"]
                             host["device_category_signal"] = "l2_sniffer"
-                            if dev.get("hostname") and host.get("hostname") in ("Unknown", "", None):
+                            if dev.get("hostname") and host.get("hostname") in (
+                                "Unknown",
+                                "",
+                                None,
+                            ):
                                 host["hostname"] = dev["hostname"]
                             if "L2_Sniff" not in host["confirmations"]:
                                 host["confirmations"].append("L2_Sniff")
@@ -352,6 +416,7 @@ class DiscoveryEngine:
         # This fires once after all probing + enrichment, ensuring the frontend
         # receives updated hostnames (netbios/mdns resolved) for every host.
         if scan_id:
+
             def _extract_hostname(r):
                 return (
                     r.get("hostname")
@@ -359,25 +424,30 @@ class DiscoveryEngine:
                     or _first_netbios_name(r)
                     or ""
                 )
+
             enriched_snapshot = [
                 {
-                    "ip_address":   r.get("ip_address") or r.get("ip", ""),
-                    "hostname":     _extract_hostname(r),
-                    "mac_address":  r.get("mac") or r.get("mac_address") or "",
-                    "vendor":       r.get("vendor", ""),
+                    "ip_address": r.get("ip_address") or r.get("ip", ""),
+                    "hostname": _extract_hostname(r),
+                    "mac_address": r.get("mac") or r.get("mac_address") or "",
+                    "vendor": r.get("vendor", ""),
                     "response_time": r.get("elapsed_ms"),
-                    "is_active":    True,
+                    "is_active": True,
                 }
                 for r in results.values()
                 if r["is_active"]
             ]
-            await publish_progress(scan_id, 1, {
-                "discovered": total_ips,
-                "active": len(enriched_snapshot),
-                "total_ips": total_ips,
-                "status": "enriching",   # distinct status so frontend knows
-                "hosts": enriched_snapshot,
-            })
+            await publish_progress(
+                scan_id,
+                1,
+                {
+                    "discovered": total_ips,
+                    "active": len(enriched_snapshot),
+                    "total_ips": total_ips,
+                    "status": "enriching",  # distinct status so frontend knows
+                    "hosts": enriched_snapshot,
+                },
+            )
 
         return list(results.values())
 
@@ -385,21 +455,24 @@ class DiscoveryEngine:
 
     async def _probe_batch(self, batch: List[str], results: Dict):
         """Run all configured techniques on a batch of IPs."""
-        profile    = self.profile
-        can_raw    = self.has_priv and SCAPY_AVAILABLE
+        profile = self.profile
+        can_raw = self.has_priv and SCAPY_AVAILABLE
         techniques = profile.techniques
-        timeout    = profile.timeout
+        timeout = profile.timeout
 
         # Zone split for routing-aware probing
         if profile.separate_lan_wan:
-            lan      = [ip for ip in batch if _is_lan(ip, self._local_nets)]
-            corporate = [ip for ip in batch
-                         if not _is_lan(ip, self._local_nets) and not _is_public(ip)]
-            internet  = [ip for ip in batch if _is_public(ip)]
+            lan = [ip for ip in batch if _is_lan(ip, self._local_nets)]
+            corporate = [
+                ip
+                for ip in batch
+                if not _is_lan(ip, self._local_nets) and not _is_public(ip)
+            ]
+            internet = [ip for ip in batch if _is_public(ip)]
         else:
             lan = batch
             corporate = []
-            internet  = []
+            internet = []
 
         # ── ARP — LAN zone only ────────────────────────────────────────────
         if Technique.ARP in techniques and can_raw and lan:
@@ -409,10 +482,7 @@ class DiscoveryEngine:
         if Technique.ICMP in techniques and can_raw:
             # LAN: fallback for non-ARP-responding hosts + TTL for ARP-confirmed
             if lan:
-                lan_icmp_targets = [
-                    ip for ip in lan
-                    if results[ip]["is_active"]
-                ]
+                lan_icmp_targets = [ip for ip in lan if results[ip]["is_active"]]
                 if lan_icmp_targets:
                     await asyncio.to_thread(
                         icmp.probe, lan_icmp_targets, results, timeout=timeout
@@ -425,7 +495,9 @@ class DiscoveryEngine:
         if Technique.TCP_SYN in techniques and can_raw:
             # Corporate fallback: hosts that didn't respond to ICMP
             if corporate:
-                corp_still_down = [ip for ip in corporate if not results[ip]["is_active"]]
+                corp_still_down = [
+                    ip for ip in corporate if not results[ip]["is_active"]
+                ]
                 if corp_still_down:
                     await asyncio.to_thread(
                         tcp_syn.probe,
@@ -466,9 +538,13 @@ class DiscoveryEngine:
                 # Port list: prefer lower-signature ports (web first)
                 ports = [80, 443, 22, 8080, 8443, 135, 139, 445, 3389, 21, 111]
                 await tcp_conn.probe(
-                    inactive, ports, results,
+                    inactive,
+                    ports,
+                    results,
                     timeout=timeout,
-                    concurrency=self.concurrency_override or self.rate_limit or self.profile.concurrency,
+                    concurrency=self.concurrency_override
+                    or self.rate_limit
+                    or self.profile.concurrency,
                     retries=self.profile.retries,
                 )
 
@@ -492,12 +568,21 @@ class DiscoveryEngine:
         Executes all per-host enrichment in parallel using asyncio.gather.
         """
         from core.discovery.enrichment import enrich_host
+
         ot_enrich = getattr(self.profile, "ot_enrichment", False)
         register_ports = ot_enrich
-        await asyncio.gather(*[
-            asyncio.to_thread(enrich_host, ip, results[ip], ot_enrichment=ot_enrich, register_ports=register_ports)
-            for ip in ips
-        ])
+        await asyncio.gather(
+            *[
+                asyncio.to_thread(
+                    enrich_host,
+                    ip,
+                    results[ip],
+                    ot_enrichment=ot_enrich,
+                    register_ports=register_ports,
+                )
+                for ip in ips
+            ]
+        )
 
     # ── Hostile environment detection ─────────────────────────────────────────
 
@@ -513,7 +598,8 @@ class DiscoveryEngine:
         if not any_active:
             return False  # Could be config/privilege issue
         silent_drops = sum(
-            1 for r in results.values()
+            1
+            for r in results.values()
             if not r["is_active"] and not r.get("port_states")
         )
         return (silent_drops / len(results)) >= 0.85

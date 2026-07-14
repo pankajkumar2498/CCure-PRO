@@ -21,7 +21,12 @@ import UserTable from "../../components/admin/UserTable";
 import UserForm from "../../components/admin/UserForm";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
-import { can, denyMessage, isOrgAdmin, isSuperAdmin } from "../../auth/permissions";
+import {
+  can,
+  denyMessage,
+  isOrgAdmin,
+  isSuperAdmin,
+} from "../../auth/permissions";
 
 const PAGE_SIZE = 10;
 
@@ -47,7 +52,9 @@ export default function UserManagement() {
   // Filters — initialise org from URL param if Superadmin linked here from Orgs page
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedOrgId, setSelectedOrgId] = useState(searchParams.get("org_id") || "");
+  const [selectedOrgId, setSelectedOrgId] = useState(
+    searchParams.get("org_id") || "",
+  );
   const [page, setPage] = useState(1);
 
   const handleSearchChange = (val) => {
@@ -86,32 +93,38 @@ export default function UserManagement() {
     if (isSuperadmin) return roles;
 
     return roles.filter((role) => {
-      const roleName = String(role.name || "").toLowerCase().replace(/\s+/g, "_");
+      const roleName = String(role.name || "")
+        .toLowerCase()
+        .replace(/\s+/g, "_");
       return roleName !== "superadmin";
     });
   }, [roles, isSuperadmin]);
 
   // ── Data loading (server-side) ────────────────────────────────────────────
-  const loadUsers = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    else setRefreshing(true);
-    setError("");
-    try {
-      const data = await listUsers({
-        skip: (page - 1) * PAGE_SIZE,
-        limit: PAGE_SIZE,
-        q: search.trim() || undefined,
-        organization_id: isSuperadmin && selectedOrgId ? selectedOrgId : undefined,
-      });
-      setUsers(data.users || []);
-      setTotalCount(data.total || 0);
-    } catch {
-      setError("Unable to load users. Please try again.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [page, search, selectedOrgId, isSuperadmin]);
+  const loadUsers = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      else setRefreshing(true);
+      setError("");
+      try {
+        const data = await listUsers({
+          skip: (page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
+          q: search.trim() || undefined,
+          organization_id:
+            isSuperadmin && selectedOrgId ? selectedOrgId : undefined,
+        });
+        setUsers(data.users || []);
+        setTotalCount(data.total || 0);
+      } catch {
+        setError("Unable to load users. Please try again.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [page, search, selectedOrgId, isSuperadmin],
+  );
 
   // Load roles + orgs once on mount (these rarely change)
   useEffect(() => {
@@ -119,15 +132,15 @@ export default function UserManagement() {
     // Org admins only manage their own users and don't need these global lists.
     if (isSuperadmin) {
       listRoles()
-        .then(d => setRoles(d.roles || []))
+        .then((d) => setRoles(d.roles || []))
         .catch(() => {});
       listOrganizations()
-        .then(d => setOrganizations(d.organizations || []))
+        .then((d) => setOrganizations(d.organizations || []))
         .catch(() => {});
     } else {
       // Org admins still need the roles list to assign roles (filtered in assignableRoles)
       listRoles()
-        .then(d => setRoles(d.roles || []))
+        .then((d) => setRoles(d.roles || []))
         .catch(() => {});
     }
   }, []);
@@ -142,11 +155,10 @@ export default function UserManagement() {
     }
   }, [loadUsers]);
 
-
-
   // Resolve the display name of the currently filtered org
   const filteredOrgName = selectedOrgId
-    ? (organizations.find(o => String(o.id) === String(selectedOrgId))?.name || "")
+    ? organizations.find((o) => String(o.id) === String(selectedOrgId))?.name ||
+      ""
     : "";
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
@@ -188,7 +200,10 @@ export default function UserManagement() {
       closeModal();
       await loadUsers(true);
     } catch (err) {
-      pushToast(err?.response?.data?.detail || "Failed to create user.", "error");
+      pushToast(
+        err?.response?.data?.detail || "Failed to create user.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -213,11 +228,15 @@ export default function UserManagement() {
 
       if (
         data.organization_id &&
-        String(data.organization_id) !== String(selectedUser.organization_id || selectedUser.org_id)
+        String(data.organization_id) !==
+          String(selectedUser.organization_id || selectedUser.org_id)
       ) {
         await moveUserOrganization(selectedUser.id, data.organization_id);
         if (currentUser.id === selectedUser.id) {
-          pushToast("Organization changed. You will need to log in again.", "warning");
+          pushToast(
+            "Organization changed. You will need to log in again.",
+            "warning",
+          );
         }
       }
 
@@ -225,7 +244,10 @@ export default function UserManagement() {
       closeModal();
       await loadUsers(true);
     } catch (err) {
-      pushToast(err?.response?.data?.detail || "Failed to update user.", "error");
+      pushToast(
+        err?.response?.data?.detail || "Failed to update user.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -251,12 +273,18 @@ export default function UserManagement() {
           await changeUserStatus(user.id, { is_active: !user.is_active });
           setUsers((prev) =>
             prev.map((u) =>
-              u.id === user.id ? { ...u, is_active: !u.is_active } : u
-            )
+              u.id === user.id ? { ...u, is_active: !u.is_active } : u,
+            ),
           );
-          pushToast(`User ${user.username} ${user.is_active ? "deactivated" : "activated"}.`, "success");
+          pushToast(
+            `User ${user.username} ${user.is_active ? "deactivated" : "activated"}.`,
+            "success",
+          );
         } catch (err) {
-          pushToast(err?.response?.data?.detail || "Unable to update user status.", "error");
+          pushToast(
+            err?.response?.data?.detail || "Unable to update user status.",
+            "error",
+          );
         } finally {
           setBusy(false);
           setConfirmConfig(null);
@@ -275,11 +303,14 @@ export default function UserManagement() {
     try {
       await changeUserStatus(user.id, { locked_until: null });
       setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, locked_until: null } : u))
+        prev.map((u) => (u.id === user.id ? { ...u, locked_until: null } : u)),
       );
       pushToast("User unlocked successfully.", "success");
     } catch (err) {
-      pushToast(err?.response?.data?.detail || "Unable to unlock user.", "error");
+      pushToast(
+        err?.response?.data?.detail || "Unable to unlock user.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -293,7 +324,8 @@ export default function UserManagement() {
     setConfirmConfig({
       title: `Reset MFA for ${user.username}`,
       subtitle: `This will completely disable Multi-Factor Authentication for ${user.username}.`,
-      warning: "This action will immediately terminate all active sessions for this user.",
+      warning:
+        "This action will immediately terminate all active sessions for this user.",
       confirmLabel: "Reset MFA",
       confirmType: "danger",
       icon: "🛡️",
@@ -304,12 +336,15 @@ export default function UserManagement() {
           await resetUserMfa(user.id);
           setUsers((prev) =>
             prev.map((u) =>
-              u.id === user.id ? { ...u, mfa_enabled: false } : u
-            )
+              u.id === user.id ? { ...u, mfa_enabled: false } : u,
+            ),
           );
           pushToast(`MFA reset successfully for ${user.username}.`, "success");
         } catch (err) {
-          pushToast(err?.response?.data?.detail || "Failed to reset MFA.", "error");
+          pushToast(
+            err?.response?.data?.detail || "Failed to reset MFA.",
+            "error",
+          );
         } finally {
           setBusy(false);
           setConfirmConfig(null);
@@ -335,9 +370,15 @@ export default function UserManagement() {
     setBusy(true);
     try {
       await resetUserPassword(userToReset.id, newPassword);
-      pushToast(`Password reset successfully for ${userToReset.username}.`, "success");
+      pushToast(
+        `Password reset successfully for ${userToReset.username}.`,
+        "success",
+      );
       if (currentUser && String(currentUser.id) === String(userToReset.id)) {
-        pushToast("You reset your own password. Please log in again using the new password.", "warning");
+        pushToast(
+          "You reset your own password. Please log in again using the new password.",
+          "warning",
+        );
       }
       setResetModalOpen(false);
       setUserToReset(null);
@@ -346,7 +387,9 @@ export default function UserManagement() {
       let errMsg = "Failed to reset password.";
       if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail) ? detail.map(d => d.msg).join(", ") : detail;
+        errMsg = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(", ")
+          : detail;
       }
       pushToast(errMsg, "error");
     } finally {
@@ -361,8 +404,10 @@ export default function UserManagement() {
     }
     setConfirmConfig({
       title: `Move ${user.username} to Deleted Users`,
-      subtitle: "This is a soft delete. The user will be removed from the active user list.",
-      warning: "The account becomes inactive immediately and can later be restored from Deleted Users.",
+      subtitle:
+        "This is a soft delete. The user will be removed from the active user list.",
+      warning:
+        "The account becomes inactive immediately and can later be restored from Deleted Users.",
       confirmLabel: "Move to deleted users",
       confirmType: "danger",
       icon: "🗑️",
@@ -375,7 +420,10 @@ export default function UserManagement() {
           setTotalCount((prev) => Math.max(0, prev - 1));
           pushToast("User moved to Deleted Users.", "success");
         } catch (err) {
-          pushToast(err?.response?.data?.detail || "Unable to delete user.", "error");
+          pushToast(
+            err?.response?.data?.detail || "Unable to delete user.",
+            "error",
+          );
         } finally {
           setBusy(false);
           setConfirmConfig(null);
@@ -413,15 +461,33 @@ export default function UserManagement() {
           </div>
           <div className="page-actions-row">
             {canDeleteUsers && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/admin/users/deleted")} disabled={busy}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/admin/users/deleted")}
+                disabled={busy}
+              >
                 Deleted users
               </Button>
             )}
-            <Button type="button" variant="ghost" size="sm" onClick={() => loadUsers(true)} disabled={loading || refreshing || busy}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => loadUsers(true)}
+              disabled={loading || refreshing || busy}
+            >
               {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
             {canCreateUsers && (
-              <Button type="button" variant="primary" size="sm" onClick={openCreateModal} disabled={busy}>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={openCreateModal}
+                disabled={busy}
+              >
                 + Create user
               </Button>
             )}
@@ -454,7 +520,9 @@ export default function UserManagement() {
             >
               <option value="">All Organizations</option>
               {organizations.map((org) => (
-                <option key={org.id} value={org.id}>{org.name}</option>
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
               ))}
             </select>
           )}
@@ -466,13 +534,25 @@ export default function UserManagement() {
               Showing {startIndex}–{endIndex} of {totalCount} users
             </div>
             <div className="pagination-controls">
-              <Button type="button" variant="ghost" size="sm" disabled={page <= 1 || refreshing} onClick={() => setPage(page - 1)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page <= 1 || refreshing}
+                onClick={() => setPage(page - 1)}
+              >
                 Prev
               </Button>
               <span className="pagination-page">
                 Page {page} of {totalPages}
               </span>
-              <Button type="button" variant="ghost" size="sm" disabled={page >= totalPages || refreshing} onClick={() => setPage(page + 1)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page >= totalPages || refreshing}
+                onClick={() => setPage(page + 1)}
+              >
                 Next
               </Button>
             </div>
@@ -501,7 +581,13 @@ export default function UserManagement() {
 
       <Modal
         isOpen={modalOpen}
-        title={modalMode === "create" ? "Create new user" : selectedUser ? `Edit ${selectedUser.username}` : "Edit user"}
+        title={
+          modalMode === "create"
+            ? "Create new user"
+            : selectedUser
+              ? `Edit ${selectedUser.username}`
+              : "Edit user"
+        }
         size="medium"
         onClose={closeModal}
       >
@@ -511,7 +597,9 @@ export default function UserManagement() {
           roles={assignableRoles}
           organizations={organizations}
           currentUser={currentUser}
-          onSubmit={modalMode === "create" ? handleCreateUser : handleUpdateUser}
+          onSubmit={
+            modalMode === "create" ? handleCreateUser : handleUpdateUser
+          }
           onCancel={closeModal}
           busy={busy}
         />
@@ -527,23 +615,41 @@ export default function UserManagement() {
           setNewPassword("");
         }}
       >
-        <div className="card card--admin-form" style={{ background: "transparent", border: "none", padding: 0, boxShadow: "none" }}>
-          <div className="form-card-header" style={{ padding: 0, marginBottom: 20 }}>
+        <div
+          className="card card--admin-form"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            boxShadow: "none",
+          }}
+        >
+          <div
+            className="form-card-header"
+            style={{ padding: 0, marginBottom: 20 }}
+          >
             <div>
               <h3 className="card-title">Reset User Password</h3>
               <p className="card-subtitle">
-                Enter a new secure password for <strong>{userToReset?.username}</strong>.
+                Enter a new secure password for{" "}
+                <strong>{userToReset?.username}</strong>.
               </p>
             </div>
           </div>
 
-          <form className="form-horizontal" onSubmit={handleResetPasswordSubmit}>
+          <form
+            className="form-horizontal"
+            onSubmit={handleResetPasswordSubmit}
+          >
             <div className="alert alert--warning" style={{ marginBottom: 16 }}>
-              ⚠️ Resetting the password will immediately terminate all active sessions for this user.
+              ⚠️ Resetting the password will immediately terminate all active
+              sessions for this user.
             </div>
 
             <div className="field">
-              <label className="field-label" htmlFor="reset-new-password">New Password</label>
+              <label className="field-label" htmlFor="reset-new-password">
+                New Password
+              </label>
               <input
                 id="reset-new-password"
                 className="field-input"
@@ -555,7 +661,8 @@ export default function UserManagement() {
                 required
               />
               <span className="field-hint">
-                Must be at least 12 characters and contain uppercase, lowercase, numbers, and special characters.
+                Must be at least 12 characters and contain uppercase, lowercase,
+                numbers, and special characters.
               </span>
             </div>
 

@@ -23,17 +23,12 @@ Design Decisions:
   - WAF detection in RECON adjusts rate limits for all subsequent phases.
 """
 
-import asyncio
 import logging
 import time
 from typing import Dict, List, Optional, Any
 from urllib.parse import urlparse
 
 from config import WebScanConfig
-from db.base import (
-    SessionLocal, utcnow,
-    gen_web_scan_id, gen_web_asset_id, gen_web_finding_id,
-)
 
 log = logging.getLogger("ccure.web.orchestrator")
 
@@ -162,6 +157,7 @@ class WebScanOrchestrator:
             auth_cookies = []
             if auth_config and auth_config.get("type") != "none":
                 from core.web.auth.session_manager import WebSessionManager
+
                 session_mgr = WebSessionManager()
                 session = await session_mgr.authenticate(auth_config, web_scan_id)
                 if session.is_authenticated:
@@ -173,7 +169,9 @@ class WebScanOrchestrator:
                 from core.web.crawling.browser import PlaywrightCrawler
 
                 crawler = PlaywrightCrawler(
-                    max_depth=scan_scope.get("max_depth", WebScanConfig.MAX_CRAWL_DEPTH),
+                    max_depth=scan_scope.get(
+                        "max_depth", WebScanConfig.MAX_CRAWL_DEPTH
+                    ),
                     max_urls=WebScanConfig.MAX_CRAWL_URLS,
                 )
                 crawl_result = await crawler.crawl(
@@ -196,7 +194,11 @@ class WebScanOrchestrator:
 
                 ffuf = FfufWrapper()
                 if ffuf.is_available():
-                    rate = WebScanConfig.STEALTH_RATE_LIMIT if waf_detected else WebScanConfig.SCAN_RATE_LIMIT
+                    rate = (
+                        WebScanConfig.STEALTH_RATE_LIMIT
+                        if waf_detected
+                        else WebScanConfig.SCAN_RATE_LIMIT
+                    )
                     ffuf_result = ffuf.run(
                         target=target_url,
                         rate_limit=rate,
@@ -204,13 +206,15 @@ class WebScanOrchestrator:
                     )
                     # Convert discovered paths to endpoints
                     for path_info in ffuf_result.get("discovered_paths", []):
-                        all_endpoints.append({
-                            "url": path_info["url"],
-                            "method": "GET",
-                            "content_type": path_info.get("content_type", ""),
-                            "response_code": path_info.get("status"),
-                            "source": "ffuf",
-                        })
+                        all_endpoints.append(
+                            {
+                                "url": path_info["url"],
+                                "method": "GET",
+                                "content_type": path_info.get("content_type", ""),
+                                "response_code": path_info.get("status"),
+                                "source": "ffuf",
+                            }
+                        )
                     sensitive_findings.extend(ffuf_result.get("sensitive_findings", []))
             except Exception as exc:
                 log.warning("[CRAWL] ffuf failed: %s", exc)
@@ -218,11 +222,13 @@ class WebScanOrchestrator:
             # 4. Include sitemap URLs
             if sitemap_urls:
                 for url in sitemap_urls[:100]:  # Cap at 100 sitemap URLs
-                    all_endpoints.append({
-                        "url": url,
-                        "method": "GET",
-                        "source": "sitemap",
-                    })
+                    all_endpoints.append(
+                        {
+                            "url": url,
+                            "method": "GET",
+                            "source": "sitemap",
+                        }
+                    )
 
             # Deduplicate endpoints
             all_endpoints = self._deduplicate_endpoints(all_endpoints)
@@ -280,13 +286,18 @@ class WebScanOrchestrator:
             auth_headers = {}
             if auth_config and auth_config.get("type") != "none":
                 from core.web.auth.session_manager import WebSessionManager
+
                 session_mgr = WebSessionManager()
                 session = await session_mgr.authenticate(auth_config, web_scan_id)
                 if session.is_authenticated:
                     auth_headers = session.get_auth_headers()
 
             is_waf = bool(waf_detected)
-            effective_rate = WebScanConfig.STEALTH_RATE_LIMIT if is_waf else WebScanConfig.SCAN_RATE_LIMIT
+            effective_rate = (
+                WebScanConfig.STEALTH_RATE_LIMIT
+                if is_waf
+                else WebScanConfig.SCAN_RATE_LIMIT
+            )
 
             # 1. Nuclei Scanning
             try:
@@ -294,7 +305,9 @@ class WebScanOrchestrator:
 
                 nuclei = NucleiWrapper()
                 if nuclei.is_available():
-                    severity = options.get("nuclei_severity", ["medium", "high", "critical"])
+                    severity = options.get(
+                        "nuclei_severity", ["medium", "high", "critical"]
+                    )
                     nuclei_result = nuclei.run(
                         target=target_url,
                         severity=severity,
@@ -314,7 +327,8 @@ class WebScanOrchestrator:
                     sqlmap = SqlmapWrapper()
                     if sqlmap.is_available():
                         injectable_urls = [
-                            ep for ep in endpoints
+                            ep
+                            for ep in endpoints
                             if "?" in ep.get("url", "")
                             or ep.get("method", "GET") == "POST"
                         ]
@@ -328,7 +342,9 @@ class WebScanOrchestrator:
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
                             except Exception as exc:
-                                log.debug("SQLMap failed for %s: %s", ep["url"][:80], exc)
+                                log.debug(
+                                    "SQLMap failed for %s: %s", ep["url"][:80], exc
+                                )
                 except Exception as exc:
                     log.warning("[DETECT] SQLMap setup failed: %s", exc)
 
@@ -403,6 +419,7 @@ class WebScanOrchestrator:
 
             # 2. Compliance Mapping
             from core.web.compliance import map_compliance
+
             for finding in all_findings:
                 compliance = map_compliance(finding.get("finding_type", ""))
                 finding["owasp_category"] = compliance.get("owasp", "")
@@ -410,6 +427,7 @@ class WebScanOrchestrator:
 
             # 3. Deduplication
             from core.web.correlation import deduplicate_findings
+
             all_findings = deduplicate_findings(all_findings)
 
             # 4. Risk Scoring
@@ -438,6 +456,7 @@ class WebScanOrchestrator:
         """Run subdomain enumeration."""
         try:
             from core.web.subfinder.wrapper import SubfinderWrapper
+
             sf = SubfinderWrapper()
             if sf.is_available():
                 result = sf.run(domain)
@@ -450,6 +469,7 @@ class WebScanOrchestrator:
         """Run WAF detection."""
         try:
             from core.web.waf.detector import WAFDetector
+
             detector = WAFDetector()
             return await detector.detect(target_url)
         except Exception as exc:
@@ -460,6 +480,7 @@ class WebScanOrchestrator:
         """Run technology fingerprinting via Nuclei tech templates."""
         try:
             from core.web.nuclei.wrapper import NucleiWrapper
+
             nuclei = NucleiWrapper()
             if nuclei.is_available():
                 return nuclei.run_tech_detect(target_url)
@@ -472,6 +493,7 @@ class WebScanOrchestrator:
         result = {"sitemap_urls": [], "disallow": []}
         try:
             import httpx
+
             parsed = urlparse(target_url)
             base = f"{parsed.scheme}://{parsed.netloc}"
 
@@ -500,6 +522,7 @@ class WebScanOrchestrator:
                     resp = await client.get(f"{base}/sitemap.xml")
                     if resp.status_code == 200 and "<urlset" in resp.text[:1000]:
                         import re
+
                         urls = re.findall(r"<loc>(.*?)</loc>", resp.text)
                         result["sitemap_urls"].extend(urls[:200])  # Cap at 200
                 except Exception:
@@ -517,6 +540,7 @@ class WebScanOrchestrator:
         findings = []
         try:
             import httpx
+
             async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
                 resp = await client.get(target_url)
                 headers = {k.lower(): v for k, v in resp.headers.items()}
@@ -551,15 +575,17 @@ class WebScanOrchestrator:
 
                 for header_name, meta in required_headers.items():
                     if header_name not in headers:
-                        findings.append({
-                            "finding_type": "misconfig",
-                            "title": meta["title"],
-                            "description": f"The response is missing the {header_name} security header.",
-                            "severity": meta["severity"],
-                            "cvss_score": meta["cvss_score"],
-                            "detected_by": "custom",
-                            "matched_at": target_url,
-                        })
+                        findings.append(
+                            {
+                                "finding_type": "misconfig",
+                                "title": meta["title"],
+                                "description": f"The response is missing the {header_name} security header.",
+                                "severity": meta["severity"],
+                                "cvss_score": meta["cvss_score"],
+                                "detected_by": "custom",
+                                "matched_at": target_url,
+                            }
+                        )
         except Exception as exc:
             log.debug("Security header check failed: %s", exc)
         return findings
@@ -569,6 +595,7 @@ class WebScanOrchestrator:
         findings = []
         try:
             import httpx
+
             async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
                 # Send request with a malicious Origin header
                 resp = await client.get(
@@ -578,27 +605,33 @@ class WebScanOrchestrator:
                 acao = resp.headers.get("access-control-allow-origin", "")
 
                 if acao == "*":
-                    findings.append({
-                        "finding_type": "cors",
-                        "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
-                        "description": "Server allows any origin to make cross-origin requests. This may expose sensitive data.",
-                        "severity": "medium",
-                        "cvss_score": 5.3,
-                        "detected_by": "custom",
-                        "matched_at": target_url,
-                    })
+                    findings.append(
+                        {
+                            "finding_type": "cors",
+                            "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
+                            "description": "Server allows any origin to make cross-origin requests. This may expose sensitive data.",
+                            "severity": "medium",
+                            "cvss_score": 5.3,
+                            "detected_by": "custom",
+                            "matched_at": target_url,
+                        }
+                    )
                 elif "evil-attacker.com" in acao:
-                    creds = resp.headers.get("access-control-allow-credentials", "").lower()
+                    creds = resp.headers.get(
+                        "access-control-allow-credentials", ""
+                    ).lower()
                     severity = "critical" if creds == "true" else "high"
-                    findings.append({
-                        "finding_type": "cors",
-                        "title": "CORS Origin Reflection Vulnerability",
-                        "description": "Server reflects arbitrary Origin in ACAO header, enabling cross-origin data theft.",
-                        "severity": severity,
-                        "cvss_score": 9.1 if creds == "true" else 7.5,
-                        "detected_by": "custom",
-                        "matched_at": target_url,
-                    })
+                    findings.append(
+                        {
+                            "finding_type": "cors",
+                            "title": "CORS Origin Reflection Vulnerability",
+                            "description": "Server reflects arbitrary Origin in ACAO header, enabling cross-origin data theft.",
+                            "severity": severity,
+                            "cvss_score": 9.1 if creds == "true" else 7.5,
+                            "detected_by": "custom",
+                            "matched_at": target_url,
+                        }
+                    )
         except Exception as exc:
             log.debug("CORS check failed: %s", exc)
         return findings

@@ -1,6 +1,7 @@
 import sqlite3
+
 try:
-    conn = sqlite3.connect('ccure_users.db')
+    conn = sqlite3.connect("ccure_users.db")
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(scans)")
     columns = cursor.fetchall()

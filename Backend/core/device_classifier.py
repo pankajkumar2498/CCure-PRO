@@ -42,11 +42,11 @@ log = logging.getLogger("ccure.device_classifier")
 # ---------------------------------------------------------------------------
 
 # OID for ipForwarding (.1.3.6.1.2.1.4.1.0): 1=forwarding(router), 2=notForwarding(host)
-_OID_IP_FORWARDING   = "ip_forwarding"
+_OID_IP_FORWARDING = "ip_forwarding"
 # OID for ifNumber (.1.3.6.1.2.1.2.1.0): number of interfaces; >2 strongly suggests router/switch
-_OID_IF_NUMBER       = "if_number"
+_OID_IF_NUMBER = "if_number"
 # Bridge MIB (.1.3.6.1.2.1.17.1.1.0): presence → switch
-_OID_BRIDGE_MIB      = "bridge_mib"
+_OID_BRIDGE_MIB = "bridge_mib"
 
 
 def _classify_from_snmp(snmp_info: Dict) -> Optional[str]:
@@ -78,91 +78,91 @@ def _classify_from_snmp(snmp_info: Dict) -> Optional[str]:
 # Extended vendor keyword table (lowercase substring match)
 _VENDOR_DEVICE_MAP: Dict[str, str] = {
     # Routers / firewalls
-    "cisco":           "router",
-    "juniper":         "router",
-    "mikrotik":        "router",
-    "ubiquiti":        "wireless_ap",
-    "ruckus":          "wireless_ap",
-    "aruba":           "wireless_ap",
-    "aerohive":        "wireless_ap",
-    "peplink":         "router",
-    "zyxel":           "router",
-    "netgear":         "router",
-    "tp-link":         "router",
-    "tplink":          "router",
-    "d-link":          "router",
-    "dlink":           "router",
-    "linksys":         "router",
-    "asus":            "router",
+    "cisco": "router",
+    "juniper": "router",
+    "mikrotik": "router",
+    "ubiquiti": "wireless_ap",
+    "ruckus": "wireless_ap",
+    "aruba": "wireless_ap",
+    "aerohive": "wireless_ap",
+    "peplink": "router",
+    "zyxel": "router",
+    "netgear": "router",
+    "tp-link": "router",
+    "tplink": "router",
+    "d-link": "router",
+    "dlink": "router",
+    "linksys": "router",
+    "asus": "router",
     # Firewalls / UTM
-    "fortinet":        "firewall",
-    "palo alto":       "firewall",
-    "sonicwall":       "firewall",
-    "checkpoint":      "firewall",
-    "watchguard":      "firewall",
-    "barracuda":       "firewall",
-    "sophos":          "firewall",
-    "pfSense":         "firewall",
+    "fortinet": "firewall",
+    "palo alto": "firewall",
+    "sonicwall": "firewall",
+    "checkpoint": "firewall",
+    "watchguard": "firewall",
+    "barracuda": "firewall",
+    "sophos": "firewall",
+    "pfSense": "firewall",
     # Switches
     "extreme network": "switch",
-    "brocade":         "switch",
-    "foundry":         "switch",
-    "3com":            "switch",
-    "alcatel":         "switch",
-    "avaya":           "switch",
-    "procurve":        "switch",
+    "brocade": "switch",
+    "foundry": "switch",
+    "3com": "switch",
+    "alcatel": "switch",
+    "avaya": "switch",
+    "procurve": "switch",
     # Printers
-    "brother":         "printer",
-    "canon":           "printer",
-    "epson":           "printer",
-    "lexmark":         "printer",
-    "xerox":           "printer",
-    "ricoh":           "printer",
-    "kyocera":         "printer",
-    "konica":          "printer",
-    "sharp":           "printer",
-    "oki data":        "printer",
+    "brother": "printer",
+    "canon": "printer",
+    "epson": "printer",
+    "lexmark": "printer",
+    "xerox": "printer",
+    "ricoh": "printer",
+    "kyocera": "printer",
+    "konica": "printer",
+    "sharp": "printer",
+    "oki data": "printer",
     # HP / Hewlett Packard - AMBIGUOUS (makes printers AND servers/desktops)
     # Now skipped - let Port Profile distinguish between HP printers vs HP servers
     # Old: "hewlett":         "printer",
     # Old: "hp ":             "printer",
     # Servers / workstations
-    "dell":            "server",
-    "lenovo":          "server",
-    "supermicro":      "server",
-    "ibm":             "server",
-    "intel":           "server",
+    "dell": "server",
+    "lenovo": "server",
+    "supermicro": "server",
+    "ibm": "server",
+    "intel": "server",
     # IoT / embedded
-    "raspberry":       "iot",
-    "espressif":       "iot",
-    "particle":        "iot",
-    "arduino":         "iot",
+    "raspberry": "iot",
+    "espressif": "iot",
+    "particle": "iot",
+    "arduino": "iot",
     # SCADA / ICS / OT Devices
-    "siemens":         "scada_ics",
-    "schneider":       "scada_ics",
-    "honeywell":       "scada_ics",
-    "rockwell":        "scada_ics",
-    "yokogawa":        "scada_ics",
-    "beckhoff":        "scada_ics",
-    "omron":           "scada_ics",
-    "abb":             "scada_ics",
-    "wago":            "scada_ics",
-    "moxa":            "scada_ics",
+    "siemens": "scada_ics",
+    "schneider": "scada_ics",
+    "honeywell": "scada_ics",
+    "rockwell": "scada_ics",
+    "yokogawa": "scada_ics",
+    "beckhoff": "scada_ics",
+    "omron": "scada_ics",
+    "abb": "scada_ics",
+    "wago": "scada_ics",
+    "moxa": "scada_ics",
     # VoIP
-    "yealink":         "voip",
-    "polycom":         "voip",
-    "grandstream":     "voip",
-    "snom":            "voip",
-    "cisco spa":       "voip",
+    "yealink": "voip",
+    "polycom": "voip",
+    "grandstream": "voip",
+    "snom": "voip",
+    "cisco spa": "voip",
     # Storage
-    "synology":        "storage",
-    "qnap":            "storage",
-    "netapp":          "storage",
-    "drobo":           "storage",
-    "vmware":          "virtual_machine",
-    "xen":             "virtual_machine",
-    "hyperv":          "virtual_machine",
-    "hyper-v":         "virtual_machine",
+    "synology": "storage",
+    "qnap": "storage",
+    "netapp": "storage",
+    "drobo": "storage",
+    "vmware": "virtual_machine",
+    "xen": "virtual_machine",
+    "hyperv": "virtual_machine",
+    "hyper-v": "virtual_machine",
 }
 
 
@@ -177,13 +177,13 @@ def _classify_from_vendor(vendor: Optional[str]) -> Optional[str]:
 
 
 _VENDOR_OS_MAP: Dict[str, str] = {
-    "cisco":       "Cisco IOS",
-    "juniper":     "Junos OS",
-    "fortinet":    "FortiOS",
-    "mikrotik":    "RouterOS",
-    "vmware":      "ESXi",
-    "apple":       "macOS",
-    "microsoft":   "Windows",
+    "cisco": "Cisco IOS",
+    "juniper": "Junos OS",
+    "fortinet": "FortiOS",
+    "mikrotik": "RouterOS",
+    "vmware": "ESXi",
+    "apple": "macOS",
+    "microsoft": "Windows",
 }
 
 
@@ -236,41 +236,49 @@ def _classify_from_mdns(host: Dict) -> Optional[str]:
 _PORT_PROFILE_RULES: List[Dict] = [
     # Each rule: {"ports": required_set, "any": optional_hint_set, "category": str}
     # Evaluated in order; first match wins.
-    {"ports": {9100},                            "category": "printer"},   # JetDirect
-    {"ports": {515},                             "category": "printer"},   # LPD
-    {"ports": {631},                             "category": "printer"},   # IPP
-    {"ports": {5060},                            "category": "voip"},      # SIP
-    {"ports": {5061},                            "category": "voip"},      # SIP/TLS
-    {"ports": {2000},                            "category": "voip"},      # Cisco SCCP
-    {"ports": {62078},                           "category": "iot"},       # Apple iOS lockdown
-    {"ports": {548},                             "category": "endpoint"},  # AFP = macOS
-    {"ports": {1723},                            "category": "router"},    # PPTP VPN
-    {"ports": {1194},                            "category": "firewall"},  # OpenVPN
-    {"ports": {4500},                            "category": "firewall"},  # IKEv2 NAT-T
-    {"ports": {500},                             "category": "firewall"},  # IKE/IPsec
-    {"ports": {1701},                            "category": "firewall"},  # L2TP
-    {"ports": {179},                             "category": "router"},    # BGP
-    {"ports": {520},                             "category": "router"},    # RIP
-    {"ports": {161, 69}, "any": {23, 22},        "category": "switch"},    # TFTP + SNMP + Mgmt (common for switches)
-    {"ports": {161},  "any": {22},               "category": "network_appliance"},  # SNMP + SSH = managed device
-    {"ports": {161},  "any": {23},               "category": "router"},    # SNMP + Telnet = old Cisco
-    {"ports": {443, 22, 80}, "any": {8443},      "category": "server"},
-    {"ports": {3389, 445, 139},                  "category": "endpoint"},  # Windows workstation
-    {"ports": {445, 139, 88},                    "category": "server"},    # Windows DC/Server
-    {"ports": {2049},                            "category": "storage"},   # NFS
-    {"ports": {3260},                            "category": "storage"},   # iSCSI
-    {"ports": {6000},                            "category": "endpoint"},  # X11
-    {"ports": {502},                             "category": "scada_ics"}, # Modbus
-    {"ports": {102},                             "category": "scada_ics"}, # S7comm
-    {"ports": {20000},                           "category": "scada_ics"}, # DNP3
-    {"ports": {44818},                           "category": "scada_ics"}, # EtherNet/IP
-    {"ports": {47808},                           "category": "scada_ics"}, # BACnet/IP
-    {"ports": {4840},                            "category": "scada_ics"}, # OPC UA
-    {"ports": {2404},                            "category": "scada_ics"}, # IEC-104
-    {"ports": {18245},                           "category": "scada_ics"}, # GE SRTP
-    {"ports": {9600},                            "category": "scada_ics"}, # Omron FINS
-    {"ports": {5007},                            "category": "scada_ics"}, # Mitsubishi MELSEC
-    {"ports": {2455},                            "category": "scada_ics"}, # CoDeSys
+    {"ports": {9100}, "category": "printer"},  # JetDirect
+    {"ports": {515}, "category": "printer"},  # LPD
+    {"ports": {631}, "category": "printer"},  # IPP
+    {"ports": {5060}, "category": "voip"},  # SIP
+    {"ports": {5061}, "category": "voip"},  # SIP/TLS
+    {"ports": {2000}, "category": "voip"},  # Cisco SCCP
+    {"ports": {62078}, "category": "iot"},  # Apple iOS lockdown
+    {"ports": {548}, "category": "endpoint"},  # AFP = macOS
+    {"ports": {1723}, "category": "router"},  # PPTP VPN
+    {"ports": {1194}, "category": "firewall"},  # OpenVPN
+    {"ports": {4500}, "category": "firewall"},  # IKEv2 NAT-T
+    {"ports": {500}, "category": "firewall"},  # IKE/IPsec
+    {"ports": {1701}, "category": "firewall"},  # L2TP
+    {"ports": {179}, "category": "router"},  # BGP
+    {"ports": {520}, "category": "router"},  # RIP
+    {
+        "ports": {161, 69},
+        "any": {23, 22},
+        "category": "switch",
+    },  # TFTP + SNMP + Mgmt (common for switches)
+    {
+        "ports": {161},
+        "any": {22},
+        "category": "network_appliance",
+    },  # SNMP + SSH = managed device
+    {"ports": {161}, "any": {23}, "category": "router"},  # SNMP + Telnet = old Cisco
+    {"ports": {443, 22, 80}, "any": {8443}, "category": "server"},
+    {"ports": {3389, 445, 139}, "category": "endpoint"},  # Windows workstation
+    {"ports": {445, 139, 88}, "category": "server"},  # Windows DC/Server
+    {"ports": {2049}, "category": "storage"},  # NFS
+    {"ports": {3260}, "category": "storage"},  # iSCSI
+    {"ports": {6000}, "category": "endpoint"},  # X11
+    {"ports": {502}, "category": "scada_ics"},  # Modbus
+    {"ports": {102}, "category": "scada_ics"},  # S7comm
+    {"ports": {20000}, "category": "scada_ics"},  # DNP3
+    {"ports": {44818}, "category": "scada_ics"},  # EtherNet/IP
+    {"ports": {47808}, "category": "scada_ics"},  # BACnet/IP
+    {"ports": {4840}, "category": "scada_ics"},  # OPC UA
+    {"ports": {2404}, "category": "scada_ics"},  # IEC-104
+    {"ports": {18245}, "category": "scada_ics"},  # GE SRTP
+    {"ports": {9600}, "category": "scada_ics"},  # Omron FINS
+    {"ports": {5007}, "category": "scada_ics"},  # Mitsubishi MELSEC
+    {"ports": {2455}, "category": "scada_ics"},  # CoDeSys
 ]
 
 
@@ -290,55 +298,55 @@ def _classify_from_ports(open_ports: List[int]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 _BANNER_KEYWORDS: Dict[str, str] = {
-    "catalyst":        "switch",
-    "nexus":           "switch",
-    "procurve":        "switch",
-    "pfsense":         "firewall",
-    "cisco ios":       "router",
-    "cisco":           "router",
-    "junos":           "router",
-    "routeros":        "router",
-    "mikrotik":        "router",
-    "openwrt":         "router",
-    "dd-wrt":          "router",
-    "fortios":         "firewall",
-    "fortinet":        "firewall",
-    "panos":           "firewall",
-    "asa":             "firewall",
-    "netscreen":       "firewall",
-    "fortigate":       "firewall",
-    "sonicos":         "firewall",
-    "checkpoint":      "firewall",
-    "ubiquiti":        "wireless_ap",
-    "unifi":           "wireless_ap",
-    "airos":           "wireless_ap",
-    "aruba":           "switch",
-    "ruckus":          "wireless_ap",
-    "windows":         "endpoint",
-    "linux":           "server",
-    "ubuntu":          "server",
-    "debian":          "server",
-    "centos":          "server",
-    "red hat":         "server",
-    "freebsd":         "server",
-    "synology":        "storage",
-    "qnap":            "storage",
-    "truenas":         "storage",
-    "freenas":         "storage",
-    "siemens":         "scada_ics",
-    "s7-":             "scada_ics",
-    "plc":             "scada_ics",
-    "scada":           "scada_ics",
-    "modbus":          "scada_ics",
-    "bacnet":          "scada_ics",
-    "opc ua":          "scada_ics",
-    "opcua":           "scada_ics",
-    "dnp3":            "scada_ics",
-    "ethernet/ip":     "scada_ics",
-    "printer":         "printer",
-    "laserjet":        "printer",
-    "jetdirect":       "printer",
-    "print server":    "printer",
+    "catalyst": "switch",
+    "nexus": "switch",
+    "procurve": "switch",
+    "pfsense": "firewall",
+    "cisco ios": "router",
+    "cisco": "router",
+    "junos": "router",
+    "routeros": "router",
+    "mikrotik": "router",
+    "openwrt": "router",
+    "dd-wrt": "router",
+    "fortios": "firewall",
+    "fortinet": "firewall",
+    "panos": "firewall",
+    "asa": "firewall",
+    "netscreen": "firewall",
+    "fortigate": "firewall",
+    "sonicos": "firewall",
+    "checkpoint": "firewall",
+    "ubiquiti": "wireless_ap",
+    "unifi": "wireless_ap",
+    "airos": "wireless_ap",
+    "aruba": "switch",
+    "ruckus": "wireless_ap",
+    "windows": "endpoint",
+    "linux": "server",
+    "ubuntu": "server",
+    "debian": "server",
+    "centos": "server",
+    "red hat": "server",
+    "freebsd": "server",
+    "synology": "storage",
+    "qnap": "storage",
+    "truenas": "storage",
+    "freenas": "storage",
+    "siemens": "scada_ics",
+    "s7-": "scada_ics",
+    "plc": "scada_ics",
+    "scada": "scada_ics",
+    "modbus": "scada_ics",
+    "bacnet": "scada_ics",
+    "opc ua": "scada_ics",
+    "opcua": "scada_ics",
+    "dnp3": "scada_ics",
+    "ethernet/ip": "scada_ics",
+    "printer": "printer",
+    "laserjet": "printer",
+    "jetdirect": "printer",
+    "print server": "printer",
 }
 
 
@@ -370,11 +378,12 @@ def _classify_from_banners(host: Dict) -> Optional[str]:
 # Signal 5 — TTL
 # ---------------------------------------------------------------------------
 
+
 def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
     if ttl is None:
         return None
     if ttl >= 250:
-        return "network_appliance"   # Cisco IOS = 255, common on routers
+        return "network_appliance"  # Cisco IOS = 255, common on routers
     return None
 
 
@@ -382,12 +391,17 @@ def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
 # Signal 7 — Nmap CPE mapping
 # ---------------------------------------------------------------------------
 
+
 def _classify_from_cpe(os_cpe: Optional[List[str]]) -> Optional[str]:
     if not os_cpe:
         return None
     for item in os_cpe:
         cpe = str(item).lower()
-        if "cpe:/o:cisco:ios" in cpe or "cpe:/o:juniper:junos" in cpe or "cpe:/o:mikrotik:routeros" in cpe:
+        if (
+            "cpe:/o:cisco:ios" in cpe
+            or "cpe:/o:juniper:junos" in cpe
+            or "cpe:/o:mikrotik:routeros" in cpe
+        ):
             return "router"
         if "cpe:/o:fortinet:fortios" in cpe or "cpe:/h:paloalto:" in cpe:
             return "firewall"
@@ -399,6 +413,7 @@ def _classify_from_cpe(os_cpe: Optional[List[str]]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Master classifier
 # ---------------------------------------------------------------------------
+
 
 def classify_device(host: Dict) -> str:
     """
@@ -420,12 +435,16 @@ def classify_device(host: Dict) -> str:
         return category
 
     # 1. Check for Credentialed override first (100% trusted local OS query)
-    is_credentialed = host.get("discovery_method") == "credentialed" or "credentialed_system_info" in host.get("custom_attributes", {})
+    is_credentialed = host.get(
+        "discovery_method"
+    ) == "credentialed" or "credentialed_system_info" in host.get(
+        "custom_attributes", {}
+    )
     if is_credentialed:
         os_fam = host.get("os_family") or ""
         os_n = (host.get("os_name") or "").lower()
         hostname = (host.get("hostname") or "").lower()
-        
+
         if "windows server" in os_fam.lower() or "windows server" in os_n:
             category = "server"
         elif "windows" in os_fam.lower() or "windows" in os_n:
@@ -440,19 +459,32 @@ def classify_device(host: Dict) -> str:
             category = "firewall"
         else:
             # Linux or other OS family
-            if any(k in hostname for k in ["desktop", "laptop", "workstation", "pc-", "client"]):
+            if any(
+                k in hostname
+                for k in ["desktop", "laptop", "workstation", "pc-", "client"]
+            ):
                 category = "endpoint"
             else:
                 category = "server"
-        
+
         _write(host, category, "credentialed")
         return category
 
     # Initialize weighted scoring matrix
     CATEGORIES = [
-        "router", "switch", "firewall", "wireless_ap", "printer", "iot",
-        "server", "endpoint", "voip", "storage", "network_appliance",
-        "scada_ics", "virtual_machine"
+        "router",
+        "switch",
+        "firewall",
+        "wireless_ap",
+        "printer",
+        "iot",
+        "server",
+        "endpoint",
+        "voip",
+        "storage",
+        "network_appliance",
+        "scada_ics",
+        "virtual_machine",
     ]
     scores = {cat: 0 for cat in CATEGORIES}
     contributions = {cat: ("none", 0) for cat in CATEGORIES}
@@ -467,17 +499,24 @@ def classify_device(host: Dict) -> str:
     # Signal A: Hostname Heuristics
     hostname = (host.get("hostname") or "").lower()
     if hostname:
-        if any(k in hostname for k in ["desktop", "laptop", "workstation", "pc-", "client"]):
+        if any(
+            k in hostname for k in ["desktop", "laptop", "workstation", "pc-", "client"]
+        ):
             add_score("endpoint", 100, "hostname")
             add_score("router", -60, "hostname")
             add_score("switch", -60, "hostname")
             add_score("firewall", -60, "hostname")
             add_score("server", -30, "hostname")
-        elif any(k in hostname for k in ["server", "srv-", "srv", "web", "db-", "sql", "mail"]):
+        elif any(
+            k in hostname
+            for k in ["server", "srv-", "srv", "web", "db-", "sql", "mail"]
+        ):
             add_score("server", 100, "hostname")
             add_score("endpoint", -50, "hostname")
             add_score("router", -50, "hostname")
-        elif any(k in hostname for k in ["router", "rtr-", "rtr", "gateway", "gw-", "gw"]):
+        elif any(
+            k in hostname for k in ["router", "rtr-", "rtr", "gateway", "gw-", "gw"]
+        ):
             add_score("router", 100, "hostname")
             add_score("endpoint", -60, "hostname")
             add_score("server", -60, "hostname")
@@ -498,16 +537,33 @@ def classify_device(host: Dict) -> str:
     if snmp and snmp.get("open"):
         sys_descr = str(snmp.get("sys_descr", "")).lower()
         is_pc_os = False
-        
+
         # Deep sysDescr parsing (case-insensitive checks) to extract PC operating systems
-        if any(k in sys_descr for k in ["ubuntu", "debian", "red hat", "centos", "gentoo", "fedora", "suse", "generic", "windows 10", "windows 11"]):
+        if any(
+            k in sys_descr
+            for k in [
+                "ubuntu",
+                "debian",
+                "red hat",
+                "centos",
+                "gentoo",
+                "fedora",
+                "suse",
+                "generic",
+                "windows 10",
+                "windows 11",
+            ]
+        ):
             is_pc_os = True
             add_score("endpoint", 110, "snmp")
             add_score("server", 40, "snmp")
             add_score("router", -80, "snmp")
             add_score("switch", -80, "snmp")
             add_score("firewall", -80, "snmp")
-        elif any(k in sys_descr for k in ["cisco ios", "cisco catalyst", "cisco nexus", "routeros", "junos"]):
+        elif any(
+            k in sys_descr
+            for k in ["cisco ios", "cisco catalyst", "cisco nexus", "routeros", "junos"]
+        ):
             add_score("router", 95, "snmp")
             add_score("endpoint", -80, "snmp")
             add_score("server", -80, "snmp")
@@ -536,7 +592,9 @@ def classify_device(host: Dict) -> str:
     # Signal 3: NetBIOS suffix roles
     netbios_names = host.get("netbios_names", [])
     if netbios_names:
-        types = {n.get("type") for n in netbios_names if isinstance(n, dict) and "type" in n}
+        types = {
+            n.get("type") for n in netbios_names if isinstance(n, dict) and "type" in n
+        }
         if {0x1D, 0x1B, 0x1C} & types:
             add_score("server", 98, "netbios")
         elif 0x20 in types:
@@ -549,7 +607,11 @@ def classify_device(host: Dict) -> str:
     if os_cpe:
         for item in os_cpe:
             cpe = str(item).lower()
-            if "cpe:/o:cisco:ios" in cpe or "cpe:/o:juniper:junos" in cpe or "cpe:/o:mikrotik:routeros" in cpe:
+            if (
+                "cpe:/o:cisco:ios" in cpe
+                or "cpe:/o:juniper:junos" in cpe
+                or "cpe:/o:mikrotik:routeros" in cpe
+            ):
                 add_score("router", 95, "nmap_cpe")
             elif "cpe:/o:fortinet:fortios" in cpe or "cpe:/h:paloalto:" in cpe:
                 add_score("firewall", 95, "nmap_cpe")
@@ -578,7 +640,7 @@ def classify_device(host: Dict) -> str:
         texts.append(port_rec.get("service", ""))
     texts.append(host.get("os_guess", ""))
     combined_text = " ".join(str(t) for t in texts if t).lower()
-    
+
     for kw, cat in _BANNER_KEYWORDS.items():
         if kw in combined_text:
             add_score(cat, 60, "banner")
@@ -587,6 +649,7 @@ def classify_device(host: Dict) -> str:
     vendor = host.get("vendor") or host.get("mac_vendor")
     if not vendor:
         from core.oui_lookup import lookup_vendor
+
         vendor = lookup_vendor(host.get("mac", "")) or ""
     if vendor:
         category_from_oui = _classify_from_vendor(vendor)
@@ -626,12 +689,18 @@ def classify_device(host: Dict) -> str:
                     host["os_family"] = "Embedded"
                     host["os_confidence"] = "High"
                 else:
-                    v_name = (host.get("vendor") or host.get("mac_vendor") or "").lower()
+                    v_name = (
+                        host.get("vendor") or host.get("mac_vendor") or ""
+                    ).lower()
                     host["os_family"] = "macOS" if "apple" in v_name else "Linux"
                     host["os_confidence"] = "Medium"
             elif winning_signal == "netbios":
                 host["os_family"] = "Windows"
-                types = {n.get("type") for n in host.get("netbios_names", []) if isinstance(n, dict) and "type" in n}
+                types = {
+                    n.get("type")
+                    for n in host.get("netbios_names", [])
+                    if isinstance(n, dict) and "type" in n
+                }
                 if {0x1D, 0x1B, 0x1C} & types:
                     host["os_confidence"] = "High"
                 else:
@@ -651,7 +720,8 @@ def _write(host: Dict, category: str, signal: str) -> None:
     log.debug(
         "classify_device(%s): %s ← %s",
         host.get("ip_address") or host.get("ip", "?"),
-        category, signal,
+        category,
+        signal,
     )
 
 

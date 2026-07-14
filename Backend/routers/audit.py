@@ -2,7 +2,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
 
 from auth.rbac import require_permission
 from db.base import get_db
@@ -12,7 +11,10 @@ router = APIRouter(prefix="/admin/audit-logs", tags=["Audit Logs"])
 
 
 def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin"
+    return (
+        getattr(getattr(user, "role", None), "name", "") or ""
+    ).lower() == "superadmin"
+
 
 @router.get("")
 @router.get("/")
@@ -24,7 +26,7 @@ def list_audit_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=1000),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("audit", "read"))
+    current_user: User = Depends(require_permission("audit", "read")),
 ):
     query = db.query(AuditLog).options(joinedload(AuditLog.user))
 
@@ -39,7 +41,7 @@ def list_audit_logs(
             )
             .distinct()
         )
-    
+
     if user_id:
         query = query.filter(AuditLog.user_id == user_id)
     if action:
@@ -48,10 +50,10 @@ def list_audit_logs(
         query = query.filter(AuditLog.resource_type == resource_type)
     if status:
         query = query.filter(AuditLog.status == status)
-        
+
     total = query.count()
     logs = query.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
-    
+
     return {
         "total": total,
         "logs": [
@@ -67,8 +69,8 @@ def list_audit_logs(
                 "status": log.status,
                 "ip_address": log.ip_address,
                 "changes": log.changes,
-                "created_at": log.created_at
+                "created_at": log.created_at,
             }
             for log in logs
-        ]
+        ],
     }

@@ -14,7 +14,7 @@ def test_encryption_decryption_flow():
     """Verify that text encrypted can be decrypted back to the original string."""
     plain = "SuperSecretSSHPassword123"
     cipher_b64 = encrypt_credential(plain)
-    
+
     assert cipher_b64 != plain
     assert len(cipher_b64) > 16
 

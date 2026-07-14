@@ -22,15 +22,6 @@ def log_audit_event(
 
     if request:
         ip_address = get_client_ip(request)
-        if ip_address == "testclient" or not ip_address:
-            ip_address = "127.0.0.1"
-        else:
-            import ipaddress
-
-            try:
-                ipaddress.ip_address(ip_address)
-            except ValueError:
-                ip_address = "127.0.0.1"
         user_agent = request.headers.get("user-agent")
 
     try:

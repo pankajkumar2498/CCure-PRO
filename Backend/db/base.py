@@ -40,15 +40,22 @@ engine = create_engine(AppConfig.DATABASE_URL, **AppConfig.DATABASE_ENGINE_KWARG
 @event.listens_for(engine, "connect")
 def _set_extensions(dbapi_connection, connection_record):
     """Enable useful PostgreSQL extensions on first connection."""
+    old_autocommit = dbapi_connection.autocommit
+    dbapi_connection.autocommit = True
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
         cursor.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-    except Exception:
-        pass  # Extensions may already exist
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("db.base").warning(
+            "Failed to create postgres extensions: %s", exc
+        )
     finally:
         cursor.close()
+        dbapi_connection.autocommit = old_autocommit
 
 
 # ─── Session & Base ──────────────────────────────────────────────────────────

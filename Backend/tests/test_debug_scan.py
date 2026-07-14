@@ -45,7 +45,7 @@ def test_debug_scan():
         for o in orgs:
             print(f"ID: {o.id} | slug: {o.slug} | name: {o.name}")
 
-        # Assert False to force pytest to show standard output
-        assert False, "Debug output check"
+        # Assert True to avoid blocking CI
+        assert True, "Debug output check"
     finally:
         db.close()

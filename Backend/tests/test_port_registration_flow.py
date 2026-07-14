@@ -96,7 +96,7 @@ async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls
         }
     ]
 
-    orch = ScanOrchestrator(has_privileges=True)
+    orch = ScanOrchestrator()
 
     # Mocking helpers on orchestrator that we are not testing
     orch._expand_targets = MagicMock(return_value=["10.180.12.104"])
@@ -127,7 +127,8 @@ def test_port_engine_port_list_curated_hybrid_ranges():
     from core.constants import SCAN_PORTS_OT, SCAN_PORTS_QUICK
 
     # Scenario 1: LIGHT intensity
-    pe_light = PortEngine(intensity=ScanIntensity.LIGHT)
+    # Pass exclude_ot_from_nmap=False so OT ports are not stripped from the list
+    pe_light = PortEngine(intensity=ScanIntensity.LIGHT, exclude_ot_from_nmap=False)
     ports_light = pe_light._port_list()
     # Check that it contains all OT ports (like 502, 102, 2404)
     for ot_port in SCAN_PORTS_OT:

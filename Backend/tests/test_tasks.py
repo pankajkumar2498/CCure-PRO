@@ -10,8 +10,10 @@ def mock_db():
 
 @pytest.fixture
 def mock_orch():
-    with patch("core.tasks._orch") as m:
-        yield m
+    with patch("core.tasks._new_orchestrator") as m:
+        mock_instance = MagicMock()
+        m.return_value = mock_instance
+        yield mock_instance
 
 
 def test_run_host_discovery_task_success(mock_orch, mock_db):

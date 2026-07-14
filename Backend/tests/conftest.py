@@ -76,6 +76,16 @@ if "prod" in db_name.lower():
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 
+# ── Disable rate limiting during tests ───────────────────────────────────────
+# slowapi enforces limits based on request count. In CI, rapid parallel calls
+# to auth/login trigger 429 Too Many Requests. Disable globally for the test run.
+try:
+    from scan_helpers import limiter
+
+    limiter.enabled = False
+except Exception:
+    pass  # If import fails (e.g. module renamed), tests still run
+
 from sqlalchemy.orm import Session
 from main import app
 from db.base import get_db, engine, Base, SessionLocal
@@ -153,14 +163,10 @@ def reset_database():
 
     def _cleanup():
         with engine.begin() as conn:
-            # Truncate organizations and users tables and cascade to all dependent tables
-            conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
-            # Delete any non-system roles created during the test
-            conn.execute(
-                text(
-                    "DELETE FROM roles WHERE name NOT IN ('superadmin', 'org_admin', 'analyst', 'viewer', 'scanner')"
-                )
-            )
+            # Truncate organizations, users, AND roles (with CASCADE) so that
+            # Alembic-seeded roles are wiped and re-seeded on next startup.
+            # This prevents duplicate key violations on roles_name_key / roles_pkey.
+            conn.execute(text("TRUNCATE TABLE organizations, users, roles CASCADE"))
 
     # Clean up before the test (in case a previous run crashed and left dirty state)
     _cleanup()

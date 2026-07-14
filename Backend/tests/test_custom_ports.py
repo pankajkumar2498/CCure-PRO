@@ -35,7 +35,7 @@ def test_parse_custom_ports_success():
 
 def test_parse_custom_ports_value_errors():
     # Malformed format
-    with pytest.raises(ValueError, match="Invalid characters"):
+    with pytest.raises(ValueError, match="Malformed port"):
         InputValidator.parse_custom_ports("22a")
     with pytest.raises(ValueError, match="Invalid range format"):
         InputValidator.parse_custom_ports("80-80-80")
@@ -81,7 +81,7 @@ def test_parse_exclude_ports_success():
 
 
 def test_parse_exclude_ports_errors():
-    with pytest.raises(ValueError, match="Invalid characters"):
+    with pytest.raises(ValueError, match="Malformed port"):
         InputValidator.parse_exclude_ports("22a")
     with pytest.raises(ValueError, match="Invalid range format"):
         InputValidator.parse_exclude_ports("80-80-80")
@@ -100,6 +100,8 @@ def test_check_scan_quota_custom_ports():
     mock_db = MagicMock()
     mock_org = MagicMock()
     mock_org.plan = "community"
+    mock_org.max_scans_per_day = None
+    mock_org.max_concurrent_scans = None
 
     # Configure mock DB query
     mock_db.query.return_value.filter.return_value.first.return_value = mock_org

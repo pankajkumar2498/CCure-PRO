@@ -66,6 +66,16 @@ def downgrade() -> None:
     if conn.dialect.name == "postgresql":
         conn.execute(
             sa.text(
+                "UPDATE compliance_controls SET theme = 'ORG' WHERE theme NOT IN ('ORG', 'PPL', 'PHY', 'TECH');"
+            )
+        )
+        conn.execute(
+            sa.text(
+                "UPDATE compliance_scores SET theme = 'ORG' WHERE theme NOT IN ('ORG', 'PPL', 'PHY', 'TECH');"
+            )
+        )
+        conn.execute(
+            sa.text(
                 "ALTER TABLE compliance_controls DROP CONSTRAINT IF EXISTS ck_control_theme;"
             )
         )

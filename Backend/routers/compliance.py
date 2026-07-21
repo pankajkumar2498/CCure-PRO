@@ -230,7 +230,7 @@ def install_marketplace_framework(
         existing.enabled_by = user.id
         existing.enabled_at = datetime.now(timezone.utc)
     else:
-        inst_id = f"ctf_{user.org_id[:4]}_{framework_id[-8:]}"
+        inst_id = f"ctf_{user.org_id}_{framework_id}"
         new_inst = ComplianceTenantFramework(
             id=inst_id,
             tenant_id=user.org_id,
@@ -242,16 +242,35 @@ def install_marketplace_framework(
         db.add(new_inst)
 
     # Automatically bootstrap default policy baseline containing all controls and rules
-    policy_id = f"cpl_{user.org_id[:4]}_{fw.code.lower()}_default"
+    policy_id = f"cpl_{user.org_id}_{fw.code.lower()}_default"
+    family_code = (
+        f"POL-{user.org_id.upper().replace('.', '_')}-{fw.code.upper()}-DEFAULT"
+    )
+
     default_policy = (
-        db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id).first()
+        db.query(CompliancePolicy)
+        .filter(
+            or_(
+                CompliancePolicy.id == policy_id,
+                and_(
+                    CompliancePolicy.tenant_id == user.org_id,
+                    CompliancePolicy.framework_id == framework_id,
+                ),
+                and_(
+                    CompliancePolicy.tenant_id == user.org_id,
+                    CompliancePolicy.policy_family_code == family_code,
+                    CompliancePolicy.version_number == 1,
+                ),
+            )
+        )
+        .first()
     )
     if not default_policy:
         default_policy = CompliancePolicy(
             id=policy_id,
             framework_id=framework_id,
             tenant_id=user.org_id,
-            policy_family_code=f"POL-{fw.code.upper()}-DEFAULT",
+            policy_family_code=family_code,
             version_number=1,
             name=f"{fw.name} Default Policy Baseline",
             target_platform="any",
@@ -280,7 +299,7 @@ def install_marketplace_framework(
 
         if rules:
             for r in rules:
-                link = CompliancePolicyRule(policy_id=policy_id, rule_id=r.id)
+                link = CompliancePolicyRule(policy_id=default_policy.id, rule_id=r.id)
                 db.add(link)
 
     db.commit()
@@ -336,7 +355,7 @@ def list_policies(
             ComplianceTenantFramework.tenant_id == user.org_id,
             ComplianceTenantFramework.is_enabled == True,
         )
-        .subquery()
+        .scalar_subquery()
     )
 
     q = db.query(CompliancePolicy).filter(
@@ -491,8 +510,8 @@ def create_policy_baseline(
             status_code=400, detail="One or more selected rules do not exist"
         )
 
-    policy_family = f"POL-{payload.name.replace(' ', '-').upper()[:15]}"
-    policy_id = f"cpl_{user.org_id[:4]}_{policy_family.lower()}_v1"
+    policy_family = f"POL-{user.org_id.upper().replace('.', '_')}-{payload.name.replace(' ', '-').upper()[:15]}"
+    policy_id = f"cpl_{user.org_id}_{policy_family.lower()}_v1"
 
     new_policy = CompliancePolicy(
         id=policy_id,
@@ -731,7 +750,7 @@ def attest_manual_control(
             detail="Cannot attest controls for disabled or uninstalled frameworks.",
         )
 
-    finding_id = f"cfnd_{user.org_id[:4]}_manual_{control_id[-8:]}"
+    finding_id = f"cfnd_{user.org_id}_manual_{control_id}"
 
     finding = (
         db.query(ComplianceFinding).filter(ComplianceFinding.id == finding_id).first()
@@ -761,7 +780,7 @@ def attest_manual_control(
 
     # Log history trail
     history = ComplianceFindingHistory(
-        id=f"cfh_{user.org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+        id=f"cfh_{user.org_id}_{datetime.now().strftime('%M%S%f')}",
         finding_id=finding_id,
         status=payload.status,
         changed_by=user.id,
@@ -1198,7 +1217,7 @@ def approve_remediation_request(
         if finding:
             finding.status = "fail"
             history = ComplianceFindingHistory(
-                id=f"cfh_{user.org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+                id=f"cfh_{user.org_id}_{datetime.now().strftime('%M%S%f')}",
                 finding_id=finding.id,
                 status="fail",
                 changed_by=user.id,
@@ -1281,7 +1300,7 @@ def cancel_remediation_request(
     if finding:
         finding.status = "fail"
         history = ComplianceFindingHistory(
-            id=f"cfh_{user.org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+            id=f"cfh_{user.org_id}_{datetime.now().strftime('%M%S%f')}",
             finding_id=finding.id,
             status="fail",
             changed_by=user.id,
@@ -1521,7 +1540,7 @@ def request_exception_waiver(
                 detail="Cannot request exceptions for disabled or uninstalled frameworks.",
             )
 
-    exc_id = f"cex_{user.org_id[:4]}_{datetime.now().strftime('%M%S%f')}"
+    exc_id = f"cex_{user.org_id}_{datetime.now().strftime('%M%S%f')}"
     new_exception = ComplianceException(
         id=exc_id,
         tenant_id=user.org_id,
@@ -1573,7 +1592,7 @@ def approve_exception_waiver(
             finding.status = "exception"
             # Append timeline log
             history = ComplianceFindingHistory(
-                id=f"cfh_{user.org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+                id=f"cfh_{user.org_id}_{datetime.now().strftime('%M%S%f')}",
                 finding_id=finding.id,
                 status="exception",
                 changed_by=user.id,
@@ -1605,7 +1624,7 @@ def get_dashboard_summary(
             ComplianceTenantFramework.tenant_id == user.org_id,
             ComplianceTenantFramework.is_enabled == True,
         )
-        .subquery()
+        .scalar_subquery()
     )
 
     scores = (
@@ -1887,11 +1906,11 @@ def download_statement_of_applicability(
         media = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        filename = f"soa_{user.org_id[:4]}.docx"
+        filename = f"soa_{user.org_id}.docx"
     else:
         buffer = _generate_soa_pdf(controls, findings_map)
         media = "application/pdf"
-        filename = f"soa_{user.org_id[:4]}.pdf"
+        filename = f"soa_{user.org_id}.pdf"
 
     return StreamingResponse(
         buffer,

@@ -715,7 +715,7 @@ def seed_and_evaluate():
         db.commit()
 
         # 4. Find scanned target asset: 10.180.6.14
-        target_ip = "10.180.5.190"
+        target_ip = "10.180.6.14"
         asset = db.query(Asset).filter(Asset.ip_address == target_ip).first()
         if not asset:
             print(

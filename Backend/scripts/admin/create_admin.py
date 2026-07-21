@@ -2,8 +2,9 @@ import sys
 import os
 
 # Add Backend to path
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_BACKEND = os.path.dirname(_HERE)
+from pathlib import Path
+
+_BACKEND = str(Path(__file__).resolve().parents[2])
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
@@ -30,7 +31,13 @@ def create_admin():
             return
 
         # 2. Get default org and admin role
-        org = db.query(Organization).filter(Organization.slug == "default").first()
+        org = (
+            db.query(Organization)
+            .filter((Organization.slug == "default") | (Organization.slug == "king"))
+            .first()
+        )
+        if not org:
+            org = db.query(Organization).first()
         role = db.query(Role).filter(Role.name == "superadmin").first()
 
         if not org or not role:

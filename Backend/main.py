@@ -191,6 +191,50 @@ async def lifespan(app: FastAPI):
                     "Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded."
                 )
 
+    # 1.7. Ensure compliance catalog (ISO 27001 framework, controls, & rules) is seeded
+    try:
+        from db.models.compliance import (
+            ComplianceFramework,
+            ComplianceControl,
+            ComplianceRule,
+        )
+
+        with SessionLocal() as db:
+            fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_iso27001_2022")
+                .first()
+            )
+            ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
+                .count()
+            )
+            rule_count = db.query(ComplianceRule).count()
+            if not fw or ctrl_count < 93 or rule_count < 20:
+                log.info(
+                    f"Auto-seeding compliance catalog (Found fw={bool(fw)}, controls={ctrl_count}/93, rules={rule_count})..."
+                )
+                from scripts.seed_compliance import seed_framework_and_controls
+                from scripts.seed_real_rules import seed_and_evaluate
+
+                seed_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "scripts",
+                    "iso27001_2022_controls_seed.json",
+                )
+                if os.path.exists(seed_file):
+                    seed_framework_and_controls(db, seed_file)
+
+                seed_and_evaluate()
+                log.info("Compliance catalog auto-seeding completed successfully!")
+            else:
+                log.info(
+                    "Compliance catalog (ISO 27001 framework, 93 controls & rules) fully present and synchronized."
+                )
+    except Exception as e:
+        log.warning(f"Compliance catalog auto-seeding skipped or deferred: {e}")
+
     # 3. Initialize scan engines
     api = HostDiscoveryAPI(silent=False)
     set_api(api)

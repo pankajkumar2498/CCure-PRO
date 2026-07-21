@@ -1051,43 +1051,45 @@ export default function ComplianceWorkspace() {
             <div className="marketplace-view grid-3">
               {marketplace.map((fw) => (
                 <div key={fw.framework_id} className="framework-card">
-                  <div className="fw-icon">🔒</div>
-                  <h3>{fw.name}</h3>
-                  <p>
-                    Code: {fw.code} | Version: {fw.version}
-                  </p>
-                  <p>Total Requirements: {fw.controls_count}</p>
-                  {fw.is_installed ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "10px",
-                        width: "100%",
-                      }}
-                    >
-                      <div className="framework-installed-badge">
-                        ✓ Installed
-                      </div>
-                      <button
-                        className="db-btn db-btn--danger"
-                        style={{ width: "100%" }}
-                        onClick={() =>
-                          handleUninstallFramework(fw.framework_id)
-                        }
-                      >
-                        Uninstall
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className="db-btn db-btn--primary"
-                      style={{ width: "100%" }}
-                      onClick={() => handleInstallFramework(fw.framework_id)}
-                    >
-                      Install
-                    </button>
-                  )}
+                  <div className="framework-card-header">
+                    <div className="fw-icon">🔒</div>
+                    <h3>{fw.name}</h3>
+                    <p className="fw-meta">
+                      Code: {fw.code} | Version: {fw.version}
+                    </p>
+                    <p className="fw-reqs">
+                      Total Requirements: {fw.controls_count}
+                    </p>
+                  </div>
+                  <div className="framework-card-actions">
+                    {fw.is_installed ? (
+                      <>
+                        <div className="framework-installed-badge">
+                          ✓ Installed
+                        </div>
+                        <button
+                          className="db-btn db-btn--danger fw-action-btn"
+                          onClick={() =>
+                            handleUninstallFramework(fw.framework_id)
+                          }
+                        >
+                          Uninstall
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="framework-status-placeholder" />
+                        <button
+                          className="db-btn db-btn--primary fw-action-btn"
+                          onClick={() =>
+                            handleInstallFramework(fw.framework_id)
+                          }
+                        >
+                          Install
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2523,7 +2525,25 @@ export default function ComplianceWorkspace() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={modalType.toUpperCase()}
+        title={
+          modalType === "policy"
+            ? "Create Policy Baseline"
+            : modalType === "attest"
+              ? "Control Manual Attestation"
+              : modalType === "exception"
+                ? "Request Exception Waiver"
+                : modalType === "edit_rule"
+                  ? "Configure Rule Parameters"
+                  : modalType.toUpperCase()
+        }
+        size={
+          modalType === "policy" ||
+          modalType === "attest" ||
+          modalType === "exception" ||
+          modalType === "edit_rule"
+            ? "medium"
+            : "large"
+        }
       >
         {modalType === "policy" && (
           <form onSubmit={handleCreatePolicy} className="compliance-form">

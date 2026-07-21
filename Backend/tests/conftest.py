@@ -184,10 +184,11 @@ UUID.bind_processor = custom_bind_processor
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
-    from db.migrate_production_schema import seed_rbac
+    from db.migrate_production_schema import seed_rbac, create_partitions
 
     with engine.begin() as conn:
         Base.metadata.create_all(bind=conn)
+        create_partitions(conn)
         seed_rbac(conn)
 
 

@@ -47,10 +47,12 @@ os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "true")
 os.environ.setdefault("CELERY_TASK_EAGER_PROPAGATES", "true")
 
 # Require PostgreSQL for pytest
-database_url = os.getenv("DATABASE_URL")
-if not database_url:
-    # Set default local test database URL fallback for convenience
-    database_url = "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_test"
+database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+if not database_url or "ccure_test" in database_url:
+    # Set dedicated isolated test database URL fallback to prevent wiping development database
+    database_url = (
+        "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_pytest_db"
+    )
     os.environ["DATABASE_URL"] = database_url
 
 if not database_url.startswith("postgresql"):
@@ -58,15 +60,39 @@ if not database_url.startswith("postgresql"):
         "Tests must run against PostgreSQL. Set DATABASE_URL to a postgresql:// URL instead of sqlite:///."
     )
 
-# Safety guard: refuse to run against production databases
+# Safety guard: refuse to run against production or development databases
 from urllib.parse import urlparse
+from sqlalchemy import create_engine, text
+
+
+def _ensure_test_db_exists(url: str):
+    try:
+        parsed = urlparse(url)
+        target_db = parsed.path.lstrip("/")
+        if not target_db or not url.startswith("postgresql"):
+            return
+        postgres_url = url.rsplit("/", 1)[0] + "/postgres"
+        admin_engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+        with admin_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
+                {"dbname": target_db},
+            )
+            if not res.scalar():
+                conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+        admin_engine.dispose()
+    except Exception:
+        pass
+
+
+_ensure_test_db_exists(database_url)
 
 parsed = urlparse(database_url)
 db_name = parsed.path.lstrip("/")
-if db_name in ("ccure_db", "prod", "production"):
+if db_name in ("ccure_db", "prod", "production", "ccure_test"):
     raise RuntimeError(
-        f"Refusing to run tests against production database '{db_name}'. "
-        "Use a dedicated test database like 'ccure_test'."
+        f"Refusing to run tests against development database '{db_name}'. "
+        "Tests require an isolated test database (e.g. 'ccure_pytest_db')."
     )
 if "prod" in db_name.lower():
     raise RuntimeError(
@@ -158,9 +184,11 @@ UUID.bind_processor = custom_bind_processor
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
-    from db.migrate_production_schema import seed_rbac
+    from db.migrate_production_schema import seed_rbac, create_partitions
 
     with engine.begin() as conn:
+        Base.metadata.create_all(bind=conn)
+        create_partitions(conn)
         seed_rbac(conn)
 
 

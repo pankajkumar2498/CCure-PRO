@@ -21,6 +21,9 @@ from db.models.compliance import (
     ComplianceTenantFramework,
     ComplianceControl,
     CompliancePolicy,
+    CompliancePolicyRule,
+    ComplianceRule,
+    ComplianceRuleControl,
     ComplianceFinding,
     ComplianceScanRun,
 )
@@ -124,6 +127,30 @@ def seed_mock_compliance_data():
 
             db.flush()
 
+            # Link framework rules to policy baseline if not linked
+            rules_linked = (
+                db.query(CompliancePolicyRule)
+                .filter(CompliancePolicyRule.policy_id == policy.id)
+                .count()
+            )
+            if rules_linked == 0:
+                fw_rules = (
+                    db.query(ComplianceRule)
+                    .join(
+                        ComplianceRuleControl,
+                        ComplianceRuleControl.rule_id == ComplianceRule.id,
+                    )
+                    .join(
+                        ComplianceControl,
+                        ComplianceControl.id == ComplianceRuleControl.control_id,
+                    )
+                    .filter(ComplianceControl.framework_id == framework_id)
+                    .all()
+                )
+                for r in fw_rules:
+                    link = CompliancePolicyRule(policy_id=policy.id, rule_id=r.id)
+                    db.add(link)
+
             # Create Scan Run
             scan_run_id = f"run_mock_{org.id}"
             run = (
@@ -151,8 +178,7 @@ def seed_mock_compliance_data():
             findings_seeded = 0
             for idx, ctrl in enumerate(controls):
                 # Ensure the finding_id is unique and fits within 100 characters
-                short_ctrl_id = ctrl.id.split("_")[-1]
-                finding_id = f"cfnd_{org.id[:15]}_{short_ctrl_id}"
+                finding_id = f"cfnd_{org.id[:15]}_{ctrl.id[-40:]}"
 
                 # Delete old finding if exists to overwrite
                 db.query(ComplianceFinding).filter(

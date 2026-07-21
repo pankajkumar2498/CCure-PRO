@@ -1,0 +1,1546 @@
+{
+  "framework": {
+    "id": "cfw_nist_csf_v2",
+    "code": "NIST_CSF_V2",
+    "name": "NIST Cybersecurity Framework (CSF) v2.0",
+    "version": "2.0",
+    "description": "NIST CSF v2.0 is an industry-standard cybersecurity framework organized around 6 Core Functions (Govern, Identify, Protect, Detect, Respond, Recover), 22 Categories, and 106 Subcategories with ISO 27001:2022 crosswalk mappings.",
+    "author": "National Institute of Standards and Technology (NIST)"
+  },
+  "controls": [
+    {
+      "id": "GV.OC-01",
+      "theme": "GV",
+      "title": "Organizational mission and objectives are understood and inform cybersecurity risk management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.1"
+      ],
+      "evidence_checklist": [
+        "Organizational chart",
+        "Mission statement alignment review"
+      ]
+    },
+    {
+      "id": "GV.OC-02",
+      "theme": "GV",
+      "title": "Internal and external stakeholders and their cybersecurity expectations are identified",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19"
+      ],
+      "evidence_checklist": [
+        "Stakeholder matrix",
+        "Contractual security requirements"
+      ]
+    },
+    {
+      "id": "GV.OC-03",
+      "theme": "GV",
+      "title": "Legal, regulatory, and contractual requirements regarding cybersecurity are identified and managed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.31",
+        "A.5.36"
+      ],
+      "evidence_checklist": [
+        "Regulatory compliance matrix",
+        "Legal counsel review logs"
+      ]
+    },
+    {
+      "id": "GV.OC-04",
+      "theme": "GV",
+      "title": "Critical service outcomes and dependencies are identified and communicated",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.30"
+      ],
+      "evidence_checklist": [
+        "Business Impact Analysis (BIA)",
+        "Dependency map"
+      ]
+    },
+    {
+      "id": "GV.OC-05",
+      "theme": "GV",
+      "title": "Outcomes, capabilities, and services that the organization depends on are identified and prioritized",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.30"
+      ],
+      "evidence_checklist": [
+        "Criticality ratings",
+        "Service catalog SLA"
+      ]
+    },
+    {
+      "id": "GV.RM-01",
+      "theme": "GV",
+      "title": "Risk management objectives, risk tolerance, and risk appetite are established and approved",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Board approved risk appetite statement",
+        "Risk matrix"
+      ]
+    },
+    {
+      "id": "GV.RM-02",
+      "theme": "GV",
+      "title": "Risk management strategy is informed by organizational culture, leadership, and external factors",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Cybersecurity strategy document",
+        "Leadership meeting minutes"
+      ]
+    },
+    {
+      "id": "GV.RM-03",
+      "theme": "GV",
+      "title": "Cybersecurity risk management activities are integrated into enterprise risk management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "ERM framework documentation",
+        "Risk register"
+      ]
+    },
+    {
+      "id": "GV.RM-04",
+      "theme": "GV",
+      "title": "Strategic opportunities to improve cybersecurity posture are identified and evaluated",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Cybersecurity roadmap",
+        "Maturity assessment reports"
+      ]
+    },
+    {
+      "id": "GV.RM-05",
+      "theme": "GV",
+      "title": "Lines of communication for risk management information are established across all levels",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Communication plan",
+        "Risk escalation procedures"
+      ]
+    },
+    {
+      "id": "GV.RM-06",
+      "theme": "GV",
+      "title": "Standardized risk management methods are defined, used, and regularly reviewed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Risk assessment methodology",
+        "Review logs"
+      ]
+    },
+    {
+      "id": "GV.RM-07",
+      "theme": "GV",
+      "title": "Strategic risks and risk responses are monitored and communicated to leadership",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.4"
+      ],
+      "evidence_checklist": [
+        "Executive risk dashboard",
+        "Quarterly risk reports"
+      ]
+    },
+    {
+      "id": "GV.RR-01",
+      "theme": "GV",
+      "title": "Organizational leadership is responsible and accountable for cybersecurity risk management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.2"
+      ],
+      "evidence_checklist": [
+        "Role descriptions",
+        "RACI matrix"
+      ]
+    },
+    {
+      "id": "GV.RR-02",
+      "theme": "GV",
+      "title": "Roles, responsibilities, and authorities are assigned, communicated, and understood",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.2"
+      ],
+      "evidence_checklist": [
+        "Security team charters",
+        "Signed job descriptions"
+      ]
+    },
+    {
+      "id": "GV.RR-03",
+      "theme": "GV",
+      "title": "Adequate resources are allocated for cybersecurity risk management activities",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.2"
+      ],
+      "evidence_checklist": [
+        "Cybersecurity budget",
+        "Headcount allocations"
+      ]
+    },
+    {
+      "id": "GV.RR-04",
+      "theme": "GV",
+      "title": "Cybersecurity is integrated into performance evaluation and compensation structures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.2",
+        "A.6.3"
+      ],
+      "evidence_checklist": [
+        "Performance review templates",
+        "KPI metrics"
+      ]
+    },
+    {
+      "id": "GV.PO-01",
+      "theme": "GV",
+      "title": "Organizational cybersecurity policy is established, communicated, and enforced",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.1"
+      ],
+      "evidence_checklist": [
+        "Information Security Policy Document",
+        "Policy sign-off logs"
+      ]
+    },
+    {
+      "id": "GV.PO-02",
+      "theme": "GV",
+      "title": "Cybersecurity policies and procedures are reviewed, updated, and approved regularly",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.1"
+      ],
+      "evidence_checklist": [
+        "Policy revision history",
+        "Approval records"
+      ]
+    },
+    {
+      "id": "GV.OV-01",
+      "theme": "GV",
+      "title": "Cybersecurity strategy performance and risk posture are reviewed by executive leadership",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.35"
+      ],
+      "evidence_checklist": [
+        "Board review minutes",
+        "KPI reports"
+      ]
+    },
+    {
+      "id": "GV.OV-02",
+      "theme": "GV",
+      "title": "Independent reviews of organizational cybersecurity posture are conducted",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.35",
+        "A.5.36"
+      ],
+      "evidence_checklist": [
+        "Third-party audit report",
+        "Penetration test report"
+      ]
+    },
+    {
+      "id": "GV.OV-03",
+      "theme": "GV",
+      "title": "Cybersecurity risk management strategy is adjusted based on oversight and review results",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.35"
+      ],
+      "evidence_checklist": [
+        "Corrective action plan (CAPA)",
+        "Management review log"
+      ]
+    },
+    {
+      "id": "GV.SC-01",
+      "theme": "GV",
+      "title": "Supply chain risk management program is established, approved, and integrated",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19",
+        "A.5.20"
+      ],
+      "evidence_checklist": [
+        "Vendor Risk Management Policy",
+        "SCRM program charter"
+      ]
+    },
+    {
+      "id": "GV.SC-02",
+      "theme": "GV",
+      "title": "Cybersecurity roles and responsibilities for suppliers and third parties are defined",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19",
+        "A.5.20"
+      ],
+      "evidence_checklist": [
+        "Supplier security requirements",
+        "Third-party contracts"
+      ]
+    },
+    {
+      "id": "GV.SC-03",
+      "theme": "GV",
+      "title": "Supply chain risk management strategy is integrated into procurement processes",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19",
+        "A.5.20"
+      ],
+      "evidence_checklist": [
+        "RFP security questionnaire",
+        "Procurement policy"
+      ]
+    },
+    {
+      "id": "GV.SC-04",
+      "theme": "GV",
+      "title": "Suppliers are prioritized by criticality and potential impact to organizational mission",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19"
+      ],
+      "evidence_checklist": [
+        "Supplier tiering matrix",
+        "Critical vendor list"
+      ]
+    },
+    {
+      "id": "GV.SC-05",
+      "theme": "GV",
+      "title": "Requirements for suppliers are defined and included in contractual agreements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.20"
+      ],
+      "evidence_checklist": [
+        "Standard NDA",
+        "Security Addendum (DPA/MSA)"
+      ]
+    },
+    {
+      "id": "GV.SC-06",
+      "theme": "GV",
+      "title": "Planning and due diligence are conducted prior to establishing formal vendor relationships",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19"
+      ],
+      "evidence_checklist": [
+        "Due diligence reports",
+        "SOC 2 Type II review"
+      ]
+    },
+    {
+      "id": "GV.SC-07",
+      "theme": "GV",
+      "title": "Risks posed by suppliers and third-party services are assessed and managed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19",
+        "A.5.21"
+      ],
+      "evidence_checklist": [
+        "Vendor risk assessment logs",
+        "SOC 2 reviews"
+      ]
+    },
+    {
+      "id": "GV.SC-08",
+      "theme": "GV",
+      "title": "Relevant suppliers are included in incident response, business continuity, and testing",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.21",
+        "A.5.22"
+      ],
+      "evidence_checklist": [
+        "Joint IR plan",
+        "Tabletop exercise log"
+      ]
+    },
+    {
+      "id": "GV.SC-09",
+      "theme": "GV",
+      "title": "Supply chain security performance and compliance are monitored over time",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.21"
+      ],
+      "evidence_checklist": [
+        "Annual vendor audit logs",
+        "Continuous monitoring alerts"
+      ]
+    },
+    {
+      "id": "GV.SC-10",
+      "theme": "GV",
+      "title": "Offboarding procedures for suppliers and third parties are executed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.22"
+      ],
+      "evidence_checklist": [
+        "Vendor offboarding checklist",
+        "Access revocation logs"
+      ]
+    },
+    {
+      "id": "ID.AM-01",
+      "theme": "ID",
+      "title": "Physical devices and systems within the organization are inventoried",
+      "scannability": "auto",
+      "scan_module_hint": "network_scan",
+      "crosswalk": [
+        "A.8.8",
+        "A.8.20"
+      ],
+      "evidence_checklist": [
+        "Asset Inventory Database",
+        "Subnet Scans"
+      ]
+    },
+    {
+      "id": "ID.AM-02",
+      "theme": "ID",
+      "title": "Software platforms and applications within the organization are inventoried",
+      "scannability": "auto",
+      "scan_module_hint": "software_inventory",
+      "crosswalk": [
+        "A.8.19",
+        "A.8.20"
+      ],
+      "evidence_checklist": [
+        "Software inventory log",
+        "Package audit report"
+      ]
+    },
+    {
+      "id": "ID.AM-03",
+      "theme": "ID",
+      "title": "Representational maps of network communication and data flows are maintained",
+      "scannability": "auto",
+      "scan_module_hint": "topology_scan",
+      "crosswalk": [
+        "A.8.20",
+        "A.8.21"
+      ],
+      "evidence_checklist": [
+        "Network topology map",
+        "Data flow diagram"
+      ]
+    },
+    {
+      "id": "ID.AM-04",
+      "theme": "ID",
+      "title": "External information systems are identified and documented",
+      "scannability": "auto",
+      "scan_module_hint": "dns_discovery",
+      "crosswalk": [
+        "A.8.20",
+        "A.8.22"
+      ],
+      "evidence_checklist": [
+        "SaaS inventory",
+        "Domain DNS records"
+      ]
+    },
+    {
+      "id": "ID.AM-05",
+      "theme": "ID",
+      "title": "Resources are prioritized based on classification, criticality, and business value",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.9",
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "Asset classification matrix",
+        "Asset criticality scores"
+      ]
+    },
+    {
+      "id": "ID.AM-07",
+      "theme": "ID",
+      "title": "Inventories of assets are maintained and updated regularly",
+      "scannability": "auto",
+      "scan_module_hint": "host_discovery",
+      "crosswalk": [
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "Automated discovery schedule",
+        "Inventory delta log"
+      ]
+    },
+    {
+      "id": "ID.AM-08",
+      "theme": "ID",
+      "title": "Systems, hardware, software, and data are managed throughout their lifecycle",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "Decommissioning log",
+        "Hardware disposal records"
+      ]
+    },
+    {
+      "id": "ID.RA-01",
+      "theme": "ID",
+      "title": "Asset vulnerabilities are identified, validated, and documented",
+      "scannability": "auto",
+      "scan_module_hint": "vulnerability_scan",
+      "crosswalk": [
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "Nmap/OpenVAS Scan Reports",
+        "CVE Findings Table"
+      ]
+    },
+    {
+      "id": "ID.RA-02",
+      "theme": "ID",
+      "title": "Cyber threat intelligence is received from information sharing forums and sources",
+      "scannability": "auto",
+      "scan_module_hint": "threat_intel_feed",
+      "crosswalk": [
+        "A.5.7"
+      ],
+      "evidence_checklist": [
+        "Threat feed integration",
+        "CISA alert subscriptions"
+      ]
+    },
+    {
+      "id": "ID.RA-03",
+      "theme": "ID",
+      "title": "Internal and external threats are identified, documented, and analyzed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.7"
+      ],
+      "evidence_checklist": [
+        "Threat model documentation",
+        "STRIDE analysis"
+      ]
+    },
+    {
+      "id": "ID.RA-04",
+      "theme": "ID",
+      "title": "Potential business impacts and likelihood of threat events are identified",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.7"
+      ],
+      "evidence_checklist": [
+        "Risk assessment matrix",
+        "Impact scoring sheet"
+      ]
+    },
+    {
+      "id": "ID.RA-05",
+      "theme": "ID",
+      "title": "Threats, vulnerabilities, likelihoods, and impacts are used to determine risk",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.7"
+      ],
+      "evidence_checklist": [
+        "Risk register entries",
+        "Scoring algorithm logs"
+      ]
+    },
+    {
+      "id": "ID.RA-06",
+      "theme": "ID",
+      "title": "Risk responses are identified, prioritized, and executed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.7"
+      ],
+      "evidence_checklist": [
+        "Risk treatment plan",
+        "Mitigation task queue"
+      ]
+    },
+    {
+      "id": "ID.RA-07",
+      "theme": "ID",
+      "title": "Changes to systems, environments, or operations are evaluated for risk",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.8.32"
+      ],
+      "evidence_checklist": [
+        "Change Advisory Board (CAB) minutes",
+        "Risk evaluation forms"
+      ]
+    },
+    {
+      "id": "ID.RA-08",
+      "theme": "ID",
+      "title": "Vulnerability disclosure program is established and managed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "security.txt file",
+        "Bug bounty program page"
+      ]
+    },
+    {
+      "id": "ID.RA-09",
+      "theme": "ID",
+      "title": "Authenticity and integrity of hardware, software, and firmware are verified",
+      "scannability": "auto",
+      "scan_module_hint": "integrity_scan",
+      "crosswalk": [
+        "A.8.9",
+        "A.8.19"
+      ],
+      "evidence_checklist": [
+        "SHA256 checksum logs",
+        "Code signing verification"
+      ]
+    },
+    {
+      "id": "ID.RA-10",
+      "theme": "ID",
+      "title": "Critical suppliers and supply chain vulnerabilities are identified and analyzed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.19",
+        "A.8.8"
+      ],
+      "evidence_checklist": [
+        "SBOM analysis",
+        "Dependency vulnerability reports"
+      ]
+    },
+    {
+      "id": "ID.IM-01",
+      "theme": "ID",
+      "title": "Improvements to cybersecurity risk management processes are identified and executed",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.35"
+      ],
+      "evidence_checklist": [
+        "Lessons learned reports",
+        "Process audit logs"
+      ]
+    },
+    {
+      "id": "ID.IM-02",
+      "theme": "ID",
+      "title": "Post-incident analyses are performed to identify process improvements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.26",
+        "A.5.27"
+      ],
+      "evidence_checklist": [
+        "Post-mortem reports",
+        "Incident RCA documentation"
+      ]
+    },
+    {
+      "id": "ID.IM-03",
+      "theme": "ID",
+      "title": "Security testing and exercise results are used to drive program improvements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.35",
+        "A.8.34"
+      ],
+      "evidence_checklist": [
+        "Tabletop recommendations",
+        "Red team remediations"
+      ]
+    },
+    {
+      "id": "ID.IM-04",
+      "theme": "ID",
+      "title": "Cybersecurity strategy and plans are updated to reflect improvements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.1"
+      ],
+      "evidence_checklist": [
+        "Updated security strategy",
+        "Versioned roadmap"
+      ]
+    },
+    {
+      "id": "PR.AA-01",
+      "theme": "PR",
+      "title": "Identities and credentials for authorized users, devices, and services are managed",
+      "scannability": "auto",
+      "scan_module_hint": "auth_policy_scan",
+      "crosswalk": [
+        "A.5.15",
+        "A.5.16"
+      ],
+      "evidence_checklist": [
+        "Active Directory User Export",
+        "IAM Policy Config"
+      ]
+    },
+    {
+      "id": "PR.AA-02",
+      "theme": "PR",
+      "title": "Identities are authenticated and bound to credentials using MFA or strong mechanisms",
+      "scannability": "auto",
+      "scan_module_hint": "mfa_enforcement_check",
+      "crosswalk": [
+        "A.5.17",
+        "A.8.5"
+      ],
+      "evidence_checklist": [
+        "MFA Audit Logs",
+        "SSO Provider Settings"
+      ]
+    },
+    {
+      "id": "PR.AA-03",
+      "theme": "PR",
+      "title": "Access permissions, privileges, and authorizations are managed per least privilege",
+      "scannability": "auto",
+      "scan_module_hint": "privilege_scan",
+      "crosswalk": [
+        "A.5.15",
+        "A.5.18"
+      ],
+      "evidence_checklist": [
+        "Sudoers File Config",
+        "IAM Role Audit"
+      ]
+    },
+    {
+      "id": "PR.AA-04",
+      "theme": "PR",
+      "title": "Identity and access management mechanisms are centralized and monitored",
+      "scannability": "auto",
+      "scan_module_hint": "iam_centralization_check",
+      "crosswalk": [
+        "A.5.15",
+        "A.8.5"
+      ],
+      "evidence_checklist": [
+        "IdP Audit Logs",
+        "PAM Dashboard Export"
+      ]
+    },
+    {
+      "id": "PR.AA-05",
+      "theme": "PR",
+      "title": "Access permissions are reviewed and revoked upon personnel role changes or termination",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.6.5"
+      ],
+      "evidence_checklist": [
+        "Offboarding Ticket History",
+        "Quarterly Access Reviews"
+      ]
+    },
+    {
+      "id": "PR.AA-06",
+      "theme": "PR",
+      "title": "Physical access to assets and facilities is managed, monitored, and restricted",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.7.1",
+        "A.7.2"
+      ],
+      "evidence_checklist": [
+        "Badge access logs",
+        "CCTV footage logs"
+      ]
+    },
+    {
+      "id": "PR.AT-01",
+      "theme": "PR",
+      "title": "Personnel are provided cybersecurity awareness and skills training",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.6.3"
+      ],
+      "evidence_checklist": [
+        "Training LMS Records",
+        "Phishing Simulation Metrics"
+      ]
+    },
+    {
+      "id": "PR.AT-02",
+      "theme": "PR",
+      "title": "Specialized cybersecurity training is provided to personnel with specific security roles",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.6.3"
+      ],
+      "evidence_checklist": [
+        "Certificates of completion",
+        "Specialized training syllabus"
+      ]
+    },
+    {
+      "id": "PR.DS-01",
+      "theme": "PR",
+      "title": "Data-at-rest is protected using strong encryption and integrity mechanisms",
+      "scannability": "auto",
+      "scan_module_hint": "disk_encryption_scan",
+      "crosswalk": [
+        "A.8.24"
+      ],
+      "evidence_checklist": [
+        "BitLocker Status Log",
+        "LUKS Encryption Config"
+      ]
+    },
+    {
+      "id": "PR.DS-02",
+      "theme": "PR",
+      "title": "Data-in-transit is protected using TLS 1.2+ encryption and strong ciphers",
+      "scannability": "auto",
+      "scan_module_hint": "tls_min_version_check",
+      "crosswalk": [
+        "A.8.24",
+        "A.8.20"
+      ],
+      "evidence_checklist": [
+        "TLS Cipher Audit Export",
+        "SSL Labs Grade A Target"
+      ]
+    },
+    {
+      "id": "PR.DS-10",
+      "theme": "PR",
+      "title": "Data availability, integrity, and confidentiality are protected during processing",
+      "scannability": "auto",
+      "scan_module_hint": "memory_protection_check",
+      "crosswalk": [
+        "A.8.10",
+        "A.8.24"
+      ],
+      "evidence_checklist": [
+        "DLP Policy Log",
+        "Database Audit Logs"
+      ]
+    },
+    {
+      "id": "PR.DS-11",
+      "theme": "PR",
+      "title": "Backups of data and systems are created, protected, and tested regularly",
+      "scannability": "auto",
+      "scan_module_hint": "backup_verification_scan",
+      "crosswalk": [
+        "A.8.13"
+      ],
+      "evidence_checklist": [
+        "Backup Schedule Logs",
+        "Restoration Test Logs"
+      ]
+    },
+    {
+      "id": "PR.PS-01",
+      "theme": "PR",
+      "title": "Hardware, software, and firmware are configured according to security baselines",
+      "scannability": "auto",
+      "scan_module_hint": "cis_benchmark_scan",
+      "crosswalk": [
+        "A.8.9"
+      ],
+      "evidence_checklist": [
+        "CIS Hardening Report",
+        "GPO Policy Export"
+      ]
+    },
+    {
+      "id": "PR.PS-02",
+      "theme": "PR",
+      "title": "Software and firmware are updated regularly with vendors security patches",
+      "scannability": "auto",
+      "scan_module_hint": "patch_status_scan",
+      "crosswalk": [
+        "A.8.8",
+        "A.8.19"
+      ],
+      "evidence_checklist": [
+        "Patch Management Log",
+        "WSUS Update History"
+      ]
+    },
+    {
+      "id": "PR.PS-03",
+      "theme": "PR",
+      "title": "Software applications are developed, tested, and deployed securely",
+      "scannability": "auto",
+      "scan_module_hint": "sast_dast_scan",
+      "crosswalk": [
+        "A.8.25",
+        "A.8.28",
+        "A.8.29"
+      ],
+      "evidence_checklist": [
+        "SAST/DAST Scan Report",
+        "Code Review Sign-off"
+      ]
+    },
+    {
+      "id": "PR.PS-04",
+      "theme": "PR",
+      "title": "System components are restricted to only necessary functions, ports, and protocols",
+      "scannability": "auto",
+      "scan_module_hint": "port_restriction_scan",
+      "crosswalk": [
+        "A.8.9",
+        "A.8.20"
+      ],
+      "evidence_checklist": [
+        "Firewall Rule Export",
+        "Nmap Port Audit"
+      ]
+    },
+    {
+      "id": "PR.PS-05",
+      "theme": "PR",
+      "title": "Installation of unauthorized software on organizational systems is prevented",
+      "scannability": "auto",
+      "scan_module_hint": "app_locker_scan",
+      "crosswalk": [
+        "A.8.19"
+      ],
+      "evidence_checklist": [
+        "AppLocker policy",
+        "Software execution logs"
+      ]
+    },
+    {
+      "id": "PR.PS-06",
+      "theme": "PR",
+      "title": "Removable media is restricted, controlled, and scanned for malicious code",
+      "scannability": "auto",
+      "scan_module_hint": "usb_policy_scan",
+      "crosswalk": [
+        "A.7.10",
+        "A.8.7"
+      ],
+      "evidence_checklist": [
+        "USB Block GPO export",
+        "Endpoint Agent Log"
+      ]
+    },
+    {
+      "id": "PR.IR-01",
+      "theme": "PR",
+      "title": "Networks are segmented to protect critical assets and communications",
+      "scannability": "auto",
+      "scan_module_hint": "vlan_segmentation_scan",
+      "crosswalk": [
+        "A.8.20",
+        "A.8.22"
+      ],
+      "evidence_checklist": [
+        "VLAN Configuration File",
+        "ACL Audit Log"
+      ]
+    },
+    {
+      "id": "PR.IR-02",
+      "theme": "PR",
+      "title": "Network boundary defenses are deployed, monitored, and maintained",
+      "scannability": "auto",
+      "scan_module_hint": "firewall_status_check",
+      "crosswalk": [
+        "A.8.20",
+        "A.8.21"
+      ],
+      "evidence_checklist": [
+        "Firewall rule audit",
+        "IDS/IPS status log"
+      ]
+    },
+    {
+      "id": "PR.IR-03",
+      "theme": "PR",
+      "title": "Technology infrastructure components are resilient to environmental disruption",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.7.6",
+        "A.7.7"
+      ],
+      "evidence_checklist": [
+        "UPS battery test log",
+        "HVAC maintenance report"
+      ]
+    },
+    {
+      "id": "PR.IR-04",
+      "theme": "PR",
+      "title": "High availability and redundancy mechanisms are configured for critical systems",
+      "scannability": "auto",
+      "scan_module_hint": "ha_failover_check",
+      "crosswalk": [
+        "A.8.14"
+      ],
+      "evidence_checklist": [
+        "Cluster heartbeat logs",
+        "Load balancer config"
+      ]
+    },
+    {
+      "id": "DE.CM-01",
+      "theme": "DE",
+      "title": "Networks and network communications are monitored for potential cybersecurity events",
+      "scannability": "auto",
+      "scan_module_hint": "siem_log_ingest_check",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "Suricata IDS Alerts",
+        "Zeek Traffic Logs"
+      ]
+    },
+    {
+      "id": "DE.CM-02",
+      "theme": "DE",
+      "title": "Physical environment is monitored to detect potential cybersecurity events",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.7.2"
+      ],
+      "evidence_checklist": [
+        "Physical intrusion alarm logs",
+        "Security guard logs"
+      ]
+    },
+    {
+      "id": "DE.CM-03",
+      "theme": "DE",
+      "title": "Personnel activity and access are monitored for anomalous or unauthorized activity",
+      "scannability": "auto",
+      "scan_module_hint": "user_activity_scan",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "SIEM UEBA Alert Log",
+        "PAM Session Recordings"
+      ]
+    },
+    {
+      "id": "DE.CM-06",
+      "theme": "DE",
+      "title": "External service provider activities are monitored for cybersecurity events",
+      "scannability": "auto",
+      "scan_module_hint": "cloud_trail_audit",
+      "crosswalk": [
+        "A.5.21",
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "CloudTrail API Audit",
+        "SaaS Security Posture Log"
+      ]
+    },
+    {
+      "id": "DE.CM-09",
+      "theme": "DE",
+      "title": "Computing resources and system files are monitored for unauthorized modifications",
+      "scannability": "auto",
+      "scan_module_hint": "fim_agent_scan",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "Wazuh FIM Alerts",
+        "Auditd Log Stream"
+      ]
+    },
+    {
+      "id": "DE.AE-02",
+      "theme": "DE",
+      "title": "Detected events are analyzed to understand threat context and impact",
+      "scannability": "auto",
+      "scan_module_hint": "soar_correlation_check",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "SIEM Incident Ticket",
+        "Correlated Event Graph"
+      ]
+    },
+    {
+      "id": "DE.AE-03",
+      "theme": "DE",
+      "title": "Event data is aggregated and correlated across multiple sources",
+      "scannability": "auto",
+      "scan_module_hint": "siem_correlation_rules",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "SIEM correlation rule list",
+        "Central log repository status"
+      ]
+    },
+    {
+      "id": "DE.AE-04",
+      "theme": "DE",
+      "title": "Impact and scope of cybersecurity events are determined",
+      "scannability": "auto",
+      "scan_module_hint": "triage_automation",
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "Triage assessment ticket",
+        "Impact analysis document"
+      ]
+    },
+    {
+      "id": "DE.AE-06",
+      "theme": "DE",
+      "title": "Information regarding detected events is communicated to relevant personnel",
+      "scannability": "auto",
+      "scan_module_hint": "alert_notification_check",
+      "crosswalk": [
+        "A.5.24",
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "PagerDuty Alert History",
+        "Slack SOC Channel Export"
+      ]
+    },
+    {
+      "id": "DE.AE-07",
+      "theme": "DE",
+      "title": "Cyberthreat alerts and indicators are integrated into detection mechanisms",
+      "scannability": "auto",
+      "scan_module_hint": "ioc_feed_ingest",
+      "crosswalk": [
+        "A.5.7",
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "MISP Threat Feed Match",
+        "YARA Rule Database"
+      ]
+    },
+    {
+      "id": "DE.AE-08",
+      "theme": "DE",
+      "title": "Incident thresholds are established and continuously refined",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "SIEM tuning records",
+        "False positive reduction log"
+      ]
+    },
+    {
+      "id": "RS.MA-01",
+      "theme": "RS",
+      "title": "Incident response plan is executed upon confirmation of a cybersecurity incident",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.24",
+        "A.5.25"
+      ],
+      "evidence_checklist": [
+        "Incident Playbook Execution Log",
+        "CSIRT Ticket"
+      ]
+    },
+    {
+      "id": "RS.MA-02",
+      "theme": "RS",
+      "title": "Incident response activities are coordinated with internal and external stakeholders",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.24",
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "Internal Comms Plan",
+        "Legal/PR Advisory Notes"
+      ]
+    },
+    {
+      "id": "RS.MA-03",
+      "theme": "RS",
+      "title": "Incidents are categorized and prioritized according to impact and urgency",
+      "scannability": "auto",
+      "scan_module_hint": "ir_triage_matrix",
+      "crosswalk": [
+        "A.5.24",
+        "A.5.25"
+      ],
+      "evidence_checklist": [
+        "Triage Matrix Log",
+        "Incident Severity Matrix"
+      ]
+    },
+    {
+      "id": "RS.MA-04",
+      "theme": "RS",
+      "title": "Incident response plan is tested and updated regularly",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.24",
+        "A.5.29"
+      ],
+      "evidence_checklist": [
+        "Tabletop Exercise Report",
+        "Annual IR Plan Review"
+      ]
+    },
+    {
+      "id": "RS.MA-05",
+      "theme": "RS",
+      "title": "Processes are established to report security incidents to legal and regulatory authorities",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.24",
+        "A.5.31"
+      ],
+      "evidence_checklist": [
+        "Regulatory notification procedures",
+        "Legal breach reporting template"
+      ]
+    },
+    {
+      "id": "RS.AN-03",
+      "theme": "RS",
+      "title": "Forensics analysis is performed to determine cause and scope of incidents",
+      "scannability": "auto",
+      "scan_module_hint": "forensic_evidence_collector",
+      "crosswalk": [
+        "A.5.28",
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "Autopsy Forensic Report",
+        "Volatility Memory Dump"
+      ]
+    },
+    {
+      "id": "RS.AN-06",
+      "theme": "RS",
+      "title": "Actions performed during incident response are recorded and preserved",
+      "scannability": "auto",
+      "scan_module_hint": "audit_trail_preservation",
+      "crosswalk": [
+        "A.5.28"
+      ],
+      "evidence_checklist": [
+        "IR Chain of Custody Log",
+        "Timeline Audit Export"
+      ]
+    },
+    {
+      "id": "RS.AN-07",
+      "theme": "RS",
+      "title": "Incident evidence is gathered, secured, and maintained in accordance with chain of custody",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.28"
+      ],
+      "evidence_checklist": [
+        "Evidence vault log",
+        "Cryptographic hash log"
+      ]
+    },
+    {
+      "id": "RS.CO-02",
+      "theme": "RS",
+      "title": "Incidents are reported to external bodies, regulators, and law enforcement as required",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.5",
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "CERT-In Incident Filing",
+        "GDPR Breach Notice"
+      ]
+    },
+    {
+      "id": "RS.CO-03",
+      "theme": "RS",
+      "title": "Information regarding incidents is shared with threat intelligence communities",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.7",
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "ISAC Threat Sharing Post",
+        "ISAC Advisory Submission"
+      ]
+    },
+    {
+      "id": "RS.MI-01",
+      "theme": "RS",
+      "title": "Incidents are contained to prevent further propagation and damage",
+      "scannability": "auto",
+      "scan_module_hint": "automated_host_isolation",
+      "crosswalk": [
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "EDR Network Isolation Log",
+        "Firewall Block Rule"
+      ]
+    },
+    {
+      "id": "RS.MI-02",
+      "theme": "RS",
+      "title": "Incidents are mitigated and malicious activity is suppressed or neutralized",
+      "scannability": "auto",
+      "scan_module_hint": "malware_quarantine_scan",
+      "crosswalk": [
+        "A.5.26",
+        "A.8.7"
+      ],
+      "evidence_checklist": [
+        "AV Malware Quarantine Log",
+        "Compromised Token Revocation"
+      ]
+    },
+    {
+      "id": "RC.RP-01",
+      "theme": "RC",
+      "title": "Recovery portion of incident response plan is executed during or after an incident",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.29",
+        "A.5.30"
+      ],
+      "evidence_checklist": [
+        "Disaster Recovery Plan Exec",
+        "System Restore Ticket"
+      ]
+    },
+    {
+      "id": "RC.RP-02",
+      "theme": "RC",
+      "title": "Recovery actions are verified to ensure systems and data are restored safely",
+      "scannability": "auto",
+      "scan_module_hint": "restore_validation_scan",
+      "crosswalk": [
+        "A.5.29",
+        "A.8.13"
+      ],
+      "evidence_checklist": [
+        "DB Checksum Hash Verification",
+        "Smoke Test Results"
+      ]
+    },
+    {
+      "id": "RC.RP-03",
+      "theme": "RC",
+      "title": "Restored systems and components are monitored to confirm clean operational status",
+      "scannability": "auto",
+      "scan_module_hint": "post_restore_monitoring",
+      "crosswalk": [
+        "A.5.29",
+        "A.8.16"
+      ],
+      "evidence_checklist": [
+        "24hr Post-Restore Metric Log",
+        "Endpoint Health Check"
+      ]
+    },
+    {
+      "id": "RC.RP-04",
+      "theme": "RC",
+      "title": "Business assets and services are restored to normal operational state",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.29",
+        "A.5.30"
+      ],
+      "evidence_checklist": [
+        "Service restoration sign-off",
+        "User acceptance test log"
+      ]
+    },
+    {
+      "id": "RC.RP-05",
+      "theme": "RC",
+      "title": "Backup and recovery systems are re-established after recovery completion",
+      "scannability": "auto",
+      "scan_module_hint": "backup_reinit_check",
+      "crosswalk": [
+        "A.8.13"
+      ],
+      "evidence_checklist": [
+        "Post-recovery backup snapshot",
+        "Backup schedule status"
+      ]
+    },
+    {
+      "id": "RC.RP-06",
+      "theme": "RC",
+      "title": "Public relations and reputational repair plans are executed post-incident",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "PR press release",
+        "Customer advisory communication"
+      ]
+    },
+    {
+      "id": "RC.CO-03",
+      "theme": "RC",
+      "title": "Recovery activities are communicated to internal stakeholders and executive leadership",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.26",
+        "A.5.29"
+      ],
+      "evidence_checklist": [
+        "Executive Status Email",
+        "All-Hands Briefing Notes"
+      ]
+    },
+    {
+      "id": "RC.CO-04",
+      "theme": "RC",
+      "title": "Public relations and reputation management strategies are executed during recovery",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.26"
+      ],
+      "evidence_checklist": [
+        "Customer Success Advisory",
+        "Public Statement Record"
+      ]
+    },
+    {
+      "id": "RC.RP-07",
+      "theme": "RC",
+      "title": "Lessons learned from recovery activities are integrated into operational and recovery plans",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "A.5.26",
+        "A.5.29"
+      ],
+      "evidence_checklist": [
+        "Post-recovery review report",
+        "DR plan updates"
+      ]
+    }
+  ]
+}

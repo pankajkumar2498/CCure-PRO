@@ -114,7 +114,8 @@ class ComplianceControl(Base):
             "framework_id", "control_number", name="uq_framework_control_number"
         ),
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH')", name="ck_control_theme"
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC')",
+            name="ck_control_theme",
         ),
         CheckConstraint(
             "scannability IN ('auto', 'semi_auto', 'manual')",
@@ -130,11 +131,15 @@ class ComplianceControl(Base):
         index=True,
     )
     control_number = Column(String(50), nullable=False)  # e.g. "8.24"
-    theme = Column(String(10), nullable=False)  # ORG, PPL, PHY, TECH
+    theme = Column(
+        String(10), nullable=False
+    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     scannability = Column(String(20), nullable=False)  # auto, semi_auto, manual
     scan_module_hint = Column(String(100), nullable=True)
+    crosswalk = Column(JSONB, nullable=True, default=list)
+    evidence_checklist = Column(JSONB, nullable=True, default=list)
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="controls")
@@ -614,7 +619,8 @@ class ComplianceScore(Base):
     __tablename__ = "compliance_scores"
     __table_args__ = (
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH')", name="ck_score_theme"
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC')",
+            name="ck_score_theme",
         ),
     )
 

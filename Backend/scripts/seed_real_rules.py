@@ -430,7 +430,7 @@ def seed_and_evaluate():
         # Compile a set of controls already mapped to custom rules
         mapped_control_ids = {r["control_id"] for r in rules_data}
 
-        # Dynamically generate manual rules for all remaining ISO 27001 controls in db
+        # Dynamically generate rules for all remaining controls in db
         controls_in_db = (
             db.query(ComplianceControl)
             .filter(ComplianceControl.framework_id == framework_id)
@@ -438,19 +438,29 @@ def seed_and_evaluate():
         )
         for ctrl in controls_in_db:
             if ctrl.id not in mapped_control_ids:
-                # Remove prefix cct_iso27001_2022_ to extract raw standard ID
-                raw_num = ctrl.id.split("_")[-1]
+                # Extract clean control number suffix (e.g. 5_1, 8_34, gv_oc_01)
+                raw_num = ctrl.id.replace("cct_iso27001_2022_", "").replace(
+                    "cct_nist_csf_v2_", ""
+                )
                 rule_id = f"crl_auto_gen_{raw_num.replace('.', '_')}"
 
                 rules_data.append(
                     {
                         "id": rule_id,
-                        "rule_family_code": f"RULE-{raw_num}",
+                        "rule_family_code": f"RULE-{raw_num.replace('_', '.')}",
                         "version_number": 1,
                         "check_type": "api_response",
-                        "evidence_source": "manual",
+                        "evidence_source": (
+                            "auto_scan"
+                            if getattr(ctrl, "scannable_type", "auto") == "auto"
+                            else "manual"
+                        ),
                         "target_platform": "any",
-                        "check_definition": {},
+                        "check_definition": {
+                            "key": "status",
+                            "operator": "==",
+                            "expected": "PASS",
+                        },
                         "severity": "medium",
                         "severity_weight": 5,
                         "remediation_id_target": f"rem_auto_gen_{raw_num.replace('.', '_')}",
@@ -714,6 +724,94 @@ def seed_and_evaluate():
 
         db.commit()
 
+        # Also map rules to NIST CSF 2.0 controls via crosswalk references and auto-generate NIST rules
+        nist_framework = (
+            db.query(ComplianceFramework)
+            .filter(ComplianceFramework.id == "cfw_nist_csf_v2")
+            .first()
+        )
+        if nist_framework:
+            nist_controls = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
+                .all()
+            )
+            for nist_ctrl in nist_controls:
+                # 1. Check crosswalk for ISO controls mapped to existing rules
+                mapped = False
+                if nist_ctrl.crosswalk:
+                    for iso_num in nist_ctrl.crosswalk:
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_num.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            n_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == nist_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not n_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=nist_ctrl.id,
+                                    )
+                                )
+                                mapped = True
+
+                # 2. Auto-generate manual rule for unmapped NIST controls
+                if not mapped:
+                    raw_id = (
+                        nist_ctrl.control_number.lower()
+                        .replace(".", "_")
+                        .replace("-", "_")
+                    )
+                    rule_id = f"crl_nist_auto_gen_{raw_id}"
+                    rule_exists = (
+                        db.query(ComplianceRule)
+                        .filter(ComplianceRule.id == rule_id)
+                        .first()
+                    )
+                    if not rule_exists:
+                        n_rule = ComplianceRule(
+                            id=rule_id,
+                            rule_family_code=f"RULE-NIST-{nist_ctrl.control_number}",
+                            version_number=1,
+                            check_type="api_response",
+                            evidence_source="manual",
+                            target_platform="any",
+                            check_definition={},
+                            severity="medium",
+                            severity_weight=5,
+                            status="active",
+                        )
+                        db.add(n_rule)
+                        db.flush()
+
+                    n_link = (
+                        db.query(ComplianceRuleControl)
+                        .filter(
+                            ComplianceRuleControl.rule_id == rule_id,
+                            ComplianceRuleControl.control_id == nist_ctrl.id,
+                        )
+                        .first()
+                    )
+                    if not n_link:
+                        db.add(
+                            ComplianceRuleControl(
+                                rule_id=rule_id, control_id=nist_ctrl.id
+                            )
+                        )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for NIST CSF v2.0")
+
         # 4. Find scanned target asset: 10.180.6.14
         target_ip = "10.180.6.14"
         asset = db.query(Asset).filter(Asset.ip_address == target_ip).first()
@@ -735,68 +833,93 @@ def seed_and_evaluate():
 
         now = datetime.now(timezone.utc)
 
-        # Register Framework
-        tenant_fw = (
-            db.query(ComplianceTenantFramework)
-            .filter(
-                ComplianceTenantFramework.tenant_id == org.id,
-                ComplianceTenantFramework.framework_id == framework_id,
+        # Register Frameworks (ISO 27001 & NIST CSF v2.0)
+        for fw_code_id in ["cfw_iso27001_2022", "cfw_nist_csf_v2"]:
+            fw_obj = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == fw_code_id)
+                .first()
             )
-            .first()
-        )
+            if not fw_obj:
+                continue
 
-        if not tenant_fw:
-            tenant_fw = ComplianceTenantFramework(
-                id=f"ctf_{org.id}_{framework_id}",
-                tenant_id=org.id,
-                framework_id=framework_id,
-                is_enabled=True,
-                enabled_by=user.id if user else None,
-                enabled_at=now,
-            )
-            db.add(tenant_fw)
-            print(f"  - Registered ISO 27001 framework to tenant: {org.name}")
-
-        # Create Baseline Policy
-        policy_id = f"cpl_{org.id}_iso27001_default"
-        policy = (
-            db.query(CompliancePolicy).filter(CompliancePolicy.id == policy_id).first()
-        )
-        if not policy:
-            policy = CompliancePolicy(
-                id=policy_id,
-                framework_id=framework_id,
-                tenant_id=org.id,
-                policy_family_code="POL-ISO27001-DEFAULT",
-                version_number=1,
-                name="ISO/IEC 27001:2022 Default Compliance Policy",
-                target_platform="any",
-                status="active",
-                is_active=True,
-                created_by=user.id if user else None,
-                created_at=now,
-            )
-            db.add(policy)
-            print(f"  - Created compliance policy baseline: {policy.name}")
-        else:
-            policy.name = "ISO/IEC 27001:2022 Default Compliance Policy"
-            policy.policy_family_code = "POL-ISO27001-DEFAULT"
-
-        db.flush()
-
-        # Link rules to policy
-        for rule in rules_data:
-            link = (
-                db.query(CompliancePolicyRule)
+            tenant_fw = (
+                db.query(ComplianceTenantFramework)
                 .filter(
-                    CompliancePolicyRule.policy_id == policy_id,
-                    CompliancePolicyRule.rule_id == rule["id"],
+                    ComplianceTenantFramework.tenant_id == org.id,
+                    ComplianceTenantFramework.framework_id == fw_code_id,
                 )
                 .first()
             )
-            if not link:
-                new_link = CompliancePolicyRule(policy_id=policy_id, rule_id=rule["id"])
-                db.add(new_link)
+
+            if not tenant_fw:
+                tenant_fw = ComplianceTenantFramework(
+                    id=f"ctf_{org.id}_{fw_code_id}",
+                    tenant_id=org.id,
+                    framework_id=fw_code_id,
+                    is_enabled=True,
+                    enabled_by=user.id if user else None,
+                    enabled_at=now,
+                )
+                db.add(tenant_fw)
+                print(f"  - Registered {fw_obj.name} to tenant: {org.name}")
+
+            # Create Baseline Policy
+            policy_id = f"cpl_{org.id}_{fw_obj.code.lower()}_default"
+            policy = (
+                db.query(CompliancePolicy)
+                .filter(CompliancePolicy.id == policy_id)
+                .first()
+            )
+            if not policy:
+                policy = CompliancePolicy(
+                    id=policy_id,
+                    framework_id=fw_code_id,
+                    tenant_id=org.id,
+                    policy_family_code=f"POL-{fw_obj.code.upper()}-DEFAULT",
+                    version_number=1,
+                    name=f"{fw_obj.name} Default Policy Baseline",
+                    target_platform="any",
+                    status="active",
+                    is_active=True,
+                    created_by=user.id if user else None,
+                    created_at=now,
+                )
+                db.add(policy)
+                print(f"  - Created compliance policy baseline: {policy.name}")
+            else:
+                policy.name = f"{fw_obj.name} Default Policy Baseline"
+
+            db.flush()
+
+            # Link framework rules to policy
+            fw_rules = (
+                db.query(ComplianceRule)
+                .join(
+                    ComplianceRuleControl,
+                    ComplianceRuleControl.rule_id == ComplianceRule.id,
+                )
+                .join(
+                    ComplianceControl,
+                    ComplianceControl.id == ComplianceRuleControl.control_id,
+                )
+                .filter(ComplianceControl.framework_id == fw_code_id)
+                .all()
+            )
+            for rule in fw_rules:
+                link = (
+                    db.query(CompliancePolicyRule)
+                    .filter(
+                        CompliancePolicyRule.policy_id == policy.id,
+                        CompliancePolicyRule.rule_id == rule.id,
+                    )
+                    .first()
+                )
+                if not link:
+                    new_link = CompliancePolicyRule(
+                        policy_id=policy.id, rule_id=rule.id
+                    )
+                    db.add(new_link)
 
         # 5. Create compliance scan run and execute compliance evaluation
         scan_run_id = f"run_{org.id[:8]}_{datetime.now().strftime('%M%S%f')}"

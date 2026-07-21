@@ -200,9 +200,14 @@ export default function ComplianceWorkspace() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanPollCount, setScanPollCount] = useState(0);
 
+  // Active framework filter & gap analysis states
+  const [selectedFrameworkId, setSelectedFrameworkId] = useState("all");
+  const [gapAnalysis, setGapAnalysis] = useState(null);
+  const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
+
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(""); // policy | attest | exception | remediate | log_viewer
+  const [modalType, setModalType] = useState(""); // policy | attest | exception | remediate | log_viewer | gap_analysis
   const [selectedControl, setSelectedControl] = useState(null);
   const [selectedFinding, setSelectedFinding] = useState(null);
 
@@ -344,25 +349,59 @@ export default function ComplianceWorkspace() {
     return () => clearInterval(interval);
   }, [activeTab, findings, approvalsList, isScanning]);
 
+  useEffect(() => {
+    fetchTabData();
+  }, [activeTab, selectedFrameworkId]);
+
+  const fetchGapAnalysis = async () => {
+    setLoadingGapAnalysis(true);
+    try {
+      const res = await axiosInstance.get(
+        "/compliance/gap-analysis?source_framework=cfw_iso27001_2022&target_framework=cfw_nist_csf_v2",
+      );
+      setGapAnalysis(res.data);
+      setModalType("gap_analysis");
+      setModalOpen(true);
+    } catch (e) {
+      pushToast(
+        "Failed to run gap analysis: " +
+          (e.response?.data?.detail || e.message),
+        "error",
+      );
+    } finally {
+      setLoadingGapAnalysis(false);
+    }
+  };
+
   const fetchTabData = async (quiet = false) => {
     if (!quiet) setLoading(true);
     setError(null);
+    const fwParam =
+      selectedFrameworkId && selectedFrameworkId !== "all"
+        ? `framework_id=${selectedFrameworkId}`
+        : "";
     try {
       if (activeTab === "dashboard") {
-        const res = await axiosInstance.get("/compliance/dashboard/summary");
+        const res = await axiosInstance.get(
+          `/compliance/summary${fwParam ? `?${fwParam}` : ""}`,
+        );
         setSummary(res.data);
       } else if (activeTab === "marketplace") {
         const res = await axiosInstance.get("/compliance/marketplace");
         setMarketplace(res.data.data || []);
       } else if (activeTab === "policies") {
-        const res = await axiosInstance.get("/compliance/policies");
+        const res = await axiosInstance.get(
+          `/compliance/policies${fwParam ? `?${fwParam}` : ""}`,
+        );
         setPolicies(res.data.data || []);
       } else if (activeTab === "findings") {
-        const res = await axiosInstance.get("/compliance/findings?limit=10000");
+        const res = await axiosInstance.get(
+          `/compliance/findings?limit=10000${fwParam ? `&${fwParam}` : ""}`,
+        );
         setFindings(res.data.data || []);
       } else if (activeTab === "exceptions") {
         const res = await axiosInstance.get(
-          "/compliance/findings?status=pending&limit=10000",
+          `/compliance/findings?status=pending&limit=10000${fwParam ? `&${fwParam}` : ""}`,
         );
         setExceptions(res.data.data || []);
       } else if (activeTab === "credentials") {
@@ -814,13 +853,50 @@ export default function ComplianceWorkspace() {
             <div className="db-page-title">Policy Compliance</div>
             <div className="db-page-subtitle">
               Standard catalogs, baseline verification scans, manual
-              attestations, and exception waivers.
+              attestations, crosswalk gap analysis, and exception waivers.
             </div>
           </div>
           <div
             className="db-header-actions"
-            style={{ display: "flex", gap: "10px" }}
+            style={{ display: "flex", gap: "10px", alignItems: "center" }}
           >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                }}
+              >
+                Framework:
+              </span>
+              <select
+                className="cw-pagination-select"
+                value={selectedFrameworkId}
+                onChange={(e) => setSelectedFrameworkId(e.target.value)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  fontSize: "0.85rem",
+                  background: "var(--bg-white)",
+                  border: "1px solid var(--border)",
+                  fontWeight: 600,
+                }}
+              >
+                <option value="all">All Frameworks</option>
+                <option value="cfw_iso27001_2022">ISO/IEC 27001:2022</option>
+                <option value="cfw_nist_csf_v2">NIST CSF v2.0</option>
+              </select>
+            </div>
+            <button
+              className="db-btn db-btn--ghost"
+              onClick={fetchGapAnalysis}
+              disabled={loadingGapAnalysis}
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <span>📊</span>{" "}
+              {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
+            </button>
             <button
               className="db-btn db-btn--primary"
               onClick={handleTriggerComplianceScan}
@@ -894,44 +970,6 @@ export default function ComplianceWorkspace() {
               <span className="db-alert-icon">⚠️</span>
               <div className="db-alert-body">
                 <strong>Connection or Database Error:</strong> {error}
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    color: "var(--text-muted)",
-                    marginTop: "0.5rem",
-                  }}
-                >
-                  Please make sure you have applied the database migrations and
-                  seeded the controls catalog:
-                  <br />
-                  <code
-                    style={{
-                      background: "rgba(0,0,0,0.05)",
-                      padding: "0.2rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      display: "inline-block",
-                      marginTop: "0.5rem",
-                      fontFamily: "var(--mono)",
-                      color: "var(--text)",
-                    }}
-                  >
-                    .\.venv\Scripts\python -m alembic upgrade head
-                  </code>
-                  <br />
-                  <code
-                    style={{
-                      background: "rgba(0,0,0,0.05)",
-                      padding: "0.2rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      display: "inline-block",
-                      marginTop: "0.25rem",
-                      fontFamily: "var(--mono)",
-                      color: "var(--text)",
-                    }}
-                  >
-                    .\.venv\Scripts\python -m scripts.seed_compliance
-                  </code>
-                </div>
               </div>
             </div>
           )}
@@ -956,7 +994,11 @@ export default function ComplianceWorkspace() {
                   </div>
                 </div>
                 <div className="metric-card">
-                  <h3>ISO 27001 Controls</h3>
+                  <h3>
+                    {selectedFrameworkId === "cfw_nist_csf_v2"
+                      ? "NIST CSF Controls"
+                      : "ISO 27001 Controls"}
+                  </h3>
                   <div className="kpis-list">
                     <div>
                       Passed:{" "}
@@ -987,6 +1029,7 @@ export default function ComplianceWorkspace() {
                   padding: "1.5rem",
                   display: "flex",
                   gap: "1rem",
+                  flexWrap: "wrap",
                   background: "var(--bg-white)",
                 }}
               >
@@ -999,7 +1042,7 @@ export default function ComplianceWorkspace() {
                     )
                   }
                 >
-                  Download SoA PDF
+                  Download SoA PDF (ISO)
                 </button>
                 <button
                   className="db-btn db-btn--ghost"
@@ -1010,7 +1053,29 @@ export default function ComplianceWorkspace() {
                     )
                   }
                 >
-                  Download SoA Word
+                  Download SoA Word (ISO)
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/nist_csf?fmt=pdf",
+                      "nist_csf_v2_report.pdf",
+                    )
+                  }
+                >
+                  Download NIST CSF PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/nist_csf?fmt=docx",
+                      "nist_csf_v2_report.docx",
+                    )
+                  }
+                >
+                  Download NIST CSF Word
                 </button>
                 <button
                   className="db-btn db-btn--ghost"
@@ -1021,17 +1086,41 @@ export default function ComplianceWorkspace() {
                     )
                   }
                 >
-                  Download Executive Report
+                  Download Executive Brief
                 </button>
               </div>
 
               <div className="quadrant-scores">
-                <h3>ISO Themes Quadrant Breakdown</h3>
+                <h3>
+                  {selectedFrameworkId === "cfw_nist_csf_v2"
+                    ? "NIST CSF 2.0 Core Functions Breakdown"
+                    : "ISO 27001 Themes Quadrant Breakdown"}
+                </h3>
                 <div className="quadrant-grid">
                   {Object.entries(summary.quadrant_scores || {}).map(
                     ([key, val]) => (
                       <div key={key} className="quad-item">
-                        <span className="quad-label">{key}</span>
+                        <span
+                          className={
+                            ["GV", "ID", "PR", "DE", "RS", "RC"].includes(key)
+                              ? `nist-badge nist-badge--${key}`
+                              : "quad-label"
+                          }
+                        >
+                          {key === "GV"
+                            ? "Govern (GV)"
+                            : key === "ID"
+                              ? "Identify (ID)"
+                              : key === "PR"
+                                ? "Protect (PR)"
+                                : key === "DE"
+                                  ? "Detect (DE)"
+                                  : key === "RS"
+                                    ? "Respond (RS)"
+                                    : key === "RC"
+                                      ? "Recover (RC)"
+                                      : key}
+                        </span>
                         <div className="progress-container">
                           <div
                             className="comp-progress-fill"
@@ -1307,11 +1396,37 @@ export default function ComplianceWorkspace() {
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {r.control_id
-                                                ? r.control_id.split(
-                                                    "iso27001_2022_",
-                                                  )[1]
-                                                : "N/A"}
+                                              {(() => {
+                                                const rawNum =
+                                                  r.control_number ||
+                                                  (r.control_id
+                                                    ? r.control_id
+                                                        .replace(
+                                                          "cct_iso27001_2022_",
+                                                          "",
+                                                        )
+                                                        .replace(
+                                                          "cct_nist_csf_v2_",
+                                                          "",
+                                                        )
+                                                        .replace("_", ".")
+                                                    : "");
+                                                if (
+                                                  rawNum.startsWith("A.") ||
+                                                  rawNum.startsWith("GV.") ||
+                                                  rawNum.startsWith("ID.") ||
+                                                  rawNum.startsWith("PR.") ||
+                                                  rawNum.startsWith("DE.") ||
+                                                  rawNum.startsWith("RS.") ||
+                                                  rawNum.startsWith("RC.")
+                                                ) {
+                                                  return rawNum;
+                                                }
+                                                if (/^\d+\.\d+/.test(rawNum)) {
+                                                  return `A.${rawNum}`;
+                                                }
+                                                return rawNum || "N/A";
+                                              })()}
                                             </td>
                                             <td>
                                               <div
@@ -1382,31 +1497,28 @@ export default function ComplianceWorkspace() {
                                               )}
                                             </td>
                                             <td>
-                                              {r.evidence_source !==
-                                                "manual" && (
-                                                <button
-                                                  className="db-btn db-btn--ghost"
-                                                  style={{
-                                                    padding: "4px 8px",
-                                                    fontSize: "0.68rem",
-                                                  }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenEditRule({
-                                                      rule_id: r.id,
-                                                      rule_name: r.rule_name,
-                                                      severity: r.severity,
-                                                      check_definition:
-                                                        r.check_definition,
-                                                      control_title:
-                                                        r.control_title,
-                                                      evidence: {},
-                                                    });
-                                                  }}
-                                                >
-                                                  Configure
-                                                </button>
-                                              )}
+                                              <button
+                                                className="db-btn db-btn--ghost"
+                                                style={{
+                                                  padding: "4px 8px",
+                                                  fontSize: "0.68rem",
+                                                }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenEditRule({
+                                                    rule_id: r.id,
+                                                    rule_name: r.rule_name,
+                                                    severity: r.severity,
+                                                    check_definition:
+                                                      r.check_definition,
+                                                    control_title:
+                                                      r.control_title,
+                                                    evidence: {},
+                                                  });
+                                                }}
+                                              >
+                                                Configure
+                                              </button>
                                             </td>
                                           </tr>
                                         );
@@ -2695,6 +2807,132 @@ export default function ComplianceWorkspace() {
               Save Rule Configuration
             </button>
           </form>
+        )}
+
+        {modalType === "gap_analysis" && gapAnalysis && (
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          >
+            <div
+              style={{
+                background: "#f8fafc",
+                padding: "16px",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
+                    {gapAnalysis.source_framework?.code} ➔{" "}
+                    {gapAnalysis.target_framework?.code}
+                  </h3>
+                  <p
+                    style={{
+                      margin: "4px 0 0",
+                      fontSize: "0.8rem",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Estimated baseline compliance posture for{" "}
+                    {gapAnalysis.target_framework?.name} based on existing ISO
+                    27001 scan findings.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    fontSize: "2rem",
+                    fontWeight: 800,
+                    color: "var(--accent)",
+                  }}
+                >
+                  {gapAnalysis.summary?.estimated_score_pct}%
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "16px",
+                  marginTop: "12px",
+                  fontSize: "0.8rem",
+                }}
+              >
+                <div>
+                  Target Controls:{" "}
+                  <strong>{gapAnalysis.summary?.total_target_controls}</strong>
+                </div>
+                <div>
+                  Crosswalk Mapped:{" "}
+                  <strong>{gapAnalysis.summary?.mapped_controls}</strong>
+                </div>
+                <div>
+                  Estimated Pass:{" "}
+                  <strong style={{ color: "var(--ok)" }}>
+                    {gapAnalysis.summary?.estimated_pass}
+                  </strong>
+                </div>
+                <div>
+                  Estimated Fail:{" "}
+                  <strong style={{ color: "var(--danger)" }}>
+                    {gapAnalysis.summary?.estimated_fail}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ maxHeight: "350px", overflowY: "auto" }}>
+              <table className="db-table" style={{ fontSize: "0.78rem" }}>
+                <thead>
+                  <tr>
+                    <th>NIST Control</th>
+                    <th>Title</th>
+                    <th>Mapped ISO Controls</th>
+                    <th>Estimated Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(gapAnalysis.controls || []).map((c) => (
+                    <tr key={c.control_id}>
+                      <td className="mono" style={{ fontWeight: 600 }}>
+                        {c.control_number}
+                      </td>
+                      <td>{c.title}</td>
+                      <td>
+                        {(c.crosswalk || []).map((iso) => (
+                          <span
+                            key={iso}
+                            className="crosswalk-tag"
+                            style={{ marginRight: 4 }}
+                          >
+                            {iso}
+                          </span>
+                        ))}
+                      </td>
+                      <td>
+                        <span
+                          className={`db-sev-badge ${
+                            c.estimated_status === "pass"
+                              ? "db-sev-badge--low"
+                              : c.estimated_status === "fail"
+                                ? "db-sev-badge--critical"
+                                : "db-sev-badge--info"
+                          }`}
+                        >
+                          {c.estimated_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {(modalType === "remediate" || modalType === "rollback") &&

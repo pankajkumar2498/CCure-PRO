@@ -205,32 +205,56 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_iso27001_2022")
                 .first()
             )
+            nist_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_nist_csf_v2")
+                .first()
+            )
+            nist_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
+                .count()
+            )
             ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
                 .count()
             )
             rule_count = db.query(ComplianceRule).count()
-            if not fw or ctrl_count < 93 or rule_count < 20:
+            if (
+                not fw
+                or not nist_fw
+                or ctrl_count < 93
+                or nist_ctrl_count < 20
+                or rule_count < 20
+            ):
                 log.info(
-                    f"Auto-seeding compliance catalog (Found fw={bool(fw)}, controls={ctrl_count}/93, rules={rule_count})..."
+                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, ISO ctrl={ctrl_count}, NIST ctrl={nist_ctrl_count}, rules={rule_count})..."
                 )
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
 
-                seed_file = os.path.join(
+                base_scripts_dir = os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
                     "scripts",
-                    "iso27001_2022_controls_seed.json",
                 )
-                if os.path.exists(seed_file):
-                    seed_framework_and_controls(db, seed_file)
+                iso_seed = os.path.join(
+                    base_scripts_dir, "iso27001_2022_controls_seed.json"
+                )
+                nist_seed = os.path.join(
+                    base_scripts_dir, "nist_csf_v2_controls_seed.json"
+                )
+
+                if os.path.exists(iso_seed):
+                    seed_framework_and_controls(db, iso_seed)
+                if os.path.exists(nist_seed):
+                    seed_framework_and_controls(db, nist_seed)
 
                 seed_and_evaluate()
                 log.info("Compliance catalog auto-seeding completed successfully!")
             else:
                 log.info(
-                    "Compliance catalog (ISO 27001 framework, 93 controls & rules) fully present and synchronized."
+                    "Compliance catalog (ISO 27001 & NIST CSF v2.0 frameworks, controls & rules) fully present and synchronized."
                 )
     except Exception as e:
         log.warning(f"Compliance catalog auto-seeding skipped or deferred: {e}")

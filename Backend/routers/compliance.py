@@ -282,7 +282,13 @@ def install_marketplace_framework(
         db.add(default_policy)
         db.flush()
 
-        # Query all controls for this framework and rules mapped to them
+    # Query and link all rules for this framework if not already linked
+    rules_linked = (
+        db.query(CompliancePolicyRule)
+        .filter(CompliancePolicyRule.policy_id == default_policy.id)
+        .count()
+    )
+    if rules_linked == 0:
         rules = (
             db.query(ComplianceRule)
             .join(
@@ -446,6 +452,7 @@ def get_policy_rules(
                 "check_definition": r.check_definition,
                 "severity": r.severity.upper(),
                 "control_id": control.id if control else None,
+                "control_number": control.control_number if control else None,
                 "control_title": control.title if control else "Manual Control",
                 "recommendation_text": (
                     r.remediation.recommendation_text
@@ -1611,8 +1618,9 @@ def approve_exception_waiver(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("/dashboard/summary")
+@router.get("/summary")
 def get_dashboard_summary(
+    framework_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -2064,4 +2072,161 @@ def download_executive_compliance_report(
         headers={
             "Content-Disposition": f"attachment; filename=compliance_executive_{user.org_id[:4]}.pdf"
         },
+    )
+
+
+@router.get("/gap-analysis")
+def get_compliance_gap_analysis(
+    source_framework_id: str = "cfw_iso27001_2022",
+    target_framework_id: str = "cfw_nist_csf_v2",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Calculates estimated compliance posture for target framework based on source framework crosswalk mappings."""
+    target_fw = (
+        db.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == target_framework_id)
+        .first()
+    )
+    source_fw = (
+        db.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == source_framework_id)
+        .first()
+    )
+
+    if not target_fw or not source_fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+
+    target_controls = (
+        db.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == target_framework_id)
+        .all()
+    )
+    source_findings = (
+        db.query(ComplianceFinding)
+        .filter(ComplianceFinding.tenant_id == user.org_id)
+        .all()
+    )
+    source_findings_map = {f.control_id: f.status for f in source_findings}
+
+    total_target = len(target_controls)
+    estimated_pass = 0
+    estimated_fail = 0
+    pending_manual = 0
+    mapped_count = 0
+
+    control_breakdown = []
+    for ctrl in target_controls:
+        status_eval = "pending_manual"
+        mapped_iso = ctrl.crosswalk or []
+
+        if mapped_iso:
+            mapped_count += 1
+            has_pass = False
+            has_fail = False
+            for iso_num in mapped_iso:
+                iso_ctrl_id = f"cct_{source_fw.code.lower()}_{iso_num.lower().replace('a.', '').replace('.', '_')}"
+                found_status = source_findings_map.get(iso_ctrl_id)
+                if found_status in ("pass", "exception"):
+                    has_pass = True
+                elif found_status in ("fail", "pending_reverify"):
+                    has_fail = True
+
+            if has_pass:
+                status_eval = "pass"
+                estimated_pass += 1
+            elif has_fail:
+                status_eval = "fail"
+                estimated_fail += 1
+            else:
+                pending_manual += 1
+        else:
+            pending_manual += 1
+
+        control_breakdown.append(
+            {
+                "control_id": ctrl.id,
+                "control_number": ctrl.control_number,
+                "theme": ctrl.theme,
+                "title": ctrl.title,
+                "crosswalk": mapped_iso,
+                "estimated_status": status_eval,
+            }
+        )
+
+    estimated_pct = (
+        round((estimated_pass / total_target) * 100, 2) if total_target > 0 else 0.0
+    )
+
+    return {
+        "source_framework": {
+            "id": source_fw.id,
+            "name": source_fw.name,
+            "code": source_fw.code,
+        },
+        "target_framework": {
+            "id": target_fw.id,
+            "name": target_fw.name,
+            "code": target_fw.code,
+        },
+        "summary": {
+            "total_target_controls": total_target,
+            "mapped_controls": mapped_count,
+            "estimated_pass": estimated_pass,
+            "estimated_fail": estimated_fail,
+            "pending_manual": pending_manual,
+            "estimated_score_pct": estimated_pct,
+        },
+        "controls": control_breakdown,
+    }
+
+
+@router.get("/reports/nist_csf")
+def download_nist_csf_report(
+    fmt: str = "pdf",
+    functions: Optional[str] = Query(
+        None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the NIST CSF v2.0 Compliance Assessment Report."""
+    fw_id = "cfw_nist_csf_v2"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if functions:
+        fn_list = [f.strip().upper() for f in functions.split(",") if f.strip()]
+        if fn_list:
+            query = query.filter(ComplianceControl.theme.in_(fn_list))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_soa_docx(controls, findings_map)
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"nist_csf_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_soa_pdf(controls, findings_map)
+        media = "application/pdf"
+        filename = f"nist_csf_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

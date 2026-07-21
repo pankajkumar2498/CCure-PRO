@@ -62,6 +62,30 @@ if not database_url.startswith("postgresql"):
 
 # Safety guard: refuse to run against production or development databases
 from urllib.parse import urlparse
+from sqlalchemy import create_engine, text
+
+
+def _ensure_test_db_exists(url: str):
+    try:
+        parsed = urlparse(url)
+        target_db = parsed.path.lstrip("/")
+        if not target_db or not url.startswith("postgresql"):
+            return
+        postgres_url = url.rsplit("/", 1)[0] + "/postgres"
+        admin_engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+        with admin_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
+                {"dbname": target_db},
+            )
+            if not res.scalar():
+                conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+        admin_engine.dispose()
+    except Exception:
+        pass
+
+
+_ensure_test_db_exists(database_url)
 
 parsed = urlparse(database_url)
 db_name = parsed.path.lstrip("/")
@@ -163,6 +187,7 @@ def seed_system_roles():
     from db.migrate_production_schema import seed_rbac
 
     with engine.begin() as conn:
+        Base.metadata.create_all(bind=conn)
         seed_rbac(conn)
 
 

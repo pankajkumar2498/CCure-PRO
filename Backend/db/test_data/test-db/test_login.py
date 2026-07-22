@@ -20,6 +20,7 @@ def test_login():
             f"{base_url}/auth/login",
             json=credentials,
             headers={"Content-Type": "application/json"},
+            timeout=10,
         )
 
         print(f"\n✓ Response Status: {response.status_code}")

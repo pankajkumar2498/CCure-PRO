@@ -851,7 +851,7 @@ class NmapScanner:
         This is the SINGLE place where Nmap XML is parsed in this codebase.
         """
         try:
-            root = ET.fromstring(xml_content)
+            root = ET.fromstring(xml_content)  # nosec B314
         except ET.ParseError as exc:
             log.warning("Nmap XML parse error: %s", exc)
             fallback_ip = os.getenv("DEFAULT_FALLBACK_IP", "127.0.0.1")

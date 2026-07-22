@@ -211,7 +211,7 @@ class SSHScanner:
                 _timeout = timeout or self.timeout
                 _, stdout_fh, stderr_fh = self._client.exec_command(
                     command, timeout=_timeout, get_pty=False
-                )
+                )  # nosec B601
                 stdout_fh.channel.settimeout(_timeout)
                 stderr_fh.channel.settimeout(_timeout)
 

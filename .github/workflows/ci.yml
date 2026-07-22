@@ -50,19 +50,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r Backend/requirements.txt
-          pip install pytest pytest-cov pytest-rerunfailures bandit ruff
+          pip install "pytest==7.4.4" pytest-cov pytest-rerunfailures bandit ruff
 
       - name: Run Static Security Analysis (Bandit)
         run: |
-          bandit -r Backend/ -hh -x Backend/tests --skip B324,B501,B507
+          bandit -r Backend/ -x Backend/tests --skip B324,B501,B507
 
       - name: Run Linting Checks (Ruff)
         run: |
           ruff check Backend/ --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821
 
+      - name: Create Admin Role in Postgres (if needed)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026'; END IF; END\$\$;"
+
       - name: Bootstrap Database Schema & Seeding Validation
         env:
           DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/0
           JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
@@ -75,6 +81,7 @@ jobs:
       - name: Run Alembic Migration Integrity Check
         env:
           DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
         run: |
           cd Backend
           # Run rollback check on the latest migration
@@ -85,13 +92,19 @@ jobs:
       - name: OpenAPI Schema Diff Check
         env:
           DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/0
           JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
         run: |
           cd Backend
-          # Extract current schema
-          python -c "import json; from main import app; print(json.dumps(app.openapi()))" > openapi_new.json
+          # Extract current schema deterministically
+          python - <<'PY' > openapi_new.json
+          import json
+          from main import app
+
+          print(json.dumps(app.openapi(), sort_keys=True, indent=2, ensure_ascii=False))
+          PY
           # Check against baseline schema if it exists
           if [ -f "openapi.json" ]; then
             echo "Comparing current schema to tracked baseline..."
@@ -104,6 +117,7 @@ jobs:
       - name: Run Test Suite (with mock profile fallbacks)
         env:
           DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/0
           JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value

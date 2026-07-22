@@ -1638,6 +1638,12 @@ def get_dashboard_summary(
         .scalar_subquery()
     )
 
+    # Apply framework_id query parameter filter dynamically
+    if framework_id and framework_id != "all":
+        target_fws = [framework_id]
+    else:
+        target_fws = enabled_fw_subquery
+
     scores = (
         db.query(ComplianceScore)
         .filter(
@@ -1645,7 +1651,7 @@ def get_dashboard_summary(
             ComplianceScore.asset_id == None,  # Org-level summaries
             ComplianceScore.theme
             == None,  # Exclude quadrant scores from overall framework averages
-            ComplianceScore.framework_id.in_(enabled_fw_subquery),
+            ComplianceScore.framework_id.in_(target_fws),
         )
         .all()
     )
@@ -1670,7 +1676,7 @@ def get_dashboard_summary(
             ComplianceScore.tenant_id == user.org_id,
             ComplianceScore.asset_id == None,
             ComplianceScore.theme != None,
-            ComplianceScore.framework_id.in_(enabled_fw_subquery),
+            ComplianceScore.framework_id.in_(target_fws),
         )
         .distinct()
         .all()
@@ -1687,7 +1693,7 @@ def get_dashboard_summary(
                 ComplianceScore.tenant_id == user.org_id,
                 ComplianceScore.asset_id == None,
                 ComplianceScore.theme == q_code,
-                ComplianceScore.framework_id.in_(enabled_fw_subquery),
+                ComplianceScore.framework_id.in_(target_fws),
             )
             .all()
         )
@@ -1717,6 +1723,7 @@ def get_dashboard_summary(
         .filter(
             ComplianceException.tenant_id == user.org_id,
             ComplianceException.status == "approved",
+            ComplianceControl.framework_id.in_(target_fws),
         )
         .count()
     )
@@ -2437,6 +2444,63 @@ def download_soc2_type2_report(
         )
         media = "application/pdf"
         filename = f"soc2_type2_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/reports/cert_in_2022")
+def download_cert_in_2022_report(
+    fmt: str = "pdf",
+    theme: Optional[str] = Query(
+        None,
+        description="CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the CERT-In Cyber Security Directions 2022 & CCMP Compliance Report."""
+    fw_id = "cfw_cert_in_2022"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if theme:
+        query = query.filter(ComplianceControl.theme == theme.strip().upper())
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "CERT-In Directions 2022 & CCMP Security Compliance Audit Report"
+    report_sub = f"Indian Cyber Security Directions & Cyber Crisis Management Plan Ledger (Tenant: {user.org_id[:8]})"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_soa_docx(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"cert_in_2022_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_soa_pdf(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = "application/pdf"
+        filename = f"cert_in_2022_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

@@ -215,6 +215,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_soc2_type2")
                 .first()
             )
+            certin_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_cert_in_2022")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -223,6 +228,11 @@ async def lifespan(app: FastAPI):
             soc2_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_soc2_type2")
+                .count()
+            )
+            certin_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_cert_in_2022")
                 .count()
             )
             ctrl_count = (
@@ -235,13 +245,15 @@ async def lifespan(app: FastAPI):
                 not fw
                 or not nist_fw
                 or not soc2_fw
+                or not certin_fw
                 or ctrl_count < 93
                 or nist_ctrl_count < 20
                 or soc2_ctrl_count < 61
+                or certin_ctrl_count < 10
                 or rule_count < 20
             ):
                 log.info(
-                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, ISO ctrl={ctrl_count}, NIST ctrl={nist_ctrl_count}, SOC2 ctrl={soc2_ctrl_count}, rules={rule_count})..."
+                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, ISO ctrl={ctrl_count}, NIST ctrl={nist_ctrl_count}, SOC2 ctrl={soc2_ctrl_count}, CERT-In ctrl={certin_ctrl_count}, rules={rule_count})..."
                 )
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
@@ -259,19 +271,30 @@ async def lifespan(app: FastAPI):
                 soc2_seed = os.path.join(
                     base_scripts_dir, "soc2_type2_controls_seed.json"
                 )
+                certin_seed = os.path.join(
+                    base_scripts_dir, "cert_in_2022_controls_seed.json"
+                )
 
-                if os.path.exists(iso_seed):
-                    seed_framework_and_controls(db, iso_seed)
-                if os.path.exists(nist_seed):
-                    seed_framework_and_controls(db, nist_seed)
-                if os.path.exists(soc2_seed):
-                    seed_framework_and_controls(db, soc2_seed)
+                try:
+                    if os.path.exists(iso_seed):
+                        seed_framework_and_controls(db, iso_seed)
+                    if os.path.exists(nist_seed):
+                        seed_framework_and_controls(db, nist_seed)
+                    if os.path.exists(soc2_seed):
+                        seed_framework_and_controls(db, soc2_seed)
+                    if os.path.exists(certin_seed):
+                        seed_framework_and_controls(db, certin_seed)
 
-                seed_and_evaluate()
-                log.info("Compliance catalog auto-seeding completed successfully!")
+                    seed_and_evaluate()
+                    log.info("Compliance catalog auto-seeding completed successfully!")
+                except Exception as seed_err:
+                    db.rollback()
+                    log.warning(
+                        f"Compliance catalog seeding handled concurrently or deferred: {seed_err}"
+                    )
             else:
                 log.info(
-                    "Compliance catalog (ISO 27001, NIST CSF v2.0 & SOC 2 Type II frameworks, controls & rules) fully present and synchronized."
+                    "Compliance catalog (ISO 27001, NIST CSF v2.0, SOC 2 Type II & CERT-In 2022 frameworks, controls & rules) fully present and synchronized."
                 )
     except Exception as e:
         log.warning(f"Compliance catalog auto-seeding skipped or deferred: {e}")

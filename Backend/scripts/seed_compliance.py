@@ -157,6 +157,7 @@ if __name__ == "__main__":
             nist_path = os.path.join(base_dir, "nist_csf_v2_controls_seed.json")
             cis_path = os.path.join(base_dir, "cis_v8_1_controls_seed.json")
             soc2_path = os.path.join(base_dir, "soc2_type2_controls_seed.json")
+            certin_path = os.path.join(base_dir, "cert_in_2022_controls_seed.json")
             if os.path.exists(iso_path):
                 seed_framework_and_controls(db, iso_path)
             if os.path.exists(nist_path):
@@ -165,5 +166,7 @@ if __name__ == "__main__":
                 seed_framework_and_controls(db, cis_path)
             if os.path.exists(soc2_path):
                 seed_framework_and_controls(db, soc2_path)
+            if os.path.exists(certin_path):
+                seed_framework_and_controls(db, certin_path)
     finally:
         db.close()

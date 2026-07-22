@@ -296,3 +296,103 @@ def test_soc2_type2_framework_seeding_and_reports(
     if inst:
         db_session.delete(inst)
         db_session.commit()
+
+
+def test_cert_in_2022_framework_integration(
+    client, test_user, auth_headers, db_session
+):
+    """Test CERT-In 2022 framework seeding, control crosswalks, rule evaluation operators, and report routes."""
+    from scripts.seed_compliance import seed_framework_and_controls
+    from scripts.seed_real_rules import seed_and_evaluate
+    from core.compliance_tasks import _evaluate_operator
+    import os
+
+    # 1. Verify numeric and list comparison operators in rule engine
+    assert _evaluate_operator("gte", 180, 180) is True
+    assert _evaluate_operator("gte", 190, 180) is True
+    assert _evaluate_operator("gte", 90, 180) is False
+    assert _evaluate_operator("lte", 6, 6) is True
+    assert _evaluate_operator("lte", 4, 6) is True
+    assert _evaluate_operator("lte", 12, 6) is False
+    assert (
+        _evaluate_operator(
+            "contains",
+            ["samay.nplindia.in", "10.0.0.1"],
+            ["samay.nplindia.in", "nic.in"],
+        )
+        is True
+    )
+
+    # 2. Seed CERT-In controls and real rules
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cert_in_seed = os.path.join(base_dir, "scripts", "cert_in_2022_controls_seed.json")
+    if os.path.exists(cert_in_seed):
+        seed_framework_and_controls(db_session, cert_in_seed)
+
+    seed_and_evaluate()
+
+    # 3. Verify framework exists in database
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_cert_in_2022")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "CERT_IN_2022"
+
+    # 4. Verify CERT-In controls exist
+    controls = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_cert_in_2022")
+        .all()
+    )
+    assert len(controls) >= 10
+
+    # 5. Enable tenant framework for test org
+    inst = (
+        db_session.query(ComplianceTenantFramework)
+        .filter(
+            ComplianceTenantFramework.tenant_id == test_user.org_id,
+            ComplianceTenantFramework.framework_id == "cfw_cert_in_2022",
+        )
+        .first()
+    )
+    if not inst:
+        inst = ComplianceTenantFramework(
+            id=f"ctf_{test_user.org_id}_cfw_cert_in_2022",
+            tenant_id=test_user.org_id,
+            framework_id="cfw_cert_in_2022",
+            is_enabled=True,
+            enabled_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        db_session.commit()
+
+    # 6. Test GET /compliance/summary with framework_id query parameter
+    summary_res = client.get(
+        "/compliance/summary?framework_id=cfw_cert_in_2022", headers=auth_headers
+    )
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert "score_pct" in summary_data
+    assert "quadrant_scores" in summary_data
+
+    # 7. Test CERT-In PDF Report generation endpoint
+    pdf_res = client.get(
+        "/compliance/reports/cert_in_2022?fmt=pdf",
+        headers=auth_headers,
+    )
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+
+    # 8. Test CERT-In DOCX Report generation endpoint
+    docx_res = client.get(
+        "/compliance/reports/cert_in_2022?fmt=docx",
+        headers=auth_headers,
+    )
+    assert docx_res.status_code == 200
+
+    # Cleanup
+    if inst:
+        db_session.delete(inst)
+        db_session.commit()

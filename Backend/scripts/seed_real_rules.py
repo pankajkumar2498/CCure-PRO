@@ -48,6 +48,114 @@ def seed_and_evaluate():
         # 2. Seed Compliance Rules and Remediation Actions
         rules_data = [
             {
+                "id": "crl_cert_in_log_180d",
+                "rule_family_code": "CERT-LOG-180D",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "retention_days",
+                    "operator": "gte",
+                    "expected": 180,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_cert_in_2022_cert_in_log_1",
+                "recommendation_text": "Configure system and audit log retention policies to preserve logs for at least 180 days within Indian jurisdiction.",
+            },
+            {
+                "id": "crl_cert_in_ntp_sync",
+                "rule_family_code": "CERT-NTP-SYNC",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "ntp_servers",
+                    "operator": "contains",
+                    "expected": ["samay.nplindia.in", "nic.in"],
+                },
+                "severity": "medium",
+                "severity_weight": 5,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_cert_in_2022_cert_in_log_2",
+                "recommendation_text": "Synchronize system clock with official NPL India (samay.nplindia.in) or NIC time servers.",
+            },
+            {
+                "id": "crl_cert_in_ir_6hr",
+                "rule_family_code": "CERT-IR-6HR",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "incident_reporting_sla_hours",
+                    "operator": "lte",
+                    "expected": 6,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_cert_in_2022_cert_in_ir_1",
+                "recommendation_text": "Ensure incident response procedures enforce mandatory 6-hour incident reporting SLA to CERT-In.",
+            },
+            {
+                "id": "crl_cert_in_vpn_5yr",
+                "rule_family_code": "CERT-VPN-5YR",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "vpn_log_retention_years",
+                    "operator": "gte",
+                    "expected": 5,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_cert_in_2022_cert_in_am_1",
+                "recommendation_text": "Configure VPN access log retention to preserve user subscriber and IP allocation records for at least 5 years.",
+            },
+            {
+                "id": "crl_cert_in_mfa_admin",
+                "rule_family_code": "CERT-MFA-ADMIN",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "mfa_enforced_admin",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_cert_in_2022_cert_in_ac_1",
+                "recommendation_text": "Enforce Multi-Factor Authentication (MFA) across all administrative accounts and management portals.",
+            },
+            {
+                "id": "crl_cert_in_vm_audit",
+                "rule_family_code": "CERT-VM-AUDIT",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "last_scan_days_ago",
+                    "operator": "lte",
+                    "expected": 90,
+                },
+                "severity": "medium",
+                "severity_weight": 5,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_cert_in_2022_cert_in_vm_1",
+                "recommendation_text": "Conduct periodic ICT vulnerability assessments and security posture audits at least every 90 days.",
+            },
+            {
                 "id": "crl_vuln_critical_v1",
                 "rule_family_code": "VULN-CRITICAL",
                 "version_number": 1,
@@ -982,6 +1090,65 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for SOC 2 Type II")
 
+        # Map rules and controls for CERT-In Directions 2022
+        certin_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_cert_in_2022")
+            .all()
+        )
+        if certin_controls:
+            for certin_ctrl in certin_controls:
+                raw_id = (
+                    certin_ctrl.control_number.lower()
+                    .replace(".", "_")
+                    .replace("-", "_")
+                )
+                rule_id = f"crl_cert_in_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-CERTIN-{certin_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            certin_ctrl.scannability
+                            if certin_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                c_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == certin_ctrl.id,
+                    )
+                    .first()
+                )
+                if not c_link:
+                    db.add(
+                        ComplianceRuleControl(
+                            rule_id=rule_id, control_id=certin_ctrl.id
+                        )
+                    )
+
+            db.commit()
+            print(
+                "  - Successfully mapped rules and controls for CERT-In Directions 2022"
+            )
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -990,12 +1157,13 @@ def seed_and_evaluate():
             if not user:
                 user = db.query(User).first()
 
-            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1, SOC 2 Type II)
+            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1, SOC 2 Type II, CERT-In 2022)
             for fw_code_id in [
                 "cfw_iso27001_2022",
                 "cfw_nist_csf_v2",
                 "cfw_cis_v8_1",
                 "cfw_soc2_type2",
+                "cfw_cert_in_2022",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

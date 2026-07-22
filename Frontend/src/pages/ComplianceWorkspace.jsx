@@ -1047,7 +1047,9 @@ export default function ComplianceWorkspace() {
                         ? "CIS Safeguards"
                         : selectedFrameworkId === "cfw_soc2_type2"
                           ? "SOC 2 Criteria"
-                          : "ISO 27001 Controls"}
+                          : selectedFrameworkId === "cfw_cert_in_2022"
+                            ? "CERT-In Controls"
+                            : "ISO 27001 Controls"}
                   </h3>
                   <div className="kpis-list">
                     <div>
@@ -1175,6 +1177,28 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      "/compliance/reports/cert_in_2022?fmt=pdf",
+                      "cert_in_2022_executive_report.pdf",
+                    )
+                  }
+                >
+                  Download CERT-In PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/cert_in_2022?fmt=docx",
+                      "cert_in_2022_executive_report.docx",
+                    )
+                  }
+                >
+                  Download CERT-In Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -1192,7 +1216,9 @@ export default function ComplianceWorkspace() {
                       ? "CIS Controls v8.1 Safeguards Breakdown"
                       : selectedFrameworkId === "cfw_soc2_type2"
                         ? "SOC 2 Trust Services Criteria Breakdown"
-                        : "ISO 27001 Themes Quadrant Breakdown"}
+                        : selectedFrameworkId === "cfw_cert_in_2022"
+                          ? "CERT-In Directions & CCMP Themes Breakdown"
+                          : "ISO 27001 Themes Quadrant Breakdown"}
                 </h3>
                 <div className="quadrant-grid">
                   {Object.entries(summary.quadrant_scores || {}).map(
@@ -1217,7 +1243,19 @@ export default function ComplianceWorkspace() {
                                     ? "Respond (RS)"
                                     : key === "RC"
                                       ? "Recover (RC)"
-                                      : key}
+                                      : key === "CERT_IR"
+                                        ? "Incident Reporting & Response (CERT_IR)"
+                                        : key === "CERT_LOG"
+                                          ? "System Log Retention & Time Sync (CERT_LOG)"
+                                          : key === "CERT_AM"
+                                            ? "Asset & VPN Log Retention (CERT_AM)"
+                                            : key === "CERT_VM"
+                                              ? "Vulnerability Management & ICT Audits (CERT_VM)"
+                                              : key === "CERT_AC"
+                                                ? "Access Control & MFA (CERT_AC)"
+                                                : key === "CERT_DP"
+                                                  ? "Data Protection & Encryption (CERT_DP)"
+                                                  : key}
                         </span>
                         <div className="progress-container">
                           <div

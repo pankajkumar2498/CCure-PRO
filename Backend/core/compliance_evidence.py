@@ -281,6 +281,7 @@ class ComplianceEvidenceProvider:
             if asset
             else {}
         )
+        custom_attrs = (asset.custom_attributes or {}) if asset else {}
 
         rdp_disabled = registry_attrs.get("rdp_disabled", False)
         rdp_nla_enforced = registry_attrs.get("rdp_nla_enforced", False) or rdp_disabled
@@ -296,4 +297,19 @@ class ComplianceEvidenceProvider:
             "legacy_tls_disabled": registry_attrs.get("legacy_tls_disabled", False),
             "telnet_disabled": registry_attrs.get("telnet_disabled", False),
             "rdp_nla_enforced": rdp_nla_enforced,
+            # --- CERT-In Technical Checks ---
+            "retention_days": registry_attrs.get("retention_days")
+            or custom_attrs.get("log_retention_days"),
+            "ntp_servers": registry_attrs.get("ntp_servers")
+            or custom_attrs.get("ntp_servers")
+            or [],
+            "incident_reporting_sla_hours": registry_attrs.get(
+                "incident_reporting_sla_hours"
+            )
+            or custom_attrs.get("incident_reporting_sla_hours"),
+            "vpn_log_retention_years": registry_attrs.get("vpn_log_retention_years")
+            or custom_attrs.get("vpn_log_retention_years"),
+            "mfa_enforced_admin": registry_attrs.get("mfa_enforced_admin")
+            or custom_attrs.get("mfa_enforced_admin"),
+            "last_scan_days_ago": custom_attrs.get("last_scan_days_ago"),
         }

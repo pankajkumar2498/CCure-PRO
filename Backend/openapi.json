@@ -8194,6 +8194,71 @@
         ]
       }
     },
+    "/compliance/reports/cert_in_2022": {
+      "get": {
+        "description": "Generates and downloads the CERT-In Cyber Security Directions 2022 & CCMP Compliance Report.",
+        "operationId": "download_cert_in_2022_report_compliance_reports_cert_in_2022_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
+              "title": "Theme"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Cert In 2022 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/cis_v8_1": {
       "get": {
         "description": "Generates and downloads the CIS Controls v8.1 Compliance Assessment Report.",

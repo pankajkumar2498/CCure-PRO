@@ -43,27 +43,50 @@ def _evaluate_operator(operator: str, actual: Any, expected: Any) -> bool:
     if actual is None:
         return False
 
-    expected_str = str(expected).strip().lower()
+    # Handle expected list structure safely
+    if isinstance(expected, (list, tuple, set)):
+        expected_str_list = [str(x).strip().lower() for x in expected]
+    else:
+        expected_str_list = [str(expected).strip().lower()]
 
+    expected_str = expected_str_list[0] if expected_str_list else ""
+
+    # 1. Actual value is list-like (e.g. ntp_servers, open_ports)
     if isinstance(actual, (list, tuple, set)):
         actual_str_list = [str(x).strip().lower() for x in actual]
-        if operator == "contains":
-            return expected_str in actual_str_list
-        elif operator == "not_contains":
-            return expected_str not in actual_str_list
 
+        if operator == "contains":
+            return any(exp in actual_str_list for exp in expected_str_list)
+        elif operator == "not_contains":
+            return not any(exp in actual_str_list for exp in expected_str_list)
+
+    # 2. Actual value is a scalar string
     actual_str = str(actual).strip().lower()
 
-    if operator == "equals":
+    if operator in ("equals", "=="):
         return actual_str == expected_str
     elif operator == "not_equals":
         return actual_str != expected_str
     elif operator == "contains":
-        return expected_str in actual_str
+        return any(exp in actual_str for exp in expected_str_list)
     elif operator == "not_contains":
-        return expected_str not in actual_str
+        return not any(exp in actual_str for exp in expected_str_list)
+    elif operator in ("gte", "lte", "gt", "lt"):
+        try:
+            act_num = float(actual)
+            exp_num = float(expected)
+            if operator == "gte":
+                return act_num >= exp_num
+            elif operator == "lte":
+                return act_num <= exp_num
+            elif operator == "gt":
+                return act_num > exp_num
+            elif operator == "lt":
+                return act_num < exp_num
+        except (ValueError, TypeError):
+            return False
     elif operator in ("version_gte", "version_lte"):
-        # Simple digit array comparison (e.g. 1.2.3 -> [1, 2, 3])
+
         def parse_v(v):
             return [int(x) for x in re.findall(r"\d+", str(v))]
 

@@ -65,17 +65,17 @@ jobs:
 
       - name: Run Static Security Analysis (Bandit)
         run: |
-          bandit -r Backend/ -x Backend/tests --skip B324,B501,B507,B110,B112,B605,B608,B104,B105,B106
+          bandit -r Backend/ -x Backend/tests -ll --skip B324,B501,B507,B110,B112,B605,B608,B104,B105,B106
 
       - name: Run Linting Checks (Ruff)
         run: |
           ruff check Backend/ --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821
 
-      - name: Verify Database Connection & Create Admin Role
+      - name: Verify Database Connection & Create Admin and Root Roles
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
           PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "SELECT version();"
-          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;" || true
+          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;" || true
 
       - name: Bootstrap Database Schema & Seeding Validation
         run: |

@@ -302,10 +302,16 @@ def test_cert_in_2022_framework_integration(
     client, test_user, auth_headers, db_session
 ):
     """Test CERT-In 2022 framework seeding, control crosswalks, rule evaluation operators, and report routes."""
+    from datetime import datetime, timezone
+    import os
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
     from scripts.seed_compliance import seed_framework_and_controls
     from scripts.seed_real_rules import seed_and_evaluate
     from core.compliance_tasks import _evaluate_operator
-    import os
 
     # 1. Verify numeric and list comparison operators in rule engine
     assert _evaluate_operator("gte", 180, 180) is True

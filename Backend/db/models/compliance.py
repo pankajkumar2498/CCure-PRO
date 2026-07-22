@@ -114,7 +114,7 @@ class ComplianceControl(Base):
             "framework_id", "control_number", name="uq_framework_control_number"
         ),
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC')",
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18')",
             name="ck_control_theme",
         ),
         CheckConstraint(
@@ -133,13 +133,14 @@ class ComplianceControl(Base):
     control_number = Column(String(50), nullable=False)  # e.g. "8.24"
     theme = Column(
         String(10), nullable=False
-    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC
+    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..CIS_18
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     scannability = Column(String(20), nullable=False)  # auto, semi_auto, manual
     scan_module_hint = Column(String(100), nullable=True)
     crosswalk = Column(JSONB, nullable=True, default=list)
     evidence_checklist = Column(JSONB, nullable=True, default=list)
+    tags = Column(JSONB, nullable=False, default=list)
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="controls")
@@ -619,7 +620,7 @@ class ComplianceScore(Base):
     __tablename__ = "compliance_scores"
     __table_args__ = (
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC')",
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18')",
             name="ck_score_theme",
         ),
     )

@@ -75,6 +75,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
         description = ctrl.get("description", ctrl.get("note", ctrl["title"]))
         crosswalk = ctrl.get("crosswalk", [])
         evidence_checklist = ctrl.get("evidence_checklist", [])
+        tags = ctrl.get("tags", [])
 
         if not control:
             control = ComplianceControl(
@@ -88,6 +89,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
                 scan_module_hint=ctrl.get("scan_module_hint"),
                 crosswalk=crosswalk,
                 evidence_checklist=evidence_checklist,
+                tags=tags,
             )
             db.add(control)
             controls_seeded += 1
@@ -99,6 +101,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             control.scan_module_hint = ctrl.get("scan_module_hint")
             control.crosswalk = crosswalk
             control.evidence_checklist = evidence_checklist
+            control.tags = tags
             controls_seeded += 1
 
     db.commit()
@@ -127,9 +130,12 @@ if __name__ == "__main__":
         else:
             iso_path = os.path.join(base_dir, "iso27001_2022_controls_seed.json")
             nist_path = os.path.join(base_dir, "nist_csf_v2_controls_seed.json")
+            cis_path = os.path.join(base_dir, "cis_v8_1_controls_seed.json")
             if os.path.exists(iso_path):
                 seed_framework_and_controls(db, iso_path)
             if os.path.exists(nist_path):
                 seed_framework_and_controls(db, nist_path)
+            if os.path.exists(cis_path):
+                seed_framework_and_controls(db, cis_path)
     finally:
         db.close()

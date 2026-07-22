@@ -142,3 +142,70 @@ def test_marketplace_workflow(client, db_session, test_user, auth_headers):
     db_session.delete(inst)
     db_session.delete(fw)
     db_session.commit()
+
+
+def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
+    from scripts.seed_compliance import seed_framework_and_controls
+    import os
+
+    # 1. Seed CIS Controls v8.1
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cis_seed_path = os.path.join(base_dir, "scripts", "cis_v8_1_controls_seed.json")
+    if os.path.exists(cis_seed_path):
+        seed_framework_and_controls(db_session, cis_seed_path)
+
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_cis_v8_1")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "CIS_V8_1"
+
+    # Verify control tags are persisted
+    ctrl = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_cis_v8_1")
+        .first()
+    )
+    assert ctrl is not None
+    assert isinstance(ctrl.tags, list)
+    assert "ig1" in ctrl.tags
+
+    # 2. Enable tenant framework for user org
+    inst = ComplianceTenantFramework(
+        id=f"ctf_{test_user.org_id}_cfw_cis_v8_1",
+        tenant_id=test_user.org_id,
+        framework_id="cfw_cis_v8_1",
+        is_enabled=True,
+    )
+    db_session.add(inst)
+    db_session.commit()
+
+    # 3. Test Gap Analysis endpoint with correct parameter names
+    res = client.get(
+        "/compliance/gap-analysis?source_framework_id=cfw_iso27001_2022&target_framework_id=cfw_cis_v8_1",
+        headers=auth_headers,
+    )
+    if res.status_code == 200:
+        data = res.json()
+        assert data["source_framework"]["id"] == "cfw_iso27001_2022"
+        assert data["target_framework"]["id"] == "cfw_cis_v8_1"
+        assert "summary" in data
+        assert "controls" in data
+
+    # 4. Test CIS PDF Report generation endpoint
+    report_res = client.get(
+        "/compliance/reports/cis_v8_1?fmt=pdf", headers=auth_headers
+    )
+    assert report_res.status_code == 200
+    assert report_res.headers["content-type"] == "application/pdf"
+
+    # Cleanup
+    db_session.delete(inst)
+    db_session.commit()

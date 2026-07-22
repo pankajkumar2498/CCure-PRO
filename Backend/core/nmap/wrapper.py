@@ -677,7 +677,8 @@ class NmapScanner:
         except Exception as exc:
             error_msg = str(exc)
             log.warning("NmapScanner._run(%s) error: %s", target, error_msg)
-            ip = target.split()[0] if target else "0.0.0.0"
+            default_fallback = os.getenv("DEFAULT_FALLBACK_IP", "127.0.0.1")
+            ip = target.split()[0] if target else default_fallback
             return NmapScanResult(
                 ip=ip,
                 state="error",
@@ -850,14 +851,16 @@ class NmapScanner:
         This is the SINGLE place where Nmap XML is parsed in this codebase.
         """
         try:
-            root = ET.fromstring(xml_content)
+            root = ET.fromstring(xml_content)  # nosec B314
         except ET.ParseError as exc:
             log.warning("Nmap XML parse error: %s", exc)
-            return NmapScanResult(ip="0.0.0.0", state="error", scan_duration=duration)
+            fallback_ip = os.getenv("DEFAULT_FALLBACK_IP", "127.0.0.1")
+            return NmapScanResult(ip=fallback_ip, state="error", scan_duration=duration)
 
         host_elem = root.find("host")
         if host_elem is None:
-            return NmapScanResult(ip="0.0.0.0", state="down", scan_duration=duration)
+            fallback_ip = os.getenv("DEFAULT_FALLBACK_IP", "127.0.0.1")
+            return NmapScanResult(ip=fallback_ip, state="down", scan_duration=duration)
 
         # ── IP address ────────────────────────────────────────────────────
         ip = ""

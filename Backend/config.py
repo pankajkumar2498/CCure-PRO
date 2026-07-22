@@ -128,12 +128,19 @@ class VulnIntelConfig:
 
     HOST: str = os.getenv("VULN_DB_HOST", os.getenv("PGHOST", "localhost"))
     PORT: int = int(os.getenv("VULN_DB_PORT", os.getenv("PGPORT", "5432")))
-    DATABASE: str = os.getenv("VULN_DB_NAME", os.getenv("PGDATABASE", "vuln_intel"))
-    USER: str = os.getenv("VULN_DB_USER", os.getenv("PGUSER", "admin"))
-    PASSWORD: str = os.getenv("VULN_DB_PASSWORD", os.getenv("PGPASSWORD", "root"))
+    DATABASE: str = os.getenv("VULN_DB_NAME", os.getenv("PGDATABASE", "ccure_test"))
+    USER: str = os.getenv("VULN_DB_USER", os.getenv("PGUSER", "ccure_user"))
+    PASSWORD: str = os.getenv(
+        "VULN_DB_PASSWORD", os.getenv("PGPASSWORD", "ccure_admin_2026")
+    )
 
     @staticmethod
     def database_url() -> str:
+        url_override = os.getenv("VULNERABILITY_INTEL_DATABASE_URL") or os.getenv(
+            "DATABASE_URL"
+        )
+        if url_override:
+            return url_override
         return (
             f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
             f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}/{VulnIntelConfig.DATABASE}"

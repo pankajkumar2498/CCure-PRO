@@ -812,6 +812,188 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for NIST CSF v2.0")
 
+        # Also map rules to CIS Controls v8.1 via crosswalk references and auto-generate CIS rules
+        cis_framework = (
+            db.query(ComplianceFramework)
+            .filter(ComplianceFramework.id == "cfw_cis_v8_1")
+            .first()
+        )
+        if cis_framework:
+            cis_controls = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_cis_v8_1")
+                .all()
+            )
+            for cis_ctrl in cis_controls:
+                mapped = False
+                if cis_ctrl.crosswalk:
+                    for iso_num in cis_ctrl.crosswalk:
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_num.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            c_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == cis_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not c_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=cis_ctrl.id,
+                                    )
+                                )
+                                mapped = True
+
+                # Ensure every CIS Safeguard has a dedicated 1:1 baseline rule
+                raw_id = (
+                    cis_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_cis_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-CIS-{cis_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            cis_ctrl.scannability
+                            if cis_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                c_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == cis_ctrl.id,
+                    )
+                    .first()
+                )
+                if not c_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=cis_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for CIS Controls v8.1")
+
+        now = datetime.now(timezone.utc)
+
+        orgs = db.query(Organization).all()
+        for org in orgs:
+            user = db.query(User).filter(User.org_id == org.id).first()
+            if not user:
+                user = db.query(User).first()
+
+            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1)
+            for fw_code_id in ["cfw_iso27001_2022", "cfw_nist_csf_v2", "cfw_cis_v8_1"]:
+                fw_obj = (
+                    db.query(ComplianceFramework)
+                    .filter(ComplianceFramework.id == fw_code_id)
+                    .first()
+                )
+                if not fw_obj:
+                    continue
+
+                tenant_fw = (
+                    db.query(ComplianceTenantFramework)
+                    .filter(
+                        ComplianceTenantFramework.tenant_id == org.id,
+                        ComplianceTenantFramework.framework_id == fw_code_id,
+                    )
+                    .first()
+                )
+
+                if not tenant_fw:
+                    tenant_fw = ComplianceTenantFramework(
+                        id=f"ctf_{org.id}_{fw_code_id}",
+                        tenant_id=org.id,
+                        framework_id=fw_code_id,
+                        is_enabled=True,
+                        enabled_by=user.id if user else None,
+                        enabled_at=now,
+                    )
+                    db.add(tenant_fw)
+
+                # Create Baseline Policy
+                policy_id = f"cpl_{org.id}_{fw_obj.code.lower()}_default"
+                policy = (
+                    db.query(CompliancePolicy)
+                    .filter(CompliancePolicy.id == policy_id)
+                    .first()
+                )
+                if not policy:
+                    policy = CompliancePolicy(
+                        id=policy_id,
+                        framework_id=fw_code_id,
+                        tenant_id=org.id,
+                        policy_family_code=f"POL-{fw_obj.code.upper()}-DEFAULT",
+                        version_number=1,
+                        name=f"{fw_obj.name} Default Policy Baseline",
+                        target_platform="any",
+                        status="active",
+                        is_active=True,
+                        created_by=user.id if user else None,
+                        created_at=now,
+                    )
+                    db.add(policy)
+                else:
+                    policy.name = f"{fw_obj.name} Default Policy Baseline"
+
+                db.flush()
+
+                # Link framework rules to policy
+                fw_rules = (
+                    db.query(ComplianceRule)
+                    .join(
+                        ComplianceRuleControl,
+                        ComplianceRuleControl.rule_id == ComplianceRule.id,
+                    )
+                    .join(
+                        ComplianceControl,
+                        ComplianceControl.id == ComplianceRuleControl.control_id,
+                    )
+                    .filter(ComplianceControl.framework_id == fw_code_id)
+                    .distinct()
+                    .all()
+                )
+                for rule in fw_rules:
+                    link = (
+                        db.query(CompliancePolicyRule)
+                        .filter(
+                            CompliancePolicyRule.policy_id == policy.id,
+                            CompliancePolicyRule.rule_id == rule.id,
+                        )
+                        .first()
+                    )
+                    if not link:
+                        new_link = CompliancePolicyRule(
+                            policy_id=policy.id, rule_id=rule.id
+                        )
+                        db.add(new_link)
+                db.commit()
+
         # 4. Find scanned target asset: 10.180.6.14
         target_ip = "10.180.6.14"
         asset = db.query(Asset).filter(Asset.ip_address == target_ip).first()
@@ -825,101 +1007,6 @@ def seed_and_evaluate():
             return
 
         print(f"\nFound asset: {asset.ip_address} (ID={asset.id}, Org={asset.org_id})")
-
-        org = db.query(Organization).filter(Organization.id == asset.org_id).first()
-        user = db.query(User).filter(User.org_id == org.id).first()
-        if not user:
-            user = db.query(User).first()
-
-        now = datetime.now(timezone.utc)
-
-        # Register Frameworks (ISO 27001 & NIST CSF v2.0)
-        for fw_code_id in ["cfw_iso27001_2022", "cfw_nist_csf_v2"]:
-            fw_obj = (
-                db.query(ComplianceFramework)
-                .filter(ComplianceFramework.id == fw_code_id)
-                .first()
-            )
-            if not fw_obj:
-                continue
-
-            tenant_fw = (
-                db.query(ComplianceTenantFramework)
-                .filter(
-                    ComplianceTenantFramework.tenant_id == org.id,
-                    ComplianceTenantFramework.framework_id == fw_code_id,
-                )
-                .first()
-            )
-
-            if not tenant_fw:
-                tenant_fw = ComplianceTenantFramework(
-                    id=f"ctf_{org.id}_{fw_code_id}",
-                    tenant_id=org.id,
-                    framework_id=fw_code_id,
-                    is_enabled=True,
-                    enabled_by=user.id if user else None,
-                    enabled_at=now,
-                )
-                db.add(tenant_fw)
-                print(f"  - Registered {fw_obj.name} to tenant: {org.name}")
-
-            # Create Baseline Policy
-            policy_id = f"cpl_{org.id}_{fw_obj.code.lower()}_default"
-            policy = (
-                db.query(CompliancePolicy)
-                .filter(CompliancePolicy.id == policy_id)
-                .first()
-            )
-            if not policy:
-                policy = CompliancePolicy(
-                    id=policy_id,
-                    framework_id=fw_code_id,
-                    tenant_id=org.id,
-                    policy_family_code=f"POL-{fw_obj.code.upper()}-DEFAULT",
-                    version_number=1,
-                    name=f"{fw_obj.name} Default Policy Baseline",
-                    target_platform="any",
-                    status="active",
-                    is_active=True,
-                    created_by=user.id if user else None,
-                    created_at=now,
-                )
-                db.add(policy)
-                print(f"  - Created compliance policy baseline: {policy.name}")
-            else:
-                policy.name = f"{fw_obj.name} Default Policy Baseline"
-
-            db.flush()
-
-            # Link framework rules to policy
-            fw_rules = (
-                db.query(ComplianceRule)
-                .join(
-                    ComplianceRuleControl,
-                    ComplianceRuleControl.rule_id == ComplianceRule.id,
-                )
-                .join(
-                    ComplianceControl,
-                    ComplianceControl.id == ComplianceRuleControl.control_id,
-                )
-                .filter(ComplianceControl.framework_id == fw_code_id)
-                .all()
-            )
-            for rule in fw_rules:
-                link = (
-                    db.query(CompliancePolicyRule)
-                    .filter(
-                        CompliancePolicyRule.policy_id == policy.id,
-                        CompliancePolicyRule.rule_id == rule.id,
-                    )
-                    .first()
-                )
-                if not link:
-                    new_link = CompliancePolicyRule(
-                        policy_id=policy.id, rule_id=rule.id
-                    )
-                    db.add(new_link)
 
         # 5. Create compliance scan run and execute compliance evaluation
         scan_run_id = f"run_{org.id[:8]}_{datetime.now().strftime('%M%S%f')}"

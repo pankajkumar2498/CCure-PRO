@@ -1,0 +1,3217 @@
+{
+  "framework": {
+    "code": "CIS_V8_1",
+    "name": "CIS Critical Security Controls v8.1",
+    "version": "8.1",
+    "source_annex": "Center for Internet Security",
+    "total_controls": 153,
+    "themes": [
+      {
+        "code": "CIS_01",
+        "name": "Control 1: Enterprise Asset Inventory",
+        "range": "1.1 - 1.5",
+        "count": 5
+      },
+      {
+        "code": "CIS_02",
+        "name": "Control 2: Software Asset Inventory",
+        "range": "2.1 - 2.7",
+        "count": 7
+      },
+      {
+        "code": "CIS_03",
+        "name": "Control 3: Data Protection",
+        "range": "3.1 - 3.14",
+        "count": 14
+      },
+      {
+        "code": "CIS_04",
+        "name": "Control 4: Secure Configuration",
+        "range": "4.1 - 4.12",
+        "count": 12
+      },
+      {
+        "code": "CIS_05",
+        "name": "Control 5: Account Management",
+        "range": "5.1 - 5.6",
+        "count": 6
+      },
+      {
+        "code": "CIS_06",
+        "name": "Control 6: Access Control Management",
+        "range": "6.1 - 6.8",
+        "count": 8
+      },
+      {
+        "code": "CIS_07",
+        "name": "Control 7: Continuous Vulnerability Management",
+        "range": "7.1 - 7.7",
+        "count": 7
+      },
+      {
+        "code": "CIS_08",
+        "name": "Control 8: Audit Log Management",
+        "range": "8.1 - 8.12",
+        "count": 12
+      },
+      {
+        "code": "CIS_09",
+        "name": "Control 9: Web Browser & Email Protections",
+        "range": "9.1 - 9.7",
+        "count": 7
+      },
+      {
+        "code": "CIS_10",
+        "name": "Control 10: Malware Defenses",
+        "range": "10.1 - 10.7",
+        "count": 7
+      },
+      {
+        "code": "CIS_11",
+        "name": "Control 11: Data Recovery",
+        "range": "11.1 - 11.5",
+        "count": 5
+      },
+      {
+        "code": "CIS_12",
+        "name": "Control 12: Network Infrastructure Management",
+        "range": "12.1 - 12.8",
+        "count": 8
+      },
+      {
+        "code": "CIS_13",
+        "name": "Control 13: Network Monitoring & Defense",
+        "range": "13.1 - 13.11",
+        "count": 11
+      },
+      {
+        "code": "CIS_14",
+        "name": "Control 14: Security Awareness & Skills Training",
+        "range": "14.1 - 14.9",
+        "count": 9
+      },
+      {
+        "code": "CIS_15",
+        "name": "Control 15: Service Provider Management",
+        "range": "15.1 - 15.7",
+        "count": 7
+      },
+      {
+        "code": "CIS_16",
+        "name": "Control 16: Application Software Security",
+        "range": "16.1 - 16.14",
+        "count": 14
+      },
+      {
+        "code": "CIS_17",
+        "name": "Control 17: Incident Response Management",
+        "range": "17.1 - 17.9",
+        "count": 9
+      },
+      {
+        "code": "CIS_18",
+        "name": "Control 18: Penetration Testing",
+        "range": "18.1 - 18.5",
+        "count": 5
+      }
+    ],
+    "scannability_legend": {
+      "auto": "Fully verifiable by technical scan (registry/config/API/port check) using CCure Audit PRO.",
+      "semi_auto": "Partially verifiable technically (Asset Registry, RBAC data, credential status).",
+      "manual": "Governance, policy doc, HR, or operational process requiring manual evidence upload."
+    }
+  },
+  "controls": [
+    {
+      "id": "1.1",
+      "theme": "CIS_01",
+      "title": "Establish and Maintain Detailed Enterprise Asset Inventory",
+      "description": "Establish and Maintain Detailed Enterprise Asset Inventory",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.9",
+        "ID.AM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "1.2",
+      "theme": "CIS_01",
+      "title": "Address Unauthorized Assets",
+      "description": "Address Unauthorized Assets",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.9",
+        "ID.AM-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "1.3",
+      "theme": "CIS_01",
+      "title": "Utilize an Active Discovery Tool",
+      "description": "Utilize an Active Discovery Tool",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "ID.AM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "1.4",
+      "theme": "CIS_01",
+      "title": "Use Dynamic Host Configuration Protocol (DHCP) Logging",
+      "description": "Use Dynamic Host Configuration Protocol (DHCP) Logging",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "1.5",
+      "theme": "CIS_01",
+      "title": "Use Passive Asset Discovery Tool",
+      "description": "Use Passive Asset Discovery Tool",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.1",
+      "theme": "CIS_02",
+      "title": "Establish and Maintain Software Inventory",
+      "description": "Establish and Maintain Software Inventory",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.9",
+        "ID.AM-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.2",
+      "theme": "CIS_02",
+      "title": "Ensure Authorized Software is Supported",
+      "description": "Ensure Authorized Software is Supported",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.AM-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.3",
+      "theme": "CIS_02",
+      "title": "Address Unauthorized Software",
+      "description": "Address Unauthorized Software",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.19",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.4",
+      "theme": "CIS_02",
+      "title": "Utilize Automated Software Inventory Tools",
+      "description": "Utilize Automated Software Inventory Tools",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.9",
+        "ID.AM-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.5",
+      "theme": "CIS_02",
+      "title": "Allowlist Authorized Software",
+      "description": "Allowlist Authorized Software",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.19",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.6",
+      "theme": "CIS_02",
+      "title": "Allowlist Authorized Libraries",
+      "description": "Allowlist Authorized Libraries",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "2.7",
+      "theme": "CIS_02",
+      "title": "Allowlist Authorized Scripts",
+      "description": "Allowlist Authorized Scripts",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.1",
+      "theme": "CIS_03",
+      "title": "Establish and Maintain a Data Management Process",
+      "description": "Establish and Maintain a Data Management Process",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.12",
+        "PR.DS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.2",
+      "theme": "CIS_03",
+      "title": "Establish and Maintain a Data Inventory",
+      "description": "Establish and Maintain a Data Inventory",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.9",
+        "ID.AM-05"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.3",
+      "theme": "CIS_03",
+      "title": "Configure Data Access Control Lists",
+      "description": "Configure Data Access Control Lists",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.4",
+      "theme": "CIS_03",
+      "title": "Enforce Access Control via Access Control Lists",
+      "description": "Enforce Access Control via Access Control Lists",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.5",
+      "theme": "CIS_03",
+      "title": "Document Data Retention Procedures",
+      "description": "Document Data Retention Procedures",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.33",
+        "PR.DS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.6",
+      "theme": "CIS_03",
+      "title": "Securely Dispose of Data",
+      "description": "Securely Dispose of Data",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.7.14",
+        "PR.DS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.7",
+      "theme": "CIS_03",
+      "title": "Establish and Maintain a Data Classification Scheme",
+      "description": "Establish and Maintain a Data Classification Scheme",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.12",
+        "ID.AM-05"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.8",
+      "theme": "CIS_03",
+      "title": "Document Data Flow Diagrams",
+      "description": "Document Data Flow Diagrams",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.12",
+        "ID.AM-05"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "3.9",
+      "theme": "CIS_03",
+      "title": "Encrypt Data on Removable Media",
+      "description": "Encrypt Data on Removable Media",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.10",
+      "theme": "CIS_03",
+      "title": "Encrypt Sensitive Data at Rest",
+      "description": "Encrypt Sensitive Data at Rest",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.11",
+      "theme": "CIS_03",
+      "title": "Encrypt Sensitive Data in Transit",
+      "description": "Encrypt Sensitive Data in Transit",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.12",
+      "theme": "CIS_03",
+      "title": "Segment Data Processing Facilities",
+      "description": "Segment Data Processing Facilities",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.13",
+      "theme": "CIS_03",
+      "title": "Deploy a Data Loss Prevention (DLP) Solution",
+      "description": "Deploy a Data Loss Prevention (DLP) Solution",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.12",
+        "PR.DS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "3.14",
+      "theme": "CIS_03",
+      "title": "Log Access to Sensitive Data Stores",
+      "description": "Log Access to Sensitive Data Stores",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.1",
+      "theme": "CIS_04",
+      "title": "Establish and Maintain a Secure Configuration Process",
+      "description": "Establish and Maintain a Secure Configuration Process",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.2",
+      "theme": "CIS_04",
+      "title": "Establish and Maintain a Secure Configuration for Network Infrastructure",
+      "description": "Establish and Maintain a Secure Configuration for Network Infrastructure",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.3",
+      "theme": "CIS_04",
+      "title": "Configure Automatic Session Locking on Mobile and Workstation Assets",
+      "description": "Configure Automatic Session Locking on Mobile and Workstation Assets",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.1",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.4",
+      "theme": "CIS_04",
+      "title": "Implement and Manage a Firewall on Workstations",
+      "description": "Implement and Manage a Firewall on Workstations",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.5",
+      "theme": "CIS_04",
+      "title": "Implement and Manage a Firewall on Servers",
+      "description": "Implement and Manage a Firewall on Servers",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.6",
+      "theme": "CIS_04",
+      "title": "Securely Manage Enterprise Assets and Software",
+      "description": "Securely Manage Enterprise Assets and Software",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.7",
+      "theme": "CIS_04",
+      "title": "Manage Default Accounts on Enterprise Assets",
+      "description": "Manage Default Accounts on Enterprise Assets",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.5",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.8",
+      "theme": "CIS_04",
+      "title": "Uninstall or Disable Unnecessary Services and Protocols",
+      "description": "Uninstall or Disable Unnecessary Services and Protocols",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.9",
+      "theme": "CIS_04",
+      "title": "Configure System Logging Functions",
+      "description": "Configure System Logging Functions",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.10",
+      "theme": "CIS_04",
+      "title": "Enforce Remote Administration Protocols Encryption",
+      "description": "Enforce Remote Administration Protocols Encryption",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.11",
+      "theme": "CIS_04",
+      "title": "Enforce Centralized Configuration Management",
+      "description": "Enforce Centralized Configuration Management",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "4.12",
+      "theme": "CIS_04",
+      "title": "Separate Remote Administration Network Traffic",
+      "description": "Separate Remote Administration Network Traffic",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.1",
+      "theme": "CIS_05",
+      "title": "Establish and Maintain an Inventory of Accounts",
+      "description": "Establish and Maintain an Inventory of Accounts",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.16",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.2",
+      "theme": "CIS_05",
+      "title": "Use Unique Passwords and Enforce MFA",
+      "description": "Use Unique Passwords and Enforce MFA",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.17",
+        "PR.AA-03"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.3",
+      "theme": "CIS_05",
+      "title": "Disable Dormant Accounts",
+      "description": "Disable Dormant Accounts",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.18",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.4",
+      "theme": "CIS_05",
+      "title": "Restrict Administrator Privileges to Dedicated Administrator Accounts",
+      "description": "Restrict Administrator Privileges to Dedicated Administrator Accounts",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.15",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.5",
+      "theme": "CIS_05",
+      "title": "Establish and Maintain an Inventory of Service Accounts",
+      "description": "Establish and Maintain an Inventory of Service Accounts",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.16",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "5.6",
+      "theme": "CIS_05",
+      "title": "Centralize Account Management via Directory Service",
+      "description": "Centralize Account Management via Directory Service",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.16",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.1",
+      "theme": "CIS_06",
+      "title": "Establish an Access Granting Process",
+      "description": "Establish an Access Granting Process",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.15",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.2",
+      "theme": "CIS_06",
+      "title": "Establish an Access Revoking Process",
+      "description": "Establish an Access Revoking Process",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.18",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.3",
+      "theme": "CIS_06",
+      "title": "Require MFA for Externally-Exposed Applications",
+      "description": "Require MFA for Externally-Exposed Applications",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.17",
+        "PR.AA-03"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.4",
+      "theme": "CIS_06",
+      "title": "Require MFA for Remote Network Access",
+      "description": "Require MFA for Remote Network Access",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.17",
+        "PR.AA-03"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.5",
+      "theme": "CIS_06",
+      "title": "Require MFA for Administrative Access",
+      "description": "Require MFA for Administrative Access",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.17",
+        "PR.AA-03"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.6",
+      "theme": "CIS_06",
+      "title": "Establish and Maintain an Inventory of Authentication Systems",
+      "description": "Establish and Maintain an Inventory of Authentication Systems",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.16",
+        "PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "6.7",
+      "theme": "CIS_06",
+      "title": "Centralize Access Control Systems",
+      "description": "Centralize Access Control Systems",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.15",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "6.8",
+      "theme": "CIS_06",
+      "title": "Define and Enforce Role-Based Access Control",
+      "description": "Define and Enforce Role-Based Access Control",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.18",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.1",
+      "theme": "CIS_07",
+      "title": "Establish and Maintain a Vulnerability Management Process",
+      "description": "Establish and Maintain a Vulnerability Management Process",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.2",
+      "theme": "CIS_07",
+      "title": "Establish and Maintain a Remediation Process",
+      "description": "Establish and Maintain a Remediation Process",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.3",
+      "theme": "CIS_07",
+      "title": "Perform Automated Operating System Patch Management",
+      "description": "Perform Automated Operating System Patch Management",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.4",
+      "theme": "CIS_07",
+      "title": "Remediate Critical Vulnerabilities",
+      "description": "Remediate Critical Vulnerabilities",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.5",
+      "theme": "CIS_07",
+      "title": "Perform Automated Application Patch Management",
+      "description": "Perform Automated Application Patch Management",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.6",
+      "theme": "CIS_07",
+      "title": "Perform Automated Vulnerability Scans of Enterprise Assets",
+      "description": "Perform Automated Vulnerability Scans of Enterprise Assets",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "7.7",
+      "theme": "CIS_07",
+      "title": "Perform Authenticated Vulnerability Scans",
+      "description": "Perform Authenticated Vulnerability Scans",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.1",
+      "theme": "CIS_08",
+      "title": "Establish and Maintain an Audit Log Management Process",
+      "description": "Establish and Maintain an Audit Log Management Process",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.2",
+      "theme": "CIS_08",
+      "title": "Collect Audit Logs",
+      "description": "Collect Audit Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.3",
+      "theme": "CIS_08",
+      "title": "Ensure Adequate Audit Log Storage",
+      "description": "Ensure Adequate Audit Log Storage",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.4",
+      "theme": "CIS_08",
+      "title": "Standardize Time Sync Across Enterprise Assets",
+      "description": "Standardize Time Sync Across Enterprise Assets",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.17",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.5",
+      "theme": "CIS_08",
+      "title": "Collect Detailed Audit Logs",
+      "description": "Collect Detailed Audit Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.6",
+      "theme": "CIS_08",
+      "title": "Collect DNS Query Logs",
+      "description": "Collect DNS Query Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.7",
+      "theme": "CIS_08",
+      "title": "Collect URL Request Logs",
+      "description": "Collect URL Request Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.8",
+      "theme": "CIS_08",
+      "title": "Collect Command Line Execution Logs",
+      "description": "Collect Command Line Execution Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.9",
+      "theme": "CIS_08",
+      "title": "Centralize Audit Logs Repository",
+      "description": "Centralize Audit Logs Repository",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.10",
+      "theme": "CIS_08",
+      "title": "Retain Audit Logs for at Least 90 Days",
+      "description": "Retain Audit Logs for at Least 90 Days",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "8.11",
+      "theme": "CIS_08",
+      "title": "Conduct Periodic Audit Log Reviews",
+      "description": "Conduct Periodic Audit Log Reviews",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "8.12",
+      "theme": "CIS_08",
+      "title": "Collect and Centralize System Audit Logs",
+      "description": "Collect and Centralize System Audit Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.1",
+      "theme": "CIS_09",
+      "title": "Ensure Supported Browsers and Email Clients",
+      "description": "Ensure Supported Browsers and Email Clients",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.2",
+      "theme": "CIS_09",
+      "title": "Use Automated DNS Filtering Services",
+      "description": "Use Automated DNS Filtering Services",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.3",
+      "theme": "CIS_09",
+      "title": "Maintain Anti-Spam and Anti-Phishing Controls",
+      "description": "Maintain Anti-Spam and Anti-Phishing Controls",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.4",
+      "theme": "CIS_09",
+      "title": "Restrict Web Browser Extensions",
+      "description": "Restrict Web Browser Extensions",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.19",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.5",
+      "theme": "CIS_09",
+      "title": "Block Unnecessary File Types in Email",
+      "description": "Block Unnecessary File Types in Email",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.6",
+      "theme": "CIS_09",
+      "title": "Block Network Traffic to Malicious URLs",
+      "description": "Block Network Traffic to Malicious URLs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "9.7",
+      "theme": "CIS_09",
+      "title": "Deploy DMARC, SPF, and DKIM Records",
+      "description": "Deploy DMARC, SPF, and DKIM Records",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.1",
+      "theme": "CIS_10",
+      "title": "Deploy and Maintain Anti-Malware Software",
+      "description": "Deploy and Maintain Anti-Malware Software",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.2",
+      "theme": "CIS_10",
+      "title": "Configure Automatic Anti-Malware Signature Updates",
+      "description": "Configure Automatic Anti-Malware Signature Updates",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.3",
+      "theme": "CIS_10",
+      "title": "Disable Autorun and Autoplay for Removable Media",
+      "description": "Disable Autorun and Autoplay for Removable Media",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.4",
+      "theme": "CIS_10",
+      "title": "Configure Anti-Malware Real-Time Scanning",
+      "description": "Configure Anti-Malware Real-Time Scanning",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.5",
+      "theme": "CIS_10",
+      "title": "Enable Anti-Malware Behavioral Scanning",
+      "description": "Enable Anti-Malware Behavioral Scanning",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.6",
+      "theme": "CIS_10",
+      "title": "Centrally Manage Anti-Malware Agents",
+      "description": "Centrally Manage Anti-Malware Agents",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "10.7",
+      "theme": "CIS_10",
+      "title": "Use Automated Anti-Malware Signature Updates",
+      "description": "Use Automated Anti-Malware Signature Updates",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.7",
+        "DE.CM-04"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "11.1",
+      "theme": "CIS_11",
+      "title": "Establish and Maintain Data Recovery Process",
+      "description": "Establish and Maintain Data Recovery Process",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.13",
+        "RC.RP-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "11.2",
+      "theme": "CIS_11",
+      "title": "Perform Automated Data Backups",
+      "description": "Perform Automated Data Backups",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.13",
+        "RC.RP-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "11.3",
+      "theme": "CIS_11",
+      "title": "Protect Recovery Data and Backups",
+      "description": "Protect Recovery Data and Backups",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.13",
+        "RC.RP-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "11.4",
+      "theme": "CIS_11",
+      "title": "Establish Isolated Data Backups",
+      "description": "Establish Isolated Data Backups",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.13",
+        "RC.RP-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "11.5",
+      "theme": "CIS_11",
+      "title": "Test Data Recovery Exercises Periodically",
+      "description": "Test Data Recovery Exercises Periodically",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.13",
+        "RC.RP-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "12.1",
+      "theme": "CIS_12",
+      "title": "Ensure Network Infrastructure is Kept Up to Date",
+      "description": "Ensure Network Infrastructure is Kept Up to Date",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.2",
+      "theme": "CIS_12",
+      "title": "Establish Secure Network Architecture",
+      "description": "Establish Secure Network Architecture",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.3",
+      "theme": "CIS_12",
+      "title": "Securely Manage Network Infrastructure Devices",
+      "description": "Securely Manage Network Infrastructure Devices",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.4",
+      "theme": "CIS_12",
+      "title": "Establish Architecture for Network Segmentation",
+      "description": "Establish Architecture for Network Segmentation",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.5",
+      "theme": "CIS_12",
+      "title": "Centralize Network AAA Infrastructure",
+      "description": "Centralize Network AAA Infrastructure",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.6",
+      "theme": "CIS_12",
+      "title": "Use Encrypted Network Management Protocols",
+      "description": "Use Encrypted Network Management Protocols",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.24",
+        "PR.DS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.7",
+      "theme": "CIS_12",
+      "title": "Ensure Network Port Security",
+      "description": "Ensure Network Port Security",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "12.8",
+      "theme": "CIS_12",
+      "title": "Deploy Network-Based 802.1X Access Control",
+      "description": "Deploy Network-Based 802.1X Access Control",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.AA-05"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.1",
+      "theme": "CIS_13",
+      "title": "Centralize Network Alerting and Detection",
+      "description": "Centralize Network Alerting and Detection",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.2",
+      "theme": "CIS_13",
+      "title": "Deploy Host-Based Intrusion Detection Systems (HIDS)",
+      "description": "Deploy Host-Based Intrusion Detection Systems (HIDS)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.3",
+      "theme": "CIS_13",
+      "title": "Deploy Network Intrusion Detection Systems (NIDS)",
+      "description": "Deploy Network Intrusion Detection Systems (NIDS)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.4",
+      "theme": "CIS_13",
+      "title": "Perform Traffic Filtering Between Network Segments",
+      "description": "Perform Traffic Filtering Between Network Segments",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.5",
+      "theme": "CIS_13",
+      "title": "Manage Application Alerting Thresholds",
+      "description": "Manage Application Alerting Thresholds",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.6",
+      "theme": "CIS_13",
+      "title": "Collect Network Traffic Flow Logs",
+      "description": "Collect Network Traffic Flow Logs",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.15",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.7",
+      "theme": "CIS_13",
+      "title": "Deploy Host-Based Intrusion Prevention Systems (HIPS)",
+      "description": "Deploy Host-Based Intrusion Prevention Systems (HIPS)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.8",
+      "theme": "CIS_13",
+      "title": "Deploy Network Intrusion Prevention Systems (NIPS)",
+      "description": "Deploy Network Intrusion Prevention Systems (NIPS)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.9",
+      "theme": "CIS_13",
+      "title": "Deploy Port Switched Port Analyzer (SPAN) Sensors",
+      "description": "Deploy Port Switched Port Analyzer (SPAN) Sensors",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.10",
+      "theme": "CIS_13",
+      "title": "Perform Application Layer Traffic Filtering",
+      "description": "Perform Application Layer Traffic Filtering",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "13.11",
+      "theme": "CIS_13",
+      "title": "Tune Detection Rules Periodically",
+      "description": "Tune Detection Rules Periodically",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.16",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.1",
+      "theme": "CIS_14",
+      "title": "Establish and Maintain a Security Awareness Program",
+      "description": "Establish and Maintain a Security Awareness Program",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.2",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Social Engineering Tactics",
+      "description": "Train Workforce on Social Engineering Tactics",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.3",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Authentication Best Practices",
+      "description": "Train Workforce on Authentication Best Practices",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.4",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Data Handling Procedures",
+      "description": "Train Workforce on Data Handling Procedures",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.5",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Unrecognized Asset Reporting",
+      "description": "Train Workforce on Unrecognized Asset Reporting",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.6",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Security Incident Escalation",
+      "description": "Train Workforce on Security Incident Escalation",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.7",
+      "theme": "CIS_14",
+      "title": "Train Workforce on Remote Work Hazards",
+      "description": "Train Workforce on Remote Work Hazards",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.8",
+      "theme": "CIS_14",
+      "title": "Conduct Simulated Phishing Campaigns",
+      "description": "Conduct Simulated Phishing Campaigns",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "14.9",
+      "theme": "CIS_14",
+      "title": "Conduct Role-Specific Security Training",
+      "description": "Conduct Role-Specific Security Training",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.1",
+      "theme": "CIS_15",
+      "title": "Establish and Maintain an Inventory of Service Providers",
+      "description": "Establish and Maintain an Inventory of Service Providers",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.19",
+        "ID.SC-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.2",
+      "theme": "CIS_15",
+      "title": "Establish Vendor Security Assessment Process",
+      "description": "Establish Vendor Security Assessment Process",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.19",
+        "ID.SC-02"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.3",
+      "theme": "CIS_15",
+      "title": "Classify Service Providers by Risk Tier",
+      "description": "Classify Service Providers by Risk Tier",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.19",
+        "ID.SC-02"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.4",
+      "theme": "CIS_15",
+      "title": "Ensure Service Provider Contracts Require Security Controls",
+      "description": "Ensure Service Provider Contracts Require Security Controls",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.20",
+        "ID.SC-03"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.5",
+      "theme": "CIS_15",
+      "title": "Assess Service Provider Compliance Periodically",
+      "description": "Assess Service Provider Compliance Periodically",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.22",
+        "ID.SC-04"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.6",
+      "theme": "CIS_15",
+      "title": "Securely Decommission Service Provider Relationships",
+      "description": "Securely Decommission Service Provider Relationships",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.22",
+        "ID.SC-04"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "15.7",
+      "theme": "CIS_15",
+      "title": "Require Vendor Incident Notification Protocols",
+      "description": "Require Vendor Incident Notification Protocols",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.21",
+        "ID.SC-03"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.1",
+      "theme": "CIS_16",
+      "title": "Establish and Maintain a Secure Application Development Process",
+      "description": "Establish and Maintain a Secure Application Development Process",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.25",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.2",
+      "theme": "CIS_16",
+      "title": "Establish a Process to Accept Software Vulnerability Reports",
+      "description": "Establish a Process to Accept Software Vulnerability Reports",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.3",
+      "theme": "CIS_16",
+      "title": "Perform Static Application Security Testing (SAST)",
+      "description": "Perform Static Application Security Testing (SAST)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.4",
+      "theme": "CIS_16",
+      "title": "Perform Dynamic Application Security Testing (DAST)",
+      "description": "Perform Dynamic Application Security Testing (DAST)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.5",
+      "theme": "CIS_16",
+      "title": "Use Standardized Secure Architecture Templates",
+      "description": "Use Standardized Secure Architecture Templates",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.27",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.6",
+      "theme": "CIS_16",
+      "title": "Use Up-to-Date and Supported Third-Party Components",
+      "description": "Use Up-to-Date and Supported Third-Party Components",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.7",
+      "theme": "CIS_16",
+      "title": "Use Hardened Root Directory and File Permissions",
+      "description": "Use Hardened Root Directory and File Permissions",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.9",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.8",
+      "theme": "CIS_16",
+      "title": "Separate Production and Non-Production Environments",
+      "description": "Separate Production and Non-Production Environments",
+      "scannability": "semi_auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.31",
+        "PR.IR-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.9",
+      "theme": "CIS_16",
+      "title": "Train Developers in Specific Security Coding Vulnerabilities",
+      "description": "Train Developers in Specific Security Coding Vulnerabilities",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.6.3",
+        "PR.AT-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.10",
+      "theme": "CIS_16",
+      "title": "Apply Threat Modeling to High-Risk Applications",
+      "description": "Apply Threat Modeling to High-Risk Applications",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.27",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.11",
+      "theme": "CIS_16",
+      "title": "Apply Interactive Application Security Testing (IAST)",
+      "description": "Apply Interactive Application Security Testing (IAST)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.12",
+      "theme": "CIS_16",
+      "title": "Implement Web Application Firewall (WAF)",
+      "description": "Implement Web Application Firewall (WAF)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.20",
+        "PR.PS-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "16.13",
+      "theme": "CIS_16",
+      "title": "Conduct Application Code Audits Prior to Release",
+      "description": "Conduct Application Code Audits Prior to Release",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "16.14",
+      "theme": "CIS_16",
+      "title": "Conduct Software Composition Analysis (SCA)",
+      "description": "Conduct Software Composition Analysis (SCA)",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.28",
+        "PR.PS-02"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "17.1",
+      "theme": "CIS_17",
+      "title": "Establish and Maintain an Incident Response Process",
+      "description": "Establish and Maintain an Incident Response Process",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.24",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.2",
+      "theme": "CIS_17",
+      "title": "Assign Key Roles and Responsibilities for Incident Response",
+      "description": "Assign Key Roles and Responsibilities for Incident Response",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.24",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.3",
+      "theme": "CIS_17",
+      "title": "Designate Primary and Secondary Incident Escalation Contacts",
+      "description": "Designate Primary and Secondary Incident Escalation Contacts",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.25",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.4",
+      "theme": "CIS_17",
+      "title": "Establish Incident Reporting Channels",
+      "description": "Establish Incident Reporting Channels",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.25",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.5",
+      "theme": "CIS_17",
+      "title": "Document Incident Response Playbooks",
+      "description": "Document Incident Response Playbooks",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.26",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.6",
+      "theme": "CIS_17",
+      "title": "Conduct Incident Response Drills Periodically",
+      "description": "Conduct Incident Response Drills Periodically",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.26",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.7",
+      "theme": "CIS_17",
+      "title": "Conduct Post-Incident Reviews",
+      "description": "Conduct Post-Incident Reviews",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.27",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.8",
+      "theme": "CIS_17",
+      "title": "Retain Forensic Evidence and Artifacts",
+      "description": "Retain Forensic Evidence and Artifacts",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.28",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "17.9",
+      "theme": "CIS_17",
+      "title": "Establish Automated Incident Escalation Workflows",
+      "description": "Establish Automated Incident Escalation Workflows",
+      "scannability": "auto",
+      "scan_module_hint": "Technical Scan / Asset Registry",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.5.26",
+        "RS.MA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Result Log",
+        "Asset Configuration"
+      ]
+    },
+    {
+      "id": "18.1",
+      "theme": "CIS_18",
+      "title": "Establish and Maintain a Penetration Testing Program",
+      "description": "Establish and Maintain a Penetration Testing Program",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "18.2",
+      "theme": "CIS_18",
+      "title": "Perform External Penetration Testing",
+      "description": "Perform External Penetration Testing",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "18.3",
+      "theme": "CIS_18",
+      "title": "Remediate Penetration Test Findings",
+      "description": "Remediate Penetration Test Findings",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig2",
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "ID.RA-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "18.4",
+      "theme": "CIS_18",
+      "title": "Perform Internal Penetration Testing",
+      "description": "Perform Internal Penetration Testing",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    },
+    {
+      "id": "18.5",
+      "theme": "CIS_18",
+      "title": "Perform Red Team Exercises",
+      "description": "Perform Red Team Exercises",
+      "scannability": "manual",
+      "scan_module_hint": "Policy Documentation",
+      "tags": [
+        "ig3"
+      ],
+      "crosswalk": [
+        "A.8.8",
+        "DE.CM-01"
+      ],
+      "evidence_checklist": [
+        "Scan Report",
+        "Policy Document"
+      ]
+    }
+  ]
+}

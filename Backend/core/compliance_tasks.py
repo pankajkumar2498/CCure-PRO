@@ -155,7 +155,6 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         asset_query = db.query(Asset).filter(Asset.org_id == org_id)
         if asset_ids:
             asset_query = asset_query.filter(Asset.id.in_(asset_ids))
-        # Tag filtering could be fanned out using joins if tags are indexed
         assets = asset_query.all()
 
         if not assets:
@@ -163,6 +162,10 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
             run.finished_at = datetime.now(timezone.utc)
             db.commit()
             return {"success": True, "message": "No assets in scope."}
+
+        # Flush stale Redis evidence cache for targeted assets using pipeline
+        resolved_asset_ids = [a.id for a in assets]
+        ComplianceEvidenceProvider.invalidate_asset_evidence_cache(resolved_asset_ids)
 
         # 2. Resolve Policy Rules
         policy_rules = (
@@ -417,10 +420,16 @@ def _calculate_compliance_score(
     asset_id: Optional[str],
     scan_run_id: str,
 ):
-    """Calculates both simple and risk-weighted compliance scores for an asset or tenant, including quadrant scores."""
+    """Calculates both simple and risk-weighted compliance scores for an asset or tenant, including theme scores."""
     themes = [None]
     if not asset_id:
-        themes.extend(["ORG", "PPL", "PHY", "TECH"])
+        distinct_themes = (
+            db.query(ComplianceControl.theme)
+            .filter(ComplianceControl.framework_id == framework_id)
+            .distinct()
+            .all()
+        )
+        themes.extend([t[0] for t in distinct_themes if t[0] is not None])
 
     for theme in themes:
         # Fetch framework controls matching the theme (if specified)
@@ -458,6 +467,8 @@ def _calculate_compliance_score(
                     rolled_status = "fail"
                 elif "pending_reverify" in statuses:
                     rolled_status = "pending_reverify"
+                elif "remediation_applied" in statuses:
+                    rolled_status = "remediation_applied"
                 elif "manual_review" in statuses:
                     rolled_status = "manual_review"
                 elif "exception" in statuses:
@@ -523,7 +534,7 @@ def _calculate_compliance_score(
                 weighted_total += weight
             elif f.status == "not_applicable":
                 na += 1
-            elif f.status == "manual_review":
+            elif f.status in ("manual_review", "remediation_applied"):
                 pending += 1
                 applicable += 1
                 weighted_total += weight

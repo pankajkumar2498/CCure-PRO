@@ -644,21 +644,18 @@ def list_findings(
     )
     enabled_fw_ids = [r[0] for r in enabled_fws]
 
-    # Resolve latest scan runs per enabled framework
-    latest_run_ids = []
-    for fw_id in enabled_fw_ids:
-        latest = (
-            db.query(ComplianceScanRun)
-            .filter(
-                ComplianceScanRun.tenant_id == user.org_id,
-                ComplianceScanRun.framework_id == fw_id,
-                ComplianceScanRun.status == "completed",
-            )
-            .order_by(ComplianceScanRun.finished_at.desc())
-            .first()
+    # Subquery to fetch the latest finding ID per unique (asset_id, control_id) pair
+    subq = (
+        db.query(ComplianceFinding.id)
+        .filter(ComplianceFinding.tenant_id == user.org_id)
+        .distinct(ComplianceFinding.asset_id, ComplianceFinding.control_id)
+        .order_by(
+            ComplianceFinding.asset_id,
+            ComplianceFinding.control_id,
+            ComplianceFinding.last_seen.desc(),
         )
-        if latest:
-            latest_run_ids.append(latest.id)
+        .subquery()
+    )
 
     q = (
         db.query(ComplianceFinding, ComplianceControl, ComplianceRule, Asset)
@@ -668,12 +665,8 @@ def list_findings(
         .outerjoin(ComplianceRule, ComplianceRule.id == ComplianceFinding.rule_id)
         .outerjoin(Asset, Asset.id == ComplianceFinding.asset_id)
         .filter(
-            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.id.in_(subq),
             ComplianceControl.framework_id.in_(enabled_fw_ids),
-            or_(
-                ComplianceFinding.scan_run_id.in_(latest_run_ids),
-                ComplianceFinding.source == "manual_attestation",
-            ),
         )
     )
 
@@ -711,6 +704,7 @@ def list_findings(
                 "id": f.id,
                 "control_id": f.control_id,
                 "control_title": control.title if control else "Unknown Control",
+                "control_tags": control.tags if control else [],
                 "rule_id": f.rule_id,
                 "rule_name": rule.rule_family_code if rule else "Manual Check",
                 "severity": (rule.severity.upper() if rule else "MEDIUM"),
@@ -1660,9 +1654,24 @@ def get_dashboard_summary(
     avg_score = sum(float(s.score_pct) for s in scores) / len(scores)
     avg_weighted = sum(float(s.weighted_score_pct) for s in scores) / len(scores)
 
-    # Resolve quadrant scores (ORG, PPL, PHY, TECH)
-    quadrants = {"ORG": 0.0, "PPL": 0.0, "PHY": 0.0, "TECH": 0.0}
-    for q_code in quadrants.keys():
+    # Resolve dynamic theme scores across enabled tenant frameworks
+    active_themes = (
+        db.query(ComplianceScore.theme)
+        .filter(
+            ComplianceScore.tenant_id == user.org_id,
+            ComplianceScore.asset_id == None,
+            ComplianceScore.theme != None,
+            ComplianceScore.framework_id.in_(enabled_fw_subquery),
+        )
+        .distinct()
+        .all()
+    )
+    theme_codes = [t[0] for t in active_themes if t[0]]
+    if not theme_codes:
+        theme_codes = ["ORG", "PPL", "PHY", "TECH"]
+
+    quadrants = {q_code: 0.0 for q_code in theme_codes}
+    for q_code in theme_codes:
         q_scores = (
             db.query(ComplianceScore)
             .filter(
@@ -1674,8 +1683,8 @@ def get_dashboard_summary(
             .all()
         )
         if q_scores:
-            quadrants[q_code] = sum(float(s.score_pct) for s in q_scores) / len(
-                q_scores
+            quadrants[q_code] = round(
+                sum(float(s.score_pct) for s in q_scores) / len(q_scores), 2
             )
 
     # Compute sum totals
@@ -1736,11 +1745,16 @@ except ImportError:
     Document = None
 
 
-def _generate_soa_docx(controls: list, findings_map: dict) -> io.BytesIO:
+def _generate_soa_docx(
+    controls: list,
+    findings_map: dict,
+    title: str = "CCure Audit PRO — Statement of Applicability (SoA)",
+    subtitle: str = "Controls Compliance Ledger Catalog",
+) -> io.BytesIO:
     """Generates the Word Statement of Applicability document using python-docx."""
     doc = Document()
-    doc.add_heading("CCure Audit PRO — Statement of Applicability (SoA)", level=1)
-    doc.add_paragraph("ISO/IEC 27001:2022 Controls Compliance Ledger Catalog.")
+    doc.add_heading(title, level=1)
+    doc.add_paragraph(subtitle)
 
     table = doc.add_table(rows=1, cols=5)
     hdr_cells = table.rows[0].cells
@@ -1766,7 +1780,12 @@ def _generate_soa_docx(controls: list, findings_map: dict) -> io.BytesIO:
     return buffer
 
 
-def _generate_soa_pdf(controls: list, findings_map: dict) -> io.BytesIO:
+def _generate_soa_pdf(
+    controls: list,
+    findings_map: dict,
+    title: str = "Statement of Applicability (SoA) Report",
+    subtitle: str = "Security Controls Ledger",
+) -> io.BytesIO:
     """Generates the Statement of Applicability document using ReportLab."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1788,8 +1807,8 @@ def _generate_soa_pdf(controls: list, findings_map: dict) -> io.BytesIO:
     cell_style = ParagraphStyle("CellStyle", parent=styles["Normal"], fontSize=8)
 
     story = [
-        Paragraph("Statement of Applicability (SoA) Report", title_style),
-        Paragraph("ISO 27001:2022 Security Controls Ledger", styles["Normal"]),
+        Paragraph(title, title_style),
+        Paragraph(subtitle, styles["Normal"]),
         Spacer(1, 10 * mm),
     ]
 
@@ -2102,6 +2121,24 @@ def get_compliance_gap_analysis(
         .filter(ComplianceControl.framework_id == target_framework_id)
         .all()
     )
+    source_controls = (
+        db.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == source_framework_id)
+        .all()
+    )
+
+    def normalize(val: str) -> str:
+        return (
+            val.lower()
+            .replace("a.", "")
+            .replace(".", "")
+            .replace("-", "")
+            .replace(" ", "")
+            .replace("_", "")
+        )
+
+    source_num_to_id = {normalize(c.control_number): c.id for c in source_controls}
+
     source_findings = (
         db.query(ComplianceFinding)
         .filter(ComplianceFinding.tenant_id == user.org_id)
@@ -2118,15 +2155,25 @@ def get_compliance_gap_analysis(
     control_breakdown = []
     for ctrl in target_controls:
         status_eval = "pending_manual"
-        mapped_iso = ctrl.crosswalk or []
+        mapped_ref = ctrl.crosswalk or []
 
-        if mapped_iso:
+        if mapped_ref:
             mapped_count += 1
             has_pass = False
             has_fail = False
-            for iso_num in mapped_iso:
-                iso_ctrl_id = f"cct_{source_fw.code.lower()}_{iso_num.lower().replace('a.', '').replace('.', '_')}"
-                found_status = source_findings_map.get(iso_ctrl_id)
+            for cross_num in mapped_ref:
+                norm_num = normalize(cross_num)
+                source_ctrl_id = source_num_to_id.get(norm_num)
+                if not source_ctrl_id:
+                    clean_raw = (
+                        cross_num.lower()
+                        .replace("a.", "")
+                        .replace(".", "_")
+                        .replace("-", "_")
+                    )
+                    source_ctrl_id = f"cct_{source_fw.code.lower()}_{clean_raw}"
+
+                found_status = source_findings_map.get(source_ctrl_id)
                 if found_status in ("pass", "exception"):
                     has_pass = True
                 elif found_status in ("fail", "pending_reverify"):
@@ -2149,7 +2196,7 @@ def get_compliance_gap_analysis(
                 "control_number": ctrl.control_number,
                 "theme": ctrl.theme,
                 "title": ctrl.title,
-                "crosswalk": mapped_iso,
+                "crosswalk": mapped_ref,
                 "estimated_status": status_eval,
             }
         )
@@ -2215,15 +2262,82 @@ def download_nist_csf_report(
     findings_map = {f.control_id: f for f in findings}
 
     if fmt.lower() == "docx" and Document is not None:
-        buffer = _generate_soa_docx(controls, findings_map)
+        buffer = _generate_soa_docx(
+            controls,
+            findings_map,
+            title="NIST Cybersecurity Framework v2.0 Audit Ledger",
+            subtitle="NIST CSF v2.0 Controls Compliance Status Report",
+        )
         media = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
         filename = f"nist_csf_report_{user.org_id[:4]}.docx"
     else:
-        buffer = _generate_soa_pdf(controls, findings_map)
+        buffer = _generate_soa_pdf(
+            controls,
+            findings_map,
+            title="NIST Cybersecurity Framework v2.0 Audit Ledger",
+            subtitle="NIST CSF v2.0 Controls Compliance Status Report",
+        )
         media = "application/pdf"
         filename = f"nist_csf_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/reports/cis_v8_1")
+def download_cis_v8_1_report(
+    fmt: str = "pdf",
+    ig: Optional[str] = Query(
+        None, description="Implementation Group filter: ig1, ig2, ig3"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the CIS Controls v8.1 Compliance Assessment Report."""
+    fw_id = "cfw_cis_v8_1"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if ig:
+        ig_val = ig.strip().lower()
+        query = query.filter(ComplianceControl.tags.contains([ig_val]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "CIS Critical Security Controls v8.1 Executive Report"
+    report_sub = f"CIS Controls v8.1 Assessment Ledger (Tenant: {user.org_id[:8]})"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_soa_docx(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"cis_v8_1_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_soa_pdf(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = "application/pdf"
+        filename = f"cis_v8_1_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

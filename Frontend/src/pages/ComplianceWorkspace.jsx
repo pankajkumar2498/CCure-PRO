@@ -227,6 +227,7 @@ export default function ComplianceWorkspace() {
   const [filterAsset, setFilterAsset] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterSeverity, setFilterSeverity] = useState("all");
+  const [filterIg, setFilterIg] = useState("all");
   const [filterSearch, setFilterSearch] = useState("");
 
   // Derived unique assets of findings for dropdown select
@@ -276,11 +277,29 @@ export default function ComplianceWorkspace() {
             JSON.stringify(f.evidence)
               .toLowerCase()
               .includes(filterSearch.toLowerCase()));
+        const matchesIg =
+          selectedFrameworkId !== "cfw_cis_v8_1" ||
+          filterIg === "all" ||
+          (f.control_tags &&
+            Array.isArray(f.control_tags) &&
+            f.control_tags.includes(filterIg));
         return (
-          matchesAsset && matchesStatus && matchesSeverity && matchesSearch
+          matchesAsset &&
+          matchesStatus &&
+          matchesSeverity &&
+          matchesIg &&
+          matchesSearch
         );
       }),
-    [findings, filterAsset, filterStatus, filterSeverity, filterSearch],
+    [
+      findings,
+      filterAsset,
+      filterStatus,
+      filterSeverity,
+      filterIg,
+      filterSearch,
+      selectedFrameworkId,
+    ],
   );
 
   // Pagination hook instantiations
@@ -293,7 +312,7 @@ export default function ComplianceWorkspace() {
   // Reset findings page on search/filter changes
   useEffect(() => {
     findingsPagination.setPage(1);
-  }, [filterSearch, filterAsset, filterStatus, filterSeverity]);
+  }, [filterSearch, filterAsset, filterStatus, filterSeverity, filterIg]);
 
   // Reset pages on data updates
   useEffect(() => {
@@ -353,11 +372,14 @@ export default function ComplianceWorkspace() {
     fetchTabData();
   }, [activeTab, selectedFrameworkId]);
 
-  const fetchGapAnalysis = async () => {
+  const fetchGapAnalysis = async (
+    sourceId = "cfw_iso27001_2022",
+    targetId = "cfw_nist_csf_v2",
+  ) => {
     setLoadingGapAnalysis(true);
     try {
       const res = await axiosInstance.get(
-        "/compliance/gap-analysis?source_framework=cfw_iso27001_2022&target_framework=cfw_nist_csf_v2",
+        `/compliance/gap-analysis?source_framework_id=${sourceId}&target_framework_id=${targetId}`,
       );
       setGapAnalysis(res.data);
       setModalType("gap_analysis");
@@ -886,11 +908,19 @@ export default function ComplianceWorkspace() {
                 <option value="all">All Frameworks</option>
                 <option value="cfw_iso27001_2022">ISO/IEC 27001:2022</option>
                 <option value="cfw_nist_csf_v2">NIST CSF v2.0</option>
+                <option value="cfw_cis_v8_1">CIS Controls v8.1</option>
               </select>
             </div>
             <button
               className="db-btn db-btn--ghost"
-              onClick={fetchGapAnalysis}
+              onClick={() =>
+                fetchGapAnalysis(
+                  "cfw_iso27001_2022",
+                  selectedFrameworkId === "all"
+                    ? "cfw_cis_v8_1"
+                    : selectedFrameworkId,
+                )
+              }
               disabled={loadingGapAnalysis}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
@@ -1076,6 +1106,28 @@ export default function ComplianceWorkspace() {
                   }
                 >
                   Download NIST CSF Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/cis_v8_1?fmt=pdf",
+                      "cis_v8_1_executive_report.pdf",
+                    )
+                  }
+                >
+                  Download CIS Controls PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/cis_v8_1?fmt=docx",
+                      "cis_v8_1_executive_report.docx",
+                    )
+                  }
+                >
+                  Download CIS Controls Word
                 </button>
                 <button
                   className="db-btn db-btn--ghost"
@@ -1704,6 +1756,44 @@ export default function ComplianceWorkspace() {
                         <option value="LOW">Low</option>
                       </select>
                     </div>
+
+                    {selectedFrameworkId === "cfw_cis_v8_1" && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--text-muted)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          IMPLEMENTATION GROUP
+                        </label>
+                        <select
+                          className="db-select"
+                          value={filterIg}
+                          onChange={(e) => setFilterIg(e.target.value)}
+                          style={{
+                            minWidth: "160px",
+                            padding: "6px 12px",
+                            fontSize: "0.8rem",
+                            border: "1px solid var(--border)",
+                            borderRadius: "4px",
+                            background: "#fff",
+                          }}
+                        >
+                          <option value="all">All Groups (IG1-3)</option>
+                          <option value="ig1">IG1 (Cyber Hygiene)</option>
+                          <option value="ig2">IG2 (Enterprise)</option>
+                          <option value="ig3">IG3 (Advanced)</option>
+                        </select>
+                      </div>
+                    )}
 
                     {(filterSearch ||
                       filterAsset !== "all" ||
@@ -2841,8 +2931,8 @@ export default function ComplianceWorkspace() {
                     }}
                   >
                     Estimated baseline compliance posture for{" "}
-                    {gapAnalysis.target_framework?.name} based on existing ISO
-                    27001 scan findings.
+                    {gapAnalysis.target_framework?.name} based on existing{" "}
+                    {gapAnalysis.source_framework?.name} scan findings.
                   </p>
                 </div>
                 <div
@@ -2890,9 +2980,14 @@ export default function ComplianceWorkspace() {
               <table className="db-table" style={{ fontSize: "0.78rem" }}>
                 <thead>
                   <tr>
-                    <th>NIST Control</th>
+                    <th>
+                      {gapAnalysis.target_framework?.code || "Target"} Control
+                    </th>
                     <th>Title</th>
-                    <th>Mapped ISO Controls</th>
+                    <th>
+                      Mapped {gapAnalysis.source_framework?.code || "Source"}{" "}
+                      Controls
+                    </th>
                     <th>Estimated Status</th>
                   </tr>
                 </thead>

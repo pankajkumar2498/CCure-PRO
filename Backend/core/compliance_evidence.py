@@ -31,6 +31,37 @@ class ComplianceEvidenceProvider:
         return f"compliance:evidence:{asset_id}:{source}"
 
     @classmethod
+    def invalidate_asset_evidence_cache(
+        cls, asset_ids: list, sources: list = None
+    ) -> None:
+        """Batch-flushes evidence cache keys in Redis using a pipeline."""
+        if not redis or not asset_ids:
+            return
+
+        known_sources = sources or [
+            "active_services",
+            "tls_ssl_configuration",
+            "vulnerability_audit",
+            "offline_configuration",
+            "malware_scan",
+            "network_link_topology",
+        ]
+
+        try:
+            pipe = redis.pipeline()
+            keys_count = 0
+            for aid in asset_ids:
+                for src in known_sources:
+                    pipe.delete(cls.get_cache_key(aid, src))
+                    keys_count += 1
+            pipe.execute()
+            log.info(
+                f"Invalidated {keys_count} Redis evidence cache keys for assets: {asset_ids}"
+            )
+        except Exception as e:
+            log.warning(f"Failed to clear Redis evidence cache pipeline: {str(e)}")
+
+    @classmethod
     def get_normalized_evidence(
         cls, db: Session, asset_id: str, source: str
     ) -> Dict[str, Any]:

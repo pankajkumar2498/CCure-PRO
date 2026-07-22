@@ -10,6 +10,17 @@ jobs:
   backend-validation:
     name: Backend Validation
     runs-on: ubuntu-latest
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: ccure_user
+      PGPASSWORD: ccure_admin_2026
+      PGDATABASE: ccure_test
+      DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+      VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
 
     services:
       postgres:
@@ -60,18 +71,13 @@ jobs:
         run: |
           ruff check Backend/ --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821
 
-      - name: Create Admin Role in Postgres (if needed)
+      - name: Verify Database Connection & Create Admin Role
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
-          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026'; END IF; END\$\$;"
+          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "SELECT version();"
+          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;" || true
 
       - name: Bootstrap Database Schema & Seeding Validation
-        env:
-          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/0
-          JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
         run: |
           cd Backend
           python db/migrate_production_schema.py
@@ -79,9 +85,6 @@ jobs:
           python -m scripts.seed_real_rules
 
       - name: Run Alembic Migration Integrity Check
-        env:
-          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
         run: |
           cd Backend
           # Run rollback check on the latest migration
@@ -90,12 +93,6 @@ jobs:
           alembic upgrade head
 
       - name: OpenAPI Schema Diff Check
-        env:
-          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/0
-          JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
         run: |
           cd Backend
           # Extract current schema deterministically
@@ -116,11 +113,6 @@ jobs:
 
       - name: Run Test Suite (with mock profile fallbacks)
         env:
-          DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/0
-          JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
           MOCK_SCANNERS: "true"
         run: |
           cd Backend

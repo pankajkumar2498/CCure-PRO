@@ -189,13 +189,15 @@ def seed_system_roles():
     with engine.begin() as conn:
         Base.metadata.create_all(bind=conn)
         if conn.dialect.name == "postgresql":
-            certin_themes = (
+            all_themes = (
                 "'ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', "
                 "'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', "
                 "'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', "
                 "'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', "
                 "'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', "
-                "'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP'"
+                "'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', "
+                "'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', "
+                "'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12'"
             )
             conn.execute(
                 text(
@@ -204,7 +206,7 @@ def seed_system_roles():
             )
             conn.execute(
                 text(
-                    f"ALTER TABLE compliance_controls ADD CONSTRAINT ck_control_theme CHECK (theme IN ({certin_themes}));"
+                    f"ALTER TABLE compliance_controls ADD CONSTRAINT ck_control_theme CHECK (theme IN ({all_themes}));"
                 )
             )
             conn.execute(
@@ -214,7 +216,7 @@ def seed_system_roles():
             )
             conn.execute(
                 text(
-                    f"ALTER TABLE compliance_scores ADD CONSTRAINT ck_score_theme CHECK (theme IN ({certin_themes}));"
+                    f"ALTER TABLE compliance_scores ADD CONSTRAINT ck_score_theme CHECK (theme IN ({all_themes}));"
                 )
             )
         create_partitions(conn)

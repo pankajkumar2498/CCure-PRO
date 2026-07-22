@@ -1,0 +1,575 @@
+{
+  "framework": {
+    "code": "PCI_DSS_V4",
+    "name": "PCI-DSS v4.0 Payment Card Industry Data Security Standard",
+    "version": "4.0",
+    "description": "PCI Data Security Standard (PCI DSS) v4.0 provides a baseline of technical and operational requirements designed to protect payment account data. Mandatory for any entity that stores, processes, or transmits cardholder data (CHD) or sensitive authentication data (SAD)."
+  },
+  "controls": [
+    {
+      "id": "pci_1_1_1", "control_number": "1.1.1", "theme": "PCI_01",
+      "title": "Roles and responsibilities for network security controls are documented and understood",
+      "description": "All roles and responsibilities for performing activities in Requirement 1 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.2", "NIST:GV.RR-01", "CIS:4.1"],
+      "evidence_checklist": ["Network Security Roles RACI Matrix", "Firewall Change Management Policy"],
+      "tags": ["governance", "network_security", "pci_req_1"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_1_2_1", "control_number": "1.2.1", "theme": "PCI_01",
+      "title": "Network security controls (NSCs) are configured and maintained",
+      "description": "Configuration standards for NSCs are defined, implemented, and maintained.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-05", "CIS:4.1"],
+      "evidence_checklist": ["Firewall Rule Configuration Export", "Network Segmentation Verification Report"],
+      "tags": ["firewall", "network_security", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_1_2_5", "control_number": "1.2.5", "theme": "PCI_01",
+      "title": "All services, protocols, and ports allowed are identified and approved",
+      "description": "All services, protocols, and ports allowed are identified, approved, and have a defined business need.",
+      "scannability": "auto", "scan_module_hint": "services_ports",
+      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-05", "CIS:4.4"],
+      "evidence_checklist": ["Approved Port and Protocol List", "Firewall Rule Justification Ledger"],
+      "tags": ["ports", "protocols", "firewall", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_1_3_1", "control_number": "1.3.1", "theme": "PCI_01",
+      "title": "Inbound traffic to the CDE is restricted to only necessary traffic",
+      "description": "Inbound traffic to the cardholder data environment (CDE) is restricted to that which is necessary, and all other traffic is specifically denied.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-05", "CIS:4.4"],
+      "evidence_checklist": ["CDE Firewall Inbound Rule ACL Export", "Default Deny Rule Verification"],
+      "tags": ["cde", "firewall", "default_deny", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_1_3_2", "control_number": "1.3.2", "theme": "PCI_01",
+      "title": "Outbound traffic from the CDE is restricted to only necessary traffic",
+      "description": "Outbound traffic from the CDE is restricted to that which is necessary, and all other traffic is specifically denied.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-05", "CIS:4.5"],
+      "evidence_checklist": ["CDE Firewall Outbound Rule ACL Export"],
+      "tags": ["cde", "firewall", "egress", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_1_4_1", "control_number": "1.4.1", "theme": "PCI_01",
+      "title": "NSCs are implemented between trusted and untrusted networks",
+      "description": "NSCs are implemented between trusted and untrusted networks.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-05", "CIS:4.2"],
+      "evidence_checklist": ["DMZ Architecture Diagram", "Network Segmentation Test Results"],
+      "tags": ["dmz", "network_segmentation", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_2_1_1", "control_number": "2.1.1", "theme": "PCI_02",
+      "title": "Roles and responsibilities for secure configurations are documented and understood",
+      "description": "All roles and responsibilities for performing activities in Requirement 2 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.9", "NIST:PR.IP-01", "CIS:4.1"],
+      "evidence_checklist": ["Configuration Management Roles RACI Matrix"],
+      "tags": ["governance", "configuration", "pci_req_2"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_2_2_1", "control_number": "2.2.1", "theme": "PCI_02",
+      "title": "Configuration standards are developed and maintained for all system components",
+      "description": "Configuration standards are developed, implemented, and maintained to cover all system components, address all known security vulnerabilities, and be consistent with industry-accepted hardening standards.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.9", "NIST:PR.IP-01", "CIS:4.1"],
+      "evidence_checklist": ["System Hardening Baseline Standards Document", "CIS Benchmark Compliance Report"],
+      "tags": ["hardening", "baseline", "configuration", "pci_req_2"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_2_2_2", "control_number": "2.2.2", "theme": "PCI_02",
+      "title": "Vendor default accounts are managed and changed before production use",
+      "description": "Vendor default accounts are managed: removed if possible, password changed if account is needed.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.9", "NIST:PR.AC-01", "CIS:4.2"],
+      "evidence_checklist": ["Default Account Removal Audit Log", "Vendor Default Password Change Verification"],
+      "tags": ["default_accounts", "hardening", "pci_req_2"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_2_2_5", "control_number": "2.2.5", "theme": "PCI_02",
+      "title": "All unnecessary functionality is removed or disabled",
+      "description": "All unnecessary functionality is removed or disabled, including unnecessary software, functions, ports, protocols, services, web servers.",
+      "scannability": "auto", "scan_module_hint": "services_ports",
+      "crosswalk": ["ISO27001:A.8.9", "NIST:PR.IP-01", "CIS:4.8"],
+      "evidence_checklist": ["Non-Essential Services Disabled Audit", "Unnecessary Software Removed Report"],
+      "tags": ["services", "hardening", "pci_req_2"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_2_2_7", "control_number": "2.2.7", "theme": "PCI_02",
+      "title": "All non-console administrative access is encrypted using strong cryptography",
+      "description": "All non-console administrative access is encrypted using strong cryptography including SSH, VPN, or TLS 1.2+.",
+      "scannability": "auto", "scan_module_hint": "tls_ssl_configuration",
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-02", "CIS:4.6"],
+      "evidence_checklist": ["Administrative Access Encryption Audit (SSH/TLS/VPN)", "Telnet Disabled Verification"],
+      "tags": ["encryption", "admin_access", "ssh", "tls", "pci_req_2"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_3_1_1", "control_number": "3.1.1", "theme": "PCI_03",
+      "title": "Roles and responsibilities for protecting stored account data are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 3 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-01", "CIS:3.1"],
+      "evidence_checklist": ["Data Protection Roles RACI Matrix", "Cardholder Data Retention Policy"],
+      "tags": ["data_protection", "governance", "pci_req_3"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_3_2_1", "control_number": "3.2.1", "theme": "PCI_03",
+      "title": "Account data storage is kept to a minimum with data retention and disposal policies",
+      "description": "Account data storage amount and retention time is limited to that required for business, legal, and/or regulatory purposes.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-01", "CIS:3.4"],
+      "evidence_checklist": ["Data Retention Policy Document", "Quarterly Data Purge Audit Log"],
+      "tags": ["data_retention", "data_disposal", "pci_req_3"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_3_3_1", "control_number": "3.3.1", "theme": "PCI_03",
+      "title": "SAD is not retained after authorization",
+      "description": "Sensitive Authentication Data (SAD) is not retained after authorization, even if encrypted.",
+      "scannability": "semi_auto", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-01"],
+      "evidence_checklist": ["SAD Non-Retention Verification Report", "Post-Auth Data Purge Audit"],
+      "tags": ["sad", "data_protection", "pci_req_3"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_3_5_1", "control_number": "3.5.1", "theme": "PCI_03",
+      "title": "PAN is rendered unreadable anywhere it is stored",
+      "description": "PAN is rendered unreadable using strong cryptography, truncation, masking, or one-way hash functions.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-01", "CIS:3.11"],
+      "evidence_checklist": ["PAN Encryption/Masking Verification Report", "Key Management Documentation"],
+      "tags": ["pan_protection", "encryption", "masking", "pci_req_3"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_4_1_1", "control_number": "4.1.1", "theme": "PCI_04",
+      "title": "Roles and responsibilities for strong cryptography in transit are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 4 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-02"],
+      "evidence_checklist": ["Cryptography Standards Policy Document"],
+      "tags": ["governance", "encryption", "pci_req_4"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_4_2_1", "control_number": "4.2.1", "theme": "PCI_04",
+      "title": "Strong cryptography is used during transmission of PAN over open public networks",
+      "description": "PAN is protected with strong cryptography during transmission over open, public networks. Only trusted keys and certificates are accepted.",
+      "scannability": "auto", "scan_module_hint": "tls_ssl_configuration",
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-02", "CIS:3.10"],
+      "evidence_checklist": ["TLS 1.2+ Certificate Verification Report", "Weak Cipher Audit Log"],
+      "tags": ["tls", "encryption", "transit", "pci_req_4"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_4_2_1_1", "control_number": "4.2.1.1", "theme": "PCI_04",
+      "title": "Inventory of trusted keys and certificates is maintained",
+      "description": "An inventory of the entity's trusted keys and certificates used to protect PAN during transmission is maintained.",
+      "scannability": "semi_auto", "scan_module_hint": "tls_certificates",
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-02"],
+      "evidence_checklist": ["Certificate Inventory Ledger", "Certificate Expiry Monitoring Report"],
+      "tags": ["certificates", "key_management", "pci_req_4"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_5_1_1", "control_number": "5.1.1", "theme": "PCI_05",
+      "title": "Roles and responsibilities for malicious software protection are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 5 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.7", "NIST:DE.CM-04", "CIS:10.1"],
+      "evidence_checklist": ["Anti-Malware Management Roles RACI Matrix"],
+      "tags": ["governance", "malware", "pci_req_5"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_5_2_1", "control_number": "5.2.1", "theme": "PCI_05",
+      "title": "Anti-malware solution is deployed on all system components",
+      "description": "An anti-malware solution is deployed on all system components, except those identified as not at risk.",
+      "scannability": "auto", "scan_module_hint": "malware_scan",
+      "crosswalk": ["ISO27001:A.8.7", "NIST:DE.CM-04", "CIS:10.1"],
+      "evidence_checklist": ["EDR/Antivirus Deployment Coverage Report", "Exception Justification for Non-Deployed Systems"],
+      "tags": ["antivirus", "edr", "malware", "pci_req_5"], "saq_profiles": ["saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_5_2_2", "control_number": "5.2.2", "theme": "PCI_05",
+      "title": "Anti-malware solution detects all known types of malware and removes or quarantines",
+      "description": "The deployed anti-malware solution detects all known types of malware, removes, blocks, or contains all known types of malware.",
+      "scannability": "auto", "scan_module_hint": "malware_scan",
+      "crosswalk": ["ISO27001:A.8.7", "NIST:DE.CM-04", "CIS:10.2"],
+      "evidence_checklist": ["Anti-Malware Detection Capability Report", "Malware Definition Update Status"],
+      "tags": ["antivirus", "detection", "pci_req_5"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_5_3_1", "control_number": "5.3.1", "theme": "PCI_05",
+      "title": "Anti-malware solution is kept current via automatic updates",
+      "description": "The anti-malware solution is kept current via automatic updates.",
+      "scannability": "auto", "scan_module_hint": "malware_scan",
+      "crosswalk": ["ISO27001:A.8.7", "NIST:DE.CM-04", "CIS:10.2"],
+      "evidence_checklist": ["Auto-Update Status Verification", "Definition File Timestamp Audit"],
+      "tags": ["antivirus", "updates", "pci_req_5"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_6_1_1", "control_number": "6.1.1", "theme": "PCI_06",
+      "title": "Roles and responsibilities for secure systems and software development are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 6 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.25", "NIST:PR.IP-02", "CIS:16.1"],
+      "evidence_checklist": ["Secure SDLC Roles RACI Matrix"],
+      "tags": ["governance", "sdlc", "pci_req_6"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_6_2_4", "control_number": "6.2.4", "theme": "PCI_06",
+      "title": "Software engineering techniques prevent or mitigate common vulnerabilities",
+      "description": "Software engineering techniques or other methods are defined and in use by software development personnel to prevent or mitigate common software attacks and related vulnerabilities.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.25", "NIST:PR.IP-02", "CIS:16.4"],
+      "evidence_checklist": ["Secure Coding Standards Document", "OWASP Top 10 Training Records"],
+      "tags": ["secure_coding", "owasp", "pci_req_6"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_6_3_1", "control_number": "6.3.1", "theme": "PCI_06",
+      "title": "Security vulnerabilities are identified and managed",
+      "description": "Security vulnerabilities are identified and managed by installing applicable security patches/updates within defined timeframes.",
+      "scannability": "auto", "scan_module_hint": "vulnerability_audit",
+      "crosswalk": ["ISO27001:A.8.8", "NIST:ID.RA-01", "CIS:7.1"],
+      "evidence_checklist": ["Vulnerability Management Process Document", "Critical Patch SLA Tracking (<30 days)"],
+      "tags": ["patching", "vulnerability_management", "pci_req_6"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_6_3_3", "control_number": "6.3.3", "theme": "PCI_06",
+      "title": "Critical and high security patches installed within defined timeframes",
+      "description": "All applicable critical and high security patches/updates are installed within one month of release.",
+      "scannability": "auto", "scan_module_hint": "vulnerability_audit",
+      "crosswalk": ["ISO27001:A.8.8", "NIST:RS.MI-02", "CIS:7.4"],
+      "evidence_checklist": ["Patch Compliance Dashboard Export", "Critical Patch SLA Report (<=30 Days)"],
+      "tags": ["patching", "sla", "critical", "pci_req_6"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_6_4_1", "control_number": "6.4.1", "theme": "PCI_06",
+      "title": "Public-facing web applications are protected against attacks",
+      "description": "For public-facing web applications, new threats and vulnerabilities are addressed on an ongoing basis and applications are protected against known attacks by deploying a WAF.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.28", "NIST:PR.IP-02", "CIS:13.10"],
+      "evidence_checklist": ["WAF Active Status Report", "WAF Rule Configuration Export"],
+      "tags": ["waf", "web_security", "pci_req_6"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_6_4_3", "control_number": "6.4.3", "theme": "PCI_06",
+      "title": "Payment page scripts managed and monitored for integrity",
+      "description": "All payment page scripts that are loaded and executed in the consumer's browser are managed and authorized. A method is implemented to confirm script integrity.",
+      "scannability": "semi_auto", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.28", "NIST:PR.DS-06"],
+      "evidence_checklist": ["Payment Page Script Inventory", "Content Security Policy (CSP) Header Report", "Subresource Integrity (SRI) Verification"],
+      "tags": ["payment_page", "script_integrity", "csp", "sri", "pci_req_6"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_7_1_1", "control_number": "7.1.1", "theme": "PCI_07",
+      "title": "Roles and responsibilities for restricting access are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 7 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.15", "NIST:PR.AC-04", "CIS:6.1"],
+      "evidence_checklist": ["Access Control Roles RACI Matrix"],
+      "tags": ["governance", "access_control", "pci_req_7"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_7_2_1", "control_number": "7.2.1", "theme": "PCI_07",
+      "title": "Access control model is defined with need-to-know and least privilege",
+      "description": "An access control model is defined and includes granting access based on job classification and function (role-based access control).",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.15", "NIST:PR.AC-04", "CIS:6.1"],
+      "evidence_checklist": ["RBAC Policy Document", "Need-to-Know Access Review Logs"],
+      "tags": ["rbac", "least_privilege", "need_to_know", "pci_req_7"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_7_2_5", "control_number": "7.2.5", "theme": "PCI_07",
+      "title": "All application and system accounts are assigned and managed based on least privilege",
+      "description": "All application and system accounts and related access privileges are assigned and managed based on least privilege.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.2", "NIST:PR.AC-04", "CIS:6.2"],
+      "evidence_checklist": ["System Account Privilege Audit Report", "Quarterly Access Review Log"],
+      "tags": ["service_accounts", "least_privilege", "pci_req_7"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_8_1_1", "control_number": "8.1.1", "theme": "PCI_08",
+      "title": "Roles and responsibilities for identification and authentication are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 8 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-01", "CIS:5.1"],
+      "evidence_checklist": ["Authentication Management Roles RACI Matrix"],
+      "tags": ["governance", "authentication", "pci_req_8"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_8_2_8", "control_number": "8.2.8", "theme": "PCI_08",
+      "title": "Idle sessions are timed out after no more than 15 minutes of inactivity",
+      "description": "If a session has been idle for more than 15 minutes, the user is required to re-authenticate.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-01", "CIS:5.6"],
+      "evidence_checklist": ["Session Timeout Configuration Audit (<=15 min)", "Application Session Management Report"],
+      "tags": ["session_timeout", "idle_timeout", "authentication", "pci_req_8"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_8_3_1", "control_number": "8.3.1", "theme": "PCI_08",
+      "title": "All user access to system components is authenticated with at least one authentication factor",
+      "description": "All user access to system components for users and administrators is authenticated via at least one of the following authentication factors: something you know, something you have, something you are.",
+      "scannability": "auto", "scan_module_hint": "credential_validation",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-07", "CIS:5.2"],
+      "evidence_checklist": ["Authentication Factor Policy Document"],
+      "tags": ["authentication", "access_control", "pci_req_8"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_8_3_4", "control_number": "8.3.4", "theme": "PCI_08",
+      "title": "Account lockout after maximum of 10 failed authentication attempts",
+      "description": "Invalid authentication attempts are limited by locking out the user ID after not more than 10 attempts, or equivalent progressive delay.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-07", "CIS:5.2"],
+      "evidence_checklist": ["Account Lockout Policy Configuration (<=10 attempts)", "Lockout Duration Verification (>=30 min)"],
+      "tags": ["lockout", "brute_force", "authentication", "pci_req_8"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_8_3_6", "control_number": "8.3.6", "theme": "PCI_08",
+      "title": "Password minimum length of 12 characters (PCI v4.0 Updated)",
+      "description": "If passwords/passphrases are used as an authentication factor, they meet a minimum length of 12 characters, containing both numeric and alphabetic characters.",
+      "scannability": "auto", "scan_module_hint": "credential_validation",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-01", "CIS:5.2"],
+      "evidence_checklist": ["Password Policy Configuration (Min Length >= 12)", "Password Complexity Requirements Audit"],
+      "tags": ["password", "complexity", "12_char_minimum", "pci_req_8"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_8_3_9", "control_number": "8.3.9", "theme": "PCI_08",
+      "title": "Passwords/passphrases are not the same as the previous four used",
+      "description": "If passwords/passphrases are used, they are set to a unique value for each user's first use and upon reset, and cannot be the same as the previous four passwords/passphrases used.",
+      "scannability": "auto", "scan_module_hint": "credential_validation",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-01", "CIS:5.2"],
+      "evidence_checklist": ["Password History Policy (>=4 remembered)", "First Use Unique Password Enforcement"],
+      "tags": ["password_history", "authentication", "pci_req_8"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_8_4_2", "control_number": "8.4.2", "theme": "PCI_08",
+      "title": "MFA is implemented for all access into the CDE",
+      "description": "MFA is implemented for all access into the cardholder data environment (CDE).",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AC-07", "CIS:6.3"],
+      "evidence_checklist": ["MFA Enforcement Status for CDE Access", "PAM Module Configuration (/etc/pam.d/sshd)"],
+      "tags": ["mfa", "cde", "authentication", "pci_req_8"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_9_1_1", "control_number": "9.1.1", "theme": "PCI_09",
+      "title": "Roles and responsibilities for physical access restrictions are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 9 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.7.1", "NIST:PR.AC-02", "CIS:4.1"],
+      "evidence_checklist": ["Physical Security Roles RACI Matrix"],
+      "tags": ["governance", "physical_security", "pci_req_9"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_9_2_3", "control_number": "9.2.3", "theme": "PCI_09",
+      "title": "Physical access to wireless access points, gateways, and networking devices is restricted",
+      "description": "Physical access to wireless access points, gateways, networking/communications hardware, and telecommunication lines within the facility is restricted.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.7.2", "NIST:PR.AC-02"],
+      "evidence_checklist": ["Physical Access Log for Network Equipment Rooms", "Cabinet Lock Audit Report"],
+      "tags": ["physical_access", "network_equipment", "pci_req_9"], "saq_profiles": ["saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_9_4_5", "control_number": "9.4.5", "theme": "PCI_09",
+      "title": "Electronic media with cardholder data is destroyed when no longer needed",
+      "description": "Electronic media with cardholder data is destroyed when no longer needed for business or legal reasons.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.7.14", "NIST:PR.IP-06", "CIS:3.5"],
+      "evidence_checklist": ["Media Destruction Log", "Certificate of Destruction Records"],
+      "tags": ["media_destruction", "data_disposal", "pci_req_9"], "saq_profiles": ["saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_1_1", "control_number": "10.1.1", "theme": "PCI_10",
+      "title": "Roles and responsibilities for logging and monitoring are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 10 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.15", "NIST:DE.AE-01", "CIS:8.1"],
+      "evidence_checklist": ["Logging Management Roles RACI Matrix"],
+      "tags": ["governance", "logging", "pci_req_10"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_2_1", "control_number": "10.2.1", "theme": "PCI_10",
+      "title": "Audit logs are enabled and active for all system components and cardholder data",
+      "description": "Audit logs are enabled and active for all system components and cardholder data.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.15", "NIST:DE.AE-03", "CIS:8.2"],
+      "evidence_checklist": ["Audit Log Enabled Status Report", "SIEM Agent Deployment Coverage"],
+      "tags": ["audit_logs", "siem", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_3_3", "control_number": "10.3.3", "theme": "PCI_10",
+      "title": "Audit logs are protected from unauthorized modifications",
+      "description": "Audit logs are promptly backed up to a centralized log server or media that is difficult to alter.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.15", "NIST:PR.PT-01", "CIS:8.3"],
+      "evidence_checklist": ["Centralized Log Server Configuration", "Write-Once/Immutable Storage Verification"],
+      "tags": ["log_integrity", "immutable_logs", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_4_1", "control_number": "10.4.1", "theme": "PCI_10",
+      "title": "Audit logs are reviewed at least once daily",
+      "description": "Audit logs are reviewed at least once daily. Review includes: all security events, logs of all system components that store, process, or transmit CHD and/or SAD.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.15", "NIST:DE.AE-02", "CIS:8.11"],
+      "evidence_checklist": ["Daily Log Review Attestation Record", "SIEM Automated Alert Report"],
+      "tags": ["daily_review", "log_monitoring", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_5_1", "control_number": "10.5.1", "theme": "PCI_10",
+      "title": "Audit log history is retained for at least 12 months, with 3 months immediately available",
+      "description": "Retain audit log history for at least 12 months, with at least the most recent three months immediately available for analysis.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.15", "NIST:PR.PT-01", "CIS:8.2"],
+      "evidence_checklist": ["Log Retention Configuration (>=365 days)", "Immediate Availability Verification (>=90 days)"],
+      "tags": ["log_retention", "365_days", "90_days_immediate", "pci_req_10"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_10_6_1", "control_number": "10.6.1", "theme": "PCI_10",
+      "title": "System clocks and time are synchronized using time-synchronization technology",
+      "description": "System clocks and time are synchronized using time-synchronization technology. Time synchronization technology is configured to receive time from multiple designated time sources.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.17", "NIST:PR.PT-01", "CIS:8.4"],
+      "evidence_checklist": ["NTP Configuration Audit (>=2 sources)", "Clock Synchronization Status Report"],
+      "tags": ["ntp", "time_sync", "clock", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_1_1", "control_number": "11.1.1", "theme": "PCI_11",
+      "title": "Roles and responsibilities for security testing are documented",
+      "description": "All roles and responsibilities for performing activities in Requirement 11 are documented, assigned, and understood.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.8", "NIST:DE.CM-08", "CIS:7.1"],
+      "evidence_checklist": ["Security Testing Roles RACI Matrix"],
+      "tags": ["governance", "security_testing", "pci_req_11"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_3_1", "control_number": "11.3.1", "theme": "PCI_11",
+      "title": "Internal vulnerability scans are performed at least once every three months",
+      "description": "Internal vulnerability scans are performed at least once every three months. High-risk and critical vulnerabilities are resolved and rescans are performed.",
+      "scannability": "auto", "scan_module_hint": "vulnerability_audit",
+      "crosswalk": ["ISO27001:A.8.8", "NIST:DE.CM-08", "CIS:7.5"],
+      "evidence_checklist": ["Quarterly Internal Vuln Scan Report (<90 days)", "High/Critical Vuln Remediation Log"],
+      "tags": ["vulnerability_scan", "quarterly", "internal", "pci_req_11"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_3_2", "control_number": "11.3.2", "theme": "PCI_11",
+      "title": "External vulnerability scans are performed at least quarterly by an ASV",
+      "description": "External vulnerability scans are performed at least once every three months by a PCI SSC Approved Scanning Vendor (ASV). Scans are performed after any significant change.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.8", "NIST:DE.CM-08", "CIS:7.6"],
+      "evidence_checklist": ["Quarterly ASV External Scan Report (Passing)", "ASV Vendor Name and CVSS < 4.0 Attestation"],
+      "tags": ["asv", "external_scan", "quarterly", "pci_req_11"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_4_1", "control_number": "11.4.1", "theme": "PCI_11",
+      "title": "External and internal penetration testing is performed at least annually",
+      "description": "External and internal penetration testing is regularly performed and after any significant infrastructure or application change.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.8", "NIST:DE.CM-08", "CIS:18.3"],
+      "evidence_checklist": ["Annual Penetration Test Report (<365 days)", "Remediation Tracking for Pentest Findings"],
+      "tags": ["penetration_testing", "annual", "pci_req_11"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_5_1", "control_number": "11.5.1", "theme": "PCI_11",
+      "title": "Intrusion-detection and/or intrusion-prevention techniques are used to detect and alert",
+      "description": "Intrusion-detection and/or intrusion-prevention techniques are used to detect and/or prevent intrusions into the network.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.16", "NIST:DE.CM-01", "CIS:13.3"],
+      "evidence_checklist": ["IDS/IPS Deployment Status Report", "Alert Rules Configuration Export"],
+      "tags": ["ids", "ips", "intrusion_detection", "pci_req_11"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_5_1_1", "control_number": "11.5.1.1", "theme": "PCI_11",
+      "title": "File integrity monitoring (FIM) is deployed on critical system files",
+      "description": "Mechanisms for change detection (e.g., file integrity monitoring tools) are deployed to detect unauthorized modification of critical system files, configuration files, or content files.",
+      "scannability": "auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.16", "NIST:DE.CM-03", "CIS:3.14"],
+      "evidence_checklist": ["FIM Tool Active Status Verification", "Monitored Directory Configuration (/etc, /bin, System32)"],
+      "tags": ["fim", "file_integrity", "change_detection", "pci_req_11"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_11_6_1", "control_number": "11.6.1", "theme": "PCI_11",
+      "title": "Change/tamper detection on payment pages for HTTP headers and scripts",
+      "description": "A change- and tamper-detection mechanism is deployed to alert personnel to unauthorized modification of HTTP headers and the contents of payment pages as received by the consumer browser.",
+      "scannability": "semi_auto", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.8.16", "NIST:DE.CM-03"],
+      "evidence_checklist": ["Payment Page Tamper Detection System Status", "HTTP Header Integrity Monitoring Report"],
+      "tags": ["tamper_detection", "payment_page", "http_headers", "pci_req_11"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_12_1_1", "control_number": "12.1.1", "theme": "PCI_12",
+      "title": "An overall information security policy is established and published",
+      "description": "An overall information security policy is established, published, maintained, and disseminated to all relevant personnel and relevant third parties.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.1", "NIST:GV.PO-01", "CIS:1.1"],
+      "evidence_checklist": ["Information Security Policy Document", "Policy Distribution and Acknowledgment Records"],
+      "tags": ["security_policy", "governance", "pci_req_12"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_3_1", "control_number": "12.3.1", "theme": "PCI_12",
+      "title": "A targeted risk analysis is performed for each PCI DSS requirement that provides flexibility",
+      "description": "Each PCI DSS requirement that provides flexibility for how frequently it is performed is supported by a targeted risk analysis (TRA).",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.1", "NIST:GV.RM-01"],
+      "evidence_checklist": ["Targeted Risk Analysis (TRA) Document per Control", "Compensating Control Worksheet"],
+      "tags": ["tra", "targeted_risk_analysis", "customized_approach", "pci_req_12"], "saq_profiles": ["saq_d_merchant", "saq_d_service_provider"],
+      "v4_2025_mandatory": true
+    },
+    {
+      "id": "pci_12_6_1", "control_number": "12.6.1", "theme": "PCI_12",
+      "title": "A formal security awareness program is implemented for all personnel",
+      "description": "A formal security awareness program is implemented to make all personnel aware of the entity's information security policy and procedures.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.6.3", "NIST:PR.AT-01", "CIS:14.1"],
+      "evidence_checklist": ["Annual Security Awareness Training Records", "Training Completion Tracking Dashboard"],
+      "tags": ["security_awareness", "training", "pci_req_12"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_8_1", "control_number": "12.8.1", "theme": "PCI_12",
+      "title": "A list of TPSPs with which account data is shared is maintained",
+      "description": "A list of all third-party service providers (TPSPs) with which account data is shared or that could affect the security of account data is maintained.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.19", "NIST:GV.SC-01", "CIS:15.1"],
+      "evidence_checklist": ["TPSP Inventory Ledger", "TPSP PCI-DSS Attestation of Compliance (AOC) Copies"],
+      "tags": ["tpsp", "third_party", "service_provider", "pci_req_12"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_8_4", "control_number": "12.8.4", "theme": "PCI_12",
+      "title": "TPSPs' PCI DSS compliance status is monitored at least annually",
+      "description": "A program is implemented to monitor TPSPs' PCI DSS compliance status at least once every 12 months.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.22", "NIST:GV.SC-04"],
+      "evidence_checklist": ["Annual TPSP Compliance Monitoring Report", "TPSP AOC/SAQ Collection Tracking"],
+      "tags": ["tpsp", "monitoring", "annual", "pci_req_12"], "saq_profiles": ["saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_9_1", "control_number": "12.9.1", "theme": "PCI_12",
+      "title": "TPSPs acknowledge in writing their responsibility for cardholder data security",
+      "description": "TPSPs acknowledge in writing to customers that they are responsible for the security of account data the TPSP possesses or otherwise stores, processes, or transmits on behalf of the customer.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.20", "NIST:GV.SC-04"],
+      "evidence_checklist": ["TPSP Written Acknowledgment Letters", "TPSP Contractual Security Obligations"],
+      "tags": ["tpsp", "written_acknowledgment", "service_provider", "pci_req_12"], "saq_profiles": ["saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_10_1", "control_number": "12.10.1", "theme": "PCI_12",
+      "title": "An incident response plan exists and is ready to be activated immediately",
+      "description": "An incident response plan exists and is ready to be activated in the event of a suspected or confirmed security incident.",
+      "scannability": "manual", "scan_module_hint": null,
+      "crosswalk": ["ISO27001:A.5.24", "NIST:RS.RP-01", "CIS:17.1"],
+      "evidence_checklist": ["Incident Response Plan Document", "Incident Response Team Contact List"],
+      "tags": ["incident_response", "ir_plan", "pci_req_12"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    },
+    {
+      "id": "pci_12_10_2", "control_number": "12.10.2", "theme": "PCI_12",
+      "title": "Incident response plan is tested at least annually",
+      "description": "The security incident response plan is reviewed and tested at least once every 12 months, including all elements listed in Requirement 12.10.1.",
+      "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.24", "NIST:RS.RP-01", "CIS:17.4"],
+      "evidence_checklist": ["Annual Tabletop Exercise Report (<365 days)", "IR Plan Test Results and Lessons Learned"],
+      "tags": ["incident_response", "tabletop_exercise", "annual", "pci_req_12"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
+    }
+  ]
+}

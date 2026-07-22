@@ -114,7 +114,7 @@ class ComplianceControl(Base):
             "framework_id", "control_number", name="uq_framework_control_number"
         ),
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP')",
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12')",
             name="ck_control_theme",
         ),
         CheckConstraint(
@@ -132,8 +132,8 @@ class ComplianceControl(Base):
     )
     control_number = Column(String(50), nullable=False)  # e.g. "8.24"
     theme = Column(
-        String(10), nullable=False
-    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..CIS_18
+        String(20), nullable=False
+    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..CIS_18, PCI_01..PCI_12
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     scannability = Column(String(20), nullable=False)  # auto, semi_auto, manual
@@ -141,6 +141,9 @@ class ComplianceControl(Base):
     crosswalk = Column(JSONB, nullable=True, default=list)
     evidence_checklist = Column(JSONB, nullable=True, default=list)
     tags = Column(JSONB, nullable=False, default=list)
+    saq_profiles = Column(
+        JSONB, nullable=True, default=list
+    )  # PCI-DSS SAQ profile tags
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="controls")
@@ -460,6 +463,7 @@ class ComplianceScanRun(Base):
     started_at = Column(TIMESTAMPTZ, nullable=True)
     finished_at = Column(TIMESTAMPTZ, nullable=True)
     is_finalized = Column(Boolean, nullable=False, default=False)
+    cde_scope = Column(String(50), nullable=True)  # PCI-DSS CDE scoping filter
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="scan_runs")
@@ -529,6 +533,7 @@ class ComplianceFinding(Base):
     first_seen = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     last_seen = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
     reviewed_at = Column(TIMESTAMPTZ, nullable=True)
+    cde_scope = Column(String(50), nullable=True)  # PCI-DSS CDE scoping filter
 
     # Relationships
     scan_run = relationship("ComplianceScanRun", back_populates="findings")
@@ -620,7 +625,7 @@ class ComplianceScore(Base):
     __tablename__ = "compliance_scores"
     __table_args__ = (
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP')",
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12')",
             name="ck_score_theme",
         ),
     )

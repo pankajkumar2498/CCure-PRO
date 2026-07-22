@@ -628,6 +628,9 @@ def trigger_compliance_scan(
 @router.get("/findings")
 def list_findings(
     status: Optional[str] = Query(None),
+    saq_profile: Optional[str] = Query(None),
+    cde_scope: Optional[str] = Query(None),
+    cde_scope_only: Optional[bool] = Query(False),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -672,6 +675,14 @@ def list_findings(
 
     if status:
         q = q.filter(ComplianceFinding.status == status)
+
+    if saq_profile:
+        q = q.filter(ComplianceControl.saq_profiles.contains([saq_profile]))
+
+    if cde_scope:
+        q = q.filter(ComplianceFinding.cde_scope == cde_scope)
+    elif cde_scope_only:
+        q = q.filter(ComplianceFinding.cde_scope.isnot(None))
 
     findings = q.order_by(ComplianceFinding.last_seen.desc()).limit(limit).all()
     result = []
@@ -1624,6 +1635,9 @@ def approve_exception_waiver(
 @router.get("/summary")
 def get_dashboard_summary(
     framework_id: Optional[str] = Query(None),
+    saq_profile: Optional[str] = Query(None),
+    cde_scope: Optional[str] = Query(None),
+    cde_scope_only: Optional[bool] = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1637,6 +1651,129 @@ def get_dashboard_summary(
         )
         .scalar_subquery()
     )
+
+    # Apply framework_id query parameter filter dynamically
+    if framework_id and framework_id != "all":
+        target_fws = [framework_id]
+    else:
+        # Resolve all enabled frameworks
+        enabled_fws_list = (
+            db.query(ComplianceTenantFramework.framework_id)
+            .filter(
+                ComplianceTenantFramework.tenant_id == user.org_id,
+                ComplianceTenantFramework.is_enabled == True,
+            )
+            .all()
+        )
+        target_fws = [r[0] for r in enabled_fws_list]
+
+    if saq_profile or cde_scope or cde_scope_only:
+        # Dynamically calculate overall scores and quadrant scores based on the filters
+        control_query = db.query(ComplianceControl).filter(
+            ComplianceControl.framework_id.in_(target_fws)
+        )
+        if saq_profile:
+            control_query = control_query.filter(
+                ComplianceControl.saq_profiles.contains([saq_profile])
+            )
+
+        controls = control_query.all()
+        if not controls:
+            return {
+                "score_pct": 0.0,
+                "weighted_score_pct": 0.0,
+                "quadrant_scores": {},
+                "kpis": {"total": 0, "passed": 0, "failed": 0, "exceptions": 0},
+            }
+
+        control_ids = [c.id for c in controls]
+
+        subq = (
+            db.query(ComplianceFinding.id)
+            .filter(ComplianceFinding.tenant_id == user.org_id)
+            .distinct(ComplianceFinding.asset_id, ComplianceFinding.control_id)
+            .order_by(
+                ComplianceFinding.asset_id,
+                ComplianceFinding.control_id,
+                ComplianceFinding.last_seen.desc(),
+            )
+            .subquery()
+        )
+
+        finding_query = db.query(ComplianceFinding).filter(
+            ComplianceFinding.id.in_(subq),
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+
+        if cde_scope:
+            finding_query = finding_query.filter(
+                ComplianceFinding.cde_scope == cde_scope
+            )
+        elif cde_scope_only:
+            finding_query = finding_query.filter(
+                ComplianceFinding.cde_scope.isnot(None)
+            )
+
+        findings = finding_query.all()
+        finding_map = {f.control_id: f for f in findings}
+
+        total = len(controls)
+        passed = sum(
+            1
+            for c in controls
+            if finding_map.get(c.id)
+            and finding_map[c.id].status in ("pass", "exception")
+        )
+        failed = sum(
+            1
+            for c in controls
+            if finding_map.get(c.id)
+            and finding_map[c.id].status in ("fail", "pending_reverify")
+        )
+        exceptions = sum(
+            1
+            for c in controls
+            if finding_map.get(c.id) and finding_map[c.id].status == "exception"
+        )
+        applicable = sum(
+            1
+            for c in controls
+            if not finding_map.get(c.id) or finding_map[c.id].status != "not_applicable"
+        )
+
+        score_pct = round((passed / applicable) * 100, 2) if applicable > 0 else 0.0
+
+        distinct_themes = list({c.theme for c in controls if c.theme})
+        quadrants = {}
+        for theme in distinct_themes:
+            theme_controls = [c for c in controls if c.theme == theme]
+            t_passed = sum(
+                1
+                for c in theme_controls
+                if finding_map.get(c.id)
+                and finding_map[c.id].status in ("pass", "exception")
+            )
+            t_applicable = sum(
+                1
+                for c in theme_controls
+                if not finding_map.get(c.id)
+                or finding_map[c.id].status != "not_applicable"
+            )
+            quadrants[theme] = (
+                round((t_passed / t_applicable) * 100, 2) if t_applicable > 0 else 0.0
+            )
+
+        return {
+            "score_pct": score_pct,
+            "weighted_score_pct": score_pct,
+            "quadrant_scores": quadrants,
+            "kpis": {
+                "total": total,
+                "passed": passed,
+                "failed": failed,
+                "exceptions": exceptions,
+            },
+        }
 
     # Apply framework_id query parameter filter dynamically
     if framework_id and framework_id != "all":
@@ -2501,6 +2638,227 @@ def download_cert_in_2022_report(
         )
         media = "application/pdf"
         filename = f"cert_in_2022_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _generate_pci_dss_docx(
+    controls: list,
+    findings_map: dict,
+    title: str = "PCI-DSS v4.0 Compliance Assessment Report",
+    subtitle: str = "Payment Card Industry Data Security Standard Assessment Ledger",
+) -> io.BytesIO:
+    """Generates the Word PCI-DSS report using python-docx."""
+    doc = Document()
+    doc.add_heading(title, level=1)
+    doc.add_paragraph(subtitle)
+
+    table = doc.add_table(rows=1, cols=6)
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = "Control ID"
+    hdr_cells[1].text = "Name"
+    hdr_cells[2].text = "SAQ Profile Relevance"
+    hdr_cells[3].text = "March 31, 2025 Mandatory"
+    hdr_cells[4].text = "CDE Scope Tagging"
+    hdr_cells[5].text = "Verdict Status"
+
+    for c in controls:
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(c.control_number or c.id)
+        row_cells[1].text = str(c.title)
+
+        saq_str = ", ".join(c.saq_profiles) if c.saq_profiles else "All"
+        row_cells[2].text = saq_str
+
+        is_mand = (
+            "Yes"
+            if (
+                c.tags
+                and "v4_2025_mandatory" in c.tags
+                or getattr(c, "v4_2025_mandatory", False)
+            )
+            else "No"
+        )
+        row_cells[3].text = is_mand
+
+        is_cde = "Yes" if (c.tags and "cde" in [t.lower() for t in c.tags]) else "No"
+        row_cells[4].text = is_cde
+
+        f = findings_map.get(c.id)
+        row_cells[5].text = str(f.status).upper() if f else "PENDING"
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_pci_dss_pdf(
+    controls: list,
+    findings_map: dict,
+    title: str = "PCI-DSS v4.0 Compliance Assessment Report",
+    subtitle: str = "Payment Card Industry Data Security Standard Assessment Ledger",
+) -> io.BytesIO:
+    """Generates the PCI-DSS PDF document using ReportLab."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TitleStyle",
+        parent=styles["Title"],
+        fontSize=16,
+        textColor=colors.HexColor("#003366"),
+    )
+    cell_style = ParagraphStyle("CellStyle", parent=styles["Normal"], fontSize=8)
+
+    story = [
+        Paragraph(title, title_style),
+        Paragraph(subtitle, styles["Normal"]),
+        Spacer(1, 10 * mm),
+    ]
+
+    table_data = [
+        [
+            Paragraph("<b>Control ID</b>", cell_style),
+            Paragraph("<b>Name</b>", cell_style),
+            Paragraph("<b>SAQ Profile Relevance</b>", cell_style),
+            Paragraph("<b>March 31, 2025 Mandatory</b>", cell_style),
+            Paragraph("<b>CDE Scope Tagging</b>", cell_style),
+            Paragraph("<b>Verdict</b>", cell_style),
+        ]
+    ]
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        status_text = f.status.upper() if f else "PENDING"
+
+        saq_str = ", ".join(c.saq_profiles) if c.saq_profiles else "All"
+        is_mand = (
+            "Yes"
+            if (
+                c.tags
+                and "v4_2025_mandatory" in c.tags
+                or getattr(c, "v4_2025_mandatory", False)
+            )
+            else "No"
+        )
+        is_cde = "Yes" if (c.tags and "cde" in [t.lower() for t in c.tags]) else "No"
+
+        table_data.append(
+            [
+                Paragraph(c.control_number or c.id, cell_style),
+                Paragraph(
+                    c.title[:35] + "..." if len(c.title) > 35 else c.title, cell_style
+                ),
+                Paragraph(saq_str, cell_style),
+                Paragraph(is_mand, cell_style),
+                Paragraph(is_cde, cell_style),
+                Paragraph(
+                    (
+                        f"<font color='green'>{status_text}</font>"
+                        if status_text == "PASS"
+                        else f"<font color='red'>{status_text}</font>"
+                    ),
+                    cell_style,
+                ),
+            ]
+        )
+
+    tbl = Table(
+        table_data, colWidths=[15 * mm, 50 * mm, 35 * mm, 25 * mm, 25 * mm, 30 * mm]
+    )
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003366")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(tbl)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/pci_dss_v4")
+def download_pci_dss_v4_report(
+    fmt: str = "pdf",
+    saq_profile: Optional[str] = Query(
+        None,
+        description="Filter by SAQ profile: saq_a, saq_a_ep, saq_b_ip, saq_c, saq_d_merchant, saq_d_service_provider",
+    ),
+    cde_scope_only: bool = Query(
+        False, description="Filter only by CDE scope tagged controls/findings"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the PCI-DSS v4.0 Compliance Assessment Report."""
+    fw_id = "cfw_pci_dss_v4"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if saq_profile:
+        query = query.filter(ComplianceControl.saq_profiles.contains([saq_profile]))
+
+    if cde_scope_only:
+        query = query.filter(ComplianceControl.tags.contains(["cde"]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    finding_query = db.query(ComplianceFinding).filter(
+        ComplianceFinding.tenant_id == user.org_id,
+        ComplianceFinding.control_id.in_(control_ids),
+    )
+
+    if cde_scope_only:
+        finding_query = finding_query.filter(ComplianceFinding.cde_scope.isnot(None))
+
+    findings = finding_query.all()
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "PCI-DSS v4.0 Compliance Audit Assessment Report"
+    report_sub = f"PCI-DSS v4.0 Assessment Ledger (Tenant: {user.org_id[:8]}"
+    if saq_profile:
+        report_sub += f" | SAQ Profile: {saq_profile.upper()}"
+    if cde_scope_only:
+        report_sub += " | CDE Scope Only"
+    report_sub += ")"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_pci_dss_docx(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"pci_dss_v4_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_pci_dss_pdf(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = "application/pdf"
+        filename = f"pci_dss_v4_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

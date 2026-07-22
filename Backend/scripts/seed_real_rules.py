@@ -156,6 +156,96 @@ def seed_and_evaluate():
                 "recommendation_text": "Conduct periodic ICT vulnerability assessments and security posture audits at least every 90 days.",
             },
             {
+                "id": "crl_pci_log_daily",
+                "rule_family_code": "PCI-LOG-DAILY",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "pci_log_daily_reviewed",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_pci_log_daily_v1",
+                "control_id": "cct_pci_dss_v4_pci_10_4_1",
+                "recommendation_text": "Establish and enforce daily log review procedures for all security events and critical CDE system logs.",
+            },
+            {
+                "id": "crl_pci_auth_mfa",
+                "rule_family_code": "PCI-AUTH-MFA",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "pam_mfa_enforced",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_pci_auth_mfa_v1",
+                "control_id": "cct_pci_dss_v4_pci_8_4_2",
+                "recommendation_text": "Enforce Multi-Factor Authentication (MFA) for all administrative and user access to the cardholder data environment (CDE).",
+            },
+            {
+                "id": "crl_pci_asv_fresh",
+                "rule_family_code": "PCI-ASV-FRESH",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "asv_scan_fresh",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_pci_asv_fresh_v1",
+                "control_id": "cct_pci_dss_v4_pci_11_3_2",
+                "recommendation_text": "Ensure passing ASV external vulnerability scans are executed at least once every 90 days (quarterly) by an Approved Scanning Vendor.",
+            },
+            {
+                "id": "crl_pci_fim_active",
+                "rule_family_code": "PCI-FIM-ACTIVE",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "fim_active",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_pci_fim_active_v1",
+                "control_id": "cct_pci_dss_v4_pci_11_5_1_1",
+                "recommendation_text": "Deploy a File Integrity Monitoring (FIM) mechanism to monitor and alert on unauthorized changes to critical system and configuration files.",
+            },
+            {
+                "id": "crl_pci_ir_test_365d",
+                "rule_family_code": "PCI-IR-TEST-365D",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "ir_test_fresh_365d",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "medium",
+                "severity_weight": 5,
+                "remediation_id_target": "rem_pci_ir_test_365d_v1",
+                "control_id": "cct_pci_dss_v4_pci_12_10_2",
+                "recommendation_text": "Conduct and document an incident response plan tabletop test exercise at least once every 365 days (annually).",
+            },
+            {
                 "id": "crl_vuln_critical_v1",
                 "rule_family_code": "VULN-CRITICAL",
                 "version_number": 1,
@@ -743,6 +833,33 @@ def seed_and_evaluate():
                 "# --- LINUX (Bash) ---\n"
                 "# Windows-only RDP configuration"
             ),
+            "PCI-FIM-ACTIVE": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Write-Host 'Deploying and configuring Microsoft FIM / audit policy...'\n"
+                "Auditpol /set /subcategory:'File System' /success:enable /failure:enable\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get install -y aide || sudo yum install -y aide\n"
+                "sudo aideinit"
+            ),
+            "PCI-AUTH-MFA": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Write-Host 'Enforcing MFA via Azure AD or Duo PAM agent...'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get install -y libpam-duo || sudo yum install -y duo_unix\n"
+                "sudo sed -i 's/auth       stack          password-auth/auth       required       pam_duo.so/' /etc/pam.d/sshd"
+            ),
+            "PCI-LOG-DAILY": (
+                "# --- MANUAL CHECK ---\n"
+                "# Ensure daily log review checklists are signed off and saved to evidentiary logs repository."
+            ),
+            "PCI-ASV-FRESH": (
+                "# --- MANUAL CHECK ---\n"
+                "# Contact Approved Scanning Vendor (ASV) and schedule external scans. Upload passing attestation scan reports."
+            ),
+            "PCI-IR-TEST-365D": (
+                "# --- MANUAL CHECK ---\n"
+                "# Schedule and coordinate annual incident response plan tabletop simulation exercise."
+            ),
         }
 
         for rule in rules_data:
@@ -1149,6 +1266,89 @@ def seed_and_evaluate():
                 "  - Successfully mapped rules and controls for CERT-In Directions 2022"
             )
 
+        # Map rules and controls for PCI-DSS v4.0
+        pci_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_pci_dss_v4")
+            .all()
+        )
+        if pci_controls:
+            for pci_ctrl in pci_controls:
+                # Crosswalk mapping from ISO 27001 rules
+                if pci_ctrl.crosswalk:
+                    for iso_num in pci_ctrl.crosswalk:
+                        if not iso_num.startswith("ISO27001:"):
+                            continue
+                        iso_ref = iso_num.replace("ISO27001:", "").strip()
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            p_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == pci_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not p_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=pci_ctrl.id,
+                                    )
+                                )
+
+                # Ensure every PCI control has a dedicated 1:1 baseline rule
+                raw_id = (
+                    pci_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_pci_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-PCI-{pci_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            pci_ctrl.scannability
+                            if pci_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                p_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == pci_ctrl.id,
+                    )
+                    .first()
+                )
+                if not p_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=pci_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for PCI-DSS v4.0")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -1164,6 +1364,7 @@ def seed_and_evaluate():
                 "cfw_cis_v8_1",
                 "cfw_soc2_type2",
                 "cfw_cert_in_2022",
+                "cfw_pci_dss_v4",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

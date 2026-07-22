@@ -1,7 +1,7 @@
 {
   "status": "success",
   "company": "C-DAC Bangalore",
-  "total": 545,
+  "total": 552,
   "data": [
     {
       "asset_tag": "00000198",
@@ -2085,7 +2085,7 @@
       "asset_type": "Laptop-Notebook",
       "asset_user": "Vijaykumar G ",
       "emp_id": "346226",
-      "mac_address_1": "60:E9:AA:1D:0F:D1",
+      "mac_address_1": "E0:73:E7:2F:53:E2",
       "mac_address_2": null
     },
     {
@@ -3166,6 +3166,21 @@
       "asset_user": "Shrikrishna S Chippalkatti ",
       "emp_id": "102083",
       "mac_address_1": "E0:70:EA:B2:F4:B8",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00001188",
+      "asset_name": "HP Intel Core i7 14 Inch Laptop",
+      "serial": "1N13040740",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC EC 1",
+      "location_id": 10,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Laptop",
+      "asset_user": "Vaibhav Pratap Singh ",
+      "emp_id": "341735",
+      "mac_address_1": "F4-CE-23-39-A0-17",
       "mac_address_2": null
     },
     {
@@ -4939,6 +4954,21 @@
       "mac_address_2": null
     },
     {
+      "asset_tag": "00003677",
+      "asset_name": "HP Elite SFF 800 G9 Desktop PC",
+      "serial": "1N14090CXV",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC EC 1",
+      "location_id": 10,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Vaibhav Pratap Singh ",
+      "emp_id": "341735",
+      "mac_address_1": "2C-58-B9-0E-76-C7",
+      "mac_address_2": null
+    },
+    {
       "asset_tag": "00003679",
       "asset_name": "HP Elite SFF 800 G9 Desktop PC",
       "serial": "1N14090DZC",
@@ -5029,6 +5059,21 @@
       "mac_address_2": null
     },
     {
+      "asset_tag": "00003747",
+      "asset_name": "HP Elite SFF 800 G9 Desktop PC",
+      "serial": "1N14090CS5",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC KP",
+      "location_id": 2,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Bijoy M B ",
+      "emp_id": "101776",
+      "mac_address_1": "2c-58-b9-0e-78-15",
+      "mac_address_2": null
+    },
+    {
       "asset_tag": "00003752",
       "asset_name": "HP Elite SFF 800 G9 Desktop PC",
       "serial": "1N14090D0Z",
@@ -5071,6 +5116,21 @@
       "asset_user": "Vikas R ",
       "emp_id": "347895",
       "mac_address_1": "2c:58:b9:0e:75:4f",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00003786",
+      "asset_name": "HP Elite SFF 800 G9 Desktop PC",
+      "serial": "1N14090CR8",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "HP",
+      "asset_type": "Computers and Peripherals - Desktop",
+      "asset_user": "Cletus Reji C ",
+      "emp_id": "350498",
+      "mac_address_1": "2C:58:B9:0C:13:EB",
       "mac_address_2": null
     },
     {
@@ -6121,6 +6181,21 @@
       "asset_user": "Kuruvabathini Shashi Kanth ",
       "emp_id": "348840",
       "mac_address_1": "A8:E2:91:0C:14:42",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00011081",
+      "asset_name": "Acer Laptop",
+      "serial": "UN34JSI01V5080954C0700",
+      "company_name": "C-DAC Bangalore",
+      "location": "CDAC EC 1",
+      "location_id": 10,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": "Computers and Peripherals - Laptop",
+      "asset_user": "Ria Das ",
+      "emp_id": "348870",
+      "mac_address_1": "A8:E2:91:0C:00:6C",
       "mac_address_2": null
     },
     {
@@ -8176,6 +8251,36 @@
       "asset_user": "Karthikeya Valisetty ",
       "emp_id": "350538",
       "mac_address_1": "64-4A-7D-97-07-43",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012927",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UNVN35LSI01D614006000700",
+      "company_name": "C-DAC Bangalore",
+      "location": null,
+      "location_id": null,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "Unnati Ramesh Kotian ",
+      "emp_id": "350084",
+      "mac_address_1": "9C-97-1B-C9-9C-36",
+      "mac_address_2": null
+    },
+    {
+      "asset_tag": "00012928",
+      "asset_name": "ACER LAPTOP",
+      "serial": "UN3SLSI01D614006180700",
+      "company_name": "C-DAC Bangalore",
+      "location": "BLK",
+      "location_id": 211,
+      "status": "Ready to Deploy",
+      "vendor": "Acer",
+      "asset_type": null,
+      "asset_user": "Ashwani Pathak ",
+      "emp_id": "349277",
+      "mac_address_1": "84:47:09:7d:89:b2",
       "mac_address_2": null
     }
   ]

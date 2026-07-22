@@ -11,7 +11,7 @@ Runs only in the AGGRESSIVE profile (Phase 3 pipeline).
 import logging
 import socket
 import struct
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
 
 log = logging.getLogger("ccure.discovery.nbns")
 
@@ -54,7 +54,7 @@ def probe(
             results[ip]["mac"] = mac
 
 
-def _query(ip: str, timeout: float) -> tuple[List[Dict], str | None]:
+def _query(ip: str, timeout: float) -> Tuple[List[Dict], Optional[str]]:
     """Send NBSTAT and return (parsed names, mac_string)."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

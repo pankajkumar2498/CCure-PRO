@@ -7513,6 +7513,55 @@
           },
           {
             "in": "query",
+            "name": "saq_profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Saq Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cde_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cde Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cde_scope_only",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Cde Scope Only"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8414,6 +8463,83 @@
         ]
       }
     },
+    "/compliance/reports/pci_dss_v4": {
+      "get": {
+        "description": "Generates and downloads the PCI-DSS v4.0 Compliance Assessment Report.",
+        "operationId": "download_pci_dss_v4_report_compliance_reports_pci_dss_v4_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by SAQ profile: saq_a, saq_a_ep, saq_b_ip, saq_c, saq_d_merchant, saq_d_service_provider",
+            "in": "query",
+            "name": "saq_profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by SAQ profile: saq_a, saq_a_ep, saq_b_ip, saq_c, saq_d_merchant, saq_d_service_provider",
+              "title": "Saq Profile"
+            }
+          },
+          {
+            "description": "Filter only by CDE scope tagged controls/findings",
+            "in": "query",
+            "name": "cde_scope_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Filter only by CDE scope tagged controls/findings",
+              "title": "Cde Scope Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Pci Dss V4 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/soa": {
       "get": {
         "description": "Generates and downloads the organization Statement of Applicability.",
@@ -8660,6 +8786,55 @@
                 }
               ],
               "title": "Framework Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "saq_profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Saq Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cde_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cde Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cde_scope_only",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Cde Scope Only"
             }
           }
         ],

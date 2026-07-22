@@ -75,7 +75,32 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
         description = ctrl.get("description", ctrl.get("note", ctrl["title"]))
         crosswalk = ctrl.get("crosswalk", [])
         evidence_checklist = ctrl.get("evidence_checklist", [])
-        tags = ctrl.get("tags", [])
+        raw_tags = ctrl.get("tags", []) or []
+        if isinstance(raw_tags, str):
+            tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        elif isinstance(raw_tags, list):
+            tags = list(raw_tags)
+        else:
+            tags = [str(raw_tags)]
+
+        impl_keys = (
+            "implementation_group",
+            "implementation_groups",
+            "ig",
+            "implementationGroup",
+        )
+        for k in impl_keys:
+            if k in ctrl and ctrl[k]:
+                ig_val = ctrl[k]
+                if isinstance(ig_val, str):
+                    igs = [g.strip() for g in ig_val.split(",") if g.strip()]
+                elif isinstance(ig_val, list):
+                    igs = [str(g).strip() for g in ig_val if str(g).strip()]
+                else:
+                    igs = [str(ig_val)]
+                for ig in igs:
+                    if ig not in tags:
+                        tags.append(ig)
 
         if not control:
             control = ComplianceControl(

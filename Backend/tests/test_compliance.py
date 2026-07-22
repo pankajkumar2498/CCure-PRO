@@ -170,7 +170,10 @@ def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
     # Verify control tags are persisted
     ctrl = (
         db_session.query(ComplianceControl)
-        .filter(ComplianceControl.framework_id == "cfw_cis_v8_1")
+        .filter(
+            ComplianceControl.framework_id == "cfw_cis_v8_1",
+            ComplianceControl.control_number == "1.1",
+        )
         .first()
     )
     assert ctrl is not None

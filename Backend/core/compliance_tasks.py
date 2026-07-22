@@ -180,6 +180,24 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
             asset_query = asset_query.filter(Asset.id.in_(asset_ids))
         assets = asset_query.all()
 
+        # Apply CDE scope filter if run has cde_scope defined
+        if run.cde_scope:
+            filtered_assets = []
+            cde_scope_lower = run.cde_scope.lower()
+            for asset in assets:
+                asset_tags_list = [t.lower() for t in (asset.tags or [])]
+                cde_scope_attr = (asset.custom_attributes or {}).get("cde_scope")
+                if (
+                    "cde" in asset_tags_list
+                    or cde_scope_lower in asset_tags_list
+                    or (
+                        cde_scope_attr
+                        and str(cde_scope_attr).lower() == cde_scope_lower
+                    )
+                ):
+                    filtered_assets.append(asset)
+            assets = filtered_assets
+
         if not assets:
             run.status = "completed"
             run.finished_at = datetime.now(timezone.utc)
@@ -361,7 +379,8 @@ def _save_finding(
         link.control_id if link else "cct_iso27001_2022_8.9"
     )  # Default fallback configuration control
 
-    finding_id = f"cfnd_{org_id[:4]}_{asset_id[-8:]}_{control_id[-8:]}_{rule.id[-8:]}"
+    asset_suffix = asset_id[-8:] if asset_id else "orglevel"
+    finding_id = f"cfnd_{org_id[:4]}_{asset_suffix}_{control_id[-8:]}_{rule.id[-8:]}"
 
     finding = (
         db.query(ComplianceFinding).filter(ComplianceFinding.id == finding_id).first()
@@ -381,6 +400,13 @@ def _save_finding(
     )
 
     target_status = "exception" if waiver else status
+
+    # Query cde_scope from the scan run
+    cde_scope = None
+    if run_id:
+        run = db.query(ComplianceScanRun).filter(ComplianceScanRun.id == run_id).first()
+        if run:
+            cde_scope = run.cde_scope
 
     from sqlalchemy.exc import IntegrityError
 
@@ -402,6 +428,7 @@ def _save_finding(
                     evidence=evidence,
                     first_seen=now,
                     last_seen=now,
+                    cde_scope=cde_scope,
                 )
                 db.add(finding)
                 had_transition = True
@@ -415,6 +442,7 @@ def _save_finding(
                 finding.scan_run_id = run_id
                 finding.last_seen = now
                 finding.evidence = evidence
+                finding.cde_scope = cde_scope
 
             if had_transition:
                 history = ComplianceFindingHistory(
@@ -438,6 +466,7 @@ def _save_finding(
             finding.scan_run_id = run_id
             finding.last_seen = now
             finding.evidence = evidence
+            finding.cde_scope = cde_scope
             if finding.status != target_status:
                 old_status = finding.status
                 finding.status = target_status
@@ -463,8 +492,18 @@ def _calculate_compliance_score(
     framework_id: str,
     asset_id: Optional[str],
     scan_run_id: str,
+    saq_profile: Optional[str] = None,
 ):
     """Calculates both simple and risk-weighted compliance scores for an asset or tenant, including theme scores."""
+    if saq_profile is None and scan_run_id:
+        run = (
+            db.query(ComplianceScanRun)
+            .filter(ComplianceScanRun.id == scan_run_id)
+            .first()
+        )
+        if run and run.scope:
+            saq_profile = run.scope.get("saq_profile")
+
     themes = [None]
     if not asset_id:
         distinct_themes = (
@@ -483,6 +522,15 @@ def _calculate_compliance_score(
         if theme:
             control_query = control_query.filter(ComplianceControl.theme == theme)
         controls = control_query.all()
+
+        # Apply SAQ profile filter on controls
+        if saq_profile:
+            controls = [
+                c
+                for c in controls
+                if c.saq_profiles
+                and saq_profile.lower() in [p.lower() for p in c.saq_profiles]
+            ]
 
         if not controls:
             continue
@@ -588,8 +636,9 @@ def _calculate_compliance_score(
             (weighted_passed / weighted_total) * 100 if weighted_total > 0 else 0.0
         )
 
-        # Unique ID per org, framework, theme, and asset
-        score_id = f"csc_{org_id[:4]}_{framework_id[-8:]}_{theme.lower() if theme else 'overall'}_{asset_id[-8:] if asset_id else 'summary'}"
+        # Unique ID per org, framework, theme, asset, and optional SAQ profile
+        suffix = f"_{saq_profile.lower()}" if saq_profile else ""
+        score_id = f"csc_{org_id[:4]}_{framework_id[-8:]}_{theme.lower() if theme else 'overall'}_{asset_id[-8:] if asset_id else 'summary'}{suffix}"
         score_rec = (
             db.query(ComplianceScore).filter(ComplianceScore.id == score_id).first()
         )

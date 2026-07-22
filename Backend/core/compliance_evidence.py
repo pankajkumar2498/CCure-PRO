@@ -286,6 +286,73 @@ class ComplianceEvidenceProvider:
         rdp_disabled = registry_attrs.get("rdp_disabled", False)
         rdp_nla_enforced = registry_attrs.get("rdp_nla_enforced", False) or rdp_disabled
 
+        # --- PCI-DSS v4.0 FIM (File Integrity Monitoring) Detection ---
+        fim_active = registry_attrs.get("fim_active", False) or custom_attrs.get(
+            "fim_active", False
+        )
+        fim_monitored_dirs = registry_attrs.get(
+            "fim_monitored_dirs", []
+        ) or custom_attrs.get("fim_monitored_dirs", [])
+
+        # --- PCI-DSS v4.0 PAM MFA Module Detection (Linux pam_duo.so, pam_google_authenticator.so) ---
+        pam_mfa_modules = custom_attrs.get("pam_mfa_modules", [])
+        pam_mfa_enforced = len(pam_mfa_modules) > 0
+
+        # --- PCI-DSS v4.0 ASV Scan Freshness Tracking ---
+        # Track last PASSING ASV scan date, not just any scan execution
+        asv_last_passing_scan_date = custom_attrs.get("asv_last_passing_scan_date")
+        asv_scan_fresh = False
+        if asv_last_passing_scan_date:
+            from datetime import datetime, timezone
+
+            try:
+                last_scan = datetime.fromisoformat(
+                    asv_last_passing_scan_date.replace("Z", "+00:00")
+                )
+                days_since = (datetime.now(timezone.utc) - last_scan).days
+                asv_scan_fresh = days_since <= 90  # Quarterly cadence
+            except (ValueError, TypeError):
+                asv_scan_fresh = False
+
+        # --- PCI-DSS v4.0 Daily Log Review (Req 10.4.1) ---
+        pci_log_daily_reviewed = custom_attrs.get("pci_log_daily_reviewed", False)
+
+        # --- PCI-DSS v4.0 IR Tabletop Exercise Freshness (Req 12.10.2) ---
+        ir_last_test_date = custom_attrs.get("ir_last_test_date")
+        ir_test_fresh_365d = False
+        if ir_last_test_date:
+            from datetime import datetime, timezone
+
+            try:
+                last_test = datetime.fromisoformat(
+                    ir_last_test_date.replace("Z", "+00:00")
+                )
+                days_since_test = (datetime.now(timezone.utc) - last_test).days
+                ir_test_fresh_365d = days_since_test <= 365
+            except (ValueError, TypeError):
+                ir_test_fresh_365d = False
+
+        # --- PCI-DSS v4.0 Session Timeout Configuration (Req 8.2.8) ---
+        session_timeout_minutes = registry_attrs.get(
+            "session_timeout_minutes"
+        ) or custom_attrs.get("session_timeout_minutes")
+
+        # --- PCI-DSS v4.0 Account Lockout Policy (Req 8.3.4) ---
+        account_lockout_threshold = registry_attrs.get(
+            "account_lockout_threshold"
+        ) or custom_attrs.get("account_lockout_threshold")
+
+        # --- PCI-DSS v4.0 WAF Active (Req 6.4.1) ---
+        waf_active = custom_attrs.get("waf_active", False)
+
+        # --- PCI-DSS v4.0 IDS/IPS Active (Req 11.5.1) ---
+        ids_ips_active = custom_attrs.get("ids_ips_active", False)
+
+        # --- PCI-DSS v4.0 Log Retention (Req 10.5.1: >= 365 days) ---
+        log_retention_days = registry_attrs.get("retention_days") or custom_attrs.get(
+            "log_retention_days"
+        )
+
         return {
             "uac_enabled": registry_attrs.get("uac_enabled", False),
             "firewall_profile_active": registry_attrs.get("firewall_active", False),
@@ -312,4 +379,19 @@ class ComplianceEvidenceProvider:
             "mfa_enforced_admin": registry_attrs.get("mfa_enforced_admin")
             or custom_attrs.get("mfa_enforced_admin"),
             "last_scan_days_ago": custom_attrs.get("last_scan_days_ago"),
+            # --- PCI-DSS v4.0 Technical Checks ---
+            "fim_active": fim_active,
+            "fim_monitored_dirs": fim_monitored_dirs,
+            "pam_mfa_enforced": pam_mfa_enforced,
+            "pam_mfa_modules": pam_mfa_modules,
+            "asv_scan_fresh": asv_scan_fresh,
+            "asv_last_passing_scan_date": asv_last_passing_scan_date,
+            "pci_log_daily_reviewed": pci_log_daily_reviewed,
+            "ir_test_fresh_365d": ir_test_fresh_365d,
+            "ir_last_test_date": ir_last_test_date,
+            "session_timeout_minutes": session_timeout_minutes,
+            "account_lockout_threshold": account_lockout_threshold,
+            "waf_active": waf_active,
+            "ids_ips_active": ids_ips_active,
+            "log_retention_days": log_retention_days,
         }

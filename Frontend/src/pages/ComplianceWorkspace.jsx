@@ -198,10 +198,10 @@ export default function ComplianceWorkspace() {
   const [jitKeyContent, setJitKeyContent] = useState("");
   const [emergencyBypass, setEmergencyBypass] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanPollCount, setScanPollCount] = useState(0);
-
-  // Active framework filter & gap analysis states
+  const [scanPollCount, setScanPollCount] = useState(0); // Active framework filter & gap analysis states
   const [selectedFrameworkId, setSelectedFrameworkId] = useState("all");
+  const [saqProfileFilter, setSaqProfileFilter] = useState("all");
+  const [cdeScopeFilter, setCdeScopeFilter] = useState(false);
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
 
@@ -370,7 +370,7 @@ export default function ComplianceWorkspace() {
 
   useEffect(() => {
     fetchTabData();
-  }, [activeTab, selectedFrameworkId]);
+  }, [activeTab, selectedFrameworkId, saqProfileFilter, cdeScopeFilter]);
 
   const fetchGapAnalysis = async (
     sourceId = "cfw_iso27001_2022",
@@ -398,14 +398,24 @@ export default function ComplianceWorkspace() {
   const fetchTabData = async (quiet = false) => {
     if (!quiet) setLoading(true);
     setError(null);
-    const fwParam =
-      selectedFrameworkId && selectedFrameworkId !== "all"
-        ? `framework_id=${selectedFrameworkId}`
-        : "";
+    let params = [];
+    if (selectedFrameworkId && selectedFrameworkId !== "all") {
+      params.push(`framework_id=${selectedFrameworkId}`);
+    }
+    if (selectedFrameworkId === "cfw_pci_dss_v4") {
+      if (saqProfileFilter && saqProfileFilter !== "all") {
+        params.push(`saq_profile=${saqProfileFilter}`);
+      }
+      if (cdeScopeFilter) {
+        params.push(`cde_scope_only=true`);
+      }
+    }
+    const queryString = params.length > 0 ? `?${params.join("&")}` : "";
+
     try {
       if (activeTab === "dashboard") {
         const res = await axiosInstance.get(
-          `/compliance/summary${fwParam ? `?${fwParam}` : ""}`,
+          `/compliance/summary${queryString}`,
         );
         setSummary(res.data);
       } else if (activeTab === "marketplace") {
@@ -413,17 +423,17 @@ export default function ComplianceWorkspace() {
         setMarketplace(res.data.data || []);
       } else if (activeTab === "policies") {
         const res = await axiosInstance.get(
-          `/compliance/policies${fwParam ? `?${fwParam}` : ""}`,
+          `/compliance/policies${queryString}`,
         );
         setPolicies(res.data.data || []);
       } else if (activeTab === "findings") {
         const res = await axiosInstance.get(
-          `/compliance/findings?limit=10000${fwParam ? `&${fwParam}` : ""}`,
+          `/compliance/findings?limit=10000${params.length > 0 ? `&${params.join("&")}` : ""}`,
         );
         setFindings(res.data.data || []);
       } else if (activeTab === "exceptions") {
         const res = await axiosInstance.get(
-          `/compliance/findings?status=pending&limit=10000${fwParam ? `&${fwParam}` : ""}`,
+          `/compliance/findings?status=pending&limit=10000${params.length > 0 ? `&${params.join("&")}` : ""}`,
         );
         setExceptions(res.data.data || []);
       } else if (activeTab === "credentials") {
@@ -925,8 +935,81 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_soc2_type2">
                   SOC 2 Type II (Trust Services Criteria)
                 </option>
+                <option value="cfw_cert_in_2022">
+                  CERT-In Directions 2022 & CCMP
+                </option>
+                <option value="cfw_pci_dss_v4">
+                  PCI-DSS v4.0 (Cardholder Data Security)
+                </option>
               </select>
             </div>
+            {selectedFrameworkId === "cfw_pci_dss_v4" && (
+              <>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    SAQ Profile:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={saqProfileFilter}
+                    onChange={(e) => setSaqProfileFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All SAQ Profiles (Full ~300)</option>
+                    <option value="saq_a">
+                      SAQ A (E-Commerce Outsourced ~31)
+                    </option>
+                    <option value="saq_a_ep">
+                      SAQ A-EP (E-Commerce Direct ~190)
+                    </option>
+                    <option value="saq_b_ip">
+                      SAQ B-IP (Standalone IP Terminals)
+                    </option>
+                    <option value="saq_c">
+                      SAQ C (Payment Application Systems)
+                    </option>
+                    <option value="saq_d_merchant">
+                      SAQ D Merchant (All Other Merchants)
+                    </option>
+                    <option value="saq_d_service_provider">
+                      SAQ D Service Provider (Service Providers)
+                    </option>
+                  </select>
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={cdeScopeFilter}
+                    onChange={(e) => setCdeScopeFilter(e.target.checked)}
+                  />
+                  CDE Scope Only
+                </label>
+              </>
+            )}
             <button
               className="db-btn db-btn--ghost"
               onClick={() =>
@@ -1199,6 +1282,28 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      `/compliance/reports/pci_dss_v4?fmt=pdf${saqProfileFilter !== "all" ? `&saq_profile=${saqProfileFilter}` : ""}${cdeScopeFilter ? "&cde_scope_only=true" : ""}`,
+                      "pci_dss_v4_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download PCI-DSS PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/pci_dss_v4?fmt=docx${saqProfileFilter !== "all" ? `&saq_profile=${saqProfileFilter}` : ""}${cdeScopeFilter ? "&cde_scope_only=true" : ""}`,
+                      "pci_dss_v4_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download PCI-DSS Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -1218,7 +1323,9 @@ export default function ComplianceWorkspace() {
                         ? "SOC 2 Trust Services Criteria Breakdown"
                         : selectedFrameworkId === "cfw_cert_in_2022"
                           ? "CERT-In Directions & CCMP Themes Breakdown"
-                          : "ISO 27001 Themes Quadrant Breakdown"}
+                          : selectedFrameworkId === "cfw_pci_dss_v4"
+                            ? "PCI-DSS v4.0 12 Principal Requirements Breakdown"
+                            : "ISO 27001 Themes Quadrant Breakdown"}
                 </h3>
                 <div className="quadrant-grid">
                   {Object.entries(summary.quadrant_scores || {}).map(
@@ -1255,7 +1362,36 @@ export default function ComplianceWorkspace() {
                                                 ? "Access Control & MFA (CERT_AC)"
                                                 : key === "CERT_DP"
                                                   ? "Data Protection & Encryption (CERT_DP)"
-                                                  : key}
+                                                  : key === "PCI_01"
+                                                    ? "Req 1: Network Security Controls"
+                                                    : key === "PCI_02"
+                                                      ? "Req 2: Secure Configurations"
+                                                      : key === "PCI_03"
+                                                        ? "Req 3: Account Data Protection"
+                                                        : key === "PCI_04"
+                                                          ? "Req 4: Cryptography in Transit"
+                                                          : key === "PCI_05"
+                                                            ? "Req 5: Malware Protection"
+                                                            : key === "PCI_06"
+                                                              ? "Req 6: Secure Systems & Software"
+                                                              : key === "PCI_07"
+                                                                ? "Req 7: Access Restriction"
+                                                                : key ===
+                                                                    "PCI_08"
+                                                                  ? "Req 8: Identification & Authentication"
+                                                                  : key ===
+                                                                      "PCI_09"
+                                                                    ? "Req 9: Physical Access"
+                                                                    : key ===
+                                                                        "PCI_10"
+                                                                      ? "Req 10: Log Monitoring"
+                                                                      : key ===
+                                                                          "PCI_11"
+                                                                        ? "Req 11: Security Testing & FIM"
+                                                                        : key ===
+                                                                            "PCI_12"
+                                                                          ? "Req 12: Security Policies & TRA"
+                                                                          : key}
                         </span>
                         <div className="progress-container">
                           <div

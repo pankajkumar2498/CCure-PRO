@@ -402,3 +402,102 @@ def test_cert_in_2022_framework_integration(
     if inst:
         db_session.delete(inst)
         db_session.commit()
+
+
+def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_session):
+    """Test PCI-DSS v4.0 framework seeding, SAQ profiles, CDE scope filtering, evidence evaluation, and report routes."""
+    from datetime import datetime, timezone
+    import os
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
+    from scripts.seed_compliance import seed_framework_and_controls
+    from scripts.seed_real_rules import seed_and_evaluate
+    from core.compliance_tasks import _evaluate_operator, _calculate_compliance_score
+
+    # 1. Verify boolean and operator evaluations
+    assert _evaluate_operator("equals", True, True) is True
+    assert _evaluate_operator("equals", False, True) is False
+
+    # 2. Seed PCI-DSS controls
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pci_seed = os.path.join(base_dir, "scripts", "pci_dss_v4_controls_seed.json")
+    if os.path.exists(pci_seed):
+        seed_framework_and_controls(db_session, pci_seed)
+
+    seed_and_evaluate()
+
+    # 3. Verify framework exists in database
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_pci_dss_v4")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "PCI_DSS_V4"
+
+    # 4. Verify PCI-DSS controls exist and contain SAQ profiles
+    controls = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_pci_dss_v4")
+        .all()
+    )
+    assert len(controls) >= 10
+
+    # Check SAQ profiles JSONB field on controls
+    saq_a_controls = [
+        c for c in controls if c.saq_profiles and "saq_a" in c.saq_profiles
+    ]
+    assert len(saq_a_controls) > 0
+
+    # 5. Enable tenant framework for test org
+    inst = (
+        db_session.query(ComplianceTenantFramework)
+        .filter(
+            ComplianceTenantFramework.tenant_id == test_user.org_id,
+            ComplianceTenantFramework.framework_id == "cfw_pci_dss_v4",
+        )
+        .first()
+    )
+    if not inst:
+        inst = ComplianceTenantFramework(
+            id=f"ctf_{test_user.org_id}_cfw_pci_dss_v4",
+            tenant_id=test_user.org_id,
+            framework_id="cfw_pci_dss_v4",
+            is_enabled=True,
+            enabled_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        db_session.commit()
+
+    # 6. Test GET /compliance/summary with SAQ profile filter
+    summary_res = client.get(
+        "/compliance/summary?framework_id=cfw_pci_dss_v4&saq_profile=saq_a",
+        headers=auth_headers,
+    )
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert "score_pct" in summary_data
+    assert "kpis" in summary_data
+
+    # 7. Test PCI-DSS PDF Report generation endpoint
+    pdf_res = client.get(
+        "/compliance/reports/pci_dss_v4?fmt=pdf&saq_profile=saq_a",
+        headers=auth_headers,
+    )
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+
+    # 8. Test PCI-DSS DOCX Report generation endpoint
+    docx_res = client.get(
+        "/compliance/reports/pci_dss_v4?fmt=docx&saq_profile=saq_a",
+        headers=auth_headers,
+    )
+    assert docx_res.status_code == 200
+
+    # Cleanup
+    if inst:
+        db_session.delete(inst)
+        db_session.commit()

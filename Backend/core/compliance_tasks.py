@@ -225,19 +225,8 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                         )
                         continue
 
-                # 3.2. Check if rule is a manual check
+                # 3.2. Check if rule is a manual check (skip per-asset findings to avoid org score deadlock)
                 if rule.evidence_source == "manual":
-                    _save_finding(
-                        db,
-                        org_id,
-                        asset.id,
-                        rule,
-                        run_id=scan_run_id,
-                        status="manual_review",
-                        evidence={
-                            "message": "This control requires manual attestation of administrative policies."
-                        },
-                    )
                     continue
 
                 # 3.3. Resolve normalized evidence
@@ -274,6 +263,38 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
             _calculate_compliance_score(
                 db, org_id, run.framework_id, asset.id, scan_run_id
             )
+
+        # 3.4.5 Process manual governance rules at organization level (asset_id = None)
+        manual_rules = [r for r in rules if r.evidence_source == "manual"]
+        for m_rule in manual_rules:
+            link = (
+                db.query(ComplianceRuleControl)
+                .filter(ComplianceRuleControl.rule_id == m_rule.id)
+                .first()
+            )
+            control_id = link.control_id if link else None
+            if control_id:
+                existing_org_finding = (
+                    db.query(ComplianceFinding)
+                    .filter(
+                        ComplianceFinding.tenant_id == org_id,
+                        ComplianceFinding.control_id == control_id,
+                        ComplianceFinding.asset_id.is_(None),
+                    )
+                    .first()
+                )
+                if not existing_org_finding:
+                    _save_finding(
+                        db,
+                        org_id,
+                        None,
+                        m_rule,
+                        run_id=scan_run_id,
+                        status="manual_review",
+                        evidence={
+                            "message": "This control requires manual attestation of administrative policies."
+                        },
+                    )
 
         # 3.5. Calculate Org Compliance Score (asset_id = None)
         _calculate_compliance_score(db, org_id, run.framework_id, None, scan_run_id)
@@ -1251,6 +1272,74 @@ def run_reverify_evaluation(finding_id: str) -> dict:
     except Exception as exc:
         db.rollback()
         log.exception(f"Reverification task failed for finding {finding_id}")
+        return {"success": False, "error": str(exc)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="compliance.run_scheduled_scans", queue="compliance")
+def run_scheduled_scans() -> dict:
+    """Periodic task executed by Celery Beat to query and trigger scheduled compliance scans."""
+    from db.models.compliance import ComplianceScanSchedule
+    from db.base import gen_compliance_scan_run_id
+    from sqlalchemy import or_
+
+    db = SessionLocal()
+    triggered = 0
+    now = datetime.now(timezone.utc)
+    try:
+        schedules = (
+            db.query(ComplianceScanSchedule)
+            .filter(
+                ComplianceScanSchedule.is_active == True,
+                or_(
+                    ComplianceScanSchedule.next_run_at.is_(None),
+                    ComplianceScanSchedule.next_run_at <= now,
+                ),
+            )
+            .all()
+        )
+
+        for sched in schedules:
+            scan_run_id = gen_compliance_scan_run_id(sched.tenant_id)
+            scan_run = ComplianceScanRun(
+                id=scan_run_id,
+                tenant_id=sched.tenant_id,
+                framework_id=sched.framework_id,
+                policy_id=sched.policy_id,
+                schedule_id=sched.id,
+                scope=sched.scope or {},
+                status="queued",
+                created_at=now,
+            )
+            db.add(scan_run)
+            db.flush()
+
+            # Calculate next run timestamp based on frequency
+            freq = (sched.frequency or "weekly").lower()
+            if freq == "daily":
+                delta = timedelta(days=1)
+            elif freq == "weekly":
+                delta = timedelta(weeks=1)
+            elif freq == "monthly":
+                delta = timedelta(days=30)
+            elif freq == "quarterly":
+                delta = timedelta(days=90)
+            else:
+                delta = timedelta(days=1)
+
+            sched.last_run_at = now
+            sched.next_run_at = now + delta
+            db.commit()
+
+            # Dispatch background scan execution
+            run_scan_task.delay(scan_run_id, sched.tenant_id)
+            triggered += 1
+
+        return {"success": True, "triggered_count": triggered}
+    except Exception as exc:
+        db.rollback()
+        log.exception("Error executing scheduled compliance scans worker.")
         return {"success": False, "error": str(exc)}
     finally:
         db.close()

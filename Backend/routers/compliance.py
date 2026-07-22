@@ -716,6 +716,9 @@ def list_findings(
                 "source": f.source,
                 "status": f.status,
                 "evidence": f.evidence,
+                "control_evidence_checklist": (
+                    control.evidence_checklist if control else []
+                ),
                 "last_seen": f.last_seen.isoformat(),
                 "recommendation_text": recommendation,
                 "fix_command": fix_command,
@@ -789,6 +792,12 @@ def attest_manual_control(
         note=payload.note or "Manual attestation updated",
     )
     db.add(history)
+    db.commit()
+
+    # Recalculate cached framework score immediately upon attestation update
+    from core.compliance_tasks import _calculate_compliance_score
+
+    _calculate_compliance_score(db, user.org_id, ctrl.framework_id, None, None)
     db.commit()
 
     log_audit_event(db, user, "attest_control", "finding", finding_id, "success")
@@ -2338,6 +2347,96 @@ def download_cis_v8_1_report(
         )
         media = "application/pdf"
         filename = f"cis_v8_1_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/reports/soc2_type2")
+def download_soc2_type2_report(
+    fmt: str = "pdf",
+    tsc: Optional[str] = Query(
+        None, description="Trust Services Criteria filter: cc, a, pi, c, p"
+    ),
+    audit_period_days: int = Query(
+        90, ge=30, le=365, description="SOC 2 Type II Observation Period in Days"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the SOC 2 Type II (AICPA Trust Services Criteria) Compliance Audit Report."""
+    fw_id = "cfw_soc2_type2"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if tsc:
+        tsc_code = f"SOC2_{tsc.strip().upper()}"
+        query = query.filter(ComplianceControl.theme == tsc_code)
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    # Time-Series Historical Deviation check for SOC 2 Type II observation window
+    from datetime import timedelta
+
+    window_start = datetime.now(timezone.utc) - timedelta(days=audit_period_days)
+    history_deviations = (
+        db.query(ComplianceFindingHistory.finding_id)
+        .join(
+            ComplianceFinding,
+            ComplianceFinding.id == ComplianceFindingHistory.finding_id,
+        )
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+            ComplianceFindingHistory.changed_at >= window_start,
+            ComplianceFindingHistory.status == "fail",
+        )
+        .distinct()
+        .all()
+    )
+    deviation_finding_ids = {h[0] for h in history_deviations}
+
+    # Annotate findings map with historical deviations if any occurred during the window
+    for f in findings:
+        if f.id in deviation_finding_ids and f.status == "pass":
+            ev = dict(f.evidence or {})
+            ev["historical_deviation"] = (
+                f"Failed at least once within the past {audit_period_days}-day observation period."
+            )
+            f.evidence = ev
+
+    report_title = "SOC 2 Type II Audit Readiness & Trust Services Ledger"
+    report_sub = f"AICPA Trust Services Criteria Assessment (Tenant: {user.org_id[:8]} | Observation Window: {audit_period_days} Days)"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_soa_docx(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"soc2_type2_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_soa_pdf(
+            controls, findings_map, title=report_title, subtitle=report_sub
+        )
+        media = "application/pdf"
+        filename = f"soc2_type2_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

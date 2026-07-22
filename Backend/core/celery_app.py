@@ -47,4 +47,8 @@ celery_app.conf.beat_schedule = {
         "task": "compliance.prune_remediation_logs",
         "schedule": crontab(hour=0, minute=0, day_of_week="sun"),
     },
+    "run-scheduled-compliance-scans-every-minute": {
+        "task": "compliance.run_scheduled_scans",
+        "schedule": 60.0,
+    },
 }

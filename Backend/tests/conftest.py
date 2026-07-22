@@ -188,6 +188,34 @@ def seed_system_roles():
 
     with engine.begin() as conn:
         Base.metadata.create_all(bind=conn)
+        if conn.dialect.name == "postgresql":
+            soc2_themes = (
+                "'ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', "
+                "'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', "
+                "'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', "
+                "'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', "
+                "'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P'"
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE compliance_controls DROP CONSTRAINT IF EXISTS ck_control_theme;"
+                )
+            )
+            conn.execute(
+                text(
+                    f"ALTER TABLE compliance_controls ADD CONSTRAINT ck_control_theme CHECK (theme IN ({soc2_themes}));"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE compliance_scores DROP CONSTRAINT IF EXISTS ck_score_theme;"
+                )
+            )
+            conn.execute(
+                text(
+                    f"ALTER TABLE compliance_scores ADD CONSTRAINT ck_score_theme CHECK (theme IN ({soc2_themes}));"
+                )
+            )
         create_partitions(conn)
         seed_rbac(conn)
 

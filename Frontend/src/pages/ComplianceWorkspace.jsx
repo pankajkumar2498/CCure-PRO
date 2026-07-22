@@ -486,7 +486,10 @@ export default function ComplianceWorkspace() {
     e.preventDefault();
     try {
       await axiosInstance.post("/compliance/policies", {
-        framework_id: "cfw_iso27001_2022",
+        framework_id:
+          selectedFrameworkId && selectedFrameworkId !== "all"
+            ? selectedFrameworkId
+            : "cfw_iso27001_2022",
         name: newPolicyName,
         target_platform: newPolicyPlatform,
         rule_ids: newPolicyRules
@@ -630,8 +633,18 @@ export default function ComplianceWorkspace() {
       let failedSome = false;
       let lastError = null;
 
+      const targetPolicies =
+        selectedFrameworkId && selectedFrameworkId !== "all"
+          ? fetchedPolicies.filter(
+              (p) => p.framework_id === selectedFrameworkId,
+            )
+          : fetchedPolicies;
+
+      const policiesToRun =
+        targetPolicies.length > 0 ? targetPolicies : fetchedPolicies;
+
       // Stagger requests sequentially to prevent DB concurrency locks/deadlocks in Celery workers
-      for (const policy of fetchedPolicies) {
+      for (const policy of policiesToRun) {
         try {
           await axiosInstance.post("/compliance/scans", {
             framework_id: policy.framework_id,
@@ -909,6 +922,9 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_iso27001_2022">ISO/IEC 27001:2022</option>
                 <option value="cfw_nist_csf_v2">NIST CSF v2.0</option>
                 <option value="cfw_cis_v8_1">CIS Controls v8.1</option>
+                <option value="cfw_soc2_type2">
+                  SOC 2 Type II (Trust Services Criteria)
+                </option>
               </select>
             </div>
             <button
@@ -1027,7 +1043,11 @@ export default function ComplianceWorkspace() {
                   <h3>
                     {selectedFrameworkId === "cfw_nist_csf_v2"
                       ? "NIST CSF Controls"
-                      : "ISO 27001 Controls"}
+                      : selectedFrameworkId === "cfw_cis_v8_1"
+                        ? "CIS Safeguards"
+                        : selectedFrameworkId === "cfw_soc2_type2"
+                          ? "SOC 2 Criteria"
+                          : "ISO 27001 Controls"}
                   </h3>
                   <div className="kpis-list">
                     <div>
@@ -1133,6 +1153,28 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      "/compliance/reports/soc2_type2?fmt=pdf",
+                      "soc2_type2_executive_report.pdf",
+                    )
+                  }
+                >
+                  Download SOC 2 PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      "/compliance/reports/soc2_type2?fmt=docx",
+                      "soc2_type2_executive_report.docx",
+                    )
+                  }
+                >
+                  Download SOC 2 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -1146,7 +1188,11 @@ export default function ComplianceWorkspace() {
                 <h3>
                   {selectedFrameworkId === "cfw_nist_csf_v2"
                     ? "NIST CSF 2.0 Core Functions Breakdown"
-                    : "ISO 27001 Themes Quadrant Breakdown"}
+                    : selectedFrameworkId === "cfw_cis_v8_1"
+                      ? "CIS Controls v8.1 Safeguards Breakdown"
+                      : selectedFrameworkId === "cfw_soc2_type2"
+                        ? "SOC 2 Trust Services Criteria Breakdown"
+                        : "ISO 27001 Themes Quadrant Breakdown"}
                 </h3>
                 <div className="quadrant-grid">
                   {Object.entries(summary.quadrant_scores || {}).map(
@@ -2075,6 +2121,8 @@ export default function ComplianceWorkspace() {
                                       onClick={() => {
                                         setSelectedControl({
                                           id: f.control_id,
+                                          evidence_checklist:
+                                            f.control_evidence_checklist || [],
                                         });
                                         setModalType("attest");
                                         setModalOpen(true);
@@ -2793,6 +2841,48 @@ export default function ComplianceWorkspace() {
               <option value="pass">Pass</option>
               <option value="fail">Fail</option>
             </select>
+
+            {selectedControl?.evidence_checklist &&
+              selectedControl.evidence_checklist.length > 0 && (
+                <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+                  <label
+                    style={{
+                      fontWeight: 600,
+                      display: "block",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Required Audit Evidence Checklist:
+                  </label>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                      background: "rgba(0,0,0,0.03)",
+                      padding: "10px",
+                      borderRadius: "6px",
+                    }}
+                  >
+                    {selectedControl.evidence_checklist.map((item, idx) => (
+                      <label
+                        key={idx}
+                        style={{
+                          fontSize: "0.8rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input type="checkbox" defaultChecked />
+                        <span>{item}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             <label>Attestation Note</label>
             <textarea
               value={attestNote}

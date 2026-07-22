@@ -8396,6 +8396,85 @@
         ]
       }
     },
+    "/compliance/reports/soc2_type2": {
+      "get": {
+        "description": "Generates and downloads the SOC 2 Type II (AICPA Trust Services Criteria) Compliance Audit Report.",
+        "operationId": "download_soc2_type2_report_compliance_reports_soc2_type2_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Trust Services Criteria filter: cc, a, pi, c, p",
+            "in": "query",
+            "name": "tsc",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Trust Services Criteria filter: cc, a, pi, c, p",
+              "title": "Tsc"
+            }
+          },
+          {
+            "description": "SOC 2 Type II Observation Period in Days",
+            "in": "query",
+            "name": "audit_period_days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "description": "SOC 2 Type II Observation Period in Days",
+              "maximum": 365,
+              "minimum": 30,
+              "title": "Audit Period Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Soc2 Type2 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/rules/{id}": {
       "put": {
         "description": "Update a compliance rule's verification parameters and severity levels.",

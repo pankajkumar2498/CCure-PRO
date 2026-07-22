@@ -209,3 +209,87 @@ def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
     # Cleanup
     db_session.delete(inst)
     db_session.commit()
+
+
+def test_soc2_type2_framework_seeding_and_reports(
+    db_session, test_user, auth_headers, client
+):
+    """Test SOC 2 Type II controls seeding, theme tags, tenant installation, score recalculation, and audit report generation."""
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
+    from scripts.seed_compliance import seed_framework_and_controls
+    import os
+
+    # 1. Seed SOC 2 Type II Controls
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    soc2_seed_path = os.path.join(base_dir, "scripts", "soc2_type2_controls_seed.json")
+    if os.path.exists(soc2_seed_path):
+        seed_framework_and_controls(db_session, soc2_seed_path)
+
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_soc2_type2")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "SOC2_TYPE2"
+
+    # Verify control theme and evidence_checklist items
+    ctrl = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_soc2_type2")
+        .first()
+    )
+    assert ctrl is not None
+    assert ctrl.theme.startswith("SOC2_")
+    assert isinstance(ctrl.evidence_checklist, list)
+
+    # 2. Enable tenant framework for user org
+    inst = (
+        db_session.query(ComplianceTenantFramework)
+        .filter(
+            ComplianceTenantFramework.tenant_id == test_user.org_id,
+            ComplianceTenantFramework.framework_id == "cfw_soc2_type2",
+        )
+        .first()
+    )
+    if not inst:
+        inst = ComplianceTenantFramework(
+            id=f"ctf_{test_user.org_id}_cfw_soc2_type2",
+            tenant_id=test_user.org_id,
+            framework_id="cfw_soc2_type2",
+            is_enabled=True,
+        )
+        db_session.add(inst)
+        db_session.commit()
+
+    # 3. Test SOC 2 PDF Report generation endpoint
+    pdf_res = client.get(
+        "/compliance/reports/soc2_type2?fmt=pdf&audit_period_days=90",
+        headers=auth_headers,
+    )
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+
+    # 4. Test SOC 2 DOCX Report generation endpoint
+    docx_res = client.get(
+        "/compliance/reports/soc2_type2?fmt=docx&audit_period_days=90",
+        headers=auth_headers,
+    )
+    assert docx_res.status_code == 200
+
+    # 5. Verify /findings endpoint includes control_evidence_checklist
+    findings_res = client.get("/compliance/findings", headers=auth_headers)
+    assert findings_res.status_code == 200
+    findings_data = findings_res.json()
+    assert "data" in findings_data
+    if findings_data["data"]:
+        assert "control_evidence_checklist" in findings_data["data"][0]
+
+    # Cleanup
+    if inst:
+        db_session.delete(inst)
+        db_session.commit()

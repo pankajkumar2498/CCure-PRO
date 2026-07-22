@@ -898,6 +898,90 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for CIS Controls v8.1")
 
+        # Also map rules to SOC 2 Type II via crosswalk references and auto-generate SOC 2 rules
+        soc2_framework = (
+            db.query(ComplianceFramework)
+            .filter(ComplianceFramework.id == "cfw_soc2_type2")
+            .first()
+        )
+        if soc2_framework:
+            soc2_controls = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_soc2_type2")
+                .all()
+            )
+            for soc2_ctrl in soc2_controls:
+                if soc2_ctrl.crosswalk:
+                    for iso_num in soc2_ctrl.crosswalk:
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_num.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            c_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == soc2_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not c_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=soc2_ctrl.id,
+                                    )
+                                )
+
+                # Ensure every SOC 2 Criterion has a dedicated 1:1 baseline rule
+                raw_id = (
+                    soc2_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_soc2_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-SOC2-{soc2_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            soc2_ctrl.scannability
+                            if soc2_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                c_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == soc2_ctrl.id,
+                    )
+                    .first()
+                )
+                if not c_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=soc2_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for SOC 2 Type II")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -906,8 +990,13 @@ def seed_and_evaluate():
             if not user:
                 user = db.query(User).first()
 
-            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1)
-            for fw_code_id in ["cfw_iso27001_2022", "cfw_nist_csf_v2", "cfw_cis_v8_1"]:
+            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1, SOC 2 Type II)
+            for fw_code_id in [
+                "cfw_iso27001_2022",
+                "cfw_nist_csf_v2",
+                "cfw_cis_v8_1",
+                "cfw_soc2_type2",
+            ]:
                 fw_obj = (
                     db.query(ComplianceFramework)
                     .filter(ComplianceFramework.id == fw_code_id)
@@ -948,7 +1037,7 @@ def seed_and_evaluate():
                         id=policy_id,
                         framework_id=fw_code_id,
                         tenant_id=org.id,
-                        policy_family_code=f"POL-{fw_obj.code.upper()}-DEFAULT",
+                        policy_family_code=f"POL-{org.id.upper().replace('.', '_')}-{fw_obj.code.upper()}-DEFAULT",
                         version_number=1,
                         name=f"{fw_obj.name} Default Policy Baseline",
                         target_platform="any",

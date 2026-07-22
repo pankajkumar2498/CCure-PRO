@@ -118,7 +118,10 @@ def _table_exists(conn, table_name: str) -> bool:
 
 def _row_count(conn, table_name: str) -> int:
     try:
-        return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        from sqlalchemy import func, select, table
+
+        stmt = select(func.count()).select_from(table(table_name))
+        return conn.execute(stmt).scalar()
     except Exception:
         return -1
 
@@ -358,7 +361,10 @@ def _table_exists(conn, table_name: str) -> bool:
 
 def _row_count(conn, table_name: str) -> int:
     try:
-        return conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        from sqlalchemy import func, select, table
+
+        stmt = select(func.count()).select_from(table(table_name))
+        return conn.execute(stmt).scalar()
     except Exception:
         return -1
 

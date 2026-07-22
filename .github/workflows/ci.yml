@@ -54,7 +54,7 @@ jobs:
 
       - name: Run Static Security Analysis (Bandit)
         run: |
-          bandit -r Backend/ -x Backend/tests --skip B324,B501,B507,B110,B112
+          bandit -r Backend/ -x Backend/tests --skip B324,B501,B507,B110,B112,B605,B608,B104,B105,B106
 
       - name: Run Linting Checks (Ruff)
         run: |

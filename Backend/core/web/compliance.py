@@ -95,6 +95,27 @@ GDPR_MAP: Dict[str, List[str]] = {
     "broken_auth": ["GDPR-Art-32.1.b"],
 }
 
+# ── NIST SP 800-53 Rev. 5 Mapping ────────────────────────────────────────────
+
+NIST_800_53_MAP: Dict[str, List[str]] = {
+    "sqli": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
+    "xss": ["NIST800-53-SI-10", "NIST800-53-SC-28"],
+    "command_injection": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
+    "xxe": ["NIST800-53-SI-10"],
+    "ssrf": ["NIST800-53-SC-7", "NIST800-53-AC-4"],
+    "broken_auth": ["NIST800-53-IA-5", "NIST800-53-AC-7"],
+    "default_creds": ["NIST800-53-IA-5", "NIST800-53-CM-6"],
+    "misconfig": ["NIST800-53-CM-6", "NIST800-53-CM-7"],
+    "exposed_panel": ["NIST800-53-AC-17", "NIST800-53-AC-3"],
+    "idor": ["NIST800-53-AC-3", "NIST800-53-AC-6"],
+    "path_traversal": ["NIST800-53-AC-3", "NIST800-53-SI-10"],
+    "tls_issue": ["NIST800-53-SC-8", "NIST800-53-SC-28"],
+    "cors": ["NIST800-53-SC-7", "NIST800-53-CM-7"],
+    "cve": ["NIST800-53-SI-2", "NIST800-53-RA-5"],
+    "information_disclosure": ["NIST800-53-AC-3", "NIST800-53-SC-28"],
+    "csrf": ["NIST800-53-SI-10", "NIST800-53-SC-8"],
+}
+
 
 def map_compliance(finding_type: str) -> Dict:
     """
@@ -110,7 +131,8 @@ def map_compliance(finding_type: str) -> Dict:
             "soc2": [...],
             "dpdp": [...],
             "gdpr": [...],
-            "tags": ["OWASP-A03", "PCI-DSS-6.5.1", "SOC2-CC6.1", "DPDP-SEC-5.1", "GDPR-Art-32"]
+            "nist_800_53": [...],
+            "tags": ["OWASP-A03", "PCI-DSS-6.5.1", "SOC2-CC6.1", "DPDP-SEC-5.1", "GDPR-Art-32", "NIST800-53-SI-10"]
         }
     """
     owasp = OWASP_MAP.get(finding_type, "")
@@ -118,6 +140,7 @@ def map_compliance(finding_type: str) -> Dict:
     soc2 = SOC2_MAP.get(finding_type, [])
     dpdp = DPDP_MAP.get(finding_type, [])
     gdpr = GDPR_MAP.get(finding_type, [])
+    nist53 = NIST_800_53_MAP.get(finding_type, [])
 
     tags: List[str] = []
 
@@ -130,6 +153,7 @@ def map_compliance(finding_type: str) -> Dict:
     tags.extend(soc2)
     tags.extend(dpdp)
     tags.extend(gdpr)
+    tags.extend(nist53)
 
     return {
         "owasp": owasp,
@@ -137,6 +161,7 @@ def map_compliance(finding_type: str) -> Dict:
         "soc2": soc2,
         "dpdp": dpdp,
         "gdpr": gdpr,
+        "nist_800_53": nist53,
         "tags": tags,
     }
 

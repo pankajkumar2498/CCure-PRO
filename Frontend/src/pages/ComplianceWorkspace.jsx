@@ -240,6 +240,28 @@ const THEME_LABELS = {
   GDPR_SL: "Storage Limitation (Art. 5(1)(e))",
   GDPR_IC: "Integrity & Confidentiality (Art. 5(1)(f))",
   GDPR_AC: "Accountability & Governance (Art. 5(2))",
+
+  // NIST SP 800-53 Rev. 5
+  SP53_AC: "Access Control (AC)",
+  SP53_AT: "Awareness & Training (AT)",
+  SP53_AU: "Audit & Accountability (AU)",
+  SP53_CA: "Assessment, Auth & Monitoring (CA)",
+  SP53_CM: "Configuration Management (CM)",
+  SP53_CP: "Contingency Planning (CP)",
+  SP53_IA: "Identification & Auth (IA)",
+  SP53_IR: "Incident Response (IR)",
+  SP53_MA: "Maintenance (MA)",
+  SP53_MP: "Media Protection (MP)",
+  SP53_PE: "Physical & Environmental (PE)",
+  SP53_PL: "Planning (PL)",
+  SP53_PM: "Program Management (PM)",
+  SP53_PS: "Personnel Security (PS)",
+  SP53_PT: "PII Processing & Transparency (PT)",
+  SP53_RA: "Risk Assessment (RA)",
+  SP53_SA: "System & Services Acquisition (SA)",
+  SP53_SC: "System & Comms Protection (SC)",
+  SP53_SI: "System & Information Integrity (SI)",
+  SP53_SR: "Supply Chain Risk Management (SR)",
 };
 
 export default function ComplianceWorkspace() {
@@ -286,6 +308,8 @@ export default function ComplianceWorkspace() {
   const [cdeScopeFilter, setCdeScopeFilter] = useState(false);
   const [sdfScopeFilter, setSdfScopeFilter] = useState("all");
   const [privacyRoleFilter, setPrivacyRoleFilter] = useState("all");
+  const [impactLevelFilter, setImpactLevelFilter] = useState("all");
+  const [zeroTrustOnly, setZeroTrustOnly] = useState(false);
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
@@ -296,6 +320,8 @@ export default function ComplianceWorkspace() {
     setCdeScopeFilter(false);
     setSdfScopeFilter("all");
     setPrivacyRoleFilter("all");
+    setImpactLevelFilter("all");
+    setZeroTrustOnly(false);
   }, [selectedFrameworkId]);
 
   // Modals state
@@ -470,6 +496,8 @@ export default function ComplianceWorkspace() {
     cdeScopeFilter,
     sdfScopeFilter,
     privacyRoleFilter,
+    impactLevelFilter,
+    zeroTrustOnly,
   ]);
 
   const fetchGapAnalysis = async (
@@ -520,6 +548,14 @@ export default function ComplianceWorkspace() {
         params.push(`privacy_role=${privacyRoleFilter}`);
       }
     }
+    if (selectedFrameworkId === "cfw_nist_800_53_r5") {
+      if (impactLevelFilter && impactLevelFilter !== "all") {
+        params.push(`impact_level=${impactLevelFilter}`);
+      }
+      if (zeroTrustOnly) {
+        params.push(`zero_trust_only=true`);
+      }
+    }
     const queryString = params.length > 0 ? `?${params.join("&")}` : "";
 
     try {
@@ -541,6 +577,7 @@ export default function ComplianceWorkspace() {
             { id: "cfw_pci_dss_v4", name: "PCI-DSS v4.0" },
             { id: "cfw_dpdp_2023", name: "DPDP Act 2023" },
             { id: "cfw_gdpr", name: "EU GDPR" },
+            { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5" },
           ];
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
@@ -1091,8 +1128,65 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_gdpr">
                   GDPR (EU General Data Protection Regulation)
                 </option>
+                <option value="cfw_nist_800_53_r5">
+                  NIST SP 800-53 Rev. 5 (U.S. Federal & Defense)
+                </option>
               </select>
             </div>
+            {selectedFrameworkId === "cfw_nist_800_53_r5" && (
+              <>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    FedRAMP Baseline:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={impactLevelFilter}
+                    onChange={(e) => setImpactLevelFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All Impact Baselines</option>
+                    <option value="LOW">FedRAMP LOW Impact Baseline</option>
+                    <option value="MODERATE">
+                      FedRAMP MODERATE Impact Baseline
+                    </option>
+                    <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
+                  </select>
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={zeroTrustOnly}
+                    onChange={(e) => setZeroTrustOnly(e.target.checked)}
+                  />
+                  Zero Trust Only
+                </label>
+              </>
+            )}
             {selectedFrameworkId === "cfw_dpdp_2023" && (
               <div
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
@@ -1360,7 +1454,10 @@ export default function ComplianceWorkspace() {
                                   ? "DPDP Act 2023 Controls"
                                   : selectedFrameworkId === "cfw_gdpr"
                                     ? "EU GDPR Controls"
-                                    : "ISO 27001 Controls"}
+                                    : selectedFrameworkId ===
+                                        "cfw_nist_800_53_r5"
+                                      ? "NIST SP 800-53 R5 Controls"
+                                      : "ISO 27001 Controls"}
                   </h3>
 
                   <div className="kpis-list">
@@ -1577,6 +1674,28 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      `/compliance/reports/nist_800_53_r5?fmt=pdf${impactLevelFilter !== "all" ? `&impact_level=${impactLevelFilter}` : ""}${zeroTrustOnly ? "&zero_trust_only=true" : ""}`,
+                      "nist_800_53_r5_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download NIST 800-53 PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nist_800_53_r5?fmt=docx${impactLevelFilter !== "all" ? `&impact_level=${impactLevelFilter}` : ""}${zeroTrustOnly ? "&zero_trust_only=true" : ""}`,
+                      "nist_800_53_r5_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download NIST 800-53 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -1636,7 +1755,10 @@ export default function ComplianceWorkspace() {
                                   ? "DPDP Act 2023 6 Key Governance Principles Breakdown"
                                   : selectedFrameworkId === "cfw_gdpr"
                                     ? "EU GDPR 7 Core Privacy Principles Breakdown"
-                                    : "ISO 27001 Themes Quadrant Breakdown"}
+                                    : selectedFrameworkId ===
+                                        "cfw_nist_800_53_r5"
+                                      ? "NIST SP 800-53 R5 20 Control Families Breakdown"
+                                      : "ISO 27001 Themes Quadrant Breakdown"}
                     </h3>
                     <div className="quadrant-grid">
                       {Object.entries(summary.quadrant_scores || {}).map(

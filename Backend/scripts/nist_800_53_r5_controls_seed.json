@@ -1,0 +1,6389 @@
+{
+  "framework": {
+    "code": "NIST_800_53_R5",
+    "name": "NIST SP 800-53 Rev. 5 Federal Information Security Controls",
+    "version": "Rev.5",
+    "description": "NIST SP 800-53 Rev. 5 provides a comprehensive catalog of security and privacy controls for federal information systems and organizations. Organized into 20 control families with 1,000+ control enhancements \u2014 the gold standard for FedRAMP, DoD, and defense contractor accreditation."
+  },
+  "controls": [
+    {
+      "id": "ac-1",
+      "control_number": "AC-1",
+      "theme": "SP53_AC",
+      "title": "Policy and Procedures",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Policy Document"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-2",
+      "control_number": "AC-2",
+      "theme": "SP53_AC",
+      "title": "Account Management",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-2.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Account Inventory",
+        "User Role RACI"
+      ],
+      "tags": [
+        "fedramp",
+        "iam",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-3",
+      "control_number": "AC-3",
+      "theme": "SP53_AC",
+      "title": "Access Enforcement",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-3.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ACL Rules",
+        "Role-Based Access Matrix"
+      ],
+      "tags": [
+        "fedramp",
+        "access_control",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-4",
+      "control_number": "AC-4",
+      "theme": "SP53_AC",
+      "title": "Information Flow Enforcement",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-4.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Firewall ACL Export"
+      ],
+      "tags": [
+        "fedramp",
+        "network_security",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-5",
+      "control_number": "AC-5",
+      "theme": "SP53_AC",
+      "title": "Separation of Duties",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SoD Matrix"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-6",
+      "control_number": "AC-6",
+      "theme": "SP53_AC",
+      "title": "Least Privilege",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-6.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Sudoers File",
+        "RBAC Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "privilege_mgmt",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-7",
+      "control_number": "AC-7",
+      "theme": "SP53_AC",
+      "title": "Unsuccessful Logon Attempts",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Lockout Policy Export"
+      ],
+      "tags": [
+        "fedramp",
+        "authentication"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-8",
+      "control_number": "AC-8",
+      "theme": "SP53_AC",
+      "title": "System Use Notification",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-8.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Logon Banner Config"
+      ],
+      "tags": [
+        "fedramp",
+        "banner"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-11",
+      "control_number": "AC-11",
+      "theme": "SP53_AC",
+      "title": "Device Lock",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-11.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Screen Saver Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "endpoint_security"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-12",
+      "control_number": "AC-12",
+      "theme": "SP53_AC",
+      "title": "Session Termination",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-12.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Session Timeout Config"
+      ],
+      "tags": [
+        "fedramp",
+        "session_mgmt"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-17",
+      "control_number": "AC-17",
+      "theme": "SP53_AC",
+      "title": "Remote Access",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-17.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "VPN Config",
+        "MFA Requirement"
+      ],
+      "tags": [
+        "fedramp",
+        "vpn",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-18",
+      "control_number": "AC-18",
+      "theme": "SP53_AC",
+      "title": "Wireless Access",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-18.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "services_ports",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "WPA3 Config"
+      ],
+      "tags": [
+        "fedramp",
+        "wireless"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-19",
+      "control_number": "AC-19",
+      "theme": "SP53_AC",
+      "title": "Access Control for Mobile Devices",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-19.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "MDM Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "mdm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ac-20",
+      "control_number": "AC-20",
+      "theme": "SP53_AC",
+      "title": "Use of External Systems",
+      "description": "Enforce Access Control baseline requirements per NIST SP 800-53 Rev. 5 control AC-20.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "BYOD Agreement"
+      ],
+      "tags": [
+        "fedramp",
+        "byod"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-1",
+      "control_number": "AT-1",
+      "theme": "SP53_AT",
+      "title": "Policy and Procedures",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Training Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-2",
+      "control_number": "AT-2",
+      "theme": "SP53_AT",
+      "title": "Literacy Training and Awareness",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Training Attendance Log"
+      ],
+      "tags": [
+        "fedramp",
+        "training"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-3",
+      "control_number": "AT-3",
+      "theme": "SP53_AT",
+      "title": "Role-Based Training",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Role Training Certificates"
+      ],
+      "tags": [
+        "fedramp",
+        "training"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-4",
+      "control_number": "AT-4",
+      "theme": "SP53_AT",
+      "title": "Training Records",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "LMS Training Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "records"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-5",
+      "control_number": "AT-5",
+      "theme": "SP53_AT",
+      "title": "Contacts with Security Groups and Associations",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ISAC Membership Record"
+      ],
+      "tags": [
+        "fedramp",
+        "intel"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "at-6",
+      "control_number": "AT-6",
+      "theme": "SP53_AT",
+      "title": "Threat Awareness",
+      "description": "Enforce Awareness and Training baseline requirements per NIST SP 800-53 Rev. 5 control AT-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Threat Briefing Log"
+      ],
+      "tags": [
+        "fedramp",
+        "threat_intel"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-1",
+      "control_number": "AU-1",
+      "theme": "SP53_AU",
+      "title": "Policy and Procedures",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Audit Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-2",
+      "control_number": "AU-2",
+      "theme": "SP53_AU",
+      "title": "Event Logging",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-2.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Auditd/Syslog Config"
+      ],
+      "tags": [
+        "fedramp",
+        "logging"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-3",
+      "control_number": "AU-3",
+      "theme": "SP53_AU",
+      "title": "Content of Audit Records",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-3.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Audit Log Schema Export"
+      ],
+      "tags": [
+        "fedramp",
+        "logging"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-4",
+      "control_number": "AU-4",
+      "theme": "SP53_AU",
+      "title": "Audit Log Storage Capacity",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-4.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Disk Allocation Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "logging"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-5",
+      "control_number": "AU-5",
+      "theme": "SP53_AU",
+      "title": "Response to Audit Logging Process Failures",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SIEM Alert Rule"
+      ],
+      "tags": [
+        "fedramp",
+        "alerting"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-6",
+      "control_number": "AU-6",
+      "theme": "SP53_AU",
+      "title": "Audit Record Review, Analysis, and Reporting",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-6.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Daily Log Review Signoff"
+      ],
+      "tags": [
+        "fedramp",
+        "siem"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-7",
+      "control_number": "AU-7",
+      "theme": "SP53_AU",
+      "title": "Audit Record Reduction and Report Generation",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SIEM Query Log"
+      ],
+      "tags": [
+        "fedramp",
+        "siem"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-8",
+      "control_number": "AU-8",
+      "theme": "SP53_AU",
+      "title": "Time Stamps",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-8.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "NTP Sync Config"
+      ],
+      "tags": [
+        "fedramp",
+        "ntp"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-9",
+      "control_number": "AU-9",
+      "theme": "SP53_AU",
+      "title": "Protection of Audit Information",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-9.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Log Permissions Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "integrity"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-10",
+      "control_number": "AU-10",
+      "theme": "SP53_AU",
+      "title": "Non-repudiation",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Digital Signature Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "crypto"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-11",
+      "control_number": "AU-11",
+      "theme": "SP53_AU",
+      "title": "Audit Record Retention",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-11.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Retention Policy Config"
+      ],
+      "tags": [
+        "fedramp",
+        "retention"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-12",
+      "control_number": "AU-12",
+      "theme": "SP53_AU",
+      "title": "Audit Record Generation",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-12.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "System Audit Event List"
+      ],
+      "tags": [
+        "fedramp",
+        "logging"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-14",
+      "control_number": "AU-14",
+      "theme": "SP53_AU",
+      "title": "Session Audit",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-14.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privileged Session Records"
+      ],
+      "tags": [
+        "fedramp",
+        "monitoring"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "au-16",
+      "control_number": "AU-16",
+      "theme": "SP53_AU",
+      "title": "Cross-Organizational Auditing",
+      "description": "Enforce Audit and Accountability baseline requirements per NIST SP 800-53 Rev. 5 control AU-16.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CloudTrail Log Sharing Setup"
+      ],
+      "tags": [
+        "fedramp",
+        "cloud"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-1",
+      "control_number": "CA-1",
+      "theme": "SP53_CA",
+      "title": "Policy and Procedures",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ATO Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-2",
+      "control_number": "CA-2",
+      "theme": "SP53_CA",
+      "title": "Control Assessments",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Assessment Report (SAR)"
+      ],
+      "tags": [
+        "fedramp",
+        "assessment"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-3",
+      "control_number": "CA-3",
+      "theme": "SP53_CA",
+      "title": "Information Exchange",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Interconnection Security Agreement (ISA)"
+      ],
+      "tags": [
+        "fedramp",
+        "interconnection"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-5",
+      "control_number": "CA-5",
+      "theme": "SP53_CA",
+      "title": "Plan of Action and Milestones",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "POA&M Spreadsheet"
+      ],
+      "tags": [
+        "fedramp",
+        "poam"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-6",
+      "control_number": "CA-6",
+      "theme": "SP53_CA",
+      "title": "Authorization",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Authority to Operate (ATO) Letter"
+      ],
+      "tags": [
+        "fedramp",
+        "ato"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-7",
+      "control_number": "CA-7",
+      "theme": "SP53_CA",
+      "title": "Continuous Monitoring",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-7.",
+      "scannability": "auto",
+      "scan_module_hint": "vulnerability_audit",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ConMon Dashboard Export"
+      ],
+      "tags": [
+        "fedramp",
+        "conmon"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-8",
+      "control_number": "CA-8",
+      "theme": "SP53_CA",
+      "title": "Penetration Testing",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Penetration Test Report"
+      ],
+      "tags": [
+        "fedramp",
+        "pen_test"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ca-9",
+      "control_number": "CA-9",
+      "theme": "SP53_CA",
+      "title": "Internal System Connections",
+      "description": "Enforce Assessment, Authorization, and Monitoring baseline requirements per NIST SP 800-53 Rev. 5 control CA-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Internal Connection Ledger"
+      ],
+      "tags": [
+        "fedramp",
+        "network"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-1",
+      "control_number": "CM-1",
+      "theme": "SP53_CM",
+      "title": "Policy and Procedures",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CM Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-2",
+      "control_number": "CM-2",
+      "theme": "SP53_CM",
+      "title": "Baseline Configuration",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-2.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CIS Benchmark Result"
+      ],
+      "tags": [
+        "fedramp",
+        "hardening"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-3",
+      "control_number": "CM-3",
+      "theme": "SP53_CM",
+      "title": "Configuration Change Control",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CAB Meeting Minutes"
+      ],
+      "tags": [
+        "fedramp",
+        "change_mgmt"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-4",
+      "control_number": "CM-4",
+      "theme": "SP53_CM",
+      "title": "Impact Analyses",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Change Impact Form"
+      ],
+      "tags": [
+        "fedramp",
+        "risk"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-5",
+      "control_number": "CM-5",
+      "theme": "SP53_CM",
+      "title": "Access Restrictions for Change",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Repo Branch Protection Config"
+      ],
+      "tags": [
+        "fedramp",
+        "access_control"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-6",
+      "control_number": "CM-6",
+      "theme": "SP53_CM",
+      "title": "Configuration Settings",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-6.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hardening Audit Output"
+      ],
+      "tags": [
+        "fedramp",
+        "hardening"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-7",
+      "control_number": "CM-7",
+      "theme": "SP53_CM",
+      "title": "Least Functionality",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-7.",
+      "scannability": "auto",
+      "scan_module_hint": "services_ports",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Open Ports & Services Report"
+      ],
+      "tags": [
+        "fedramp",
+        "services"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-8",
+      "control_number": "CM-8",
+      "theme": "SP53_CM",
+      "title": "Information System Component Inventory",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-8.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Asset Inventory Export"
+      ],
+      "tags": [
+        "fedramp",
+        "asset_mgmt"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-9",
+      "control_number": "CM-9",
+      "theme": "SP53_CM",
+      "title": "Configuration Management Plan",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CM Plan Document"
+      ],
+      "tags": [
+        "fedramp",
+        "cm_plan"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-10",
+      "control_number": "CM-10",
+      "theme": "SP53_CM",
+      "title": "Software Usage Restrictions",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-10.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Approved Software List"
+      ],
+      "tags": [
+        "fedramp",
+        "licensing"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-11",
+      "control_number": "CM-11",
+      "theme": "SP53_CM",
+      "title": "User-Installed Software",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-11.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Software Application Inventory"
+      ],
+      "tags": [
+        "fedramp",
+        "endpoint"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-12",
+      "control_number": "CM-12",
+      "theme": "SP53_CM",
+      "title": "Information Location",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Classification Inventory"
+      ],
+      "tags": [
+        "fedramp",
+        "data_governance"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-13",
+      "control_number": "CM-13",
+      "theme": "SP53_CM",
+      "title": "Data Action Mappings",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-13.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Flow Diagram"
+      ],
+      "tags": [
+        "fedramp",
+        "data_flow"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cm-14",
+      "control_number": "CM-14",
+      "theme": "SP53_CM",
+      "title": "Signed Components",
+      "description": "Enforce Configuration Management baseline requirements per NIST SP 800-53 Rev. 5 control CM-14.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Binary Code Signature Verification"
+      ],
+      "tags": [
+        "fedramp",
+        "code_signing"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-1",
+      "control_number": "CP-1",
+      "theme": "SP53_CP",
+      "title": "Policy and Procedures",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "BCP/DRP Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-2",
+      "control_number": "CP-2",
+      "theme": "SP53_CP",
+      "title": "Contingency Plan",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Contingency Plan Document"
+      ],
+      "tags": [
+        "fedramp",
+        "bcp"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-3",
+      "control_number": "CP-3",
+      "theme": "SP53_CP",
+      "title": "Contingency Training",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "DR Training Log"
+      ],
+      "tags": [
+        "fedramp",
+        "training"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-4",
+      "control_number": "CP-4",
+      "theme": "SP53_CP",
+      "title": "Contingency Plan Testing",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Tabletop Exercise Report"
+      ],
+      "tags": [
+        "fedramp",
+        "dr_test"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-6",
+      "control_number": "CP-6",
+      "theme": "SP53_CP",
+      "title": "Alternate Storage Site",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Offsite Storage Agreement"
+      ],
+      "tags": [
+        "fedramp",
+        "dr_site"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-7",
+      "control_number": "CP-7",
+      "theme": "SP53_CP",
+      "title": "Alternate Processing Site",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hot Site SLA Agreement"
+      ],
+      "tags": [
+        "fedramp",
+        "dr_site"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-8",
+      "control_number": "CP-8",
+      "theme": "SP53_CP",
+      "title": "Telecommunications Services",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Dual ISP SLA Agreement"
+      ],
+      "tags": [
+        "fedramp",
+        "telecom"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-9",
+      "control_number": "CP-9",
+      "theme": "SP53_CP",
+      "title": "System Backup",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-9.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Backup Status Log"
+      ],
+      "tags": [
+        "fedramp",
+        "backup"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-10",
+      "control_number": "CP-10",
+      "theme": "SP53_CP",
+      "title": "System Recovery and Reconstitution",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "System Reconstitution Guide"
+      ],
+      "tags": [
+        "fedramp",
+        "recovery"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-11",
+      "control_number": "CP-11",
+      "theme": "SP53_CP",
+      "title": "Alternate Communications Protocols",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Out-of-Band Comms Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "comms"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-12",
+      "control_number": "CP-12",
+      "theme": "SP53_CP",
+      "title": "Safe Mode",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Fail-Safe Ops SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "safe_mode"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "cp-13",
+      "control_number": "CP-13",
+      "theme": "SP53_CP",
+      "title": "Alternative Security Mechanisms",
+      "description": "Enforce Contingency Planning baseline requirements per NIST SP 800-53 Rev. 5 control CP-13.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Fallback Security Standard"
+      ],
+      "tags": [
+        "fedramp",
+        "fallback"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-1",
+      "control_number": "IA-1",
+      "theme": "SP53_IA",
+      "title": "Policy and Procedures",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "IAM Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-2",
+      "control_number": "IA-2",
+      "theme": "SP53_IA",
+      "title": "Identification and Authentication (Organizational Users)",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-2.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "MFA Audit Report"
+      ],
+      "tags": [
+        "fedramp",
+        "mfa",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-3",
+      "control_number": "IA-3",
+      "theme": "SP53_IA",
+      "title": "Device Identification and Authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-3.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "802.1X/Certificate Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "802.1x",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-4",
+      "control_number": "IA-4",
+      "theme": "SP53_IA",
+      "title": "Identifier Management",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-4.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "User ID Naming SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "iam"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-5",
+      "control_number": "IA-5",
+      "theme": "SP53_IA",
+      "title": "Authenticator Management",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Password Policy Config"
+      ],
+      "tags": [
+        "fedramp",
+        "passwords",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-6",
+      "control_number": "IA-6",
+      "theme": "SP53_IA",
+      "title": "Authenticator Feedback",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-6.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Logon Masking Verification"
+      ],
+      "tags": [
+        "fedramp",
+        "ui"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-7",
+      "control_number": "IA-7",
+      "theme": "SP53_IA",
+      "title": "Cryptographic Module Authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FIPS 140-3 Validation Certificate"
+      ],
+      "tags": [
+        "fedramp",
+        "fips_140_3"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-8",
+      "control_number": "IA-8",
+      "theme": "SP53_IA",
+      "title": "Identification and Authentication (Non-Organizational Users)",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-8.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Guest Portal Config"
+      ],
+      "tags": [
+        "fedramp",
+        "guest_access"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-9",
+      "control_number": "IA-9",
+      "theme": "SP53_IA",
+      "title": "Service Identification and Authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-9.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Service Account Inventory"
+      ],
+      "tags": [
+        "fedramp",
+        "service_accounts"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-10",
+      "control_number": "IA-10",
+      "theme": "SP53_IA",
+      "title": "Adaptive Authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-10.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Conditional Access Policy Export"
+      ],
+      "tags": [
+        "fedramp",
+        "risk_auth",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-11",
+      "control_number": "IA-11",
+      "theme": "SP53_IA",
+      "title": "Re-authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-11.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Sudo Timeout Config"
+      ],
+      "tags": [
+        "fedramp",
+        "session"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-12",
+      "control_number": "IA-12",
+      "theme": "SP53_IA",
+      "title": "PKI Certificates",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-12.",
+      "scannability": "auto",
+      "scan_module_hint": "tls_certificates",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Internal CA Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "pki"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ia-13",
+      "control_number": "IA-13",
+      "theme": "SP53_IA",
+      "title": "Biometric Authentication",
+      "description": "Enforce Identification and Authentication baseline requirements per NIST SP 800-53 Rev. 5 control IA-13.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FIDO2 Biometric Spec"
+      ],
+      "tags": [
+        "fedramp",
+        "biometrics"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-1",
+      "control_number": "IR-1",
+      "theme": "SP53_IR",
+      "title": "Policy and Procedures",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "IRP Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-2",
+      "control_number": "IR-2",
+      "theme": "SP53_IR",
+      "title": "Incident Response Training",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "IR Simulation Certificates"
+      ],
+      "tags": [
+        "fedramp",
+        "training"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-3",
+      "control_number": "IR-3",
+      "theme": "SP53_IR",
+      "title": "Incident Response Testing",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Tabletop Exercise Summary"
+      ],
+      "tags": [
+        "fedramp",
+        "tabletop"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-4",
+      "control_number": "IR-4",
+      "theme": "SP53_IR",
+      "title": "Incident Handling",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Playbook SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "soc"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-5",
+      "control_number": "IR-5",
+      "theme": "SP53_IR",
+      "title": "Incident Monitoring",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SIEM Incident Dashboard"
+      ],
+      "tags": [
+        "fedramp",
+        "siem"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-6",
+      "control_number": "IR-6",
+      "theme": "SP53_IR",
+      "title": "Incident Reporting",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "US-CERT Incident Report"
+      ],
+      "tags": [
+        "fedramp",
+        "us_cert"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-7",
+      "control_number": "IR-7",
+      "theme": "SP53_IR",
+      "title": "Incident Response Assistance",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Third-Party Incident Retainer Contract"
+      ],
+      "tags": [
+        "fedramp",
+        "retainer"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-8",
+      "control_number": "IR-8",
+      "theme": "SP53_IR",
+      "title": "Incident Response Plan",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "IR Plan Document"
+      ],
+      "tags": [
+        "fedramp",
+        "plan"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-9",
+      "control_number": "IR-9",
+      "theme": "SP53_IR",
+      "title": "Information Spillage Response",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Spillage SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "spill"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ir-10",
+      "control_number": "IR-10",
+      "theme": "SP53_IR",
+      "title": "Integrated Incident Response Teams",
+      "description": "Enforce Incident Response baseline requirements per NIST SP 800-53 Rev. 5 control IR-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CSIRT Charter"
+      ],
+      "tags": [
+        "fedramp",
+        "csirt"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-1",
+      "control_number": "MA-1",
+      "theme": "SP53_MA",
+      "title": "Policy and Procedures",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Maintenance Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-2",
+      "control_number": "MA-2",
+      "theme": "SP53_MA",
+      "title": "Controlled Maintenance",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Maintenance Log"
+      ],
+      "tags": [
+        "fedramp",
+        "maintenance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-3",
+      "control_number": "MA-3",
+      "theme": "SP53_MA",
+      "title": "Maintenance Tools",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Approved Maintenance Tool List"
+      ],
+      "tags": [
+        "fedramp",
+        "tools"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-4",
+      "control_number": "MA-4",
+      "theme": "SP53_MA",
+      "title": "Non-local Maintenance",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-4.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Remote Maintenance SSH Log"
+      ],
+      "tags": [
+        "fedramp",
+        "remote_maint"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-5",
+      "control_number": "MA-5",
+      "theme": "SP53_MA",
+      "title": "Maintenance Personnel",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Vendor Escort Sign-in Log"
+      ],
+      "tags": [
+        "fedramp",
+        "escort"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-6",
+      "control_number": "MA-6",
+      "theme": "SP53_MA",
+      "title": "Timely Maintenance",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hardware Support SLA Contract"
+      ],
+      "tags": [
+        "fedramp",
+        "sla"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ma-7",
+      "control_number": "MA-7",
+      "theme": "SP53_MA",
+      "title": "Field-Decontaminable Components",
+      "description": "Enforce Maintenance baseline requirements per NIST SP 800-53 Rev. 5 control MA-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Field Sanitization SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "sanitization"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-1",
+      "control_number": "MP-1",
+      "theme": "SP53_MP",
+      "title": "Policy and Procedures",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Media Protection Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-2",
+      "control_number": "MP-2",
+      "theme": "SP53_MP",
+      "title": "Media Access",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Removable Media Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "access"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-3",
+      "control_number": "MP-3",
+      "theme": "SP53_MP",
+      "title": "Media Marking",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Media Classification Label SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "labeling"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-4",
+      "control_number": "MP-4",
+      "theme": "SP53_MP",
+      "title": "Media Storage",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Physical Vault Log"
+      ],
+      "tags": [
+        "fedramp",
+        "vault"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-5",
+      "control_number": "MP-5",
+      "theme": "SP53_MP",
+      "title": "Media Transport",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Chain of Custody Form"
+      ],
+      "tags": [
+        "fedramp",
+        "courier"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-6",
+      "control_number": "MP-6",
+      "theme": "SP53_MP",
+      "title": "Media Sanitization",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Certificate of Destruction"
+      ],
+      "tags": [
+        "fedramp",
+        "sanitization"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-7",
+      "control_number": "MP-7",
+      "theme": "SP53_MP",
+      "title": "Media Use",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "USB Storage Block Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "usb_block"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "mp-8",
+      "control_number": "MP-8",
+      "theme": "SP53_MP",
+      "title": "Media Downgrading",
+      "description": "Enforce Media Protection baseline requirements per NIST SP 800-53 Rev. 5 control MP-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Media Downgrade Authorization"
+      ],
+      "tags": [
+        "fedramp",
+        "declass"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-1",
+      "control_number": "PE-1",
+      "theme": "SP53_PE",
+      "title": "Policy and Procedures",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Physical Security Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-2",
+      "control_number": "PE-2",
+      "theme": "SP53_PE",
+      "title": "Physical Access Authorizations",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Badge Authorization List"
+      ],
+      "tags": [
+        "fedramp",
+        "badge"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-3",
+      "control_number": "PE-3",
+      "theme": "SP53_PE",
+      "title": "Physical Access Control",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Visitor Access Log"
+      ],
+      "tags": [
+        "fedramp",
+        "biometric_lock"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-4",
+      "control_number": "PE-4",
+      "theme": "SP53_PE",
+      "title": "Access Control for Transmission",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Physical Conduit Inspection Log"
+      ],
+      "tags": [
+        "fedramp",
+        "conduit"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-5",
+      "control_number": "PE-5",
+      "theme": "SP53_PE",
+      "title": "Access Control for Display",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Screen Filter Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "privacy_filter"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-6",
+      "control_number": "PE-6",
+      "theme": "SP53_PE",
+      "title": "Monitoring Physical Access",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CCTV Recording Log"
+      ],
+      "tags": [
+        "fedramp",
+        "cctv"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-8",
+      "control_number": "PE-8",
+      "theme": "SP53_PE",
+      "title": "Access Logs",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Keycard Swipe Log"
+      ],
+      "tags": [
+        "fedramp",
+        "logs"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-9",
+      "control_number": "PE-9",
+      "theme": "SP53_PE",
+      "title": "Power Equipment and Cabling",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "UPS Maintenance Report"
+      ],
+      "tags": [
+        "fedramp",
+        "power"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-10",
+      "control_number": "PE-10",
+      "theme": "SP53_PE",
+      "title": "Emergency Shutoff",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "EPO Button Inspection Form"
+      ],
+      "tags": [
+        "fedramp",
+        "power"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-11",
+      "control_number": "PE-11",
+      "theme": "SP53_PE",
+      "title": "Emergency Power",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Generator Test Log"
+      ],
+      "tags": [
+        "fedramp",
+        "generator"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-12",
+      "control_number": "PE-12",
+      "theme": "SP53_PE",
+      "title": "Emergency Lighting",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Emergency Light Test Form"
+      ],
+      "tags": [
+        "fedramp",
+        "lighting"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-13",
+      "control_number": "PE-13",
+      "theme": "SP53_PE",
+      "title": "Fire Protection",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-13.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FM-200 Fire Inspection Report"
+      ],
+      "tags": [
+        "fedramp",
+        "fire"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-14",
+      "control_number": "PE-14",
+      "theme": "SP53_PE",
+      "title": "Environmental Controls",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-14.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "HVAC Temp/Humidity Sensor Log"
+      ],
+      "tags": [
+        "fedramp",
+        "hvac"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-15",
+      "control_number": "PE-15",
+      "theme": "SP53_PE",
+      "title": "Water Damage Protection",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-15.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Water Detector Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "water"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-16",
+      "control_number": "PE-16",
+      "theme": "SP53_PE",
+      "title": "Delivery and Removal",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-16.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Loading Dock Manifest"
+      ],
+      "tags": [
+        "fedramp",
+        "loading_dock"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-17",
+      "control_number": "PE-17",
+      "theme": "SP53_PE",
+      "title": "Alternate Work Site",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-17.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Telework Checklist"
+      ],
+      "tags": [
+        "fedramp",
+        "remote_work"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-18",
+      "control_number": "PE-18",
+      "theme": "SP53_PE",
+      "title": "Location of Components",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-18.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Facility Flood Map Review"
+      ],
+      "tags": [
+        "fedramp",
+        "location"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-19",
+      "control_number": "PE-19",
+      "theme": "SP53_PE",
+      "title": "Information Leakage",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-19.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "TEMPEST Shielding Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "tempest"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-20",
+      "control_number": "PE-20",
+      "theme": "SP53_PE",
+      "title": "Asset Monitoring and Tracking",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-20.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "RFID Asset Tracker Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "rfid"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-21",
+      "control_number": "PE-21",
+      "theme": "SP53_PE",
+      "title": "Electromagnetic Signals Protection",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-21.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Faraday Enclosure Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "faraday"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-22",
+      "control_number": "PE-22",
+      "theme": "SP53_PE",
+      "title": "Component Marking",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-22.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Tamper-Evident Asset Tag Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "asset_tag"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pe-23",
+      "control_number": "PE-23",
+      "theme": "SP53_PE",
+      "title": "Facility Location",
+      "description": "Enforce Physical and Environmental Protection baseline requirements per NIST SP 800-53 Rev. 5 control PE-23.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Geographic Hazard Evaluation"
+      ],
+      "tags": [
+        "fedramp",
+        "location"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-1",
+      "control_number": "PL-1",
+      "theme": "SP53_PL",
+      "title": "Policy and Procedures",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Planning SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-2",
+      "control_number": "PL-2",
+      "theme": "SP53_PL",
+      "title": "System Security Plan",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "System Security Plan (SSP)"
+      ],
+      "tags": [
+        "fedramp",
+        "ssp"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-4",
+      "control_number": "PL-4",
+      "theme": "SP53_PL",
+      "title": "Rules of Behavior",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Signed Rules of Behavior"
+      ],
+      "tags": [
+        "fedramp",
+        "rob"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-7",
+      "control_number": "PL-7",
+      "theme": "SP53_PL",
+      "title": "Concept of Operations",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ConOps Document"
+      ],
+      "tags": [
+        "fedramp",
+        "conops"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-8",
+      "control_number": "PL-8",
+      "theme": "SP53_PL",
+      "title": "Information Security Architecture",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Enterprise Security Architecture"
+      ],
+      "tags": [
+        "fedramp",
+        "arch"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-9",
+      "control_number": "PL-9",
+      "theme": "SP53_PL",
+      "title": "Central Management",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Enterprise Policy Engine Config"
+      ],
+      "tags": [
+        "fedramp",
+        "central_mgmt"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-10",
+      "control_number": "PL-10",
+      "theme": "SP53_PL",
+      "title": "Baseline Selection",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "NIST Baseline Tailoring Matrix"
+      ],
+      "tags": [
+        "fedramp",
+        "tailoring"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-11",
+      "control_number": "PL-11",
+      "theme": "SP53_PL",
+      "title": "Baseline Tailoring",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Control Overlay Doc"
+      ],
+      "tags": [
+        "fedramp",
+        "tailoring"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pl-12",
+      "control_number": "PL-12",
+      "theme": "SP53_PL",
+      "title": "Technology Refreshment",
+      "description": "Enforce Planning baseline requirements per NIST SP 800-53 Rev. 5 control PL-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hardware EOL Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "lifecycle"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-1",
+      "control_number": "PM-1",
+      "theme": "SP53_PM",
+      "title": "Information Security Program Plan",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Program Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-2",
+      "control_number": "PM-2",
+      "theme": "SP53_PM",
+      "title": "Information Security Program Leadership",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CISO Appointment Designation"
+      ],
+      "tags": [
+        "fedramp",
+        "ciso"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-3",
+      "control_number": "PM-3",
+      "theme": "SP53_PM",
+      "title": "Information Security Resources",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Budget Approval"
+      ],
+      "tags": [
+        "fedramp",
+        "budget"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-4",
+      "control_number": "PM-4",
+      "theme": "SP53_PM",
+      "title": "Plan of Action and Milestones Process",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "POA&M Standard Operating Procedure"
+      ],
+      "tags": [
+        "fedramp",
+        "poam"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-5",
+      "control_number": "PM-5",
+      "theme": "SP53_PM",
+      "title": "System Inventory",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Master System Inventory"
+      ],
+      "tags": [
+        "fedramp",
+        "inventory"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-6",
+      "control_number": "PM-6",
+      "theme": "SP53_PM",
+      "title": "Information Security Measures of Performance",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Executive KPI Dashboard"
+      ],
+      "tags": [
+        "fedramp",
+        "metrics"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-7",
+      "control_number": "PM-7",
+      "theme": "SP53_PM",
+      "title": "Enterprise Architecture",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "EA Security Integration Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "ea"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-8",
+      "control_number": "PM-8",
+      "theme": "SP53_PM",
+      "title": "Critical Infrastructure Plan",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Critical Infrastructure Protection Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "cip"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-9",
+      "control_number": "PM-9",
+      "theme": "SP53_PM",
+      "title": "Risk Management Strategy",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Organization Risk Management Strategy"
+      ],
+      "tags": [
+        "fedramp",
+        "risk_strategy"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-10",
+      "control_number": "PM-10",
+      "theme": "SP53_PM",
+      "title": "Authorization Process",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ATO Governance Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "ato"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-11",
+      "control_number": "PM-11",
+      "theme": "SP53_PM",
+      "title": "Mission/Business Process Definition",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Business Process Security Mapping"
+      ],
+      "tags": [
+        "fedramp",
+        "bpm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-12",
+      "control_number": "PM-12",
+      "theme": "SP53_PM",
+      "title": "Insider Threat Program",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Insider Threat Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "insider_threat"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-13",
+      "control_number": "PM-13",
+      "theme": "SP53_PM",
+      "title": "Information Security Workforce",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-13.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Cybersecurity Workforce Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "workforce"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-14",
+      "control_number": "PM-14",
+      "theme": "SP53_PM",
+      "title": "Testing, Training, and Monitoring",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-14.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ConMon Strategy"
+      ],
+      "tags": [
+        "fedramp",
+        "conmon"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-15",
+      "control_number": "PM-15",
+      "theme": "SP53_PM",
+      "title": "Contacts with Security Groups",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-15.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CISA Contact Protocol"
+      ],
+      "tags": [
+        "fedramp",
+        "isac"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-16",
+      "control_number": "PM-16",
+      "theme": "SP53_PM",
+      "title": "Threat Awareness Program",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-16.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Threat Intel Feed SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "intel"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-17",
+      "control_number": "PM-17",
+      "theme": "SP53_PM",
+      "title": "Protecting Mission-Critical Functions",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-17.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "High Value Asset (HVA) Designation"
+      ],
+      "tags": [
+        "fedramp",
+        "hva"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-18",
+      "control_number": "PM-18",
+      "theme": "SP53_PM",
+      "title": "Privacy Program Plan",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-18.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Program Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "privacy"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-19",
+      "control_number": "PM-19",
+      "theme": "SP53_PM",
+      "title": "Privacy Officer Designation",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-19.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Chief Privacy Officer Designation"
+      ],
+      "tags": [
+        "fedramp",
+        "cpo"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-20",
+      "control_number": "PM-20",
+      "theme": "SP53_PM",
+      "title": "Disclosures of Personally Identifiable Information",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-20.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "PII Disclosure Accounting Log"
+      ],
+      "tags": [
+        "fedramp",
+        "pii"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-21",
+      "control_number": "PM-21",
+      "theme": "SP53_PM",
+      "title": "Accounting of Disclosures",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-21.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Accounting of Disclosures SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "pii"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-22",
+      "control_number": "PM-22",
+      "theme": "SP53_PM",
+      "title": "Personally Identifiable Information Quality",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-22.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Quality SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "data_quality"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-23",
+      "control_number": "PM-23",
+      "theme": "SP53_PM",
+      "title": "Data Governance",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-23.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Governance Steering Charter"
+      ],
+      "tags": [
+        "fedramp",
+        "data_gov"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-24",
+      "control_number": "PM-24",
+      "theme": "SP53_PM",
+      "title": "Privacy Impact Assessments",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-24.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "PIA Standard Template"
+      ],
+      "tags": [
+        "fedramp",
+        "pia"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-25",
+      "control_number": "PM-25",
+      "theme": "SP53_PM",
+      "title": "Minimization of Personally Identifiable Information",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-25.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "PII Minimization SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "minimization"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-26",
+      "control_number": "PM-26",
+      "theme": "SP53_PM",
+      "title": "Complaint Management",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-26.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Complaint SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "complaints"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-27",
+      "control_number": "PM-27",
+      "theme": "SP53_PM",
+      "title": "Privacy Awareness Training",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-27.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Training Attendance"
+      ],
+      "tags": [
+        "fedramp",
+        "privacy_training"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-28",
+      "control_number": "PM-28",
+      "theme": "SP53_PM",
+      "title": "Risk Management Frame",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-28.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "RMF Governance Frame"
+      ],
+      "tags": [
+        "fedramp",
+        "rmf"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-29",
+      "control_number": "PM-29",
+      "theme": "SP53_PM",
+      "title": "Risk Search",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-29.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Emerging Risk Radar Report"
+      ],
+      "tags": [
+        "fedramp",
+        "risk_search"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-30",
+      "control_number": "PM-30",
+      "theme": "SP53_PM",
+      "title": "Supply Chain Risk Management Strategy",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-30.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SCRM Strategy Document"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-31",
+      "control_number": "PM-31",
+      "theme": "SP53_PM",
+      "title": "Continuous Monitoring Strategy",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-31.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ConMon Strategy Doc"
+      ],
+      "tags": [
+        "fedramp",
+        "conmon"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pm-32",
+      "control_number": "PM-32",
+      "theme": "SP53_PM",
+      "title": "Purging Information",
+      "description": "Enforce Program Management baseline requirements per NIST SP 800-53 Rev. 5 control PM-32.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Purging Verification Log"
+      ],
+      "tags": [
+        "fedramp",
+        "purging"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-1",
+      "control_number": "PS-1",
+      "theme": "SP53_PS",
+      "title": "Policy and Procedures",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Personnel Security Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-2",
+      "control_number": "PS-2",
+      "theme": "SP53_PS",
+      "title": "Position Risk Designation",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Position Sensitivity Matrix"
+      ],
+      "tags": [
+        "fedramp",
+        "hr"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-3",
+      "control_number": "PS-3",
+      "theme": "SP53_PS",
+      "title": "Personnel Screening",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Background Check Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "background_check"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-4",
+      "control_number": "PS-4",
+      "theme": "SP53_PS",
+      "title": "Personnel Termination",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Offboarding Checklist"
+      ],
+      "tags": [
+        "fedramp",
+        "offboarding"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-5",
+      "control_number": "PS-5",
+      "theme": "SP53_PS",
+      "title": "Personnel Transfer",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Transfer Clearance Form"
+      ],
+      "tags": [
+        "fedramp",
+        "hr"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-6",
+      "control_number": "PS-6",
+      "theme": "SP53_PS",
+      "title": "Access Agreements",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Signed NDA Ledger"
+      ],
+      "tags": [
+        "fedramp",
+        "nda"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-7",
+      "control_number": "PS-7",
+      "theme": "SP53_PS",
+      "title": "Third-Party Personnel Security",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Vendor Clearance Attestation"
+      ],
+      "tags": [
+        "fedramp",
+        "vendor_hr"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-8",
+      "control_number": "PS-8",
+      "theme": "SP53_PS",
+      "title": "Personnel Sanctions",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Disciplinary SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "disciplinary"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ps-9",
+      "control_number": "PS-9",
+      "theme": "SP53_PS",
+      "title": "Position Descriptions",
+      "description": "Enforce Personnel Security baseline requirements per NIST SP 800-53 Rev. 5 control PS-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Role Position Descriptions"
+      ],
+      "tags": [
+        "fedramp",
+        "hr"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-1",
+      "control_number": "PT-1",
+      "theme": "SP53_PT",
+      "title": "Policy and Procedures",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Processing Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-2",
+      "control_number": "PT-2",
+      "theme": "SP53_PT",
+      "title": "Authority to Process Personally Identifiable Information",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Legal Authority Matrix"
+      ],
+      "tags": [
+        "fedramp",
+        "legal_basis"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-3",
+      "control_number": "PT-3",
+      "theme": "SP53_PT",
+      "title": "Personally Identifiable Information Processing Notice",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Public Privacy Notice"
+      ],
+      "tags": [
+        "fedramp",
+        "privacy_notice"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-4",
+      "control_number": "PT-4",
+      "theme": "SP53_PT",
+      "title": "Consent",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Consent Management System Export"
+      ],
+      "tags": [
+        "fedramp",
+        "consent"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-5",
+      "control_number": "PT-5",
+      "theme": "SP53_PT",
+      "title": "Privacy Notice Management",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Privacy Notice Review Log"
+      ],
+      "tags": [
+        "fedramp",
+        "notice"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-6",
+      "control_number": "PT-6",
+      "theme": "SP53_PT",
+      "title": "System-of-Records Notice",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Federal Register SORN Publication"
+      ],
+      "tags": [
+        "fedramp",
+        "sorn"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-7",
+      "control_number": "PT-7",
+      "theme": "SP53_PT",
+      "title": "Specific Categories of Personally Identifiable Information",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Special Category PII Assessment"
+      ],
+      "tags": [
+        "fedramp",
+        "sensitive_pii"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "pt-8",
+      "control_number": "PT-8",
+      "theme": "SP53_PT",
+      "title": "Computer Matching Agreements",
+      "description": "Enforce PII Processing and Transparency baseline requirements per NIST SP 800-53 Rev. 5 control PT-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CMA Federal Agreement"
+      ],
+      "tags": [
+        "fedramp",
+        "matching"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-1",
+      "control_number": "RA-1",
+      "theme": "SP53_RA",
+      "title": "Policy and Procedures",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Risk Assessment Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-2",
+      "control_number": "RA-2",
+      "theme": "SP53_RA",
+      "title": "Security Categorization",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FIPS 199 Categorization Document"
+      ],
+      "tags": [
+        "fedramp",
+        "fips_199"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-3",
+      "control_number": "RA-3",
+      "theme": "SP53_RA",
+      "title": "Risk Assessment",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Risk Assessment Report (RAR)"
+      ],
+      "tags": [
+        "fedramp",
+        "risk_assessment"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-5",
+      "control_number": "RA-5",
+      "theme": "SP53_RA",
+      "title": "Vulnerability Monitoring and Scanning",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Vulnerability Scan Log"
+      ],
+      "tags": [
+        "fedramp",
+        "vuln_mgmt"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-7",
+      "control_number": "RA-7",
+      "theme": "SP53_RA",
+      "title": "Risk Response",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Risk Treatment Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "risk_response"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-8",
+      "control_number": "RA-8",
+      "theme": "SP53_RA",
+      "title": "Privacy Impact Assessment",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Completed PIA"
+      ],
+      "tags": [
+        "fedramp",
+        "pia"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-9",
+      "control_number": "RA-9",
+      "theme": "SP53_RA",
+      "title": "Criticality Analysis",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "High Value Asset Criticality Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "criticality"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "ra-10",
+      "control_number": "RA-10",
+      "theme": "SP53_RA",
+      "title": "Threat Hunting",
+      "description": "Enforce Risk Assessment baseline requirements per NIST SP 800-53 Rev. 5 control RA-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Threat Hunting Summary"
+      ],
+      "tags": [
+        "fedramp",
+        "threat_hunting"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-1",
+      "control_number": "SA-1",
+      "theme": "SP53_SA",
+      "title": "Policy and Procedures",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Acquisition Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-2",
+      "control_number": "SA-2",
+      "theme": "SP53_SA",
+      "title": "Allocation of Resources",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Capital Plan"
+      ],
+      "tags": [
+        "fedramp",
+        "budget"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-3",
+      "control_number": "SA-3",
+      "theme": "SP53_SA",
+      "title": "System Development Life Cycle",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-3.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Secure SDLC SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "sdlc"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-4",
+      "control_number": "SA-4",
+      "theme": "SP53_SA",
+      "title": "Acquisition Process",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "RFP Security Requirements"
+      ],
+      "tags": [
+        "fedramp",
+        "procurement"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-5",
+      "control_number": "SA-5",
+      "theme": "SP53_SA",
+      "title": "Information System Documentation",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "System Architecture Manual"
+      ],
+      "tags": [
+        "fedramp",
+        "docs"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-8",
+      "control_number": "SA-8",
+      "theme": "SP53_SA",
+      "title": "Security and Privacy Architecture",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Design Specification"
+      ],
+      "tags": [
+        "fedramp",
+        "architecture"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-9",
+      "control_number": "SA-9",
+      "theme": "SP53_SA",
+      "title": "External Information Systems",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FedRAMP Marketplace Authorization"
+      ],
+      "tags": [
+        "fedramp",
+        "cloud"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-10",
+      "control_number": "SA-10",
+      "theme": "SP53_SA",
+      "title": "Developer Configuration Management",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Developer CM Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "dev_cm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-11",
+      "control_number": "SA-11",
+      "theme": "SP53_SA",
+      "title": "Developer Testing and Evaluation",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SAST/DAST Report"
+      ],
+      "tags": [
+        "fedramp",
+        "sast_dast"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-15",
+      "control_number": "SA-15",
+      "theme": "SP53_SA",
+      "title": "Development Process, Standards, and Tools",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-15.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Approved Developer Tooling List"
+      ],
+      "tags": [
+        "fedramp",
+        "tools"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-17",
+      "control_number": "SA-17",
+      "theme": "SP53_SA",
+      "title": "Developer Security and Privacy Architecture",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-17.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Threat Model Artifact"
+      ],
+      "tags": [
+        "fedramp",
+        "design"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-21",
+      "control_number": "SA-21",
+      "theme": "SP53_SA",
+      "title": "Developer Screening",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-21.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Developer Background Investigation Log"
+      ],
+      "tags": [
+        "fedramp",
+        "clearance"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-22",
+      "control_number": "SA-22",
+      "theme": "SP53_SA",
+      "title": "Unsupported System Components",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-22.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "EOL Exception Register"
+      ],
+      "tags": [
+        "fedramp",
+        "eol"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sa-23",
+      "control_number": "SA-23",
+      "theme": "SP53_SA",
+      "title": "Specialization",
+      "description": "Enforce System and Services Acquisition baseline requirements per NIST SP 800-53 Rev. 5 control SA-23.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Custom Security Hardware Spec"
+      ],
+      "tags": [
+        "fedramp",
+        "specialization"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-1",
+      "control_number": "SC-1",
+      "theme": "SP53_SC",
+      "title": "Policy and Procedures",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "NetSec Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-2",
+      "control_number": "SC-2",
+      "theme": "SP53_SC",
+      "title": "Separation of System and User Functionality",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-2.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Management Subnet Rules"
+      ],
+      "tags": [
+        "fedramp",
+        "segmentation"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-4",
+      "control_number": "SC-4",
+      "theme": "SP53_SC",
+      "title": "Information in Shared Resources",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-4.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Object Reuse Policy Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "memory"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-5",
+      "control_number": "SC-5",
+      "theme": "SP53_SC",
+      "title": "Denial of Service Protection",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-5.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Anti-DDoS Provider SLA"
+      ],
+      "tags": [
+        "fedramp",
+        "ddos"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-7",
+      "control_number": "SC-7",
+      "theme": "SP53_SC",
+      "title": "Boundary Protection",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Firewall Config Export"
+      ],
+      "tags": [
+        "fedramp",
+        "firewall",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-8",
+      "control_number": "SC-8",
+      "theme": "SP53_SC",
+      "title": "Transmission Confidentiality and Integrity",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-8.",
+      "scannability": "auto",
+      "scan_module_hint": "tls_certificates",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "TLS 1.2+ Suite Export"
+      ],
+      "tags": [
+        "fedramp",
+        "tls",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-10",
+      "control_number": "SC-10",
+      "theme": "SP53_SC",
+      "title": "Network Disconnect",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-10.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SSH Client Alive Interval Config"
+      ],
+      "tags": [
+        "fedramp",
+        "idle_disconnect"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-12",
+      "control_number": "SC-12",
+      "theme": "SP53_SC",
+      "title": "Cryptographic Key Establishment and Management",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-12.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "KMS Key Rotation Schedule"
+      ],
+      "tags": [
+        "fedramp",
+        "kms"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-13",
+      "control_number": "SC-13",
+      "theme": "SP53_SC",
+      "title": "Cryptographic Protection",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-13.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "FIPS Approved Crypto List"
+      ],
+      "tags": [
+        "fedramp",
+        "fips_140_3"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-15",
+      "control_number": "SC-15",
+      "theme": "SP53_SC",
+      "title": "Collaborative Computing Devices",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-15.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Video Conf Security SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "av_room"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-17",
+      "control_number": "SC-17",
+      "theme": "SP53_SC",
+      "title": "Public Key Infrastructure Certificates",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-17.",
+      "scannability": "auto",
+      "scan_module_hint": "tls_certificates",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Public Cert Inventory"
+      ],
+      "tags": [
+        "fedramp",
+        "pki"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-18",
+      "control_number": "SC-18",
+      "theme": "SP53_SC",
+      "title": "Mobile Code",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-18.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Browser Policy Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "browser"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-20",
+      "control_number": "SC-20",
+      "theme": "SP53_SC",
+      "title": "Secure Name/Address Resolution Service (Authoritative)",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-20.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "DNSSEC Validation Report"
+      ],
+      "tags": [
+        "fedramp",
+        "dnssec"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-21",
+      "control_number": "SC-21",
+      "theme": "SP53_SC",
+      "title": "Secure Name/Address Resolution Service (Recursive)",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-21.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Recursive DNS Query Log"
+      ],
+      "tags": [
+        "fedramp",
+        "dns"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-22",
+      "control_number": "SC-22",
+      "theme": "SP53_SC",
+      "title": "Architecture and Provisioning for Name/Address Resolution",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-22.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Redundant DNS Topology"
+      ],
+      "tags": [
+        "fedramp",
+        "dns"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-23",
+      "control_number": "SC-23",
+      "theme": "SP53_SC",
+      "title": "Session Authenticity",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-23.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Secure Cookie Flag Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "cookies"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-28",
+      "control_number": "SC-28",
+      "theme": "SP53_SC",
+      "title": "Protection of Information at Rest",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-28.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "LUKS / BitLocker Encryption Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "encryption",
+        "zero_trust"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-39",
+      "control_number": "SC-39",
+      "theme": "SP53_SC",
+      "title": "Process Isolation",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-39.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "ASLR/DEP Enforcement Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "containers"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sc-51",
+      "control_number": "SC-51",
+      "theme": "SP53_SC",
+      "title": "Deduplication",
+      "description": "Enforce System and Communications Protection baseline requirements per NIST SP 800-53 Rev. 5 control SC-51.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Storage Deduplication Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "storage"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-1",
+      "control_number": "SI-1",
+      "theme": "SP53_SI",
+      "title": "Policy and Procedures",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Integrity Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-2",
+      "control_number": "SI-2",
+      "theme": "SP53_SI",
+      "title": "Flaw Remediation",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-2.",
+      "scannability": "auto",
+      "scan_module_hint": "vulnerability_audit",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Patch Verification Report"
+      ],
+      "tags": [
+        "fedramp",
+        "patch_mgmt"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-3",
+      "control_number": "SI-3",
+      "theme": "SP53_SI",
+      "title": "Malicious Code Protection",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-3.",
+      "scannability": "auto",
+      "scan_module_hint": "malware_scan",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "EDR Active Service Log"
+      ],
+      "tags": [
+        "fedramp",
+        "edr"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-4",
+      "control_number": "SI-4",
+      "theme": "SP53_SI",
+      "title": "System Monitoring",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-4.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Suricata / Snort Rule Export"
+      ],
+      "tags": [
+        "fedramp",
+        "ids_ips"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-5",
+      "control_number": "SI-5",
+      "theme": "SP53_SI",
+      "title": "Security Alerts, Advisories, and Directives",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "CISA KEV Patch Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "cisa_kb"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-6",
+      "control_number": "SI-6",
+      "theme": "SP53_SI",
+      "title": "Security Function Verification",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-6.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Security Diagnostic Log"
+      ],
+      "tags": [
+        "fedramp",
+        "self_test"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-7",
+      "control_number": "SI-7",
+      "theme": "SP53_SI",
+      "title": "Software, Firmware, and Information Integrity",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-7.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "File Integrity Monitoring (FIM) Log"
+      ],
+      "tags": [
+        "fedramp",
+        "fim"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-8",
+      "control_number": "SI-8",
+      "theme": "SP53_SI",
+      "title": "Spam Protection",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-8.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SPF/DKIM/DMARC Record"
+      ],
+      "tags": [
+        "fedramp",
+        "email"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-10",
+      "control_number": "SI-10",
+      "theme": "SP53_SI",
+      "title": "Information Input Validation",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-10.",
+      "scannability": "auto",
+      "scan_module_hint": "web_vulnerability_audit",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "WAF Input Validation Rules"
+      ],
+      "tags": [
+        "fedramp",
+        "waf"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-11",
+      "control_number": "SI-11",
+      "theme": "SP53_SI",
+      "title": "Error Handling",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-11.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Custom Error Page Verification"
+      ],
+      "tags": [
+        "fedramp",
+        "web_sec"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-12",
+      "control_number": "SI-12",
+      "theme": "SP53_SI",
+      "title": "Information Handling and Retention",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Data Disposal SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "retention"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-16",
+      "control_number": "SI-16",
+      "theme": "SP53_SI",
+      "title": "Memory Protection",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-16.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "NX/DEP Memory Protection Status"
+      ],
+      "tags": [
+        "fedramp",
+        "exploit_mitigation"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "si-23",
+      "control_number": "SI-23",
+      "theme": "SP53_SI",
+      "title": "Predictive Flaw Delivery",
+      "description": "Enforce System and Information Integrity baseline requirements per NIST SP 800-53 Rev. 5 control SI-23.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "AI/ML Security Audit"
+      ],
+      "tags": [
+        "fedramp",
+        "ai_sec"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-1",
+      "control_number": "SR-1",
+      "theme": "SP53_SR",
+      "title": "Policy and Procedures",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-1.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SCRM Policy"
+      ],
+      "tags": [
+        "fedramp",
+        "governance",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-2",
+      "control_number": "SR-2",
+      "theme": "SP53_SR",
+      "title": "Supply Chain Risk Management Plan",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-2.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "SCRM Plan Document"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-3",
+      "control_number": "SR-3",
+      "theme": "SP53_SR",
+      "title": "Supply Chain Controls and Processes",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-3.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Software Bill of Materials (SBOM)"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm",
+        "sbom"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-4",
+      "control_number": "SR-4",
+      "theme": "SP53_SR",
+      "title": "Provenance",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-4.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hardware/Software Provenance Log"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-5",
+      "control_number": "SR-5",
+      "theme": "SP53_SR",
+      "title": "Acquisition Strategies, Tools, and Methods",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-5.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Vendor Risk Assessment Form"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-6",
+      "control_number": "SR-6",
+      "theme": "SP53_SR",
+      "title": "Supplier Assessments and Reviews",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-6.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Supplier Audit Report"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-7",
+      "control_number": "SR-7",
+      "theme": "SP53_SR",
+      "title": "Supply Chain Threat Intelligence",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-7.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Supply Chain Threat Feed Sub"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-8",
+      "control_number": "SR-8",
+      "theme": "SP53_SR",
+      "title": "Notification Agreements",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-8.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Vendor Breach Notification SLA"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "LOW",
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-9",
+      "control_number": "SR-9",
+      "theme": "SP53_SR",
+      "title": "Tamper Resistance and Detection",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-9.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Tamper-Evident Packaging Verification"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-10",
+      "control_number": "SR-10",
+      "theme": "SP53_SR",
+      "title": "Component Disposal",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-10.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Hardware Sanitization Certificate"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "MODERATE",
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-11",
+      "control_number": "SR-11",
+      "theme": "SP53_SR",
+      "title": "Component Authenticity",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-11.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "Counterfeit Component Avoidance SOP"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    },
+    {
+      "id": "sr-12",
+      "control_number": "SR-12",
+      "theme": "SP53_SR",
+      "title": "Component Disposal Procedures",
+      "description": "Enforce Supply Chain Risk Management baseline requirements per NIST SP 800-53 Rev. 5 control SR-12.",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "CIS:5.1",
+        "NIST_CSF:PR.AA-01"
+      ],
+      "evidence_checklist": [
+        "E-Waste Disposal Contract"
+      ],
+      "tags": [
+        "fedramp",
+        "scrm"
+      ],
+      "saq_profiles": [
+        "HIGH"
+      ]
+    }
+  ]
+}

@@ -627,10 +627,15 @@ def trigger_compliance_scan(
 
 @router.get("/findings")
 def list_findings(
+    framework_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     saq_profile: Optional[str] = Query(None),
     cde_scope: Optional[str] = Query(None),
     cde_scope_only: Optional[bool] = Query(False),
+    impact_level: Optional[str] = Query(None),
+    zero_trust_only: Optional[bool] = Query(False),
+    sdf_scope: Optional[str] = Query(None),
+    privacy_role: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -673,11 +678,26 @@ def list_findings(
         )
     )
 
+    if framework_id and framework_id != "all":
+        q = q.filter(ComplianceControl.framework_id == framework_id)
+
     if status:
         q = q.filter(ComplianceFinding.status == status)
 
-    if saq_profile:
+    if saq_profile and saq_profile != "all":
         q = q.filter(ComplianceControl.saq_profiles.contains([saq_profile]))
+
+    if impact_level and impact_level != "all":
+        q = q.filter(ComplianceControl.saq_profiles.contains([impact_level.upper()]))
+
+    if zero_trust_only:
+        q = q.filter(ComplianceControl.tags.contains(["zero_trust"]))
+
+    if sdf_scope and sdf_scope != "all":
+        q = q.filter(ComplianceControl.sdf_scope == sdf_scope)
+
+    if privacy_role and privacy_role != "all":
+        q = q.filter(ComplianceControl.privacy_role.in_([privacy_role, "both"]))
 
     if cde_scope:
         q = q.filter(ComplianceFinding.cde_scope == cde_scope)
@@ -1638,6 +1658,8 @@ def get_dashboard_summary(
     saq_profile: Optional[str] = Query(None),
     cde_scope: Optional[str] = Query(None),
     cde_scope_only: Optional[bool] = Query(False),
+    impact_level: Optional[str] = Query(None),
+    zero_trust_only: Optional[bool] = Query(False),
     sdf_scope: Optional[str] = Query(None),
     privacy_role: Optional[str] = Query(None),
     db: Session = Depends(get_db),
@@ -1670,9 +1692,11 @@ def get_dashboard_summary(
         target_fws = [r[0] for r in enabled_fws_list]
 
     if (
-        saq_profile
+        (saq_profile and saq_profile != "all")
         or cde_scope
         or cde_scope_only
+        or (impact_level and impact_level != "all")
+        or zero_trust_only
         or (sdf_scope and sdf_scope != "all")
         or (privacy_role and privacy_role != "all")
     ):
@@ -1680,9 +1704,17 @@ def get_dashboard_summary(
         control_query = db.query(ComplianceControl).filter(
             ComplianceControl.framework_id.in_(target_fws)
         )
-        if saq_profile:
+        if saq_profile and saq_profile != "all":
             control_query = control_query.filter(
                 ComplianceControl.saq_profiles.contains([saq_profile])
+            )
+        if impact_level and impact_level != "all":
+            control_query = control_query.filter(
+                ComplianceControl.saq_profiles.contains([impact_level.upper()])
+            )
+        if zero_trust_only:
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains(["zero_trust"])
             )
         # Apply DPDP SDF scope filter on controls
         if sdf_scope and sdf_scope != "all":
@@ -1692,7 +1724,7 @@ def get_dashboard_summary(
         # Apply GDPR privacy role filter on controls
         if privacy_role and privacy_role != "all":
             control_query = control_query.filter(
-                ComplianceControl.privacy_role == privacy_role
+                ComplianceControl.privacy_role.in_([privacy_role, "both"])
             )
 
         controls = control_query.all()
@@ -3158,6 +3190,278 @@ def download_gdpr_report(
         )
         media = "application/pdf"
         filename = f"gdpr_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _generate_nist_800_53_docx(
+    controls, findings_map, title, subtitle, scope_label=None
+):
+    doc = Document()
+    p_title = doc.add_paragraph()
+    run_t = p_title.add_run(title)
+    run_t.font.size = Pt(18)
+    run_t.font.bold = True
+    run_t.font.color.rgb = RGBColor(10, 46, 92)  # Federal Navy Blue
+
+    p_sub = doc.add_paragraph(subtitle)
+    p_sub.style = "Italic"
+    if scope_label:
+        doc.add_paragraph(f"Scope / Baseline: {scope_label}")
+
+    table = doc.add_table(rows=1, cols=6)
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    hdr_names = [
+        "Control Number",
+        "Title",
+        "Family",
+        "FedRAMP Baseline",
+        "Zero Trust",
+        "Verdict",
+    ]
+    for i, name in enumerate(hdr_names):
+        hdr_cells[i].text = name
+        for p in hdr_cells[i].paragraphs:
+            for run in p.runs:
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(255, 255, 255)
+        shading_elm = parse_xml(r'<w:shd {} w:fill="0A2E5C"/>'.format(nsdecls("w")))
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shading_elm)
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        baselines = ", ".join(c.saq_profiles) if c.saq_profiles else "N/A"
+        zta = "Yes" if "zero_trust" in (c.tags or []) else "No"
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = c.control_number
+        row_cells[1].text = c.title
+        row_cells[2].text = c.theme or "N/A"
+        row_cells[3].text = baselines
+        row_cells[4].text = zta
+        row_cells[5].text = verdict
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_nist_800_53_pdf(
+    controls, findings_map, title, subtitle, scope_label=None
+):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle(
+        "NISTTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0A2E5C"),
+    )
+    sub_style = ParagraphStyle(
+        "NISTSub",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#4b5563"),
+    )
+    badge_style = ParagraphStyle(
+        "BadgeText",
+        fontName="Helvetica-Bold",
+        fontSize=7,
+        leading=8,
+        alignment=1,
+        textColor=colors.white,
+    )
+
+    story.append(Paragraph(title, title_style))
+    story.append(Paragraph(subtitle, sub_style))
+    if scope_label:
+        story.append(
+            Paragraph(f"<b>Filter Baseline:</b> {scope_label}", styles["Normal"])
+        )
+    story.append(Spacer(1, 14))
+
+    table_data = [
+        ["Control", "Title", "Family", "FedRAMP Baseline", "Zero Trust", "Verdict"]
+    ]
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        verdict_color = (
+            colors.HexColor("#16a34a")
+            if verdict == "PASS"
+            else (
+                colors.HexColor("#dc2626")
+                if verdict == "FAIL"
+                else colors.HexColor("#6b7280")
+            )
+        )
+
+        b_str = ", ".join(c.saq_profiles) if c.saq_profiles else "LOW"
+        b_bg = (
+            "#EF4444"
+            if "HIGH" in b_str
+            else "#F59E0B" if "MODERATE" in b_str else "#22C55E"
+        )
+        b_cell = Table(
+            [[Paragraph(b_str, badge_style)]], colWidths=[65], rowHeights=[14]
+        )
+        b_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(b_bg)),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        v_cell = Table(
+            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+        )
+        v_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), verdict_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        zta = "Yes" if "zero_trust" in (c.tags or []) else "No"
+
+        table_data.append(
+            [
+                Paragraph(f"<b>{c.control_number}</b>", styles["Normal"]),
+                Paragraph(c.title, styles["Normal"]),
+                Paragraph(c.theme or "N/A", styles["Normal"]),
+                b_cell,
+                Paragraph(zta, styles["Normal"]),
+                v_cell,
+            ]
+        )
+
+    t = Table(table_data, colWidths=[60, 180, 80, 75, 60, 65])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0A2E5C")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/nist_800_53_r5")
+def download_nist_800_53_r5_report(
+    fmt: str = "pdf",
+    impact_level: Optional[str] = Query(None, description="LOW | MODERATE | HIGH"),
+    control_family: Optional[str] = Query(None, description="SP53_AC | SP53_AU | etc"),
+    zero_trust_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report."""
+    fw_id = "cfw_nist_800_53_r5"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if impact_level and impact_level != "all":
+        query = query.filter(
+            ComplianceControl.saq_profiles.contains([impact_level.upper()])
+        )
+
+    if control_family and control_family != "all":
+        query = query.filter(ComplianceControl.theme == control_family.upper())
+
+    if zero_trust_only:
+        query = query.filter(ComplianceControl.tags.contains(["zero_trust"]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "NIST SP 800-53 Rev. 5 Federal Security Assessment Report"
+    report_sub = (
+        f"U.S. Federal & Defense Accreditation Ledger (Tenant: {user.org_id[:8]})"
+    )
+    scope_label = (
+        f"FedRAMP Impact Level: {impact_level.upper()}"
+        if impact_level and impact_level != "all"
+        else "All Impact Baselines"
+    )
+    if zero_trust_only:
+        scope_label += " (Zero Trust Architecture Only)"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_nist_800_53_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"nist_800_53_r5_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_nist_800_53_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = "application/pdf"
+        filename = f"nist_800_53_r5_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

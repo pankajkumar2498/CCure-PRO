@@ -317,6 +317,151 @@ def seed_and_evaluate():
                 "control_id": "cct_dpdp_2023_dpdp_2_1",
                 "recommendation_text": "Remediate SQL Injection vulnerabilities in web applications to protect PII against unauthorized data exfiltration.",
             },
+            # NIST SP 800-53 Rev. 5 Rules
+            {
+                "id": "crl_nist_ac2_acct_mgmt",
+                "rule_family_code": "NIST-AC-2-ACCT",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "account_review_completed",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_nist_800_53_r5_ac_2",
+                "recommendation_text": "Establish automated account management workflows and conduct regular user account reviews per NIST AC-2.",
+            },
+            {
+                "id": "crl_nist_au6_log_review",
+                "rule_family_code": "NIST-AU-6-LOG",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "log_review_frequency_days",
+                    "operator": "lte",
+                    "expected": 7,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_nist_800_53_r5_au_6",
+                "recommendation_text": "Analyze audit log records at least weekly to detect suspicious behavior per NIST AU-6.",
+            },
+            {
+                "id": "crl_nist_si2_patch",
+                "rule_family_code": "NIST-SI-2-PATCH",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "vulnerability_audit",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "critical_count",
+                    "operator": "equals",
+                    "expected": 0,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_nist_800_53_r5_si_2",
+                "recommendation_text": "Remediate system security flaws and patch critical vulnerabilities within mandatory timelines per NIST SI-2.",
+            },
+            {
+                "id": "crl_nist_ia5_pwd_complex",
+                "rule_family_code": "NIST-IA-5-PWD",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "password_complexity_enforced",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_nist_800_53_r5_ia_5",
+                "recommendation_text": "Enforce strong password complexity and authenticator management standards per NIST IA-5.",
+            },
+            {
+                "id": "crl_nist_sc28_enc_rest",
+                "rule_family_code": "NIST-SC-28-ENC",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "disk_encryption_enabled",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_nist_800_53_r5_sc_28",
+                "recommendation_text": "Enable FIPS-validated disk encryption at rest for sensitive federal data per NIST SC-28.",
+            },
+            {
+                "id": "crl_nist_cp9_backup",
+                "rule_family_code": "NIST-CP-9-BAK",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "backup_frequency_days",
+                    "operator": "lte",
+                    "expected": 1,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_nist_800_53_r5_cp_9",
+                "recommendation_text": "Execute daily automated system backups and test restoration integrity per NIST CP-9.",
+            },
+            {
+                "id": "crl_nist_sr3_scrm_plan",
+                "rule_family_code": "NIST-SR-3-SCRM",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "scrm_plan_documented",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_nist_800_53_r5_sr_3",
+                "recommendation_text": "Document and enforce Supply Chain Risk Management (SCRM) controls and Software Bill of Materials (SBOM) tracking per NIST SR-3.",
+            },
+            {
+                "id": "crl_nist_ra5_vuln_scan",
+                "rule_family_code": "NIST-RA-5-SCAN",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "last_scan_days_ago",
+                    "operator": "lte",
+                    "expected": 30,
+                },
+                "severity": "medium",
+                "severity_weight": 5,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_nist_800_53_r5_ra_5",
+                "recommendation_text": "Perform automated vulnerability monitoring and scanning at least every 30 days per NIST RA-5.",
+            },
             {
                 "id": "crl_vuln_critical_v1",
                 "rule_family_code": "VULN-CRITICAL",
@@ -1351,11 +1496,20 @@ def seed_and_evaluate():
                     for iso_num in pci_ctrl.crosswalk:
                         if not iso_num.startswith("ISO27001:"):
                             continue
-                        iso_ref = iso_num.replace("ISO27001:", "").strip()
-                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        iso_ref = (
+                            iso_num.replace("ISO27001:", "")
+                            .strip()
+                            .lower()
+                            .replace("a.", "")
+                            .replace(".", "_")
+                        )
+                        iso_ctrl_ids = [
+                            f"cct_iso27001_2022_a_{iso_ref}",
+                            f"cct_iso27001_2022_{iso_ref}",
+                        ]
                         linked_rules = (
                             db.query(ComplianceRuleControl)
-                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
                             .all()
                         )
                         for r_link in linked_rules:
@@ -1433,11 +1587,20 @@ def seed_and_evaluate():
                     for iso_num in dpdp_ctrl.crosswalk:
                         if not iso_num.startswith("ISO27001:"):
                             continue
-                        iso_ref = iso_num.replace("ISO27001:", "").strip()
-                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        iso_ref = (
+                            iso_num.replace("ISO27001:", "")
+                            .strip()
+                            .lower()
+                            .replace("a.", "")
+                            .replace(".", "_")
+                        )
+                        iso_ctrl_ids = [
+                            f"cct_iso27001_2022_a_{iso_ref}",
+                            f"cct_iso27001_2022_{iso_ref}",
+                        ]
                         linked_rules = (
                             db.query(ComplianceRuleControl)
-                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
                             .all()
                         )
                         for r_link in linked_rules:
@@ -1514,11 +1677,20 @@ def seed_and_evaluate():
                     for iso_num in gdpr_ctrl.crosswalk:
                         if not iso_num.startswith("ISO27001:"):
                             continue
-                        iso_ref = iso_num.replace("ISO27001:", "").strip()
-                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        iso_ref = (
+                            iso_num.replace("ISO27001:", "")
+                            .strip()
+                            .lower()
+                            .replace("a.", "")
+                            .replace(".", "_")
+                        )
+                        iso_ctrl_ids = [
+                            f"cct_iso27001_2022_a_{iso_ref}",
+                            f"cct_iso27001_2022_{iso_ref}",
+                        ]
                         linked_rules = (
                             db.query(ComplianceRuleControl)
-                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
                             .all()
                         )
                         for r_link in linked_rules:
@@ -1583,6 +1755,106 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for GDPR")
 
+        # Map rules and controls for NIST SP 800-53 Rev. 5
+        nist53_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_nist_800_53_r5")
+            .all()
+        )
+        if nist53_controls:
+            for nist53_ctrl in nist53_controls:
+                if nist53_ctrl.crosswalk:
+                    for cross_num in nist53_ctrl.crosswalk:
+                        clean_cross_num = (
+                            cross_num.split(":", 1)[1]
+                            if ":" in cross_num
+                            else cross_num
+                        )
+                        if not clean_cross_num.startswith("A."):
+                            continue
+                        iso_ref = (
+                            clean_cross_num.replace("A.", "")
+                            .strip()
+                            .lower()
+                            .replace(".", "_")
+                        )
+                        iso_ctrl_ids = [
+                            f"cct_iso27001_2022_a_{iso_ref}",
+                            f"cct_iso27001_2022_{iso_ref}",
+                        ]
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            n_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == nist53_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not n_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=nist53_ctrl.id,
+                                    )
+                                )
+
+                raw_id = (
+                    nist53_ctrl.control_number.lower()
+                    .replace(".", "_")
+                    .replace("-", "_")
+                )
+                rule_id = f"crl_nist53_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-NIST53-{nist53_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            nist53_ctrl.scannability
+                            if nist53_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                n_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == nist53_ctrl.id,
+                    )
+                    .first()
+                )
+                if not n_link:
+                    db.add(
+                        ComplianceRuleControl(
+                            rule_id=rule_id, control_id=nist53_ctrl.id
+                        )
+                    )
+
+            db.commit()
+            print(
+                "  - Successfully mapped rules and controls for NIST SP 800-53 Rev. 5"
+            )
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -1601,6 +1873,7 @@ def seed_and_evaluate():
                 "cfw_pci_dss_v4",
                 "cfw_dpdp_2023",
                 "cfw_gdpr",
+                "cfw_nist_800_53_r5",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)
@@ -1703,12 +1976,14 @@ def seed_and_evaluate():
         print(f"\nFound asset: {asset.ip_address} (ID={asset.id}, Org={asset.org_id})")
 
         # 5. Create compliance scan run and execute compliance evaluation
+        # Reset policy_id to ISO 27001 default policy ID (fixes leaky loop variable bug)
+        iso_policy_id = f"cpl_{org.id}_iso27001_2022_default"
         scan_run_id = f"run_{org.id[:8]}_{datetime.now().strftime('%M%S%f')}"
         run = ComplianceScanRun(
             id=scan_run_id,
             tenant_id=org.id,
             framework_id=framework_id,
-            policy_id=policy_id,
+            policy_id=iso_policy_id,
             status="queued",
             scope={"asset_ids": [asset.id]},
             started_at=now,

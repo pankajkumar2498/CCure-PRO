@@ -204,7 +204,9 @@ def seed_system_roles():
                 "'SP53_IR', 'SP53_MA', 'SP53_MP', 'SP53_PE', 'SP53_PL', 'SP53_PM', 'SP53_PS', "
                 "'SP53_PT', 'SP53_RA', 'SP53_SA', 'SP53_SC', 'SP53_SI', 'SP53_SR', "
                 "'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', "
-                "'FR5_RDF', 'FR6_TRE', 'FR7_RA'"
+                "'FR5_RDF', 'FR6_TRE', 'FR7_RA', "
+                "'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', "
+                "'SP82_SI', 'SP82_RA', 'SP82_SA'"
             )
             conn.execute(
                 text(

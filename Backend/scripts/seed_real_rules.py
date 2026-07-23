@@ -930,6 +930,96 @@ def seed_and_evaluate():
                 "control_id": "cct_iec_62443_sr_1_1_re2",
                 "recommendation_text": "Enforce mandatory Multi-Factor Authentication (MFA) for OT DMZ Jump Host access.",
             },
+            {
+                "id": "crl_sp82_modbus_502",
+                "rule_family_code": "OT-SP82-MODBUS-502",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 502,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_sp82_modbus_502_v1",
+                "control_id": "cct_nist_800_82_r3_sp82_sc_2",
+                "recommendation_text": "Block or restrict unauthenticated Modbus TCP port 502 at OT zone boundaries per NIST SP 800-82 Rev. 3 network segmentation guidance.",
+            },
+            {
+                "id": "crl_sp82_s7_102",
+                "rule_family_code": "OT-SP82-S7-102",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 102,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_sp82_s7_102_v1",
+                "control_id": "cct_nist_800_82_r3_sp82_sc_2",
+                "recommendation_text": "Restrict Siemens S7 protocol port 102 to designated Engineering Workstations using industrial zone firewalls.",
+            },
+            {
+                "id": "crl_sp82_cip_44818",
+                "rule_family_code": "OT-SP82-CIP-44818",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 44818,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_sp82_cip_44818_v1",
+                "control_id": "cct_nist_800_82_r3_sp82_sc_2",
+                "recommendation_text": "Restrict EtherNet/IP CIP port 44818 access using industrial firewall ACLs per NIST SP 800-82 Rev. 3.",
+            },
+            {
+                "id": "crl_sp82_sis_isolation",
+                "rule_family_code": "OT-SP82-SIS-ISOLATION",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "sis_network_isolated",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_sp82_sis_isolation_v1",
+                "control_id": "cct_nist_800_82_r3_sp82_sc_4",
+                "recommendation_text": "Ensure Safety Instrumented Systems (SIS) are physically or logically isolated from standard OT and IT networks per NIST SP 800-82 Rev. 3.",
+            },
+            {
+                "id": "crl_sp82_jump_host_mfa",
+                "rule_family_code": "OT-SP82-JUMP-HOST-MFA",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "mfa_enabled",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_sp82_jump_host_mfa_v1",
+                "control_id": "cct_nist_800_82_r3_sp82_ac_5",
+                "recommendation_text": "Enforce mandatory Multi-Factor Authentication (MFA) on all OT bastion hosts and jump servers per NIST SP 800-82 Rev. 3.",
+            },
         ]
 
         # Compile a set of controls already mapped to custom rules
@@ -1196,6 +1286,43 @@ def seed_and_evaluate():
                 "sudo iptables -A INPUT -p udp --dport 47808 -j DROP"
             ),
             "OT-JUMP-HOST-MFA": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services' -Name 'fPromptForPassword' -Value 1\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get install -y libpam-duo || sudo yum install -y duo_unix\n"
+                "sudo sed -i 's/auth       required       pam_env.so/auth       required       pam_duo.so/' /etc/pam.d/sshd"
+            ),
+            "OT-SP82-MODBUS-502": (
+                "# --- INDUSTRIAL FIREWALL ---\n"
+                "# Block Modbus TCP port 502 at Purdue L3/L3.5 zone boundary firewalls\n"
+                'New-NetFirewallRule -DisplayName "Block Modbus TCP 502" -Direction Inbound -LocalPort 502 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 502/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 502 -j DROP"
+            ),
+            "OT-SP82-S7-102": (
+                "# --- INDUSTRIAL FIREWALL ---\n"
+                "# Restrict Siemens S7 protocol port 102 to designated engineering workstations only\n"
+                'New-NetFirewallRule -DisplayName "Restrict S7 Port 102" -Direction Inbound -LocalPort 102 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 102/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 102 -j DROP"
+            ),
+            "OT-SP82-CIP-44818": (
+                "# --- INDUSTRIAL FIREWALL ---\n"
+                "# Restrict EtherNet/IP CIP port 44818 using industrial zone firewall ACLs\n"
+                'New-NetFirewallRule -DisplayName "Restrict CIP Port 44818" -Direction Inbound -LocalPort 44818 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 44818/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 44818 -j DROP"
+            ),
+            "OT-SP82-SIS-ISOLATION": (
+                "# --- NETWORK ARCHITECTURE ---\n"
+                "# Verify SIS is physically air-gapped or behind unidirectional security gateway\n"
+                "# Ensure no IP routing exists between SIS controllers and enterprise/internet zones\n"
+                "# Document air gap or unidirectional gateway deployment in network architecture diagram"
+            ),
+            "OT-SP82-JUMP-HOST-MFA": (
                 "# --- WINDOWS (PowerShell) ---\n"
                 "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services' -Name 'fPromptForPassword' -Value 1\n\n"
                 "# --- LINUX (Bash) ---\n"
@@ -2075,6 +2202,105 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for IEC 62443")
 
+        # Map rules and controls for NIST SP 800-82 Rev. 3
+        nist82_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_nist_800_82_r3")
+            .all()
+        )
+        if nist82_controls:
+            for n82_ctrl in nist82_controls:
+                if n82_ctrl.crosswalk:
+                    for cross_num in n82_ctrl.crosswalk:
+                        clean_cross_num = (
+                            cross_num.split(":", 1)[1]
+                            if ":" in cross_num
+                            else cross_num
+                        )
+                        # Resolve ISO 27001 crosswalks
+                        if clean_cross_num.startswith("A."):
+                            iso_ref = (
+                                clean_cross_num.replace("A.", "")
+                                .strip()
+                                .lower()
+                                .replace(".", "_")
+                            )
+                            iso_ctrl_ids = [
+                                f"cct_iso27001_2022_a_{iso_ref}",
+                                f"cct_iso27001_2022_{iso_ref}",
+                            ]
+                            linked_rules = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.control_id.in_(iso_ctrl_ids)
+                                )
+                                .all()
+                            )
+                            for r_link in linked_rules:
+                                n82_link = (
+                                    db.query(ComplianceRuleControl)
+                                    .filter(
+                                        ComplianceRuleControl.rule_id == r_link.rule_id,
+                                        ComplianceRuleControl.control_id == n82_ctrl.id,
+                                    )
+                                    .first()
+                                )
+                                if not n82_link:
+                                    db.add(
+                                        ComplianceRuleControl(
+                                            rule_id=r_link.rule_id,
+                                            control_id=n82_ctrl.id,
+                                        )
+                                    )
+
+                # Auto-generate fallback rule for unmapped controls
+                raw_id = (
+                    n82_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_nist82_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-NIST82-{n82_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            n82_ctrl.scannability
+                            if n82_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                n82_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == n82_ctrl.id,
+                    )
+                    .first()
+                )
+                if not n82_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=n82_ctrl.id)
+                    )
+
+            db.commit()
+            print(
+                "  - Successfully mapped rules and controls for NIST SP 800-82 Rev. 3"
+            )
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -2095,6 +2321,7 @@ def seed_and_evaluate():
                 "cfw_gdpr",
                 "cfw_nist_800_53_r5",
                 "cfw_iec_62443",
+                "cfw_nist_800_82_r3",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

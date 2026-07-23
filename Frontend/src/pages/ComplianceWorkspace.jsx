@@ -274,6 +274,17 @@ const THEME_LABELS = {
   FR5_RDF: "FR5: Restricted Data Flow - Conduits (3-3)",
   FR6_TRE: "FR6: Timely Response to Events (3-3)",
   FR7_RA: "FR7: Resource Availability (3-3)",
+
+  // NIST SP 800-82 Rev. 3 (OT Security)
+  SP82_AC: "Access Control for OT Systems",
+  SP82_AU: "Audit & Accountability for ICS/SCADA",
+  SP82_CM: "Configuration Management & OT Baselines",
+  SP82_IA: "Identification & Authentication",
+  SP82_IR: "Incident Response & Safety Protection",
+  SP82_SC: "System & Communications Protection",
+  SP82_SI: "System & Information Integrity",
+  SP82_RA: "Risk Assessment & Hazard Analysis",
+  SP82_SA: "System & Services Acquisition",
 };
 
 export default function ComplianceWorkspace() {
@@ -516,6 +527,9 @@ export default function ComplianceWorkspace() {
     privacyRoleFilter,
     impactLevelFilter,
     zeroTrustOnly,
+    purdueLevelFilter,
+    componentTypeFilter,
+    slLevelFilter,
   ]);
 
   const fetchGapAnalysis = async (
@@ -574,14 +588,21 @@ export default function ComplianceWorkspace() {
         params.push(`zero_trust_only=true`);
       }
     }
-    if (selectedFrameworkId === "cfw_iec_62443") {
+    if (
+      selectedFrameworkId === "cfw_iec_62443" ||
+      selectedFrameworkId === "cfw_nist_800_82_r3"
+    ) {
       if (purdueLevelFilter && purdueLevelFilter !== "all") {
         params.push(`purdue_level=${purdueLevelFilter}`);
       }
       if (componentTypeFilter && componentTypeFilter !== "all") {
         params.push(`component_type=${componentTypeFilter}`);
       }
-      if (slLevelFilter && slLevelFilter !== "all") {
+      if (
+        selectedFrameworkId === "cfw_iec_62443" &&
+        slLevelFilter &&
+        slLevelFilter !== "all"
+      ) {
         params.push(`sl_level=${slLevelFilter}`);
       }
     }
@@ -608,6 +629,7 @@ export default function ComplianceWorkspace() {
             { id: "cfw_gdpr", name: "EU GDPR" },
             { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5" },
             { id: "cfw_iec_62443", name: "IEC 62443 (OT/ICS)" },
+            { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT)" },
           ];
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
@@ -1164,9 +1186,13 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_iec_62443">
                   IEC 62443 (Industrial Communication Networks & OT/ICS)
                 </option>
+                <option value="cfw_nist_800_82_r3">
+                  NIST SP 800-82 Rev. 3 (OT/ICS Security Guide)
+                </option>
               </select>
             </div>
-            {selectedFrameworkId === "cfw_iec_62443" && (
+            {(selectedFrameworkId === "cfw_iec_62443" ||
+              selectedFrameworkId === "cfw_nist_800_82_r3") && (
               <>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: "6px" }}
@@ -1205,6 +1231,14 @@ export default function ComplianceWorkspace() {
                       Level 3 (Site Operations/Historians)
                     </option>
                     <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
+                    {selectedFrameworkId === "cfw_nist_800_82_r3" && (
+                      <>
+                        <option value="L4">Level 4 (Enterprise Network)</option>
+                        <option value="L5">
+                          Level 5 (Enterprise Cloud / External)
+                        </option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -1234,53 +1268,88 @@ export default function ComplianceWorkspace() {
                     }}
                   >
                     <option value="all">All Component Types</option>
-                    <option value="NDD">NDD (Network Device)</option>
-                    <option value="EDR">EDR (Embedded Device)</option>
-                    <option value="HDR">HDR (Host Device)</option>
-                    <option value="SW">SW (Software Application)</option>
+                    {selectedFrameworkId === "cfw_nist_800_82_r3" ? (
+                      <>
+                        <option value="PLC">
+                          PLC (Programmable Logic Controller)
+                        </option>
+                        <option value="RTU">RTU (Remote Terminal Unit)</option>
+                        <option value="SCADA">
+                          SCADA (Supervisory Control)
+                        </option>
+                        <option value="DCS">
+                          DCS (Distributed Control System)
+                        </option>
+                        <option value="SIS">
+                          SIS (Safety Instrumented System)
+                        </option>
+                        <option value="HMI">
+                          HMI (Human-Machine Interface)
+                        </option>
+                        <option value="HISTORIAN">
+                          HISTORIAN (Process Historian)
+                        </option>
+                        <option value="IED">
+                          IED (Intelligent Electronic Device)
+                        </option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="NDD">NDD (Network Device)</option>
+                        <option value="EDR">EDR (Embedded Device)</option>
+                        <option value="HDR">HDR (Host Device)</option>
+                        <option value="SW">SW (Software Application)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <span
+                {selectedFrameworkId === "cfw_iec_62443" && (
+                  <div
                     style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
                     }}
                   >
-                    Target SL:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={slLevelFilter}
-                    onChange={(e) => setSlLevelFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All Security Levels</option>
-                    <option value="SL1">
-                      SL-1 (Protection against casual violation)
-                    </option>
-                    <option value="SL2">
-                      SL-2 (Protection against simple intentional violation)
-                    </option>
-                    <option value="SL3">
-                      SL-3 (Protection against sophisticated violation)
-                    </option>
-                    <option value="SL4">
-                      SL-4 (Protection against high motivation state actors)
-                    </option>
-                  </select>
-                </div>
+                    <span
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      Target SL:
+                    </span>
+                    <select
+                      className="cw-pagination-select"
+                      value={slLevelFilter}
+                      onChange={(e) => setSlLevelFilter(e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: "6px",
+                        fontSize: "0.85rem",
+                        background: "var(--bg-white)",
+                        border: "1px solid var(--border)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <option value="all">All Security Levels</option>
+                      <option value="SL1">
+                        SL-1 (Protection against casual violation)
+                      </option>
+                      <option value="SL2">
+                        SL-2 (Protection against simple intentional violation)
+                      </option>
+                      <option value="SL3">
+                        SL-3 (Protection against sophisticated violation)
+                      </option>
+                      <option value="SL4">
+                        SL-4 (Protection against high motivation state actors)
+                      </option>
+                    </select>
+                  </div>
+                )}
               </>
             )}
             {selectedFrameworkId === "cfw_nist_800_53_r5" && (
@@ -1841,6 +1910,50 @@ export default function ComplianceWorkspace() {
                   }
                 >
                   Download NIST 800-53 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/iec_62443?fmt=pdf${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}${slLevelFilter !== "all" ? `&sl_level=${slLevelFilter}` : ""}`,
+                      "iec_62443_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download IEC 62443 PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/iec_62443?fmt=docx${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}${slLevelFilter !== "all" ? `&sl_level=${slLevelFilter}` : ""}`,
+                      "iec_62443_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download IEC 62443 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nist_800_82?fmt=pdf${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
+                      "nist_800_82_r3_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download NIST 800-82 PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nist_800_82?fmt=docx${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
+                      "nist_800_82_r3_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download NIST 800-82 Word
                 </button>
                 <button
                   className="db-btn db-btn--ghost"

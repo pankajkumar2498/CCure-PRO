@@ -197,5 +197,8 @@ if __name__ == "__main__":
                 seed_framework_and_controls(db, dpdp_path)
             if os.path.exists(gdpr_path):
                 seed_framework_and_controls(db, gdpr_path)
+            nist82_path = os.path.join(base_dir, "nist_800_82_r3_controls_seed.json")
+            if os.path.exists(nist82_path):
+                seed_framework_and_controls(db, nist82_path)
     finally:
         db.close()

@@ -114,7 +114,7 @@ class ComplianceControl(Base):
             "framework_id", "control_number", name="uq_framework_control_number"
         ),
         CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12')",
+            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12', 'DPDP_CN', 'DPDP_PL', 'DPDP_DR', 'DPDP_BN', 'DPDP_PS', 'DPDP_GV', 'GDPR_LT', 'GDPR_PL', 'GDPR_DM', 'GDPR_AY', 'GDPR_SL', 'GDPR_IC', 'GDPR_AC')",
             name="ck_control_theme",
         ),
         CheckConstraint(
@@ -133,7 +133,7 @@ class ComplianceControl(Base):
     control_number = Column(String(50), nullable=False)  # e.g. "8.24"
     theme = Column(
         String(20), nullable=False
-    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..CIS_18, PCI_01..PCI_12
+    )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..18, PCI_01..12, DPDP_*, GDPR_*
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     scannability = Column(String(20), nullable=False)  # auto, semi_auto, manual
@@ -144,6 +144,10 @@ class ComplianceControl(Base):
     saq_profiles = Column(
         JSONB, nullable=True, default=list
     )  # PCI-DSS SAQ profile tags
+    sdf_scope = Column(String(50), nullable=True)  # DPDP Act 2023 SDF scoping filter
+    privacy_role = Column(
+        String(50), nullable=True
+    )  # GDPR Data Controller / Data Processor scoping filter
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="controls")
@@ -464,6 +468,10 @@ class ComplianceScanRun(Base):
     finished_at = Column(TIMESTAMPTZ, nullable=True)
     is_finalized = Column(Boolean, nullable=False, default=False)
     cde_scope = Column(String(50), nullable=True)  # PCI-DSS CDE scoping filter
+    sdf_scope = Column(String(50), nullable=True)  # DPDP Act 2023 SDF scoping filter
+    privacy_role = Column(
+        String(50), nullable=True
+    )  # GDPR Data Controller / Data Processor scoping filter
 
     # Relationships
     framework = relationship("ComplianceFramework", back_populates="scan_runs")
@@ -534,6 +542,10 @@ class ComplianceFinding(Base):
     last_seen = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
     reviewed_at = Column(TIMESTAMPTZ, nullable=True)
     cde_scope = Column(String(50), nullable=True)  # PCI-DSS CDE scoping filter
+    sdf_scope = Column(String(50), nullable=True)  # DPDP Act 2023 SDF scoping filter
+    privacy_role = Column(
+        String(50), nullable=True
+    )  # GDPR Data Controller / Data Processor scoping filter
 
     # Relationships
     scan_run = relationship("ComplianceScanRun", back_populates="findings")

@@ -130,15 +130,19 @@
 
 .quad-item {
   display: grid;
-  grid-template-columns: 80px 1fr 60px;
+  grid-template-columns: 220px 1fr 52px;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .quad-label {
   font-weight: 600;
   color: var(--text-mid);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .progress-container {

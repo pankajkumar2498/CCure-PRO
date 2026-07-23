@@ -1,0 +1,189 @@
+{
+  "framework": {
+    "code": "DPDP_2023",
+    "name": "Digital Personal Data Protection Act 2023 (DPDP)",
+    "version": "2023",
+    "description": "Indian statutory framework establishing obligations for Data Fiduciaries, Data Principals' rights, consent management, data breach notifications to DPBI, and stringent penalties for non-compliance."
+  },
+  "controls": [
+    {
+      "id": "DPDP_1_1",
+      "theme": "DPDP_CN",
+      "title": "Itemized Consent Notice & Purpose Specification",
+      "description": "Data Fiduciaries must give clear, itemized notice in plain language (and scheduled languages) detailing personal data collected and specified purpose before or at consent request.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.OC-01", "CIS:17.1"],
+      "evidence_checklist": ["Itemized Privacy Notice Document", "Multi-Language Support Log", "Consent UI Screenshot"],
+      "tags": ["DPDP_CN", "Consent_Notice", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_1_2",
+      "theme": "DPDP_CN",
+      "title": "Free and Explicit Consent Revocation Mechanism",
+      "description": "Data Principals must be provided an easy, accessible mechanism to withdraw consent at any time with ease comparable to giving consent.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "api_response",
+      "crosswalk": ["ISO27001:A.5.34", "CIS:17.2"],
+      "evidence_checklist": ["Consent Revocation Portal API Log", "User Opt-Out Preference Ledger"],
+      "tags": ["DPDP_CN", "Consent_Revocation", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_1_3",
+      "theme": "DPDP_CN",
+      "title": "Verifiable Parental Consent for Minors & Persons with Disabilities",
+      "description": "Processing personal data of children or persons with disabilities requires verifiable parental/guardian consent without tracking or targeted ads.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.34"],
+      "evidence_checklist": ["Parental Verification Protocol Documentation", "Ad Targeting Exemption Configuration"],
+      "tags": ["DPDP_CN", "Parental_Consent", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_2_1",
+      "theme": "DPDP_PL",
+      "title": "Strict Data Minimization & Collection Scoping",
+      "description": "Personal data collection must be restricted strictly to data necessary for specified and lawful purposes.",
+      "scannability": "auto",
+      "scan_module_hint": "web_vulnerability_audit",
+      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-01", "CIS:13.1"],
+      "evidence_checklist": ["Form Data Schema Audits", "Data Flow Inventory"],
+      "tags": ["DPDP_PL", "Data_Minimization", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_2_2",
+      "theme": "DPDP_PL",
+      "title": "Mandatory Data Erasure & Retention Purging",
+      "description": "Data Fiduciaries must erase personal data as soon as consent is withdrawn or specified purpose is served, unless retention is mandated by law.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-02", "CIS:13.2"],
+      "evidence_checklist": ["Automated DB Purge Job Logs", "Data Retention Policy Schedule"],
+      "tags": ["DPDP_PL", "Data_Erasure", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_3_1",
+      "theme": "DPDP_DR",
+      "title": "Data Principal Right to Summary of Data & Processing Entities",
+      "description": "Data Principals have the right to request a summary of personal data being processed and identity of all Data Fiduciaries/Processors shared with.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "api_response",
+      "crosswalk": ["ISO27001:A.5.34"],
+      "evidence_checklist": ["Subject Access Request (SAR) Portal Logs", "Processor Sharing Ledger"],
+      "tags": ["DPDP_DR", "Principal_Rights", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_3_2",
+      "theme": "DPDP_DR",
+      "title": "Right to Correction, Completion, and Updating of PII",
+      "description": "Data Fiduciaries must maintain accurate personal data and provide self-service or assisted mechanisms for data principals to correct or update records.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "api_response",
+      "crosswalk": ["ISO27001:A.5.34"],
+      "evidence_checklist": ["Profile Update Audit Logs", "Data Accuracy Verification Logs"],
+      "tags": ["DPDP_DR", "Data_Correction", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_3_3",
+      "theme": "DPDP_DR",
+      "title": "Grievance Redressal Mechanism & SLA Enforcement",
+      "description": "Data Fiduciaries must establish an accessible grievance redressal mechanism with published contact details and defined resolution timelines.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.OC-01"],
+      "evidence_checklist": ["Grievance Ticketing System SLA Reports", "Published DPO/Grievance Officer Contact Details"],
+      "tags": ["DPDP_DR", "Grievance_Redressal", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_4_1",
+      "theme": "DPDP_BN",
+      "title": "Mandatory Data Breach Notification to DPBI & Data Principals",
+      "description": "In the event of a personal data breach, Data Fiduciaries must notify the Data Protection Board of India (DPBI) and affected Data Principals without delay.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.24", "NIST:RS.MA-01", "CIS:17.1"],
+      "evidence_checklist": ["DPBI Incident Escalation Playbook", "Breach Notification System Templates"],
+      "tags": ["DPDP_BN", "Breach_Notification", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_5_1",
+      "theme": "DPDP_PS",
+      "title": "Encryption of PII at Rest and in Transit",
+      "description": "Technical and organizational measures must enforce AES-256 encryption for PII stored at rest and TLS 1.2+ for PII transmitted over networks.",
+      "scannability": "auto",
+      "scan_module_hint": "web_vulnerability_audit",
+      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-01", "CIS:3.11"],
+      "evidence_checklist": ["KMS Master Encryption Policy", "TLS Network Cipher Audit Report"],
+      "tags": ["DPDP_PS", "PII_Encryption", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_5_2",
+      "theme": "DPDP_PS",
+      "title": "Access Control & Role-Based Least Privilege for PII Assets",
+      "description": "Access to databases and cloud storage containing PII must be restricted strictly via Role-Based Access Control (RBAC) and Multi-Factor Authentication (MFA).",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.15", "NIST:PR.AC-01", "CIS:6.1"],
+      "evidence_checklist": ["IAM Role Policy Dump", "MFA Enforcement Logs"],
+      "tags": ["DPDP_PS", "PII_Access_Control", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_5_3",
+      "theme": "DPDP_PS",
+      "title": "PII Audit Logging & Tamper-Evident Trail Preservation",
+      "description": "All access, modification, and deletion events involving personal data must generate tamper-evident audit logs preserved for a minimum retention window.",
+      "scannability": "auto",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.8.15", "NIST:DE.CM-01", "CIS:8.2"],
+      "evidence_checklist": ["SIEM Central Audit Configuration", "Log Integrity Check Hash Logs"],
+      "tags": ["DPDP_PS", "Audit_Logging", "general_fiduciary"]
+    },
+    {
+      "id": "DPDP_6_1",
+      "theme": "DPDP_GV",
+      "title": "Data Protection Officer (DPO) Designation & Statutory Governance",
+      "description": "Significant Data Fiduciaries must appoint a resident Data Protection Officer based in India who reports directly to executive management.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.2", "NIST:GV.PO-01"],
+      "evidence_checklist": ["DPO Appointment Letter", "Board Oversight Privacy Minutes"],
+      "tags": ["DPDP_GV", "DPO_Designation", "sdf_mandatory"],
+      "sdf_scope": "sdf_mandatory"
+    },
+    {
+      "id": "DPDP_6_2",
+      "theme": "DPDP_GV",
+      "title": "Periodic Data Protection Audit & Independent Auditor Review",
+      "description": "Significant Data Fiduciaries must undergo independent periodic data protection audits by certified privacy auditors.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.35", "NIST:GV.OV-01"],
+      "evidence_checklist": ["Third-Party Privacy Audit Report", "Management Remediation Action Plan"],
+      "tags": ["DPDP_GV", "SDF_Audit", "sdf_mandatory"],
+      "sdf_scope": "sdf_mandatory"
+    },
+    {
+      "id": "DPDP_6_3",
+      "theme": "DPDP_GV",
+      "title": "Data Protection Impact Assessment (DPIA) Execution",
+      "description": "Significant Data Fiduciaries must carry out DPIA before deploying high-risk data processing activities or algorithm modifications.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.RA-01"],
+      "evidence_checklist": ["DPIA Assessment Artifacts", "Risk Mitigation Sign-off Ledger"],
+      "tags": ["DPDP_GV", "DPIA", "sdf_mandatory"],
+      "sdf_scope": "sdf_mandatory"
+    },
+    {
+      "id": "DPDP_6_4",
+      "theme": "DPDP_GV",
+      "title": "Third-Party Data Processor Due Diligence & Contractual Binding",
+      "description": "Personal data sharing with third-party Data Processors must occur solely under valid Data Processing Agreements (DPA) enforcing security safeguards.",
+      "scannability": "manual",
+      "scan_module_hint": "offline_configuration",
+      "crosswalk": ["ISO27001:A.5.19", "NIST:GV.SC-01", "CIS:15.1"],
+      "evidence_checklist": ["Vendor DPA Repository", "Processor Security Assessment Records"],
+      "tags": ["DPDP_GV", "Processor_DPA", "general_fiduciary"]
+    }
+  ]
+}

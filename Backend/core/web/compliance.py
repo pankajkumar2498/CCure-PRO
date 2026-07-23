@@ -73,6 +73,28 @@ SOC2_MAP: Dict[str, List[str]] = {
     "broken_auth": ["SOC2-CC6.1", "SOC2-CC6.3"],
 }
 
+# ── DPDP Act 2023 Mapping ────────────────────────────────────────────────────
+
+DPDP_MAP: Dict[str, List[str]] = {
+    "sqli": ["DPDP-SEC-5.1", "DPDP-SEC-5.3"],
+    "xss": ["DPDP-SEC-5.1"],
+    "tls_issue": ["DPDP-SEC-5.1"],
+    "default_creds": ["DPDP-SEC-5.2"],
+    "information_disclosure": ["DPDP-PRIV-1.1", "DPDP-PRIV-2.1"],
+    "broken_auth": ["DPDP-SEC-5.2"],
+}
+
+# ── GDPR Mapping ─────────────────────────────────────────────────────────────
+
+GDPR_MAP: Dict[str, List[str]] = {
+    "sqli": ["GDPR-Art-32", "GDPR-Art-5.1.f"],
+    "xss": ["GDPR-Art-32"],
+    "tls_issue": ["GDPR-Art-32.1.a"],
+    "default_creds": ["GDPR-Art-32.1.b"],
+    "information_disclosure": ["GDPR-Art-5.1.a", "GDPR-Art-13"],
+    "broken_auth": ["GDPR-Art-32.1.b"],
+}
+
 
 def map_compliance(finding_type: str) -> Dict:
     """
@@ -84,12 +106,18 @@ def map_compliance(finding_type: str) -> Dict:
     Returns:
         {
             "owasp": "A03:2021 – Injection",
-            "tags": ["OWASP-A03", "PCI-DSS-6.5.1", "SOC2-CC6.1"]
+            "pci_dss": [...],
+            "soc2": [...],
+            "dpdp": [...],
+            "gdpr": [...],
+            "tags": ["OWASP-A03", "PCI-DSS-6.5.1", "SOC2-CC6.1", "DPDP-SEC-5.1", "GDPR-Art-32"]
         }
     """
     owasp = OWASP_MAP.get(finding_type, "")
     pci = PCI_DSS_MAP.get(finding_type, [])
     soc2 = SOC2_MAP.get(finding_type, [])
+    dpdp = DPDP_MAP.get(finding_type, [])
+    gdpr = GDPR_MAP.get(finding_type, [])
 
     tags: List[str] = []
 
@@ -100,11 +128,15 @@ def map_compliance(finding_type: str) -> Dict:
 
     tags.extend(pci)
     tags.extend(soc2)
+    tags.extend(dpdp)
+    tags.extend(gdpr)
 
     return {
         "owasp": owasp,
         "pci_dss": pci,
         "soc2": soc2,
+        "dpdp": dpdp,
+        "gdpr": gdpr,
         "tags": tags,
     }
 

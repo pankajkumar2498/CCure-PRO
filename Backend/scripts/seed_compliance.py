@@ -116,6 +116,8 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
                 evidence_checklist=evidence_checklist,
                 tags=tags,
                 saq_profiles=ctrl.get("saq_profiles", []),
+                sdf_scope=ctrl.get("sdf_scope"),
+                privacy_role=ctrl.get("privacy_role"),
             )
             db.add(control)
             controls_seeded += 1
@@ -129,6 +131,8 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             control.evidence_checklist = evidence_checklist
             control.tags = tags
             control.saq_profiles = ctrl.get("saq_profiles", [])
+            control.sdf_scope = ctrl.get("sdf_scope")
+            control.privacy_role = ctrl.get("privacy_role")
             controls_seeded += 1
 
     db.commit()
@@ -161,6 +165,8 @@ if __name__ == "__main__":
             soc2_path = os.path.join(base_dir, "soc2_type2_controls_seed.json")
             certin_path = os.path.join(base_dir, "cert_in_2022_controls_seed.json")
             pci_path = os.path.join(base_dir, "pci_dss_v4_controls_seed.json")
+            dpdp_path = os.path.join(base_dir, "dpdp_2023_controls_seed.json")
+            gdpr_path = os.path.join(base_dir, "gdpr_controls_seed.json")
             if os.path.exists(iso_path):
                 seed_framework_and_controls(db, iso_path)
             if os.path.exists(nist_path):
@@ -173,5 +179,9 @@ if __name__ == "__main__":
                 seed_framework_and_controls(db, certin_path)
             if os.path.exists(pci_path):
                 seed_framework_and_controls(db, pci_path)
+            if os.path.exists(dpdp_path):
+                seed_framework_and_controls(db, dpdp_path)
+            if os.path.exists(gdpr_path):
+                seed_framework_and_controls(db, gdpr_path)
     finally:
         db.close()

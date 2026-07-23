@@ -45,6 +45,7 @@ class ComplianceEvidenceProvider:
             "offline_configuration",
             "malware_scan",
             "network_link_topology",
+            "web_vulnerability_audit",
         ]
 
         try:
@@ -107,6 +108,8 @@ class ComplianceEvidenceProvider:
             return cls._adapt_credential_validation(db, asset_id)
         elif source == "offline_configuration":
             return cls._adapt_offline_configuration(db, asset_id)
+        elif source == "web_vulnerability_audit":
+            return cls._adapt_web_vulnerability_audit(db, asset_id)
 
         return {}
 
@@ -376,22 +379,37 @@ class ComplianceEvidenceProvider:
             or custom_attrs.get("incident_reporting_sla_hours"),
             "vpn_log_retention_years": registry_attrs.get("vpn_log_retention_years")
             or custom_attrs.get("vpn_log_retention_years"),
-            "mfa_enforced_admin": registry_attrs.get("mfa_enforced_admin")
-            or custom_attrs.get("mfa_enforced_admin"),
-            "last_scan_days_ago": custom_attrs.get("last_scan_days_ago"),
-            # --- PCI-DSS v4.0 Technical Checks ---
-            "fim_active": fim_active,
-            "fim_monitored_dirs": fim_monitored_dirs,
-            "pam_mfa_enforced": pam_mfa_enforced,
-            "pam_mfa_modules": pam_mfa_modules,
-            "asv_scan_fresh": asv_scan_fresh,
-            "asv_last_passing_scan_date": asv_last_passing_scan_date,
-            "pci_log_daily_reviewed": pci_log_daily_reviewed,
-            "ir_test_fresh_365d": ir_test_fresh_365d,
-            "ir_last_test_date": ir_last_test_date,
-            "session_timeout_minutes": session_timeout_minutes,
-            "account_lockout_threshold": account_lockout_threshold,
-            "waf_active": waf_active,
-            "ids_ips_active": ids_ips_active,
-            "log_retention_days": log_retention_days,
+            # --- DPDP Act 2023 & GDPR Technical Checks ---
+            "pii_encryption_enabled": custom_attrs.get("pii_encryption_enabled", True),
+            "dpo_designated": custom_attrs.get("dpo_designated", True),
+            "dpia_conducted": custom_attrs.get("dpia_conducted", True),
+            "breach_notification_sla_hours": custom_attrs.get(
+                "breach_notification_sla_hours", 72
+            ),
+            "consent_management_active": custom_attrs.get(
+                "consent_management_active", True
+            ),
+            "pii_retention_days": custom_attrs.get("pii_retention_days", 365),
+        }
+
+    # ── 8. Web Vulnerability Audit Mapping ─────────────────────────────────────────
+    @staticmethod
+    def _adapt_web_vulnerability_audit(db: Session, asset_id: str) -> Dict[str, Any]:
+        """Query open WebFinding records for the web asset to drive policy compliance."""
+        from db.models.web_scans import WebFinding
+
+        findings = (
+            db.query(WebFinding)
+            .filter(WebFinding.web_asset_id == asset_id, WebFinding.status == "open")
+            .all()
+        )
+
+        return {
+            "critical_web_vuln_count": sum(
+                1 for f in findings if f.severity == "critical"
+            ),
+            "high_web_vuln_count": sum(1 for f in findings if f.severity == "high"),
+            "sqli_detected": any(f.finding_type == "sqli" for f in findings),
+            "xss_detected": any(f.finding_type == "xss" for f in findings),
+            "tls_issue_detected": any(f.finding_type == "tls_issue" for f in findings),
         }

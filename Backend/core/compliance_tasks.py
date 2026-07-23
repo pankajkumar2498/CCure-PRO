@@ -401,12 +401,25 @@ def _save_finding(
 
     target_status = "exception" if waiver else status
 
-    # Query cde_scope from the scan run
+    # Query cde_scope, sdf_scope, and privacy_role
     cde_scope = None
+    sdf_scope = None
+    privacy_role = None
     if run_id:
         run = db.query(ComplianceScanRun).filter(ComplianceScanRun.id == run_id).first()
         if run:
             cde_scope = run.cde_scope
+            sdf_scope = run.sdf_scope
+            privacy_role = run.privacy_role
+
+    ctrl_obj = (
+        db.query(ComplianceControl).filter(ComplianceControl.id == control_id).first()
+    )
+    if ctrl_obj:
+        if not sdf_scope and ctrl_obj.sdf_scope:
+            sdf_scope = ctrl_obj.sdf_scope
+        if not privacy_role and ctrl_obj.privacy_role:
+            privacy_role = ctrl_obj.privacy_role
 
     from sqlalchemy.exc import IntegrityError
 
@@ -429,6 +442,8 @@ def _save_finding(
                     first_seen=now,
                     last_seen=now,
                     cde_scope=cde_scope,
+                    sdf_scope=sdf_scope,
+                    privacy_role=privacy_role,
                 )
                 db.add(finding)
                 had_transition = True
@@ -443,6 +458,8 @@ def _save_finding(
                 finding.last_seen = now
                 finding.evidence = evidence
                 finding.cde_scope = cde_scope
+                finding.sdf_scope = sdf_scope
+                finding.privacy_role = privacy_role
 
             if had_transition:
                 history = ComplianceFindingHistory(

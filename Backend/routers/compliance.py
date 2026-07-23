@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from pydantic import BaseModel, Field, SecretStr
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
@@ -1638,6 +1638,8 @@ def get_dashboard_summary(
     saq_profile: Optional[str] = Query(None),
     cde_scope: Optional[str] = Query(None),
     cde_scope_only: Optional[bool] = Query(False),
+    sdf_scope: Optional[str] = Query(None),
+    privacy_role: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1667,7 +1669,13 @@ def get_dashboard_summary(
         )
         target_fws = [r[0] for r in enabled_fws_list]
 
-    if saq_profile or cde_scope or cde_scope_only:
+    if (
+        saq_profile
+        or cde_scope
+        or cde_scope_only
+        or (sdf_scope and sdf_scope != "all")
+        or (privacy_role and privacy_role != "all")
+    ):
         # Dynamically calculate overall scores and quadrant scores based on the filters
         control_query = db.query(ComplianceControl).filter(
             ComplianceControl.framework_id.in_(target_fws)
@@ -1675,6 +1683,16 @@ def get_dashboard_summary(
         if saq_profile:
             control_query = control_query.filter(
                 ComplianceControl.saq_profiles.contains([saq_profile])
+            )
+        # Apply DPDP SDF scope filter on controls
+        if sdf_scope and sdf_scope != "all":
+            control_query = control_query.filter(
+                ComplianceControl.sdf_scope == sdf_scope
+            )
+        # Apply GDPR privacy role filter on controls
+        if privacy_role and privacy_role != "all":
+            control_query = control_query.filter(
+                ComplianceControl.privacy_role == privacy_role
             )
 
         controls = control_query.all()
@@ -1781,6 +1799,24 @@ def get_dashboard_summary(
     else:
         target_fws = enabled_fw_subquery
 
+    # Resolve default themes directly from ComplianceControl catalog for target frameworks
+    ctrl_themes_rows = (
+        db.query(ComplianceControl.theme)
+        .filter(ComplianceControl.framework_id.in_(target_fws))
+        .distinct()
+        .all()
+    )
+    default_themes = [t[0] for t in ctrl_themes_rows if t[0]]
+    if not default_themes:
+        default_themes = ["ORG", "PPL", "PHY", "TECH"]
+
+    total_controls_count = (
+        db.query(func.count(ComplianceControl.id))
+        .filter(ComplianceControl.framework_id.in_(target_fws))
+        .scalar()
+        or 0
+    )
+
     scores = (
         db.query(ComplianceScore)
         .filter(
@@ -1793,13 +1829,18 @@ def get_dashboard_summary(
         .all()
     )
 
-    # Default mockup if no scores are populated yet
+    # Default baseline if no scores are populated yet for target framework
     if not scores:
         return {
             "score_pct": 0.00,
             "weighted_score_pct": 0.00,
-            "quadrant_scores": {"ORG": 0.0, "PPL": 0.0, "PHY": 0.0, "TECH": 0.0},
-            "kpis": {"total": 93, "passed": 0, "failed": 0, "exceptions": 0},
+            "quadrant_scores": {t: 0.0 for t in default_themes},
+            "kpis": {
+                "total": total_controls_count,
+                "passed": 0,
+                "failed": 0,
+                "exceptions": 0,
+            },
         }
 
     # Aggregate average score percentage across enabled frameworks
@@ -1820,7 +1861,7 @@ def get_dashboard_summary(
     )
     theme_codes = [t[0] for t in active_themes if t[0]]
     if not theme_codes:
-        theme_codes = ["ORG", "PPL", "PHY", "TECH"]
+        theme_codes = default_themes
 
     quadrants = {q_code: 0.0 for q_code in theme_codes}
     for q_code in theme_codes:
@@ -2315,11 +2356,14 @@ def get_compliance_gap_analysis(
             has_pass = False
             has_fail = False
             for cross_num in mapped_ref:
-                norm_num = normalize(cross_num)
+                clean_cross_num = (
+                    cross_num.split(":", 1)[1] if ":" in cross_num else cross_num
+                )
+                norm_num = normalize(clean_cross_num)
                 source_ctrl_id = source_num_to_id.get(norm_num)
                 if not source_ctrl_id:
                     clean_raw = (
-                        cross_num.lower()
+                        clean_cross_num.lower()
                         .replace("a.", "")
                         .replace(".", "_")
                         .replace("-", "_")
@@ -2859,6 +2903,261 @@ def download_pci_dss_v4_report(
         )
         media = "application/pdf"
         filename = f"pci_dss_v4_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _generate_privacy_docx(
+    controls: list,
+    findings_map: dict,
+    title: str,
+    subtitle: str,
+    scope_label: str = "",
+) -> io.BytesIO:
+    """Generates Word report for privacy frameworks (DPDP / GDPR)."""
+    doc = Document()
+    doc.add_heading(title, level=1)
+    doc.add_paragraph(subtitle)
+    if scope_label:
+        doc.add_paragraph(f"Scope Filter: {scope_label}")
+
+    table = doc.add_table(rows=1, cols=5)
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = "Control Number"
+    hdr_cells[1].text = "Title"
+    hdr_cells[2].text = "Theme / Principle"
+    hdr_cells[3].text = "Scannability"
+    hdr_cells[4].text = "Verdict"
+
+    for c in controls:
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(c.control_number or c.id)
+        row_cells[1].text = str(c.title)
+        row_cells[2].text = str(c.theme)
+        row_cells[3].text = str(c.scannability).upper()
+        f = findings_map.get(c.id)
+        row_cells[4].text = str(f.status).upper() if f else "PENDING"
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_privacy_pdf(
+    controls: list,
+    findings_map: dict,
+    title: str,
+    subtitle: str,
+    primary_color: str = "#003366",
+    scope_label: str = "",
+) -> io.BytesIO:
+    """Generates PDF document for privacy frameworks with custom brand color palette."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TitleStyle",
+        parent=styles["Title"],
+        fontSize=16,
+        textColor=colors.HexColor(primary_color),
+    )
+    cell_style = ParagraphStyle("CellStyle", parent=styles["Normal"], fontSize=8)
+
+    story = [
+        Paragraph(title, title_style),
+        Paragraph(subtitle, styles["Normal"]),
+    ]
+    if scope_label:
+        story.append(Paragraph(f"<b>Scope Filter:</b> {scope_label}", styles["Normal"]))
+    story.append(Spacer(1, 10 * mm))
+
+    table_data = [
+        [
+            Paragraph("<b>Control ID</b>", cell_style),
+            Paragraph("<b>Title</b>", cell_style),
+            Paragraph("<b>Theme</b>", cell_style),
+            Paragraph("<b>Scannability</b>", cell_style),
+            Paragraph("<b>Verdict</b>", cell_style),
+        ]
+    ]
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        status_text = f.status.upper() if f else "PENDING"
+        table_data.append(
+            [
+                Paragraph(str(c.control_number or c.id), cell_style),
+                Paragraph(str(c.title), cell_style),
+                Paragraph(str(c.theme), cell_style),
+                Paragraph(str(c.scannability).upper(), cell_style),
+                Paragraph(f"<b>{status_text}</b>", cell_style),
+            ]
+        )
+
+    t = Table(table_data, colWidths=[25 * mm, 75 * mm, 30 * mm, 25 * mm, 25 * mm])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(primary_color)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(t)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/dpdp_2023")
+def download_dpdp_2023_report(
+    fmt: str = "pdf",
+    sdf_scope: Optional[str] = Query(
+        None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the DPDP Act 2023 Compliance Assessment Report."""
+    fw_id = "cfw_dpdp_2023"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if sdf_scope and sdf_scope != "all":
+        query = query.filter(ComplianceControl.sdf_scope == sdf_scope)
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "DPDP Act 2023 Digital Personal Data Protection Audit Report"
+    report_sub = (
+        f"Data Protection Board of India Compliance Ledger (Tenant: {user.org_id[:8]})"
+    )
+    scope_label = f"SDF Scope: {sdf_scope.upper()}" if sdf_scope else "All Controls"
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_privacy_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"dpdp_2023_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_privacy_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            primary_color="#d97706",
+            scope_label=scope_label,
+        )
+        media = "application/pdf"
+        filename = f"dpdp_2023_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/reports/gdpr")
+def download_gdpr_report(
+    fmt: str = "pdf",
+    privacy_role: Optional[str] = Query(
+        None, description="Filter by Privacy Role: controller, processor, both"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the EU GDPR Compliance Assessment Report."""
+    fw_id = "cfw_gdpr"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if privacy_role and privacy_role != "all":
+        query = query.filter(ComplianceControl.privacy_role.in_([privacy_role, "both"]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "EU GDPR 2016/679 Compliance Assessment Audit Report"
+    report_sub = (
+        f"European Data Protection Board Assessment Ledger (Tenant: {user.org_id[:8]})"
+    )
+    scope_label = (
+        f"Privacy Role: {privacy_role.upper()}" if privacy_role else "All Roles"
+    )
+
+    if fmt.lower() == "docx" and Document is not None:
+        buffer = _generate_privacy_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"gdpr_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_privacy_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            primary_color="#1d4ed8",
+            scope_label=scope_label,
+        )
+        media = "application/pdf"
+        filename = f"gdpr_report_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,

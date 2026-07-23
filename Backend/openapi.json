@@ -8373,6 +8373,71 @@
         ]
       }
     },
+    "/compliance/reports/dpdp_2023": {
+      "get": {
+        "description": "Generates and downloads the DPDP Act 2023 Compliance Assessment Report.",
+        "operationId": "download_dpdp_2023_report_compliance_reports_dpdp_2023_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by SDF scope: sdf_mandatory, general_fiduciary",
+            "in": "query",
+            "name": "sdf_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by SDF scope: sdf_mandatory, general_fiduciary",
+              "title": "Sdf Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Dpdp 2023 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/executive": {
       "get": {
         "description": "Generates the executive management compliance posture report PDF.",
@@ -8393,6 +8458,71 @@
           }
         ],
         "summary": "Download Executive Compliance Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/compliance/reports/gdpr": {
+      "get": {
+        "description": "Generates and downloads the EU GDPR Compliance Assessment Report.",
+        "operationId": "download_gdpr_report_compliance_reports_gdpr_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by Privacy Role: controller, processor, both",
+            "in": "query",
+            "name": "privacy_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by Privacy Role: controller, processor, both",
+              "title": "Privacy Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Gdpr Report",
         "tags": [
           "Compliance"
         ]
@@ -8835,6 +8965,38 @@
               ],
               "default": false,
               "title": "Cde Scope Only"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sdf_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sdf Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "privacy_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Privacy Role"
             }
           }
         ],

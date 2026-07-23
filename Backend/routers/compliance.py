@@ -636,6 +636,9 @@ def list_findings(
     zero_trust_only: Optional[bool] = Query(False),
     sdf_scope: Optional[str] = Query(None),
     privacy_role: Optional[str] = Query(None),
+    purdue_level: Optional[str] = Query(None),
+    component_type: Optional[str] = Query(None),
+    sl_level: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -698,6 +701,15 @@ def list_findings(
 
     if privacy_role and privacy_role != "all":
         q = q.filter(ComplianceControl.privacy_role.in_([privacy_role, "both"]))
+
+    if purdue_level and purdue_level != "all":
+        q = q.filter(ComplianceControl.tags.contains([purdue_level.upper()]))
+
+    if component_type and component_type != "all":
+        q = q.filter(ComplianceControl.tags.contains([component_type.upper()]))
+
+    if sl_level and sl_level != "all":
+        q = q.filter(ComplianceControl.tags.contains([sl_level.upper()]))
 
     if cde_scope:
         q = q.filter(ComplianceFinding.cde_scope == cde_scope)
@@ -1662,6 +1674,9 @@ def get_dashboard_summary(
     zero_trust_only: Optional[bool] = Query(False),
     sdf_scope: Optional[str] = Query(None),
     privacy_role: Optional[str] = Query(None),
+    purdue_level: Optional[str] = Query(None),
+    component_type: Optional[str] = Query(None),
+    sl_level: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1699,6 +1714,9 @@ def get_dashboard_summary(
         or zero_trust_only
         or (sdf_scope and sdf_scope != "all")
         or (privacy_role and privacy_role != "all")
+        or (purdue_level and purdue_level != "all")
+        or (component_type and component_type != "all")
+        or (sl_level and sl_level != "all")
     ):
         # Dynamically calculate overall scores and quadrant scores based on the filters
         control_query = db.query(ComplianceControl).filter(
@@ -1725,6 +1743,18 @@ def get_dashboard_summary(
         if privacy_role and privacy_role != "all":
             control_query = control_query.filter(
                 ComplianceControl.privacy_role.in_([privacy_role, "both"])
+            )
+        if purdue_level and purdue_level != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([purdue_level.upper()])
+            )
+        if component_type and component_type != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([component_type.upper()])
+            )
+        if sl_level and sl_level != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([sl_level.upper()])
             )
 
         controls = control_query.all()
@@ -3462,6 +3492,299 @@ def download_nist_800_53_r5_report(
         )
         media = "application/pdf"
         filename = f"nist_800_53_r5_report_{user.org_id[:4]}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IEC 62443 Executive Audit Report Generators
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _generate_iec_62443_pdf(
+    controls,
+    findings_map,
+    title="IEC 62443 Industrial Cybersecurity Audit Report",
+    subtitle="IACS System Security & Security Level Readiness Ledger",
+    scope_label="All Security Levels (SL1–SL4)",
+):
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle(
+        "IECTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#F43F5E"),
+        alignment=0,
+    )
+    sub_style = ParagraphStyle(
+        "IECSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#6B7280"),
+    )
+    badge_style = ParagraphStyle(
+        "IECBadge",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(subtitle, sub_style))
+    if scope_label:
+        story.append(Spacer(1, 4))
+        story.append(
+            Paragraph(f"<b>Scope Baseline:</b> {scope_label}", styles["Normal"])
+        )
+    story.append(Spacer(1, 14))
+
+    table_data = [
+        [
+            "Requirement ID",
+            "Control Title",
+            "Theme",
+            "Purdue Level",
+            "Target SL",
+            "Verdict",
+        ]
+    ]
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        verdict_color = (
+            colors.HexColor("#16A34A")
+            if verdict == "PASS"
+            else (
+                colors.HexColor("#DC2626")
+                if verdict == "FAIL"
+                else colors.HexColor("#6B7280")
+            )
+        )
+
+        tags = c.tags or []
+        sl_str = next((t for t in tags if t.startswith("SL")), "SL1-SL4")
+        purdue_str = (
+            ", ".join([t for t in tags if t.startswith("L") and len(t) <= 4])
+            or "L1-L3.5"
+        )
+
+        v_cell = Table(
+            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+        )
+        v_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), verdict_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        table_data.append(
+            [
+                Paragraph(f"<b>{c.control_number}</b>", styles["Normal"]),
+                Paragraph(c.title, styles["Normal"]),
+                Paragraph(c.theme or "N/A", styles["Normal"]),
+                Paragraph(purdue_str, styles["Normal"]),
+                Paragraph(sl_str, styles["Normal"]),
+                v_cell,
+            ]
+        )
+
+    t = Table(table_data, colWidths=[75, 185, 75, 75, 60, 60])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F43F5E")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_iec_62443_docx(
+    controls,
+    findings_map,
+    title="IEC 62443 Industrial Cybersecurity Audit Report",
+    subtitle="IACS System Security & Security Level Readiness Ledger",
+    scope_label="All Security Levels (SL1–SL4)",
+):
+    from io import BytesIO
+
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+    except ImportError:
+        return BytesIO(b"python-docx is not installed.")
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    p_sub = doc.add_paragraph(subtitle)
+    if scope_label:
+        p_scope = doc.add_paragraph(f"Scope Baseline: {scope_label}")
+
+    table = doc.add_table(rows=1, cols=6)
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    hdr_titles = [
+        "Requirement ID",
+        "Control Title",
+        "Theme",
+        "Purdue Level",
+        "Target SL",
+        "Verdict",
+    ]
+    for i, t in enumerate(hdr_titles):
+        hdr_cells[i].text = t
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        tags = c.tags or []
+        sl_str = next((t for t in tags if t.startswith("SL")), "SL1-SL4")
+        purdue_str = (
+            ", ".join([t for t in tags if t.startswith("L") and len(t) <= 4])
+            or "L1-L3.5"
+        )
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = c.control_number
+        row_cells[1].text = c.title
+        row_cells[2].text = c.theme or "N/A"
+        row_cells[3].text = purdue_str
+        row_cells[4].text = sl_str
+        row_cells[5].text = verdict
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/iec_62443")
+def download_iec_62443_report(
+    fmt: str = Query("pdf", description="pdf | docx"),
+    purdue_level: Optional[str] = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
+    component_type: Optional[str] = Query(None, description="NDD | EDR | HDR | SW"),
+    sl_level: Optional[str] = Query(None, description="SL1 | SL2 | SL3 | SL4"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the IEC 62443 Industrial Cybersecurity Assessment Report."""
+    fw_id = "cfw_iec_62443"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if purdue_level and purdue_level != "all":
+        query = query.filter(ComplianceControl.tags.contains([purdue_level.upper()]))
+
+    if component_type and component_type != "all":
+        query = query.filter(ComplianceControl.tags.contains([component_type.upper()]))
+
+    if sl_level and sl_level != "all":
+        query = query.filter(ComplianceControl.tags.contains([sl_level.upper()]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "IEC 62443 Industrial Cybersecurity Audit Report"
+    report_sub = f"OT/ICS System Security Ledger (Tenant: {user.org_id[:8]})"
+    scope_parts = []
+    if purdue_level and purdue_level != "all":
+        scope_parts.append(f"Purdue Level: {purdue_level.upper()}")
+    if component_type and component_type != "all":
+        scope_parts.append(f"Component: {component_type.upper()}")
+    if sl_level and sl_level != "all":
+        scope_parts.append(f"Target SL: {sl_level.upper()}")
+    scope_label = (
+        ", ".join(scope_parts) if scope_parts else "All OT Assets & Security Levels"
+    )
+
+    if fmt.lower() == "docx":
+        buffer = _generate_iec_62443_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"iec_62443_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_iec_62443_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+        )
+        media = "application/pdf"
+        filename = f"iec_62443_report_{user.org_id[:4]}.pdf"
+
+    from fastapi.responses import StreamingResponse
 
     return StreamingResponse(
         buffer,

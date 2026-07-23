@@ -262,6 +262,18 @@ const THEME_LABELS = {
   SP53_SC: "System & Comms Protection (SC)",
   SP53_SI: "System & Information Integrity (SI)",
   SP53_SR: "Supply Chain Risk Management (SR)",
+
+  // IEC 62443 (OT/ICS)
+  IEC_2_1: "Security Program - Asset Owners (2-1)",
+  IEC_2_3: "OT Patch Management (2-3)",
+  IEC_2_4: "Security Program - Service Providers (2-4)",
+  FR1_IAC: "FR1: Identification & Auth (3-3)",
+  FR2_UC: "FR2: Use Control (3-3)",
+  FR3_SI: "FR3: System Integrity (3-3)",
+  FR4_DC: "FR4: Data Confidentiality (3-3)",
+  FR5_RDF: "FR5: Restricted Data Flow - Conduits (3-3)",
+  FR6_TRE: "FR6: Timely Response to Events (3-3)",
+  FR7_RA: "FR7: Resource Availability (3-3)",
 };
 
 export default function ComplianceWorkspace() {
@@ -310,6 +322,9 @@ export default function ComplianceWorkspace() {
   const [privacyRoleFilter, setPrivacyRoleFilter] = useState("all");
   const [impactLevelFilter, setImpactLevelFilter] = useState("all");
   const [zeroTrustOnly, setZeroTrustOnly] = useState(false);
+  const [purdueLevelFilter, setPurdueLevelFilter] = useState("all");
+  const [componentTypeFilter, setComponentTypeFilter] = useState("all");
+  const [slLevelFilter, setSlLevelFilter] = useState("all");
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
@@ -322,6 +337,9 @@ export default function ComplianceWorkspace() {
     setPrivacyRoleFilter("all");
     setImpactLevelFilter("all");
     setZeroTrustOnly(false);
+    setPurdueLevelFilter("all");
+    setComponentTypeFilter("all");
+    setSlLevelFilter("all");
   }, [selectedFrameworkId]);
 
   // Modals state
@@ -556,6 +574,17 @@ export default function ComplianceWorkspace() {
         params.push(`zero_trust_only=true`);
       }
     }
+    if (selectedFrameworkId === "cfw_iec_62443") {
+      if (purdueLevelFilter && purdueLevelFilter !== "all") {
+        params.push(`purdue_level=${purdueLevelFilter}`);
+      }
+      if (componentTypeFilter && componentTypeFilter !== "all") {
+        params.push(`component_type=${componentTypeFilter}`);
+      }
+      if (slLevelFilter && slLevelFilter !== "all") {
+        params.push(`sl_level=${slLevelFilter}`);
+      }
+    }
     const queryString = params.length > 0 ? `?${params.join("&")}` : "";
 
     try {
@@ -578,6 +607,7 @@ export default function ComplianceWorkspace() {
             { id: "cfw_dpdp_2023", name: "DPDP Act 2023" },
             { id: "cfw_gdpr", name: "EU GDPR" },
             { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5" },
+            { id: "cfw_iec_62443", name: "IEC 62443 (OT/ICS)" },
           ];
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
@@ -1131,8 +1161,128 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_nist_800_53_r5">
                   NIST SP 800-53 Rev. 5 (U.S. Federal & Defense)
                 </option>
+                <option value="cfw_iec_62443">
+                  IEC 62443 (Industrial Communication Networks & OT/ICS)
+                </option>
               </select>
             </div>
+            {selectedFrameworkId === "cfw_iec_62443" && (
+              <>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Purdue Level:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={purdueLevelFilter}
+                    onChange={(e) => setPurdueLevelFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All Purdue Levels</option>
+                    <option value="L0">Level 0 (Physical Process)</option>
+                    <option value="L1">
+                      Level 1 (Basic Control - PLCs/RTUs)
+                    </option>
+                    <option value="L2">
+                      Level 2 (Area Control - HMIs/SCADA)
+                    </option>
+                    <option value="L3">
+                      Level 3 (Site Operations/Historians)
+                    </option>
+                    <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Component Type:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={componentTypeFilter}
+                    onChange={(e) => setComponentTypeFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All Component Types</option>
+                    <option value="NDD">NDD (Network Device)</option>
+                    <option value="EDR">EDR (Embedded Device)</option>
+                    <option value="HDR">HDR (Host Device)</option>
+                    <option value="SW">SW (Software Application)</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Target SL:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={slLevelFilter}
+                    onChange={(e) => setSlLevelFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All Security Levels</option>
+                    <option value="SL1">
+                      SL-1 (Protection against casual violation)
+                    </option>
+                    <option value="SL2">
+                      SL-2 (Protection against simple intentional violation)
+                    </option>
+                    <option value="SL3">
+                      SL-3 (Protection against sophisticated violation)
+                    </option>
+                    <option value="SL4">
+                      SL-4 (Protection against high motivation state actors)
+                    </option>
+                  </select>
+                </div>
+              </>
+            )}
             {selectedFrameworkId === "cfw_nist_800_53_r5" && (
               <>
                 <div

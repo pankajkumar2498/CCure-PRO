@@ -102,6 +102,20 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
                     if ig not in tags:
                         tags.append(ig)
 
+        ot_meta_keys = ("purdue_levels", "component_types", "sl_levels", "zone_types")
+        for ot_key in ot_meta_keys:
+            if ot_key in ctrl and ctrl[ot_key]:
+                ot_vals = ctrl[ot_key]
+                if isinstance(ot_vals, str):
+                    vals = [v.strip() for v in ot_vals.split(",") if v.strip()]
+                elif isinstance(ot_vals, list):
+                    vals = [str(v).strip() for v in ot_vals if str(v).strip()]
+                else:
+                    vals = [str(ot_vals)]
+                for val in vals:
+                    if val not in tags:
+                        tags.append(val)
+
         if not control:
             control = ComplianceControl(
                 id=control_id,

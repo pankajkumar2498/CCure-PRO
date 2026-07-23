@@ -246,6 +246,78 @@ def seed_and_evaluate():
                 "recommendation_text": "Conduct and document an incident response plan tabletop test exercise at least once every 365 days (annually).",
             },
             {
+                "id": "crl_dpdp_pii_enc",
+                "rule_family_code": "DPDP-PII-ENC",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "pii_encryption_enabled",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_dpdp_2023_dpdp_5_1",
+                "recommendation_text": "Enforce mandatory AES-256 encryption at rest and TLS 1.2+ in transit for all Personal Identifiable Information (PII) databases.",
+            },
+            {
+                "id": "crl_dpdp_dpo_app",
+                "rule_family_code": "DPDP-DPO-APP",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "dpo_designated",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_vuln_high_v1",
+                "control_id": "cct_dpdp_2023_dpdp_6_1",
+                "recommendation_text": "Formally designate a resident Data Protection Officer (DPO) and publish contact details to ensure statutory compliance under DPDP Act Section 10.",
+            },
+            {
+                "id": "crl_gdpr_art32_enc",
+                "rule_family_code": "GDPR-ART32-ENC",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "offline_configuration",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "pii_encryption_enabled",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_gdpr_gdpr_5_1",
+                "recommendation_text": "Implement technical measures under GDPR Art. 32 including state-of-the-art encryption and pseudonymization for personal data processing.",
+            },
+            {
+                "id": "crl_web_sqli_privacy",
+                "rule_family_code": "PRIV-WEB-SQLI",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "web_vulnerability_audit",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "sqli_detected",
+                    "operator": "equals",
+                    "expected": False,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_vuln_critical_v1",
+                "control_id": "cct_dpdp_2023_dpdp_2_1",
+                "recommendation_text": "Remediate SQL Injection vulnerabilities in web applications to protect PII against unauthorized data exfiltration.",
+            },
+            {
                 "id": "crl_vuln_critical_v1",
                 "rule_family_code": "VULN-CRITICAL",
                 "version_number": 1,
@@ -1349,6 +1421,168 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for PCI-DSS v4.0")
 
+        # Map rules and controls for DPDP Act 2023
+        dpdp_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_dpdp_2023")
+            .all()
+        )
+        if dpdp_controls:
+            for dpdp_ctrl in dpdp_controls:
+                if dpdp_ctrl.crosswalk:
+                    for iso_num in dpdp_ctrl.crosswalk:
+                        if not iso_num.startswith("ISO27001:"):
+                            continue
+                        iso_ref = iso_num.replace("ISO27001:", "").strip()
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            d_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == dpdp_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not d_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=dpdp_ctrl.id,
+                                    )
+                                )
+
+                raw_id = (
+                    dpdp_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_dpdp_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-DPDP-{dpdp_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            dpdp_ctrl.scannability
+                            if dpdp_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                d_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == dpdp_ctrl.id,
+                    )
+                    .first()
+                )
+                if not d_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=dpdp_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for DPDP Act 2023")
+
+        # Map rules and controls for GDPR
+        gdpr_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_gdpr")
+            .all()
+        )
+        if gdpr_controls:
+            for gdpr_ctrl in gdpr_controls:
+                if gdpr_ctrl.crosswalk:
+                    for iso_num in gdpr_ctrl.crosswalk:
+                        if not iso_num.startswith("ISO27001:"):
+                            continue
+                        iso_ref = iso_num.replace("ISO27001:", "").strip()
+                        iso_ctrl_id = f"cct_iso27001_2022_{iso_ref.lower().replace('a.', '').replace('.', '_')}"
+                        linked_rules = (
+                            db.query(ComplianceRuleControl)
+                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
+                            .all()
+                        )
+                        for r_link in linked_rules:
+                            g_link = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.rule_id == r_link.rule_id,
+                                    ComplianceRuleControl.control_id == gdpr_ctrl.id,
+                                )
+                                .first()
+                            )
+                            if not g_link:
+                                db.add(
+                                    ComplianceRuleControl(
+                                        rule_id=r_link.rule_id,
+                                        control_id=gdpr_ctrl.id,
+                                    )
+                                )
+
+                raw_id = (
+                    gdpr_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_gdpr_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-GDPR-{gdpr_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            gdpr_ctrl.scannability
+                            if gdpr_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                g_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == gdpr_ctrl.id,
+                    )
+                    .first()
+                )
+                if not g_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=gdpr_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for GDPR")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -1357,7 +1591,7 @@ def seed_and_evaluate():
             if not user:
                 user = db.query(User).first()
 
-            # Register Frameworks and Bootstrap Baseline Policies (ISO 27001, NIST CSF v2.0, CIS Controls v8.1, SOC 2 Type II, CERT-In 2022)
+            # Register Frameworks and Bootstrap Baseline Policies
             for fw_code_id in [
                 "cfw_iso27001_2022",
                 "cfw_nist_csf_v2",
@@ -1365,6 +1599,8 @@ def seed_and_evaluate():
                 "cfw_soc2_type2",
                 "cfw_cert_in_2022",
                 "cfw_pci_dss_v4",
+                "cfw_dpdp_2023",
+                "cfw_gdpr",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

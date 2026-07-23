@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "AssetDiscoveryRequest": {
-        "description": "Asset Discovery — Phase 2.\n\nMust include the same `pipeline_mode` used in the Host Discovery request so the\nbackend can decide whether this is the terminal phase (asset) or not (vulnerability_audit).",
+        "description": "Asset Discovery \u2014 Phase 2.\n\nMust include the same `pipeline_mode` used in the Host Discovery request so the\nbackend can decide whether this is the terminal phase (asset) or not (vulnerability_audit).",
         "properties": {
           "custom_ports": {
             "anyOf": [
@@ -524,7 +524,7 @@
         "type": "object"
       },
       "HostDiscoveryRequest": {
-        "description": "Host Discovery — Phase 1.\n\n`pipeline_mode` tells the backend which pipeline this scan belongs to:\n  \"basic\"              → only Host Discovery will run; scan is immediately marked complete.\n  \"asset\"              → Host Discovery then Asset Discovery; scan stays 'running' after host discovery.\n  \"vulnerability_audit\" → Full pipeline; scan stays 'running' until vulnerability audit.\n\n`phases` is the authoritative list from the frontend (informational / audit).\n\n`discovery_intensity` controls Asset Discovery Phase 1 strategy (asset pipeline only):\n  \"light\"  → FAST profile only — fastest, may miss firewalled/restricted hosts.\n  \"normal\" → FAST first, BALANCED fallback only for still-inactive IPs (default).\n  \"deep\"   → Full BALANCED — maximum coverage, slower.\nIgnored for basic and vulnerability_audit pipelines.",
+        "description": "Host Discovery \u2014 Phase 1.\n\n`pipeline_mode` tells the backend which pipeline this scan belongs to:\n  \"basic\"              \u2192 only Host Discovery will run; scan is immediately marked complete.\n  \"asset\"              \u2192 Host Discovery then Asset Discovery; scan stays 'running' after host discovery.\n  \"vulnerability_audit\" \u2192 Full pipeline; scan stays 'running' until vulnerability audit.\n\n`phases` is the authoritative list from the frontend (informational / audit).\n\n`discovery_intensity` controls Asset Discovery Phase 1 strategy (asset pipeline only):\n  \"light\"  \u2192 FAST profile only \u2014 fastest, may miss firewalled/restricted hosts.\n  \"normal\" \u2192 FAST first, BALANCED fallback only for still-inactive IPs (default).\n  \"deep\"   \u2192 Full BALANCED \u2014 maximum coverage, slower.\nIgnored for basic and vulnerability_audit pipelines.",
         "properties": {
           "custom_ports": {
             "anyOf": [
@@ -692,7 +692,7 @@
               }
             ],
             "default": "normal",
-            "description": "light | normal | deep — intensity for Phase 2 port scan (asset pipeline only)",
+            "description": "light | normal | deep \u2014 intensity for Phase 2 port scan (asset pipeline only)",
             "examples": [
               "normal"
             ],
@@ -1295,7 +1295,7 @@
         "type": "object"
       },
       "PhasesRequest": {
-        "description": "Convenience endpoint — run any combination of phases in one call.",
+        "description": "Convenience endpoint \u2014 run any combination of phases in one call.",
         "properties": {
           "exclude_ips": {
             "anyOf": [
@@ -2493,7 +2493,7 @@
         "type": "object"
       },
       "VulnerabilityAuditRequest": {
-        "description": "Vulnerability Audit — Phase 3.\n\nOnly reached when pipeline_mode is \"vulnerability_audit\". Always marks the scan complete.",
+        "description": "Vulnerability Audit \u2014 Phase 3.\n\nOnly reached when pipeline_mode is \"vulnerability_audit\". Always marks the scan complete.",
         "properties": {
           "exclude_ips": {
             "anyOf": [
@@ -3367,7 +3367,7 @@
     },
     "/admin/organizations/{org_id}/status": {
       "patch": {
-        "description": "Update organization's active/inactive status.\n\nProduction Deactivation Flow:\n─────────────────────────────────────────────────────────────────────────────\n\nDEACTIVATION (is_active: false):\n  • All users in the organization lose access IMMEDIATELY\n  • Existing sessions/tokens become invalid on next request\n  • New login attempts are rejected with HTTP 403\n  • Token refresh fails with HTTP 401\n  • Individual user statuses remain UNCHANGED\n  • Audit trail logs the deactivation event\n\nREACTIVATION (is_active: true):\n  • Users regain access without modification\n  • No need to re-enable individual users\n  • Existing tokens remain valid (if not expired)\n  • Full reversal of deactivation state\n\nBenefits:\n  ✓ Instant access revocation without manual user modifications\n  ✓ Reversible state - no data loss or extra cleanup\n  ✓ Scalable - handles thousands of users in deactivated orgs\n  ✓ Clean audit trail - org status change is primary audit event\n  ✓ No token invalidation needed - checked on every request\n\nReturns:\n  Organization object with updated status",
+        "description": "Update organization's active/inactive status.\n\nProduction Deactivation Flow:\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nDEACTIVATION (is_active: false):\n  \u2022 All users in the organization lose access IMMEDIATELY\n  \u2022 Existing sessions/tokens become invalid on next request\n  \u2022 New login attempts are rejected with HTTP 403\n  \u2022 Token refresh fails with HTTP 401\n  \u2022 Individual user statuses remain UNCHANGED\n  \u2022 Audit trail logs the deactivation event\n\nREACTIVATION (is_active: true):\n  \u2022 Users regain access without modification\n  \u2022 No need to re-enable individual users\n  \u2022 Existing tokens remain valid (if not expired)\n  \u2022 Full reversal of deactivation state\n\nBenefits:\n  \u2713 Instant access revocation without manual user modifications\n  \u2713 Reversible state - no data loss or extra cleanup\n  \u2713 Scalable - handles thousands of users in deactivated orgs\n  \u2713 Clean audit trail - org status change is primary audit event\n  \u2713 No token invalidation needed - checked on every request\n\nReturns:\n  Organization object with updated status",
         "operationId": "change_organization_status_admin_organizations__org_id__status_patch",
         "parameters": [
           {
@@ -3423,7 +3423,7 @@
     },
     "/admin/organizations/{org_id}/status/": {
       "patch": {
-        "description": "Update organization's active/inactive status.\n\nProduction Deactivation Flow:\n─────────────────────────────────────────────────────────────────────────────\n\nDEACTIVATION (is_active: false):\n  • All users in the organization lose access IMMEDIATELY\n  • Existing sessions/tokens become invalid on next request\n  • New login attempts are rejected with HTTP 403\n  • Token refresh fails with HTTP 401\n  • Individual user statuses remain UNCHANGED\n  • Audit trail logs the deactivation event\n\nREACTIVATION (is_active: true):\n  • Users regain access without modification\n  • No need to re-enable individual users\n  • Existing tokens remain valid (if not expired)\n  • Full reversal of deactivation state\n\nBenefits:\n  ✓ Instant access revocation without manual user modifications\n  ✓ Reversible state - no data loss or extra cleanup\n  ✓ Scalable - handles thousands of users in deactivated orgs\n  ✓ Clean audit trail - org status change is primary audit event\n  ✓ No token invalidation needed - checked on every request\n\nReturns:\n  Organization object with updated status",
+        "description": "Update organization's active/inactive status.\n\nProduction Deactivation Flow:\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nDEACTIVATION (is_active: false):\n  \u2022 All users in the organization lose access IMMEDIATELY\n  \u2022 Existing sessions/tokens become invalid on next request\n  \u2022 New login attempts are rejected with HTTP 403\n  \u2022 Token refresh fails with HTTP 401\n  \u2022 Individual user statuses remain UNCHANGED\n  \u2022 Audit trail logs the deactivation event\n\nREACTIVATION (is_active: true):\n  \u2022 Users regain access without modification\n  \u2022 No need to re-enable individual users\n  \u2022 Existing tokens remain valid (if not expired)\n  \u2022 Full reversal of deactivation state\n\nBenefits:\n  \u2713 Instant access revocation without manual user modifications\n  \u2713 Reversible state - no data loss or extra cleanup\n  \u2713 Scalable - handles thousands of users in deactivated orgs\n  \u2713 Clean audit trail - org status change is primary audit event\n  \u2713 No token invalidation needed - checked on every request\n\nReturns:\n  Organization object with updated status",
         "operationId": "change_organization_status_admin_organizations__org_id__status__patch",
         "parameters": [
           {
@@ -8373,6 +8373,71 @@
         ]
       }
     },
+    "/compliance/reports/dpdp_2023": {
+      "get": {
+        "description": "Generates and downloads the DPDP Act 2023 Compliance Assessment Report.",
+        "operationId": "download_dpdp_2023_report_compliance_reports_dpdp_2023_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by SDF scope: sdf_mandatory, general_fiduciary",
+            "in": "query",
+            "name": "sdf_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by SDF scope: sdf_mandatory, general_fiduciary",
+              "title": "Sdf Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Dpdp 2023 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/executive": {
       "get": {
         "description": "Generates the executive management compliance posture report PDF.",
@@ -8393,6 +8458,71 @@
           }
         ],
         "summary": "Download Executive Compliance Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/compliance/reports/gdpr": {
+      "get": {
+        "description": "Generates and downloads the EU GDPR Compliance Assessment Report.",
+        "operationId": "download_gdpr_report_compliance_reports_gdpr_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by Privacy Role: controller, processor, both",
+            "in": "query",
+            "name": "privacy_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by Privacy Role: controller, processor, both",
+              "title": "Privacy Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Gdpr Report",
         "tags": [
           "Compliance"
         ]
@@ -8836,6 +8966,38 @@
               "default": false,
               "title": "Cde Scope Only"
             }
+          },
+          {
+            "in": "query",
+            "name": "sdf_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sdf Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "privacy_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Privacy Role"
+            }
           }
         ],
         "responses": {
@@ -9247,7 +9409,7 @@
     },
     "/dashboard/summary": {
       "get": {
-        "description": "8 top metric cards. Data sources:\n  severity counts  → AssetVulnerability JOIN VulnerabilityDefinition WHERE status='open'\n  asset stats      → Asset table aggregates\n  scan counts      → Scan table with 24h rolling window\n  kev count        → VulnerabilityDefinition.source = 'kev' proxy\n                     (no in_kev column exists — use source field instead)\n  quota            → core/quota._limits(plan)",
+        "description": "8 top metric cards. Data sources:\n  severity counts  \u2192 AssetVulnerability JOIN VulnerabilityDefinition WHERE status='open'\n  asset stats      \u2192 Asset table aggregates\n  scan counts      \u2192 Scan table with 24h rolling window\n  kev count        \u2192 VulnerabilityDefinition.source = 'kev' proxy\n                     (no in_kev column exists \u2014 use source field instead)\n  quota            \u2192 core/quota._limits(plan)",
         "operationId": "get_dashboard_summary_dashboard_summary_get",
         "parameters": [
           {
@@ -9666,7 +9828,7 @@
     },
     "/dashboard/web-scan-trends": {
       "get": {
-        "description": "Web scan finding trends over time — similar to /vuln-trends but for DAST.\nAggregates by scan completion date.",
+        "description": "Web scan finding trends over time \u2014 similar to /vuln-trends but for DAST.\nAggregates by scan completion date.",
         "operationId": "get_web_scan_trends_dashboard_web_scan_trends_get",
         "parameters": [
           {
@@ -10963,7 +11125,7 @@
     },
     "/scan/phases": {
       "post": {
-        "description": "Convenience endpoint — run any combination of phases in one call (Background).",
+        "description": "Convenience endpoint \u2014 run any combination of phases in one call (Background).",
         "operationId": "scan_phases_scan_phases_post",
         "requestBody": {
           "content": {
@@ -12366,7 +12528,7 @@
         ]
       },
       "post": {
-        "description": "Start a new web application scan.\n\nRequires authorization_confirmed=true (legal compliance gate).\nThe scan runs as a background Celery task pipeline:\nRECON → CRAWL → DETECT → AUDIT",
+        "description": "Start a new web application scan.\n\nRequires authorization_confirmed=true (legal compliance gate).\nThe scan runs as a background Celery task pipeline:\nRECON \u2192 CRAWL \u2192 DETECT \u2192 AUDIT",
         "operationId": "start_web_scan_web_scans_post",
         "parameters": [
           {
@@ -12819,7 +12981,7 @@
     },
     "/web-scans/{scan_id}/findings/{finding_id}": {
       "patch": {
-        "description": "Triage a finding — mark as false positive, accepted risk, confirmed, etc.",
+        "description": "Triage a finding \u2014 mark as false positive, accepted risk, confirmed, etc.",
         "operationId": "triage_finding_web_scans__scan_id__findings__finding_id__patch",
         "parameters": [
           {

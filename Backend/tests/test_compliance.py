@@ -501,3 +501,192 @@ def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_se
     if inst:
         db_session.delete(inst)
         db_session.commit()
+
+
+def test_dpdp_2023_framework_integration(client, test_user, auth_headers, db_session):
+    """Test DPDP Act 2023 framework seeding, SDF scoping, web evidence adapter, gap analysis prefix stripping, and report endpoints."""
+    from datetime import datetime, timezone
+    import os
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
+    from scripts.seed_compliance import seed_framework_and_controls
+    from scripts.seed_real_rules import seed_and_evaluate
+
+    # 1. Seed DPDP controls catalog
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dpdp_seed = os.path.join(base_dir, "scripts", "dpdp_2023_controls_seed.json")
+    if os.path.exists(dpdp_seed):
+        seed_framework_and_controls(db_session, dpdp_seed)
+
+    # 2. Verify framework exists in database
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_dpdp_2023")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "DPDP_2023"
+
+    # 3. Verify DPDP controls exist and contain sdf_scope attributes
+    controls = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_dpdp_2023")
+        .all()
+    )
+    assert len(controls) >= 15
+
+    sdf_controls = [c for c in controls if c.sdf_scope == "sdf_mandatory"]
+    assert len(sdf_controls) > 0
+
+    # 4. Enable tenant framework for test org
+    inst = (
+        db_session.query(ComplianceTenantFramework)
+        .filter(
+            ComplianceTenantFramework.tenant_id == test_user.org_id,
+            ComplianceTenantFramework.framework_id == "cfw_dpdp_2023",
+        )
+        .first()
+    )
+    if not inst:
+        inst = ComplianceTenantFramework(
+            id=f"ctf_{test_user.org_id}_cfw_dpdp_2023",
+            tenant_id=test_user.org_id,
+            framework_id="cfw_dpdp_2023",
+            is_enabled=True,
+            enabled_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        db_session.commit()
+
+    # 5. Test GET /compliance/summary with SDF scope filter
+    summary_res = client.get(
+        "/compliance/summary?framework_id=cfw_dpdp_2023&sdf_scope=sdf_mandatory",
+        headers=auth_headers,
+    )
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert "score_pct" in summary_data
+    assert "kpis" in summary_data
+
+    # 6. Test Gap Analysis prefix resolution with DPDP
+    gap_res = client.get(
+        "/compliance/gap-analysis?source_framework_id=cfw_iso27001_2022&target_framework_id=cfw_dpdp_2023",
+        headers=auth_headers,
+    )
+    assert gap_res.status_code == 200
+    gap_data = gap_res.json()
+    assert "summary" in gap_data
+    assert "mapped_controls" in gap_data["summary"]
+
+    # 7. Test DPDP PDF Report generation endpoint
+    pdf_res = client.get(
+        "/compliance/reports/dpdp_2023?fmt=pdf&sdf_scope=sdf_mandatory",
+        headers=auth_headers,
+    )
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+
+    # 8. Test DPDP DOCX Report generation endpoint
+    docx_res = client.get(
+        "/compliance/reports/dpdp_2023?fmt=docx&sdf_scope=sdf_mandatory",
+        headers=auth_headers,
+    )
+    assert docx_res.status_code == 200
+
+    # Cleanup
+    if inst:
+        db_session.delete(inst)
+        db_session.commit()
+
+
+def test_gdpr_framework_integration(client, test_user, auth_headers, db_session):
+    """Test EU GDPR framework seeding, privacy_role scoping, web evidence mapping, and report endpoints."""
+    from datetime import datetime, timezone
+    import os
+    from db.models.compliance import (
+        ComplianceFramework,
+        ComplianceControl,
+        ComplianceTenantFramework,
+    )
+    from scripts.seed_compliance import seed_framework_and_controls
+    from scripts.seed_real_rules import seed_and_evaluate
+
+    # 1. Seed GDPR controls catalog
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    gdpr_seed = os.path.join(base_dir, "scripts", "gdpr_controls_seed.json")
+    if os.path.exists(gdpr_seed):
+        seed_framework_and_controls(db_session, gdpr_seed)
+
+    # 2. Verify framework exists in database
+    fw = (
+        db_session.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == "cfw_gdpr")
+        .first()
+    )
+    assert fw is not None
+    assert fw.code == "GDPR"
+
+    # 3. Verify GDPR controls exist and contain privacy_role attributes
+    controls = (
+        db_session.query(ComplianceControl)
+        .filter(ComplianceControl.framework_id == "cfw_gdpr")
+        .all()
+    )
+    assert len(controls) >= 15
+
+    controller_controls = [
+        c for c in controls if c.privacy_role in ("controller", "both")
+    ]
+    assert len(controller_controls) > 0
+
+    # 4. Enable tenant framework for test org
+    inst = (
+        db_session.query(ComplianceTenantFramework)
+        .filter(
+            ComplianceTenantFramework.tenant_id == test_user.org_id,
+            ComplianceTenantFramework.framework_id == "cfw_gdpr",
+        )
+        .first()
+    )
+    if not inst:
+        inst = ComplianceTenantFramework(
+            id=f"ctf_{test_user.org_id}_cfw_gdpr",
+            tenant_id=test_user.org_id,
+            framework_id="cfw_gdpr",
+            is_enabled=True,
+            enabled_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        db_session.commit()
+
+    # 5. Test GET /compliance/summary with Privacy Role filter
+    summary_res = client.get(
+        "/compliance/summary?framework_id=cfw_gdpr&privacy_role=controller",
+        headers=auth_headers,
+    )
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert "score_pct" in summary_data
+
+    # 6. Test GDPR PDF Report generation endpoint
+    pdf_res = client.get(
+        "/compliance/reports/gdpr?fmt=pdf&privacy_role=controller",
+        headers=auth_headers,
+    )
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+
+    # 7. Test GDPR DOCX Report generation endpoint
+    docx_res = client.get(
+        "/compliance/reports/gdpr?fmt=docx&privacy_role=controller",
+        headers=auth_headers,
+    )
+    assert docx_res.status_code == 200
+
+    # Cleanup
+    if inst:
+        db_session.delete(inst)
+        db_session.commit()

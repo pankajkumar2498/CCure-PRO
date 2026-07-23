@@ -160,6 +160,88 @@ const getScoreClass = (score) => {
   return "radial-score--low";
 };
 
+const THEME_LABELS = {
+  // ISO 27001
+  ORG: "Organizational Controls (ORG)",
+  PPL: "People Controls (PPL)",
+  PHY: "Physical Controls (PHY)",
+  TECH: "Technological Controls (TECH)",
+
+  // NIST CSF v2.0
+  GV: "Govern (GV)",
+  ID: "Identify (ID)",
+  PR: "Protect (PR)",
+  DE: "Detect (DE)",
+  RS: "Respond (RS)",
+  RC: "Recover (RC)",
+
+  // CIS Controls v8.1
+  CIS_01: "Control 1: Enterprise Assets",
+  CIS_02: "Control 2: Software Assets",
+  CIS_03: "Control 3: Data Protection",
+  CIS_04: "Control 4: Secure Configuration",
+  CIS_05: "Control 5: Account Management",
+  CIS_06: "Control 6: Access Control",
+  CIS_07: "Control 7: Vulnerability Management",
+  CIS_08: "Control 8: Audit Log Management",
+  CIS_09: "Control 9: Email & Web Protections",
+  CIS_10: "Control 10: Malware Defenses",
+  CIS_11: "Control 11: Data Recovery",
+  CIS_12: "Control 12: Network Infrastructure",
+  CIS_13: "Control 13: Network Monitoring",
+  CIS_14: "Control 14: Security Awareness",
+  CIS_15: "Control 15: Service Provider Mgmt",
+  CIS_16: "Control 16: Application Security",
+  CIS_17: "Control 17: Incident Response",
+  CIS_18: "Control 18: Penetration Testing",
+
+  // SOC 2 Type II
+  SOC2_CC: "Common Criteria / Security (CC)",
+  SOC2_A: "Availability (A)",
+  SOC2_PI: "Processing Integrity (PI)",
+  SOC2_C: "Confidentiality (C)",
+  SOC2_P: "Privacy (P)",
+
+  // CERT-In Directions 2022
+  CERT_IR: "Incident Reporting & Response (CERT_IR)",
+  CERT_LOG: "System Log Retention & Time Sync (CERT_LOG)",
+  CERT_AM: "Asset & VPN Log Retention (CERT_AM)",
+  CERT_VM: "Vulnerability Management & ICT Audits (CERT_VM)",
+  CERT_AC: "Access Control & MFA (CERT_AC)",
+  CERT_DP: "Data Protection & Encryption (CERT_DP)",
+
+  // PCI-DSS v4.0
+  PCI_01: "Req 1: Network Security Controls",
+  PCI_02: "Req 2: Secure Configurations",
+  PCI_03: "Req 3: Account Data Protection",
+  PCI_04: "Req 4: Cryptography in Transit",
+  PCI_05: "Req 5: Malware Protection",
+  PCI_06: "Req 6: Secure Systems & Software",
+  PCI_07: "Req 7: Access Restriction",
+  PCI_08: "Req 8: Identification & Auth",
+  PCI_09: "Req 9: Physical Access",
+  PCI_10: "Req 10: Log Monitoring",
+  PCI_11: "Req 11: Security Testing & FIM",
+  PCI_12: "Req 12: Security Policies & TRA",
+
+  // DPDP Act 2023
+  DPDP_CN: "Consent & Notice (Art. 5 & 6)",
+  DPDP_PL: "Purpose Limitation & Minimization (Art. 7)",
+  DPDP_DR: "Data Principal Rights (Art. 11-14)",
+  DPDP_BN: "Breach Notification to DPBI (Art. 8(6))",
+  DPDP_PS: "Security Safeguards & Enc (Art. 8(5))",
+  DPDP_GV: "SDF Governance & DPO (Art. 10)",
+
+  // EU GDPR
+  GDPR_LT: "Lawfulness & Transparency (Art. 5(1)(a))",
+  GDPR_PL: "Purpose Limitation (Art. 5(1)(b))",
+  GDPR_DM: "Data Minimization (Art. 5(1)(c))",
+  GDPR_AY: "Accuracy & Rectification (Art. 5(1)(d))",
+  GDPR_SL: "Storage Limitation (Art. 5(1)(e))",
+  GDPR_IC: "Integrity & Confidentiality (Art. 5(1)(f))",
+  GDPR_AC: "Accountability & Governance (Art. 5(2))",
+};
+
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
   const roleName = (user?.role?.name || "")
@@ -202,8 +284,19 @@ export default function ComplianceWorkspace() {
   const [selectedFrameworkId, setSelectedFrameworkId] = useState("all");
   const [saqProfileFilter, setSaqProfileFilter] = useState("all");
   const [cdeScopeFilter, setCdeScopeFilter] = useState(false);
+  const [sdfScopeFilter, setSdfScopeFilter] = useState("all");
+  const [privacyRoleFilter, setPrivacyRoleFilter] = useState("all");
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
+  const [perFrameworkScores, setPerFrameworkScores] = useState([]);
+
+  // Reset scoping filters when switching frameworks
+  useEffect(() => {
+    setSaqProfileFilter("all");
+    setCdeScopeFilter(false);
+    setSdfScopeFilter("all");
+    setPrivacyRoleFilter("all");
+  }, [selectedFrameworkId]);
 
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
@@ -370,7 +463,14 @@ export default function ComplianceWorkspace() {
 
   useEffect(() => {
     fetchTabData();
-  }, [activeTab, selectedFrameworkId, saqProfileFilter, cdeScopeFilter]);
+  }, [
+    activeTab,
+    selectedFrameworkId,
+    saqProfileFilter,
+    cdeScopeFilter,
+    sdfScopeFilter,
+    privacyRoleFilter,
+  ]);
 
   const fetchGapAnalysis = async (
     sourceId = "cfw_iso27001_2022",
@@ -410,6 +510,16 @@ export default function ComplianceWorkspace() {
         params.push(`cde_scope_only=true`);
       }
     }
+    if (selectedFrameworkId === "cfw_dpdp_2023") {
+      if (sdfScopeFilter && sdfScopeFilter !== "all") {
+        params.push(`sdf_scope=${sdfScopeFilter}`);
+      }
+    }
+    if (selectedFrameworkId === "cfw_gdpr") {
+      if (privacyRoleFilter && privacyRoleFilter !== "all") {
+        params.push(`privacy_role=${privacyRoleFilter}`);
+      }
+    }
     const queryString = params.length > 0 ? `?${params.join("&")}` : "";
 
     try {
@@ -418,6 +528,40 @@ export default function ComplianceWorkspace() {
           `/compliance/summary${queryString}`,
         );
         setSummary(res.data);
+
+        // When All Frameworks is selected, also fetch per-framework scores for
+        // the cross-framework comparison bar chart (industry-standard GRC view).
+        if (!selectedFrameworkId || selectedFrameworkId === "all") {
+          const FW_LIST = [
+            { id: "cfw_iso27001_2022", name: "ISO 27001:2022" },
+            { id: "cfw_nist_csf_v2", name: "NIST CSF 2.0" },
+            { id: "cfw_soc2_type2", name: "SOC 2 Type II" },
+            { id: "cfw_cis_v8_1", name: "CIS Controls v8.1" },
+            { id: "cfw_cert_in_2022", name: "CERT-In 2022" },
+            { id: "cfw_pci_dss_v4", name: "PCI-DSS v4.0" },
+            { id: "cfw_dpdp_2023", name: "DPDP Act 2023" },
+            { id: "cfw_gdpr", name: "EU GDPR" },
+          ];
+          const fwResults = await Promise.allSettled(
+            FW_LIST.map((fw) =>
+              axiosInstance
+                .get(`/compliance/summary?framework_id=${fw.id}`)
+                .then((r) => ({
+                  id: fw.id,
+                  name: fw.name,
+                  score: r.data.score_pct ?? 0,
+                }))
+                .catch(() => ({ id: fw.id, name: fw.name, score: null })),
+            ),
+          );
+          setPerFrameworkScores(
+            fwResults
+              .filter((r) => r.status === "fulfilled" && r.value.score !== null)
+              .map((r) => r.value),
+          );
+        } else {
+          setPerFrameworkScores([]);
+        }
       } else if (activeTab === "marketplace") {
         const res = await axiosInstance.get("/compliance/marketplace");
         setMarketplace(res.data.data || []);
@@ -941,8 +1085,84 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_pci_dss_v4">
                   PCI-DSS v4.0 (Cardholder Data Security)
                 </option>
+                <option value="cfw_dpdp_2023">
+                  DPDP Act 2023 (Digital Personal Data Protection)
+                </option>
+                <option value="cfw_gdpr">
+                  GDPR (EU General Data Protection Regulation)
+                </option>
               </select>
             </div>
+            {selectedFrameworkId === "cfw_dpdp_2023" && (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  SDF Scope:
+                </span>
+                <select
+                  className="cw-pagination-select"
+                  value={sdfScopeFilter}
+                  onChange={(e) => setSdfScopeFilter(e.target.value)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                    background: "var(--bg-white)",
+                    border: "1px solid var(--border)",
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="all">All Fiduciaries (General + SDF)</option>
+                  <option value="sdf_mandatory">
+                    Significant Data Fiduciary (SDF Mandatory)
+                  </option>
+                  <option value="general_fiduciary">
+                    General Data Fiduciary
+                  </option>
+                </select>
+              </div>
+            )}
+            {selectedFrameworkId === "cfw_gdpr" && (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Privacy Role:
+                </span>
+                <select
+                  className="cw-pagination-select"
+                  value={privacyRoleFilter}
+                  onChange={(e) => setPrivacyRoleFilter(e.target.value)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                    background: "var(--bg-white)",
+                    border: "1px solid var(--border)",
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="all">
+                    All Roles (Controller & Processor)
+                  </option>
+                  <option value="controller">Data Controller</option>
+                  <option value="processor">Data Processor</option>
+                </select>
+              </div>
+            )}
             {selectedFrameworkId === "cfw_pci_dss_v4" && (
               <>
                 <div
@@ -1124,16 +1344,25 @@ export default function ComplianceWorkspace() {
                 </div>
                 <div className="metric-card">
                   <h3>
-                    {selectedFrameworkId === "cfw_nist_csf_v2"
-                      ? "NIST CSF Controls"
-                      : selectedFrameworkId === "cfw_cis_v8_1"
-                        ? "CIS Safeguards"
-                        : selectedFrameworkId === "cfw_soc2_type2"
-                          ? "SOC 2 Criteria"
-                          : selectedFrameworkId === "cfw_cert_in_2022"
-                            ? "CERT-In Controls"
-                            : "ISO 27001 Controls"}
+                    {!selectedFrameworkId || selectedFrameworkId === "all"
+                      ? "All Frameworks"
+                      : selectedFrameworkId === "cfw_nist_csf_v2"
+                        ? "NIST CSF Controls"
+                        : selectedFrameworkId === "cfw_cis_v8_1"
+                          ? "CIS Safeguards"
+                          : selectedFrameworkId === "cfw_soc2_type2"
+                            ? "SOC 2 Criteria"
+                            : selectedFrameworkId === "cfw_cert_in_2022"
+                              ? "CERT-In Controls"
+                              : selectedFrameworkId === "cfw_pci_dss_v4"
+                                ? "PCI-DSS v4.0 Requirements"
+                                : selectedFrameworkId === "cfw_dpdp_2023"
+                                  ? "DPDP Act 2023 Controls"
+                                  : selectedFrameworkId === "cfw_gdpr"
+                                    ? "EU GDPR Controls"
+                                    : "ISO 27001 Controls"}
                   </h3>
+
                   <div className="kpis-list">
                     <div>
                       Passed:{" "}
@@ -1304,6 +1533,50 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      `/compliance/reports/dpdp_2023?fmt=pdf${sdfScopeFilter !== "all" ? `&sdf_scope=${sdfScopeFilter}` : ""}`,
+                      "dpdp_2023_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download DPDP PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/dpdp_2023?fmt=docx${sdfScopeFilter !== "all" ? `&sdf_scope=${sdfScopeFilter}` : ""}`,
+                      "dpdp_2023_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download DPDP Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/gdpr?fmt=pdf${privacyRoleFilter !== "all" ? `&privacy_role=${privacyRoleFilter}` : ""}`,
+                      "gdpr_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download GDPR PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/gdpr?fmt=docx${privacyRoleFilter !== "all" ? `&privacy_role=${privacyRoleFilter}` : ""}`,
+                      "gdpr_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download GDPR Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -1314,96 +1587,85 @@ export default function ComplianceWorkspace() {
               </div>
 
               <div className="quadrant-scores">
-                <h3>
-                  {selectedFrameworkId === "cfw_nist_csf_v2"
-                    ? "NIST CSF 2.0 Core Functions Breakdown"
-                    : selectedFrameworkId === "cfw_cis_v8_1"
-                      ? "CIS Controls v8.1 Safeguards Breakdown"
-                      : selectedFrameworkId === "cfw_soc2_type2"
-                        ? "SOC 2 Trust Services Criteria Breakdown"
-                        : selectedFrameworkId === "cfw_cert_in_2022"
-                          ? "CERT-In Directions & CCMP Themes Breakdown"
-                          : selectedFrameworkId === "cfw_pci_dss_v4"
-                            ? "PCI-DSS v4.0 12 Principal Requirements Breakdown"
-                            : "ISO 27001 Themes Quadrant Breakdown"}
-                </h3>
-                <div className="quadrant-grid">
-                  {Object.entries(summary.quadrant_scores || {}).map(
-                    ([key, val]) => (
-                      <div key={key} className="quad-item">
-                        <span
-                          className={
-                            ["GV", "ID", "PR", "DE", "RS", "RC"].includes(key)
-                              ? `nist-badge nist-badge--${key}`
-                              : "quad-label"
-                          }
+                {/* ── All Frameworks: per-framework comparison chart ── */}
+                {!selectedFrameworkId || selectedFrameworkId === "all" ? (
+                  <>
+                    <h3>Compliance Score by Framework</h3>
+                    <div className="quadrant-grid">
+                      {perFrameworkScores.length === 0 ? (
+                        <p
+                          style={{
+                            color: "var(--text-muted)",
+                            fontSize: "0.85rem",
+                          }}
                         >
-                          {key === "GV"
-                            ? "Govern (GV)"
-                            : key === "ID"
-                              ? "Identify (ID)"
-                              : key === "PR"
-                                ? "Protect (PR)"
-                                : key === "DE"
-                                  ? "Detect (DE)"
-                                  : key === "RS"
-                                    ? "Respond (RS)"
-                                    : key === "RC"
-                                      ? "Recover (RC)"
-                                      : key === "CERT_IR"
-                                        ? "Incident Reporting & Response (CERT_IR)"
-                                        : key === "CERT_LOG"
-                                          ? "System Log Retention & Time Sync (CERT_LOG)"
-                                          : key === "CERT_AM"
-                                            ? "Asset & VPN Log Retention (CERT_AM)"
-                                            : key === "CERT_VM"
-                                              ? "Vulnerability Management & ICT Audits (CERT_VM)"
-                                              : key === "CERT_AC"
-                                                ? "Access Control & MFA (CERT_AC)"
-                                                : key === "CERT_DP"
-                                                  ? "Data Protection & Encryption (CERT_DP)"
-                                                  : key === "PCI_01"
-                                                    ? "Req 1: Network Security Controls"
-                                                    : key === "PCI_02"
-                                                      ? "Req 2: Secure Configurations"
-                                                      : key === "PCI_03"
-                                                        ? "Req 3: Account Data Protection"
-                                                        : key === "PCI_04"
-                                                          ? "Req 4: Cryptography in Transit"
-                                                          : key === "PCI_05"
-                                                            ? "Req 5: Malware Protection"
-                                                            : key === "PCI_06"
-                                                              ? "Req 6: Secure Systems & Software"
-                                                              : key === "PCI_07"
-                                                                ? "Req 7: Access Restriction"
-                                                                : key ===
-                                                                    "PCI_08"
-                                                                  ? "Req 8: Identification & Authentication"
-                                                                  : key ===
-                                                                      "PCI_09"
-                                                                    ? "Req 9: Physical Access"
-                                                                    : key ===
-                                                                        "PCI_10"
-                                                                      ? "Req 10: Log Monitoring"
-                                                                      : key ===
-                                                                          "PCI_11"
-                                                                        ? "Req 11: Security Testing & FIM"
-                                                                        : key ===
-                                                                            "PCI_12"
-                                                                          ? "Req 12: Security Policies & TRA"
-                                                                          : key}
-                        </span>
-                        <div className="progress-container">
-                          <div
-                            className="comp-progress-fill"
-                            style={{ width: `${val}%` }}
-                          />
-                        </div>
-                        <span className="quad-value">{val}%</span>
-                      </div>
-                    ),
-                  )}
-                </div>
+                          No enabled frameworks with scored controls yet.
+                          Install and run a compliance scan to populate scores.
+                        </p>
+                      ) : (
+                        perFrameworkScores.map((fw) => (
+                          <div key={fw.id} className="quad-item">
+                            <span className="quad-label">{fw.name}</span>
+                            <div className="progress-container">
+                              <div
+                                className="comp-progress-fill"
+                                style={{ width: `${fw.score}%` }}
+                              />
+                            </div>
+                            <span className="quad-value">{fw.score}%</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* ── Single Framework: per-theme breakdown ── */
+                  <>
+                    <h3>
+                      {selectedFrameworkId === "cfw_nist_csf_v2"
+                        ? "NIST CSF 2.0 Core Functions Breakdown"
+                        : selectedFrameworkId === "cfw_cis_v8_1"
+                          ? "CIS Controls v8.1 Safeguards Breakdown"
+                          : selectedFrameworkId === "cfw_soc2_type2"
+                            ? "SOC 2 Trust Services Criteria Breakdown"
+                            : selectedFrameworkId === "cfw_cert_in_2022"
+                              ? "CERT-In Directions & CCMP Themes Breakdown"
+                              : selectedFrameworkId === "cfw_pci_dss_v4"
+                                ? "PCI-DSS v4.0 12 Principal Requirements Breakdown"
+                                : selectedFrameworkId === "cfw_dpdp_2023"
+                                  ? "DPDP Act 2023 6 Key Governance Principles Breakdown"
+                                  : selectedFrameworkId === "cfw_gdpr"
+                                    ? "EU GDPR 7 Core Privacy Principles Breakdown"
+                                    : "ISO 27001 Themes Quadrant Breakdown"}
+                    </h3>
+                    <div className="quadrant-grid">
+                      {Object.entries(summary.quadrant_scores || {}).map(
+                        ([key, val]) => (
+                          <div key={key} className="quad-item">
+                            <span
+                              className={
+                                ["GV", "ID", "PR", "DE", "RS", "RC"].includes(
+                                  key,
+                                )
+                                  ? `nist-badge nist-badge--${key}`
+                                  : "quad-label"
+                              }
+                            >
+                              {THEME_LABELS[key] || key}
+                            </span>
+                            <div className="progress-container">
+                              <div
+                                className="comp-progress-fill"
+                                style={{ width: `${val}%` }}
+                              />
+                            </div>
+                            <span className="quad-value">{val}%</span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

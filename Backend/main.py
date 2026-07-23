@@ -220,6 +220,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_cert_in_2022")
                 .first()
             )
+            dpdp_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_dpdp_2023")
+                .first()
+            )
+            gdpr_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_gdpr")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -235,6 +245,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_cert_in_2022")
                 .count()
             )
+            dpdp_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_dpdp_2023")
+                .count()
+            )
+            gdpr_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_gdpr")
+                .count()
+            )
             ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
@@ -246,14 +266,18 @@ async def lifespan(app: FastAPI):
                 or not nist_fw
                 or not soc2_fw
                 or not certin_fw
+                or not dpdp_fw
+                or not gdpr_fw
                 or ctrl_count < 93
                 or nist_ctrl_count < 20
                 or soc2_ctrl_count < 61
                 or certin_ctrl_count < 10
+                or dpdp_ctrl_count < 16
+                or gdpr_ctrl_count < 18
                 or rule_count < 20
             ):
                 log.info(
-                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, ISO ctrl={ctrl_count}, NIST ctrl={nist_ctrl_count}, SOC2 ctrl={soc2_ctrl_count}, CERT-In ctrl={certin_ctrl_count}, rules={rule_count})..."
+                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, DPDP={bool(dpdp_fw)}, GDPR={bool(gdpr_fw)})..."
                 )
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
@@ -274,6 +298,13 @@ async def lifespan(app: FastAPI):
                 certin_seed = os.path.join(
                     base_scripts_dir, "cert_in_2022_controls_seed.json"
                 )
+                pci_seed = os.path.join(
+                    base_scripts_dir, "pci_dss_v4_controls_seed.json"
+                )
+                dpdp_seed = os.path.join(
+                    base_scripts_dir, "dpdp_2023_controls_seed.json"
+                )
+                gdpr_seed = os.path.join(base_scripts_dir, "gdpr_controls_seed.json")
 
                 try:
                     if os.path.exists(iso_seed):
@@ -284,6 +315,12 @@ async def lifespan(app: FastAPI):
                         seed_framework_and_controls(db, soc2_seed)
                     if os.path.exists(certin_seed):
                         seed_framework_and_controls(db, certin_seed)
+                    if os.path.exists(pci_seed):
+                        seed_framework_and_controls(db, pci_seed)
+                    if os.path.exists(dpdp_seed):
+                        seed_framework_and_controls(db, dpdp_seed)
+                    if os.path.exists(gdpr_seed):
+                        seed_framework_and_controls(db, gdpr_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")
@@ -294,7 +331,7 @@ async def lifespan(app: FastAPI):
                     )
             else:
                 log.info(
-                    "Compliance catalog (ISO 27001, NIST CSF v2.0, SOC 2 Type II & CERT-In 2022 frameworks, controls & rules) fully present and synchronized."
+                    "Compliance catalog (ISO 27001, NIST CSF v2.0, SOC 2 Type II, CERT-In 2022, PCI-DSS v4.0, DPDP Act 2023 & GDPR frameworks, controls & rules) fully present and synchronized."
                 )
     except Exception as e:
         log.warning(f"Compliance catalog auto-seeding skipped or deferred: {e}")

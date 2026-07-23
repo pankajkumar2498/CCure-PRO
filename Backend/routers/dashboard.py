@@ -783,7 +783,9 @@ def get_compliance(
         + no_critical_pct * 0.2
         + no_cleartext_pct * 0.2
     )
-    cis = clamp(no_cleartext_pct * 0.4 + remediation_rate * 0.3 + no_critical_pct * 0.3)
+    dpdp = clamp(coverage_rate * 0.35 + remediation_rate * 0.35 + no_critical_pct * 0.3)
+    gdpr = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
+    cis = clamp(coverage_rate * 0.35 + remediation_rate * 0.35 + no_cleartext_pct * 0.3)
 
     return {
         "frameworks": [
@@ -804,6 +806,18 @@ def get_compliance(
                 "name": "PCI-DSS 4.0",
                 "score": round(pci, 1),
                 "color": "#f97316",
+            },
+            {
+                "id": "dpdp_2023",
+                "name": "DPDP Act 2023",
+                "score": round(dpdp, 1),
+                "color": "#d97706",
+            },
+            {
+                "id": "gdpr",
+                "name": "EU GDPR",
+                "score": round(gdpr, 1),
+                "color": "#1d4ed8",
             },
             {
                 "id": "hipaa",

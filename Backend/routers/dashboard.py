@@ -787,6 +787,9 @@ def get_compliance(
     gdpr = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
     cis = clamp(coverage_rate * 0.35 + remediation_rate * 0.35 + no_cleartext_pct * 0.3)
     iec = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
+    nist82 = clamp(
+        coverage_rate * 0.35 + remediation_rate * 0.35 + no_critical_pct * 0.3
+    )
 
     return {
         "frameworks": [
@@ -843,6 +846,12 @@ def get_compliance(
                 "name": "IEC 62443 (OT/ICS)",
                 "score": round(iec, 1),
                 "color": "#f43f5e",
+            },
+            {
+                "id": "nist_800_82",
+                "name": "NIST SP 800-82 R3 (OT)",
+                "score": round(nist82, 1),
+                "color": "#2563eb",
             },
         ],
     }

@@ -8853,6 +8853,91 @@
         ]
       }
     },
+    "/compliance/reports/nist_800_82": {
+      "get": {
+        "description": "Generates and downloads the NIST SP 800-82 Rev. 3 OT Security Assessment Report.",
+        "operationId": "download_nist_800_82_report_compliance_reports_nist_800_82_get",
+        "parameters": [
+          {
+            "description": "pdf | docx",
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "description": "pdf | docx",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "L0 | L1 | L2 | L3 | L3.5 | L4 | L5",
+            "in": "query",
+            "name": "purdue_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "L0 | L1 | L2 | L3 | L3.5 | L4 | L5",
+              "title": "Purdue Level"
+            }
+          },
+          {
+            "description": "PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED",
+            "in": "query",
+            "name": "component_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED",
+              "title": "Component Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Nist 800 82 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/nist_csf": {
       "get": {
         "description": "Generates and downloads the NIST CSF v2.0 Compliance Assessment Report.",

@@ -7643,6 +7643,54 @@
           },
           {
             "in": "query",
+            "name": "purdue_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purdue Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "component_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Component Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sl_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sl Level"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8609,6 +8657,109 @@
         ]
       }
     },
+    "/compliance/reports/iec_62443": {
+      "get": {
+        "description": "Generates and downloads the IEC 62443 Industrial Cybersecurity Assessment Report.",
+        "operationId": "download_iec_62443_report_compliance_reports_iec_62443_get",
+        "parameters": [
+          {
+            "description": "pdf | docx",
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "description": "pdf | docx",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "L0 | L1 | L2 | L3 | L3.5",
+            "in": "query",
+            "name": "purdue_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "L0 | L1 | L2 | L3 | L3.5",
+              "title": "Purdue Level"
+            }
+          },
+          {
+            "description": "NDD | EDR | HDR | SW",
+            "in": "query",
+            "name": "component_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "NDD | EDR | HDR | SW",
+              "title": "Component Type"
+            }
+          },
+          {
+            "description": "SL1 | SL2 | SL3 | SL4",
+            "in": "query",
+            "name": "sl_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "SL1 | SL2 | SL3 | SL4",
+              "title": "Sl Level"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Iec 62443 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/nist_800_53_r5": {
       "get": {
         "description": "Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report.",
@@ -9204,6 +9355,54 @@
                 }
               ],
               "title": "Privacy Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "purdue_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purdue Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "component_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Component Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sl_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sl Level"
             }
           }
         ],

@@ -840,6 +840,96 @@ def seed_and_evaluate():
                 "control_id": "cct_iso27001_2022_8.20",
                 "recommendation_text": "Configure Network Level Authentication (NLA) requirement on Remote Desktop Services to validate connections before creating sessions.",
             },
+            {
+                "id": "crl_ot_modbus_502",
+                "rule_family_code": "OT-MODBUS-502",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 502,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_ot_modbus_502_v1",
+                "control_id": "cct_iec_62443_sr_2_3",
+                "recommendation_text": "Restrict or eliminate unauthenticated Modbus TCP port 502 exposure across control zone boundaries.",
+            },
+            {
+                "id": "crl_ot_siemens_s7_102",
+                "rule_family_code": "OT-SIEMENS-S7-102",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 102,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_ot_siemens_s7_102_v1",
+                "control_id": "cct_iec_62443_sr_5_1",
+                "recommendation_text": "Restrict Siemens S7 protocol port 102 to designated Engineering Workstations using zone firewalls.",
+            },
+            {
+                "id": "crl_ot_ethernet_ip_44818",
+                "rule_family_code": "OT-ETHERNET-IP-44818",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 44818,
+                    "protocol": "tcp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_ot_ethernet_ip_44818_v1",
+                "control_id": "cct_iec_62443_sr_5_1",
+                "recommendation_text": "Restrict EtherNet/IP CIP port 44818 access using industrial firewall ACLs.",
+            },
+            {
+                "id": "crl_ot_bacnet_47808",
+                "rule_family_code": "OT-BACNET-47808",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "port": 47808,
+                    "protocol": "udp",
+                    "expected_state": "closed_or_firewalled",
+                },
+                "severity": "medium",
+                "severity_weight": 6,
+                "remediation_id_target": "rem_ot_bacnet_47808_v1",
+                "control_id": "cct_iec_62443_sr_5_3",
+                "recommendation_text": "Isolate BACnet building automation UDP port 47808 traffic from external networks.",
+            },
+            {
+                "id": "crl_ot_jump_host_mfa",
+                "rule_family_code": "OT-JUMP-HOST-MFA",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "key": "mfa_enabled",
+                    "operator": "equals",
+                    "expected": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_ot_jump_host_mfa_v1",
+                "control_id": "cct_iec_62443_sr_1_1_re2",
+                "recommendation_text": "Enforce mandatory Multi-Factor Authentication (MFA) for OT DMZ Jump Host access.",
+            },
         ]
 
         # Compile a set of controls already mapped to custom rules
@@ -867,7 +957,7 @@ def seed_and_evaluate():
                         "check_type": "api_response",
                         "evidence_source": (
                             "auto_scan"
-                            if getattr(ctrl, "scannable_type", "auto") == "auto"
+                            if getattr(ctrl, "scannability", "auto") == "auto"
                             else "manual"
                         ),
                         "target_platform": "any",
@@ -1076,6 +1166,41 @@ def seed_and_evaluate():
             "PCI-IR-TEST-365D": (
                 "# --- MANUAL CHECK ---\n"
                 "# Schedule and coordinate annual incident response plan tabletop simulation exercise."
+            ),
+            "OT-MODBUS-502": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                'New-NetFirewallRule -DisplayName "Block Unauthenticated Modbus" -Direction Inbound -LocalPort 502 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 502/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 502 -j DROP"
+            ),
+            "OT-SIEMENS-S7-102": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                'New-NetFirewallRule -DisplayName "Restrict Siemens S7 Port 102" -Direction Inbound -LocalPort 102 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 102/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 102 -j DROP"
+            ),
+            "OT-ETHERNET-IP-44818": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                'New-NetFirewallRule -DisplayName "Restrict EtherNet/IP Port 44818" -Direction Inbound -LocalPort 44818 -Protocol TCP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 44818/tcp\n"
+                "sudo iptables -A INPUT -p tcp --dport 44818 -j DROP"
+            ),
+            "OT-BACNET-47808": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                'New-NetFirewallRule -DisplayName "Restrict BACnet Port 47808" -Direction Inbound -LocalPort 47808 -Protocol UDP -Action Block\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw deny 47808/udp\n"
+                "sudo iptables -A INPUT -p udp --dport 47808 -j DROP"
+            ),
+            "OT-JUMP-HOST-MFA": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services' -Name 'fPromptForPassword' -Value 1\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get install -y libpam-duo || sudo yum install -y duo_unix\n"
+                "sudo sed -i 's/auth       required       pam_env.so/auth       required       pam_duo.so/' /etc/pam.d/sshd"
             ),
         }
 
@@ -1855,6 +1980,101 @@ def seed_and_evaluate():
                 "  - Successfully mapped rules and controls for NIST SP 800-53 Rev. 5"
             )
 
+        # Map rules and controls for IEC 62443
+        iec_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_iec_62443")
+            .all()
+        )
+        if iec_controls:
+            for iec_ctrl in iec_controls:
+                if iec_ctrl.crosswalk:
+                    for cross_num in iec_ctrl.crosswalk:
+                        clean_cross_num = (
+                            cross_num.split(":", 1)[1]
+                            if ":" in cross_num
+                            else cross_num
+                        )
+                        if clean_cross_num.startswith("A."):
+                            iso_ref = (
+                                clean_cross_num.replace("A.", "")
+                                .strip()
+                                .lower()
+                                .replace(".", "_")
+                            )
+                            iso_ctrl_ids = [
+                                f"cct_iso27001_2022_a_{iso_ref}",
+                                f"cct_iso27001_2022_{iso_ref}",
+                            ]
+                            linked_rules = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.control_id.in_(iso_ctrl_ids)
+                                )
+                                .all()
+                            )
+                            for r_link in linked_rules:
+                                i_link = (
+                                    db.query(ComplianceRuleControl)
+                                    .filter(
+                                        ComplianceRuleControl.rule_id == r_link.rule_id,
+                                        ComplianceRuleControl.control_id == iec_ctrl.id,
+                                    )
+                                    .first()
+                                )
+                                if not i_link:
+                                    db.add(
+                                        ComplianceRuleControl(
+                                            rule_id=r_link.rule_id,
+                                            control_id=iec_ctrl.id,
+                                        )
+                                    )
+
+                raw_id = (
+                    iec_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_iec_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-IEC-{iec_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            iec_ctrl.scannability
+                            if iec_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                i_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == iec_ctrl.id,
+                    )
+                    .first()
+                )
+                if not i_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=iec_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for IEC 62443")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -1874,6 +2094,7 @@ def seed_and_evaluate():
                 "cfw_dpdp_2023",
                 "cfw_gdpr",
                 "cfw_nist_800_53_r5",
+                "cfw_iec_62443",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

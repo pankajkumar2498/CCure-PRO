@@ -786,6 +786,7 @@ def get_compliance(
     dpdp = clamp(coverage_rate * 0.35 + remediation_rate * 0.35 + no_critical_pct * 0.3)
     gdpr = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
     cis = clamp(coverage_rate * 0.35 + remediation_rate * 0.35 + no_cleartext_pct * 0.3)
+    iec = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
 
     return {
         "frameworks": [
@@ -836,6 +837,12 @@ def get_compliance(
                 "name": "CIS Benchmark",
                 "score": round(cis, 1),
                 "color": "#eab308",
+            },
+            {
+                "id": "iec_62443",
+                "name": "IEC 62443 (OT/ICS)",
+                "score": round(iec, 1),
+                "color": "#f43f5e",
             },
         ],
     }

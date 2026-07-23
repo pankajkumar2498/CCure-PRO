@@ -7497,6 +7497,22 @@
         "parameters": [
           {
             "in": "query",
+            "name": "framework_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "status",
             "required": false,
             "schema": {
@@ -7558,6 +7574,71 @@
               ],
               "default": false,
               "title": "Cde Scope Only"
+            }
+          },
+          {
+            "in": "query",
+            "name": "impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Impact Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "zero_trust_only",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Zero Trust Only"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sdf_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sdf Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "privacy_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Privacy Role"
             }
           },
           {
@@ -8528,6 +8609,99 @@
         ]
       }
     },
+    "/compliance/reports/nist_800_53_r5": {
+      "get": {
+        "description": "Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report.",
+        "operationId": "download_nist_800_53_r5_report_compliance_reports_nist_800_53_r5_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "LOW | MODERATE | HIGH",
+            "in": "query",
+            "name": "impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "LOW | MODERATE | HIGH",
+              "title": "Impact Level"
+            }
+          },
+          {
+            "description": "SP53_AC | SP53_AU | etc",
+            "in": "query",
+            "name": "control_family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "SP53_AC | SP53_AU | etc",
+              "title": "Control Family"
+            }
+          },
+          {
+            "in": "query",
+            "name": "zero_trust_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Zero Trust Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Nist 800 53 R5 Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/nist_csf": {
       "get": {
         "description": "Generates and downloads the NIST CSF v2.0 Compliance Assessment Report.",
@@ -8965,6 +9139,39 @@
               ],
               "default": false,
               "title": "Cde Scope Only"
+            }
+          },
+          {
+            "in": "query",
+            "name": "impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Impact Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "zero_trust_only",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Zero Trust Only"
             }
           },
           {

@@ -230,6 +230,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_gdpr")
                 .first()
             )
+            pci_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_pci_dss_v4")
+                .first()
+            )
+            nist53_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_nist_800_53_r5")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -255,6 +265,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_gdpr")
                 .count()
             )
+            pci_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_pci_dss_v4")
+                .count()
+            )
+            nist53_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_nist_800_53_r5")
+                .count()
+            )
             ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
@@ -268,16 +288,20 @@ async def lifespan(app: FastAPI):
                 or not certin_fw
                 or not dpdp_fw
                 or not gdpr_fw
+                or not pci_fw
+                or not nist53_fw
                 or ctrl_count < 93
                 or nist_ctrl_count < 20
                 or soc2_ctrl_count < 61
                 or certin_ctrl_count < 10
                 or dpdp_ctrl_count < 16
                 or gdpr_ctrl_count < 18
+                or pci_ctrl_count < 12
+                or nist53_ctrl_count < 100
                 or rule_count < 20
             ):
                 log.info(
-                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, DPDP={bool(dpdp_fw)}, GDPR={bool(gdpr_fw)})..."
+                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, DPDP={bool(dpdp_fw)}, GDPR={bool(gdpr_fw)}, PCI={bool(pci_fw)}, NIST80053={bool(nist53_fw)})..."
                 )
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
@@ -305,6 +329,9 @@ async def lifespan(app: FastAPI):
                     base_scripts_dir, "dpdp_2023_controls_seed.json"
                 )
                 gdpr_seed = os.path.join(base_scripts_dir, "gdpr_controls_seed.json")
+                nist53_seed = os.path.join(
+                    base_scripts_dir, "nist_800_53_r5_controls_seed.json"
+                )
 
                 try:
                     if os.path.exists(iso_seed):
@@ -321,6 +348,8 @@ async def lifespan(app: FastAPI):
                         seed_framework_and_controls(db, dpdp_seed)
                     if os.path.exists(gdpr_seed):
                         seed_framework_and_controls(db, gdpr_seed)
+                    if os.path.exists(nist53_seed):
+                        seed_framework_and_controls(db, nist53_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")

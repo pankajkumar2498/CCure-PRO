@@ -20,7 +20,7 @@ import ipaddress
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from engines.credentialed.ssh_scanner import SSHScanner
 
@@ -88,7 +88,7 @@ class LinuxCollector:
     def collect_all(
         self,
         sections: list[str] | None = None,
-        on_section_complete: callable | None = None,
+        on_section_complete: Callable | None = None,
     ) -> dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.

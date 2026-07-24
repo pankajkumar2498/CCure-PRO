@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 log = logging.getLogger("ccure.compliance.crypto")
@@ -60,11 +61,20 @@ def decrypt_credential(cipher_text_b64: str) -> str:
     """
     if not cipher_text_b64:
         return ""
-    data = base64.b64decode(cipher_text_b64.encode("utf-8"))
-    if len(data) < 12:
-        raise ValueError("Invalid encrypted payload size.")
-    nonce = data[:12]
-    ciphertext = data[12:]
-    aesgcm = AESGCM(KEY_DIGEST)
-    decrypted = aesgcm.decrypt(nonce, ciphertext, None)
-    return decrypted.decode("utf-8")
+    try:
+        data = base64.b64decode(cipher_text_b64.encode("utf-8"))
+        if len(data) < 12:
+            raise ValueError("Invalid encrypted payload size.")
+        nonce = data[:12]
+        ciphertext = data[12:]
+        aesgcm = AESGCM(KEY_DIGEST)
+        decrypted = aesgcm.decrypt(nonce, ciphertext, None)
+        return decrypted.decode("utf-8")
+    except InvalidTag as err:
+        raise ValueError(
+            f"Invalid encrypted payload or authentication tag: {err}"
+        ) from err
+    except (ValueError, Exception) as err:
+        if isinstance(err, ValueError):
+            raise
+        raise ValueError(f"Invalid encrypted payload: {err}") from err

@@ -4,6 +4,7 @@ core/discovery/techniques/icmp.py — ICMP Echo Discovery
 
 import logging
 from typing import Dict, List, Optional
+
 from core.constants import SCAPY_AVAILABLE
 from core.risk import fingerprint_os
 
@@ -11,8 +12,8 @@ log = logging.getLogger("ccure.discovery.icmp")
 
 
 def probe(
-    ips: List[str],
-    results: Dict[str, Dict],
+    ips: list[str],
+    results: dict[str, dict],
     timeout: float = 1.5,
 ) -> None:
     """
@@ -34,7 +35,7 @@ def probe(
     if not SCAPY_AVAILABLE or not ips:
         return
     try:
-        from scapy.all import sr, IP, ICMP
+        from scapy.all import ICMP, IP, sr
 
         ans, _ = sr(
             IP(dst=ips) / ICMP(type="echo-request"),
@@ -69,7 +70,7 @@ def probe(
         log.debug("icmp.probe error: %s", exc)
 
 
-def _latency_ms(sent, received) -> Optional[float]:
+def _latency_ms(sent, received) -> float | None:
     try:
         t_s = getattr(sent, "sent_time", None) or getattr(sent, "time", None)
         t_r = getattr(received, "time", None)
@@ -78,5 +79,4 @@ def _latency_ms(sent, received) -> Optional[float]:
             return e if e >= 0 else None
     except Exception as exc:
         log.debug("Failed to calculate ICMP latency: %s", exc)
-        pass
     return None

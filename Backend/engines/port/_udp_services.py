@@ -19,7 +19,7 @@ from typing import Dict
 # UDP service table: port → {service, risk, probe}
 # ─────────────────────────────────────────────────────────────────────────────
 
-UDP_SERVICES: Dict[int, Dict] = {
+UDP_SERVICES: dict[int, dict] = {
     53: {"service": "dns", "risk": "High", "probe": "dns"},
     67: {"service": "dhcp", "risk": "High", "probe": "dhcp"},
     69: {"service": "tftp", "risk": "High", "probe": "tftp"},
@@ -40,7 +40,7 @@ UDP_SERVICES: Dict[int, Dict] = {
 
 
 def add_udp_result(
-    host: Dict, port: int, service_info: Dict, state: str, banner: str
+    host: dict, port: int, service_info: dict, state: str, banner: str
 ) -> None:
     """Append a UDP result to the host dict, deduplicating by port."""
     existing = {s.get("port") for s in host.get("udp_services", [])}

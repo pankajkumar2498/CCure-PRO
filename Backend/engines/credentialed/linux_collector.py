@@ -18,9 +18,9 @@ Usage (called by the endpoint, not directly)::
 
 import ipaddress
 import json
-import re
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Callable, Dict, List, Optional
 
 from engines.credentialed.ssh_scanner import SSHScanner
 
@@ -33,7 +33,7 @@ log = logging.getLogger("ccure.linux_collector")
 # - SUID/world-writable scans reduced from 25s to 10s timeout
 # - Head limits reduced to prevent large output transfers
 # ---------------------------------------------------------------------------
-COMMANDS: Dict[str, str] = {
+COMMANDS: dict[str, str] = {
     "os_release": "cat /etc/os-release 2>/dev/null",
     "kernel": "uname -r 2>/dev/null",
     "uname_full": "uname -a 2>/dev/null",
@@ -87,9 +87,9 @@ class LinuxCollector:
 
     def collect_all(
         self,
-        sections: Optional[List[str]] = None,
-        on_section_complete: Optional[callable] = None,
-    ) -> Dict[str, Any]:
+        sections: list[str] | None = None,
+        on_section_complete: Callable | None = None,
+    ) -> dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.
 
@@ -100,7 +100,7 @@ class LinuxCollector:
         """
         run_all = sections is None
 
-        tasks: List[tuple] = []
+        tasks: list[tuple] = []
         if run_all or "system_info" in sections:
             tasks.append(("system_info", self._collect_system_info))
         if run_all or "packages" in sections:
@@ -119,7 +119,7 @@ class LinuxCollector:
         if run_all or "history" in sections:
             tasks.append(("history", self._collect_login_history))
 
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         from concurrent.futures import ThreadPoolExecutor
 
@@ -153,8 +153,8 @@ class LinuxCollector:
 
     # ── System info ────────────────────────────────────────────────────────
 
-    def _collect_system_info(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
+    def _collect_system_info(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
 
         # OS details
         os_raw = self._run("os_release")
@@ -226,8 +226,8 @@ class LinuxCollector:
 
     # ── Packages ───────────────────────────────────────────────────────────
 
-    def _collect_packages(self) -> List[Dict[str, str]]:
-        packages: List[Dict[str, str]] = []
+    def _collect_packages(self) -> list[dict[str, str]]:
+        packages: list[dict[str, str]] = []
 
         # Try Debian/Ubuntu first
         deb_raw = self._run("packages_deb")
@@ -244,7 +244,7 @@ class LinuxCollector:
 
     # ── Services ───────────────────────────────────────────────────────────
 
-    def _collect_services(self) -> List[Dict[str, str]]:
+    def _collect_services(self) -> list[dict[str, str]]:
         raw = self._run("running_svcs")
         if not raw:
             return []
@@ -268,13 +268,13 @@ class LinuxCollector:
 
     # ── Open ports (socket table) ──────────────────────────────────────────
 
-    def _collect_open_ports(self) -> List[Dict[str, str]]:
+    def _collect_open_ports(self) -> list[dict[str, str]]:
         raw = self._run("open_ports")
         return _parse_ss_output(raw)
 
     # ── Users ──────────────────────────────────────────────────────────────
 
-    def _collect_users(self) -> List[Dict[str, str]]:
+    def _collect_users(self) -> list[dict[str, str]]:
         raw = self._run("users")
         users = []
         for line in raw.splitlines():
@@ -298,7 +298,7 @@ class LinuxCollector:
 
     # ── Local groups ───────────────────────────────────────────────────────
 
-    def _collect_local_groups(self) -> List[Dict[str, Any]]:
+    def _collect_local_groups(self) -> list[dict[str, Any]]:
         raw = self._run("local_groups")
         groups = []
         for line in raw.splitlines():
@@ -314,8 +314,8 @@ class LinuxCollector:
 
     # ── Security audit ─────────────────────────────────────────────────────
 
-    def _collect_security_audit(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
+    def _collect_security_audit(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
 
         # SUID binaries
         suid_raw = self._run("suid_files")
@@ -417,7 +417,7 @@ class LinuxCollector:
 
     # ── Network ────────────────────────────────────────────────────────────
 
-    def _collect_network(self) -> Dict[str, Any]:
+    def _collect_network(self) -> dict[str, Any]:
         iface_raw = self._run("network_iface")
         subnet = _subnet_from_linux_interfaces(iface_raw, self._ssh.ip)
         primary_mac = _mac_from_linux_interfaces(iface_raw, self._ssh.ip)
@@ -431,7 +431,7 @@ class LinuxCollector:
 
     # ── Login history ──────────────────────────────────────────────────────
 
-    def _collect_login_history(self) -> Dict[str, Any]:
+    def _collect_login_history(self) -> dict[str, Any]:
         login_raw = self._run("login_history")
         failed_raw = self._run("failed_logins")
         failed_lines = [
@@ -495,7 +495,7 @@ class LinuxCollector:
 # ---------------------------------------------------------------------------
 
 
-def _parse_key_value(text: str, sep: str = "=") -> Dict[str, str]:
+def _parse_key_value(text: str, sep: str = "=") -> dict[str, str]:
     """Parse a file of KEY=value lines into a dict."""
     out = {}
     for line in text.splitlines():
@@ -609,7 +609,7 @@ def _unquote(s: str) -> str:
     return s.strip("\"'")
 
 
-def _parse_dpkg_output(raw: str) -> List[Dict[str, str]]:
+def _parse_dpkg_output(raw: str) -> list[dict[str, str]]:
     """Parse `dpkg -l` output into a list of {name, version, arch, description}."""
     packages = []
     for line in raw.splitlines():
@@ -629,7 +629,7 @@ def _parse_dpkg_output(raw: str) -> List[Dict[str, str]]:
     return packages
 
 
-def _parse_rpm_output(raw: str) -> List[Dict[str, str]]:
+def _parse_rpm_output(raw: str) -> list[dict[str, str]]:
     """Parse `rpm -qa` output (name version-release per line)."""
     packages = []
     for line in raw.splitlines():
@@ -650,7 +650,7 @@ def _parse_rpm_output(raw: str) -> List[Dict[str, str]]:
     return packages
 
 
-def _parse_ss_output(raw: str) -> List[Dict[str, str]]:
+def _parse_ss_output(raw: str) -> list[dict[str, str]]:
     """Parse `ss -tlnp` output into port records."""
     ports = []
     for line in raw.splitlines():
@@ -677,7 +677,7 @@ def _parse_ss_output(raw: str) -> List[Dict[str, str]]:
     return ports
 
 
-def _parse_free_output(raw: str) -> Dict[str, str]:
+def _parse_free_output(raw: str) -> dict[str, str]:
     """Parse `free -h` into {total, used, free, available}."""
     for line in raw.splitlines():
         if line.lower().startswith("mem"):
@@ -692,7 +692,7 @@ def _parse_free_output(raw: str) -> Dict[str, str]:
     return {}
 
 
-def _parse_df_output(raw: str) -> List[Dict[str, str]]:
+def _parse_df_output(raw: str) -> list[dict[str, str]]:
     """Parse `df -h` into list of filesystem records."""
     entries = []
     for line in raw.splitlines():
@@ -712,7 +712,7 @@ def _parse_df_output(raw: str) -> List[Dict[str, str]]:
     return entries
 
 
-def _extract_sensitive_env(raw: str) -> List[str]:
+def _extract_sensitive_env(raw: str) -> list[str]:
     """Return env vars that might reveal credentials or sensitive config."""
     sensitive_patterns = re.compile(
         r"(password|passwd|secret|token|api_key|aws|database_url|db_url|private)",

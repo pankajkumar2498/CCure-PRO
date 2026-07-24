@@ -11,19 +11,18 @@ Endpoints:
 import logging
 from typing import Optional
 
+from auth.rbac import require_permission
+from db.base import get_db
+from db.models import Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-
-from db.base import get_db
-from db.models import User, Scan
-from auth.rbac import require_permission
 
 log = logging.getLogger("ccure.api.topology")
 
 router = APIRouter(tags=["Network Topology"])
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     """Resolve org_id: superadmins can override, others use their own."""
     role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     if role_name == "superadmin" and requested_org:
@@ -33,8 +32,8 @@ def _resolve_org(user: User, requested_org: Optional[str]) -> str:
 
 @router.get("/topology/map")
 def get_topology_map(
-    org_id: Optional[str] = Query(None),
-    scan_id: Optional[str] = Query(None, description="Filter by a specific scan ID"),
+    org_id: str | None = Query(None),
+    scan_id: str | None = Query(None, description="Filter by a specific scan ID"),
     subnet_mask: int = Query(
         24,
         ge=8,

@@ -3,8 +3,8 @@ Fix the created_at field in the user record
 """
 
 import sqlite3
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def fix_user_created_at():

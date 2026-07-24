@@ -68,9 +68,9 @@ class NucleiWrapper(ToolWrapper):
 
     def __init__(
         self,
-        binary_path: Optional[str] = None,
-        templates_dir: Optional[str] = None,
-        timeout: Optional[int] = None,
+        binary_path: str | None = None,
+        templates_dir: str | None = None,
+        timeout: int | None = None,
     ):
         super().__init__(
             binary_path=binary_path or WebScanConfig.NUCLEI_BINARY,
@@ -86,15 +86,15 @@ class NucleiWrapper(ToolWrapper):
     def run(
         self,
         target: str,
-        severity: Optional[List[str]] = None,
-        auth_headers: Optional[Dict[str, str]] = None,
-        rate_limit: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        exclude_tags: Optional[List[str]] = None,
-        template_ids: Optional[List[str]] = None,
+        severity: list[str] | None = None,
+        auth_headers: dict[str, str] | None = None,
+        rate_limit: int | None = None,
+        tags: list[str] | None = None,
+        exclude_tags: list[str] | None = None,
+        template_ids: list[str] | None = None,
         waf_detected: bool = False,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """
         Run nuclei against a target URL or domain.
 
@@ -186,7 +186,7 @@ class NucleiWrapper(ToolWrapper):
         finally:
             self._cleanup_path(output_file)
 
-    def run_tech_detect(self, target: str, **kwargs) -> List[Dict]:
+    def run_tech_detect(self, target: str, **kwargs) -> list[dict]:
         """
         Run nuclei with tech-detect templates only.
         Returns detected technologies for fingerprinting.
@@ -238,7 +238,7 @@ class NucleiWrapper(ToolWrapper):
         finally:
             self._cleanup_path(output_file)
 
-    def run_waf_detect(self, target: str) -> Optional[str]:
+    def run_waf_detect(self, target: str) -> str | None:
         """
         Run nuclei with WAF detection templates.
         Returns WAF name if detected, None otherwise.
@@ -278,7 +278,7 @@ class NucleiWrapper(ToolWrapper):
     # ── Finding Normalization ─────────────────────────────────────────────────
 
     @staticmethod
-    def _normalize_finding(raw: Dict) -> Optional[Dict]:
+    def _normalize_finding(raw: dict) -> dict | None:
         """
         Convert raw nuclei JSONL output into a normalized finding dict
         compatible with the WebFinding model.
@@ -365,7 +365,7 @@ class NucleiWrapper(ToolWrapper):
             return None
 
     @staticmethod
-    def _count_by_severity(findings: List[Dict]) -> Dict[str, int]:
+    def _count_by_severity(findings: list[dict]) -> dict[str, int]:
         counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
         for f in findings:
             sev = f.get("severity", "info")
@@ -373,7 +373,7 @@ class NucleiWrapper(ToolWrapper):
         return counts
 
     @staticmethod
-    def _infer_tech_category(info: Dict) -> str:
+    def _infer_tech_category(info: dict) -> str:
         """Infer technology category from nuclei template metadata."""
         tags = info.get("tags") or []
         if "cms" in tags:

@@ -4,40 +4,39 @@ Base routers for the CCure Audit PRO Policy Compliance Engine.
 """
 
 import logging
-from typing import Optional, List
 from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
-from pydantic import BaseModel, Field, SecretStr
-from sqlalchemy import or_, and_, func
-from sqlalchemy.orm import Session
+from typing import List, Optional
 
 from auth.rbac import require_permission
+from core.audit import log_audit_event
+from core.security_crypto import encrypt_credential
 from db.base import (
-    get_db,
     gen_compliance_credential_id,
     gen_compliance_remediation_request_id,
+    get_db,
 )
-from db.models import User, Asset
+from db.models import Asset, User
 from db.models.compliance import (
-    ComplianceFramework,
-    ComplianceTenantFramework,
     ComplianceControl,
-    ComplianceRule,
-    ComplianceRuleControl,
-    CompliancePolicy,
-    CompliancePolicyRule,
-    ComplianceScanRun,
+    ComplianceCredential,
+    ComplianceException,
     ComplianceFinding,
     ComplianceFindingHistory,
-    ComplianceException,
-    ComplianceScore,
+    ComplianceFramework,
+    CompliancePolicy,
+    CompliancePolicyRule,
     ComplianceRemediation,
-    ComplianceCredential,
     ComplianceRemediationRequest,
+    ComplianceRule,
+    ComplianceRuleControl,
+    ComplianceScanRun,
+    ComplianceScore,
+    ComplianceTenantFramework,
 )
-from core.security_crypto import encrypt_credential
-from core.audit import log_audit_event
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, SecretStr
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
@@ -50,7 +49,7 @@ router = APIRouter(prefix="/compliance", tags=["Compliance"])
 
 class ExceptionRequest(BaseModel):
     reason: str = Field(..., min_length=10, max_length=1000)
-    compensating_control: Optional[str] = None
+    compensating_control: str | None = None
     expires_at: datetime
 
 
@@ -64,41 +63,41 @@ class PolicyCreate(BaseModel):
     target_platform: str = Field(
         ..., pattern="^(windows|linux|network_device|cloud|database|any)$"
     )
-    rule_ids: List[str]
-    tags: Optional[List[str]] = None
+    rule_ids: list[str]
+    tags: list[str] | None = None
 
 
 class ScanTrigger(BaseModel):
     framework_id: str
     policy_id: str
-    asset_ids: Optional[List[str]] = None
-    asset_tags: Optional[List[str]] = None
+    asset_ids: list[str] | None = None
+    asset_tags: list[str] | None = None
 
 
 class AttestationRequest(BaseModel):
     status: str = Field(..., pattern="^(pass|fail|not_applicable)$")
-    note: Optional[str] = None
-    evidence_file_ids: Optional[List[str]] = None
+    note: str | None = None
+    evidence_file_ids: list[str] | None = None
 
 
 class JITCredentials(BaseModel):
     username: str = Field(..., min_length=1, max_length=150)
     auth_method: str = Field("password", pattern="^(password|key)$")
-    password: Optional[SecretStr] = None
-    key_content: Optional[SecretStr] = None
+    password: SecretStr | None = None
+    key_content: SecretStr | None = None
     port: int = Field(22, ge=1, le=65535)
 
 
 class RemediationRequest(BaseModel):
     action: str = Field(..., pattern="^(apply_script)$")
-    credential_id: Optional[str] = None
-    jit_credentials: Optional[JITCredentials] = None
+    credential_id: str | None = None
+    jit_credentials: JITCredentials | None = None
     emergency_bypass: bool = False
 
 
 class RollbackRequest(BaseModel):
-    credential_id: Optional[str] = None
-    jit_credentials: Optional[JITCredentials] = None
+    credential_id: str | None = None
+    jit_credentials: JITCredentials | None = None
     emergency_bypass: bool = False
 
 
@@ -106,8 +105,8 @@ class CredentialCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=1, max_length=150)
     auth_method: str = Field("password", pattern="^(password|key)$")
-    password: Optional[SecretStr] = None
-    key_content: Optional[SecretStr] = None
+    password: SecretStr | None = None
+    key_content: SecretStr | None = None
     port: int = Field(22, ge=1, le=65535)
 
 
@@ -349,7 +348,7 @@ def uninstall_marketplace_framework(
 
 @router.get("/policies")
 def list_policies(
-    framework_id: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -627,18 +626,20 @@ def trigger_compliance_scan(
 
 @router.get("/findings")
 def list_findings(
-    framework_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    saq_profile: Optional[str] = Query(None),
-    cde_scope: Optional[str] = Query(None),
-    cde_scope_only: Optional[bool] = Query(False),
-    impact_level: Optional[str] = Query(None),
-    zero_trust_only: Optional[bool] = Query(False),
-    sdf_scope: Optional[str] = Query(None),
-    privacy_role: Optional[str] = Query(None),
-    purdue_level: Optional[str] = Query(None),
-    component_type: Optional[str] = Query(None),
-    sl_level: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
+    status: str | None = Query(None),
+    saq_profile: str | None = Query(None),
+    cde_scope: str | None = Query(None),
+    cde_scope_only: bool | None = Query(False),
+    impact_level: str | None = Query(None),
+    zero_trust_only: bool | None = Query(False),
+    sdf_scope: str | None = Query(None),
+    privacy_role: str | None = Query(None),
+    purdue_level: str | None = Query(None),
+    component_type: str | None = Query(None),
+    sl_level: str | None = Query(None),
+    bes_impact_level: str | None = Query(None),
+    standard_number: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -710,6 +711,12 @@ def list_findings(
 
     if sl_level and sl_level != "all":
         q = q.filter(ComplianceControl.tags.contains([sl_level.upper()]))
+
+    if bes_impact_level and bes_impact_level != "all":
+        q = q.filter(ComplianceControl.tags.contains([bes_impact_level.capitalize()]))
+
+    if standard_number and standard_number != "all":
+        q = q.filter(ComplianceControl.tags.contains([standard_number.upper()]))
 
     if cde_scope:
         q = q.filter(ComplianceFinding.cde_scope == cde_scope)
@@ -913,7 +920,7 @@ def create_credential(
     return new_cred
 
 
-@router.get("/credentials", response_model=List[CredentialResponse])
+@router.get("/credentials", response_model=list[CredentialResponse])
 def list_credentials(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -1112,7 +1119,7 @@ def apply_remediation(
 
 @router.get("/remediations/requests")
 def list_remediation_requests(
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1666,17 +1673,19 @@ def approve_exception_waiver(
 
 @router.get("/summary")
 def get_dashboard_summary(
-    framework_id: Optional[str] = Query(None),
-    saq_profile: Optional[str] = Query(None),
-    cde_scope: Optional[str] = Query(None),
-    cde_scope_only: Optional[bool] = Query(False),
-    impact_level: Optional[str] = Query(None),
-    zero_trust_only: Optional[bool] = Query(False),
-    sdf_scope: Optional[str] = Query(None),
-    privacy_role: Optional[str] = Query(None),
-    purdue_level: Optional[str] = Query(None),
-    component_type: Optional[str] = Query(None),
-    sl_level: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
+    saq_profile: str | None = Query(None),
+    cde_scope: str | None = Query(None),
+    cde_scope_only: bool | None = Query(False),
+    impact_level: str | None = Query(None),
+    zero_trust_only: bool | None = Query(False),
+    sdf_scope: str | None = Query(None),
+    privacy_role: str | None = Query(None),
+    purdue_level: str | None = Query(None),
+    component_type: str | None = Query(None),
+    sl_level: str | None = Query(None),
+    bes_impact_level: str | None = Query(None),
+    standard_number: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1717,6 +1726,8 @@ def get_dashboard_summary(
         or (purdue_level and purdue_level != "all")
         or (component_type and component_type != "all")
         or (sl_level and sl_level != "all")
+        or (bes_impact_level and bes_impact_level != "all")
+        or (standard_number and standard_number != "all")
     ):
         # Dynamically calculate overall scores and quadrant scores based on the filters
         control_query = db.query(ComplianceControl).filter(
@@ -1755,6 +1766,14 @@ def get_dashboard_summary(
         if sl_level and sl_level != "all":
             control_query = control_query.filter(
                 ComplianceControl.tags.contains([sl_level.upper()])
+            )
+        if bes_impact_level and bes_impact_level != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+            )
+        if standard_number and standard_number != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([standard_number.upper()])
             )
 
         controls = control_query.all()
@@ -1986,12 +2005,13 @@ def get_dashboard_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 
 import io
+
 from fastapi.responses import StreamingResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 try:
     import docx
@@ -2490,7 +2510,7 @@ def get_compliance_gap_analysis(
 @router.get("/reports/nist_csf")
 def download_nist_csf_report(
     fmt: str = "pdf",
-    functions: Optional[str] = Query(
+    functions: str | None = Query(
         None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
     ),
     db: Session = Depends(get_db),
@@ -2551,7 +2571,7 @@ def download_nist_csf_report(
 @router.get("/reports/cis_v8_1")
 def download_cis_v8_1_report(
     fmt: str = "pdf",
-    ig: Optional[str] = Query(
+    ig: str | None = Query(
         None, description="Implementation Group filter: ig1, ig2, ig3"
     ),
     db: Session = Depends(get_db),
@@ -2608,7 +2628,7 @@ def download_cis_v8_1_report(
 @router.get("/reports/soc2_type2")
 def download_soc2_type2_report(
     fmt: str = "pdf",
-    tsc: Optional[str] = Query(
+    tsc: str | None = Query(
         None, description="Trust Services Criteria filter: cc, a, pi, c, p"
     ),
     audit_period_days: int = Query(
@@ -2698,7 +2718,7 @@ def download_soc2_type2_report(
 @router.get("/reports/cert_in_2022")
 def download_cert_in_2022_report(
     fmt: str = "pdf",
-    theme: Optional[str] = Query(
+    theme: str | None = Query(
         None,
         description="CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
     ),
@@ -2907,7 +2927,7 @@ def _generate_pci_dss_pdf(
 @router.get("/reports/pci_dss_v4")
 def download_pci_dss_v4_report(
     fmt: str = "pdf",
-    saq_profile: Optional[str] = Query(
+    saq_profile: str | None = Query(
         None,
         description="Filter by SAQ profile: saq_a, saq_a_ep, saq_b_ip, saq_c, saq_d_merchant, saq_d_service_provider",
     ),
@@ -3093,7 +3113,7 @@ def _generate_privacy_pdf(
 @router.get("/reports/dpdp_2023")
 def download_dpdp_2023_report(
     fmt: str = "pdf",
-    sdf_scope: Optional[str] = Query(
+    sdf_scope: str | None = Query(
         None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
     ),
     db: Session = Depends(get_db),
@@ -3161,7 +3181,7 @@ def download_dpdp_2023_report(
 @router.get("/reports/gdpr")
 def download_gdpr_report(
     fmt: str = "pdf",
-    privacy_role: Optional[str] = Query(
+    privacy_role: str | None = Query(
         None, description="Filter by Privacy Role: controller, processor, both"
     ),
     db: Session = Depends(get_db),
@@ -3422,8 +3442,8 @@ def _generate_nist_800_53_pdf(
 @router.get("/reports/nist_800_53_r5")
 def download_nist_800_53_r5_report(
     fmt: str = "pdf",
-    impact_level: Optional[str] = Query(None, description="LOW | MODERATE | HIGH"),
-    control_family: Optional[str] = Query(None, description="SP53_AC | SP53_AU | etc"),
+    impact_level: str | None = Query(None, description="LOW | MODERATE | HIGH"),
+    control_family: str | None = Query(None, description="SP53_AC | SP53_AU | etc"),
     zero_trust_only: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -3513,16 +3533,17 @@ def _generate_iec_62443_pdf(
     scope_label="All Security Levels (SL1–SL4)",
 ):
     from io import BytesIO
-    from reportlab.lib.pagesizes import letter
+
     from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.platypus import (
-        SimpleDocTemplate,
         Paragraph,
+        SimpleDocTemplate,
         Spacer,
         Table,
         TableStyle,
     )
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -3710,9 +3731,9 @@ def _generate_iec_62443_docx(
 @router.get("/reports/iec_62443")
 def download_iec_62443_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    purdue_level: Optional[str] = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
-    component_type: Optional[str] = Query(None, description="NDD | EDR | HDR | SW"),
-    sl_level: Optional[str] = Query(None, description="SL1 | SL2 | SL3 | SL4"),
+    purdue_level: str | None = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
+    component_type: str | None = Query(None, description="NDD | EDR | HDR | SW"),
+    sl_level: str | None = Query(None, description="SL1 | SL2 | SL3 | SL4"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -4025,10 +4046,10 @@ def _generate_nist_800_82_docx(
 @router.get("/reports/nist_800_82")
 def download_nist_800_82_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    purdue_level: Optional[str] = Query(
+    purdue_level: str | None = Query(
         None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
     ),
-    component_type: Optional[str] = Query(
+    component_type: str | None = Query(
         None, description="PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED"
     ),
     db: Session = Depends(get_db),
@@ -4094,6 +4115,361 @@ def download_nist_800_82_report(
         )
         media = "application/pdf"
         filename = f"nist_800_82_report_{user.org_id[:4]}.pdf"
+
+    from fastapi.responses import StreamingResponse
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NERC CIP Executive Audit Report Generators & Routes
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _generate_nerc_cip_pdf(
+    controls,
+    findings_map,
+    title="NERC CIP Critical Infrastructure Protection Audit Report",
+    subtitle="North American Electric Reliability Corporation Compliance Assessment Ledger",
+    scope_label="All BES Cyber Systems & Impact Baselines",
+    regional_entity="WECC / NERC Regional Compliance Entity",
+):
+    from io import BytesIO
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import (
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+    except ImportError:
+        return BytesIO(b"ReportLab is not installed.")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "NERCTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0284C7"),
+        alignment=0,
+    )
+    sub_style = ParagraphStyle(
+        "NERCSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#475569"),
+    )
+    badge_style = ParagraphStyle(
+        "NERCBadge",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(subtitle, sub_style))
+    story.append(Spacer(1, 4))
+    story.append(
+        Paragraph(
+            f"<b>Regulatory Entity:</b> {regional_entity} | <b>Scope Filter:</b> {scope_label}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 14))
+
+    table_data = [
+        [
+            "Control ID",
+            "Control Title",
+            "Standard / Theme",
+            "BES Impact",
+            "Purdue / Assets",
+            "Verdict",
+        ]
+    ]
+
+    impact_colors = {
+        "HIGH": colors.HexColor("#DC2626"),
+        "MEDIUM": colors.HexColor("#EA580C"),
+        "LOW": colors.HexColor("#CA8A04"),
+    }
+
+    purdue_set = {"L0", "L1", "L2", "L3", "L3.5", "L4", "L5"}
+    impact_set = {"High", "Medium", "Low"}
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        verdict_color = (
+            colors.HexColor("#16A34A")
+            if verdict == "PASS"
+            else (
+                colors.HexColor("#DC2626")
+                if verdict == "FAIL"
+                else colors.HexColor("#6B7280")
+            )
+        )
+
+        tags = c.tags or []
+        purdue_str = ", ".join([t for t in tags if t in purdue_set]) or "L0-L5"
+        impacts = [t.upper() for t in tags if t in impact_set]
+        impact_str = ", ".join(impacts) if impacts else "ALL"
+        top_impact = impacts[0] if impacts else "MEDIUM"
+        imp_color = impact_colors.get(top_impact, colors.HexColor("#0284C7"))
+
+        v_cell = Table(
+            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+        )
+        v_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), verdict_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        imp_cell = Table(
+            [[Paragraph(impact_str, badge_style)]], colWidths=[65], rowHeights=[14]
+        )
+        imp_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), imp_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        table_data.append(
+            [
+                Paragraph(f"<b>{c.control_number}</b>", styles["Normal"]),
+                Paragraph(c.title, styles["Normal"]),
+                Paragraph(c.theme or "N/A", styles["Normal"]),
+                imp_cell,
+                Paragraph(purdue_str, styles["Normal"]),
+                v_cell,
+            ]
+        )
+
+    t = Table(table_data, colWidths=[75, 175, 75, 70, 70, 60])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0284C7")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_nerc_cip_docx(
+    controls,
+    findings_map,
+    title="NERC CIP Critical Infrastructure Protection Audit Report",
+    subtitle="North American Electric Reliability Corporation Compliance Assessment Ledger",
+    scope_label="All BES Cyber Systems & Impact Baselines",
+    regional_entity="WECC / NERC Regional Compliance Entity",
+):
+    from io import BytesIO
+
+    try:
+        from docx import Document
+    except ImportError:
+        return BytesIO(b"python-docx is not installed.")
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    doc.add_paragraph(subtitle)
+    doc.add_paragraph(
+        f"Regulatory Entity: {regional_entity} | Scope Filter: {scope_label}"
+    )
+
+    table = doc.add_table(rows=1, cols=6)
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    hdr_titles = [
+        "Control ID",
+        "Control Title",
+        "Theme",
+        "BES Impact",
+        "Purdue Level",
+        "Verdict",
+    ]
+    for i, t in enumerate(hdr_titles):
+        hdr_cells[i].text = t
+
+    purdue_set = {"L0", "L1", "L2", "L3", "L3.5", "L4", "L5"}
+    impact_set = {"High", "Medium", "Low"}
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        tags = c.tags or []
+        purdue_str = ", ".join([t for t in tags if t in purdue_set]) or "L0-L5"
+        impact_str = ", ".join([t.upper() for t in tags if t in impact_set]) or "ALL"
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = c.control_number
+        row_cells[1].text = c.title
+        row_cells[2].text = c.theme or "N/A"
+        row_cells[3].text = impact_str
+        row_cells[4].text = purdue_str
+        row_cells[5].text = verdict
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/nerc_cip")
+def download_nerc_cip_report(
+    fmt: str = Query("pdf", description="pdf | docx"),
+    regional_entity: str | None = Query(
+        "WECC",
+        description="WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
+    ),
+    bes_impact_level: str | None = Query(None, description="HIGH | MEDIUM | LOW"),
+    standard_number: str | None = Query(
+        None, description="CIP-002 | CIP-003 | ... | CIP-014"
+    ),
+    purdue_level: str | None = Query(
+        None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
+    ),
+    component_type: str | None = Query(
+        None, description="BCA | PCA | EACMS | PACS | EMS | SCADA"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the NERC CIP Executive Compliance Audit Report."""
+    fw_id = "cfw_nerc_cip"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if bes_impact_level and bes_impact_level != "all":
+        query = query.filter(
+            ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+        )
+
+    if standard_number and standard_number != "all":
+        query = query.filter(ComplianceControl.tags.contains([standard_number.upper()]))
+
+    if purdue_level and purdue_level != "all":
+        query = query.filter(ComplianceControl.tags.contains([purdue_level.upper()]))
+
+    if component_type and component_type != "all":
+        query = query.filter(ComplianceControl.tags.contains([component_type.upper()]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "NERC CIP Critical Infrastructure Protection Audit Report"
+    report_sub = (
+        f"Electric Reliability Compliance Assessment Ledger (Tenant: {user.org_id[:8]})"
+    )
+    scope_parts = []
+    if bes_impact_level and bes_impact_level != "all":
+        scope_parts.append(f"BES Impact: {bes_impact_level.upper()}")
+    if standard_number and standard_number != "all":
+        scope_parts.append(f"Standard: {standard_number.upper()}")
+    if purdue_level and purdue_level != "all":
+        scope_parts.append(f"Purdue Level: {purdue_level.upper()}")
+    if component_type and component_type != "all":
+        scope_parts.append(f"Asset Type: {component_type.upper()}")
+
+    scope_label = (
+        ", ".join(scope_parts) if scope_parts else "All BES Systems & Standards"
+    )
+
+    reg_entity_label = (
+        regional_entity.upper().replace("_", " ")
+        if regional_entity
+        else "WECC / NERC Regional Compliance Entity"
+    )
+
+    if fmt.lower() == "docx":
+        buffer = _generate_nerc_cip_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+            regional_entity=reg_entity_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"nerc_cip_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_nerc_cip_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+            regional_entity=reg_entity_label,
+        )
+        media = "application/pdf"
+        filename = f"nerc_cip_report_{user.org_id[:4]}.pdf"
 
     from fastapi.responses import StreamingResponse
 

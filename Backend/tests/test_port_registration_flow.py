@@ -1,7 +1,7 @@
-import pytest
 from unittest.mock import MagicMock, patch
 
-from core.discovery.enrichment import enrich_host, _register_open_port
+import pytest
+from core.discovery.enrichment import _register_open_port, enrich_host
 from orchestrator.scan_orchestrator import ScanOrchestrator
 
 
@@ -122,9 +122,9 @@ async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls
 
 
 def test_port_engine_port_list_curated_hybrid_ranges():
+    from core.constants import SCAN_PORTS_OT, SCAN_PORTS_QUICK
     from core.models import ScanIntensity
     from engines.port.port_engine import PortEngine
-    from core.constants import SCAN_PORTS_OT, SCAN_PORTS_QUICK
 
     # Scenario 1: LIGHT intensity
     # Pass exclude_ot_from_nmap=False so OT ports are not stripped from the list

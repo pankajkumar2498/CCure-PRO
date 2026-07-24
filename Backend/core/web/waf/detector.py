@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 log = logging.getLogger("ccure.web.waf")
 
 # WAF signature database: (header_name, header_value_pattern, waf_name)
-_WAF_HEADER_SIGNATURES: List[Tuple[str, str, str]] = [
+_WAF_HEADER_SIGNATURES: list[tuple[str, str, str]] = [
     # Cloudflare
     ("server", "cloudflare", "Cloudflare"),
     ("cf-ray", "", "Cloudflare"),
@@ -60,7 +60,7 @@ _WAF_HEADER_SIGNATURES: List[Tuple[str, str, str]] = [
 ]
 
 # Error page patterns that indicate WAF blocking
-_WAF_BODY_PATTERNS: List[Tuple[str, str]] = [
+_WAF_BODY_PATTERNS: list[tuple[str, str]] = [
     ("access denied", "Generic WAF Block"),
     ("attention required! | cloudflare", "Cloudflare"),
     ("incapsula incident", "Imperva Incapsula"),
@@ -86,7 +86,7 @@ class WAFDetector:
     def __init__(self):
         pass
 
-    async def detect(self, target_url: str) -> Dict:
+    async def detect(self, target_url: str) -> dict:
         """
         Detect WAF/CDN presence at the target URL.
 
@@ -106,8 +106,8 @@ class WAFDetector:
                 "evidence": [...]
             }
         """
-        evidence: List[Dict] = []
-        detected_wafs: List[str] = []
+        evidence: list[dict] = []
+        detected_wafs: list[str] = []
 
         try:
             import httpx
@@ -227,7 +227,7 @@ class WAFDetector:
         }
 
     @staticmethod
-    def _check_headers(headers: Dict[str, str]) -> Optional[str]:
+    def _check_headers(headers: dict[str, str]) -> str | None:
         """Check response headers against WAF signature database."""
         for header_name, pattern, waf_name in _WAF_HEADER_SIGNATURES:
             value = headers.get(header_name, "").lower()

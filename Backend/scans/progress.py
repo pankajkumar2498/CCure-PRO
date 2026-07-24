@@ -33,9 +33,8 @@ All writes are atomic UPDATEs — safe under concurrent workers / connections.
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
 from db.models.scans import Scan
+from sqlalchemy.orm import Session
 
 
 def init_progress(db: Session, scan_id: str, total_ips: int) -> None:
@@ -65,7 +64,7 @@ def update_progress(
     db: Session,
     scan_id: str,
     discovered: int,
-    active: Optional[int] = None,
+    active: int | None = None,
 ) -> None:
     """Atomically update progress counters in the database."""
     scan = db.query(Scan).filter(Scan.id == scan_id).first()

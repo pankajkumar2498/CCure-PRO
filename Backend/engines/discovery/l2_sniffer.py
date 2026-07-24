@@ -22,14 +22,14 @@ from typing import Dict, List
 log = logging.getLogger("ccure.l2_sniffer")
 
 try:
-    from scapy.all import sniff, Ether
+    from scapy.all import Ether, sniff
     from scapy.contrib.cdp import (
-        CDPv2_HDR,
         CDPMsgDeviceID,
         CDPMsgPlatform,
         CDPMsgPortID,
+        CDPv2_HDR,
     )
-    from scapy.contrib.lldp import LLDPDU, LLDPDUSystemName, LLDPDUSystemCapabilities
+    from scapy.contrib.lldp import LLDPDU, LLDPDUSystemCapabilities, LLDPDUSystemName
 
     SCAPY_L2_AVAILABLE = True
 except ImportError:
@@ -52,7 +52,7 @@ _BPF_FILTER = (
 )
 
 
-def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
+def sniff_l2_infrastructure(timeout: float = 3.0) -> list[dict]:
     """
     Sniffs for CDP, LLDP, and STP frames on the local interface.
 
@@ -69,7 +69,7 @@ def sniff_l2_infrastructure(timeout: float = 3.0) -> List[Dict]:
         )
         return []
 
-    discovered: Dict[str, Dict] = {}
+    discovered: dict[str, dict] = {}
     stop_event = threading.Event()
 
     log.info(

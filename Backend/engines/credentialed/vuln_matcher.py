@@ -11,15 +11,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-
 from core.vuln_intel import (
     build_sql_or_clauses,
     get_vuln_engine,
     merge_alias_fields,
     normalize_package_names,
 )
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 log = logging.getLogger("ccure.vuln_matcher")
 
@@ -62,7 +61,7 @@ class CredentialedCVE:
     in_kev: bool = False
     kev_due_date: str = ""
     has_exploit: bool = False
-    exploit_sources: List[str] = None
+    exploit_sources: list[str] = None
     priority_score: float = 0.0
     priority_level: str = "P4"
     matched_by: str = ""
@@ -88,7 +87,7 @@ class VulnMatcher:
     def __init__(self):
         self.engine = get_vuln_engine()
 
-    def match_packages(self, packages: List[Dict[str, str]]) -> List[CredentialedCVE]:
+    def match_packages(self, packages: list[dict[str, str]]) -> list[CredentialedCVE]:
         """
         Match installed packages against vulnerability database.
 
@@ -126,16 +125,16 @@ class VulnMatcher:
         return findings
 
     def _match_packages_batch(
-        self, package_data: Dict[str, str]
-    ) -> List[CredentialedCVE]:
+        self, package_data: dict[str, str]
+    ) -> list[CredentialedCVE]:
         """
         Batch query optimization - single query for all packages.
 
         Fetches all potential matches in one query, then filters in Python.
         This reduces N database round-trips to 1-2 queries.
         """
-        findings: List[CredentialedCVE] = []
-        best_by_cve: Dict[str, CredentialedCVE] = {}
+        findings: list[CredentialedCVE] = []
+        best_by_cve: dict[str, CredentialedCVE] = {}
 
         try:
             with self.engine.connect() as conn:
@@ -168,10 +167,10 @@ class VulnMatcher:
         return findings
 
     def _batch_query_cpe(
-        self, conn, package_names: List[str], package_data: Dict[str, str]
-    ) -> List[CredentialedCVE]:
+        self, conn, package_names: list[str], package_data: dict[str, str]
+    ) -> list[CredentialedCVE]:
         """Execute batch query for CPE records."""
-        findings: List[CredentialedCVE] = []
+        findings: list[CredentialedCVE] = []
 
         # Build IN clause with normalized names
         normalized_names = set()
@@ -302,10 +301,10 @@ class VulnMatcher:
         return findings
 
     def _batch_query_osv(
-        self, conn, package_names: List[str], package_data: Dict[str, str]
-    ) -> List[CredentialedCVE]:
+        self, conn, package_names: list[str], package_data: dict[str, str]
+    ) -> list[CredentialedCVE]:
         """Execute batch query for OSV records."""
-        findings: List[CredentialedCVE] = []
+        findings: list[CredentialedCVE] = []
 
         normalized_names = set()
         for pkg_name in package_names:
@@ -425,15 +424,15 @@ class VulnMatcher:
         return findings
 
     def _match_packages_parallel(
-        self, package_data: Dict[str, str]
-    ) -> List[CredentialedCVE]:
+        self, package_data: dict[str, str]
+    ) -> list[CredentialedCVE]:
         """
         Parallel processing for smaller package sets.
 
         Uses ThreadPoolExecutor to query multiple packages concurrently.
         """
-        findings: List[CredentialedCVE] = []
-        best_by_cve: Dict[str, CredentialedCVE] = {}
+        findings: list[CredentialedCVE] = []
+        best_by_cve: dict[str, CredentialedCVE] = {}
 
         try:
             with self.engine.connect() as conn:
@@ -470,8 +469,8 @@ class VulnMatcher:
 
     def _match_package(
         self, conn, package_name: str, installed_version: str
-    ) -> List[CredentialedCVE]:
-        matches: List[CredentialedCVE] = []
+    ) -> list[CredentialedCVE]:
+        matches: list[CredentialedCVE] = []
         candidates = normalize_package_names(package_name)
         if not candidates:
             return matches
@@ -489,8 +488,8 @@ class VulnMatcher:
         conn,
         package_name: str,
         installed_version: str,
-        candidates: List[str],
-    ) -> List[CredentialedCVE]:
+        candidates: list[str],
+    ) -> list[CredentialedCVE]:
         where_sql, params = build_sql_or_clauses(
             column_expressions=(
                 "LOWER(p.product)",
@@ -537,7 +536,7 @@ class VulnMatcher:
             """
         )
         rows = conn.execute(query, params).mappings().all()
-        findings: List[CredentialedCVE] = []
+        findings: list[CredentialedCVE] = []
         for row in rows:
             if not self._package_matches_cpe_row(package_name, row):
                 continue
@@ -592,8 +591,8 @@ class VulnMatcher:
         conn,
         package_name: str,
         installed_version: str,
-        candidates: List[str],
-    ) -> List[CredentialedCVE]:
+        candidates: list[str],
+    ) -> list[CredentialedCVE]:
         where_sql, params = build_sql_or_clauses(
             column_expressions=("LOWER(aff.package_name)",),
             values=candidates,
@@ -635,7 +634,7 @@ class VulnMatcher:
             """
         )
         rows = conn.execute(query, params).mappings().all()
-        findings: List[CredentialedCVE] = []
+        findings: list[CredentialedCVE] = []
         for row in rows:
             if installed_version and not self._installed_version_matches_osv(
                 installed_version, row
@@ -682,7 +681,7 @@ class VulnMatcher:
             )
         return findings
 
-    def _package_matches_cpe_row(self, package_name: str, row: Dict[str, Any]) -> bool:
+    def _package_matches_cpe_row(self, package_name: str, row: dict[str, Any]) -> bool:
         candidates = normalize_package_names(package_name)
         haystacks = [
             str(row.get("product") or "").lower(),
@@ -695,7 +694,7 @@ class VulnMatcher:
         )
 
     def _installed_version_matches(
-        self, installed_version: str, row: Dict[str, Any]
+        self, installed_version: str, row: dict[str, Any]
     ) -> bool:
         exact_version = _extract_cpe_exact_version(str(row.get("cpe_uri") or ""))
         min_incl = row.get("version_start_including")
@@ -723,7 +722,7 @@ class VulnMatcher:
         return False
 
     def _installed_version_matches_osv(
-        self, installed_version: str, row: Dict[str, Any]
+        self, installed_version: str, row: dict[str, Any]
     ) -> bool:
         introduced = str(row.get("introduced") or "").strip()
         fixed = str(row.get("fixed") or "").strip()
@@ -742,14 +741,14 @@ class VulnMatcher:
             return False
         return True
 
-    def _row_fixed_version(self, row: Dict[str, Any]) -> str:
+    def _row_fixed_version(self, row: dict[str, Any]) -> str:
         for key in ("version_end_excluding", "version_end_including"):
             value = row.get(key)
             if value:
                 return str(value)
         return ""
 
-    def to_report_format(self, findings: List[CredentialedCVE]) -> List[Dict[str, Any]]:
+    def to_report_format(self, findings: list[CredentialedCVE]) -> list[dict[str, Any]]:
         return [
             {
                 "cve_id": f.cve_id,
@@ -787,12 +786,12 @@ def _extract_cpe_exact_version(cpe_uri: str) -> str:
     return ""
 
 
-def _parse_version(ver: str) -> Tuple[int, ...]:
+def _parse_version(ver: str) -> tuple[int, ...]:
     if ":" in ver:
         ver = ver.split(":", 1)[1]
     ver = re.sub(r"(ubuntu|debian|el\d+|deb\d+|~).*$", "", ver, flags=re.IGNORECASE)
     parts = re.split(r"[.\-~+_]", ver)
-    nums: List[int] = []
+    nums: list[int] = []
     for part in parts:
         if not part:
             continue

@@ -4,10 +4,11 @@ Purpose: Test AES-256-GCM encryption, decryption, and key derivation helpers.
 Author:  Compliance Dev Team
 """
 
-import pytest
-import os
 import base64
-from core.security_crypto import encrypt_credential, decrypt_credential
+import os
+
+import pytest
+from core.security_crypto import decrypt_credential, encrypt_credential
 
 
 def test_encryption_decryption_flow():
@@ -35,10 +36,10 @@ def test_encryption_generates_random_nonces():
 
 def test_decryption_malformed_payloads():
     """Verify that decrypting malformed or short payloads raises ValueError or decryption errors."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         decrypt_credential("short")
 
     # Generate a payload that has a valid base64 length but is tampered with
     payload = base64.b64encode(os.urandom(20)).decode("utf-8")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         decrypt_credential(payload)

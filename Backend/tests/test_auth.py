@@ -4,10 +4,10 @@ tests/test_auth.py
 Integration tests for authentication flows (login, refresh, logout) and RBAC.
 """
 
-from fastapi.testclient import TestClient
-from db.models.users import User
-from sqlalchemy.orm import Session
 from auth.jwt_handler import hash_password
+from db.models.users import User
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def test_login_success(client: TestClient, test_user: User):

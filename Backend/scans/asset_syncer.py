@@ -6,19 +6,19 @@ into their respective normalized PostgreSQL rows (assets, services, findings).
 """
 
 import logging
-from typing import Dict, Optional, Any, List
-from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import func, or_
+from typing import Any, Dict, List, Optional
 
+from db.base import gen_asset_id, gen_service_id, utcnow
 from db.models import (
     Asset,
     AssetChangeLog,
-    Service,
     AssetVulnerability,
+    Service,
     VulnerabilityDefinition,
 )
-from db.base import utcnow, gen_asset_id, gen_service_id
+from sqlalchemy import func, or_
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ _DEVICE_SIGNAL_PRIORITY = {
 }
 
 
-def _get_device_signal_priority(host: Dict) -> int:
+def _get_device_signal_priority(host: dict) -> int:
     """
     Extract the device classification signal from a host dict and return its
     numeric priority.  Higher = more reliable (e.g. SNMP OID).
@@ -59,7 +59,7 @@ def _get_device_signal_priority(host: Dict) -> int:
     return _DEVICE_SIGNAL_PRIORITY.get(signal, 0)
 
 
-def _get_stored_device_signal(asset: Asset) -> Optional[str]:
+def _get_stored_device_signal(asset: Asset) -> str | None:
     """
     Read the stored device classification signal from the asset's custom_attributes.
     Returns None if no previous classification exists.
@@ -111,7 +111,7 @@ def _resolve_ip(host_data: dict) -> str:
     return str(host_data.get("ip_address") or host_data.get("ip") or "0.0.0.0").strip()
 
 
-def _resolve_mac(host_data: dict) -> Optional[str]:
+def _resolve_mac(host_data: dict) -> str | None:
     mac = host_data.get("mac_address") or host_data.get("mac")
     if not mac:
         return None
@@ -121,7 +121,7 @@ def _resolve_mac(host_data: dict) -> Optional[str]:
     return mac_str
 
 
-def _existing_assets_for_hosts(db: Session, org_id: str, hosts: List[dict]):
+def _existing_assets_for_hosts(db: Session, org_id: str, hosts: list[dict]):
     batch_ids = [
         gen_asset_id(
             org_id,
@@ -190,7 +190,7 @@ def _fqdn_label_count(value) -> int:
     return len([label for label in str(value).strip().rstrip(".").split(".") if label])
 
 
-def _first_text(*values) -> Optional[str]:
+def _first_text(*values) -> str | None:
     for value in values:
         if isinstance(value, list):
             for item in value:
@@ -208,7 +208,7 @@ def _first_text(*values) -> Optional[str]:
     return None
 
 
-def _first_fqdn(*values) -> Optional[str]:
+def _first_fqdn(*values) -> str | None:
     for value in values:
         if isinstance(value, list):
             nested = _first_fqdn(*value)
@@ -226,7 +226,7 @@ def _first_fqdn(*values) -> Optional[str]:
     return None
 
 
-def _extract_netbios_name(host_data: dict) -> Optional[str]:
+def _extract_netbios_name(host_data: dict) -> str | None:
     netbios_name = _first_text(
         host_data.get("netbios_computer"), host_data.get("netbios_name")
     )
@@ -252,7 +252,7 @@ def _extract_netbios_name(host_data: dict) -> Optional[str]:
     return None
 
 
-def _extract_dns_identity(host_data: dict) -> tuple[Optional[str], Optional[str]]:
+def _extract_dns_identity(host_data: dict) -> tuple[str | None, str | None]:
     dns_name = _first_fqdn(
         host_data.get("dns_name"),
         host_data.get("ptr_hostname"),
@@ -272,14 +272,13 @@ def _extract_dns_identity(host_data: dict) -> tuple[Optional[str], Optional[str]
     return dns_name, fqdn
 
 
-def _confidence_to_percent(value) -> Optional[int]:
+def _confidence_to_percent(value) -> int | None:
     if value in (None, ""):
         return None
     if isinstance(value, (int, float)):
         return max(0, min(100, int(value)))
     label = str(value).strip().lower()
-    if label.endswith("%"):
-        label = label[:-1]
+    label = label.removesuffix("%")
     try:
         return max(0, min(100, int(float(label))))
     except ValueError:
@@ -336,7 +335,7 @@ _OS_GUESS_META: list = [
 ]
 
 
-def _derive_os_meta(os_guess: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def _derive_os_meta(os_guess: str | None) -> tuple[str | None, str | None]:
     """
     Derive (os_family, manufacturer) from a raw os_guess string.
 
@@ -355,7 +354,7 @@ def _derive_os_meta(os_guess: Optional[str]) -> tuple[Optional[str], Optional[st
     return None, None
 
 
-def _to_int(value) -> Optional[int]:
+def _to_int(value) -> int | None:
     if value in (None, ""):
         return None
     try:
@@ -364,7 +363,7 @@ def _to_int(value) -> Optional[int]:
         return None
 
 
-def _normalize_source(source: Optional[str]) -> str:
+def _normalize_source(source: str | None) -> str:
     source = str(source or "legacy").strip().lower()
     return {
         "phase1": "discovery",
@@ -376,7 +375,7 @@ def _normalize_source(source: Optional[str]) -> str:
     }.get(source, source)
 
 
-def _source_rank(source: Optional[str]) -> int:
+def _source_rank(source: str | None) -> int:
     return SOURCE_PRIORITY.get(_normalize_source(source), SOURCE_PRIORITY["legacy"])
 
 
@@ -420,7 +419,7 @@ def _set_asset_field(
     field: str,
     incoming,
     source: str,
-    max_len: Optional[int] = None,
+    max_len: int | None = None,
 ) -> bool:
     if not _can_update_field(asset, field, incoming, source):
         return False
@@ -550,7 +549,7 @@ def _update_provenance(asset: Asset, field: str, source: str, scan_id: str):
 
 
 def sync_host_discovery(
-    db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    db: Session, scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     """
     Called after Phase 1 (Host Discovery).
@@ -812,7 +811,7 @@ def sync_host_discovery(
 
 
 def sync_asset_discovery(
-    db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    db: Session, scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     """
     Called after Phase 2 (Asset Discovery / Port Scan).
@@ -1085,7 +1084,7 @@ def sync_asset_discovery(
 
 
 def sync_vulnerability_audit(
-    db: Session, scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    db: Session, scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     """
     Called after Phase 3 (Vulnerability Audit).
@@ -1256,7 +1255,7 @@ def sync_vulnerability_audit(
                                 clean_refs.append(ref["url"])
                         references = clean_refs
 
-                        from datetime import datetime, date
+                        from datetime import date, datetime
 
                         pub = details.get("published")
                         if isinstance(pub, str):

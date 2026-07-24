@@ -7,6 +7,7 @@ Author:  pair/Senior Full-Stack Engineer
 import os
 import shutil
 import tempfile
+
 from pdf_generator import ScanReportGenerator
 
 

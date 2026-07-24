@@ -19,6 +19,11 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
+from auth.dependencies import get_current_user
+from auth.jwt_handler import decode_token
+from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
+from db.models import User
+from db.models.web_scans import WebAsset, WebFinding, WebScan
 from fastapi import (
     APIRouter,
     Depends,
@@ -30,12 +35,6 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
-
-from auth.dependencies import get_current_user
-from auth.jwt_handler import decode_token
-from db.base import SessionLocal, get_db, gen_web_scan_id, utcnow
-from db.models import User
-from db.models.web_scans import WebScan, WebAsset, WebFinding
 
 log = logging.getLogger("ccure.routers.web_scans")
 
@@ -51,7 +50,7 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -66,7 +65,7 @@ ACTIVE_SCAN_STATUSES = {"queued", "pending", "running"}
 
 class WebScanScopeSchema(BaseModel):
     include_subdomains: bool = False
-    exclude_paths: List[str] = Field(default_factory=list)
+    exclude_paths: list[str] = Field(default_factory=list)
     max_depth: int = Field(default=5, ge=1, le=20)
 
 
@@ -75,27 +74,27 @@ class WebScanAuthSchema(BaseModel):
         default="none",
         description="Auth type: none, form_login, bearer_token, cookie, custom_header",
     )
-    login_url: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    login_url: str | None = None
+    username: str | None = None
+    password: str | None = None
     username_field: str = "username"
     password_field: str = "password"
-    success_indicator: Optional[str] = None
-    token: Optional[str] = None
-    cookies: Optional[Dict[str, str]] = None
-    headers: Optional[Dict[str, str]] = None
+    success_indicator: str | None = None
+    token: str | None = None
+    cookies: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
 
 
 class WebScanOptionsSchema(BaseModel):
     enable_sqli: bool = True
     enable_xss: bool = True
-    nuclei_severity: List[str] = Field(default=["medium", "high", "critical"])
+    nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
 
 
 class StartWebScanRequest(BaseModel):
     target_url: str = Field(..., min_length=8, max_length=2048)
-    scan_name: Optional[str] = Field(None, max_length=255)
+    scan_name: str | None = Field(None, max_length=255)
     scan_scope: WebScanScopeSchema = Field(default_factory=WebScanScopeSchema)
     auth: WebScanAuthSchema = Field(default_factory=WebScanAuthSchema)
     options: WebScanOptionsSchema = Field(default_factory=WebScanOptionsSchema)
@@ -109,7 +108,7 @@ class TriageFindingRequest(BaseModel):
     status: str = Field(
         ..., description="open, confirmed, false_positive, accepted_risk, fixed"
     )
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -118,8 +117,8 @@ class TriageFindingRequest(BaseModel):
 @router.post("", status_code=201)
 def start_web_scan(
     body: StartWebScanRequest,
-    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-    org_id: Optional[str] = Query(None),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -252,8 +251,8 @@ def start_web_scan(
 def list_web_scans(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None),
-    org_id: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -290,7 +289,7 @@ def list_web_scans(
 @router.get("/{scan_id}")
 def get_web_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -335,13 +334,13 @@ def get_web_scan(
 @router.get("/{scan_id}/findings")
 def get_web_scan_findings(
     scan_id: str,
-    severity: Optional[str] = Query(None),
-    finding_type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None, alias="finding_status"),
-    detected_by: Optional[str] = Query(None),
+    severity: str | None = Query(None),
+    finding_type: str | None = Query(None),
+    status: str | None = Query(None, alias="finding_status"),
+    detected_by: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -386,10 +385,10 @@ def get_web_scan_findings(
 @router.get("/{scan_id}/assets")
 def get_web_scan_assets(
     scan_id: str,
-    source: Optional[str] = Query(None),
+    source: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -423,7 +422,7 @@ def get_web_scan_assets(
 @router.post("/{scan_id}/cancel")
 def cancel_web_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -465,7 +464,7 @@ def triage_finding(
     scan_id: str,
     finding_id: str,
     body: TriageFindingRequest,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -526,7 +525,7 @@ def triage_finding(
 @router.get("/{scan_id}/report")
 def download_web_scan_report(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -540,6 +539,7 @@ def download_web_scan_report(
       - Endpoint inventory
     """
     import os
+
     from fastapi.responses import FileResponse
 
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -692,7 +692,7 @@ def _get_websocket_user(websocket: WebSocket) -> User:
         db.close()
 
 
-def _web_scan_progress_snapshot(scan: WebScan) -> Dict:
+def _web_scan_progress_snapshot(scan: WebScan) -> dict:
     status = str(scan.status or "unknown").lower()
     phase = scan.pipeline_phase or "queued"
     phase_order = {
@@ -739,7 +739,7 @@ def _web_scan_status_message(scan: WebScan) -> str:
     return messages.get(phase, "Initializing web scan.")
 
 
-def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
+def _normalize_idempotency_key(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = value.strip()
@@ -753,8 +753,8 @@ def _find_duplicate_web_scan(
     user: User,
     org_id: str,
     target_url: str,
-    idempotency_key: Optional[str],
-) -> Optional[WebScan]:
+    idempotency_key: str | None,
+) -> WebScan | None:
     cutoff = utcnow() - IDEMPOTENCY_WINDOW
     recent_scans = (
         db.query(WebScan)
@@ -785,10 +785,10 @@ def _find_duplicate_web_scan(
 
 def _start_scan_response(
     scan: WebScan,
-    task_id: Optional[str] = None,
+    task_id: str | None = None,
     duplicate: bool = False,
     message: str = "Web scan queued successfully.",
-) -> Dict:
+) -> dict:
     return {
         "success": True,
         "duplicate": duplicate,
@@ -803,7 +803,7 @@ def _start_scan_response(
 
 
 def _get_scan_or_404(
-    db: Session, scan_id: str, user: User, org_id: Optional[str] = None
+    db: Session, scan_id: str, user: User, org_id: str | None = None
 ) -> WebScan:
     target_org_id = _resolve_org(user, org_id)
     scan = (
@@ -820,11 +820,11 @@ def _get_scan_or_404(
     return scan
 
 
-def _iso(dt) -> Optional[str]:
+def _iso(dt) -> str | None:
     return dt.isoformat() if dt else None
 
 
-def _scan_summary(scan: WebScan) -> Dict:
+def _scan_summary(scan: WebScan) -> dict:
     return {
         "id": scan.id,
         "scan_name": scan.scan_name,
@@ -847,7 +847,7 @@ def _scan_summary(scan: WebScan) -> Dict:
     }
 
 
-def _finding_detail(f: WebFinding) -> Dict:
+def _finding_detail(f: WebFinding) -> dict:
     return {
         "id": f.id,
         "finding_type": f.finding_type,
@@ -872,7 +872,7 @@ def _finding_detail(f: WebFinding) -> Dict:
     }
 
 
-def _asset_detail(a: WebAsset) -> Dict:
+def _asset_detail(a: WebAsset) -> dict:
     return {
         "id": a.id,
         "url": a.url,

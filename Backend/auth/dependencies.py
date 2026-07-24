@@ -7,13 +7,12 @@ FastAPI dependencies for authenticated user resolution and tenant scope.
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session, joinedload
-
 from auth.jwt_handler import decode_token
 from db.base import get_db
 from db.models import User
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session, joinedload
 
 bearer_scheme = HTTPBearer()
 
@@ -22,7 +21,7 @@ bearer_scheme = HTTPBearer()
 class AuthContext:
     user: User
     user_id: str
-    organization_id: Optional[str]
+    organization_id: str | None
     role: str
 
 

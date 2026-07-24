@@ -5,29 +5,30 @@ API tests for the phase-selective and traditional scan endpoints.
 We mock the internal scanner engines so tests run instantly and don't hit the network.
 """
 
-from unittest.mock import patch, AsyncMock
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-from db.models.users import User, AuditLog
-from db.models.rbac import Organization, Role
-from db.models.scans import Scan
+from unittest.mock import AsyncMock, patch
+
+from auth.jwt_handler import hash_password
+from db.base import gen_asset_id, utcnow
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition
-from auth.jwt_handler import hash_password
-from db.base import utcnow, gen_asset_id
+from db.models.rbac import Organization, Role
+from db.models.scans import Scan
+from db.models.users import AuditLog, User
+from fastapi.testclient import TestClient
 from routers.findings import StatusUpdate, update_finding_status
+from scans.asset_syncer import (
+    sync_asset_discovery,
+    sync_host_discovery,
+    sync_vulnerability_audit,
+)
 from scans.db_helpers import (
     _phase_summary_payload,
     _public_phase_summary,
     create_scan,
-    update_scan_phase1,
     mark_scan_failed,
+    update_scan_phase1,
 )
-from scans.asset_syncer import (
-    sync_vulnerability_audit,
-    sync_asset_discovery,
-    sync_host_discovery,
-)
+from sqlalchemy.orm import Session
 
 
 def test_phase_summary_payload_strips_postgres_unsafe_control_chars():
@@ -857,6 +858,7 @@ def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentia
 
 def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Session):
     import uuid
+
     from core.tasks import _sync_credentialed_asset_identity
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -1005,6 +1007,7 @@ def test_credentialed_scan_always_collects_identity_sections():
 
 def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     import uuid
+
     from core.tasks import _sync_credentialed_asset_identity
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
@@ -1572,8 +1575,8 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
     db_session.add(scan)
     db_session.commit()
 
-    from db.models.findings import Service, TLSDetail
     from db.base import gen_service_id
+    from db.models.findings import Service, TLSDetail
 
     service_id = gen_service_id(asset.id, 443, "tcp")
     service = Service(

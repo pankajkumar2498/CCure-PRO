@@ -8,20 +8,20 @@ Primary entry points:
 
 from core.discovery.engine import DiscoveryEngine
 from core.discovery.profiles import (
-    FAST,
-    BALANCED,
     AGGRESSIVE,
+    BALANCED,
+    FAST,
     DiscoveryProfile,
     get_profile,
     profile_for_pipeline,
 )
 
 __all__ = [
+    "AGGRESSIVE",
+    "BALANCED",
+    "FAST",
     "DiscoveryEngine",
     "DiscoveryProfile",
-    "FAST",
-    "BALANCED",
-    "AGGRESSIVE",
     "get_profile",
     "profile_for_pipeline",
 ]

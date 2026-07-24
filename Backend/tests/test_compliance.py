@@ -5,7 +5,7 @@ Unit and integration tests for the CCure Audit PRO Policy Compliance Engine.
 
 from unittest.mock import MagicMock
 
-from core.compliance_tasks import _evaluate_operator, _check_prerequisites
+from core.compliance_tasks import _check_prerequisites, _evaluate_operator
 
 
 def test_operator_evaluator():
@@ -77,8 +77,8 @@ def test_api_schemas():
 def test_marketplace_workflow(client, db_session, test_user, auth_headers):
     from db.models.compliance import (
         ComplianceFramework,
-        ComplianceTenantFramework,
         CompliancePolicy,
+        ComplianceTenantFramework,
     )
 
     # 1. Create a dummy framework and rules in DB
@@ -145,13 +145,14 @@ def test_marketplace_workflow(client, db_session, test_user, auth_headers):
 
 
 def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
+    import os
+
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls
-    import os
 
     # 1. Seed CIS Controls v8.1
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -218,13 +219,14 @@ def test_soc2_type2_framework_seeding_and_reports(
     db_session, test_user, auth_headers, client
 ):
     """Test SOC 2 Type II controls seeding, theme tags, tenant installation, score recalculation, and audit report generation."""
+    import os
+
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls
-    import os
 
     # 1. Seed SOC 2 Type II Controls
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -302,16 +304,17 @@ def test_cert_in_2022_framework_integration(
     client, test_user, auth_headers, db_session
 ):
     """Test CERT-In 2022 framework seeding, control crosswalks, rule evaluation operators, and report routes."""
-    from datetime import datetime, timezone
     import os
+    from datetime import datetime, timezone
+
+    from core.compliance_tasks import _evaluate_operator
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls
     from scripts.seed_real_rules import seed_and_evaluate
-    from core.compliance_tasks import _evaluate_operator
 
     # 1. Verify numeric and list comparison operators in rule engine
     assert _evaluate_operator("gte", 180, 180) is True
@@ -406,16 +409,17 @@ def test_cert_in_2022_framework_integration(
 
 def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_session):
     """Test PCI-DSS v4.0 framework seeding, SAQ profiles, CDE scope filtering, evidence evaluation, and report routes."""
-    from datetime import datetime, timezone
     import os
+    from datetime import datetime, timezone
+
+    from core.compliance_tasks import _calculate_compliance_score, _evaluate_operator
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls
     from scripts.seed_real_rules import seed_and_evaluate
-    from core.compliance_tasks import _evaluate_operator, _calculate_compliance_score
 
     # 1. Verify boolean and operator evaluations
     assert _evaluate_operator("equals", True, True) is True
@@ -505,11 +509,12 @@ def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_se
 
 def test_dpdp_2023_framework_integration(client, test_user, auth_headers, db_session):
     """Test DPDP Act 2023 framework seeding, SDF scoping, web evidence adapter, gap analysis prefix stripping, and report endpoints."""
-    from datetime import datetime, timezone
     import os
+    from datetime import datetime, timezone
+
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls
@@ -604,11 +609,12 @@ def test_dpdp_2023_framework_integration(client, test_user, auth_headers, db_ses
 
 def test_gdpr_framework_integration(client, test_user, auth_headers, db_session):
     """Test EU GDPR framework seeding, privacy_role scoping, web evidence mapping, and report endpoints."""
-    from datetime import datetime, timezone
     import os
+    from datetime import datetime, timezone
+
     from db.models.compliance import (
-        ComplianceFramework,
         ComplianceControl,
+        ComplianceFramework,
         ComplianceTenantFramework,
     )
     from scripts.seed_compliance import seed_framework_and_controls

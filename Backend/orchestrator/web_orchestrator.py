@@ -25,7 +25,7 @@ Design Decisions:
 
 import logging
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from config import WebScanConfig
@@ -50,9 +50,9 @@ class WebScanOrchestrator:
         self,
         web_scan_id: str,
         target_url: str,
-        scan_scope: Dict,
-        options: Dict,
-    ) -> Dict:
+        scan_scope: dict,
+        options: dict,
+    ) -> dict:
         """
         Phase 1: Reconnaissance.
 
@@ -74,14 +74,14 @@ class WebScanOrchestrator:
         """
         self._log(f"[RECON] Starting for {target_url}")
         t0 = time.monotonic()
-        result: Dict[str, Any] = {"success": False}
+        result: dict[str, Any] = {"success": False}
 
         try:
             parsed = urlparse(target_url)
             domain = parsed.netloc or parsed.hostname or ""
 
             # 1. Subdomain Enumeration
-            subdomains: List[str] = []
+            subdomains: list[str] = []
             if scan_scope.get("include_subdomains", False):
                 subdomains = await self._run_subdomain_enum(domain)
             result["subdomains"] = subdomains
@@ -121,12 +121,12 @@ class WebScanOrchestrator:
         self,
         web_scan_id: str,
         target_url: str,
-        scan_scope: Dict,
-        options: Dict,
-        auth_config: Dict,
-        sitemap_urls: Optional[List[str]] = None,
-        waf_detected: Optional[str] = None,
-    ) -> Dict:
+        scan_scope: dict,
+        options: dict,
+        auth_config: dict,
+        sitemap_urls: list[str] | None = None,
+        waf_detected: str | None = None,
+    ) -> dict:
         """
         Phase 2: Crawling & Content Discovery.
 
@@ -145,12 +145,12 @@ class WebScanOrchestrator:
         """
         self._log(f"[CRAWL] Starting for {target_url}")
         t0 = time.monotonic()
-        result: Dict[str, Any] = {"success": False}
+        result: dict[str, Any] = {"success": False}
 
         try:
-            all_endpoints: List[Dict] = []
-            all_forms: List[Dict] = []
-            sensitive_findings: List[Dict] = []
+            all_endpoints: list[dict] = []
+            all_forms: list[dict] = []
+            sensitive_findings: list[dict] = []
 
             # 1. Authenticate if needed
             auth_headers = {}
@@ -256,12 +256,12 @@ class WebScanOrchestrator:
         self,
         web_scan_id: str,
         target_url: str,
-        endpoints: List[Dict],
-        forms: List[Dict],
-        options: Dict,
-        auth_config: Dict,
-        waf_detected: Optional[str] = None,
-    ) -> Dict:
+        endpoints: list[dict],
+        forms: list[dict],
+        options: dict,
+        auth_config: dict,
+        waf_detected: str | None = None,
+    ) -> dict:
         """
         Phase 3: Vulnerability Detection.
 
@@ -277,10 +277,10 @@ class WebScanOrchestrator:
         """
         self._log(f"[DETECT] Starting for {target_url} ({len(endpoints)} endpoints)")
         t0 = time.monotonic()
-        result: Dict[str, Any] = {"success": False}
+        result: dict[str, Any] = {"success": False}
 
         try:
-            all_findings: List[Dict] = []
+            all_findings: list[dict] = []
 
             # Build auth headers
             auth_headers = {}
@@ -374,10 +374,10 @@ class WebScanOrchestrator:
         self,
         web_scan_id: str,
         target_url: str,
-        findings: List[Dict],
-        endpoints: List[Dict],
-        options: Dict,
-    ) -> Dict:
+        findings: list[dict],
+        endpoints: list[dict],
+        options: dict,
+    ) -> dict:
         """
         Phase 4: TLS Audit, Compliance Mapping, Risk Scoring.
 
@@ -397,7 +397,7 @@ class WebScanOrchestrator:
         """
         self._log(f"[AUDIT] Starting for {target_url}")
         t0 = time.monotonic()
-        result: Dict[str, Any] = {"success": False}
+        result: dict[str, Any] = {"success": False}
 
         try:
             all_findings = list(findings)
@@ -452,7 +452,7 @@ class WebScanOrchestrator:
 
     # ── Internal Helpers ──────────────────────────────────────────────────────
 
-    async def _run_subdomain_enum(self, domain: str) -> List[str]:
+    async def _run_subdomain_enum(self, domain: str) -> list[str]:
         """Run subdomain enumeration."""
         try:
             from core.web.subfinder.wrapper import SubfinderWrapper
@@ -465,7 +465,7 @@ class WebScanOrchestrator:
             log.warning("Subdomain enumeration failed: %s", exc)
         return []
 
-    async def _run_waf_detection(self, target_url: str) -> Dict:
+    async def _run_waf_detection(self, target_url: str) -> dict:
         """Run WAF detection."""
         try:
             from core.web.waf.detector import WAFDetector
@@ -476,7 +476,7 @@ class WebScanOrchestrator:
             log.warning("WAF detection failed: %s", exc)
             return {"waf_detected": False, "waf_name": None}
 
-    async def _run_tech_detection(self, target_url: str) -> List[Dict]:
+    async def _run_tech_detection(self, target_url: str) -> list[dict]:
         """Run technology fingerprinting via Nuclei tech templates."""
         try:
             from core.web.nuclei.wrapper import NucleiWrapper
@@ -488,7 +488,7 @@ class WebScanOrchestrator:
             log.warning("Tech detection failed: %s", exc)
         return []
 
-    async def _parse_robots_sitemap(self, target_url: str) -> Dict:
+    async def _parse_robots_sitemap(self, target_url: str) -> dict:
         """Parse robots.txt and sitemap.xml."""
         result = {"sitemap_urls": [], "disallow": []}
         try:
@@ -535,7 +535,7 @@ class WebScanOrchestrator:
 
         return result
 
-    async def _check_security_headers(self, target_url: str) -> List[Dict]:
+    async def _check_security_headers(self, target_url: str) -> list[dict]:
         """Check for missing security headers."""
         findings = []
         try:
@@ -590,7 +590,7 @@ class WebScanOrchestrator:
             log.debug("Security header check failed: %s", exc)
         return findings
 
-    async def _check_cors(self, target_url: str) -> List[Dict]:
+    async def _check_cors(self, target_url: str) -> list[dict]:
         """Check for CORS misconfiguration."""
         findings = []
         try:
@@ -637,7 +637,7 @@ class WebScanOrchestrator:
         return findings
 
     @staticmethod
-    def _calculate_web_risk_score(findings: List[Dict]) -> float:
+    def _calculate_web_risk_score(findings: list[dict]) -> float:
         """Calculate aggregate risk score from findings."""
         weights = {"critical": 25, "high": 15, "medium": 8, "low": 3, "info": 0}
         total = 0
@@ -647,7 +647,7 @@ class WebScanOrchestrator:
         return min(100.0, float(total))
 
     @staticmethod
-    def _deduplicate_endpoints(endpoints: List[Dict]) -> List[Dict]:
+    def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
         seen = set()
         unique = []
         for ep in endpoints:

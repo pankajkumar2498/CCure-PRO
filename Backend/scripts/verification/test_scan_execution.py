@@ -1,6 +1,6 @@
+import logging
 import os
 import sys
-import logging
 
 # Ensure root directory is in Python path
 sys.path.insert(
@@ -9,9 +9,9 @@ sys.path.insert(
 
 logging.basicConfig(level=logging.INFO)
 
+from core.compliance_tasks import run_scan_task
 from db.base import SessionLocal
 from db.models.compliance import ComplianceScanRun
-from core.compliance_tasks import run_scan_task
 
 
 def run_test():

@@ -9,13 +9,12 @@ from typing import Dict, List, Optional, Tuple
 
 from core.constants import (
     OS_TTL_MAP,
-    TCP_WINDOW_OS,
-    TCP_OPTIONS_FINGERPRINT,
-    RISK_WEIGHTS,
     RISK_LEVELS,
+    RISK_WEIGHTS,
+    TCP_OPTIONS_FINGERPRINT,
+    TCP_WINDOW_OS,
 )
 from core.vuln_intel import compute_priority, merge_alias_fields
-
 
 # =============================================================================
 # OS Fingerprinting
@@ -24,9 +23,9 @@ from core.vuln_intel import compute_priority, merge_alias_fields
 
 def fingerprint_os(
     ttl: int,
-    window: Optional[int] = None,
-    tcp_opts: Optional[Dict] = None,
-) -> Tuple[str, str]:
+    window: int | None = None,
+    tcp_opts: dict | None = None,
+) -> tuple[str, str]:
     """
     Returns (os_guess, confidence) from TTL, TCP window, and optional
     TCP option fingerprint data.
@@ -54,10 +53,12 @@ def fingerprint_os(
     conf = "Low"
     if window and window in TCP_WINDOW_OS:
         win_os = TCP_WINDOW_OS[window]
-        if "Windows" in guess and "Windows" in win_os:
-            guess = win_os
-            conf = "High"
-        elif "Linux" in guess and "Linux" in win_os:
+        if (
+            "Windows" in guess
+            and "Windows" in win_os
+            or "Linux" in guess
+            and "Linux" in win_os
+        ):
             guess = win_os
             conf = "High"
         else:
@@ -82,7 +83,7 @@ def fingerprint_os(
     return guess, conf
 
 
-def infer_os_from_host(host: Dict) -> Tuple[str, str]:
+def infer_os_from_host(host: dict) -> tuple[str, str]:
     """
     Best-effort unauthenticated OS inference from service-level evidence.
 
@@ -95,7 +96,7 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
     if current_guess not in ("", "Unknown"):
         return current_guess, current_conf
 
-    texts: List[str] = []
+    texts: list[str] = []
     open_ports = set()
     for port_info in host.get("open_ports", []):
         port = port_info.get("port")
@@ -149,7 +150,7 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
         if any(marker in text_blob for marker in markers):
             return label, conf
 
-    scores: Dict[str, int] = {
+    scores: dict[str, int] = {
         "Windows": 0,
         "Linux/Unix": 0,
         "BSD/macOS": 0,
@@ -224,11 +225,11 @@ def infer_os_from_host(host: Dict) -> Tuple[str, str]:
 
 
 def calculate_risk(
-    open_ports: List[Dict],
-    cves: List[Dict],
-    http_audit: Dict,
-    tls_info: Dict,
-) -> Tuple[int, str]:
+    open_ports: list[dict],
+    cves: list[dict],
+    http_audit: dict,
+    tls_info: dict,
+) -> tuple[int, str]:
     """
     Returns (score 0-100, risk_level string).
     Aggregates port risk, CVE severity, HTTP audit issues, TLS grade.
@@ -276,14 +277,14 @@ def calculate_risk(
     return score, level
 
 
-def normalize_cve(cve: Dict) -> Dict:
+def normalize_cve(cve: dict) -> dict:
     """Normalize CVE entries to the frontend-facing response contract."""
     return merge_alias_fields(cve)
 
 
-def deduplicate_cves(cves: List[Dict]) -> List[Dict]:
+def deduplicate_cves(cves: list[dict]) -> list[dict]:
     """Remove duplicate CVE entries (same CVE ID)."""
-    best_by_id: Dict[str, Dict] = {}
+    best_by_id: dict[str, dict] = {}
     for c in cves:
         normalized = normalize_cve(c)
         key = normalized.get("cve_id", "")

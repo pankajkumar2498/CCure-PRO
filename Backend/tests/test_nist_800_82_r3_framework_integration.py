@@ -5,12 +5,13 @@ Integration tests for the NIST SP 800-82 Rev. 3 Guide to Operational Technology 
 
 import os
 from datetime import datetime, timezone
+
 import pytest
 from db.models.compliance import (
-    ComplianceFramework,
     ComplianceControl,
-    ComplianceTenantFramework,
     ComplianceFinding,
+    ComplianceFramework,
+    ComplianceTenantFramework,
 )
 from scripts.seed_compliance import seed_framework_and_controls
 

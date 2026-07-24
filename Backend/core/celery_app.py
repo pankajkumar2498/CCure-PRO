@@ -1,7 +1,8 @@
 import os
+
 from celery import Celery
-from kombu import Queue
 from config import AppConfig
+from kombu import Queue
 
 # Initialize the Celery Application
 # We name it "ccure_tasks" and point it to our Redis container

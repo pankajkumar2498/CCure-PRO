@@ -5,13 +5,13 @@ Integration tests for self-service password reset.
 """
 
 import hashlib
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from auth.jwt_handler import verify_password
-from db.models import Organization, Role, User, PasswordResetToken, RefreshTokenSession
+from db.models import Organization, PasswordResetToken, RefreshTokenSession, Role, User
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def test_forgot_password_unregistered_email_success(

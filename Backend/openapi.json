@@ -7691,6 +7691,38 @@
           },
           {
             "in": "query",
+            "name": "bes_impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bes Impact Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "standard_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Standard Number"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8760,6 +8792,146 @@
         ]
       }
     },
+    "/compliance/reports/nerc_cip": {
+      "get": {
+        "description": "Generates and downloads the NERC CIP Executive Compliance Audit Report.",
+        "operationId": "download_nerc_cip_report_compliance_reports_nerc_cip_get",
+        "parameters": [
+          {
+            "description": "pdf | docx",
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "description": "pdf | docx",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
+            "in": "query",
+            "name": "regional_entity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "WECC",
+              "description": "WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
+              "title": "Regional Entity"
+            }
+          },
+          {
+            "description": "HIGH | MEDIUM | LOW",
+            "in": "query",
+            "name": "bes_impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "HIGH | MEDIUM | LOW",
+              "title": "Bes Impact Level"
+            }
+          },
+          {
+            "description": "CIP-002 | CIP-003 | ... | CIP-014",
+            "in": "query",
+            "name": "standard_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "CIP-002 | CIP-003 | ... | CIP-014",
+              "title": "Standard Number"
+            }
+          },
+          {
+            "description": "L0 | L1 | L2 | L3 | L3.5 | L4 | L5",
+            "in": "query",
+            "name": "purdue_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "L0 | L1 | L2 | L3 | L3.5 | L4 | L5",
+              "title": "Purdue Level"
+            }
+          },
+          {
+            "description": "BCA | PCA | EACMS | PACS | EMS | SCADA",
+            "in": "query",
+            "name": "component_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "BCA | PCA | EACMS | PACS | EMS | SCADA",
+              "title": "Component Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Nerc Cip Report",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/compliance/reports/nist_800_53_r5": {
       "get": {
         "description": "Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report.",
@@ -9488,6 +9660,38 @@
                 }
               ],
               "title": "Sl Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bes_impact_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bes Impact Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "standard_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Standard Number"
             }
           }
         ],

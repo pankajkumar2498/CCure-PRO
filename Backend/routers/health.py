@@ -11,14 +11,13 @@ Endpoints
   GET /api/workflow-example     → documentation: frontend orchestration example
 """
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
+from auth.rbac import require_permission
 from db.base import get_db
 from db.models import User
-from auth.rbac import require_permission
-from scan_helpers import get_api, PIPELINE_PHASES
+from fastapi import APIRouter, Depends
+from scan_helpers import PIPELINE_PHASES, get_api
 from scans.progress import read_progress as _db_read_progress
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 

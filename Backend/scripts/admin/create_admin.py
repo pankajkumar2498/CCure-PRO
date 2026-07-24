@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Add Backend to path
 from pathlib import Path
@@ -8,13 +8,12 @@ _BACKEND = str(Path(__file__).resolve().parents[2])
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
-from sqlalchemy.orm import Session
-from db.base import SessionLocal
-from db.models.users import User
-from db.models.rbac import Organization, Role
 from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
-from db.base import gen_user_id
+from db.base import SessionLocal, gen_user_id
+from db.models.rbac import Organization, Role
+from db.models.users import User
+from sqlalchemy.orm import Session
 
 
 def create_admin():

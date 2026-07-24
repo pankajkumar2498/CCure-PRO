@@ -8,6 +8,7 @@ Loads settings from environment variables with sensible defaults.
 import os
 from pathlib import Path
 from typing import Optional
+
 from dotenv import load_dotenv
 
 BACKEND_DIR = Path(__file__).absolute().parent
@@ -200,8 +201,8 @@ class EmailConfig:
 
     SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025"))
-    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None) or None
-    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None) or None
+    SMTP_USER: str | None = os.getenv("SMTP_USER", None) or None
+    SMTP_PASSWORD: str | None = os.getenv("SMTP_PASSWORD", None) or None
     SMTP_SECURE: bool = os.getenv("SMTP_SECURE", "False").lower() == "true"
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@ccureaudit.pro")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")

@@ -16,9 +16,9 @@ The public API surface (method names + return format) is preserved.
 """
 
 import asyncio
-import os
 import ipaddress
 import logging
+import os
 import platform
 import socket
 import time
@@ -26,16 +26,16 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
-from core.models import ScanIntensity, HostResult
-from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
-from core.risk import infer_os_from_host
-from core.constants import PDF_AVAILABLE
-from core.oui_lookup import lookup_vendor
 from core.asset_correlation import AssetCorrelationEngine
+from core.constants import PDF_AVAILABLE
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine
-from core.discovery.profiles import FAST, BALANCED, profile_for_pipeline
+from core.discovery.profiles import BALANCED, FAST, profile_for_pipeline
+from core.models import HostResult, ScanIntensity
+from core.oui_lookup import lookup_vendor
+from core.risk import infer_os_from_host
+from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
 from engines.port.port_engine import PortEngine
@@ -60,7 +60,7 @@ class ScanOrchestrator:
     def __init__(
         self,
         silent: bool = True,
-        reports_dir: Optional[str] = None,
+        reports_dir: str | None = None,
         intensity: str = "normal",
         rate_limit: float = 200.0,
         stealth_mode: bool = False,
@@ -98,7 +98,7 @@ class ScanOrchestrator:
     # They delegate to run_host_discovery_only() which drives the new Scapy pipeline.
     # The "vulnerability_audit" pipeline_mode is used so all discovery techniques are active.
 
-    async def scan_single_host(self, target: str, scan_type: str = "adaptive") -> Dict:
+    async def scan_single_host(self, target: str, scan_type: str = "adaptive") -> dict:
         """Backward-compat: scan a single host using the full discovery pipeline."""
         return await self.run_host_discovery_only(
             targets=[target],
@@ -106,7 +106,7 @@ class ScanOrchestrator:
             pipeline_mode="vulnerability_audit",
         )
 
-    async def scan_ip_range(self, target: str, scan_type: str = "adaptive") -> Dict:
+    async def scan_ip_range(self, target: str, scan_type: str = "adaptive") -> dict:
         """Backward-compat: scan an IP range (e.g. '10.180.6.14-50')."""
         return await self.run_host_discovery_only(
             targets=[target],
@@ -114,7 +114,7 @@ class ScanOrchestrator:
             pipeline_mode="vulnerability_audit",
         )
 
-    async def scan_subnet(self, target: str, scan_type: str = "adaptive") -> Dict:
+    async def scan_subnet(self, target: str, scan_type: str = "adaptive") -> dict:
         """Backward-compat: scan a CIDR subnet (e.g. '10.180.6.0/24')."""
         return await self.run_host_discovery_only(
             targets=[target],
@@ -127,11 +127,11 @@ class ScanOrchestrator:
         target: str,
         subnet_prefix: int = 24,
         scan_type: str = "adaptive",
-    ) -> Dict:
+    ) -> dict:
         """Backward-compat: scan all sub-subnets of a parent CIDR."""
         import ipaddress
 
-        results: List[Dict] = []
+        results: list[dict] = []
         try:
             parent = ipaddress.ip_network(target, strict=False)
             subnets = [str(s) for s in parent.subnets(new_prefix=subnet_prefix)]
@@ -161,15 +161,15 @@ class ScanOrchestrator:
 
     async def run_phases(
         self,
-        targets: List[str],
+        targets: list[str],
         phases: str,
         scan_type: str = "adaptive",
         intensity: str = "normal",
-        scan_id: Optional[str] = None,
+        scan_id: str | None = None,
         passive_first: bool = False,
         exclude_ot_from_nmap: bool = True,
-        exclude_ips: Optional[str] = None,
-    ) -> Dict:
+        exclude_ips: str | None = None,
+    ) -> dict:
         """
         Backward-compat: run any combination of phases in one call.
         phases: '1' | '1+2' | '1+2+3+4'
@@ -219,22 +219,22 @@ class ScanOrchestrator:
         )
 
     @staticmethod
-    def _err(msg: str) -> Dict:
+    def _err(msg: str) -> dict:
         return {"success": False, "error": msg}
 
     # ── PHASE 1: Host Discovery ───────────────────────────────────────────────
 
     async def run_host_discovery_only(
         self,
-        targets: List[str],
+        targets: list[str],
         scan_type: str = "adaptive",
         pipeline_mode: str = "basic",
         discovery_intensity: str = "normal",
-        scan_id: Optional[str] = None,
-        rate_limit: Optional[float] = None,
-        max_concurrency: Optional[int] = None,
-        exclude_ips: Optional[str] = None,
-    ) -> Dict:
+        scan_id: str | None = None,
+        rate_limit: float | None = None,
+        max_concurrency: int | None = None,
+        exclude_ips: str | None = None,
+    ) -> dict:
         """
         Phase 1 — Host Discovery.
 
@@ -276,7 +276,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            disc_results: List[Dict] = await discovery.run(all_ips, scan_id=scan_id)
+            disc_results: list[dict] = await discovery.run(all_ips, scan_id=scan_id)
             duration = time.time() - t0
 
             # Trigger classification and OS inference on the discovered hosts
@@ -365,14 +365,14 @@ class ScanOrchestrator:
 
     async def _run_asset_phase1(
         self,
-        all_ips: List[str],
-        targets: List[str],
+        all_ips: list[str],
+        targets: list[str],
         scan_type: str,
         discovery_intensity: str,
-        scan_id: Optional[str] = None,
-        rate_limit: Optional[float] = None,
-        max_concurrency: Optional[int] = None,
-    ) -> Dict:
+        scan_id: str | None = None,
+        rate_limit: float | None = None,
+        max_concurrency: int | None = None,
+    ) -> dict:
         """
         Asset-specific Phase 1 orchestration.
 
@@ -406,7 +406,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            raw_results: List[Dict] = await engine.run(all_ips, scan_id=scan_id)
+            raw_results: list[dict] = await engine.run(all_ips, scan_id=scan_id)
             discovery_profile_label = "FAST"
 
         elif intensity == "normal":
@@ -418,10 +418,10 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            fast_raw: List[Dict] = await fast_engine.run(all_ips, scan_id=scan_id)
+            fast_raw: list[dict] = await fast_engine.run(all_ips, scan_id=scan_id)
 
             # Determine which IPs are still inactive after FAST pass
-            fast_by_ip: Dict[str, Dict] = {r["ip"]: r for r in fast_raw}
+            fast_by_ip: dict[str, dict] = {r["ip"]: r for r in fast_raw}
             unresolved_ips = [
                 ip
                 for ip in all_ips
@@ -436,10 +436,10 @@ class ScanOrchestrator:
                     stealth_mode=self.stealth_mode,
                     rate_limit=rate_limit,
                 )
-                balanced_raw: List[Dict] = await balanced_engine.run(
+                balanced_raw: list[dict] = await balanced_engine.run(
                     unresolved_ips, scan_id=scan_id
                 )
-                balanced_by_ip: Dict[str, Dict] = {r["ip"]: r for r in balanced_raw}
+                balanced_by_ip: dict[str, dict] = {r["ip"]: r for r in balanced_raw}
                 fallback_active_hosts = sum(
                     1 for r in balanced_raw if r.get("is_active", False)
                 )
@@ -507,10 +507,10 @@ class ScanOrchestrator:
 
     @staticmethod
     def _merge_fast_balanced_results(
-        ordered_ips: List[str],
-        fast_by_ip: Dict[str, Dict],
-        balanced_by_ip: Dict[str, Dict],
-    ) -> List[Dict]:
+        ordered_ips: list[str],
+        fast_by_ip: dict[str, dict],
+        balanced_by_ip: dict[str, dict],
+    ) -> list[dict]:
         """
         Merge FAST and BALANCED discovery results for Normal intensity.
 
@@ -520,7 +520,7 @@ class ScanOrchestrator:
           3. If both are inactive → prefer the result with more populated fields;
              always preserve any MAC/vendor data that's available.
         """
-        merged: List[Dict] = []
+        merged: list[dict] = []
         for ip in ordered_ips:
             fast_r = fast_by_ip.get(
                 ip,
@@ -574,17 +574,17 @@ class ScanOrchestrator:
 
     async def run_asset_discovery_only(
         self,
-        hosts: List[Dict],
+        hosts: list[dict],
         intensity: str = "normal",
-        scan_id: Optional[str] = None,
+        scan_id: str | None = None,
         pipeline_mode: str = "asset",
         os_detection: bool = True,
-        custom_ports: Optional[str] = None,
-        exclude_ports: Optional[str] = None,
+        custom_ports: str | None = None,
+        exclude_ports: str | None = None,
         exclude_ot_from_nmap: bool = True,
         passive_first: bool = False,
-        exclude_ips: Optional[str] = None,
-    ) -> Dict:
+        exclude_ips: str | None = None,
+    ) -> dict:
         """
         Phase 2 — Port Scanning.
 
@@ -776,11 +776,11 @@ class ScanOrchestrator:
 
     def run_vulnerability_audit_only(
         self,
-        hosts: List[Dict],
-        scan_id: Optional[str] = None,
+        hosts: list[dict],
+        scan_id: str | None = None,
         exclude_ot_from_nmap: bool = True,
-        exclude_ips: Optional[str] = None,
-    ) -> Dict:
+        exclude_ips: str | None = None,
+    ) -> dict:
         """
         Phase 3+4 — Vulnerability Scanning + Risk Scoring.
 
@@ -881,7 +881,7 @@ class ScanOrchestrator:
     # ── Nmap pre-enrichment for Phase 3 ──────────────────────────────────────
 
     @staticmethod
-    def _nmap_pre_enrich(hosts: List[Dict], exclude_ot_from_nmap: bool = True) -> None:
+    def _nmap_pre_enrich(hosts: list[dict], exclude_ot_from_nmap: bool = True) -> None:
         """
         Run Nmap OS fingerprinting + service/version upgrade on each active host.
         Uses known open ports from Phase 2 to limit scan scope.
@@ -892,7 +892,7 @@ class ScanOrchestrator:
 
         If Nmap fails or is unavailable, the host data from Phase 2 is used as-is.
         """
-        from core.nmap.wrapper import NmapScanner, NMAP_AVAILABLE
+        from core.nmap.wrapper import NMAP_AVAILABLE, NmapScanner
 
         if not NMAP_AVAILABLE:
             return
@@ -901,7 +901,7 @@ class ScanOrchestrator:
         use_sudo = platform.system() != "Windows"
         scanner = NmapScanner(sudo=use_sudo)
 
-        def _enrich_one_host(host: Dict) -> None:
+        def _enrich_one_host(host: dict) -> None:
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
                 return
@@ -967,7 +967,7 @@ class ScanOrchestrator:
 
     # ── Preserve vendor from unified asset registry ─────────────────────────
 
-    def _preserve_vendor_from_registry(self, hosts: List[Dict]) -> None:
+    def _preserve_vendor_from_registry(self, hosts: list[dict]) -> None:
         """
         Retrieve vendor information from the asset registry (Phase 1 data)
         and apply it to Phase 2 results.
@@ -993,7 +993,7 @@ class ScanOrchestrator:
     # ── Target expansion ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_exclude_ips(exclude_ips_str: Optional[str]) -> List:
+    def _parse_exclude_ips(exclude_ips_str: str | None) -> list:
         if not exclude_ips_str:
             return []
         networks = []
@@ -1009,8 +1009,9 @@ class ScanOrchestrator:
         return networks
 
     @staticmethod
-    def _is_blacklisted(ip: str, custom_exclude_list: Optional[List] = None) -> bool:
+    def _is_blacklisted(ip: str, custom_exclude_list: list | None = None) -> bool:
         import ipaddress
+
         from config import AppConfig
 
         try:
@@ -1028,8 +1029,8 @@ class ScanOrchestrator:
 
     @staticmethod
     def _expand_targets(
-        targets: List[str], custom_exclude_list: Optional[List] = None
-    ) -> List[str]:
+        targets: list[str], custom_exclude_list: list | None = None
+    ) -> list[str]:
         """Expand a list of IPs/ranges/subnets into a flat de-duplicated IP list."""
         all_ips = []
         for target in targets:
@@ -1059,7 +1060,7 @@ class ScanOrchestrator:
     # ── Helpers (unchanged from original) ────────────────────────────────────
 
     def _format_host(
-        self, ip: str, data: Dict, input_hostname: str = None
+        self, ip: str, data: dict, input_hostname: str = None
     ) -> HostResult:
         """
         Resolve hostname with live-source priority over stale DNS.
@@ -1177,10 +1178,10 @@ class ScanOrchestrator:
         )
 
     @staticmethod
-    def _get_host_ip(host: Dict) -> Optional[str]:
+    def _get_host_ip(host: dict) -> str | None:
         return host.get("ip_address") or host.get("ip")
 
-    def _normalize_host_record(self, host: Dict) -> Dict:
+    def _normalize_host_record(self, host: dict) -> dict:
         norm = dict(host)
         ip = self._get_host_ip(norm)
         if ip:
@@ -1197,7 +1198,7 @@ class ScanOrchestrator:
         return norm
 
     @staticmethod
-    def _normalize_scan_method(value) -> Optional[str]:
+    def _normalize_scan_method(value) -> str | None:
         if not value:
             return None
         token = str(value).strip().upper()
@@ -1216,7 +1217,7 @@ class ScanOrchestrator:
                 return label
         return None
 
-    def _infer_discovery_method(self, hosts: List[Dict]) -> Optional[str]:
+    def _infer_discovery_method(self, hosts: list[dict]) -> str | None:
         methods = []
         for host in hosts:
             raw = (
@@ -1231,7 +1232,7 @@ class ScanOrchestrator:
             return None
         return Counter(methods).most_common(1)[0][0]
 
-    def _hosts_target_string(self, hosts: List[Dict]) -> Optional[str]:
+    def _hosts_target_string(self, hosts: list[dict]) -> str | None:
         ips = []
         for h in hosts:
             ip = self._get_host_ip(h)
@@ -1240,15 +1241,16 @@ class ScanOrchestrator:
         return ", ".join(ips) if ips else None
 
     @staticmethod
-    def _apply_os_inference(hosts: List[Dict], ot_enrichment: bool = False) -> None:
+    def _apply_os_inference(hosts: list[dict], ot_enrichment: bool = False) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
         from core.device_classifier import classify_device
         from core.discovery.enrichment import _ot_protocol_probes
-        from concurrent.futures import ThreadPoolExecutor
 
         active_hosts = [h for h in hosts if h.get("is_active")]
         if active_hosts and ot_enrichment:
 
-            def _probe_host(host: Dict) -> None:
+            def _probe_host(host: dict) -> None:
                 ip = host.get("ip_address") or host.get("ip")
                 if ip:
                     try:
@@ -1270,7 +1272,7 @@ class ScanOrchestrator:
         if not self.silent:
             log.info(msg)
 
-    def generate_phase_report(self, resp: Dict, scan_type: str) -> Dict[str, str]:
+    def generate_phase_report(self, resp: dict, scan_type: str) -> dict[str, str]:
         if not self._pdf:
             return {}
         try:
@@ -1326,7 +1328,7 @@ class ScanOrchestrator:
         }
 
     @staticmethod
-    def _phase2_meta(target, intensity, dsm) -> Dict:
+    def _phase2_meta(target, intensity, dsm) -> dict:
         d = {"scan_intensity": intensity.value.upper()}
         if target:
             d["target"] = target

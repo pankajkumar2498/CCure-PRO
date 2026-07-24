@@ -62,7 +62,7 @@ def _limits(plan: str) -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _count_target_ips(targets: List[str]) -> int:
+def _count_target_ips(targets: list[str]) -> int:
     """
     Estimate total unique IPs across all targets.
     Handles single IPs, CIDR subnets, and dash-ranges.
@@ -96,7 +96,7 @@ def _count_target_ips(targets: List[str]) -> int:
     return total
 
 
-def _smallest_prefix(targets: List[str]) -> int:
+def _smallest_prefix(targets: list[str]) -> int:
     """
     Return the smallest prefix length across all subnet targets.
     A /8 is smaller (larger network) than a /24.
@@ -108,8 +108,7 @@ def _smallest_prefix(targets: List[str]) -> int:
         if "/" in t:
             try:
                 net = ipaddress.ip_network(t, strict=False)
-                if net.prefixlen < min_prefix:
-                    min_prefix = net.prefixlen
+                min_prefix = min(min_prefix, net.prefixlen)
             except ValueError:
                 pass
     return min_prefix
@@ -172,8 +171,8 @@ def _get_org_plan(db: Session, org_id: str) -> str:
 def check_scan_quota(
     db: Session,
     org_id: str,
-    targets: Optional[List[str]] = None,
-    custom_ports: Optional[str] = None,
+    targets: list[str] | None = None,
+    custom_ports: str | None = None,
 ) -> None:
     """
     Enforce plan-based scan quotas.  Raises HTTPException on violation.

@@ -9,11 +9,10 @@ ID Convention (Stripe-Style)
                    e.g.  ntf_pankaj_scan_complete_x9v1
 """
 
-from sqlalchemy import Column, String, Boolean, ForeignKey, Text, Index
+from db.base import TIMESTAMPTZ, Base, utcnow
+from sqlalchemy import Boolean, Column, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
 
 
 class Notification(Base):

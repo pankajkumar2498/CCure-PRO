@@ -8,26 +8,26 @@ Usage:   python -m scripts.seed_mock_findings
 
 import os
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Ensure the root of the project is in python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.compliance_tasks import _calculate_compliance_score
 from db.base import SessionLocal
 from db.models import User
-from db.models.rbac import Organization
 from db.models.compliance import (
-    ComplianceFramework,
-    ComplianceTenantFramework,
     ComplianceControl,
+    ComplianceFinding,
+    ComplianceFramework,
     CompliancePolicy,
     CompliancePolicyRule,
     ComplianceRule,
     ComplianceRuleControl,
-    ComplianceFinding,
     ComplianceScanRun,
+    ComplianceTenantFramework,
 )
-from core.compliance_tasks import _calculate_compliance_score
+from db.models.rbac import Organization
 
 
 def seed_mock_compliance_data():
@@ -221,7 +221,7 @@ def seed_mock_compliance_data():
 
     except Exception as e:
         db.rollback()
-        print(f"Error seeding mock data: {str(e)}")
+        print(f"Error seeding mock data: {e!s}")
     finally:
         db.close()
 

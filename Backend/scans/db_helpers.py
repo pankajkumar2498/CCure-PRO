@@ -7,21 +7,20 @@ and track execution phases natively in the production PostgreSQL schema.
 Automatically runs Identity Resolution (AssetSyncer) internally.
 """
 
-from typing import Optional, List, Any
-from sqlalchemy import func, text
-from sqlalchemy.orm import Session
+from typing import Any, List, Optional
 
-from db.models.users import User
+from core.audit import log_audit_event
+from db.base import gen_scan_id, gen_scan_phase_id, utcnow
 from db.models.rbac import Organization
 from db.models.scans import Scan, ScanPhase
+from db.models.users import User
 from scans.asset_syncer import (
-    sync_host_discovery,
     sync_asset_discovery,
+    sync_host_discovery,
     sync_vulnerability_audit,
 )
-from core.audit import log_audit_event
-from db.base import utcnow, gen_scan_id, gen_scan_phase_id
-
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
 
 _UNSAFE_JSONB_CHARS = {
     codepoint: None for codepoint in range(32) if codepoint not in (9, 10, 13)
@@ -64,7 +63,7 @@ def _public_phase_summary(summary: Any) -> dict:
     }
 
 
-def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Optional[Scan]:
+def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Scan | None:
     org_id = _get_org_id(db, user_id)
     return db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == org_id).first()
 
@@ -154,11 +153,11 @@ def create_scan(
     db: Session,
     user_id: str,
     target: str,
-    targets: List[str],
+    targets: list[str],
     scan_type: str,
     pipeline_mode: str = "basic",
-    current_task_id: Optional[str] = None,
-    org_id: Optional[str] = None,
+    current_task_id: str | None = None,
+    org_id: str | None = None,
 ) -> Scan:
     """Create an empty running scan before Phase 1 starts."""
     if not org_id:
@@ -208,9 +207,9 @@ def update_scan_phase1(
     user_id: str,
     phase1_data: dict,
     is_final: bool = False,
-    report_json_path: Optional[str] = None,
-    report_xml_path: Optional[str] = None,
-) -> Optional[Scan]:
+    report_json_path: str | None = None,
+    report_xml_path: str | None = None,
+) -> Scan | None:
     """
     Called right after /scan/host-discovery succeeds. Updates the existing scan.
     """
@@ -293,9 +292,9 @@ def update_scan_phase1(
     if is_final:
         try:
             from routers.notifications import (
-                create_notification,
-                NotificationType,
                 NotificationCategory,
+                NotificationType,
+                create_notification,
             )
 
             create_notification(
@@ -320,10 +319,10 @@ def update_scan_phase(
     phase: int,
     phase_data: dict,
     is_final: bool = False,
-    pipeline_mode: Optional[str] = None,
-    report_json_path: Optional[str] = None,
-    report_xml_path: Optional[str] = None,
-) -> Optional[Scan]:
+    pipeline_mode: str | None = None,
+    report_json_path: str | None = None,
+    report_xml_path: str | None = None,
+) -> Scan | None:
     """
     Called after /scan/asset-discovery (phase=2) or /scan/vulnerability-audit (phase=3).
     """
@@ -494,10 +493,10 @@ def update_scan_phase(
     if is_final:
         try:
             from routers.notifications import (
+                NotificationCategory,
+                NotificationType,
                 create_notification,
                 fan_out_notification,
-                NotificationType,
-                NotificationCategory,
             )
 
             # Additional logic: if critical vulns were found, send a Security notification
@@ -546,7 +545,7 @@ def mark_scan_failed(
     user_id: str,
     reason: str,
     status: str = "failed",
-) -> Optional[Scan]:
+) -> Scan | None:
     scan = _get_org_scoped_scan(db, scan_id, user_id)
     if not scan:
         return None
@@ -575,9 +574,9 @@ def mark_scan_failed(
 
     try:
         from routers.notifications import (
-            create_notification,
-            NotificationType,
             NotificationCategory,
+            NotificationType,
+            create_notification,
         )
 
         ntype = NotificationType.SCAN_FAILED
@@ -604,16 +603,16 @@ def create_completed_scan(
     db: Session,
     user_id: str,
     target: str,
-    targets: Optional[List[str]],
+    targets: list[str] | None,
     scan_type: str,
     phase: int,
     results: dict,
     summary: dict,
-    scan_duration: Optional[float] = None,
-    report_json_path: Optional[str] = None,
-    report_xml_path: Optional[str] = None,
+    scan_duration: float | None = None,
+    report_json_path: str | None = None,
+    report_xml_path: str | None = None,
     pipeline_mode: str = "vulnerability_audit",
-    scan_id: Optional[str] = None,
+    scan_id: str | None = None,
     commit: bool = True,
 ) -> Scan:
     """Fallback capability for bulk-loading a fully complete scan (used by credentialed scans)."""
@@ -757,10 +756,10 @@ def create_completed_scan(
 
     try:
         from routers.notifications import (
+            NotificationCategory,
+            NotificationType,
             create_notification,
             fan_out_notification,
-            NotificationType,
-            NotificationCategory,
         )
 
         # Check if credentialed report has criticals

@@ -20,8 +20,8 @@ log = logging.getLogger("ccure.discovery.arp_cache")
 
 
 def probe(
-    ips: List[str],
-    results: Dict[str, Dict],
+    ips: list[str],
+    results: dict[str, dict],
 ) -> None:
     """
     Check the OS ARP cache for each IP and update the result if found.
@@ -114,6 +114,5 @@ def get_mac_from_arp_cache(ip: str) -> str:
 
     except Exception as exc:
         log.debug("Failed to read MAC from ARP cache for %s: %s", ip, exc)
-        pass
 
     return "N/A"

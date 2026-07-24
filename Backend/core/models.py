@@ -5,11 +5,10 @@ Shared enums and dataclasses.
 No logic here - just typed containers.
 """
 
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Optional, Dict
-
+from enum import Enum
+from typing import Dict, Optional
 
 # =============================================================================
 # Enums
@@ -47,7 +46,7 @@ class PortResult:
     risk: str = "Info"
     cves: list = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
@@ -65,7 +64,7 @@ class TLSInfo:
     weak_cipher: bool = False
     score: str = "N/A"  # A / B / C / F
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
@@ -81,7 +80,7 @@ class HTTPAudit:
     redirect_http: bool = False  # HTTP -> HTTPS redirect?
     issues: list = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
@@ -94,7 +93,7 @@ class HostResult:
     is_active: bool = False
     status: str = "Inactive"
     scan_method: str = "N/A"
-    response_time_ms: Optional[float] = None
+    response_time_ms: float | None = None
     open_ports: list = field(default_factory=list)
     os_guess: str = "Unknown"
     os_confidence: str = "Low"
@@ -103,8 +102,8 @@ class HostResult:
 
     # Priority-1 & 2 & 3 Additions
     device_category: str = "unknown"
-    snmp_device_type: Optional[str] = None
-    mdns_name: Optional[str] = None
+    snmp_device_type: str | None = None
+    mdns_name: str | None = None
     netbios_names: list = field(default_factory=list)
     os_fingerprint_full: dict = field(default_factory=dict)
     tcp_fingerprint: dict = field(default_factory=dict)
@@ -122,10 +121,10 @@ class HostResult:
     host_risk_level: str = "Info"  # Critical / High / Medium / Low / Info
     _ot_probed: bool = False
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
-    def to_phase1_dict(self) -> Dict:
+    def to_phase1_dict(self) -> dict:
         """Returns fields for Phase 1 (Host Discovery) with proper field mapping for frontend."""
         d = {
             "ip_address": self.ip_address,
@@ -152,7 +151,7 @@ class HostResult:
         }
         return d
 
-    def to_basic_dict(self) -> Dict:
+    def to_basic_dict(self) -> dict:
         """Returns essential fields for Basic Network Scan (FAST profile) - excludes redundant and enrichment fields."""
         return {
             "ip_address": self.ip_address,
@@ -171,20 +170,20 @@ class HostResult:
             "_ot_probed": self._ot_probed,
         }
 
-    def to_phase3_dict(self) -> Dict:
+    def to_phase3_dict(self) -> dict:
         """Returns fields for Phase 3 (Vulnerability Scan) - excludes open_ports (shown in Phase 2)."""
         d = self.to_clean_dict()
         # Remove open_ports from Phase 3 to avoid redundancy with Phase 2 port scan results
         d.pop("open_ports", None)
         return d
 
-    def to_clean_dict(self) -> Dict:
+    def to_clean_dict(self) -> dict:
         """Like to_dict() but drops fields that have no meaningful value."""
         d = asdict(self)
 
         # Fields that should be hidden when they carry no real info
         HIDE_IF_NA = {"N/A", "Unknown", ""}
-        HIDE_IF_EMPTY = {None, False, 0}
+        HIDE_IF_EMPTY = {None, False}
 
         # Keys that are always safe to drop when empty/falsy
         # NOTE: "vendor" is now ALWAYS included if it has any value
@@ -270,5 +269,5 @@ class DiscoverySummary:
     critical_hosts: int = 0
     high_risk_hosts: int = 0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)

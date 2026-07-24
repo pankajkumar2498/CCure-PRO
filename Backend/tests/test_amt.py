@@ -5,15 +5,15 @@ Unit and integration tests for the AMT Inventory Import and Reconciliation.
 """
 
 import json
+
+from core.amt_reconciliation import reconcile_amt_inventory
+from core.utils import normalize_mac
+from db.models.amt import AMTInventoryRecord
+from db.models.assets import Asset, AssetChangeLog
+from db.models.scans import Scan
+from db.models.users import User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-from db.models.users import User
-from db.models.assets import Asset, AssetChangeLog
-from db.models.amt import AMTInventoryRecord
-from db.models.scans import Scan
-from core.utils import normalize_mac
-from core.amt_reconciliation import reconcile_amt_inventory
 
 
 def test_normalize_mac():

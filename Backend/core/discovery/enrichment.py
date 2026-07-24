@@ -43,7 +43,7 @@ _SNMP_OIDS = {
 _SNMP_AVAILABLE = False
 if SCAPY_AVAILABLE:
     try:
-        from scapy.all import SNMP, SNMPget, SNMPvarbind, ASN1_OID
+        from scapy.all import ASN1_OID, SNMP, SNMPget, SNMPvarbind
 
         _SNMP_AVAILABLE = True
     except ImportError:
@@ -56,7 +56,7 @@ if SCAPY_AVAILABLE:
 
 
 def enrich_host(
-    ip: str, result: Dict, ot_enrichment: bool = True, register_ports: bool = True
+    ip: str, result: dict, ot_enrichment: bool = True, register_ports: bool = True
 ) -> None:
     """
     Run all enrichment probes for one active host.
@@ -148,7 +148,7 @@ def _is_port_connectable(ip: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 
-def _ot_protocol_probes(ip: str, result: Dict) -> None:
+def _ot_protocol_probes(ip: str, result: dict) -> None:
     """
     Perform safe OT protocol fingerprinting on port-gating targets sequentially.
     Utilizes smart connection checks, sequences port 102, and generates audit logs.
@@ -159,18 +159,18 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
     result["_ot_probed"] = True
 
     from core.discovery.techniques.ot_probes import (
-        probe_modbus,
-        probe_s7,
-        probe_ethernetip,
         probe_bacnet,
-        probe_dnp3,
-        probe_opcua,
-        probe_iec104,
-        probe_ge_srtp,
-        probe_fins,
-        probe_melsec,
         probe_codesys,
+        probe_dnp3,
+        probe_ethernetip,
+        probe_fins,
+        probe_ge_srtp,
+        probe_iec104,
+        probe_melsec,
         probe_mms,
+        probe_modbus,
+        probe_opcua,
+        probe_s7,
     )
 
     # Port mapping for each protocol (MMS and S7 both share port 102, so handled separately)
@@ -231,7 +231,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
     if is_102_candidate and state_102 is None:
         is_102_candidate = _is_port_connectable(ip, 102, timeout=1.0)
 
-    def sequenced_port_102_probe(ip_addr: str, timeout: float = 1.0) -> Optional[dict]:
+    def sequenced_port_102_probe(ip_addr: str, timeout: float = 1.0) -> dict | None:
         """Sequence Siemens S7 comm first, fallback to MMS on port 102 to avoid collision."""
         s7_info = probe_s7(ip_addr, timeout)
         if s7_info:
@@ -347,7 +347,7 @@ def _ot_protocol_probes(ip: str, result: Dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
+def _snmp_lightweight_probe(ip: str, result: dict) -> None:
     """
     Query port 161 (SNMP) using community 'public' for system details to identify
     network devices early in discovery or port scanning.
@@ -366,16 +366,16 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
 
     try:
         from engines.vulnerability.plugins.snmp_probe import (
-            _snmp_get_raw,
+            _ENTERPRISE_VENDORS,
+            _OID_BRIDGE_ADDR,
+            _OID_IF_NUMBER,
+            _OID_IP_FORWARD,
+            _OID_SYS_DESCR,
+            _OID_SYS_OBJ_ID,
+            _extract_integer,
             _extract_oid_value,
             _extract_string,
-            _extract_integer,
-            _OID_SYS_OBJ_ID,
-            _OID_SYS_DESCR,
-            _OID_IP_FORWARD,
-            _OID_IF_NUMBER,
-            _OID_BRIDGE_ADDR,
-            _ENTERPRISE_VENDORS,
+            _snmp_get_raw,
         )
 
         # Query sysObjectID using community 'public'
@@ -452,7 +452,7 @@ def _snmp_lightweight_probe(ip: str, result: Dict) -> None:
         log.debug("_snmp_lightweight_probe(%s) error: %s", ip, exc)
 
 
-def _ptr_lookup(ip: str, result: Dict) -> None:
+def _ptr_lookup(ip: str, result: dict) -> None:
     """
     Reverse DNS PTR lookup via the OS resolver.
     Faster and more reliable than Scapy DNS queries for standard PTR records.
@@ -467,7 +467,7 @@ def _ptr_lookup(ip: str, result: Dict) -> None:
         pass
 
 
-def _mdns_query(ip: str, result: Dict) -> None:
+def _mdns_query(ip: str, result: dict) -> None:
     """
     Send a unicast mDNS PTR query to the target to resolve its .local hostname.
     Uses Scapy for raw DNS packet construction (not multicast join).
@@ -476,7 +476,7 @@ def _mdns_query(ip: str, result: Dict) -> None:
     if not SCAPY_AVAILABLE:
         return
     try:
-        from scapy.all import sr1, IP, UDP, DNS, DNSQR
+        from scapy.all import DNS, DNSQR, IP, UDP, sr1
 
         rev = ".".join(reversed(ip.split("."))) + ".in-addr.arpa."
         pkt = IP(dst=ip) / UDP(dport=5353) / DNS(rd=0, qd=DNSQR(qname=rev, qtype="PTR"))
@@ -495,7 +495,7 @@ def _mdns_query(ip: str, result: Dict) -> None:
         log.debug("_mdns_query(%s) error: %s", ip, exc)
 
 
-def _mdns_service_query(ip: str, result: Dict) -> None:
+def _mdns_service_query(ip: str, result: dict) -> None:
     """
     Send target-specific unicast mDNS queries for common service records
     (e.g., _printer, _ipp, _ssh, _workstation) to identify device types passively.
@@ -503,7 +503,7 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
     if not SCAPY_AVAILABLE:
         return
     try:
-        from scapy.all import sr1, IP, UDP, DNS, DNSQR
+        from scapy.all import DNS, DNSQR, IP, UDP, sr1
 
         services = [
             "_printer._tcp.local",
@@ -534,7 +534,7 @@ def _mdns_service_query(ip: str, result: Dict) -> None:
         log.debug("_mdns_service_query(%s) error: %s", ip, exc)
 
 
-def _netbios_query(ip: str, result: Dict) -> None:
+def _netbios_query(ip: str, result: dict) -> None:
     """
     NetBIOS Node Status (UDP 137) — returns computer name, workgroup, MAC.
     Uses raw socket (no Scapy needed — this is a plain UDP exchange).
@@ -562,7 +562,7 @@ def _netbios_query(ip: str, result: Dict) -> None:
         return
 
     num_names = data[56]
-    names: List[Dict] = []
+    names: list[dict] = []
     computer_name = ""
     workgroup = ""
 
@@ -608,7 +608,7 @@ def _netbios_query(ip: str, result: Dict) -> None:
                 result["mac"] = mac_str
 
 
-def _os_probe_full(ip: str, result: Dict) -> None:
+def _os_probe_full(ip: str, result: dict) -> None:
     """
     Send a crafted SYN with a full TCP option set to extract MSS/WScale/SAckOK
     from the SYN-ACK. Refines OS fingerprint beyond the TTL-only initial guess.
@@ -629,8 +629,8 @@ def _os_probe_full(ip: str, result: Dict) -> None:
         return
 
     try:
-        from scapy.all import sr, IP, TCP
         from core.risk import fingerprint_os
+        from scapy.all import IP, TCP, sr
 
         pkt = IP(dst=ip) / TCP(
             dport=80,

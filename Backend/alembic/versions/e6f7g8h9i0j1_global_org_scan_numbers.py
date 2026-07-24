@@ -8,8 +8,8 @@ Converts scan number allocation from per-user to global-per-org and
 normalizes any existing duplicate scan_no values within the same org.
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "e6f7g8h9i0j1"

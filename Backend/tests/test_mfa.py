@@ -6,11 +6,11 @@ OTP fallback, backup codes, and session revocation).
 """
 
 import pyotp
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-from db.models.users import User, RefreshTokenSession
 from auth.jwt_handler import hash_password
 from auth.router import decrypt_secret
+from db.models.users import RefreshTokenSession, User
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
@@ -188,16 +188,17 @@ def test_mfa_flow_e2e(client: TestClient, db_session: Session, test_user: User):
 
 def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     """Test that a superadmin can successfully reset another user's MFA."""
+    from datetime import datetime, timedelta, timezone
+
+    from auth.jwt_handler import create_access_token
     from db.models import (
         Organization,
-        Role,
-        User,
-        RefreshTokenSession,
         Permission,
+        RefreshTokenSession,
+        Role,
         RolePermission,
+        User,
     )
-    from auth.jwt_handler import create_access_token
-    from datetime import datetime, timezone, timedelta
 
     org = Organization(
         name="MFA Reset Org",

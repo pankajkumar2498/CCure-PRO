@@ -1,7 +1,7 @@
 from db.base import SessionLocal
 from db.models import Asset
+from db.models.compliance import ComplianceFinding, ComplianceScore
 from db.models.rbac import Organization
-from db.models.compliance import ComplianceScore, ComplianceFinding
 
 
 def test_run_diagnostics():
@@ -46,6 +46,6 @@ def test_run_diagnostics():
 
     except Exception as e:
         print(f"Error during diagnostics: {e}")
-        raise e
+        raise
     finally:
         db.close()

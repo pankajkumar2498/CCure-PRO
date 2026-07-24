@@ -38,8 +38,6 @@ log = logging.getLogger("ccure.web.wrapper")
 class ToolNotAvailableError(RuntimeError):
     """Raised when a required external tool binary is not found."""
 
-    pass
-
 
 class ToolExecutionError(RuntimeError):
     """Raised when a tool subprocess fails with a non-zero exit code."""
@@ -68,8 +66,8 @@ class ToolWrapper(ABC):
         self.binary = binary_path
         self.timeout = timeout
         self.name = name or binary_path.split("/")[-1]
-        self._binary_verified: Optional[bool] = None
-        self._binary_version: Optional[str] = None
+        self._binary_verified: bool | None = None
+        self._binary_version: str | None = None
 
     # ── Binary Verification ───────────────────────────────────────────────────
 
@@ -100,7 +98,7 @@ class ToolWrapper(ABC):
                 f"Install it or set the correct path via environment variable."
             )
 
-    def get_version(self) -> Optional[str]:
+    def get_version(self) -> str | None:
         """Get tool version string. Returns None if unavailable."""
         if self._binary_version:
             return self._binary_version
@@ -122,11 +120,11 @@ class ToolWrapper(ABC):
 
     def _run_subprocess(
         self,
-        args: List[str],
-        timeout: Optional[int] = None,
-        cwd: Optional[str] = None,
-        env_override: Optional[Dict[str, str]] = None,
-        input_data: Optional[str] = None,
+        args: list[str],
+        timeout: int | None = None,
+        cwd: str | None = None,
+        env_override: dict[str, str] | None = None,
+        input_data: str | None = None,
     ) -> subprocess.CompletedProcess:
         """
         Run a subprocess with timeout, error capture, and structured logging.
@@ -225,7 +223,7 @@ class ToolWrapper(ABC):
     # ── Output Parsing ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_json(text: str) -> Dict:
+    def _parse_json(text: str) -> dict:
         """Parse JSON output from a tool. Returns empty dict on failure."""
         try:
             return json.loads(text.strip())
@@ -234,9 +232,9 @@ class ToolWrapper(ABC):
             return {}
 
     @staticmethod
-    def _parse_jsonl(text: str) -> List[Dict]:
+    def _parse_jsonl(text: str) -> list[dict]:
         """Parse JSONL (one JSON object per line) output. Skips bad lines."""
-        results: List[Dict] = []
+        results: list[dict] = []
         for line_num, line in enumerate(text.strip().splitlines(), 1):
             line = line.strip()
             if not line:
@@ -276,11 +274,11 @@ class ToolWrapper(ABC):
     # ── Logging Helpers ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _sanitize_args_for_log(args: List[str]) -> List[str]:
+    def _sanitize_args_for_log(args: list[str]) -> list[str]:
         """
         Redact sensitive arguments (auth headers, passwords) for safe logging.
         """
-        sanitized: List[str] = []
+        sanitized: list[str] = []
         skip_next = False
         sensitive_flags = {
             "-H",
@@ -310,7 +308,7 @@ class ToolWrapper(ABC):
     # ── Abstract Interface ────────────────────────────────────────────────────
 
     @abstractmethod
-    def run(self, target: str, **kwargs) -> Dict:
+    def run(self, target: str, **kwargs) -> dict:
         """
         Execute the tool against a target.
 

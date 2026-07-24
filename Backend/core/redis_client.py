@@ -1,9 +1,10 @@
-import redis.asyncio as async_redis
-import redis as sync_redis
-from config import AppConfig
-import json
 import datetime
+import json
 import logging
+
+import redis as sync_redis
+import redis.asyncio as async_redis
+from config import AppConfig
 from redis.exceptions import RedisError
 
 # Async client for FastAPI WebSocket (PubSub)

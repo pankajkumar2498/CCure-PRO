@@ -23,11 +23,11 @@ DESIGN PRINCIPLES (Nessus/Nmap-style):
   - Audit trail of data sources
 """
 
+import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
-from datetime import datetime
-import logging
 
 log = logging.getLogger("ccure.asset_correlation")
 
@@ -57,7 +57,7 @@ class ConfidenceScore:
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     notes: str = ""
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "confidence_score": self.score,
             "source": self.source.value,
@@ -74,9 +74,9 @@ class VendorInfo:
     mac_address: str = "N/A"
     confidence: ConfidenceScore = field(default_factory=ConfidenceScore)
     fallback_used: bool = False  # Did we use a fallback strategy?
-    strategies_tried: List[str] = field(default_factory=list)  # Audit trail
+    strategies_tried: list[str] = field(default_factory=list)  # Audit trail
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "name": self.name,
             "mac_address": self.mac_address,
@@ -94,11 +94,11 @@ class OSInfo:
     confidence: str = "Low"  # Low / Medium / High
     cpe: str = ""  # CPE identifier
     primary_source: DataSource = DataSource.DEFAULT
-    secondary_sources: List[DataSource] = field(default_factory=list)
+    secondary_sources: list[DataSource] = field(default_factory=list)
     version: str = ""
-    detection_methods: List[str] = field(default_factory=list)
+    detection_methods: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "name": self.name,
             "confidence": self.confidence,
@@ -140,17 +140,17 @@ class UnifiedAsset:
     os: OSInfo = field(default_factory=OSInfo)
 
     # ── Port & Service Data (enriched across phases) ──────────────────────
-    open_ports: List[Dict] = field(default_factory=list)
-    services_detected: List[Dict] = field(default_factory=list)
-    udp_services: List[Dict] = field(default_factory=list)
+    open_ports: list[dict] = field(default_factory=list)
+    services_detected: list[dict] = field(default_factory=list)
+    udp_services: list[dict] = field(default_factory=list)
 
     # ── Security Findings (merged from all phases) ───────────────────────
-    cves: List[Dict] = field(default_factory=list)
-    tls_info: Dict = field(default_factory=dict)
-    http_audit: Dict = field(default_factory=dict)
-    ssh_info: Dict = field(default_factory=dict)
-    smb_info: Dict = field(default_factory=dict)
-    snmp_info: Dict = field(default_factory=dict)
+    cves: list[dict] = field(default_factory=list)
+    tls_info: dict = field(default_factory=dict)
+    http_audit: dict = field(default_factory=dict)
+    ssh_info: dict = field(default_factory=dict)
+    smb_info: dict = field(default_factory=dict)
+    snmp_info: dict = field(default_factory=dict)
 
     # ── Risk Scoring ──────────────────────────────────────────────────────
     host_risk_score: float = 0.0
@@ -159,14 +159,14 @@ class UnifiedAsset:
     # ── Device Classification ─────────────────────────────────────────────
     device_category: str = "unknown"  # printer / server / workstation / iot / unknown
     device_confidence: str = "Low"
-    snmp_device_type: Optional[str] = None
+    snmp_device_type: str | None = None
 
     # ── Metadata ──────────────────────────────────────────────────────────
-    scan_phases_completed: List[int] = field(default_factory=list)  # [1, 2, 3, 4]
+    scan_phases_completed: list[int] = field(default_factory=list)  # [1, 2, 3, 4]
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
-    data_sources: List[str] = field(default_factory=list)  # Audit trail
+    data_sources: list[str] = field(default_factory=list)  # Audit trail
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Export as production-grade JSON (Nessus-compatible format)."""
         return {
             "ip_address": self.ip_address,
@@ -236,13 +236,13 @@ class AssetCorrelationEngine:
     """
 
     def __init__(self):
-        self._assets: Dict[str, UnifiedAsset] = {}  # IP → UnifiedAsset
+        self._assets: dict[str, UnifiedAsset] = {}  # IP → UnifiedAsset
 
     # ── Phase 1: Discovery ─────────────────────────────────────────────────
 
     def register_discovery_results(
         self,
-        hosts: List[Dict],
+        hosts: list[dict],
         discovery_method: str = "adaptive",
         discovery_profile: str = "FAST",
     ) -> None:
@@ -298,7 +298,7 @@ class AssetCorrelationEngine:
 
     # ── Phase 2: Port Scan ─────────────────────────────────────────────────
 
-    def enrich_port_scan_results(self, hosts: List[Dict]) -> None:
+    def enrich_port_scan_results(self, hosts: list[dict]) -> None:
         """
         Enrich existing assets with port scan data.
 
@@ -346,7 +346,7 @@ class AssetCorrelationEngine:
 
     # ── Phase 3: Vulnerability Scan ────────────────────────────────────────
 
-    def enrich_vulnerability_findings(self, hosts: List[Dict]) -> None:
+    def enrich_vulnerability_findings(self, hosts: list[dict]) -> None:
         """
         Enrich assets with vulnerability findings.
 
@@ -409,15 +409,15 @@ class AssetCorrelationEngine:
 
     # ── Utility Methods ────────────────────────────────────────────────────
 
-    def get_asset(self, ip: str) -> Optional[UnifiedAsset]:
+    def get_asset(self, ip: str) -> UnifiedAsset | None:
         """Retrieve unified asset by IP."""
         return self._assets.get(ip)
 
-    def export_all(self) -> List[Dict]:
+    def export_all(self) -> list[dict]:
         """Export all assets in production-grade JSON format."""
         return [asset.to_dict() for asset in self._assets.values()]
 
-    def export_by_phase(self, phases: List[int]) -> List[Dict]:
+    def export_by_phase(self, phases: list[int]) -> list[dict]:
         """Export only assets that have completed all specified phases."""
         return [
             asset.to_dict()
@@ -425,7 +425,7 @@ class AssetCorrelationEngine:
             if all(p in asset.scan_phases_completed for p in phases)
         ]
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get correlation engine statistics."""
         total = len(self._assets)
         active = sum(1 for a in self._assets.values() if a.is_active)

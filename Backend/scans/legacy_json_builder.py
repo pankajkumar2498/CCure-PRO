@@ -11,20 +11,18 @@ import re
 import zlib
 from pathlib import Path
 
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
-
 from db.models.assets import Asset
-from db.models.findings import Service, AssetVulnerability, VulnerabilityDefinition
+from db.models.findings import AssetVulnerability, Service, VulnerabilityDefinition
 from db.models.scans import Scan, ScanPhase
-
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 BACKEND_DIR = Path(__file__).absolute().parents[1]
 
-from typing import Optional, List, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
 
 
-def _resolve_backend_path(path_value: Optional[str]) -> Optional[Path]:
+def _resolve_backend_path(path_value: str | None) -> Path | None:
     if not path_value:
         return None
     path = Path(str(path_value))
@@ -57,13 +55,13 @@ def _decode_pdf_string(value: str) -> str:
     return re.sub(r"\\([0-7]{1,3}|.)", repl, value)
 
 
-def _extract_reportlab_pdf_strings(path_value: Optional[str]) -> List[str]:
+def _extract_reportlab_pdf_strings(path_value: str | None) -> list[str]:
     path = _resolve_backend_path(path_value)
     if not path or not path.is_file() or path.suffix.lower() != ".pdf":
         return []
 
     data = path.read_bytes()
-    chunks: List[str] = []
+    chunks: list[str] = []
     pos = 0
     while True:
         start = data.find(b"stream", pos)
@@ -119,7 +117,7 @@ def _is_pdf_header_token(token: str) -> bool:
     )
 
 
-def _first_after(strings: List[str], label: str, default: str = "") -> str:
+def _first_after(strings: list[str], label: str, default: str = "") -> str:
     try:
         idx = strings.index(label)
         return strings[idx + 1] if idx + 1 < len(strings) else default
@@ -131,7 +129,7 @@ def _clean_pdf_text(value: str) -> str:
     return value.replace("\x97", "-").strip()
 
 
-def _count_from_title(strings: List[str], prefix: str) -> int:
+def _count_from_title(strings: list[str], prefix: str) -> int:
     for token in strings:
         if token.startswith(prefix):
             match = re.search(r"\((\d+)", token)
@@ -141,8 +139,8 @@ def _count_from_title(strings: List[str], prefix: str) -> int:
 
 
 def _section(
-    strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]
-) -> List[str]:
+    strings: list[str], start_prefix: str, end_prefixes: tuple[str, ...]
+) -> list[str]:
     start = next(
         (i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1
     )
@@ -161,8 +159,8 @@ def _section(
 
 
 def _raw_section(
-    strings: List[str], start_prefix: str, end_prefixes: Tuple[str, ...]
-) -> List[str]:
+    strings: list[str], start_prefix: str, end_prefixes: tuple[str, ...]
+) -> list[str]:
     start = next(
         (i for i, token in enumerate(strings) if token.startswith(start_prefix)), -1
     )
@@ -176,7 +174,7 @@ def _raw_section(
     return [token for token in strings[start + 1 : end] if token]
 
 
-def _recover_credentialed_report_from_pdf(scan: Scan) -> Optional[Dict]:
+def _recover_credentialed_report_from_pdf(scan: Scan) -> dict | None:
     strings = _extract_reportlab_pdf_strings(getattr(scan, "report_json_path", None))
     if not strings:
         return None

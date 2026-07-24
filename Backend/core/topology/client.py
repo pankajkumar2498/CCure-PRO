@@ -180,17 +180,17 @@ class SNMPWalkResult:
     sys_name: str = ""
     sys_descr: str = ""
     sys_services: int = 0  # Layer bitmask
-    arp_table: List[ARPEntry] = field(default_factory=list)
-    lldp_neighbors: List[LLDPNeighbor] = field(default_factory=list)
-    cdp_neighbors: List[CDPNeighbor] = field(default_factory=list)
-    fdb_table: List[FDBEntry] = field(default_factory=list)
-    interface_table: Dict[str, InterfaceInfo] = field(
+    arp_table: list[ARPEntry] = field(default_factory=list)
+    lldp_neighbors: list[LLDPNeighbor] = field(default_factory=list)
+    cdp_neighbors: list[CDPNeighbor] = field(default_factory=list)
+    fdb_table: list[FDBEntry] = field(default_factory=list)
+    interface_table: dict[str, InterfaceInfo] = field(
         default_factory=dict
     )  # ifIndex -> InterfaceInfo
-    bridge_port_map: Dict[str, str] = field(
+    bridge_port_map: dict[str, str] = field(
         default_factory=dict
     )  # bridge_port -> ifIndex
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     @property
     def has_data(self) -> bool:
@@ -201,7 +201,7 @@ class SNMPWalkResult:
             or self.fdb_table
         )
 
-    def resolve_interface(self, port_index: str) -> Optional[InterfaceInfo]:
+    def resolve_interface(self, port_index: str) -> InterfaceInfo | None:
         """Resolve a bridge/FDB port index to its InterfaceInfo via bridge_port_map."""
         if_index = self.bridge_port_map.get(str(port_index), str(port_index))
         return self.interface_table.get(if_index)
@@ -282,11 +282,11 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
     if pysnmp is not installed (e.g., during unit tests).
     """
     from pysnmp.hlapi.asyncio import (
-        SnmpEngine,
         CommunityData,
-        UsmUserData,
-        UdpTransportTarget,
         ContextData,
+        SnmpEngine,
+        UdpTransportTarget,
+        UsmUserData,
     )
 
     engine = SnmpEngine()
@@ -310,10 +310,10 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
 
         if creds.auth_protocol:
             from pysnmp.hlapi.asyncio import (
-                usmHMACMD5AuthProtocol,
-                usmHMACSHAAuthProtocol,
                 usmHMAC128SHA224AuthProtocol,
                 usmHMAC192SHA256AuthProtocol,
+                usmHMACMD5AuthProtocol,
+                usmHMACSHAAuthProtocol,
             )
 
             AUTH_MAP = {
@@ -328,9 +328,9 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
 
         if creds.priv_protocol:
             from pysnmp.hlapi.asyncio import (
-                usmDESPrivProtocol,
                 usmAesCfb128Protocol,
                 usmAesCfb256Protocol,
+                usmDESPrivProtocol,
             )
 
             PRIV_MAP = {
@@ -356,14 +356,14 @@ def _build_snmp_engine(creds: SNMPCredentials, target_ip: str):
 
 async def _snmp_walk_async(
     engine, auth, transport, context, oid: str, max_rows: int = 0
-) -> List[tuple]:
+) -> list[tuple]:
     """
     Perform an asynchronous SNMP walk starting from `oid`.
     Returns list of (oid_str, value) tuples.
 
     If max_rows > 0, stops after max_rows results (safety cap).
     """
-    from pysnmp.hlapi.asyncio import walkCmd, ObjectType, ObjectIdentity
+    from pysnmp.hlapi.asyncio import ObjectIdentity, ObjectType, walkCmd
 
     results = []
     count = 0
@@ -420,7 +420,7 @@ async def _snmp_walk_async(
 
 async def _snmp_get_async(engine, auth, transport, context, oid: str):
     """Perform a single SNMP GET request asynchronously."""
-    from pysnmp.hlapi.asyncio import getCmd, ObjectType, ObjectIdentity
+    from pysnmp.hlapi.asyncio import ObjectIdentity, ObjectType, getCmd
 
     try:
         errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
@@ -635,7 +635,7 @@ def walk_target(target_ip: str, creds: SNMPCredentials) -> SNMPWalkResult:
 
             # 1d. VLAN tables (dot1qPvid + Cisco vmVlan)
             log.info("SNMP walk [%s]: walking VLAN tables...", target_ip)
-            vlan_port_map: Dict[str, int] = {}  # ifIndex/bridge_port -> vlan_id
+            vlan_port_map: dict[str, int] = {}  # ifIndex/bridge_port -> vlan_id
             try:
                 pvid_rows = await _snmp_walk_async(
                     engine, auth, transport, context, OID_DOT1Q_PVID

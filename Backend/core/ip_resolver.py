@@ -8,8 +8,9 @@ by only trusting designated proxy CIDR ranges.
 
 import ipaddress
 import logging
-from fastapi import Request
+
 from config import AppConfig
+from fastapi import Request
 
 logger = logging.getLogger(__name__)
 

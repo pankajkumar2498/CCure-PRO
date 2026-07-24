@@ -24,26 +24,25 @@ Usage:
 import os
 import xml.dom.minidom
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate,
+    HRFlowable,
+    KeepTogether,
+    PageBreak,
     Paragraph,
+    Preformatted,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    HRFlowable,
-    PageBreak,
-    KeepTogether,
-    Preformatted,
 )
 from scan_helpers import make_pdf_cve_paragraph
-
 
 # -----------------------------------------------------------------------------
 # Brand colours
@@ -224,7 +223,7 @@ def _draw_header_footer(canvas, doc):
 # -----------------------------------------------------------------------------
 
 
-def _kv_table(rows: List[tuple], styles: dict, col_widths=None) -> Table:
+def _kv_table(rows: list[tuple], styles: dict, col_widths=None) -> Table:
     """
     Build a neat two-column key / value table.
     rows : list of (label_str, value_str)
@@ -267,7 +266,7 @@ def _kv_table(rows: List[tuple], styles: dict, col_widths=None) -> Table:
     return tbl
 
 
-def _host_table(hosts: List[dict], styles: dict) -> Table:
+def _host_table(hosts: list[dict], styles: dict) -> Table:
     """
     Build the hosts summary table with one row per host.
     Columns: #, IP Address, Hostname, MAC Address, Status
@@ -525,7 +524,7 @@ def _resolve_scan_strategy(meta: dict, summary: dict) -> str:
     return label if label != "N/A" else "N/A"
 
 
-def _normalize_target_value(value: Any) -> Optional[str]:
+def _normalize_target_value(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, list):
@@ -550,7 +549,7 @@ def _resolve_target(meta: dict, summary: dict) -> str:
     return "N/A"
 
 
-def _collect_hosts(result: dict) -> List[dict]:
+def _collect_hosts(result: dict) -> list[dict]:
     meta = result.get("metadata", {})
     summary = result.get("summary", {})
     timestamp = (
@@ -567,7 +566,7 @@ def _collect_hosts(result: dict) -> List[dict]:
     except Exception:
         friendly_ts = timestamp
 
-    hosts: List[dict] = []
+    hosts: list[dict] = []
     data = result.get("data", [])
     if isinstance(data, dict):
         if "credentialed" in data and "report" in data["credentialed"]:
@@ -633,7 +632,7 @@ def _collect_hosts(result: dict) -> List[dict]:
     return hosts
 
 
-def _as_int(value: Any) -> Optional[int]:
+def _as_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -643,8 +642,8 @@ def _as_int(value: Any) -> Optional[int]:
 
 
 def _compute_discovery_summary(
-    summary: dict, hosts: List[dict]
-) -> Tuple[int, int, int, str]:
+    summary: dict, hosts: list[dict]
+) -> tuple[int, int, int, str]:
     total = _as_int(summary.get("total_hosts"))
     active = _as_int(summary.get("active_hosts"))
     inactive = _as_int(summary.get("inactive_hosts"))
@@ -1149,7 +1148,7 @@ def _build_json_story(
 
         # -- Per-host Detail Cards --------------------------------------------
         story.append(_section_header("Individual Host Details", styles))
-        all_cve_rows: List[tuple] = []  # (ip, cve_id, severity, package, description)
+        all_cve_rows: list[tuple] = []  # (ip, cve_id, severity, package, description)
         for idx, host in enumerate(active_hosts, start=1):
             is_active = host.get("is_active", False)
 
@@ -1709,7 +1708,7 @@ class ScanReportGenerator:
         output_dir: Directory where PDFs are saved (created if missing).
     """
 
-    def __init__(self, output_dir: Optional[str] = None):
+    def __init__(self, output_dir: str | None = None):
         if output_dir is None or output_dir == "reports":
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             output_dir = os.path.join(backend_dir, "reports")
@@ -1818,7 +1817,7 @@ class ScanReportGenerator:
 
     # -- Public entry point ----------------------------------------------------
 
-    def generate(self, result: dict, scan_type: str) -> Dict[str, str]:
+    def generate(self, result: dict, scan_type: str) -> dict[str, str]:
         """
         Generate both PDF reports for a scan result.
 

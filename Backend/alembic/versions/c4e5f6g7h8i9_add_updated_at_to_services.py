@@ -6,11 +6,9 @@ Create Date: 2026-05-22 19:45:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 from db.base import TIMESTAMPTZ
-
 
 # revision identifiers, used by Alembic.
 revision = "c4e5f6g7h8i9"

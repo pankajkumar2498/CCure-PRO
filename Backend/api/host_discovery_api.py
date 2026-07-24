@@ -9,10 +9,10 @@ require zero changes.  All heavy lifting lives in ScanOrchestrator.
 
 import logging
 import os
-
 from typing import Optional
-from core.constants import SCAPY_AVAILABLE, PDF_AVAILABLE
-from core.models import ScanIntensity, DiscoveryScanType
+
+from core.constants import PDF_AVAILABLE, SCAPY_AVAILABLE
+from core.models import DiscoveryScanType, ScanIntensity
 from core.utils import PrivilegeManager
 from orchestrator.scan_orchestrator import ScanOrchestrator
 
@@ -33,7 +33,7 @@ class HostDiscoveryAPI:
     def __init__(
         self,
         silent: bool = True,
-        reports_dir: Optional[str] = None,
+        reports_dir: str | None = None,
         intensity: str = "normal",
         rate_limit: float = 200.0,
         stealth_mode: bool = False,

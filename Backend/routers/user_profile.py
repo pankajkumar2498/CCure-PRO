@@ -18,16 +18,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy.orm import Session
-
-from db.base import get_db
-from db.models import User, RefreshTokenSession
 from auth.dependencies import get_current_user
 from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password, verify_password
 from core.audit import log_audit_event
+from db.base import get_db
+from db.models import RefreshTokenSession, User
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, field_validator
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/user", tags=["User Profile & Preferences"])
 logger = logging.getLogger(__name__)
@@ -39,8 +38,8 @@ logger = logging.getLogger(__name__)
 class ProfileUpdateRequest(BaseModel):
     """Update user profile information."""
 
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    full_name: str | None = None
+    email: EmailStr | None = None
 
     @field_validator("full_name")
     @classmethod
@@ -73,15 +72,15 @@ class ChangePasswordRequest(BaseModel):
 class PreferencesRequest(BaseModel):
     """Update user preferences."""
 
-    theme: Optional[str] = None  # "light", "dark"
-    default_scan_type: Optional[str] = (
+    theme: str | None = None  # "light", "dark"
+    default_scan_type: str | None = (
         None  # "host-discovery", "asset", "vulnerability_audit", "credentialed"
     )
-    email_alerts: Optional[bool] = None
-    in_app_alerts: Optional[bool] = None
-    timezone: Optional[str] = None
-    sidebar_collapsed: Optional[bool] = None
-    default_rows_per_page: Optional[int] = None
+    email_alerts: bool | None = None
+    in_app_alerts: bool | None = None
+    timezone: str | None = None
+    sidebar_collapsed: bool | None = None
+    default_rows_per_page: int | None = None
 
     @field_validator("theme")
     @classmethod
@@ -111,13 +110,13 @@ class UserProfileResponse(BaseModel):
     id: str
     username: str
     email: str
-    full_name: Optional[str]
+    full_name: str | None
     organization_name: str
     role_name: str
     is_active: bool
-    last_login_at: Optional[datetime]
+    last_login_at: datetime | None
     created_at: datetime
-    avatar_url: Optional[str]
+    avatar_url: str | None
 
     class Config:
         from_attributes = True
@@ -142,7 +141,7 @@ class SessionResponse(BaseModel):
     """Active session information."""
 
     session_id: int
-    ip_address: Optional[str]
+    ip_address: str | None
     device_info: dict
     issued_at: datetime
     expires_at: datetime
@@ -188,7 +187,7 @@ def _get_user_preferences(user: User) -> UserPreferencesResponse:
 
 
 def _extract_session_info(
-    refresh_token_session: RefreshTokenSession, current_token_jti: Optional[str] = None
+    refresh_token_session: RefreshTokenSession, current_token_jti: str | None = None
 ) -> SessionResponse:
     """Convert RefreshTokenSession to SessionResponse."""
     device_info = refresh_token_session.device_info or {}
@@ -509,5 +508,3 @@ def revoke_session(
     )
     db.commit()
     logger.info(f"User {current_user.username} revoked session {session_id}")
-
-    return None

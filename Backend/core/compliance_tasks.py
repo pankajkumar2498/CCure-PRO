@@ -4,31 +4,31 @@ Celery background worker tasks for the Policy Compliance Engine.
 """
 
 import logging
-from typing import Any, Optional
 import re
 import socket
-from datetime import datetime, timezone, timedelta
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 
 from core.celery_app import celery_app
+from core.compliance_evidence import ComplianceEvidenceProvider
 from db.base import SessionLocal
 from db.models import Asset, Service
 from db.models.compliance import (
-    ComplianceScanRun,
-    CompliancePolicyRule,
-    ComplianceRule,
-    ComplianceRuleDependency,
-    ComplianceRuleControl,
-    ComplianceFinding,
-    ComplianceFindingHistory,
-    ComplianceScore,
-    ComplianceException,
-    ComplianceRemediation,
     ComplianceControl,
     ComplianceCredential,
+    ComplianceException,
+    ComplianceFinding,
+    ComplianceFindingHistory,
+    CompliancePolicyRule,
+    ComplianceRemediation,
     ComplianceRemediationRequest,
+    ComplianceRule,
+    ComplianceRuleControl,
+    ComplianceRuleDependency,
+    ComplianceScanRun,
+    ComplianceScore,
 )
-from core.compliance_evidence import ComplianceEvidenceProvider
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance.tasks")
 
@@ -507,9 +507,9 @@ def _calculate_compliance_score(
     db: Session,
     org_id: str,
     framework_id: str,
-    asset_id: Optional[str],
+    asset_id: str | None,
     scan_run_id: str,
-    saq_profile: Optional[str] = None,
+    saq_profile: str | None = None,
 ):
     """Calculates both simple and risk-weighted compliance scores for an asset or tenant, including theme scores."""
     if saq_profile is None and scan_run_id:
@@ -695,7 +695,7 @@ def _calculate_compliance_score(
 
 # Helper functions for remediation script execution to keep main functions under 40 lines
 def _resolve_remediation_credentials(
-    db: Session, request: Optional[ComplianceRemediationRequest], kwargs: dict
+    db: Session, request: ComplianceRemediationRequest | None, kwargs: dict
 ) -> dict:
     """Resolves credentials from either JIT kwargs, stored credentials, or database request ticket."""
     from core.security_crypto import decrypt_credential
@@ -897,7 +897,7 @@ ROLLBACK_COMMANDS = {
 }
 
 
-def _inject_sudo_password(command: str, password: Optional[str]) -> str:
+def _inject_sudo_password(command: str, password: str | None) -> str:
     """Injects sudo password using -S parameter for non-interactive execution."""
     if not password:
         return command
@@ -913,8 +913,8 @@ def _execute_ssh_remediation(
     ip: str,
     port: int,
     username: str,
-    password: Optional[str],
-    key_content: Optional[str],
+    password: str | None,
+    key_content: str | None,
     command: str,
     target_platform: str,
 ) -> dict:
@@ -972,7 +972,7 @@ def _execute_ssh_remediation(
             "stdout": "",
             "stderr": str(e),
             "exit_code": -1,
-            "error": f"SSH connection or execution failed: {str(e)}",
+            "error": f"SSH connection or execution failed: {e!s}",
         }
     finally:
         scanner.disconnect()
@@ -1106,7 +1106,7 @@ def _finalize_successful_remediation(
 
 def _finalize_failed_remediation(
     db: Session,
-    req: Optional[ComplianceRemediationRequest],
+    req: ComplianceRemediationRequest | None,
     finding: ComplianceFinding,
     error_msg: str,
 ) -> None:
@@ -1128,7 +1128,7 @@ def run_reremediation_task(
     finding_id: str,
     remediation_id: str,
     user_id: str,
-    remediation_request_id: Optional[str] = None,
+    remediation_request_id: str | None = None,
     **kwargs,
 ) -> dict:
     """Remediation script dispatch execution via out-of-process Celery worker."""
@@ -1369,8 +1369,8 @@ def run_reverify_evaluation(finding_id: str) -> dict:
 @celery_app.task(name="compliance.run_scheduled_scans", queue="compliance")
 def run_scheduled_scans() -> dict:
     """Periodic task executed by Celery Beat to query and trigger scheduled compliance scans."""
-    from db.models.compliance import ComplianceScanSchedule
     from db.base import gen_compliance_scan_run_id
+    from db.models.compliance import ComplianceScanSchedule
     from sqlalchemy import or_
 
     db = SessionLocal()

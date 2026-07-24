@@ -27,26 +27,24 @@ ID Convention (Stripe-Style)
                      Reading it: "Finding: CVE-2024-4577 on host 192.168.1.5"
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
-    Numeric,
     ForeignKey,
+    Index,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
-    Index,
-    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service  (open port + service fingerprint)

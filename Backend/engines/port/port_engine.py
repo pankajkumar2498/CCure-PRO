@@ -38,13 +38,13 @@ from typing import Dict, List, Optional
 
 from core.constants import (
     PORT_DB,
-    SCAN_PORTS_QUICK,
     SCAN_PORTS_OT,
+    SCAN_PORTS_QUICK,
     SCAPY_AVAILABLE,
 )
 from core.models import PortResult, ScanIntensity
-from core.nmap.wrapper import NmapScanner, NMAP_AVAILABLE, NmapScanResult
-from core.utils import lookup_cve, extract_version
+from core.nmap.wrapper import NMAP_AVAILABLE, NmapScanner, NmapScanResult
+from core.utils import extract_version, lookup_cve
 
 log = logging.getLogger("ccure.port")
 
@@ -64,10 +64,10 @@ class PortEngine:
     def __init__(
         self,
         intensity: ScanIntensity = ScanIntensity.NORMAL,
-        nmap_scanner: Optional[NmapScanner] = None,
+        nmap_scanner: NmapScanner | None = None,
         os_detection: bool = False,
-        custom_ports: Optional[List[int]] = None,
-        exclude_ports: Optional[List[int]] = None,
+        custom_ports: list[int] | None = None,
+        exclude_ports: list[int] | None = None,
         exclude_ot_from_nmap: bool = True,
     ):
         self.intensity = intensity
@@ -82,7 +82,7 @@ class PortEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, hosts: List[Dict], scan_id: Optional[str] = None) -> List[Dict]:
+    async def run(self, hosts: list[dict], scan_id: str | None = None) -> list[dict]:
         """
         Scan all active hosts for open ports and services.
 
@@ -120,7 +120,7 @@ class PortEngine:
         return hosts
 
     async def _scan_with_nmap(
-        self, hosts: List[Dict], scan_id: Optional[str] = None
+        self, hosts: list[dict], scan_id: str | None = None
     ) -> None:
         """
         Use NmapScanner for port scanning.
@@ -172,7 +172,7 @@ class PortEngine:
                     scan_id, 2, {"total_hosts": len(ips), "status": "running"}
                 )
 
-            nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
+            nmap_results: dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
                 lambda: self._nmap.scan_hosts(
                     ips,
@@ -223,7 +223,7 @@ class PortEngine:
                     },
                 )
 
-            nmap_results: Dict[str, NmapScanResult] = await loop.run_in_executor(
+            nmap_results: dict[str, NmapScanResult] = await loop.run_in_executor(
                 None,
                 lambda: self._nmap.scan_hosts(
                     ips,
@@ -241,10 +241,10 @@ class PortEngine:
 
     async def _enrich_services(
         self,
-        hosts: List[Dict],
-        initial_results: Dict[str, NmapScanResult],
+        hosts: list[dict],
+        initial_results: dict[str, NmapScanResult],
         loop: asyncio.AbstractEventLoop,
-        scan_id: Optional[str] = None,
+        scan_id: str | None = None,
     ) -> None:
         """
         Run targeted service/version detection per host on its open ports.
@@ -275,7 +275,7 @@ class PortEngine:
 
         completed = 0
 
-        def _enrich_one(host: Dict) -> None:
+        def _enrich_one(host: dict) -> None:
             nonlocal completed
             ip = self._ip(host)
             if not ip:
@@ -331,7 +331,7 @@ class PortEngine:
 
     def _apply_nmap_ports(
         self,
-        host: Dict,
+        host: dict,
         nmap_result: NmapScanResult,
         service_detection: bool = True,
     ) -> None:
@@ -418,14 +418,14 @@ class PortEngine:
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
 
-    async def _lightweight_snmp_check(self, hosts: List[Dict]) -> None:
+    async def _lightweight_snmp_check(self, hosts: list[dict]) -> None:
         """
         Check if port 161 (SNMP) is open on active hosts, and perform a lightweight
         community query to get classification parameters.
         """
         from core.discovery.enrichment import _snmp_lightweight_probe
 
-        def _check_host(host: Dict):
+        def _check_host(host: dict):
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
                 return
@@ -461,14 +461,14 @@ class PortEngine:
             *[loop.run_in_executor(None, _check_host, h) for h in hosts]
         )
 
-    async def _ot_enrichment_check(self, hosts: List[Dict]) -> None:
+    async def _ot_enrichment_check(self, hosts: list[dict]) -> None:
         """
         Check if any OT ports are open on active hosts and perform deep OT identity probing.
         """
-        from core.discovery.enrichment import _ot_protocol_probes
         from core.device_classifier import classify_device
+        from core.discovery.enrichment import _ot_protocol_probes
 
-        def _check_host(host: Dict):
+        def _check_host(host: dict):
             ip = host.get("ip_address") or host.get("ip")
             if not ip:
                 return
@@ -529,7 +529,7 @@ class PortEngine:
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 
     async def _scan_fallback(
-        self, hosts: List[Dict], scan_id: Optional[str] = None
+        self, hosts: list[dict], scan_id: str | None = None
     ) -> None:
         """
         Original async TCP connect + Scapy UDP implementation.
@@ -540,7 +540,7 @@ class PortEngine:
         concurrency = 500 if self.intensity != ScanIntensity.DEEP else 50
         tout = 2.0 if self.intensity == ScanIntensity.DEEP else 0.8
 
-        hosts_map: Dict[str, Dict] = {}
+        hosts_map: dict[str, dict] = {}
         for h in hosts:
             ip = self._ip(h)
             if ip:
@@ -575,7 +575,7 @@ class PortEngine:
             )
 
     async def _probe_tcp_fallback(
-        self, ip: str, port: int, hosts_map: Dict, timeout: float
+        self, ip: str, port: int, hosts_map: dict, timeout: float
     ) -> None:
         """Original async TCP connect logic (unchanged from previous implementation)."""
         import ssl as _ssl
@@ -640,16 +640,16 @@ class PortEngine:
             host.setdefault("open_ports", []).append(pr.to_dict())
             host.setdefault("cves", []).extend(cves)
 
-    def _scan_udp_scapy(self, ips: List[str], hosts_map: Dict) -> None:
+    def _scan_udp_scapy(self, ips: list[str], hosts_map: dict) -> None:
         """Original Scapy UDP scan logic (unchanged)."""
         from engines.port._udp_services import (
             UDP_SERVICES,
-            build_payload,
             add_udp_result,
+            build_payload,
         )
 
         try:
-            from scapy.all import sr, IP, UDP, ICMP, Raw
+            from scapy.all import ICMP, IP, UDP, Raw, sr
 
             pkts = []
             exclude_set = set(self.exclude_ports) if self.exclude_ports else set()
@@ -697,7 +697,7 @@ class PortEngine:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _port_list(self) -> List[int]:
+    def _port_list(self) -> list[int]:
         ports = []
         if self.custom_ports:
             ports = list(self.custom_ports)
@@ -734,5 +734,5 @@ class PortEngine:
         return ports
 
     @staticmethod
-    def _ip(host: Dict) -> Optional[str]:
+    def _ip(host: dict) -> str | None:
         return host.get("ip_address") or host.get("ip")

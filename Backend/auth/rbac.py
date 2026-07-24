@@ -28,14 +28,14 @@ Role hierarchy (seeded in db/migrate_production_schema.py):
 """
 
 import logging
-from typing import Sequence, Union
-
-from fastapi import Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from collections.abc import Sequence
+from typing import Union
 
 from auth.dependencies import get_current_user
 from db.base import get_db
-from db.models import User, RolePermission, Permission
+from db.models import Permission, RolePermission, User
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def require_role(allowed_roles: Union[str, Sequence[str]]):
+def require_role(allowed_roles: str | Sequence[str]):
     """
     Returns a FastAPI dependency that rejects requests from users whose
     role name is NOT in `allowed_roles`.

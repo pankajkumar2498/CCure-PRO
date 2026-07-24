@@ -26,16 +26,15 @@ Design decisions:
 import logging
 from typing import Dict, List, Optional
 
-from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
-
 from db.base import gen_network_link_id, utcnow
-from db.models import Asset, Scan, Organization
+from db.models import Asset, Organization, Scan
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.topology.engine")
 
 
-def _resolve_gateway_ip() -> Optional[str]:
+def _resolve_gateway_ip() -> str | None:
     """
     Detect the default gateway IP using Scapy's routing table.
     Falls back gracefully on Windows / non-root environments.
@@ -62,7 +61,7 @@ def _resolve_gateway_ip() -> Optional[str]:
     return None
 
 
-def _find_asset_by_ip(db: Session, org_id: str, ip: str) -> Optional[Asset]:
+def _find_asset_by_ip(db: Session, org_id: str, ip: str) -> Asset | None:
     """Find an asset by IP address within the organization."""
     if not ip:
         return None
@@ -71,7 +70,7 @@ def _find_asset_by_ip(db: Session, org_id: str, ip: str) -> Optional[Asset]:
     )
 
 
-def _find_asset_by_mac(db: Session, org_id: str, mac: str) -> Optional[Asset]:
+def _find_asset_by_mac(db: Session, org_id: str, mac: str) -> Asset | None:
     """Find an asset by MAC address within the organization."""
     if not mac:
         return None
@@ -86,10 +85,10 @@ def _find_asset_by_mac(db: Session, org_id: str, mac: str) -> Optional[Asset]:
 def _reconcile_target_asset(
     db: Session,
     org_id: str,
-    ip: Optional[str],
+    ip: str | None,
     mac: str,
-    hostname: Optional[str] = None,
-) -> Optional[Asset]:
+    hostname: str | None = None,
+) -> Asset | None:
     """
     3-Tiered Reconciliation Rule for Target Endpoints.
     1. Match by MAC Address (highly authoritative L2 identity).
@@ -124,8 +123,8 @@ def run_topology_mapping(
     scan_id: str,
     org_id: str,
     snmp_config: dict,
-    target_ips: Optional[List[str]] = None,
-) -> Dict:
+    target_ips: list[str] | None = None,
+) -> dict:
     """
     Execute the full topology mapping pipeline.
 
@@ -324,7 +323,7 @@ def run_topology_mapping(
             log.exception("Topology walk failed for %s", ip)
 
     # Deduplicate by link ID (merge to preserve target_ip, port descriptions, VLAN, speed)
-    unique_links: Dict[str, dict] = {}
+    unique_links: dict[str, dict] = {}
     for link in all_links:
         link_id = link["id"]
         if link_id in unique_links:
@@ -502,7 +501,7 @@ def run_topology_mapping(
     }
 
 
-def _get_source_mac_for_target(db: Session, org_id: str, ip: str) -> Optional[str]:
+def _get_source_mac_for_target(db: Session, org_id: str, ip: str) -> str | None:
     """
     Try to find the MAC address of a switch/router target from the Asset registry.
     """
@@ -535,15 +534,16 @@ def _is_broadcast_or_multicast(mac: str) -> bool:
 
 
 def get_topology_graph(
-    db: Session, org_id: str, scan_id: Optional[str] = None, subnet_mask: int = 24
-) -> Dict:
+    db: Session, org_id: str, scan_id: str | None = None, subnet_mask: int = 24
+) -> dict:
     """
     Build a vis-network compatible clustered graph from stored NetworkLink records.
     Groups host nodes under subnet clusters (default /24) to avoid dense physics-blob display.
     Places IP-less MAC-only hosts under a virtual 'Unknown / MAC-only' cluster.
     """
-    import ipaddress
     import hashlib
+    import ipaddress
+
     from db.models import NetworkLink
 
     query = db.query(NetworkLink).filter(NetworkLink.org_id == org_id)
@@ -893,7 +893,7 @@ def get_topology_graph(
     }
 
 
-def _classify_node_group(link, asset: Optional[Asset]) -> str:
+def _classify_node_group(link, asset: Asset | None) -> str:
     """Classify a node into a visual group for the frontend graph."""
     if asset:
         cat = (asset.device_category or "").lower()

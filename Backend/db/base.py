@@ -21,7 +21,7 @@ import re
 import string
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, event, DateTime
+from sqlalchemy import DateTime, create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # TIMESTAMPTZ alias — maps to TIMESTAMP WITH TIME ZONE in PostgreSQL

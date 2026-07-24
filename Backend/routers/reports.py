@@ -12,20 +12,19 @@ import os
 import time
 from typing import Optional
 
+from auth.dependencies import get_current_user_flexible
+from db.base import get_db
+from db.models import Permission, RolePermission, Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-
-from db.base import get_db
-from db.models import Scan, User, RolePermission, Permission
-from auth.dependencies import get_current_user_flexible
-from scans.legacy_json_builder import build_legacy_scan_results
 from pdf_generator import ScanReportGenerator
 from scan_helpers import (
-    resolve_report_context,
     apply_phase1_summary_hints,
     log,
+    resolve_report_context,
 )
+from scans.legacy_json_builder import build_legacy_scan_results
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["Reports"])
 
@@ -212,7 +211,7 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
 def download_report(
     scan_id: str,
     fmt: str = "JSON",
-    ticket: Optional[str] = Query(None),
+    ticket: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_flexible),
 ):

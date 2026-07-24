@@ -18,7 +18,6 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Field → Event Mapping
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +137,7 @@ SCAN_TYPE_LABELS: dict[str, tuple[str, str]] = {
 }
 
 
-def _scan_type_from_id(scan_id: Optional[str]) -> str:
+def _scan_type_from_id(scan_id: str | None) -> str:
     """Infer scan type from scan_id prefix convention."""
     if not scan_id:
         return "unknown"
@@ -154,7 +153,7 @@ def _scan_type_from_id(scan_id: Optional[str]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _extract_display_value(raw_value: Any) -> Optional[str]:
+def _extract_display_value(raw_value: Any) -> str | None:
     """
     Extract a clean display string from the JSONB value.
 
@@ -191,7 +190,7 @@ def _extract_display_value(raw_value: Any) -> Optional[str]:
     return str(raw_value)
 
 
-def _format_field_value(field_name: str, display_value: Optional[str]) -> str:
+def _format_field_value(field_name: str, display_value: str | None) -> str:
     """Apply field-specific formatting to display values."""
     if display_value is None:
         return "Unknown"
@@ -231,8 +230,8 @@ def _format_field_value(field_name: str, display_value: Optional[str]) -> str:
 def _compute_dynamic_severity(
     field_name: str,
     base_severity: str,
-    old_display: Optional[str],
-    new_display: Optional[str],
+    old_display: str | None,
+    new_display: str | None,
 ) -> str:
     """
     Escalate severity based on the nature of the change.
@@ -403,7 +402,7 @@ def _group_key(entry: dict) -> str:
 
 def group_changelog_by_scan(
     translated_entries: list[dict],
-    scan_type_map: Optional[dict[str, str]] = None,
+    scan_type_map: dict[str, str] | None = None,
 ) -> list[dict]:
     """
     Group translated changelog entries by scan_id + timestamp window.
@@ -513,7 +512,7 @@ def group_changelog_by_scan(
 
 def translate_and_group_changelog(
     raw_entries: list[dict],
-    scan_type_map: Optional[dict[str, str]] = None,
+    scan_type_map: dict[str, str] | None = None,
 ) -> dict:
     """
     Full pipeline: translate raw changelog entries → group by scan → compute stats.

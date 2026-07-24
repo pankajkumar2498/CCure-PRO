@@ -13,22 +13,21 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from pydantic import BaseModel
-from sqlalchemy import or_, func, String
-from sqlalchemy.orm import Session, joinedload
-
 from auth.rbac import require_permission
+from core.audit import log_audit_event
+from core.vuln_intel import compute_priority
 from db.base import get_db
-from db.models import User, AuditLog, AMTInventoryRecord
-from db.models.assets import Asset, AssetTag, AssetNote, AssetChangeLog
+from db.models import AMTInventoryRecord, AuditLog, User
+from db.models.assets import Asset, AssetChangeLog, AssetNote, AssetTag
 from db.models.findings import (
+    AssetVulnerability,
     Service,
     TLSDetail,
-    AssetVulnerability,
 )
-from core.vuln_intel import compute_priority
-from core.audit import log_audit_event
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import String, func, or_
+from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger("ccure.assets")
 router = APIRouter(prefix="/assets", tags=["Assets"])
@@ -46,7 +45,7 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -115,18 +114,18 @@ def _serialize_asset(a: Asset) -> dict:
 @router.get("")
 @router.get("/")
 def list_assets(
-    search: Optional[str] = Query(None),
-    risk_level: Optional[str] = Query(None),
-    os_family: Optional[str] = Query(None),
-    verification_status: Optional[str] = Query(None),
-    is_managed: Optional[bool] = Query(None),
-    is_active: Optional[bool] = Query(None),
-    subnet: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    risk_level: str | None = Query(None),
+    os_family: str | None = Query(None),
+    verification_status: str | None = Query(None),
+    is_managed: bool | None = Query(None),
+    is_active: bool | None = Query(None),
+    subnet: str | None = Query(None),
     sort_by: str = Query("risk_score"),
     sort_dir: str = Query("desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -296,12 +295,12 @@ def debug_reconcile(
 
 @router.get("/certificates")
 def list_global_certificates(
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     sort_by: str = Query("expiration"),
     sort_dir: str = Query("asc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -408,16 +407,16 @@ _TARGETED_SERVICES = {
 
 @router.get("/services")
 def list_global_services(
-    search: Optional[str] = Query(None),
-    port: Optional[int] = Query(None),
-    protocol: Optional[str] = Query(None),
-    asset_type: Optional[str] = Query(None),
-    subnet: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    port: int | None = Query(None),
+    protocol: str | None = Query(None),
+    asset_type: str | None = Query(None),
+    subnet: str | None = Query(None),
     sort_by: str = Query("asset_count"),
     sort_dir: str = Query("desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -512,10 +511,10 @@ def list_service_assets(
     service_name: str = Query(...),
     port: int = Query(...),
     protocol: str = Query(...),
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -579,7 +578,7 @@ def list_service_assets(
 
 @router.get("/coverage-stats")
 def get_coverage_stats(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -679,15 +678,15 @@ def get_coverage_stats(
 @router.get("/reconciliation/drilldown")
 def get_reconciliation_drilldown(
     category: str = Query(...),
-    search: Optional[str] = Query(None),
-    owner: Optional[str] = Query(None),
-    department: Optional[str] = Query(None),
-    location: Optional[str] = Query(None),
-    sort_by: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    owner: str | None = Query(None),
+    department: str | None = Query(None),
+    location: str | None = Query(None),
+    sort_by: str | None = Query(None),
     sort_dir: str = Query("desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     export: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
@@ -702,6 +701,7 @@ def get_reconciliation_drilldown(
     """
     import csv
     import io
+
     from fastapi.responses import StreamingResponse
 
     org = _resolve_org(user, org_id)
@@ -973,7 +973,7 @@ def get_reconciliation_drilldown(
 @router.get("/{asset_id}")
 def get_asset(
     asset_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -1000,7 +1000,7 @@ def get_asset(
 @router.get("/{asset_id}/services")
 def get_asset_services(
     asset_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
@@ -1068,8 +1068,8 @@ def get_asset_services(
 @router.get("/{asset_id}/findings")
 def get_asset_findings(
     asset_id: str,
-    status: Optional[str] = Query(None),
-    org_id: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("findings", "read")),
 ):
@@ -1134,15 +1134,15 @@ def get_asset_findings(
 def get_asset_changelog(
     asset_id: str,
     limit: int = Query(100, ge=1, le=500),
-    category: Optional[str] = Query(None, description="Filter by event category"),
-    severity: Optional[str] = Query(None, description="Minimum severity filter"),
+    category: str | None = Query(None, description="Filter by event category"),
+    severity: str | None = Query(None, description="Minimum severity filter"),
     view: str = Query("timeline", description="'timeline' (grouped) or 'raw'"),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "read")),
 ):
-    from db.models.scans import Scan as ScanModel
     from core.audit_event_translator import translate_and_group_changelog
+    from db.models.scans import Scan as ScanModel
 
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1243,16 +1243,16 @@ def get_asset_changelog(
 
 
 class AssetUpdate(BaseModel):
-    is_managed: Optional[bool] = None
-    owner: Optional[str] = None
-    custom_attributes: Optional[dict] = None
+    is_managed: bool | None = None
+    owner: str | None = None
+    custom_attributes: dict | None = None
 
 
 @router.patch("/{asset_id}")
 def update_asset(
     asset_id: str,
     body: AssetUpdate,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "update")),
 ):
@@ -1301,7 +1301,7 @@ class TagBody(BaseModel):
 def add_tag(
     asset_id: str,
     body: TagBody,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "update")),
 ):
@@ -1326,7 +1326,7 @@ def add_tag(
 def remove_tag(
     asset_id: str,
     tag: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "update")),
 ):
@@ -1355,7 +1355,7 @@ class NoteBody(BaseModel):
 def add_note(
     asset_id: str,
     body: NoteBody,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("assets", "update")),
 ):
@@ -1438,7 +1438,7 @@ def resolve_duplicate_amt_record(old_item: dict, new_item: dict) -> dict:
 @router.post("/import-amt")
 def import_amt_inventory(
     file: UploadFile = File(...),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("settings", "update")),
 ):
@@ -1452,7 +1452,7 @@ def import_amt_inventory(
         content = file.file.read()
         data = json.loads(content.decode("utf-8"))
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid file format: {str(exc)}")
+        raise HTTPException(status_code=400, detail=f"Invalid file format: {exc!s}")
 
     # Validate JSON structure (must have data array or be a list)
     records = []

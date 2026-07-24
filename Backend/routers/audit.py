@@ -1,11 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
 
 from auth.rbac import require_permission
 from db.base import get_db
 from db.models import AuditLog, User
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/admin/audit-logs", tags=["Audit Logs"])
 
@@ -19,10 +19,10 @@ def _is_superadmin(user: User) -> bool:
 @router.get("")
 @router.get("/")
 def list_audit_logs(
-    user_id: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    resource_type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    user_id: str | None = Query(None),
+    action: str | None = Query(None),
+    resource_type: str | None = Query(None),
+    status: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=1000),
     db: Session = Depends(get_db),

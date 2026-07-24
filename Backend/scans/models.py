@@ -2,10 +2,9 @@
 Proxy to the central database models to avoid module import errors during transition.
 """
 
-from sqlalchemy import inspect, text
-
-from db.models import ScanPhase
 from db.base import engine
+from db.models import ScanPhase
+from sqlalchemy import inspect, text
 
 
 def ensure_scan_schema():

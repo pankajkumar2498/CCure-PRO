@@ -33,14 +33,14 @@ class SSLyzeWrapper:
 
     def __init__(self, timeout: int = 120):
         self.timeout = timeout
-        self._sslyze_available: Optional[bool] = None
+        self._sslyze_available: bool | None = None
 
     def is_available(self) -> bool:
         """Check if sslyze Python package is importable."""
         if self._sslyze_available is not None:
             return self._sslyze_available
         try:
-            import sslyze  # noqa: F401
+            import sslyze
 
             self._sslyze_available = True
             return True
@@ -49,7 +49,7 @@ class SSLyzeWrapper:
             self._sslyze_available = False
             return False
 
-    def run(self, target: str, **kwargs) -> Dict:
+    def run(self, target: str, **kwargs) -> dict:
         """
         Perform TLS/SSL audit on a target URL or hostname.
 
@@ -74,10 +74,10 @@ class SSLyzeWrapper:
 
         try:
             from sslyze import (
-                Scanner,
-                ServerScanRequest,
-                ServerNetworkLocation,
                 ScanCommand,
+                Scanner,
+                ServerNetworkLocation,
+                ServerScanRequest,
             )
 
             server_location = ServerNetworkLocation(hostname=hostname, port=port)
@@ -102,9 +102,9 @@ class SSLyzeWrapper:
             scanner = Scanner()
             scanner.queue_scans([scan_request])
 
-            findings: List[Dict] = []
-            certificate_info: Dict = {}
-            protocol_info: Dict = {}
+            findings: list[dict] = []
+            certificate_info: dict = {}
+            protocol_info: dict = {}
 
             for result in scanner.get_results():
                 # Process certificate info
@@ -216,7 +216,7 @@ class SSLyzeWrapper:
         return hostname, port
 
     @staticmethod
-    def _process_certificate(cert_result) -> Dict:
+    def _process_certificate(cert_result) -> dict:
         """Extract certificate details from sslyze result."""
         info = {}
         try:
@@ -250,7 +250,7 @@ class SSLyzeWrapper:
         return info
 
     @staticmethod
-    def _process_protocols(scan_result) -> Dict:
+    def _process_protocols(scan_result) -> dict:
         """Extract supported protocol versions and cipher counts."""
         protocols = {}
         protocol_checks = [
@@ -274,7 +274,7 @@ class SSLyzeWrapper:
         return protocols
 
     @staticmethod
-    def _check_certificate_issues(cert_info: Dict) -> List[Dict]:
+    def _check_certificate_issues(cert_info: dict) -> list[dict]:
         """Generate findings for certificate problems."""
         findings = []
         if not cert_info:
@@ -318,7 +318,7 @@ class SSLyzeWrapper:
         return findings
 
     @staticmethod
-    def _check_protocol_issues(protocols: Dict) -> List[Dict]:
+    def _check_protocol_issues(protocols: dict) -> list[dict]:
         """Generate findings for insecure protocol support."""
         findings = []
         deprecated = {

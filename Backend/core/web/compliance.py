@@ -16,7 +16,7 @@ log = logging.getLogger("ccure.web.compliance")
 
 # ── OWASP Top 10 2021 Mapping ────────────────────────────────────────────────
 
-OWASP_MAP: Dict[str, str] = {
+OWASP_MAP: dict[str, str] = {
     "sqli": "A03:2021 – Injection",
     "xss": "A03:2021 – Injection",
     "command_injection": "A03:2021 – Injection",
@@ -44,7 +44,7 @@ OWASP_MAP: Dict[str, str] = {
 
 # ── PCI-DSS 4.0 Mapping ──────────────────────────────────────────────────────
 
-PCI_DSS_MAP: Dict[str, List[str]] = {
+PCI_DSS_MAP: dict[str, list[str]] = {
     "sqli": ["PCI-DSS-6.2.4", "PCI-DSS-6.5.1"],
     "xss": ["PCI-DSS-6.2.4", "PCI-DSS-6.5.7"],
     "command_injection": ["PCI-DSS-6.2.4"],
@@ -62,7 +62,7 @@ PCI_DSS_MAP: Dict[str, List[str]] = {
 
 # ── SOC 2 Trust Service Criteria Mapping ──────────────────────────────────────
 
-SOC2_MAP: Dict[str, List[str]] = {
+SOC2_MAP: dict[str, list[str]] = {
     "sqli": ["SOC2-CC6.1", "SOC2-CC6.6"],
     "xss": ["SOC2-CC6.1"],
     "tls_issue": ["SOC2-CC6.7"],
@@ -75,7 +75,7 @@ SOC2_MAP: Dict[str, List[str]] = {
 
 # ── DPDP Act 2023 Mapping ────────────────────────────────────────────────────
 
-DPDP_MAP: Dict[str, List[str]] = {
+DPDP_MAP: dict[str, list[str]] = {
     "sqli": ["DPDP-SEC-5.1", "DPDP-SEC-5.3"],
     "xss": ["DPDP-SEC-5.1"],
     "tls_issue": ["DPDP-SEC-5.1"],
@@ -86,7 +86,7 @@ DPDP_MAP: Dict[str, List[str]] = {
 
 # ── GDPR Mapping ─────────────────────────────────────────────────────────────
 
-GDPR_MAP: Dict[str, List[str]] = {
+GDPR_MAP: dict[str, list[str]] = {
     "sqli": ["GDPR-Art-32", "GDPR-Art-5.1.f"],
     "xss": ["GDPR-Art-32"],
     "tls_issue": ["GDPR-Art-32.1.a"],
@@ -97,7 +97,7 @@ GDPR_MAP: Dict[str, List[str]] = {
 
 # ── NIST SP 800-53 Rev. 5 Mapping ────────────────────────────────────────────
 
-NIST_800_53_MAP: Dict[str, List[str]] = {
+NIST_800_53_MAP: dict[str, list[str]] = {
     "sqli": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
     "xss": ["NIST800-53-SI-10", "NIST800-53-SC-28"],
     "command_injection": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
@@ -117,7 +117,7 @@ NIST_800_53_MAP: Dict[str, List[str]] = {
 }
 
 
-def map_compliance(finding_type: str) -> Dict:
+def map_compliance(finding_type: str) -> dict:
     """
     Map a finding type to compliance framework tags.
 
@@ -142,7 +142,7 @@ def map_compliance(finding_type: str) -> Dict:
     gdpr = GDPR_MAP.get(finding_type, [])
     nist53 = NIST_800_53_MAP.get(finding_type, [])
 
-    tags: List[str] = []
+    tags: list[str] = []
 
     if owasp:
         # Extract short code (e.g., "A03" from "A03:2021 – Injection")
@@ -166,7 +166,7 @@ def map_compliance(finding_type: str) -> Dict:
     }
 
 
-def generate_compliance_scorecard(findings: List[Dict]) -> Dict:
+def generate_compliance_scorecard(findings: list[dict]) -> dict:
     """
     Generate a compliance scorecard from scan findings.
 

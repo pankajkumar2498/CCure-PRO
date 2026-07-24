@@ -45,15 +45,15 @@ import logging
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
-from core.discovery.profiles import DiscoveryProfile, BALANCED, Technique
+from core.discovery.profiles import BALANCED, DiscoveryProfile, Technique
 from core.discovery.techniques import (
     arp,
-    icmp,
-    tcp_syn,
-    tcp_conn,
-    udp_probe,
-    nbns,
     arp_cache,
+    icmp,
+    nbns,
+    tcp_conn,
+    tcp_syn,
+    udp_probe,
 )
 
 log = logging.getLogger("ccure.discovery.engine")
@@ -64,7 +64,7 @@ log = logging.getLogger("ccure.discovery.engine")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _blank_result(ip: str) -> Dict:
+def _blank_result(ip: str) -> dict:
     """Return an empty host result dict for one IP."""
     return {
         "ip": ip,
@@ -87,7 +87,7 @@ def _blank_result(ip: str) -> Dict:
     }
 
 
-def _first_netbios_name(r: Dict) -> str:
+def _first_netbios_name(r: dict) -> str:
     """Safely extract the first NetBIOS name as a string to prevent rendering raw objects."""
     names = r.get("netbios_names")
     if names and isinstance(names, list) and len(names) > 0:
@@ -122,9 +122,9 @@ def _batch_size(total: int) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _local_subnets() -> List[ipaddress.IPv4Network]:
+def _local_subnets() -> list[ipaddress.IPv4Network]:
     """Return directly-attached interface subnets via psutil."""
-    subnets: List[ipaddress.IPv4Network] = []
+    subnets: list[ipaddress.IPv4Network] = []
     try:
         import psutil
 
@@ -145,7 +145,7 @@ def _local_subnets() -> List[ipaddress.IPv4Network]:
     return subnets
 
 
-def _is_lan(ip: str, subnets: List[ipaddress.IPv4Network]) -> bool:
+def _is_lan(ip: str, subnets: list[ipaddress.IPv4Network]) -> bool:
     if subnets:
         addr = ipaddress.ip_address(ip)
         return any(addr in net for net in subnets)
@@ -195,8 +195,8 @@ class DiscoveryEngine:
         profile: DiscoveryProfile = BALANCED,
         has_privileges: bool = False,
         stealth_mode: bool = False,
-        rate_limit: Optional[float] = None,
-        concurrency_override: Optional[int] = None,
+        rate_limit: float | None = None,
+        concurrency_override: int | None = None,
     ):
         self.profile = profile
         self.has_priv = has_privileges
@@ -221,9 +221,7 @@ class DiscoveryEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(
-        self, ip_list: List[str], scan_id: Optional[str] = None
-    ) -> List[Dict]:
+    async def run(self, ip_list: list[str], scan_id: str | None = None) -> list[dict]:
         """
         Discover all IPs in ip_list using the configured profile.
 
@@ -238,7 +236,7 @@ class DiscoveryEngine:
         if not ip_list:
             return []
 
-        results: Dict[str, Dict] = {ip: _blank_result(ip) for ip in ip_list}
+        results: dict[str, dict] = {ip: _blank_result(ip) for ip in ip_list}
         self._local_nets = _local_subnets()
 
         # ── Stealth mode: randomize probe order ────────────────────────────
@@ -453,7 +451,7 @@ class DiscoveryEngine:
 
     # ── Batch probe dispatch ──────────────────────────────────────────────────
 
-    async def _probe_batch(self, batch: List[str], results: Dict):
+    async def _probe_batch(self, batch: list[str], results: dict):
         """Run all configured techniques on a batch of IPs."""
         profile = self.profile
         can_raw = self.has_priv and SCAPY_AVAILABLE
@@ -561,7 +559,7 @@ class DiscoveryEngine:
 
     # ── Post-scan enrichment (AGGRESSIVE profile) ─────────────────────────────
 
-    async def _enrich_active(self, ips: List[str], results: Dict):
+    async def _enrich_active(self, ips: list[str], results: dict):
         """
         Enrich active hosts with SNMP/mDNS/NetBIOS/PTR/OS fingerprint.
         Only runs when profile.enrichment=True.
@@ -587,7 +585,7 @@ class DiscoveryEngine:
     # ── Hostile environment detection ─────────────────────────────────────────
 
     @staticmethod
-    def _hostile_network(results: Dict, batch_size: int) -> bool:
+    def _hostile_network(results: dict, batch_size: int) -> bool:
         """
         Heuristic: return True when >85% of probed IPs were silently dropped
         and at least one host replied (meaning Scapy works, not a config issue).

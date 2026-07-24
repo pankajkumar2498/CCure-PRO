@@ -73,16 +73,16 @@ class CrawlResult:
     """Result of a crawling session."""
 
     def __init__(self):
-        self.endpoints: List[Dict] = []
-        self.forms: List[Dict] = []
-        self.js_endpoints: List[Dict] = []
-        self.technologies: List[Dict] = []
-        self.cookies: List[Dict] = []
-        self.errors: List[str] = []
+        self.endpoints: list[dict] = []
+        self.forms: list[dict] = []
+        self.js_endpoints: list[dict] = []
+        self.technologies: list[dict] = []
+        self.cookies: list[dict] = []
+        self.errors: list[str] = []
         self.pages_visited: int = 0
-        self.api_specs: List[Dict] = []
+        self.api_specs: list[dict] = []
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "endpoints": self.endpoints,
             "forms": self.forms,
@@ -115,10 +115,10 @@ class PlaywrightCrawler:
 
     def __init__(
         self,
-        max_depth: Optional[int] = None,
-        max_urls: Optional[int] = None,
-        timeout: Optional[int] = None,
-        concurrency: Optional[int] = None,
+        max_depth: int | None = None,
+        max_urls: int | None = None,
+        timeout: int | None = None,
+        concurrency: int | None = None,
     ):
         self.max_depth = max_depth or WebScanConfig.MAX_CRAWL_DEPTH
         self.max_urls = max_urls or WebScanConfig.MAX_CRAWL_URLS
@@ -128,10 +128,10 @@ class PlaywrightCrawler:
     async def crawl(
         self,
         start_url: str,
-        auth_cookies: Optional[List[Dict]] = None,
-        auth_headers: Optional[Dict[str, str]] = None,
-        scope_patterns: Optional[List[str]] = None,
-        exclude_patterns: Optional[List[str]] = None,
+        auth_cookies: list[dict] | None = None,
+        auth_headers: dict[str, str] | None = None,
+        scope_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -175,7 +175,7 @@ class PlaywrightCrawler:
             result.errors.append("Playwright not installed")
             return result
 
-        visited: Set[str] = set()
+        visited: set[str] = set()
         queue: deque = deque()
         queue.append((start_url, 0))  # (url, depth)
 
@@ -207,7 +207,7 @@ class PlaywrightCrawler:
                     await context.set_extra_http_headers(auth_headers)
 
                 # Intercept network requests for API discovery
-                network_apis: List[Dict] = []
+                network_apis: list[dict] = []
 
                 page = await context.new_page()
 
@@ -323,7 +323,7 @@ class PlaywrightCrawler:
     # ── Extraction Helpers ────────────────────────────────────────────────────
 
     @staticmethod
-    async def _extract_links(page, current_url: str) -> List[str]:
+    async def _extract_links(page, current_url: str) -> list[str]:
         """Extract all links from the current page."""
         links = set()
         try:
@@ -338,7 +338,7 @@ class PlaywrightCrawler:
         return list(links)
 
     @staticmethod
-    async def _extract_forms(page, current_url: str) -> List[Dict]:
+    async def _extract_forms(page, current_url: str) -> list[dict]:
         """Extract form information from the page."""
         forms = []
         try:
@@ -390,7 +390,7 @@ class PlaywrightCrawler:
         return forms
 
     @staticmethod
-    def _extract_js_endpoints(html_content: str, base_url: str) -> List[Dict]:
+    def _extract_js_endpoints(html_content: str, base_url: str) -> list[dict]:
         """Extract API endpoints from inline and referenced JavaScript."""
         endpoints = []
         seen = set()
@@ -422,7 +422,7 @@ class PlaywrightCrawler:
         return endpoints
 
     @staticmethod
-    def _detect_tech_from_headers(headers: Dict, result: CrawlResult) -> None:
+    def _detect_tech_from_headers(headers: dict, result: CrawlResult) -> None:
         """Detect technologies from HTTP response headers."""
         server = headers.get("server", "")
         if server:
@@ -444,7 +444,7 @@ class PlaywrightCrawler:
 
     @staticmethod
     def _is_in_scope(
-        url: str, allowed_domains: Set[str], exclude_patterns: List
+        url: str, allowed_domains: set[str], exclude_patterns: list
     ) -> bool:
         parsed = urlparse(url)
         if parsed.netloc not in allowed_domains:
@@ -462,7 +462,7 @@ class PlaywrightCrawler:
         return any(path_lower.endswith(ext) for ext in _SKIP_EXTENSIONS)
 
     @staticmethod
-    def _normalize_url(url: str) -> Optional[str]:
+    def _normalize_url(url: str) -> str | None:
         """Normalize URL by removing fragments and cleaning up."""
         if not url or not url.startswith("http"):
             return None
@@ -481,10 +481,10 @@ class PlaywrightCrawler:
         return any(indicator in url_lower for indicator in api_indicators)
 
     @staticmethod
-    def _deduplicate_endpoints(endpoints: List[Dict]) -> List[Dict]:
+    def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
         """Deduplicate endpoints by URL+method."""
-        seen: Set[str] = set()
-        unique: List[Dict] = []
+        seen: set[str] = set()
+        unique: list[dict] = []
         for ep in endpoints:
             key = f"{ep.get('method', 'GET')}:{ep.get('url', '')}"
             if key not in seen:

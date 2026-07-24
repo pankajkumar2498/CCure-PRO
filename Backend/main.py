@@ -250,6 +250,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_nist_800_82_r3")
                 .first()
             )
+            nerc_cip_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_nerc_cip")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -295,6 +300,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_nist_800_82_r3")
                 .count()
             )
+            nerc_cip_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_nerc_cip")
+                .count()
+            )
             ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
@@ -312,6 +322,7 @@ async def lifespan(app: FastAPI):
                 or not nist53_fw
                 or not iec_fw
                 or not nist82_fw
+                or not nerc_cip_fw
                 or ctrl_count < 93
                 or nist_ctrl_count < 20
                 or soc2_ctrl_count < 61
@@ -322,10 +333,11 @@ async def lifespan(app: FastAPI):
                 or nist53_ctrl_count < 100
                 or iec_ctrl_count < 50
                 or nist82_ctrl_count < 30
+                or nerc_cip_ctrl_count < 52
                 or rule_count < 20
             ):
                 log.info(
-                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, DPDP={bool(dpdp_fw)}, GDPR={bool(gdpr_fw)}, PCI={bool(pci_fw)}, NIST80053={bool(nist53_fw)}, IEC62443={bool(iec_fw)}, NIST80082={bool(nist82_fw)})..."
+                    f"Auto-seeding compliance catalog (Found ISO={bool(fw)}, NIST={bool(nist_fw)}, SOC2={bool(soc2_fw)}, CERT-In={bool(certin_fw)}, DPDP={bool(dpdp_fw)}, GDPR={bool(gdpr_fw)}, PCI={bool(pci_fw)}, NIST80053={bool(nist53_fw)}, IEC62443={bool(iec_fw)}, NIST80082={bool(nist82_fw)}, NERCCIP={bool(nerc_cip_fw)})..."
                 )
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
@@ -384,6 +396,11 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nist82_seed):
                         seed_framework_and_controls(db, nist82_seed)
+                    nerc_cip_seed = os.path.join(
+                        base_scripts_dir, "nerc_cip_controls_seed.json"
+                    )
+                    if os.path.exists(nerc_cip_seed):
+                        seed_framework_and_controls(db, nerc_cip_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")

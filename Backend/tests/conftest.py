@@ -206,7 +206,9 @@ def seed_system_roles():
                 "'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', "
                 "'FR5_RDF', 'FR6_TRE', 'FR7_RA', "
                 "'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', "
-                "'SP82_SI', 'SP82_RA', 'SP82_SA'"
+                "'SP82_SI', 'SP82_RA', 'SP82_SA', "
+                "'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', "
+                "'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014'"
             )
             conn.execute(
                 text(

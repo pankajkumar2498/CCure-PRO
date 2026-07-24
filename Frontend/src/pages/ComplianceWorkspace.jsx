@@ -336,6 +336,9 @@ export default function ComplianceWorkspace() {
   const [purdueLevelFilter, setPurdueLevelFilter] = useState("all");
   const [componentTypeFilter, setComponentTypeFilter] = useState("all");
   const [slLevelFilter, setSlLevelFilter] = useState("all");
+  const [besImpactLevelFilter, setBesImpactLevelFilter] = useState("all");
+  const [standardNumberFilter, setStandardNumberFilter] = useState("all");
+  const [regionalEntityFilter, setRegionalEntityFilter] = useState("WECC");
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
@@ -351,6 +354,8 @@ export default function ComplianceWorkspace() {
     setPurdueLevelFilter("all");
     setComponentTypeFilter("all");
     setSlLevelFilter("all");
+    setBesImpactLevelFilter("all");
+    setStandardNumberFilter("all");
   }, [selectedFrameworkId]);
 
   // Modals state
@@ -530,6 +535,8 @@ export default function ComplianceWorkspace() {
     purdueLevelFilter,
     componentTypeFilter,
     slLevelFilter,
+    besImpactLevelFilter,
+    standardNumberFilter,
   ]);
 
   const fetchGapAnalysis = async (
@@ -590,7 +597,8 @@ export default function ComplianceWorkspace() {
     }
     if (
       selectedFrameworkId === "cfw_iec_62443" ||
-      selectedFrameworkId === "cfw_nist_800_82_r3"
+      selectedFrameworkId === "cfw_nist_800_82_r3" ||
+      selectedFrameworkId === "cfw_nerc_cip"
     ) {
       if (purdueLevelFilter && purdueLevelFilter !== "all") {
         params.push(`purdue_level=${purdueLevelFilter}`);
@@ -604,6 +612,14 @@ export default function ComplianceWorkspace() {
         slLevelFilter !== "all"
       ) {
         params.push(`sl_level=${slLevelFilter}`);
+      }
+      if (selectedFrameworkId === "cfw_nerc_cip") {
+        if (besImpactLevelFilter && besImpactLevelFilter !== "all") {
+          params.push(`bes_impact_level=${besImpactLevelFilter}`);
+        }
+        if (standardNumberFilter && standardNumberFilter !== "all") {
+          params.push(`standard_number=${standardNumberFilter}`);
+        }
       }
     }
     const queryString = params.length > 0 ? `?${params.join("&")}` : "";
@@ -630,6 +646,7 @@ export default function ComplianceWorkspace() {
             { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5" },
             { id: "cfw_iec_62443", name: "IEC 62443 (OT/ICS)" },
             { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT)" },
+            { id: "cfw_nerc_cip", name: "NERC CIP (Power Grid)" },
           ];
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
@@ -1189,6 +1206,9 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_nist_800_82_r3">
                   NIST SP 800-82 Rev. 3 (OT/ICS Security Guide)
                 </option>
+                <option value="cfw_nerc_cip">
+                  NERC CIP (Critical Infrastructure Protection - Power Grid)
+                </option>
               </select>
             </div>
             {(selectedFrameworkId === "cfw_iec_62443" ||
@@ -1349,6 +1369,181 @@ export default function ComplianceWorkspace() {
                       </option>
                     </select>
                   </div>
+                )}
+                {selectedFrameworkId === "cfw_nerc_cip" && (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Regional Entity:
+                      </span>
+                      <select
+                        className="cw-pagination-select"
+                        value={regionalEntityFilter}
+                        onChange={(e) =>
+                          setRegionalEntityFilter(e.target.value)
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          fontSize: "0.85rem",
+                          background: "var(--bg-white)",
+                          border: "1px solid var(--border)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <option value="WECC">
+                          WECC (Western Electricity Coordinating Council)
+                        </option>
+                        <option value="SERC">
+                          SERC Reliability Corporation
+                        </option>
+                        <option value="TEXAS_RE">
+                          Texas RE (Texas Reliability Entity)
+                        </option>
+                        <option value="RELIABILITY_FIRST">
+                          ReliabilityFirst (RF)
+                        </option>
+                        <option value="MRO">
+                          MRO (Midwest Reliability Organization)
+                        </option>
+                        <option value="NPCC">
+                          NPCC (Northeast Power Coordinating Council)
+                        </option>
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        BES Impact:
+                      </span>
+                      <select
+                        className="cw-pagination-select"
+                        value={besImpactLevelFilter}
+                        onChange={(e) =>
+                          setBesImpactLevelFilter(e.target.value)
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          fontSize: "0.85rem",
+                          background: "var(--bg-white)",
+                          border: "1px solid var(--border)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <option value="all">All BES Impact Baselines</option>
+                        <option value="High">
+                          High Impact BES Cyber Systems
+                        </option>
+                        <option value="Medium">
+                          Medium Impact BES Cyber Systems
+                        </option>
+                        <option value="Low">
+                          Low Impact BES Cyber Systems
+                        </option>
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Standard:
+                      </span>
+                      <select
+                        className="cw-pagination-select"
+                        value={standardNumberFilter}
+                        onChange={(e) =>
+                          setStandardNumberFilter(e.target.value)
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          fontSize: "0.85rem",
+                          background: "var(--bg-white)",
+                          border: "1px solid var(--border)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <option value="all">
+                          All Standards (CIP-002 to CIP-014)
+                        </option>
+                        <option value="CIP-002">
+                          CIP-002 (Asset Categorization)
+                        </option>
+                        <option value="CIP-003">
+                          CIP-003 (Security Management)
+                        </option>
+                        <option value="CIP-004">
+                          CIP-004 (Personnel & Training)
+                        </option>
+                        <option value="CIP-005">
+                          CIP-005 (Electronic Security Perimeters)
+                        </option>
+                        <option value="CIP-006">
+                          CIP-006 (Physical Security)
+                        </option>
+                        <option value="CIP-007">
+                          CIP-007 (System Security Management)
+                        </option>
+                        <option value="CIP-008">
+                          CIP-008 (Incident Reporting)
+                        </option>
+                        <option value="CIP-009">
+                          CIP-009 (Recovery Plans)
+                        </option>
+                        <option value="CIP-010">
+                          CIP-010 (Configuration & Change Mgmt)
+                        </option>
+                        <option value="CIP-011">
+                          CIP-011 (Information Protection)
+                        </option>
+                        <option value="CIP-012">
+                          CIP-012 (Control Center Comms)
+                        </option>
+                        <option value="CIP-013">
+                          CIP-013 (Supply Chain Risk Mgmt)
+                        </option>
+                        <option value="CIP-014">
+                          CIP-014 (Physical Security Substation)
+                        </option>
+                      </select>
+                    </div>
+                  </>
                 )}
               </>
             )}
@@ -1954,6 +2149,28 @@ export default function ComplianceWorkspace() {
                   }
                 >
                   Download NIST 800-82 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nerc_cip?fmt=pdf&regional_entity=${regionalEntityFilter}${besImpactLevelFilter !== "all" ? `&bes_impact_level=${besImpactLevelFilter}` : ""}${standardNumberFilter !== "all" ? `&standard_number=${standardNumberFilter}` : ""}${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
+                      "nerc_cip_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download NERC CIP PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nerc_cip?fmt=docx&regional_entity=${regionalEntityFilter}${besImpactLevelFilter !== "all" ? `&bes_impact_level=${besImpactLevelFilter}` : ""}${standardNumberFilter !== "all" ? `&standard_number=${standardNumberFilter}` : ""}${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
+                      "nerc_cip_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download NERC CIP Word
                 </button>
                 <button
                   className="db-btn db-btn--ghost"

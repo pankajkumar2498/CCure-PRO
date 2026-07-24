@@ -639,6 +639,8 @@ def list_findings(
     purdue_level: Optional[str] = Query(None),
     component_type: Optional[str] = Query(None),
     sl_level: Optional[str] = Query(None),
+    bes_impact_level: Optional[str] = Query(None),
+    standard_number: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -710,6 +712,12 @@ def list_findings(
 
     if sl_level and sl_level != "all":
         q = q.filter(ComplianceControl.tags.contains([sl_level.upper()]))
+
+    if bes_impact_level and bes_impact_level != "all":
+        q = q.filter(ComplianceControl.tags.contains([bes_impact_level.capitalize()]))
+
+    if standard_number and standard_number != "all":
+        q = q.filter(ComplianceControl.tags.contains([standard_number.upper()]))
 
     if cde_scope:
         q = q.filter(ComplianceFinding.cde_scope == cde_scope)
@@ -1677,6 +1685,8 @@ def get_dashboard_summary(
     purdue_level: Optional[str] = Query(None),
     component_type: Optional[str] = Query(None),
     sl_level: Optional[str] = Query(None),
+    bes_impact_level: Optional[str] = Query(None),
+    standard_number: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1717,6 +1727,8 @@ def get_dashboard_summary(
         or (purdue_level and purdue_level != "all")
         or (component_type and component_type != "all")
         or (sl_level and sl_level != "all")
+        or (bes_impact_level and bes_impact_level != "all")
+        or (standard_number and standard_number != "all")
     ):
         # Dynamically calculate overall scores and quadrant scores based on the filters
         control_query = db.query(ComplianceControl).filter(
@@ -1755,6 +1767,14 @@ def get_dashboard_summary(
         if sl_level and sl_level != "all":
             control_query = control_query.filter(
                 ComplianceControl.tags.contains([sl_level.upper()])
+            )
+        if bes_impact_level and bes_impact_level != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+            )
+        if standard_number and standard_number != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([standard_number.upper()])
             )
 
         controls = control_query.all()
@@ -4094,6 +4114,361 @@ def download_nist_800_82_report(
         )
         media = "application/pdf"
         filename = f"nist_800_82_report_{user.org_id[:4]}.pdf"
+
+    from fastapi.responses import StreamingResponse
+
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NERC CIP Executive Audit Report Generators & Routes
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _generate_nerc_cip_pdf(
+    controls,
+    findings_map,
+    title="NERC CIP Critical Infrastructure Protection Audit Report",
+    subtitle="North American Electric Reliability Corporation Compliance Assessment Ledger",
+    scope_label="All BES Cyber Systems & Impact Baselines",
+    regional_entity="WECC / NERC Regional Compliance Entity",
+):
+    from io import BytesIO
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import (
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+    except ImportError:
+        return BytesIO(b"ReportLab is not installed.")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "NERCTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0284C7"),
+        alignment=0,
+    )
+    sub_style = ParagraphStyle(
+        "NERCSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#475569"),
+    )
+    badge_style = ParagraphStyle(
+        "NERCBadge",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(subtitle, sub_style))
+    story.append(Spacer(1, 4))
+    story.append(
+        Paragraph(
+            f"<b>Regulatory Entity:</b> {regional_entity} | <b>Scope Filter:</b> {scope_label}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 14))
+
+    table_data = [
+        [
+            "Control ID",
+            "Control Title",
+            "Standard / Theme",
+            "BES Impact",
+            "Purdue / Assets",
+            "Verdict",
+        ]
+    ]
+
+    impact_colors = {
+        "HIGH": colors.HexColor("#DC2626"),
+        "MEDIUM": colors.HexColor("#EA580C"),
+        "LOW": colors.HexColor("#CA8A04"),
+    }
+
+    purdue_set = {"L0", "L1", "L2", "L3", "L3.5", "L4", "L5"}
+    impact_set = {"High", "Medium", "Low"}
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        verdict_color = (
+            colors.HexColor("#16A34A")
+            if verdict == "PASS"
+            else (
+                colors.HexColor("#DC2626")
+                if verdict == "FAIL"
+                else colors.HexColor("#6B7280")
+            )
+        )
+
+        tags = c.tags or []
+        purdue_str = ", ".join([t for t in tags if t in purdue_set]) or "L0-L5"
+        impacts = [t.upper() for t in tags if t in impact_set]
+        impact_str = ", ".join(impacts) if impacts else "ALL"
+        top_impact = impacts[0] if impacts else "MEDIUM"
+        imp_color = impact_colors.get(top_impact, colors.HexColor("#0284C7"))
+
+        v_cell = Table(
+            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+        )
+        v_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), verdict_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        imp_cell = Table(
+            [[Paragraph(impact_str, badge_style)]], colWidths=[65], rowHeights=[14]
+        )
+        imp_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), imp_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        table_data.append(
+            [
+                Paragraph(f"<b>{c.control_number}</b>", styles["Normal"]),
+                Paragraph(c.title, styles["Normal"]),
+                Paragraph(c.theme or "N/A", styles["Normal"]),
+                imp_cell,
+                Paragraph(purdue_str, styles["Normal"]),
+                v_cell,
+            ]
+        )
+
+    t = Table(table_data, colWidths=[75, 175, 75, 70, 70, 60])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0284C7")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_nerc_cip_docx(
+    controls,
+    findings_map,
+    title="NERC CIP Critical Infrastructure Protection Audit Report",
+    subtitle="North American Electric Reliability Corporation Compliance Assessment Ledger",
+    scope_label="All BES Cyber Systems & Impact Baselines",
+    regional_entity="WECC / NERC Regional Compliance Entity",
+):
+    from io import BytesIO
+
+    try:
+        from docx import Document
+    except ImportError:
+        return BytesIO(b"python-docx is not installed.")
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    doc.add_paragraph(subtitle)
+    doc.add_paragraph(
+        f"Regulatory Entity: {regional_entity} | Scope Filter: {scope_label}"
+    )
+
+    table = doc.add_table(rows=1, cols=6)
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    hdr_titles = [
+        "Control ID",
+        "Control Title",
+        "Theme",
+        "BES Impact",
+        "Purdue Level",
+        "Verdict",
+    ]
+    for i, t in enumerate(hdr_titles):
+        hdr_cells[i].text = t
+
+    purdue_set = {"L0", "L1", "L2", "L3", "L3.5", "L4", "L5"}
+    impact_set = {"High", "Medium", "Low"}
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        tags = c.tags or []
+        purdue_str = ", ".join([t for t in tags if t in purdue_set]) or "L0-L5"
+        impact_str = ", ".join([t.upper() for t in tags if t in impact_set]) or "ALL"
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = c.control_number
+        row_cells[1].text = c.title
+        row_cells[2].text = c.theme or "N/A"
+        row_cells[3].text = impact_str
+        row_cells[4].text = purdue_str
+        row_cells[5].text = verdict
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+@router.get("/reports/nerc_cip")
+def download_nerc_cip_report(
+    fmt: str = Query("pdf", description="pdf | docx"),
+    regional_entity: Optional[str] = Query(
+        "WECC",
+        description="WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
+    ),
+    bes_impact_level: Optional[str] = Query(None, description="HIGH | MEDIUM | LOW"),
+    standard_number: Optional[str] = Query(
+        None, description="CIP-002 | CIP-003 | ... | CIP-014"
+    ),
+    purdue_level: Optional[str] = Query(
+        None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
+    ),
+    component_type: Optional[str] = Query(
+        None, description="BCA | PCA | EACMS | PACS | EMS | SCADA"
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Generates and downloads the NERC CIP Executive Compliance Audit Report."""
+    fw_id = "cfw_nerc_cip"
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if bes_impact_level and bes_impact_level != "all":
+        query = query.filter(
+            ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+        )
+
+    if standard_number and standard_number != "all":
+        query = query.filter(ComplianceControl.tags.contains([standard_number.upper()]))
+
+    if purdue_level and purdue_level != "all":
+        query = query.filter(ComplianceControl.tags.contains([purdue_level.upper()]))
+
+    if component_type and component_type != "all":
+        query = query.filter(ComplianceControl.tags.contains([component_type.upper()]))
+
+    controls = query.order_by(
+        ComplianceControl.theme, ComplianceControl.control_number
+    ).all()
+    control_ids = [c.id for c in controls]
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    findings_map = {f.control_id: f for f in findings}
+
+    report_title = "NERC CIP Critical Infrastructure Protection Audit Report"
+    report_sub = (
+        f"Electric Reliability Compliance Assessment Ledger (Tenant: {user.org_id[:8]})"
+    )
+    scope_parts = []
+    if bes_impact_level and bes_impact_level != "all":
+        scope_parts.append(f"BES Impact: {bes_impact_level.upper()}")
+    if standard_number and standard_number != "all":
+        scope_parts.append(f"Standard: {standard_number.upper()}")
+    if purdue_level and purdue_level != "all":
+        scope_parts.append(f"Purdue Level: {purdue_level.upper()}")
+    if component_type and component_type != "all":
+        scope_parts.append(f"Asset Type: {component_type.upper()}")
+
+    scope_label = (
+        ", ".join(scope_parts) if scope_parts else "All BES Systems & Standards"
+    )
+
+    reg_entity_label = (
+        regional_entity.upper().replace("_", " ")
+        if regional_entity
+        else "WECC / NERC Regional Compliance Entity"
+    )
+
+    if fmt.lower() == "docx":
+        buffer = _generate_nerc_cip_docx(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+            regional_entity=reg_entity_label,
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"nerc_cip_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_nerc_cip_pdf(
+            controls,
+            findings_map,
+            title=report_title,
+            subtitle=report_sub,
+            scope_label=scope_label,
+            regional_entity=reg_entity_label,
+        )
+        media = "application/pdf"
+        filename = f"nerc_cip_report_{user.org_id[:4]}.pdf"
 
     from fastapi.responses import StreamingResponse
 

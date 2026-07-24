@@ -1020,6 +1020,175 @@ def seed_and_evaluate():
                 "control_id": "cct_nist_800_82_r3_sp82_ac_5",
                 "recommendation_text": "Enforce mandatory Multi-Factor Authentication (MFA) on all OT bastion hosts and jump servers per NIST SP 800-82 Rev. 3.",
             },
+            {
+                "id": "crl_nerc_cip_005_esp",
+                "rule_family_code": "NERC-CIP-005-ESP",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "network_device",
+                "check_definition": {
+                    "eacms_enabled": True,
+                    "default_policy": "deny_all",
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nerc_cip_005_esp_v1",
+                "control_id": "cct_nerc_cip_cip_005_r1",
+                "recommendation_text": "Enforce Electronic Security Perimeter (ESP) isolation and default-deny firewall ACLs on EACMS boundaries per NERC CIP-005-7.",
+            },
+            {
+                "id": "crl_nerc_cip_005_mfa",
+                "rule_family_code": "NERC-CIP-005-MFA",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "jump_host_mfa": True,
+                    "session_recording": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nerc_cip_005_mfa_v1",
+                "control_id": "cct_nerc_cip_cip_005_r2",
+                "recommendation_text": "Require Multi-Factor Authentication (MFA) and OT DMZ jump host session recording for Interactive Remote Access per NERC CIP-005-7.",
+            },
+            {
+                "id": "crl_nerc_cip_006_pacs",
+                "rule_family_code": "NERC-CIP-006-PACS",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "pacs_alarm_monitoring": True,
+                    "retention_days": 90,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_006_pacs_v1",
+                "control_id": "cct_nerc_cip_cip_006_r2",
+                "recommendation_text": "Verify Physical Access Control System (PACS) electronic monitoring and intrusion alarm logging per NERC CIP-006-6.",
+            },
+            {
+                "id": "crl_nerc_cip_007_ports",
+                "rule_family_code": "NERC-CIP-007-PORTS",
+                "version_number": 1,
+                "check_type": "port_state",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "unused_ports_disabled": True,
+                    "unnecessary_services_stopped": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_007_ports_v1",
+                "control_id": "cct_nerc_cip_cip_007_r1",
+                "recommendation_text": "Disable all unused logical ports, physical interfaces, and unneeded network services per NERC CIP-007-6.",
+            },
+            {
+                "id": "crl_nerc_cip_007_patch",
+                "rule_family_code": "NERC-CIP-007-PATCH",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "patch_evaluation_max_days": 35,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_007_patch_v1",
+                "control_id": "cct_nerc_cip_cip_007_r2",
+                "recommendation_text": "Evaluate security patches at least once every 35 calendar days and apply or document mitigation plans per NERC CIP-007-6.",
+            },
+            {
+                "id": "crl_nerc_cip_007_malware",
+                "rule_family_code": "NERC-CIP-007-MALWARE",
+                "version_number": 1,
+                "check_type": "service_status",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "antimalware_active": True,
+                    "allowlisting_active": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_007_malware_v1",
+                "control_id": "cct_nerc_cip_cip_007_r3",
+                "recommendation_text": "Deploy anti-malware software or application allowlisting on BES Cyber Assets per NERC CIP-007-6.",
+            },
+            {
+                "id": "crl_nerc_cip_007_logs",
+                "rule_family_code": "NERC-CIP-007-LOGS",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "log_retention_days": 90,
+                    "login_events_logged": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_007_logs_v1",
+                "control_id": "cct_nerc_cip_cip_007_r4",
+                "recommendation_text": "Enforce security event logging and 90-calendar-day audit log retention per NERC CIP-007-6.",
+            },
+            {
+                "id": "crl_nerc_cip_010_baseline",
+                "rule_family_code": "NERC-CIP-010-BASELINE",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "baseline_monitoring_max_days": 35,
+                    "unauthorized_drift_alert": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nerc_cip_010_baseline_v1",
+                "control_id": "cct_nerc_cip_cip_010_r2",
+                "recommendation_text": "Monitor baseline configurations every 35 calendar days and alert on unauthorized configuration drift per NERC CIP-010-4.",
+            },
+            {
+                "id": "crl_nerc_cip_011_bcsi",
+                "rule_family_code": "NERC-CIP-011-BCSI",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "encryption_algorithm": "AES-256",
+                    "bcsi_encrypted_at_rest": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nerc_cip_011_bcsi_v1",
+                "control_id": "cct_nerc_cip_cip_011_r1",
+                "recommendation_text": "Encrypt BES Cyber System Information (BCSI) at rest and in transit using AES-256 per NERC CIP-011-3.",
+            },
+            {
+                "id": "crl_nerc_cip_012_link",
+                "rule_family_code": "NERC-CIP-012-LINK",
+                "version_number": 1,
+                "check_type": "tls_config",
+                "evidence_source": "auto_scan",
+                "target_platform": "network_device",
+                "check_definition": {
+                    "tunnel_protocol": "IPsec_TLS",
+                    "link_encryption": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nerc_cip_012_link_v1",
+                "control_id": "cct_nerc_cip_cip_012_r1",
+                "recommendation_text": "Encrypt real-time Control Center to Control Center communication links carrying operational data per NERC CIP-012-1.",
+            },
         ]
 
         # Compile a set of controls already mapped to custom rules
@@ -1328,6 +1497,72 @@ def seed_and_evaluate():
                 "# --- LINUX (Bash) ---\n"
                 "sudo apt-get install -y libpam-duo || sudo yum install -y duo_unix\n"
                 "sudo sed -i 's/auth       required       pam_env.so/auth       required       pam_duo.so/' /etc/pam.d/sshd"
+            ),
+            "NERC-CIP-005-ESP": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                'New-NetFirewallRule -DisplayName "NERC CIP-005 ESP Default Deny" -Direction Inbound -Action Block -Profile Any\n\n'
+                "# --- LINUX (Bash) ---\n"
+                "sudo ufw default deny incoming\n"
+                "sudo iptables -P INPUT DROP"
+            ),
+            "NERC-CIP-005-MFA": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services' -Name 'fPromptForPassword' -Value 1\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get install -y libpam-duo || sudo yum install -y duo_unix\n"
+                "sudo sed -i 's/auth       required       pam_env.so/auth       required       pam_duo.so/' /etc/pam.d/sshd"
+            ),
+            "NERC-CIP-006-PACS": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Write-Host 'Audit PACS controller event logs and enable intrusion alarm telemetry...'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl status pacs-alarm-daemon.service || true"
+            ),
+            "NERC-CIP-007-PORTS": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Disable-NetAdapterBinding -Name '*' -ComponentID ms_tcpip6  # Disable unused IPv6 if unneeded\n"
+                "Stop-Service -Name RemoteRegistry -Force -ErrorAction SilentlyContinue\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl disable --now cups 2>/dev/null || true\n"
+                "sudo systemctl disable --now avahi-daemon 2>/dev/null || true"
+            ),
+            "NERC-CIP-007-PATCH": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Install-Module PSWindowsUpdate -Force -Confirm:$false\n"
+                "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get update && sudo apt-get upgrade -y\n"
+                "sudo yum update -y"
+            ),
+            "NERC-CIP-007-MALWARE": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Start-Service -Name WinDefend\n"
+                "Update-MpSignature\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl enable --now freshclam clamav-daemon"
+            ),
+            "NERC-CIP-007-LOGS": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "wevtutil sl Security /ms:1073741824  # Expand Security Log size to 1GB\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/rotate 4/rotate 13/' /etc/logrotate.conf  # 90-day retention"
+            ),
+            "NERC-CIP-010-BASELINE": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Get-WmiObject -Class Win32_Product | Select-Object Name, Version | Export-Csv -Path 'C:\\NERC_Baseline.csv'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "dpkg -l > /etc/nerc_baseline.txt || rpm -qa > /etc/nerc_baseline.txt"
+            ),
+            "NERC-CIP-011-BCSI": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Enable-BitLocker -MountPoint 'C:' -EncryptionMethod Aes256 -UsedSpaceOnly\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 512 /dev/sdb1"
+            ),
+            "NERC-CIP-012-LINK": (
+                "# --- NETWORK ARCHITECTURE ---\n"
+                "# Configure IPsec IKEv2 AES-256 tunnel on Inter-Control Center router interfaces\n"
+                "# Enforce TLS 1.3 encryption on ICCP / TASE.2 operational data links"
             ),
         }
 
@@ -2301,6 +2536,103 @@ def seed_and_evaluate():
                 "  - Successfully mapped rules and controls for NIST SP 800-82 Rev. 3"
             )
 
+        # Map rules and controls for NERC CIP (Critical Infrastructure Protection)
+        nerc_cip_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_nerc_cip")
+            .all()
+        )
+        if nerc_cip_controls:
+            for cip_ctrl in nerc_cip_controls:
+                if cip_ctrl.crosswalk:
+                    for cross_num in cip_ctrl.crosswalk:
+                        clean_cross_num = (
+                            cross_num.split(":")[-1].strip()
+                            if ":" in cross_num
+                            else cross_num.strip()
+                        )
+                        # Resolve ISO 27001 crosswalks
+                        if clean_cross_num.startswith("A."):
+                            iso_ref = (
+                                clean_cross_num.replace("A.", "")
+                                .strip()
+                                .lower()
+                                .replace(".", "_")
+                            )
+                            iso_ctrl_ids = [
+                                f"cct_iso27001_2022_a_{iso_ref}",
+                                f"cct_iso27001_2022_{iso_ref}",
+                            ]
+                            linked_rules = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.control_id.in_(iso_ctrl_ids)
+                                )
+                                .all()
+                            )
+                            for r_link in linked_rules:
+                                cip_link = (
+                                    db.query(ComplianceRuleControl)
+                                    .filter(
+                                        ComplianceRuleControl.rule_id == r_link.rule_id,
+                                        ComplianceRuleControl.control_id == cip_ctrl.id,
+                                    )
+                                    .first()
+                                )
+                                if not cip_link:
+                                    db.add(
+                                        ComplianceRuleControl(
+                                            rule_id=r_link.rule_id,
+                                            control_id=cip_ctrl.id,
+                                        )
+                                    )
+
+                # Auto-generate fallback rule for unmapped controls
+                raw_id = (
+                    cip_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_nerc_cip_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-NERC-{cip_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            cip_ctrl.scannability
+                            if cip_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                cip_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == cip_ctrl.id,
+                    )
+                    .first()
+                )
+                if not cip_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=cip_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for NERC CIP")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -2322,6 +2654,7 @@ def seed_and_evaluate():
                 "cfw_nist_800_53_r5",
                 "cfw_iec_62443",
                 "cfw_nist_800_82_r3",
+                "cfw_nerc_cip",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

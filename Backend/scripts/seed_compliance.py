@@ -102,7 +102,14 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
                     if ig not in tags:
                         tags.append(ig)
 
-        ot_meta_keys = ("purdue_levels", "component_types", "sl_levels", "zone_types")
+        ot_meta_keys = (
+            "purdue_levels",
+            "component_types",
+            "sl_levels",
+            "zone_types",
+            "bes_impact_levels",
+            "standard_number",
+        )
         for ot_key in ot_meta_keys:
             if ot_key in ctrl and ctrl[ot_key]:
                 ot_vals = ctrl[ot_key]
@@ -200,5 +207,8 @@ if __name__ == "__main__":
             nist82_path = os.path.join(base_dir, "nist_800_82_r3_controls_seed.json")
             if os.path.exists(nist82_path):
                 seed_framework_and_controls(db, nist82_path)
+            nerc_cip_path = os.path.join(base_dir, "nerc_cip_controls_seed.json")
+            if os.path.exists(nerc_cip_path):
+                seed_framework_and_controls(db, nerc_cip_path)
     finally:
         db.close()

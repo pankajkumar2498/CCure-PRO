@@ -790,6 +790,9 @@ def get_compliance(
     nist82 = clamp(
         coverage_rate * 0.35 + remediation_rate * 0.35 + no_critical_pct * 0.3
     )
+    nerc_cip = clamp(
+        coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3
+    )
 
     return {
         "frameworks": [
@@ -852,6 +855,12 @@ def get_compliance(
                 "name": "NIST SP 800-82 R3 (OT)",
                 "score": round(nist82, 1),
                 "color": "#2563eb",
+            },
+            {
+                "id": "nerc_cip",
+                "name": "NERC CIP (Power Grid)",
+                "score": round(nerc_cip, 1),
+                "color": "#0284c7",
             },
         ],
     }

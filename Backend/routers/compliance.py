@@ -640,6 +640,9 @@ def list_findings(
     sl_level: str | None = Query(None),
     bes_impact_level: str | None = Query(None),
     standard_number: str | None = Query(None),
+    nis2_entity_type: str | None = Query(None),
+    nis2_sector: str | None = Query(None),
+    nis2_member_state: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -717,6 +720,12 @@ def list_findings(
 
     if standard_number and standard_number != "all":
         q = q.filter(ComplianceControl.tags.contains([standard_number.upper()]))
+
+    if nis2_entity_type and nis2_entity_type != "all":
+        q = q.filter(ComplianceControl.tags.contains([nis2_entity_type.capitalize()]))
+
+    if nis2_sector and nis2_sector != "all":
+        q = q.filter(ComplianceControl.tags.contains([nis2_sector.capitalize()]))
 
     if cde_scope:
         q = q.filter(ComplianceFinding.cde_scope == cde_scope)
@@ -1686,6 +1695,9 @@ def get_dashboard_summary(
     sl_level: str | None = Query(None),
     bes_impact_level: str | None = Query(None),
     standard_number: str | None = Query(None),
+    nis2_entity_type: str | None = Query(None),
+    nis2_sector: str | None = Query(None),
+    nis2_member_state: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1728,6 +1740,9 @@ def get_dashboard_summary(
         or (sl_level and sl_level != "all")
         or (bes_impact_level and bes_impact_level != "all")
         or (standard_number and standard_number != "all")
+        or (nis2_entity_type and nis2_entity_type != "all")
+        or (nis2_sector and nis2_sector != "all")
+        or (nis2_member_state and nis2_member_state != "all")
     ):
         # Dynamically calculate overall scores and quadrant scores based on the filters
         control_query = db.query(ComplianceControl).filter(
@@ -1774,6 +1789,14 @@ def get_dashboard_summary(
         if standard_number and standard_number != "all":
             control_query = control_query.filter(
                 ComplianceControl.tags.contains([standard_number.upper()])
+            )
+        if nis2_entity_type and nis2_entity_type != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([nis2_entity_type.capitalize()])
+            )
+        if nis2_sector and nis2_sector != "all":
+            control_query = control_query.filter(
+                ComplianceControl.tags.contains([nis2_sector.capitalize()])
             )
 
         controls = control_query.all()
@@ -4361,7 +4384,324 @@ def _generate_nerc_cip_docx(
         row_cells[2].text = c.theme or "N/A"
         row_cells[3].text = impact_str
         row_cells[4].text = purdue_str
-        row_cells[5].text = verdict
+
+
+def _generate_nis2_pdf(
+    controls,
+    findings_map,
+    title="EU NIS 2 Directive Compliance Audit Report",
+    subtitle="European Union Directive (EU) 2022/2555 Cybersecurity Risk Management Audit",
+    scope_label="All Essential & Important Entities",
+    entity_type_label="Essential Entity",
+    member_state_label="All EU (ENISA Coordinated)",
+):
+    from io import BytesIO
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+    except ImportError:
+        return BytesIO(b"ReportLab is not installed.")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "NIS2Title",
+        parent=styles["Heading1"],
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#1E3A8A"),
+    )
+    sub_style = ParagraphStyle(
+        "NIS2Sub",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor("#4B5563"),
+    )
+    section_style = ParagraphStyle(
+        "NIS2Section",
+        parent=styles["Heading2"],
+        fontSize=11,
+        leading=15,
+        textColor=colors.HexColor("#1E3A8A"),
+    )
+    badge_style = ParagraphStyle(
+        "NIS2Badge",
+        parent=styles["Normal"],
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    total_c = len(controls)
+    passes = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status.lower() == "pass"
+    )
+    fails = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status.lower() == "fail"
+    )
+    untested = total_c - (passes + fails)
+    score_pct = round((passes / total_c * 100), 1) if total_c > 0 else 0.0
+    fine_ceiling = (
+        "EUR 10,000,000 or 2% Turnover"
+        if "Essential" in entity_type_label
+        else "EUR 7,000,000 or 1.4% Turnover"
+    )
+
+    story = [
+        Paragraph(f"<b>{title}</b>", title_style),
+        Spacer(1, 4),
+        Paragraph(subtitle, sub_style),
+        Spacer(1, 4),
+        Paragraph(
+            f"<b>Entity Scope:</b> {entity_type_label} | <b>Competent Authority:</b> {member_state_label} | <b>Sector Scope:</b> {scope_label}",
+            sub_style,
+        ),
+        Paragraph(
+            f"<b>Statutory Penalty Ceiling:</b> {fine_ceiling} | <b>Compliance Rate:</b> {score_pct}%",
+            sub_style,
+        ),
+        Spacer(1, 10),
+        Paragraph("<b>1. Executive Summary Statistics</b>", section_style),
+        Spacer(1, 4),
+    ]
+
+    exec_stats_data = [
+        ["Total Assessed Controls", "Pass", "Fail", "Untested", "Compliance Score"],
+        [str(total_c), str(passes), str(fails), str(untested), f"{score_pct}%"],
+    ]
+    t_stats = Table(exec_stats_data, colWidths=[120, 80, 80, 80, 180])
+    t_stats.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ]
+        )
+    )
+    story.append(t_stats)
+    story.append(Spacer(1, 10))
+
+    story.append(
+        Paragraph(
+            "<b>2. Article 23 CSIRT Mandatory Incident SLA Timeline</b>", section_style
+        )
+    )
+    story.append(Spacer(1, 4))
+    sla_data = [
+        ["Phase", "Mandated SLA Timeline", "Scope & Description"],
+        [
+            "Early Warning",
+            "≤ 24 Hours",
+            "Notify CSIRT/Competent Authority of significant incident or cyber threat",
+        ],
+        [
+            "Incident Notification",
+            "≤ 72 Hours",
+            "Submit initial assessment, severity indicator, and IoC indicators",
+        ],
+        [
+            "Final Report",
+            "≤ 1 Month",
+            "Provide complete root-cause analysis, mitigation, and cross-border impact",
+        ],
+    ]
+    t_sla = Table(sla_data, colWidths=[120, 130, 290])
+    t_sla.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ]
+        )
+    )
+    story.append(t_sla)
+    story.append(Spacer(1, 10))
+
+    story.append(
+        Paragraph(
+            "<b>3. Article 20 Management Board Governance Attestation</b>",
+            section_style,
+        )
+    )
+    story.append(Spacer(1, 4))
+    story.append(
+        Paragraph(
+            '<i>"Under Article 20 of EU NIS 2 Directive (EU 2022/2555), members of the executive management body '
+            "have personally reviewed the cybersecurity risk management posture, completed mandatory training, "
+            'and accept personal liability for compliance oversight."</i>',
+            sub_style,
+        )
+    )
+    story.append(Spacer(1, 10))
+
+    story.append(
+        Paragraph(
+            "<b>4. Article 21 Detailed Control Evaluation Matrix</b>", section_style
+        )
+    )
+    story.append(Spacer(1, 4))
+
+    table_data = [
+        [
+            "Control Number",
+            "Control Title",
+            "Article 21 Domain",
+            "Scannability",
+            "Verdict",
+        ]
+    ]
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+        verdict_color = (
+            colors.HexColor("#16A34A")
+            if verdict == "PASS"
+            else (
+                colors.HexColor("#DC2626")
+                if verdict == "FAIL"
+                else colors.HexColor("#6B7280")
+            )
+        )
+
+        v_cell = Table(
+            [[Paragraph(verdict, badge_style)]], colWidths=[65], rowHeights=[14]
+        )
+        v_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), verdict_color),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        table_data.append(
+            [
+                Paragraph(f"<b>{c.control_number}</b>", styles["Normal"]),
+                Paragraph(c.title, styles["Normal"]),
+                Paragraph(c.theme or "N/A", styles["Normal"]),
+                Paragraph(
+                    c.scannability.upper() if c.scannability else "AUTO",
+                    styles["Normal"],
+                ),
+                v_cell,
+            ]
+        )
+
+    t = Table(table_data, colWidths=[90, 210, 105, 70, 65])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_nis2_docx(
+    controls,
+    findings_map,
+    title="EU NIS 2 Directive Compliance Audit Report",
+    subtitle="European Union Directive (EU) 2022/2555 Cybersecurity Risk Management Audit",
+    scope_label="All Essential & Important Entities",
+    entity_type_label="Essential Entity",
+    member_state_label="All EU (ENISA Coordinated)",
+):
+    from io import BytesIO
+
+    try:
+        from docx import Document
+    except ImportError:
+        return BytesIO(b"python-docx is not installed.")
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    doc.add_paragraph(subtitle)
+    doc.add_paragraph(
+        f"Entity Classification: {entity_type_label} | Competent Authority: {member_state_label} | Sector Scope: {scope_label}"
+    )
+
+    doc.add_heading("1. Article 23 CSIRT SLA Timeline", level=1)
+    doc.add_paragraph(
+        "Early Warning: ≤ 24h | Incident Notification: ≤ 72h | Final Report: ≤ 1 Month"
+    )
+
+    doc.add_heading("2. Article 20 Board Attestation", level=1)
+    doc.add_paragraph(
+        "Executive management bodies accept personal accountability and confirm mandatory cybersecurity training under Article 20."
+    )
+
+    doc.add_heading("3. Control Evaluation Matrix", level=1)
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    hdr_cells = table.rows[0].cells
+    hdr_titles = [
+        "Control ID",
+        "Control Title",
+        "Article 21 Domain",
+        "Scannability",
+        "Verdict",
+    ]
+    for i, t in enumerate(hdr_titles):
+        hdr_cells[i].text = t
+
+    for c in controls:
+        f = findings_map.get(c.id)
+        verdict = f.status.upper() if f else "UNTESTED"
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = c.control_number
+        row_cells[1].text = c.title
+        row_cells[2].text = c.theme or "N/A"
+        row_cells[3].text = c.scannability.upper() if c.scannability else "AUTO"
+        row_cells[4].text = verdict
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -4369,43 +4709,32 @@ def _generate_nerc_cip_docx(
     return buffer
 
 
-@router.get("/reports/nerc_cip")
-def download_nerc_cip_report(
+@router.get("/reports/nis2")
+def download_nis2_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    regional_entity: str | None = Query(
-        "WECC",
-        description="WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
+    nis2_entity_type: str | None = Query(
+        "essential", description="essential | important"
     ),
-    bes_impact_level: str | None = Query(None, description="HIGH | MEDIUM | LOW"),
-    standard_number: str | None = Query(
-        None, description="CIP-002 | CIP-003 | ... | CIP-014"
-    ),
-    purdue_level: str | None = Query(
-        None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
-    ),
-    component_type: str | None = Query(
-        None, description="BCA | PCA | EACMS | PACS | EMS | SCADA"
+    nis2_sector: str | None = Query(None, description="all | 18 sectors"),
+    nis2_member_state: str | None = Query(
+        None, description="all | DE | FR | IT | NL | BE | ES | SE | PL | IE"
     ),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
-    """Generates and downloads the NERC CIP Executive Compliance Audit Report."""
-    fw_id = "cfw_nerc_cip"
+    """Generates and downloads the EU NIS 2 Directive Regulatory Audit Report."""
+    fw_id = "cfw_nis2"
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
-    if bes_impact_level and bes_impact_level != "all":
+    if nis2_entity_type and nis2_entity_type != "all":
         query = query.filter(
-            ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+            ComplianceControl.tags.contains([nis2_entity_type.capitalize()])
         )
 
-    if standard_number and standard_number != "all":
-        query = query.filter(ComplianceControl.tags.contains([standard_number.upper()]))
-
-    if purdue_level and purdue_level != "all":
-        query = query.filter(ComplianceControl.tags.contains([purdue_level.upper()]))
-
-    if component_type and component_type != "all":
-        query = query.filter(ComplianceControl.tags.contains([component_type.upper()]))
+    if nis2_sector and nis2_sector != "all":
+        query = query.filter(
+            ComplianceControl.tags.contains([nis2_sector.capitalize()])
+        )
 
     controls = query.order_by(
         ComplianceControl.theme, ComplianceControl.control_number
@@ -4422,54 +4751,64 @@ def download_nerc_cip_report(
     )
     findings_map = {f.control_id: f for f in findings}
 
-    report_title = "NERC CIP Critical Infrastructure Protection Audit Report"
-    report_sub = (
-        f"Electric Reliability Compliance Assessment Ledger (Tenant: {user.org_id[:8]})"
+    report_title = "EU NIS 2 Directive Regulatory Compliance Audit Report"
+    report_sub = f"European Union Directive (EU) 2022/2555 Security Assessment Ledger (Tenant: {user.org_id[:8]})"
+
+    entity_label = (
+        "Essential Entity (Art. 3.1)"
+        if nis2_entity_type and nis2_entity_type.lower() == "essential"
+        else "Important Entity (Art. 3.2)"
     )
-    scope_parts = []
-    if bes_impact_level and bes_impact_level != "all":
-        scope_parts.append(f"BES Impact: {bes_impact_level.upper()}")
-    if standard_number and standard_number != "all":
-        scope_parts.append(f"Standard: {standard_number.upper()}")
-    if purdue_level and purdue_level != "all":
-        scope_parts.append(f"Purdue Level: {purdue_level.upper()}")
-    if component_type and component_type != "all":
-        scope_parts.append(f"Asset Type: {component_type.upper()}")
 
     scope_label = (
-        ", ".join(scope_parts) if scope_parts else "All BES Systems & Standards"
+        nis2_sector.upper()
+        if nis2_sector and nis2_sector != "all"
+        else "All 18 Critical Sectors"
     )
 
-    reg_entity_label = (
-        regional_entity.upper().replace("_", " ")
-        if regional_entity
-        else "WECC / NERC Regional Compliance Entity"
+    member_state_labels = {
+        "DE": "Germany — BSI (Bundesamt für Sicherheit in der Informationstechnik)",
+        "FR": "France — ANSSI (Agence nationale de la sécurité des SI)",
+        "IT": "Italy — ACN (Agenzia per la Cybersicurezza Nazionale)",
+        "NL": "Netherlands — NCSC-NL",
+        "BE": "Belgium — CCB (Centre for Cybersecurity Belgium)",
+        "ES": "Spain — INCIBE / CCN-CERT",
+        "SE": "Sweden — MSB",
+        "PL": "Poland — NASK / CERT Polska",
+        "IE": "Ireland — NCSC-IE",
+    }
+    member_label = (
+        member_state_labels.get(nis2_member_state.upper(), "All EU (ENISA Coordinated)")
+        if nis2_member_state
+        else "All EU (ENISA Coordinated)"
     )
 
     if fmt.lower() == "docx":
-        buffer = _generate_nerc_cip_docx(
+        buffer = _generate_nis2_docx(
             controls,
             findings_map,
             title=report_title,
             subtitle=report_sub,
             scope_label=scope_label,
-            regional_entity=reg_entity_label,
+            entity_type_label=entity_label,
+            member_state_label=member_label,
         )
         media = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        filename = f"nerc_cip_report_{user.org_id[:4]}.docx"
+        filename = f"nis2_report_{user.org_id[:4]}.docx"
     else:
-        buffer = _generate_nerc_cip_pdf(
+        buffer = _generate_nis2_pdf(
             controls,
             findings_map,
             title=report_title,
             subtitle=report_sub,
             scope_label=scope_label,
-            regional_entity=reg_entity_label,
+            entity_type_label=entity_label,
+            member_state_label=member_label,
         )
         media = "application/pdf"
-        filename = f"nerc_cip_report_{user.org_id[:4]}.pdf"
+        filename = f"nis2_report_{user.org_id[:4]}.pdf"
 
     from fastapi.responses import StreamingResponse
 

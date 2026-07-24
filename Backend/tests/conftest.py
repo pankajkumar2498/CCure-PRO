@@ -63,8 +63,8 @@ if not database_url.startswith("postgresql"):
 
 # Safety guard: refuse to run against production or development databases
 from urllib.parse import urlparse
-
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 
 def _ensure_test_db_exists(url: str):
@@ -210,7 +210,9 @@ def seed_system_roles():
                 "'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', "
                 "'SP82_SI', 'SP82_RA', 'SP82_SA', "
                 "'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', "
-                "'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014'"
+                "'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014', "
+                "'NIS2_GOV', 'NIS2_INC', 'NIS2_BC', 'NIS2_SUPPLY', 'NIS2_SEC', 'NIS2_AUDIT', "
+                "'NIS2_HYGIENE', 'NIS2_CRYPTO', 'NIS2_IAM', 'NIS2_MFA'"
             )
             conn.execute(
                 text(

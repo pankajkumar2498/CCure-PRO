@@ -1189,6 +1189,269 @@ def seed_and_evaluate():
                 "control_id": "cct_nerc_cip_cip_012_r1",
                 "recommendation_text": "Encrypt real-time Control Center to Control Center communication links carrying operational data per NERC CIP-012-1.",
             },
+            {
+                "id": "crl_nis2_gov_risk",
+                "rule_family_code": "NIS2-GOV-RISK",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "board_approval_required": True,
+                    "risk_assessment_active": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_gov_risk_v1",
+                "control_id": "cct_nis2_gov_01",
+                "recommendation_text": "Maintain an approved cybersecurity risk policy and executive board governance oversight per EU NIS 2 Article 21.2(a).",
+            },
+            {
+                "id": "crl_nis2_inc_24h",
+                "rule_family_code": "NIS2-INC-24H",
+                "version_number": 1,
+                "check_type": "service_status",
+                "evidence_source": "auto_scan",
+                "target_platform": "linux",
+                "check_definition": {
+                    "csirt_warning_sla_hours": 24,
+                    "incident_triage_enabled": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nis2_inc_24h_v1",
+                "control_id": "cct_nis2_inc_01",
+                "recommendation_text": "Configure 24-hour Early Warning CSIRT notification integration per EU NIS 2 Article 21.2(b).",
+            },
+            {
+                "id": "crl_nis2_inc_logs",
+                "rule_family_code": "NIS2-INC-LOGS",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "linux",
+                "check_definition": {
+                    "syslog_active": True,
+                    "min_retention_days": 180,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_inc_logs_v1",
+                "control_id": "cct_nis2_inc_03",
+                "recommendation_text": "Enforce central SIEM log forwarding and 180-day retention per EU NIS 2 Article 21.2(b).",
+            },
+            {
+                "id": "crl_nis2_bc_backup",
+                "rule_family_code": "NIS2-BC-BACKUP",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "windows",
+                "check_definition": {
+                    "backup_immutable": True,
+                    "backup_frequency_hours": 24,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nis2_bc_backup_v1",
+                "control_id": "cct_nis2_bc_01",
+                "recommendation_text": "Enforce automated, immutable off-site backups with 24-hour frequency per EU NIS 2 Article 21.2(c).",
+            },
+            {
+                "id": "crl_nis2_sec_vuln",
+                "rule_family_code": "NIS2-SEC-VULN",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "max_critical_vuln_age_days": 7,
+                    "continuous_scanning_enabled": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nis2_sec_vuln_v1",
+                "control_id": "cct_nis2_sec_01",
+                "recommendation_text": "Conduct continuous vulnerability scanning and remediate critical vulnerabilities within 7 days per EU NIS 2 Article 21.2(e).",
+            },
+            {
+                "id": "crl_nis2_crypto_tls",
+                "rule_family_code": "NIS2-CRYPTO-TLS",
+                "version_number": 1,
+                "check_type": "tls_config",
+                "evidence_source": "auto_scan",
+                "target_platform": "network_device",
+                "check_definition": {
+                    "min_tls_version": "TLSv1.2",
+                    "tls13_preferred": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_crypto_tls_v1",
+                "control_id": "cct_nis2_crypto_01",
+                "recommendation_text": "Enforce TLS 1.2+ / TLS 1.3 encryption and disable SSLv3/TLS 1.0/1.1 per EU NIS 2 Article 21.2(h).",
+            },
+            {
+                "id": "crl_nis2_iam_rbac",
+                "rule_family_code": "NIS2-IAM-RBAC",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "windows",
+                "check_definition": {
+                    "disable_inactive_days": 90,
+                    "root_login_disabled": True,
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_iam_rbac_v1",
+                "control_id": "cct_nis2_iam_01",
+                "recommendation_text": "Enforce Least Privilege RBAC and auto-disable inactive accounts after 90 days per EU NIS 2 Article 21.2(i).",
+            },
+            {
+                "id": "crl_nis2_mfa_enforce",
+                "rule_family_code": "NIS2-MFA-ENFORCE",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "mfa_enforced_all_users": True,
+                    "mfa_enforced_admins": True,
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nis2_mfa_enforce_v1",
+                "control_id": "cct_nis2_mfa_01",
+                "recommendation_text": "Enforce mandatory Multi-Factor Authentication (MFA) across all administrative and user connections per EU NIS 2 Article 21.2(j).",
+            },
+            {
+                "id": "crl_nis2_supply_sbom",
+                "rule_family_code": "NIS2-SUPPLY-SBOM",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "sbom_generation_active": True,
+                    "vulnerability_manifest_audit": True,
+                    "platforms": ["windows", "linux", "any"],
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_supply_sbom_v1",
+                "control_id": "cct_nis2_supply_02",
+                "recommendation_text": "Maintain automated Software Bill of Materials (SBOM) manifests and audit third-party dependencies per EU NIS 2 Article 21.2(d).",
+            },
+            {
+                "id": "crl_nis2_sec_cvd",
+                "rule_family_code": "NIS2-SEC-CVD",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "security_txt_rfc9116_valid": True,
+                    "cvd_policy_published": True,
+                    "platforms": ["any"],
+                },
+                "severity": "medium",
+                "severity_weight": 6,
+                "remediation_id_target": "rem_nis2_sec_cvd_v1",
+                "control_id": "cct_nis2_sec_02",
+                "recommendation_text": "Publish a RFC 9116 security.txt file and Coordinated Vulnerability Disclosure (CVD) policy per EU NIS 2 Article 21.2(e).",
+            },
+            {
+                "id": "crl_nis2_bc_dr_test",
+                "rule_family_code": "NIS2-BC-DR-TEST",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "dr_test_frequency_days": 90,
+                    "recovery_time_objective_minutes": 60,
+                    "platforms": ["windows", "linux", "any"],
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_bc_dr_test_v1",
+                "control_id": "cct_nis2_bc_03",
+                "recommendation_text": "Conduct quarterly disaster recovery restoration testing and validate RTO/RPO metrics per EU NIS 2 Article 21.2(c).",
+            },
+            {
+                "id": "crl_nis2_hygiene_pwd",
+                "rule_family_code": "NIS2-HYGIENE-PWD",
+                "version_number": 1,
+                "check_type": "registry",
+                "evidence_source": "auto_scan",
+                "target_platform": "windows",
+                "check_definition": {
+                    "min_password_length": 14,
+                    "password_complexity_enabled": True,
+                    "max_password_age_days": 90,
+                    "platforms": ["windows"],
+                },
+                "severity": "medium",
+                "severity_weight": 6,
+                "remediation_id_target": "rem_nis2_hygiene_pwd_v1",
+                "control_id": "cct_nis2_hygiene_02",
+                "recommendation_text": "Enforce strong password policy parameters (min 14 chars, complexity, 90-day max age) per EU NIS 2 Article 21.2(g).",
+            },
+            {
+                "id": "crl_nis2_crypto_rest",
+                "rule_family_code": "NIS2-CRYPTO-REST",
+                "version_number": 1,
+                "check_type": "command_output",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "data_at_rest_encryption": "AES-256",
+                    "bitlocker_luks_active": True,
+                    "platforms": ["windows", "linux", "any"],
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_crypto_rest_v1",
+                "control_id": "cct_nis2_crypto_02",
+                "recommendation_text": "Enforce AES-256 data-at-rest encryption across system volumes and databases per EU NIS 2 Article 21.2(h).",
+            },
+            {
+                "id": "crl_nis2_iam_pam",
+                "rule_family_code": "NIS2-IAM-PAM",
+                "version_number": 1,
+                "check_type": "file_content",
+                "evidence_source": "auto_scan",
+                "target_platform": "linux",
+                "check_definition": {
+                    "sudoers_strict_audit": True,
+                    "ssh_root_login_disabled": True,
+                    "platforms": ["linux"],
+                },
+                "severity": "high",
+                "severity_weight": 8,
+                "remediation_id_target": "rem_nis2_iam_pam_v1",
+                "control_id": "cct_nis2_iam_02",
+                "recommendation_text": "Enforce Privileged Access Management (PAM), disable direct root SSH, and audit sudoers policy per EU NIS 2 Article 21.2(i).",
+            },
+            {
+                "id": "crl_nis2_mfa_fido2",
+                "rule_family_code": "NIS2-MFA-FIDO2",
+                "version_number": 1,
+                "check_type": "api_response",
+                "evidence_source": "auto_scan",
+                "target_platform": "any",
+                "check_definition": {
+                    "hardware_token_fido2_required": True,
+                    "phishing_resistant_mfa": True,
+                    "platforms": ["any"],
+                },
+                "severity": "critical",
+                "severity_weight": 10,
+                "remediation_id_target": "rem_nis2_mfa_fido2_v1",
+                "control_id": "cct_nis2_mfa_02",
+                "recommendation_text": "Enforce FIDO2/WebAuthn phishing-resistant hardware tokens for privileged administrative access per EU NIS 2 Article 21.2(j).",
+            },
         ]
 
         # Compile a set of controls already mapped to custom rules
@@ -1563,6 +1826,111 @@ def seed_and_evaluate():
                 "# --- NETWORK ARCHITECTURE ---\n"
                 "# Configure IPsec IKEv2 AES-256 tunnel on Inter-Control Center router interfaces\n"
                 "# Enforce TLS 1.3 encryption on ICCP / TASE.2 operational data links"
+            ),
+            "NIS2-GOV-RISK": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "New-Item -Path 'C:\\ProgramData\\CCure\\Policies' -ItemType Directory -Force\n"
+                "Set-Content -Path 'C:\\ProgramData\\CCure\\Policies\\nis2_security_policy.txt' -Value 'APPROVED_NIS2_RISK_POLICY_V1'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo mkdir -p /etc/ccure/policies\n"
+                "echo 'APPROVED_NIS2_RISK_POLICY_V1' | sudo tee /etc/ccure/policies/nis2_security_policy.txt"
+            ),
+            "NIS2-INC-24H": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-Service -Name EventLog -StartupType Automatic; Start-Service -Name EventLog\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl enable rsyslog || sudo systemctl enable systemd-journald\n"
+                "sudo systemctl start rsyslog || sudo systemctl start systemd-journald"
+            ),
+            "NIS2-INC-LOGS": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "wevtutil sl Security /ms:104857600\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "echo '*.* @siem.internal:514' | sudo tee -a /etc/rsyslog.d/nis2_siem.conf\n"
+                "sudo systemctl restart rsyslog"
+            ),
+            "NIS2-BC-BACKUP": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "wbadmin enable backup -addtarget:E: -include:C: -quiet\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl enable rsync-backup.timer\n"
+                "sudo systemctl start rsync-backup.timer"
+            ),
+            "NIS2-SEC-VULN": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Install-Module -Name PSWindowsUpdate -Force; Get-WindowsUpdate -AcceptAll -Install -AutoReboot\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo apt-get update && sudo apt-get dist-upgrade -y || sudo yum update -y"
+            ),
+            "NIS2-CRYPTO-TLS": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server' -Name 'Enabled' -Value 0\n"
+                "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Server' -Name 'Enabled' -Value 0\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/MinProtocol = .*/MinProtocol = TLSv1.2/' /etc/ssl/openssl.cnf\n"
+                "sudo systemctl reload nginx || sudo systemctl reload apache2"
+            ),
+            "NIS2-IAM-RBAC": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Search-ADAccount -AccountInactive -TimeSpan 90.00:00:00 | Disable-ADAccount\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config\n"
+                "sudo systemctl reload sshd"
+            ),
+            "NIS2-MFA-ENFORCE": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/^#*AuthenticationMethods.*/AuthenticationMethods publickey,keyboard-interactive/' /etc/ssh/sshd_config\n"
+                "sudo systemctl reload sshd"
+            ),
+            "NIS2-SUPPLY-SBOM": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "syft packages dir:C:\\Apps -o spdx-json > C:\\ProgramData\\CCure\\SBOM_manifest.json\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo syft packages dir:/opt/apps -o spdx-json > /etc/ccure/sbom_manifest.json"
+            ),
+            "NIS2-SEC-CVD": (
+                "# --- WINDOWS (PowerShell / IIS) ---\n"
+                "New-Item -Path 'C:\\inetpub\\wwwroot\\.well-known' -ItemType Directory -Force\n"
+                "Set-Content -Path 'C:\\inetpub\\wwwroot\\.well-known\\security.txt' -Value 'Contact: mailto:security@company.eu\\nExpires: 2027-12-31T23:59:59.000Z\\nCSIRT: https://csirt.company.eu'\n\n"
+                "# --- LINUX (Bash / Nginx) ---\n"
+                "sudo mkdir -p /var/www/html/.well-known\n"
+                "echo -e 'Contact: mailto:security@company.eu\\nExpires: 2027-12-31T23:59:59.000Z\\nCSIRT: https://csirt.company.eu' | sudo tee /var/www/html/.well-known/security.txt"
+            ),
+            "NIS2-BC-DR-TEST": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "wbadmin start recovery -version:10/18/2024-00:00 -itemType:Volume -items:C: -recoveryTarget:D:\\DR_Test -quiet\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo systemctl enable --now rsync-dr-test.service\n"
+                "sudo systemctl status rsync-dr-test.service"
+            ),
+            "NIS2-HYGIENE-PWD": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Set-ADDefaultDomainPasswordPolicy -MinPasswordLength 14 -ComplexityEnabled $true -MaxPasswordAge 90.00:00:00\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/^#*minlen = .*/minlen = 14/' /etc/security/pwquality.conf\n"
+                "sudo authselect apply-changes"
+            ),
+            "NIS2-CRYPTO-REST": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Enable-BitLocker -MountPoint 'C:' -EncryptionMethod Aes256 -UsedSpaceOnly\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 512 /dev/sdb1"
+            ),
+            "NIS2-IAM-PAM": (
+                "# --- WINDOWS (PowerShell) ---\n"
+                "Remove-LocalGroupMember -Group 'Administrators' -Member 'OrphanedUser'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config\n"
+                "sudo systemctl reload sshd"
+            ),
+            "NIS2-MFA-FIDO2": (
+                "# --- WINDOWS (PowerShell / Azure AD) ---\n"
+                "Set-MgPolicyAuthenticationMethodPolicy -Fido2 -State 'enabled'\n\n"
+                "# --- LINUX (Bash) ---\n"
+                "sudo pam_u2f_config --origin=https://corp.eu --appid=https://corp.eu > ~/.config/Yubico/u2f_keys\n"
+                "sudo sed -i 's/^auth required pam_unix.so/auth required pam_u2f.so cue/' /etc/pam.d/common-auth"
             ),
         }
 
@@ -2633,6 +3001,131 @@ def seed_and_evaluate():
             db.commit()
             print("  - Successfully mapped rules and controls for NERC CIP")
 
+        # Map rules and controls for EU NIS 2 Directive
+        nis2_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_nis2")
+            .all()
+        )
+        if nis2_controls:
+            added_links = set()
+            for nis_ctrl in nis2_controls:
+                if nis_ctrl.crosswalk:
+                    for cross_num in nis_ctrl.crosswalk:
+                        clean_cross_num = (
+                            cross_num.split(":")[-1].strip()
+                            if ":" in cross_num
+                            else cross_num.strip()
+                        )
+                        target_ctrl_ids = []
+                        # 1. Resolve ISO 27001 crosswalks
+                        if clean_cross_num.startswith("A."):
+                            iso_ref = (
+                                clean_cross_num.replace("A.", "")
+                                .strip()
+                                .lower()
+                                .replace(".", "_")
+                            )
+                            target_ctrl_ids = [
+                                f"cct_iso27001_2022_a_{iso_ref}",
+                                f"cct_iso27001_2022_{iso_ref}",
+                            ]
+                        # 2. Resolve NIST CSF v2.0 crosswalks (e.g. GV.PO-01, PR.AT-01)
+                        elif any(
+                            clean_cross_num.startswith(p)
+                            for p in ["GV.", "ID.", "PR.", "DE.", "RS.", "RC."]
+                        ):
+                            nist_ref = (
+                                clean_cross_num.lower()
+                                .replace(".", "_")
+                                .replace("-", "_")
+                            )
+                            target_ctrl_ids = [f"cct_nist_csf_v2_{nist_ref}"]
+                        # 3. Resolve CIS Controls v8.1 crosswalks (e.g. 12.1, 14.1)
+                        elif (
+                            clean_cross_num.replace(".", "").isdigit()
+                            or "cis" in cross_num.lower()
+                        ):
+                            cis_ref = clean_cross_num.lower().replace(".", "_")
+                            target_ctrl_ids = [f"cct_cis_v8_1_{cis_ref}"]
+
+                        if target_ctrl_ids:
+                            linked_rules = (
+                                db.query(ComplianceRuleControl)
+                                .filter(
+                                    ComplianceRuleControl.control_id.in_(
+                                        target_ctrl_ids
+                                    )
+                                )
+                                .all()
+                            )
+                            for r_link in linked_rules:
+                                pair = (r_link.rule_id, nis_ctrl.id)
+                                if pair in added_links:
+                                    continue
+                                nis_link = (
+                                    db.query(ComplianceRuleControl)
+                                    .filter(
+                                        ComplianceRuleControl.rule_id == r_link.rule_id,
+                                        ComplianceRuleControl.control_id == nis_ctrl.id,
+                                    )
+                                    .first()
+                                )
+                                if not nis_link:
+                                    db.add(
+                                        ComplianceRuleControl(
+                                            rule_id=r_link.rule_id,
+                                            control_id=nis_ctrl.id,
+                                        )
+                                    )
+                                added_links.add(pair)
+
+                # Auto-generate fallback rule for unmapped controls
+                raw_id = (
+                    nis_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+                )
+                rule_id = f"crl_nis2_auto_gen_{raw_id}"
+                rule_exists = (
+                    db.query(ComplianceRule)
+                    .filter(ComplianceRule.id == rule_id)
+                    .first()
+                )
+                if not rule_exists:
+                    c_rule = ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-NIS2-{nis_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source=(
+                            nis_ctrl.scannability
+                            if nis_ctrl.scannability != "manual"
+                            else "manual"
+                        ),
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                    db.add(c_rule)
+                    db.flush()
+
+                nis_link = (
+                    db.query(ComplianceRuleControl)
+                    .filter(
+                        ComplianceRuleControl.rule_id == rule_id,
+                        ComplianceRuleControl.control_id == nis_ctrl.id,
+                    )
+                    .first()
+                )
+                if not nis_link:
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id, control_id=nis_ctrl.id)
+                    )
+
+            db.commit()
+            print("  - Successfully mapped rules and controls for EU NIS 2 Directive")
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -2655,6 +3148,7 @@ def seed_and_evaluate():
                 "cfw_iec_62443",
                 "cfw_nist_800_82_r3",
                 "cfw_nerc_cip",
+                "cfw_nis2",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

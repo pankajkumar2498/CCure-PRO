@@ -211,5 +211,8 @@ if __name__ == "__main__":
             nerc_cip_path = os.path.join(base_dir, "nerc_cip_controls_seed.json")
             if os.path.exists(nerc_cip_path):
                 seed_framework_and_controls(db, nerc_cip_path)
+            nis2_path = os.path.join(base_dir, "nis2_controls_seed.json")
+            if os.path.exists(nis2_path):
+                seed_framework_and_controls(db, nis2_path)
     finally:
         db.close()

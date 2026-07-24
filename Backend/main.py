@@ -254,6 +254,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_nerc_cip")
                 .first()
             )
+            nis2_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_nis2")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -304,6 +309,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_nerc_cip")
                 .count()
             )
+            nis2_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_nis2")
+                .count()
+            )
             ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_iso27001_2022")
@@ -322,6 +332,7 @@ async def lifespan(app: FastAPI):
                 or not iec_fw
                 or not nist82_fw
                 or not nerc_cip_fw
+                or not nis2_fw
                 or ctrl_count < 93
                 or nist_ctrl_count < 20
                 or soc2_ctrl_count < 61
@@ -333,6 +344,7 @@ async def lifespan(app: FastAPI):
                 or iec_ctrl_count < 50
                 or nist82_ctrl_count < 30
                 or nerc_cip_ctrl_count < 52
+                or nis2_ctrl_count < 42
                 or rule_count < 20
             ):
                 log.info(
@@ -400,6 +412,11 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nerc_cip_seed):
                         seed_framework_and_controls(db, nerc_cip_seed)
+                    nis2_seed = os.path.join(
+                        base_scripts_dir, "nis2_controls_seed.json"
+                    )
+                    if os.path.exists(nis2_seed):
+                        seed_framework_and_controls(db, nis2_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")

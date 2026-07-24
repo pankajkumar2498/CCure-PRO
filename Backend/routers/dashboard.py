@@ -792,6 +792,7 @@ def get_compliance(
     nerc_cip = clamp(
         coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3
     )
+    nis2 = clamp(coverage_rate * 0.3 + remediation_rate * 0.4 + no_critical_pct * 0.3)
 
     return {
         "frameworks": [
@@ -860,6 +861,12 @@ def get_compliance(
                 "name": "NERC CIP (Power Grid)",
                 "score": round(nerc_cip, 1),
                 "color": "#0284c7",
+            },
+            {
+                "id": "nis2",
+                "name": "EU NIS 2 Directive",
+                "score": round(nis2, 1),
+                "color": "#7c3aed",
             },
         ],
     }

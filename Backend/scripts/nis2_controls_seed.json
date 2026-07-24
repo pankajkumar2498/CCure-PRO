@@ -1,0 +1,1084 @@
+{
+  "framework": {
+    "id": "cfw_nis2",
+    "code": "NIS2",
+    "name": "EU NIS 2 Directive (Directive (EU) 2022/2555)",
+    "version": "2022/2555",
+    "description": "European Union Network and Information Security Directive 2 setting legal cybersecurity risk-management, supply chain, and incident notification mandates across critical essential and important sectors."
+  },
+  "controls": [
+    {
+      "id": "gov_01",
+      "control_number": "NIS2-Art20-01",
+      "theme": "NIS2_GOV",
+      "title": "Management Board Governance Approval & Risk Oversight",
+      "description": "Executive management bodies must formally approve cybersecurity risk-management measures, oversee implementation, and accept accountability for non-compliance under Article 20.",
+      "scannability": "manual",
+      "scan_module_hint": "executive_attestation",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "ISO27001:A.5.4",
+        "NIST_CSF:GV.PO-01",
+        "NIST_CSF:GV.OV-01",
+        "CIS:12.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Executive Board Cybersecurity Policy Approval Minutes",
+        "Quarterly Risk Management Governance Review Minutes",
+        "Board Management Liability Compliance Sign-off"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Executive_Governance"
+      ]
+    },
+    {
+      "id": "gov_02",
+      "control_number": "NIS2-Art20-02",
+      "theme": "NIS2_GOV",
+      "title": "Mandatory Management Board Cybersecurity Training",
+      "description": "Members of the executive management body must follow regular mandatory cybersecurity training to gain sufficient knowledge and skills to assess risk management measures under Article 20.2.",
+      "scannability": "manual",
+      "scan_module_hint": "hr_training",
+      "crosswalk": [
+        "ISO27001:A.6.3",
+        "NIST_CSF:PR.AT-01",
+        "CIS:14.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Executive Training Certificates",
+        "Cybersecurity Governance Curriculum",
+        "Board Attendance Records"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Executive_Governance"
+      ]
+    },
+    {
+      "id": "gov_03",
+      "control_number": "NIS2-Art21.2a-01",
+      "theme": "NIS2_GOV",
+      "title": "Information Systems Security Policy Framework",
+      "description": "Maintain documented, approved information security policies covering network systems, physical assets, cloud services, and operational environments per Article 21.2(a).",
+      "scannability": "semi_auto",
+      "scan_module_hint": "policy_compliance",
+      "crosswalk": [
+        "ISO27001:A.5.1",
+        "NIST_CSF:GV.PO-02",
+        "CIS:12.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Approved Information Security Policy Document",
+        "Policy Revision Log & Annual Attestation",
+        "Staff Policy Acknowledgement Ledger"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Energy",
+        "Transport",
+        "Banking",
+        "Health",
+        "Digital_Infrastructure",
+        "ICT"
+      ]
+    },
+    {
+      "id": "gov_04",
+      "control_number": "NIS2-Art21.2a-02",
+      "theme": "NIS2_GOV",
+      "title": "Cyber Risk Assessment & Threat Modeling Methodology",
+      "description": "Perform periodic risk assessments, threat modeling, and business impact analysis to identify vulnerabilities in essential or important services.",
+      "scannability": "auto",
+      "scan_module_hint": "policy_compliance",
+      "crosswalk": [
+        "ISO27001:A.5.5",
+        "NIST_CSF:ID.RA-01",
+        "CIS:1.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Risk Assessment Methodology SOP",
+        "Updated Threat Register",
+        "Business Impact Analysis (BIA) Matrix"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Risk_Assessment"
+      ]
+    },
+    {
+      "id": "gov_05",
+      "control_number": "NIS2-Art21.2a-03",
+      "theme": "NIS2_GOV",
+      "title": "Automated Asset Discovery & Criticality Classification",
+      "description": "Maintain a real-time, automated inventory detailing all hardware, software, network interfaces, and cloud resources tied to critical business functions.",
+      "scannability": "auto",
+      "scan_module_hint": "asset_discovery",
+      "crosswalk": [
+        "ISO27001:A.5.9",
+        "ISO27001:A.5.10",
+        "NIST_CSF:ID.AM-01",
+        "NIST_CSF:ID.AM-02",
+        "CIS:1.1",
+        "CIS:2.1",
+        "IEC_62443:SR 7.8"
+      ],
+      "evidence_checklist": [
+        "Automated Asset Discovery Inventory Logs",
+        "Asset Classification Schedule",
+        "Critical Service Dependency Map"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Asset_Management"
+      ]
+    },
+    {
+      "id": "gov_06",
+      "control_number": "NIS2-Art21.2a-04",
+      "theme": "NIS2_GOV",
+      "title": "Essential vs Important Entity Scope Mapping",
+      "description": "Formally classify organizational legal entities and operational units into Essential or Important categories according to Annex I and Annex II criteria.",
+      "scannability": "manual",
+      "scan_module_hint": "entity_classification",
+      "crosswalk": [
+        "ISO27001:A.5.31",
+        "NIST_CSF:GV.OC-01",
+        "CIS:12.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Legal Entity Categorization Matrix",
+        "National Competent Authority Registration Proof",
+        "Sector Scoping Schedule"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Entity_Scope"
+      ]
+    },
+    {
+      "id": "inc_01",
+      "control_number": "NIS2-Art21.2b-01",
+      "theme": "NIS2_INC",
+      "title": "Incident Handling & Response Program Framework",
+      "description": "Establish an operational incident management framework detailing triage, containment, escalation, and post-incident review procedures.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "incident_management",
+      "crosswalk": [
+        "ISO27001:A.5.24",
+        "ISO27001:A.5.25",
+        "NIST_CSF:RS.MA-01",
+        "CIS:17.1",
+        "IEC_62443:SR 6.1"
+      ],
+      "evidence_checklist": [
+        "Incident Response Plan Document",
+        "Severity Categorization Matrix",
+        "On-Call Escalation Roster"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Incident_Response"
+      ]
+    },
+    {
+      "id": "inc_02",
+      "control_number": "NIS2-Art23.1-01",
+      "theme": "NIS2_INC",
+      "title": "24-Hour CSIRT Early Warning Notification SLA",
+      "description": "Enforce automated capability to issue an Early Warning incident notification to the CSIRT or competent authority within 24 hours of becoming aware of a significant incident.",
+      "scannability": "auto",
+      "scan_module_hint": "audit_logs",
+      "crosswalk": [
+        "ISO27001:A.5.24",
+        "NIST_CSF:RS.CO-02",
+        "CIS:17.2",
+        "IEC_62443:SR 6.1"
+      ],
+      "evidence_checklist": [
+        "CSIRT Webhook Notification Config",
+        "24-Hour SLA Trigger SOP",
+        "Early Warning Incident Template"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "CSIRT_Reporting"
+      ]
+    },
+    {
+      "id": "inc_03",
+      "control_number": "NIS2-Art23.1-02",
+      "theme": "NIS2_INC",
+      "title": "72-Hour Detailed Incident Notification & Impact Report",
+      "description": "Submit a detailed incident notification report to the CSIRT within 72 hours, detailing initial severity assessment, indicators of compromise, and mitigation measures.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "incident_management",
+      "crosswalk": [
+        "ISO27001:A.5.26",
+        "NIST_CSF:RS.AN-01",
+        "CIS:17.3",
+        "IEC_62443:SR 6.2"
+      ],
+      "evidence_checklist": [
+        "72-Hour CSIRT Regulatory Filing Template",
+        "Initial Forensic Assessment Report",
+        "Threat Actor Indicator of Compromise (IoC) List"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "CSIRT_Reporting"
+      ]
+    },
+    {
+      "id": "inc_04",
+      "control_number": "NIS2-Art23.1-03",
+      "theme": "NIS2_INC",
+      "title": "1-Month Final Incident Report Submission",
+      "description": "Submit a final comprehensive incident report to the CSIRT within 1 month of incident notification, detailing root cause, business impact, and corrective actions.",
+      "scannability": "manual",
+      "scan_module_hint": "incident_management",
+      "crosswalk": [
+        "ISO27001:A.5.27",
+        "NIST_CSF:RS.CO-03",
+        "CIS:17.3",
+        "IEC_62443:SR 6.2"
+      ],
+      "evidence_checklist": [
+        "1-Month CSIRT Final Incident Report",
+        "Root Cause Analysis (RCA) Document",
+        "Lessons Learned & Action Item Ledger"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "CSIRT_Reporting"
+      ]
+    },
+    {
+      "id": "inc_05",
+      "control_number": "NIS2-Art21.2b-02",
+      "theme": "NIS2_INC",
+      "title": "Centralized SIEM & Tamper-Evident Audit Logging",
+      "description": "Maintain continuous, tamper-evident central logging across all servers, firewalls, and applications with central SIEM aggregation and 180-day retention.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.15",
+        "NIST_CSF:DE.CM-01",
+        "CIS:8.2",
+        "CIS:8.3",
+        "IEC_62443:SR 2.8"
+      ],
+      "evidence_checklist": [
+        "Syslog / Auditd Forwarding Configuration",
+        "SIEM Log Retention Rule Validation",
+        "Log Integrity Monitoring Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Logging"
+      ]
+    },
+    {
+      "id": "bc_01",
+      "control_number": "NIS2-Art21.2c-01",
+      "theme": "NIS2_BC",
+      "title": "Immutable Off-Site Backup Management Policy",
+      "description": "Enforce automated, immutable off-site or air-gapped backups for all critical service databases and configurations with 24-hour frequency.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_windows",
+      "crosswalk": [
+        "ISO27001:A.8.13",
+        "NIST_CSF:PR.IP-04",
+        "CIS:11.1",
+        "IEC_62443:SR 7.3"
+      ],
+      "evidence_checklist": [
+        "Backup Execution Logs",
+        "Immutable Storage Policy Verification",
+        "Air-Gap / Off-Site Sync Schedule"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Business_Continuity"
+      ]
+    },
+    {
+      "id": "bc_02",
+      "control_number": "NIS2-Art21.2c-02",
+      "theme": "NIS2_BC",
+      "title": "Automated Disaster Recovery Testing & Validation",
+      "description": "Test disaster recovery systems and backup restoration quarterly, verifying data integrity and Recovery Time Objectives (RTO).",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.14",
+        "NIST_CSF:RC.RP-01",
+        "CIS:11.2",
+        "IEC_62443:SR 7.3"
+      ],
+      "evidence_checklist": [
+        "Quarterly DR Restoration Test Report",
+        "Data Integrity Hash Verification Log",
+        "RTO/RPO SLA Performance Ledger"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Business_Continuity"
+      ]
+    },
+    {
+      "id": "bc_03",
+      "control_number": "NIS2-Art21.2c-03",
+      "theme": "NIS2_BC",
+      "title": "Business Continuity & Crisis Management Plan",
+      "description": "Document, update, and test business continuity and crisis management plans annually to ensure operational resilience.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "policy_compliance",
+      "crosswalk": [
+        "ISO27001:A.5.29",
+        "ISO27001:A.5.30",
+        "NIST_CSF:ID.BE-05",
+        "CIS:11.4",
+        "IEC_62443:SR 7.4"
+      ],
+      "evidence_checklist": [
+        "Business Continuity Plan (BCP) Document",
+        "Annual BCP Tabletop Simulation Report",
+        "Emergency Escalation Matrix"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Business_Continuity"
+      ]
+    },
+    {
+      "id": "bc_04",
+      "control_number": "NIS2-Art21.2c-04",
+      "theme": "NIS2_BC",
+      "title": "High Availability & System Redundancy Architecture",
+      "description": "Deploy fault-tolerant system architecture with multi-region failover, redundant network links, and power backups for critical services.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "cloud_config",
+      "crosswalk": [
+        "ISO27001:A.8.14",
+        "NIST_CSF:PR.PT-05",
+        "CIS:11.3",
+        "IEC_62443:SR 7.3"
+      ],
+      "evidence_checklist": [
+        "High Availability Architecture Diagram",
+        "Failover Test Logs",
+        "UPS & Generator Maintenance Certificates"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Business_Continuity"
+      ]
+    },
+    {
+      "id": "supply_01",
+      "control_number": "NIS2-Art21.2d-01",
+      "theme": "NIS2_SUPPLY",
+      "title": "Supply Chain & Direct Supplier Security Assessment",
+      "description": "Assess the cybersecurity posture of direct suppliers, Cloud Service Providers (CSPs), and Managed Security Service Providers (MSSPs) prior to contracting.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "vendor_risk",
+      "crosswalk": [
+        "ISO27001:A.5.19",
+        "ISO27001:A.5.20",
+        "NIST_CSF:ID.SC-01",
+        "CIS:15.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Supplier Risk Assessment Register",
+        "Third-Party Security Evaluation Questionnaires",
+        "Vendor Audit Certificates (SOC 2 / ISO 27001)"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Supply_Chain"
+      ]
+    },
+    {
+      "id": "supply_02",
+      "control_number": "NIS2-Art21.2d-02",
+      "theme": "NIS2_SUPPLY",
+      "title": "Software Bill of Materials (SBOM) & Third-Party Code Risk",
+      "description": "Maintain an automated Software Bill of Materials (SBOM) for all acquired software components to detect supply chain vulnerabilities and compromised libraries.",
+      "scannability": "auto",
+      "scan_module_hint": "sbom_scanner",
+      "crosswalk": [
+        "ISO27001:A.8.30",
+        "NIST_CSF:ID.SC-04",
+        "CIS:15.3",
+        "IEC_62443:SR 7.7"
+      ],
+      "evidence_checklist": [
+        "Automated SBOM Manifest Export",
+        "Third-Party Dependency Vulnerability Audit Logs",
+        "Library License & Integrity Check Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Supply_Chain"
+      ]
+    },
+    {
+      "id": "supply_03",
+      "control_number": "NIS2-Art21.2d-03",
+      "theme": "NIS2_SUPPLY",
+      "title": "Contractual Security Clauses & Breach Notification SLAs",
+      "description": "Incorporate binding security requirements into supplier contracts, including mandatory 24-hour incident disclosure, vulnerability remediation SLAs, and audit rights.",
+      "scannability": "manual",
+      "scan_module_hint": "legal_contract",
+      "crosswalk": [
+        "ISO27001:A.5.21",
+        "ISO27001:A.5.22",
+        "NIST_CSF:ID.SC-03",
+        "CIS:15.2",
+        "IEC_62443:SR 7.7"
+      ],
+      "evidence_checklist": [
+        "Master Service Agreement (MSA) Security Addendums",
+        "Supplier Breach Notification Clause Verification",
+        "Right-to-Audit Contractual Provisions"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Supply_Chain"
+      ]
+    },
+    {
+      "id": "supply_04",
+      "control_number": "NIS2-Art21.2d-04",
+      "theme": "NIS2_SUPPLY",
+      "title": "Managed Service Provider (MSP/MSSP) Privileged Access Control",
+      "description": "Restrict and monitor third-party MSP/MSSP remote access using zero trust access proxy, just-in-time privilege elevation, and continuous session auditing.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.5.23",
+        "NIST_CSF:PR.AC-03",
+        "CIS:15.7",
+        "IEC_62443:SR 1.13"
+      ],
+      "evidence_checklist": [
+        "MSP Access Control List & Jump Host Config",
+        "Session Recording Audit Log",
+        "Just-in-Time Access Approval Records"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Supply_Chain"
+      ]
+    },
+    {
+      "id": "sec_01",
+      "control_number": "NIS2-Art21.2e-01",
+      "theme": "NIS2_SEC",
+      "title": "Continuous Vulnerability Scanning & SLA Patch Remediation",
+      "description": "Perform continuous vulnerability scanning across network perimeters and hosts, enforcing remediation SLAs: critical vulnerabilities within 7 days, high within 14 days.",
+      "scannability": "auto",
+      "scan_module_hint": "vulnerability_scan",
+      "crosswalk": [
+        "ISO27001:A.8.8",
+        "NIST_CSF:ID.RA-01",
+        "CIS:7.1",
+        "CIS:7.2",
+        "IEC_62443:SR 2.3"
+      ],
+      "evidence_checklist": [
+        "Vulnerability Assessment Scan Outputs",
+        "Patch Management Tracking Ledger",
+        "Kernel & Package Version Verification"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Vulnerability_Management"
+      ]
+    },
+    {
+      "id": "sec_02",
+      "control_number": "NIS2-Art21.2e-02",
+      "theme": "NIS2_SEC",
+      "title": "Coordinated Vulnerability Disclosure (CVD) security.txt Policy",
+      "description": "Publish a Coordinated Vulnerability Disclosure policy and public security contact point (/well-known/security.txt) per RFC 9116.",
+      "scannability": "auto",
+      "scan_module_hint": "web_scan",
+      "crosswalk": [
+        "ISO27001:A.8.8",
+        "NIST_CSF:RS.AN-05",
+        "CIS:7.7",
+        "IEC_62443:SR 2.3"
+      ],
+      "evidence_checklist": [
+        "Public security.txt URL Crawl Result",
+        "Coordinated Vulnerability Disclosure SLA SOP",
+        "Security Intake Contact Verification"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Vulnerability_Management"
+      ]
+    },
+    {
+      "id": "sec_03",
+      "control_number": "NIS2-Art21.2e-03",
+      "theme": "NIS2_SEC",
+      "title": "Network Micro-Segmentation & Boundary Isolation",
+      "description": "Segregate network zones into isolated segments (DMZ, Internal, Database, OT) using next-generation firewalls and strict default-deny ingress/egress rules.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.20",
+        "ISO27001:A.8.22",
+        "NIST_CSF:PR.AC-05",
+        "CIS:12.1",
+        "IEC_62443:SR 5.1"
+      ],
+      "evidence_checklist": [
+        "Firewall Rule Base Export",
+        "Network Topology Map",
+        "Port Exposure Audit Findings"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Network_Security"
+      ]
+    },
+    {
+      "id": "sec_04",
+      "control_number": "NIS2-Art21.2e-04",
+      "theme": "NIS2_SEC",
+      "title": "Secure Software Development Lifecycle (SDLC) & SAST/DAST",
+      "description": "Integrate automated Static Application Security Testing (SAST) and Dynamic Testing (DAST) into CI/CD build pipelines prior to production deployment.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "cicd_scan",
+      "crosswalk": [
+        "ISO27001:A.8.25",
+        "ISO27001:A.8.28",
+        "NIST_CSF:PR.IP-02",
+        "CIS:16.1",
+        "IEC_62443:SR 2.4"
+      ],
+      "evidence_checklist": [
+        "CI/CD SAST/DAST Pipeline Execution Logs",
+        "Secure Code Review Guidelines",
+        "Pre-Release Vulnerability Gate Sign-off"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "SDLC"
+      ]
+    },
+    {
+      "id": "audit_01",
+      "control_number": "NIS2-Art21.2f-01",
+      "theme": "NIS2_AUDIT",
+      "title": "Security Effectiveness Assessment & Penetration Testing",
+      "description": "Conduct annual independent penetration testing and quarterly automated compliance scans to evaluate control effectiveness under Article 21.2(f).",
+      "scannability": "semi_auto",
+      "scan_module_hint": "audit_reports",
+      "crosswalk": [
+        "ISO27001:A.5.35",
+        "ISO27001:A.8.8",
+        "NIST_CSF:ID.RA-03",
+        "CIS:18.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Third-Party Penetration Testing Report",
+        "Automated Compliance Engine Audit Logs",
+        "Remediation Verification Tracking Sheet"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Audit_Assessment"
+      ]
+    },
+    {
+      "id": "audit_02",
+      "control_number": "NIS2-Art21.2f-02",
+      "theme": "NIS2_AUDIT",
+      "title": "Automated Configuration Compliance Auditing",
+      "description": "Schedule automated daily compliance engine scans against all OS endpoints and cloud environments to detect security policy drift.",
+      "scannability": "auto",
+      "scan_module_hint": "compliance_engine",
+      "crosswalk": [
+        "ISO27001:A.5.36",
+        "NIST_CSF:PR.IP-01",
+        "CIS:4.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Daily Configuration Drift Reports",
+        "Policy Compliance Score History",
+        "Auto-Remediation Execution Logs"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Audit_Assessment"
+      ]
+    },
+    {
+      "id": "audit_03",
+      "control_number": "NIS2-Art32-01",
+      "theme": "NIS2_AUDIT",
+      "title": "Regulatory Compliance Reporting & Authority Audit Preparedness",
+      "description": "Maintain audit-ready regulatory evidence ledgers and executive reports for inspection by EU National Competent Authorities under Article 32.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "regulatory_reporting",
+      "crosswalk": [
+        "ISO27001:A.5.31",
+        "NIST_CSF:GV.PO-01",
+        "CIS:12.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Executive Regulatory Audit PDF/Word Reports",
+        "Evidence Package Verification Ledger",
+        "Competent Authority Communication Records"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Audit_Assessment"
+      ]
+    },
+    {
+      "id": "hygiene_01",
+      "control_number": "NIS2-Art21.2g-01",
+      "theme": "NIS2_HYGIENE",
+      "title": "OS Baseline Hardening & Configuration Hygiene",
+      "description": "Enforce baseline security configurations across all servers, endpoints, and network devices according to CIS Benchmarks.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.9",
+        "NIST_CSF:PR.IP-01",
+        "CIS:4.1",
+        "IEC_62443:SR 2.4"
+      ],
+      "evidence_checklist": [
+        "CIS Benchmark Audit Results",
+        "Unnecessary Service Disabling Verification",
+        "Hardened OS Deployment Image Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cyber_Hygiene"
+      ]
+    },
+    {
+      "id": "hygiene_02",
+      "control_number": "NIS2-Art21.2g-02",
+      "theme": "NIS2_HYGIENE",
+      "title": "Password Complexity & Credential Hygiene Enforce",
+      "description": "Enforce strong password policy parameters (min 14 chars, complexity, dictionary block, max 90-day age) and disable default vendor passwords.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_windows",
+      "crosswalk": [
+        "ISO27001:A.5.17",
+        "NIST_CSF:PR.AC-01",
+        "CIS:5.2",
+        "IEC_62443:SR 1.5"
+      ],
+      "evidence_checklist": [
+        "Active Directory / PAM Password Policy Export",
+        "Default Password Change Audit",
+        "Credential Leak Monitoring Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cyber_Hygiene"
+      ]
+    },
+    {
+      "id": "hygiene_03",
+      "control_number": "NIS2-Art21.2g-03",
+      "theme": "NIS2_HYGIENE",
+      "title": "Employee Cybersecurity Awareness & Phishing Simulations",
+      "description": "Provide mandatory annual cyber hygiene training, phishing simulation exercises, and threat awareness modules for all personnel.",
+      "scannability": "manual",
+      "scan_module_hint": "hr_training",
+      "crosswalk": [
+        "ISO27001:A.6.3",
+        "NIST_CSF:PR.AT-01",
+        "CIS:14.1",
+        "IEC_62443:SR 7.6"
+      ],
+      "evidence_checklist": [
+        "Staff Training Completion Roster",
+        "Phishing Simulation Results Summary",
+        "Security Awareness Training Curriculum"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cyber_Hygiene"
+      ]
+    },
+    {
+      "id": "hygiene_04",
+      "control_number": "NIS2-Art21.2g-04",
+      "theme": "NIS2_HYGIENE",
+      "title": "Zero Trust Security Principles & Least Exposure",
+      "description": "Implement Zero Trust architecture principles (Never Trust, Always Verify) enforcing micro-perimeter isolation and continuous access verification.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "zero_trust",
+      "crosswalk": [
+        "ISO27001:A.8.20",
+        "NIST_CSF:PR.AC-04",
+        "CIS:6.1",
+        "IEC_62443:SR 1.1"
+      ],
+      "evidence_checklist": [
+        "Zero Trust Architecture Policy Document",
+        "Identity-Aware Access Proxy Config",
+        "Continuous Session Verification Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Zero_Trust"
+      ]
+    },
+    {
+      "id": "crypto_01",
+      "control_number": "NIS2-Art21.2h-01",
+      "theme": "NIS2_CRYPTO",
+      "title": "Data-in-Transit Encryption (TLS 1.3 / AES-256)",
+      "description": "Enforce strong TLS 1.2+ / TLS 1.3 encryption across all internal and external network communications, disabling legacy protocols (SSLv3, TLS 1.0, TLS 1.1) and weak ciphers.",
+      "scannability": "auto",
+      "scan_module_hint": "web_scan",
+      "crosswalk": [
+        "ISO27001:A.8.24",
+        "NIST_CSF:PR.DS-02",
+        "CIS:3.10",
+        "IEC_62443:SR 4.1"
+      ],
+      "evidence_checklist": [
+        "SSL/TLS Scanner Output & Cipher Verification",
+        "HSTS Header Configuration Proof",
+        "Certificate Expiry & PKI Management Ledger"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cryptography"
+      ]
+    },
+    {
+      "id": "crypto_02",
+      "control_number": "NIS2-Art21.2h-02",
+      "theme": "NIS2_CRYPTO",
+      "title": "Data-at-Rest Volume & Database Encryption",
+      "description": "Encrypt sensitive data at rest using AES-256 or equivalent FIPS 140-3 validated cryptography across all volumes, storage buckets, and databases.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.24",
+        "NIST_CSF:PR.DS-01",
+        "CIS:3.11",
+        "IEC_62443:SR 4.2"
+      ],
+      "evidence_checklist": [
+        "Database & Volume Encryption Verification",
+        "LUKS / BitLocker Configuration Proof",
+        "Cryptographic Storage Schedule"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cryptography"
+      ]
+    },
+    {
+      "id": "crypto_03",
+      "control_number": "NIS2-Art21.2h-03",
+      "theme": "NIS2_CRYPTO",
+      "title": "Hardware Security Module (HSM) & Key Management Lifecycle",
+      "description": "Store encryption keys in dedicated Hardware Security Modules (HSMs) or Cloud KMS solutions with automated annual key rotation.",
+      "scannability": "auto",
+      "scan_module_hint": "kms_config",
+      "crosswalk": [
+        "ISO27001:A.8.24",
+        "NIST_CSF:PR.DS-01",
+        "CIS:3.11",
+        "IEC_62443:SR 4.2"
+      ],
+      "evidence_checklist": [
+        "KMS Key Management Audit Export",
+        "Annual Key Rotation Execution Logs",
+        "HSM Attestation Certificate"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cryptography"
+      ]
+    },
+    {
+      "id": "crypto_04",
+      "control_number": "NIS2-Art21.2h-04",
+      "theme": "NIS2_CRYPTO",
+      "title": "SSH Key Rotation & Cryptographic Hygiene",
+      "description": "Enforce SSH key pair rotation every 90 days, disallowing weak RSA keys under 3072 bits and enforcing ED25519 or ECDSA algorithms.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.24",
+        "NIST_CSF:PR.AC-01",
+        "CIS:5.2",
+        "IEC_62443:SR 1.5"
+      ],
+      "evidence_checklist": [
+        "Authorized_keys Audit Log",
+        "SSH Key Bit-Length Verification Report",
+        "Key Rotation Schedule"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Cryptography"
+      ]
+    },
+    {
+      "id": "iam_01",
+      "control_number": "NIS2-Art21.2i-01",
+      "theme": "NIS2_IAM",
+      "title": "Role-Based Access Control (RBAC) & Least Privilege",
+      "description": "Enforce strict Role-Based Access Control (RBAC) limiting system access to minimum permissions required for business functions, with quarterly reviews.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_windows",
+      "crosswalk": [
+        "ISO27001:A.5.15",
+        "ISO27001:A.8.2",
+        "NIST_CSF:PR.AC-01",
+        "CIS:6.1",
+        "IEC_62443:SR 1.1"
+      ],
+      "evidence_checklist": [
+        "User Directory Role & Group Assignment List",
+        "Quarterly Privileged Access Review Logs",
+        "Orphaned Account Deprovisioning Audit"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Access_Control"
+      ]
+    },
+    {
+      "id": "iam_02",
+      "control_number": "NIS2-Art21.2i-02",
+      "theme": "NIS2_IAM",
+      "title": "Privileged Access Management (PAM) & Session Auditing",
+      "description": "Control and record all administrative logins and privileged sessions (SSH, RDP, sudo) via dedicated PAM solutions with session recording.",
+      "scannability": "auto",
+      "scan_module_hint": "credentialed_linux",
+      "crosswalk": [
+        "ISO27001:A.8.5",
+        "ISO27001:A.8.7",
+        "NIST_CSF:PR.AC-06",
+        "CIS:6.8",
+        "IEC_62443:SR 1.3"
+      ],
+      "evidence_checklist": [
+        "Sudoers Policy Configuration Audit",
+        "SSH Root Login Disabling Verification",
+        "PAM Privileged Vault Audit Log"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Access_Control"
+      ]
+    },
+    {
+      "id": "iam_03",
+      "control_number": "NIS2-Art21.2i-03",
+      "theme": "NIS2_IAM",
+      "title": "Human Resources Security Onboarding & Offboarding",
+      "description": "Enforce HR security processes including background checks for sensitive roles and immediate revocation of access upon employee termination within 2 hours.",
+      "scannability": "auto",
+      "scan_module_hint": "user_deprovisioning",
+      "crosswalk": [
+        "ISO27001:A.6.1",
+        "ISO27001:A.6.5",
+        "NIST_CSF:PR.AC-01",
+        "CIS:6.2",
+        "IEC_62443:SR 1.2"
+      ],
+      "evidence_checklist": [
+        "HR Deprovisioning SLA Verification Log",
+        "Background Check Policy Document",
+        "Employee Offboarding Checklist"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Access_Control"
+      ]
+    },
+    {
+      "id": "iam_04",
+      "control_number": "NIS2-Art21.2i-04",
+      "theme": "NIS2_IAM",
+      "title": "Centralized Identity & Single Sign-On (SSO) Integration",
+      "description": "Centralize user authentication across enterprise and cloud systems using Single Sign-On (SSO) backed by SAML 2.0 or OpenID Connect (OIDC).",
+      "scannability": "semi_auto",
+      "scan_module_hint": "sso_config",
+      "crosswalk": [
+        "ISO27001:A.5.16",
+        "NIST_CSF:PR.AC-07",
+        "CIS:6.3",
+        "IEC_62443:SR 1.4"
+      ],
+      "evidence_checklist": [
+        "IdP SSO Integration Audit Log",
+        "SAML/OIDC Provider Configuration",
+        "Central User Federation Schedule"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Access_Control"
+      ]
+    },
+    {
+      "id": "mfa_01",
+      "control_number": "NIS2-Art21.2j-01",
+      "theme": "NIS2_MFA",
+      "title": "Mandatory Multi-Factor Authentication (MFA) Enforce",
+      "description": "Enforce mandatory Multi-Factor Authentication (MFA) or continuous authentication for all user, administrative, remote VPN, and cloud access connections.",
+      "scannability": "auto",
+      "scan_module_hint": "identity_provider",
+      "crosswalk": [
+        "ISO27001:A.8.5",
+        "NIST_CSF:PR.AC-07",
+        "CIS:6.3",
+        "CIS:6.4",
+        "IEC_62443:SR 1.4"
+      ],
+      "evidence_checklist": [
+        "Identity Provider MFA Policy Audit",
+        "SSH Public-Key / Hardware Token Authentication Proof",
+        "MFA Bypass Exemption Register"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "MFA"
+      ]
+    },
+    {
+      "id": "mfa_02",
+      "control_number": "NIS2-Art21.2j-02",
+      "theme": "NIS2_MFA",
+      "title": "FIDO2 / WebAuthn Hardware Token Authentication for Admins",
+      "description": "Require phishing-resistant FIDO2 / WebAuthn hardware security keys (YubiKey) for all domain administrators and cloud root accounts.",
+      "scannability": "auto",
+      "scan_module_hint": "identity_provider",
+      "crosswalk": [
+        "ISO27001:A.8.5",
+        "NIST_CSF:PR.AC-07",
+        "CIS:6.5",
+        "IEC_62443:SR 1.4"
+      ],
+      "evidence_checklist": [
+        "FIDO2 Hardware Key Registration Ledger",
+        "Phishing-Resistant MFA Audit Log",
+        "Admin Account Authentication Proof"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "MFA"
+      ]
+    },
+    {
+      "id": "mfa_03",
+      "control_number": "NIS2-Art21.2j-03",
+      "theme": "NIS2_MFA",
+      "title": "Secured Out-of-Band Crisis Voice, Video & Text Comms",
+      "description": "Deploy end-to-end encrypted communication tools for out-of-band crisis coordination and emergency incident command, independent of primary IT infrastructure.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "emergency_comms",
+      "crosswalk": [
+        "ISO27001:A.8.23",
+        "NIST_CSF:RS.CO-05",
+        "CIS:17.4",
+        "IEC_62443:SR 4.3"
+      ],
+      "evidence_checklist": [
+        "Encrypted Emergency Messaging Platform Config",
+        "Out-of-Band Incident Command Call Plan",
+        "Crisis Communication Contact Roster"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Secure_Communications"
+      ]
+    },
+    {
+      "id": "mfa_04",
+      "control_number": "NIS2-Art21.2j-04",
+      "theme": "NIS2_MFA",
+      "title": "Secured Emergency Voice Bridge & Satellite Redundancy",
+      "description": "Maintain dedicated emergency satellite phone bridges or encrypted radio links for operational command centers during severe infrastructure outages.",
+      "scannability": "semi_auto",
+      "scan_module_hint": "emergency_comms",
+      "crosswalk": [
+        "ISO27001:A.8.23",
+        "NIST_CSF:RS.CO-05",
+        "CIS:17.4",
+        "IEC_62443:SR 4.3"
+      ],
+      "evidence_checklist": [
+        "Satellite Emergency Bridge Registration",
+        "Quarterly Emergency Call Test Log",
+        "Out-of-Band Channel Audit"
+      ],
+      "tags": [
+        "Essential",
+        "Important",
+        "Secure_Communications"
+      ]
+    }
+  ]
+}

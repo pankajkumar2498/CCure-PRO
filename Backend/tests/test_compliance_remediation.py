@@ -7,9 +7,9 @@ Author:  Compliance Dev Team
 from unittest.mock import MagicMock, patch
 
 from core.compliance_tasks import (
+    _execute_ssh_remediation,
     _resolve_remediation_credentials,
     _sanitize_remediation_logs,
-    _execute_ssh_remediation,
 )
 
 

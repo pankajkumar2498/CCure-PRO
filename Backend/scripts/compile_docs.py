@@ -1,22 +1,22 @@
 import os
-import sys
 import re
+import sys
 
 try:
     import docx
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
 except ImportError:
     print("python-docx is not installed. Attempting to install it first...")
     import subprocess
 
     subprocess.check_call([sys.executable, "-m", "pip", "install", "python-docx"])
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
 
 
 def set_cell_background(cell, color_hex):

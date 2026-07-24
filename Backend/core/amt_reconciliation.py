@@ -7,16 +7,16 @@ Author:  Pair Engineer
 import logging
 from datetime import datetime
 from typing import Dict, Optional
-from sqlalchemy.orm import Session
 
-from db.models.assets import Asset, AssetChangeLog
-from db.models.amt import AMTInventoryRecord
 from core.utils import normalize_mac
+from db.models.amt import AMTInventoryRecord
+from db.models.assets import Asset, AssetChangeLog
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.amt_reconciliation")
 
 
-def normalize_category(asset_type: str) -> Optional[str]:
+def normalize_category(asset_type: str) -> str | None:
     """Normalize corporate AMT asset types to standard categories."""
     if not asset_type:
         return None
@@ -34,7 +34,7 @@ def normalize_category(asset_type: str) -> Optional[str]:
     return "workstation"
 
 
-def reconcile_amt_inventory(db: Session, org_id: str) -> Dict:
+def reconcile_amt_inventory(db: Session, org_id: str) -> dict:
     """
     Reconcile active scanned assets with optional AMT inventory records.
     Enriches scanned assets, tracks provenance, and logs changes.

@@ -60,7 +60,7 @@ class DiscoveryProfile:
     """
 
     name: str
-    techniques: List[Technique]
+    techniques: list[Technique]
     timeout: float
     retries: int
     concurrency: int

@@ -95,7 +95,7 @@ def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:
     return fallback
 
 
-COMMANDS: Dict[str, str] = {
+COMMANDS: dict[str, str] = {
     # OS info
     "os_info": "(Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | ConvertTo-Json)",
     "hostname": "hostname",
@@ -237,9 +237,9 @@ class WindowsCollector:
 
     def collect_all(
         self,
-        sections: Optional[List[str]] = None,
-        on_section_complete: Optional[callable] = None,
-    ) -> Dict[str, Any]:
+        sections: list[str] | None = None,
+        on_section_complete: callable | None = None,
+    ) -> dict[str, Any]:
         """
         Run all collectors concurrently and return a merged dict.
 
@@ -250,7 +250,7 @@ class WindowsCollector:
         """
         run_all = sections is None
 
-        tasks: List[tuple] = []
+        tasks: list[tuple] = []
         if run_all or "system_info" in sections:
             tasks.append(("system_info", self._collect_system_info))
         if run_all or "packages" in sections:
@@ -269,7 +269,7 @@ class WindowsCollector:
         if run_all or "history" in sections:
             tasks.append(("history", self._collect_login_history))
 
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -299,8 +299,8 @@ class WindowsCollector:
 
         return result
 
-    def _collect_system_info(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
+    def _collect_system_info(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
 
         os_raw = self._run_json("os_info")
         data["os_name"] = os_raw.get("Caption", "Windows")
@@ -373,7 +373,7 @@ class WindowsCollector:
 
         return data
 
-    def _collect_software(self) -> List[Dict[str, str]]:
+    def _collect_software(self) -> list[dict[str, str]]:
         """Combine 64-bit and 32-bit registry keys for installed software."""
         packages = []
         seen = set()
@@ -413,7 +413,7 @@ class WindowsCollector:
 
         return packages
 
-    def _collect_services(self) -> List[Dict[str, str]]:
+    def _collect_services(self) -> list[dict[str, str]]:
         items = self._run_json("services")
         if not isinstance(items, list):
             items = [items] if isinstance(items, dict) else []
@@ -427,7 +427,7 @@ class WindowsCollector:
             if i.get("Name")
         ]
 
-    def _collect_open_ports(self) -> List[Dict[str, str]]:
+    def _collect_open_ports(self) -> list[dict[str, str]]:
         raw = self._run("open_ports")
         ports = []
         for line in raw.splitlines():
@@ -447,7 +447,7 @@ class WindowsCollector:
                 )
         return ports
 
-    def _collect_users(self) -> List[Dict[str, str]]:
+    def _collect_users(self) -> list[dict[str, str]]:
         users_raw = self._run_json("local_users")
         admins_raw = self._run_json("local_admins")
         admin_names = set()
@@ -472,8 +472,8 @@ class WindowsCollector:
             if u.get("Name")
         ]
 
-    def _collect_security(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
+    def _collect_security(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
         issues = []
 
         fw_raw = self._run_json("firewall")
@@ -572,7 +572,7 @@ class WindowsCollector:
         data["security_issues"] = issues
         return data
 
-    def _collect_network(self) -> Dict[str, Any]:
+    def _collect_network(self) -> dict[str, Any]:
         iface_raw = self._run_json("network_iface")
         return {
             "network_interfaces_raw": json.dumps(iface_raw) if iface_raw else "",
@@ -582,7 +582,7 @@ class WindowsCollector:
             "env_vars_summary": [],
         }
 
-    def _collect_login_history(self) -> Dict[str, Any]:
+    def _collect_login_history(self) -> dict[str, Any]:
         failed_raw = self._run_json("failed_logins")
         failed_list = failed_raw if isinstance(failed_raw, list) else []
         return {
@@ -594,7 +594,7 @@ class WindowsCollector:
             "brute_force_warning": len(failed_list) >= 10,
         }
 
-    def _collect_local_groups(self) -> List[Dict[str, Any]]:
+    def _collect_local_groups(self) -> list[dict[str, Any]]:
         admins_raw = self._run_json("local_admins")
         admin_names = []
         if isinstance(admins_raw, list):

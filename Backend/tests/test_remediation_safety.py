@@ -7,22 +7,22 @@ Author:  pair/Senior Full-Stack Engineer
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from auth.jwt_handler import create_access_token
 from db.base import gen_org_id, gen_user_id
-from db.models import User, Role, Organization
+from db.models import Organization, Role, User
 from db.models.compliance import (
-    ComplianceFramework,
-    ComplianceTenantFramework,
     ComplianceControl,
-    ComplianceRule,
-    ComplianceRuleControl,
     ComplianceFinding,
+    ComplianceFramework,
     ComplianceRemediation,
     ComplianceRemediationRequest,
+    ComplianceRule,
+    ComplianceRuleControl,
+    ComplianceTenantFramework,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def _auth_headers(user: User) -> dict:

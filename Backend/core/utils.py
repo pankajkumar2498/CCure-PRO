@@ -8,19 +8,18 @@ No engines are imported here.
 
 import ctypes
 import ipaddress
+import logging
 import os
 import platform
 import re
 import socket
 import time
 import uuid
-import logging
 from typing import Dict, List, Optional
 
 log = logging.getLogger("ccure.utils")
 
-from core.constants import CVE_HINTS, VER_PATTERNS, CVE_DB
-
+from core.constants import CVE_DB, CVE_HINTS, VER_PATTERNS
 
 # =============================================================================
 # Privilege Manager
@@ -46,7 +45,7 @@ class PrivilegeManager:
             return False
 
     @staticmethod
-    def info() -> Dict:
+    def info() -> dict:
         admin = PrivilegeManager.is_admin()
         return {
             "platform": PrivilegeManager.get_platform(),
@@ -69,7 +68,7 @@ class InputValidator:
         return bool(InputValidator._SAFE_RE.match(value.strip()))
 
     @staticmethod
-    def resolve_hostname(host: str) -> Optional[str]:
+    def resolve_hostname(host: str) -> str | None:
         try:
             return socket.gethostbyname(host)
         except socket.gaierror:
@@ -84,7 +83,7 @@ class InputValidator:
             return False
 
     @staticmethod
-    def validate_cidr(cidr: str) -> Dict:
+    def validate_cidr(cidr: str) -> dict:
         if "/" not in cidr:
             return {"valid": False, "error": "Missing '/' in CIDR."}
         try:
@@ -99,7 +98,7 @@ class InputValidator:
             return {"valid": False, "error": f"Invalid CIDR: {e}"}
 
     @staticmethod
-    def validate_range(ip_range: str) -> Dict:
+    def validate_range(ip_range: str) -> dict:
         parts = ip_range.split("-")
         if len(parts) == 2:
             try:
@@ -122,7 +121,7 @@ class InputValidator:
         return {"valid": False, "error": "Range must contain exactly one dash."}
 
     @staticmethod
-    def resolve_target(target: str) -> Dict:
+    def resolve_target(target: str) -> dict:
         target = target.strip()
         if not InputValidator.is_safe(target):
             return {"error": f"Invalid or unsafe target: '{target}'"}
@@ -150,7 +149,7 @@ class InputValidator:
         return {"error": f"Cannot resolve hostname: '{target}'"}
 
     @staticmethod
-    def expand_ip_range(target: str) -> List[str]:
+    def expand_ip_range(target: str) -> list[str]:
         try:
             parts = target.split("-")
             start = ipaddress.ip_address(parts[0])
@@ -169,7 +168,7 @@ class InputValidator:
             return []
 
     @staticmethod
-    def expand_target(target: str) -> List[str]:
+    def expand_target(target: str) -> list[str]:
         """Expand any target string (CIDR / range / single IP) to a flat list of IPs."""
         res = InputValidator.resolve_target(target)
         if "error" in res:
@@ -184,7 +183,7 @@ class InputValidator:
         return [res["resolved"]]
 
     @staticmethod
-    def parse_custom_ports(ports_str: str) -> List[int]:
+    def parse_custom_ports(ports_str: str) -> list[int]:
         if not ports_str or not ports_str.strip():
             raise ValueError("Port input cannot be empty.")
 
@@ -243,7 +242,7 @@ class InputValidator:
         return sorted(ports_list)
 
     @staticmethod
-    def parse_exclude_ports(ports_str: str) -> List[int]:
+    def parse_exclude_ports(ports_str: str) -> list[int]:
         """
         Parse an exclude-ports string into a sorted list of unique port numbers.
 
@@ -352,7 +351,7 @@ from functools import lru_cache
 
 
 @lru_cache(maxsize=1024)
-def lookup_cve(banner: str) -> List[Dict]:
+def lookup_cve(banner: str) -> list[dict]:
     """
     Match a banner / service string against CVE database.
     Falls back to hardcoded hints if database is unavailable.
@@ -364,7 +363,7 @@ def lookup_cve(banner: str) -> List[Dict]:
         return []
 
     banner_lc = banner.lower()
-    found: List[Dict] = []
+    found: list[dict] = []
 
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
@@ -414,7 +413,6 @@ def get_local_ips() -> set:
                 pass
     except Exception as exc:
         log.debug("Failed to get local IPs: %s", exc)
-        pass
     return local
 
 
@@ -429,6 +427,7 @@ def get_local_mac() -> str:
     # Attempt 1: psutil — accurate, works on multi-NIC Windows/Linux/macOS
     try:
         import socket
+
         import psutil
 
         AF_LINK = (
@@ -465,7 +464,6 @@ def get_local_mac() -> str:
                         return mac
     except Exception as exc:
         log.debug("psutil MAC address resolution failed: %s", exc)
-        pass
 
     # Attempt 2: uuid.getnode() — reliable cross-platform fallback
     try:
@@ -482,8 +480,8 @@ def get_local_mac() -> str:
 
 #  after a successful PING/TCP response, try an ARP cache lookup as a best-effort fallback. This works when the target is on the same subnet:
 
-import subprocess
 import re
+import subprocess
 
 
 def get_mac_from_arp_cache(ip: str) -> str:
@@ -551,12 +549,11 @@ def get_mac_from_arp_cache(ip: str) -> str:
 
     except Exception as exc:
         log.debug("Failed to read MAC from ARP cache for %s: %s", ip, exc)
-        pass
 
     return "N/A"
 
 
-def normalize_mac(mac: str) -> Optional[str]:
+def normalize_mac(mac: str) -> str | None:
     """
     Standardize a MAC address into uppercase colon-separated format (AA:BB:CC:DD:EE:FF).
     Returns None if the format is invalid or has incorrect length.

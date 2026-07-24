@@ -7,9 +7,9 @@ sys.path.insert(
 )
 
 from db.base import SessionLocal
-from db.models import User, Asset
+from db.models import Asset, User
+from db.models.compliance import ComplianceFinding, ComplianceScore
 from db.models.rbac import Organization
-from db.models.compliance import ComplianceScore, ComplianceFinding
 
 
 def diagnostics():

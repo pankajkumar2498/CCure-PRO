@@ -11,9 +11,6 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-
 from core.vuln_intel import (
     as_list,
     build_sql_or_clauses,
@@ -23,6 +20,8 @@ from core.vuln_intel import (
     merge_alias_fields,
     title_case_severity,
 )
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ class CVEDatabase:
     Query interface for vulnerability intelligence.
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             # Check db/cves.db first, then fall back to cves.db at the backend root
             db_path = Path(__file__).parent.parent / "db" / "cves.db"
@@ -81,28 +80,28 @@ class CVEDatabase:
 
     def search_cves_for_service(
         self, service_name: str, version: str = ""
-    ) -> List[Dict]:
+    ) -> list[dict]:
         if self.backend == "postgresql":
             return self._search_postgres(service_name, version)
         if self.backend == "sqlite":
             return self._search_sqlite(service_name, version)
         return self._fallback_search(service_name, version)
 
-    def get_cve_details(self, cve_id: str) -> Optional[Dict]:
+    def get_cve_details(self, cve_id: str) -> dict | None:
         if self.backend == "postgresql":
             return self._get_postgres_details(cve_id)
         if self.backend == "sqlite":
             return self._get_sqlite_details(cve_id)
         return None
 
-    def get_cves_by_severity(self, severity: str) -> List[Dict]:
+    def get_cves_by_severity(self, severity: str) -> list[dict]:
         if self.backend == "postgresql":
             return self._get_postgres_by_severity(severity)
         if self.backend == "sqlite":
             return self._get_sqlite_by_severity(severity)
         return []
 
-    def _search_postgres(self, service_name: str, version: str = "") -> List[Dict]:
+    def _search_postgres(self, service_name: str, version: str = "") -> list[dict]:
         terms = extract_search_terms(f"{service_name} {version}")
         if not terms:
             return self._fallback_search(service_name, version)
@@ -169,7 +168,7 @@ class CVEDatabase:
                 return self._search_sqlite(service_name, version)
             return self._fallback_search(service_name, version)
 
-    def _get_postgres_details(self, cve_id: str) -> Optional[Dict]:
+    def _get_postgres_details(self, cve_id: str) -> dict | None:
         query = text(
             f"""
             SELECT
@@ -240,7 +239,7 @@ class CVEDatabase:
                 return self._get_sqlite_details(cve_id)
             return None
 
-    def _get_postgres_by_severity(self, severity: str) -> List[Dict]:
+    def _get_postgres_by_severity(self, severity: str) -> list[dict]:
         query = text(
             f"""
             SELECT
@@ -286,7 +285,7 @@ class CVEDatabase:
                 return self._get_sqlite_by_severity(severity)
             return []
 
-    def _format_postgres_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_postgres_row(self, row: dict[str, Any]) -> dict[str, Any]:
         record = {
             "cve_id": row.get("cve_id"),
             "description": row.get("description") or "",
@@ -310,7 +309,7 @@ class CVEDatabase:
         }
         return merge_alias_fields(record)
 
-    def _search_sqlite(self, service_name: str, version: str = "") -> List[Dict]:
+    def _search_sqlite(self, service_name: str, version: str = "") -> list[dict]:
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -340,7 +339,7 @@ class CVEDatabase:
             logger.error("SQLite CVE search failed for %s: %s", service_name, exc)
             return self._fallback_search(service_name, version)
 
-    def _get_sqlite_details(self, cve_id: str) -> Optional[Dict]:
+    def _get_sqlite_details(self, cve_id: str) -> dict | None:
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -365,7 +364,7 @@ class CVEDatabase:
             logger.error("SQLite CVE detail lookup failed for %s: %s", cve_id, exc)
             return None
 
-    def _get_sqlite_by_severity(self, severity: str) -> List[Dict]:
+    def _get_sqlite_by_severity(self, severity: str) -> list[dict]:
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -395,11 +394,11 @@ class CVEDatabase:
             logger.error("SQLite severity lookup failed for %s: %s", severity, exc)
             return []
 
-    def _fallback_search(self, service_name: str, version: str) -> List[Dict]:
+    def _fallback_search(self, service_name: str, version: str) -> list[dict]:
         from core.constants import CVE_HINTS
 
         service_name_lower = service_name.lower()
-        cves: List[Dict] = []
+        cves: list[dict] = []
         for key, hints in CVE_HINTS.items():
             if service_name_lower in key.lower() or key.lower() in service_name_lower:
                 cves.extend(hints)
@@ -408,7 +407,7 @@ class CVEDatabase:
         return normalized[:20]
 
 
-_cve_db: Optional[CVEDatabase] = None
+_cve_db: CVEDatabase | None = None
 
 
 def get_cve_database() -> CVEDatabase:

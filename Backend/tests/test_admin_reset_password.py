@@ -4,17 +4,17 @@ tests/test_admin_reset_password.py
 Integration tests for admin-driven password reset.
 """
 
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 from auth.jwt_handler import create_access_token, verify_password
 from db.models import (
     Organization,
     Permission,
+    RefreshTokenSession,
     Role,
     RolePermission,
     User,
-    RefreshTokenSession,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def _grant_permission(
@@ -224,7 +224,7 @@ def test_reset_password_revokes_sessions(client: TestClient, db_session: Session
         or target_user.created_at,  # any valid date
     )
     # Give expires_at dummy value in database
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
 
     session_1.expires_at = datetime.now(timezone.utc) + timedelta(days=1)
 

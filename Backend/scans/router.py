@@ -14,6 +14,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from auth.jwt_handler import decode_token
+from auth.rbac import require_permission
+from db.base import SessionLocal, get_db, utcnow
+from db.models import Permission, RolePermission, User
+from db.models.scans import Scan
 from fastapi import (
     APIRouter,
     Depends,
@@ -24,14 +29,8 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload
-
-from auth.jwt_handler import decode_token
-from auth.rbac import require_permission
-from db.base import get_db, SessionLocal, utcnow
-from db.models import User, RolePermission, Permission
-from db.models.scans import Scan
 from scans.legacy_json_builder import build_legacy_scan_results
+from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
@@ -54,13 +53,13 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
 
 
-def _as_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+def _as_utc_iso(dt: datetime | None) -> str | None:
     """Return a UTC ISO-8601 timestamp with trailing Z for correct client parsing."""
     if not dt:
         return None
@@ -94,7 +93,7 @@ def _scan_summary(scan: Scan) -> dict:
 
 
 def _scan_to_dict(
-    scan: Scan, db: Optional[Session] = None, include_results: bool = False
+    scan: Scan, db: Session | None = None, include_results: bool = False
 ) -> dict:
     """Serialize a Scan row to a JSON-safe dict."""
     pipeline_mode = getattr(scan, "pipeline_mode", "basic") or "basic"
@@ -155,7 +154,7 @@ def _user_can_read_all_scans(user: User, db: Session) -> bool:
 
 
 def _get_scan_or_404(
-    scan_id: str, user: User, db: Session, org_id: Optional[str] = None
+    scan_id: str, user: User, db: Session, org_id: str | None = None
 ) -> Scan:
     target_org_id = _resolve_org(user, org_id)
     query = (
@@ -192,7 +191,7 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
 
 
 def _build_scans_query(
-    db: Session, user: User, org_id: str, scope: str, created_by: Optional[str] = None
+    db: Session, user: User, org_id: str, scope: str, created_by: str | None = None
 ):
     query = (
         db.query(Scan)
@@ -241,7 +240,7 @@ def _scan_history_snapshot(
     scope: str,
     skip: int,
     limit: int,
-    created_by: Optional[str] = None,
+    created_by: str | None = None,
 ) -> dict:
     query, order_by = _build_scans_query(db, user, org_id, scope, created_by)
     scans = query.order_by(*order_by).offset(skip).limit(limit).all()
@@ -331,8 +330,8 @@ def list_scans(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     scope: str = Query("active"),
-    created_by: Optional[str] = Query(None),
-    org_id: Optional[str] = Query(None),
+    created_by: str | None = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
@@ -351,8 +350,8 @@ async def stream_scan_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=200),
     interval: float = Query(2.0, ge=0.5, le=15.0),
-    created_by: Optional[str] = Query(None),
-    org_id: Optional[str] = Query(None),
+    created_by: str | None = Query(None),
+    org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
@@ -493,7 +492,7 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
 @router.get("/{scan_id}")
 def get_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
@@ -505,7 +504,7 @@ def get_scan(
 @router.post("/{scan_id}/archive")
 def archive_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "archive")),
 ):
@@ -535,7 +534,7 @@ def archive_scan(
 @router.post("/{scan_id}/stop")
 def stop_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "execute")),
 ):
@@ -583,7 +582,7 @@ def stop_scan(
 @router.post("/{scan_id}/restore")
 def restore_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "restore")),
 ):
@@ -624,7 +623,7 @@ def restore_scan(
 @router.delete("/{scan_id}")
 def delete_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "recycle")),
 ):
@@ -650,7 +649,7 @@ def delete_scan(
 @router.delete("/{scan_id}/purge")
 def purge_scan(
     scan_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "purge")),
 ):

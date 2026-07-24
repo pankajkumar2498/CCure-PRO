@@ -1,8 +1,9 @@
 import logging
+
+from core.ip_resolver import get_client_ip
+from db.models import AuditLog, User
 from fastapi import Request
 from sqlalchemy.orm import Session
-from db.models import AuditLog, User
-from core.ip_resolver import get_client_ip
 
 logger = logging.getLogger(__name__)
 

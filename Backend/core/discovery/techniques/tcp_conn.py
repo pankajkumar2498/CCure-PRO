@@ -14,9 +14,9 @@ _TLS_PORTS = {443, 8443, 465, 993, 995}
 
 
 async def probe(
-    ips: List[str],
-    ports: List[int],
-    results: Dict[str, Dict],
+    ips: list[str],
+    ports: list[int],
+    results: dict[str, dict],
     timeout: float = 0.8,
     concurrency: int = 256,
     retries: int = 0,

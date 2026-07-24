@@ -45,7 +45,7 @@ class WebSessionManager:
 
     async def authenticate(
         self,
-        auth_config: Dict,
+        auth_config: dict,
         scan_id: str,
     ) -> "WebSession":
         """
@@ -85,7 +85,7 @@ class WebSessionManager:
         log.warning("Unknown auth type '%s' for scan %s", auth_type, scan_id)
         return WebSession(scan_id=scan_id)
 
-    def _create_bearer_session(self, config: Dict, scan_id: str) -> "WebSession":
+    def _create_bearer_session(self, config: dict, scan_id: str) -> "WebSession":
         """Create session with static bearer token."""
         token = config.get("token", "")
         session = WebSession(
@@ -96,7 +96,7 @@ class WebSessionManager:
         self._save_session(session)
         return session
 
-    def _create_cookie_session(self, config: Dict, scan_id: str) -> "WebSession":
+    def _create_cookie_session(self, config: dict, scan_id: str) -> "WebSession":
         """Create session with static cookies."""
         cookies = config.get("cookies", {})
         session = WebSession(
@@ -107,7 +107,7 @@ class WebSessionManager:
         self._save_session(session)
         return session
 
-    def _create_header_session(self, config: Dict, scan_id: str) -> "WebSession":
+    def _create_header_session(self, config: dict, scan_id: str) -> "WebSession":
         """Create session with custom headers."""
         headers = config.get("headers", {})
         session = WebSession(
@@ -118,7 +118,7 @@ class WebSessionManager:
         self._save_session(session)
         return session
 
-    async def _form_login(self, config: Dict, scan_id: str) -> "WebSession":
+    async def _form_login(self, config: dict, scan_id: str) -> "WebSession":
         """
         Perform form-based login using httpx.
 
@@ -253,8 +253,8 @@ class WebSession:
     def __init__(
         self,
         scan_id: str,
-        headers: Optional[Dict[str, str]] = None,
-        cookies: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
         auth_type: str = "none",
         login_url: str = "",
         auth_error: str = "",
@@ -271,7 +271,7 @@ class WebSession:
     def is_authenticated(self) -> bool:
         return bool(self.headers or self.cookies) and not self.auth_error
 
-    def get_auth_headers(self) -> Dict[str, str]:
+    def get_auth_headers(self) -> dict[str, str]:
         """Get all auth headers including cookie header."""
         result = dict(self.headers)
         if self.cookies:
@@ -279,10 +279,10 @@ class WebSession:
             result["Cookie"] = cookie_str
         return result
 
-    def get_cookies(self) -> Dict[str, str]:
+    def get_cookies(self) -> dict[str, str]:
         return dict(self.cookies)
 
-    def get_cookies_for_playwright(self) -> List[Dict]:
+    def get_cookies_for_playwright(self) -> list[dict]:
         """Format cookies for Playwright's add_cookies API."""
         from urllib.parse import urlparse
 
@@ -295,7 +295,7 @@ class WebSession:
             for k, v in self.cookies.items()
         ]
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "headers": self.headers,
             "cookies": self.cookies,
@@ -305,7 +305,7 @@ class WebSession:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict, scan_id: str) -> "WebSession":
+    def from_dict(cls, data: dict, scan_id: str) -> "WebSession":
         session = cls(
             scan_id=scan_id,
             headers=data.get("headers", {}),

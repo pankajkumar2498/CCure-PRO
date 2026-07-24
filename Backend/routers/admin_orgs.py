@@ -1,16 +1,16 @@
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator, EmailStr
-from sqlalchemy.orm import Session
 
-from auth.rbac import require_permission
 from auth.dependencies import get_current_user
 from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password
-from db.base import get_db, gen_org_id, gen_user_id
-from db.models import Organization, User, Role
+from auth.rbac import require_permission
 from core.audit import log_audit_event
+from db.base import gen_org_id, gen_user_id, get_db
+from db.models import Organization, Role, User
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +22,14 @@ class OrganizationCreateSchema(BaseModel):
 
     name: str = Field(..., min_length=3, max_length=255)
     slug: str = Field(..., min_length=2, max_length=100)
-    plan: Optional[str] = "community"
-    max_assets: Optional[int] = Field(default=500, ge=1)
-    max_users: Optional[int] = Field(default=10, ge=1)
+    plan: str | None = "community"
+    max_assets: int | None = Field(default=500, ge=1)
+    max_users: int | None = Field(default=10, ge=1)
 
-    admin_username: Optional[str] = None
-    admin_email: Optional[EmailStr] = None
-    admin_password: Optional[str] = None
-    admin_full_name: Optional[str] = None
+    admin_username: str | None = None
+    admin_email: EmailStr | None = None
+    admin_password: str | None = None
+    admin_full_name: str | None = None
 
     @field_validator("name", "slug")
     @classmethod
@@ -45,15 +45,15 @@ class OrganizationUpdateSchema(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Optional[str] = Field(default=None, min_length=3, max_length=255)
-    slug: Optional[str] = Field(default=None, min_length=2, max_length=100)
-    plan: Optional[str] = None
-    max_assets: Optional[int] = Field(default=None, ge=1)
-    max_users: Optional[int] = Field(default=None, ge=1)
+    name: str | None = Field(default=None, min_length=3, max_length=255)
+    slug: str | None = Field(default=None, min_length=2, max_length=100)
+    plan: str | None = None
+    max_assets: int | None = Field(default=None, ge=1)
+    max_users: int | None = Field(default=None, ge=1)
 
     @field_validator("name", "slug")
     @classmethod
-    def strip_optional_text(cls, value: Optional[str]) -> Optional[str]:
+    def strip_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return value
         value = value.strip()

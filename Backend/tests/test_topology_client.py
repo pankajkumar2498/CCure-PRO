@@ -7,18 +7,18 @@ os.environ["DATABASE_URL"] = (
 from unittest.mock import MagicMock, patch
 
 from core.topology.client import (
-    _format_mac,
-    _format_ip_from_bytes,
-    _get_oid_suffix,
-    walk_target,
-    SNMPCredentials,
-    OID_LLDP_REM_CHASSIS_ID,
-    OID_LLDP_REM_PORT_ID,
-    OID_LLDP_REM_SYS_NAME,
     OID_CDP_CACHE_ADDRESS,
     OID_CDP_CACHE_DEVICE_ID,
     OID_CDP_CACHE_DEVICE_PORT,
     OID_CDP_CACHE_PLATFORM,
+    OID_LLDP_REM_CHASSIS_ID,
+    OID_LLDP_REM_PORT_ID,
+    OID_LLDP_REM_SYS_NAME,
+    SNMPCredentials,
+    _format_ip_from_bytes,
+    _format_mac,
+    _get_oid_suffix,
+    walk_target,
 )
 
 
@@ -212,16 +212,16 @@ def test_walk_target_interface_enrichment(mock_walk, mock_get, mock_engine):
     and resolves bridge ports, using the normalized speed logic and multi-VLAN FDB walks.
     """
     from core.topology.client import (
-        OID_IF_DESCR,
-        OID_IF_NAME,
-        OID_IF_ALIAS,
-        OID_IF_SPEED,
-        OID_IF_HIGH_SPEED,
         OID_BRIDGE_PORT_IF_INDEX,
-        OID_DOT1Q_PVID,
         OID_CISCO_VM_VLAN,
+        OID_DOT1Q_PVID,
         OID_FDB_ADDRESS,
         OID_FDB_PORT,
+        OID_IF_ALIAS,
+        OID_IF_DESCR,
+        OID_IF_HIGH_SPEED,
+        OID_IF_NAME,
+        OID_IF_SPEED,
     )
 
     mock_engine.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())

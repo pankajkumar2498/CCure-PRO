@@ -22,24 +22,23 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, case
-from sqlalchemy.orm import Session
-
 from auth.rbac import require_permission
+from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
 from db.models import User
 from db.models.assets import Asset, AssetChangeLog
 from db.models.findings import (
     AssetVulnerability,
-    VulnerabilityDefinition,
+    HttpSecurityDetail,
     Service,
     TLSDetail,
-    HttpSecurityDetail,
+    VulnerabilityDefinition,
 )
-from db.models.scans import Scan
 from db.models.rbac import Organization
-from core.vuln_intel import compute_priority
+from db.models.scans import Scan
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.dashboard")
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -54,7 +53,7 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -69,7 +68,7 @@ def _now() -> datetime:
 
 @router.get("/summary")
 def get_dashboard_summary(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -256,7 +255,7 @@ def get_dashboard_summary(
 
 @router.get("/risk-breakdown")
 def get_risk_breakdown(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -381,7 +380,7 @@ def get_risk_breakdown(
 @router.get("/vuln-trends")
 def get_vuln_trends(
     days: int = Query(30, ge=7, le=90),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -435,7 +434,7 @@ def get_vuln_trends(
 @router.get("/top-assets")
 def get_top_assets(
     limit: int = Query(10, ge=1, le=50),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -481,8 +480,8 @@ def get_top_assets(
 @router.get("/top-cves")
 def get_top_cves(
     limit: int = Query(10, ge=1, le=50),
-    severity: Optional[str] = Query(None),
-    org_id: Optional[str] = Query(None),
+    severity: str | None = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -547,7 +546,7 @@ def get_top_cves(
 
 @router.get("/services-exposure")
 def get_services_exposure(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -588,7 +587,7 @@ def get_services_exposure(
 
 @router.get("/tls-health")
 def get_tls_health(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -648,7 +647,7 @@ def get_tls_health(
 
 @router.get("/http-headers")
 def get_http_headers(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -705,7 +704,7 @@ def get_http_headers(
 
 @router.get("/compliance")
 def get_compliance(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -871,7 +870,7 @@ def get_compliance(
 
 @router.get("/asset-breakdown")
 def get_asset_breakdown(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -925,7 +924,7 @@ def get_asset_breakdown(
 @router.get("/scan-activity")
 def get_scan_activity(
     limit: int = Query(8, ge=1, le=20),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -987,7 +986,7 @@ def get_scan_activity(
 
 @router.get("/insights")
 def get_insights(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -1142,7 +1141,7 @@ def get_insights(
 
 @router.get("/web-scan-summary")
 def get_web_scan_summary(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -1150,7 +1149,7 @@ def get_web_scan_summary(
     Aggregate statistics for web application scans.
     Mirrors the network /summary endpoint but for DAST results.
     """
-    from db.models.web_scans import WebScan, WebFinding, WebAsset
+    from db.models.web_scans import WebAsset, WebFinding, WebScan
 
     org = _resolve_org(user, org_id)
     now = _now()
@@ -1294,7 +1293,7 @@ def get_web_scan_summary(
 
 @router.get("/web-owasp-scorecard")
 def get_web_owasp_scorecard(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):
@@ -1356,7 +1355,7 @@ def get_web_owasp_scorecard(
 @router.get("/web-scan-trends")
 def get_web_scan_trends(
     days: int = Query(30, ge=7, le=90),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("dashboard", "read")),
 ):

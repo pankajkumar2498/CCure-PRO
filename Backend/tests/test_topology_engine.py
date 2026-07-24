@@ -1,8 +1,8 @@
 from unittest.mock import patch
 
+from core.topology.client import InterfaceInfo, LLDPNeighbor, SNMPWalkResult
 from core.topology.engine import run_topology_mapping
 from db.models import Asset, Scan
-from core.topology.client import SNMPWalkResult, LLDPNeighbor, InterfaceInfo
 
 
 @patch("core.topology.engine._resolve_gateway_ip")
@@ -220,7 +220,7 @@ def test_sync_host_discovery_mac_first_and_ip_hijack(db_session, test_org):
 
 def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, test_org):
     from core.tasks import _sync_credentialed_asset_identity
-    from db.models import User, Role
+    from db.models import Role, User
 
     # Setup test assets
     # Asset A: laptop with MAC 00:11:22:33:44:55 at IP 192.168.1.5

@@ -9,19 +9,17 @@ since the lifespan function in main.py also depends on these symbols.
 
 import json
 import logging
-from typing import Optional, List, Dict
-
-from sqlalchemy.orm import Session
+from typing import Dict, List, Optional
 
 from api.host_discovery_api import HostDiscoveryAPI
+from config import AppConfig
 from db.models import Scan
 from scans.progress import (
     finish_progress as _db_finish_progress,
 )
-
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from config import AppConfig
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.api")
 
@@ -30,7 +28,7 @@ log = logging.getLogger("ccure.api")
 limiter = Limiter(key_func=get_remote_address, storage_uri=AppConfig.CELERY_BROKER_URL)
 
 # ─── Application state ──────────────────────────────────────────────────────
-_api_instance: Optional[HostDiscoveryAPI] = None
+_api_instance: HostDiscoveryAPI | None = None
 
 
 def set_api(api: HostDiscoveryAPI) -> None:
@@ -51,7 +49,7 @@ def get_api() -> HostDiscoveryAPI:
 # ─── Pipeline configuration (mirrors src/config/scanConfig.js) ───────────────
 # Phase 4 (topology_mapping) is eligible to run at the end of any pipeline.
 # It is only executed if SNMP credentials are provided in scan.options.
-PIPELINE_PHASES: Dict[str, List[int]] = {
+PIPELINE_PHASES: dict[str, list[int]] = {
     "basic": [1, 4],
     "asset": [1, 2, 4],
     "vulnerability_audit": [1, 2, 3, 4],
@@ -63,7 +61,7 @@ PIPELINE_MODE_ALIASES = {
 }
 
 
-def _normalize_pipeline_mode(raw: Optional[str]) -> str:
+def _normalize_pipeline_mode(raw: str | None) -> str:
     token = str(raw or "").strip().lower()
     if not token:
         return "basic"
@@ -87,7 +85,7 @@ def is_phase_in_pipeline(pipeline_mode: str, phase: int) -> bool:
     return phase in PIPELINE_PHASES.get(pipeline_mode, [1])
 
 
-def resolve_pipeline_mode(raw: Optional[str]) -> str:
+def resolve_pipeline_mode(raw: str | None) -> str:
     """
     Normalise and validate the pipeline_mode from a request.
     Falls back to 'basic' for unknown / missing values.
@@ -103,7 +101,7 @@ def resolve_pipeline_mode(raw: Optional[str]) -> str:
 # ─── Misc helpers ────────────────────────────────────────────────────────────
 
 
-def validate_total_targets(targets: List[str]) -> None:
+def validate_total_targets(targets: list[str]) -> None:
     from core.utils import InputValidator
     from fastapi import HTTPException
 
@@ -115,14 +113,14 @@ def validate_total_targets(targets: List[str]) -> None:
         )
 
 
-def _safe_json_loads(text: Optional[str], default):
+def _safe_json_loads(text: str | None, default):
     try:
         return json.loads(text or "")
     except Exception:
         return default
 
 
-def _normalize_scan_method(value: Optional[str]) -> Optional[str]:
+def _normalize_scan_method(value: str | None) -> str | None:
     token = str(value or "").strip().upper()
     if not token:
         return None
@@ -141,11 +139,11 @@ def _normalize_scan_method(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def _extract_host_ip(host: dict) -> Optional[str]:
+def _extract_host_ip(host: dict) -> str | None:
     return host.get("ip_address") or host.get("ip")
 
 
-def _target_from_hosts(hosts: List[dict]) -> Optional[str]:
+def _target_from_hosts(hosts: list[dict]) -> str | None:
     ips = []
     for host in hosts or []:
         ip = _extract_host_ip(host)
@@ -156,7 +154,7 @@ def _target_from_hosts(hosts: List[dict]) -> Optional[str]:
     return ", ".join(ips)
 
 
-def _scan_method_from_hosts(hosts: List[dict]) -> Optional[str]:
+def _scan_method_from_hosts(hosts: list[dict]) -> str | None:
     for host in hosts or []:
         method = (
             host.get("scan_method")
@@ -176,10 +174,10 @@ def resolve_report_context(
     db: Session,
     user_id: str,
     *,
-    scan_id: Optional[str] = None,
-    hosts: Optional[List[dict]] = None,
-    requested_targets: Optional[List[str]] = None,
-    requested_scan_type: Optional[str] = None,
+    scan_id: str | None = None,
+    hosts: list[dict] | None = None,
+    requested_targets: list[str] | None = None,
+    requested_scan_type: str | None = None,
 ) -> dict:
     """
     Build report metadata with human-meaningful context:
@@ -187,7 +185,7 @@ def resolve_report_context(
       - scan_method/discovery_scan_method (discovery strategy)
     """
     context: dict = {}
-    scan_row: Optional[Scan] = None
+    scan_row: Scan | None = None
     summary_blob: dict = {}
 
     if scan_id:
@@ -257,7 +255,7 @@ def apply_phase1_summary_hints(
     result: dict,
     db: Session,
     user_id: str,
-    scan_id: Optional[str],
+    scan_id: str | None,
 ) -> None:
     if not scan_id:
         return
@@ -310,8 +308,9 @@ def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":
     Constructs a ReportLab Paragraph containing a secure, clickable hyperlink
     directing the user to the NVD reference page for the specified CVE.
     """
-    from reportlab.platypus import Paragraph
     import html
+
+    from reportlab.platypus import Paragraph
 
     clean_id = str(cve_id).strip()
     # Guard check: if it's not a valid CVE ID, return plain styled Paragraph

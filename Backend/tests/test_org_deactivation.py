@@ -13,10 +13,9 @@ Tests verify that:
 """
 
 import pytest
-from fastapi.testclient import TestClient
-
 from db.base import SessionLocal
-from db.models import Organization, User, Role
+from db.models import Organization, Role, User
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture

@@ -27,14 +27,14 @@ class SubfinderWrapper(ToolWrapper):
             print(sub)
     """
 
-    def __init__(self, binary_path: Optional[str] = None, timeout: int = 300):
+    def __init__(self, binary_path: str | None = None, timeout: int = 300):
         super().__init__(
             binary_path=binary_path or WebScanConfig.SUBFINDER_BINARY,
             timeout=timeout,
             name="subfinder",
         )
 
-    def run(self, target: str, **kwargs) -> Dict:
+    def run(self, target: str, **kwargs) -> dict:
         """
         Enumerate subdomains for a domain.
 

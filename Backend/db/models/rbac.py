@@ -17,6 +17,7 @@ ID Convention (Stripe-Style)
   Permission    →  SmallInteger (kept — permissions are system-seeded atoms)
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     Boolean,
     Column,
@@ -29,9 +30,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Organizations  (top-level multi-tenant boundary)

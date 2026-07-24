@@ -18,24 +18,22 @@ ID Convention (Stripe-Style)
   The org_id FK uses ON UPDATE CASCADE so renaming an org auto-updates all users.
 """
 
+from db.base import TIMESTAMPTZ, Base, gen_uuid, utcnow
 from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
     Text,
     inspect,
     text,
-    Index,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, gen_uuid, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # User

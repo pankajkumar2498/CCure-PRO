@@ -25,19 +25,19 @@ from datetime import datetime
 from typing import List, Optional
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate,
+    HRFlowable,
+    KeepTogether,
+    PageBreak,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    HRFlowable,
-    PageBreak,
-    KeepTogether,
 )
 from scan_helpers import make_pdf_cve_paragraph
 
@@ -590,7 +590,7 @@ class WebScanReportGenerator:
         path = gen.generate(scan_dict, findings_list, assets_list)
     """
 
-    def __init__(self, output_dir: Optional[str] = None):
+    def __init__(self, output_dir: str | None = None):
         if output_dir is None or output_dir == "reports":
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             output_dir = os.path.join(backend_dir, "reports")
@@ -601,8 +601,8 @@ class WebScanReportGenerator:
     def generate(
         self,
         scan: dict,
-        findings: List[dict],
-        assets: List[dict],
+        findings: list[dict],
+        assets: list[dict],
     ) -> str:
         """
         Generate a Web Security PDF report.
@@ -638,7 +638,7 @@ class WebScanReportGenerator:
         try:
             dt = datetime.fromisoformat(str(started))
             doc.scan_timestamp = dt.strftime("%d %b %Y  %H:%M:%S")
-        except Exception:
+        except (ValueError, TypeError):
             doc.scan_timestamp = now.strftime("%d %b %Y  %H:%M:%S")
 
         story = _build_web_scan_story(scan, findings, assets, self.styles)

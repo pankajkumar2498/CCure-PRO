@@ -10,18 +10,16 @@ Endpoints
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from pydantic import BaseModel, Field, SecretStr, field_validator
-
-from db.base import SessionLocal
-from db.models import User, ComplianceCredential
 from auth.rbac import require_permission
-from scans.db_helpers import create_scan
+from db.base import SessionLocal
+from db.models import ComplianceCredential, User
+from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE, SSHScanner
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from scan_helpers import limiter, log
-
-from engines.credentialed.ssh_scanner import SSHScanner, PARAMIKO_AVAILABLE
+from scans.db_helpers import create_scan
 
 router = APIRouter(tags=["Credentialed Scans"])
 
@@ -31,14 +29,14 @@ router = APIRouter(tags=["Credentialed Scans"])
 
 class CredentialedScanRequest(BaseModel):
     ip: str = Field(..., examples=["10.180.6.140"])
-    username: Optional[str] = Field(None, examples=["root"])
-    password: Optional[SecretStr] = Field(None)
-    key_path: Optional[str] = Field(None)
+    username: str | None = Field(None, examples=["root"])
+    password: SecretStr | None = Field(None)
+    key_path: str | None = Field(None)
     port: int = Field(22, ge=1, le=65535)
     auth_method: str = Field("password")
-    sections: Optional[List[str]] = Field(None)
+    sections: list[str] | None = Field(None)
     os_type: str = Field("auto", description="'linux' | 'windows' | 'auto'")
-    credential_id: Optional[str] = Field(None)
+    credential_id: str | None = Field(None)
 
     model_config = {
         # Never include password in JSON serialisation or __repr__
@@ -142,7 +140,7 @@ from core.tasks import run_credentialed_scan_task
 async def scan_credentialed(
     request: Request,
     req: CredentialedScanRequest,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
 ):
     """

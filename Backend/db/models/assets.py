@@ -20,18 +20,19 @@ ID Convention (Stripe-Style)
   AssetTag / AssetNote / AssetChangeLog → BigInteger (high-volume, no need for readable IDs)
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
-    Index,
-    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import (
     INET,
@@ -39,9 +40,6 @@ from sqlalchemy.dialects.postgresql import (
     MACADDR,
 )
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Asset  (the persistent host identity record)

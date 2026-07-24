@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
-
 from auth.rbac import require_permission
 from db.base import get_db
 from db.models import Role, RolePermission, User
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/admin/roles", tags=["RBAC Administration"])
 

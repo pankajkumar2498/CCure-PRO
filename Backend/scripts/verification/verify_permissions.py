@@ -9,7 +9,7 @@ os.environ["DATABASE_URL"] = (
     "postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test"
 )
 
-from sqlalchemy import text, create_engine
+from sqlalchemy import create_engine, text
 
 print("=" * 70)
 print("Verifying Permission Setup for Admin Routes")

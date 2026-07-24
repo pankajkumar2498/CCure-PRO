@@ -20,11 +20,11 @@ from typing import Dict, List, Optional
 from core.celery_app import celery_app
 from db.base import (
     SessionLocal,
-    utcnow,
     gen_web_asset_id,
     gen_web_finding_id,
+    utcnow,
 )
-from db.models.web_scans import WebScan, WebAsset, WebFinding
+from db.models.web_scans import WebAsset, WebFinding, WebScan
 
 log = logging.getLogger("ccure.web.tasks")
 
@@ -62,11 +62,12 @@ def _check_cancelled(db, web_scan_id: str) -> bool:
     return scan and scan.status == "cancelled"
 
 
-def _emit_progress(web_scan_id: str, phase: str, data: Dict) -> None:
+def _emit_progress(web_scan_id: str, phase: str, data: dict) -> None:
     """Publish progress update via Redis pub/sub for web scans."""
     try:
-        from core.redis_client import get_redis_client
         import json
+
+        from core.redis_client import get_redis_client
 
         client = get_redis_client()
         message = json.dumps(
@@ -108,7 +109,7 @@ def _update_scan_phase_status(
     db.commit()
 
 
-def _persist_web_assets(db, web_scan_id: str, endpoints: List[Dict]) -> None:
+def _persist_web_assets(db, web_scan_id: str, endpoints: list[dict]) -> None:
     """Persist discovered endpoints as WebAsset records."""
     for ep in endpoints:
         url = ep.get("url", "")
@@ -153,7 +154,7 @@ def _persist_web_findings(
     db,
     web_scan_id: str,
     org_id: str,
-    findings: List[Dict],
+    findings: list[dict],
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
     for f in findings:
@@ -275,8 +276,8 @@ def run_web_recon_task(
     user_id: str,
     web_scan_id: str,
     target_url: str,
-    scan_scope: Dict,
-    options: Dict,
+    scan_scope: dict,
+    options: dict,
 ):
     """Phase 1: Reconnaissance — subdomain enum, WAF detect, tech fingerprint."""
     db = SessionLocal()
@@ -428,11 +429,11 @@ def run_web_crawl_task(
     user_id: str,
     web_scan_id: str,
     target_url: str,
-    scan_scope: Dict,
-    options: Dict,
-    auth_config: Dict,
-    sitemap_urls: Optional[List[str]] = None,
-    waf_detected: Optional[str] = None,
+    scan_scope: dict,
+    options: dict,
+    auth_config: dict,
+    sitemap_urls: list[str] | None = None,
+    waf_detected: str | None = None,
 ):
     """Phase 2: Crawling — Playwright spidering, ffuf brute, API discovery."""
     db = SessionLocal()
@@ -573,11 +574,11 @@ def run_web_detect_task(
     user_id: str,
     web_scan_id: str,
     target_url: str,
-    endpoints: List[Dict],
-    forms: List[Dict],
-    options: Dict,
-    auth_config: Dict,
-    waf_detected: Optional[str] = None,
+    endpoints: list[dict],
+    forms: list[dict],
+    options: dict,
+    auth_config: dict,
+    waf_detected: str | None = None,
 ):
     """Phase 3: Detection — Nuclei templates, SQLMap, custom checks."""
     db = SessionLocal()
@@ -710,9 +711,9 @@ def run_web_audit_task(
     user_id: str,
     web_scan_id: str,
     target_url: str,
-    findings: List[Dict],
-    endpoints: List[Dict],
-    options: Dict,
+    findings: list[dict],
+    endpoints: list[dict],
+    options: dict,
 ):
     """Phase 4: Audit — TLS audit, compliance mapping, risk scoring."""
     db = SessionLocal()

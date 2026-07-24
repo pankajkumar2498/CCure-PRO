@@ -60,8 +60,8 @@ class FfufWrapper(ToolWrapper):
 
     def __init__(
         self,
-        binary_path: Optional[str] = None,
-        wordlist: Optional[str] = None,
+        binary_path: str | None = None,
+        wordlist: str | None = None,
         timeout: int = 600,
     ):
         super().__init__(
@@ -78,14 +78,14 @@ class FfufWrapper(ToolWrapper):
     def run(
         self,
         target: str,
-        wordlist: Optional[str] = None,
-        rate_limit: Optional[int] = None,
-        extensions: Optional[List[str]] = None,
-        auth_headers: Optional[Dict[str, str]] = None,
-        match_codes: Optional[List[int]] = None,
-        filter_codes: Optional[List[int]] = None,
+        wordlist: str | None = None,
+        rate_limit: int | None = None,
+        extensions: list[str] | None = None,
+        auth_headers: dict[str, str] | None = None,
+        match_codes: list[int] | None = None,
+        filter_codes: list[int] | None = None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """
         Run ffuf directory bruteforcing against a target.
 

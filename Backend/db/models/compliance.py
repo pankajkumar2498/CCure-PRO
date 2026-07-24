@@ -4,8 +4,10 @@ Purpose: SQLAlchemy ORM models for the Policy Compliance Engine.
 Author:  Compliance Dev Team
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     ForeignKey,
     Integer,
@@ -13,13 +15,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Framework Catalog & Multi-Tenancy

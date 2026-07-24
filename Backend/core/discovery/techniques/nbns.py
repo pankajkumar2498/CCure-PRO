@@ -11,7 +11,7 @@ Runs only in the AGGRESSIVE profile (Phase 3 pipeline).
 import logging
 import socket
 import struct
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 log = logging.getLogger("ccure.discovery.nbns")
 
@@ -25,8 +25,8 @@ _NBSTAT_PAYLOAD = (
 
 
 def probe(
-    ips: List[str],
-    results: Dict[str, Dict],
+    ips: list[str],
+    results: dict[str, dict],
     timeout: float = 1.0,
 ) -> None:
     """
@@ -54,7 +54,7 @@ def probe(
             results[ip]["mac"] = mac
 
 
-def _query(ip: str, timeout: float) -> Tuple[List[Dict], Optional[str]]:
+def _query(ip: str, timeout: float) -> tuple[list[dict], str | None]:
     """Send NBSTAT and return (parsed names, mac_string)."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -69,7 +69,7 @@ def _query(ip: str, timeout: float) -> Tuple[List[Dict], Optional[str]]:
         return [], None
 
     num_names = data[56]
-    names: List[Dict] = []
+    names: list[dict] = []
     for i in range(num_names):
         offset = 57 + i * 18
         if offset + 18 > len(data):

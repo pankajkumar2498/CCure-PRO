@@ -19,24 +19,22 @@ ID Convention (Stripe-Style)
   ON UPDATE CASCADE on org_id and created_by so renaming either propagates.
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
     Float,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
-    Index,
 )
 from sqlalchemy.dialects.postgresql import CIDR, JSONB
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Scan

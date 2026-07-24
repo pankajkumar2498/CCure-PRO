@@ -1,8 +1,8 @@
-import unittest
+import ipaddress
+import logging
 import socket
 import struct
-import logging
-import ipaddress
+import unittest
 from unittest.mock import MagicMock, patch
 
 # Configure logging to capture audit logs during tests
@@ -173,8 +173,9 @@ class TestOTSafetyAndStability(unittest.TestCase):
     @patch("orchestrator.scan_orchestrator.PortEngine")
     def test_passive_first_bypass(self, mock_port_engine_class):
         """Verify that passive-first bypasses active port scanning for pre-resolved hosts."""
-        from orchestrator.scan_orchestrator import ScanOrchestrator
         from unittest.mock import AsyncMock
+
+        from orchestrator.scan_orchestrator import ScanOrchestrator
 
         mock_port_engine = MagicMock()
         mock_port_engine.run = AsyncMock()
@@ -221,8 +222,8 @@ class TestOTSafetyAndStability(unittest.TestCase):
 
     def test_port_engine_excludes_ot_ports(self):
         """Verify that PortEngine excludes OT ports from Nmap scan list when enabled."""
-        from engines.port.port_engine import PortEngine
         from core.models import ScanIntensity
+        from engines.port.port_engine import PortEngine
 
         engine_exclude = PortEngine(
             intensity=ScanIntensity.NORMAL, exclude_ot_from_nmap=True

@@ -6,18 +6,19 @@ Tests are expected to run against PostgreSQL and require DATABASE_URL to be set 
 """
 
 import os
-import pytest
-from typing import Generator
-from fastapi.testclient import TestClient
 import sys
+from collections.abc import Generator
 from pathlib import Path
+
+import pytest
+import sqlalchemy.dialects.sqlite.base as sqlite_base
 from dotenv import load_dotenv
+from fastapi.testclient import TestClient
 
 # ── Legacy SQLite Compatibility Helpers ───────────────────────────────────────
 # These helpers remain available for older test code, but tests must run on PostgreSQL.
-from sqlalchemy.dialects.postgresql import UUID, JSONB, INET, MACADDR, CIDR
-from sqlalchemy.types import String, JSON, SmallInteger, BigInteger, Integer
-import sqlalchemy.dialects.sqlite.base as sqlite_base
+from sqlalchemy.dialects.postgresql import CIDR, INET, JSONB, MACADDR, UUID
+from sqlalchemy.types import JSON, BigInteger, Integer, SmallInteger, String
 
 sqlite_base.SQLiteDialect.colspecs.update(
     {
@@ -62,6 +63,7 @@ if not database_url.startswith("postgresql"):
 
 # Safety guard: refuse to run against production or development databases
 from urllib.parse import urlparse
+
 from sqlalchemy import create_engine, text
 
 
@@ -81,8 +83,8 @@ def _ensure_test_db_exists(url: str):
             if not res.scalar():
                 conn.execute(text(f'CREATE DATABASE "{target_db}"'))
         admin_engine.dispose()
-    except Exception:
-        pass
+    except (OperationalError, DBAPIError) as err:
+        logger.debug("Test DB creation skipped: %s", err)
 
 
 _ensure_test_db_exists(database_url)
@@ -109,15 +111,15 @@ from main import app
 # to auth/login trigger 429 Too Many Requests. Disable globally for the test run.
 try:
     app.state.limiter.enabled = False
-except Exception:
-    pass  # If import fails (e.g. state missing), tests still run
+except (AttributeError, KeyError):
+    logger.debug("app.state.limiter not present; continuing without disabling limiter")
 
-from sqlalchemy.orm import Session
-from db.base import get_db, engine, Base, SessionLocal
-from db.models.users import User
-from db.models.rbac import Organization, Role
 from auth.jwt_handler import hash_password
+from db.base import Base, SessionLocal, engine, get_db
+from db.models.rbac import Organization, Role
+from db.models.users import User
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
 
 # ── Additional SQLite Hack: @compiles ───────────────────────────────────────
 
@@ -147,7 +149,7 @@ def compile_cidr(element, compiler, **kw):
     return "VARCHAR(45)"
 
 
-from sqlalchemy.types import SmallInteger, BigInteger
+from sqlalchemy.types import BigInteger, SmallInteger
 
 
 @compiles(SmallInteger, "sqlite")
@@ -184,7 +186,7 @@ UUID.bind_processor = custom_bind_processor
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
-    from db.migrate_production_schema import seed_rbac, create_partitions
+    from db.migrate_production_schema import create_partitions, seed_rbac
 
     with engine.begin() as conn:
         Base.metadata.create_all(bind=conn)
@@ -375,8 +377,12 @@ def detect_process_leaks():
                 pid = proc.pid
                 leak_details.append(f"{name} (PID {pid})")
                 proc.terminate()
-            except Exception:
-                pass
+            except (
+                psutil.NoSuchProcess,
+                psutil.AccessDenied,
+                psutil.Error,
+            ) as proc_err:
+                logger.debug("Could not terminate process %s: %s", proc, proc_err)
         # Fail the test if orphaned processes are detected
         assert (
             False
@@ -387,7 +393,7 @@ def detect_process_leaks():
 def global_scanner_mocking():
     """Globally mocks scanners if MOCK_SCANNERS=true is set in the environment."""
     if os.getenv("MOCK_SCANNERS") == "true":
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Mock SSH connections
         ssh_patcher = patch(

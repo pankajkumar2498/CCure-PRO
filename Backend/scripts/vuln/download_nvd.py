@@ -10,13 +10,14 @@ Usage:
     python Scripts/download_nvd.py --skip-ssl         # Skip SSL verification (dev only)
 """
 
+import argparse
 import json
 import sqlite3
-import requests
-import argparse
-import time
 import sys
+import time
 from pathlib import Path
+
+import requests
 
 # SQLite DB location
 DB_PATH = Path(__file__).parent.parent.parent / "db" / "cves.db"

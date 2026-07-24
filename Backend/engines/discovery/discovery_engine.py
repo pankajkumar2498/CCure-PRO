@@ -29,9 +29,9 @@ from typing import Dict, List, Optional
 # ── New implementation ────────────────────────────────────────────────────────
 from core.discovery.engine import DiscoveryEngine as _NewDiscoveryEngine
 from core.discovery.profiles import (
-    FAST,
-    BALANCED,
     AGGRESSIVE,
+    BALANCED,
+    FAST,
     DiscoveryProfile,
 )
 from core.models import DiscoveryScanType
@@ -39,7 +39,7 @@ from core.models import DiscoveryScanType
 log = logging.getLogger("ccure.discovery.shim")
 
 # ── scan_type string → DiscoveryProfile ──────────────────────────────────────
-_SCAN_TYPE_TO_PROFILE: Dict[str, DiscoveryProfile] = {
+_SCAN_TYPE_TO_PROFILE: dict[str, DiscoveryProfile] = {
     # New pipeline modes
     "fast": FAST,
     "basic": FAST,
@@ -90,12 +90,12 @@ class DiscoveryEngine:
         timing_level: int = 3,
         scan_technique: str = "syn",
         decoy_count: int = 0,
-        source_port: Optional[int] = None,
-        fragment_mtu: Optional[int] = None,
+        source_port: int | None = None,
+        fragment_mtu: int | None = None,
         randomize_ports: bool = False,
         enable_l2_sniffer: bool = False,
         # New optional parameter — callers can pass profile directly
-        profile: Optional[DiscoveryProfile] = None,
+        profile: DiscoveryProfile | None = None,
     ):
         self._has_privileges = has_privileges
         self._stealth_mode = stealth_mode
@@ -109,9 +109,9 @@ class DiscoveryEngine:
 
     async def run(
         self,
-        ip_list: List[str],
+        ip_list: list[str],
         scan_type: "DiscoveryScanType | str" = DiscoveryScanType.ADAPTIVE,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Drop-in replacement for the original DiscoveryEngine.run().
 

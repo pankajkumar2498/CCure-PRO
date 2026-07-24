@@ -67,7 +67,7 @@ class BaseExecutor(Protocol):
         """Close connection and clean up resources."""
         ...
 
-    def run(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+    def run(self, command: str, timeout: int | None = None) -> CommandResult:
         """Execute a shell command on the target asset."""
         ...
 
@@ -96,9 +96,9 @@ class SSHScanner:
         self,
         ip: str,
         username: str,
-        password: Optional[str] = None,
-        key_path: Optional[str] = None,
-        key_content: Optional[str] = None,
+        password: str | None = None,
+        key_path: str | None = None,
+        key_content: str | None = None,
         port: int = 22,
         timeout: int = 10,
     ):
@@ -109,7 +109,7 @@ class SSHScanner:
         self._key_content = key_content
         self.port = port
         self.timeout = timeout
-        self._client: Optional["paramiko.SSHClient"] = None
+        self._client: paramiko.SSHClient | None = None
         self._lock = threading.Lock()
 
     # ── Context manager ────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ class SSHScanner:
             raise RuntimeError(
                 f"SSH authentication failed for {self.username}@{self.ip}: {exc}"
             ) from exc
-        except (socket.timeout, paramiko.ssh_exception.NoValidConnectionsError) as exc:
+        except (TimeoutError, paramiko.ssh_exception.NoValidConnectionsError) as exc:
             raise RuntimeError(f"Cannot reach {self.ip}:{self.port} — {exc}") from exc
         except Exception as exc:
             raise RuntimeError(f"SSH connection error to {self.ip}: {exc}") from exc
@@ -189,7 +189,7 @@ class SSHScanner:
         self._key_path = None
         self._key_content = None
 
-    def run(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+    def run(self, command: str, timeout: int | None = None) -> CommandResult:
         """
         Execute a command on the remote host.
 
@@ -257,5 +257,5 @@ class SSHScanner:
         try:
             with socket.create_connection((ip, port), timeout=timeout):
                 return True
-        except (socket.timeout, ConnectionRefusedError, OSError):
+        except (TimeoutError, ConnectionRefusedError, OSError):
             return False

@@ -6,10 +6,10 @@ Unit tests for the DB-backed progress tracking logic.
 
 from db.models.scans import Scan
 from scans.progress import (
-    init_progress,
-    update_progress,
     finish_progress,
+    init_progress,
     read_progress,
+    update_progress,
 )
 from sqlalchemy.orm import Session
 

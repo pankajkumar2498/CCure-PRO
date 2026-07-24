@@ -10,9 +10,9 @@ Usage:
 Expected: All checks passed! (all checks)
 """
 
-import sys
 import io
 import os
+import sys
 
 # Ensure UTF-8 output on Windows (fixes Unicode arrow/box-drawing crash on cp1252 consoles)
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
@@ -208,7 +208,7 @@ check(
 # -- Optional dependency check --
 print()
 try:
-    import scapy  # noqa
+    import scapy
 
     print("  [INFO] Scapy     : installed - ARP / ICMP / SYN / stealth modes available")
 except ImportError:
@@ -217,7 +217,7 @@ except ImportError:
     )
 
 try:
-    import reportlab  # noqa
+    import reportlab
 
     print("  [INFO] reportlab : installed - PDF report generation available")
 except ImportError:
@@ -226,8 +226,8 @@ except ImportError:
     )
 
 try:
-    import fastapi  # noqa
-    import uvicorn  # noqa
+    import fastapi
+    import uvicorn
 
     print(
         "  [INFO] FastAPI   : installed - API server available (uvicorn main:app --reload)"

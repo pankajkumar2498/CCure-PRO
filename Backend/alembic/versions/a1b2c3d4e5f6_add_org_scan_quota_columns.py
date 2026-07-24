@@ -12,8 +12,8 @@ NULL means "use the plan default from core/quota.py".
 Superadmins can set these to grant or restrict quota per org.
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"

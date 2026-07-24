@@ -1,16 +1,14 @@
-from logging.config import fileConfig
 import os
-import sys
 import re
+import sys
+from logging.config import fileConfig
 from pathlib import Path
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
 
 from alembic import context
 
 # Load environment variables
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
 
 # Prefer explicit DATABASE_URL from environment. Otherwise load the same
 # Backend env file as the app: .env.test for development, .env for production.
@@ -120,7 +118,7 @@ def include_object(object, name, type_, reflected, compare_to):
 
     if type_ == "index":
         if compare_to is not None and hasattr(compare_to, "table"):
-            tbl = getattr(compare_to, "table")
+            tbl = compare_to.table
             if tbl is not None and re.match(r".*_p[0-9]+$", tbl.name):
                 return False
     return True

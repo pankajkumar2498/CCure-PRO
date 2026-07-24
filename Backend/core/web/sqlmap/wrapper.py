@@ -39,8 +39,8 @@ class SqlmapWrapper(ToolWrapper):
 
     def __init__(
         self,
-        binary_path: Optional[str] = None,
-        timeout: Optional[int] = None,
+        binary_path: str | None = None,
+        timeout: int | None = None,
     ):
         super().__init__(
             binary_path=binary_path or WebScanConfig.SQLMAP_BINARY,
@@ -56,12 +56,12 @@ class SqlmapWrapper(ToolWrapper):
         self,
         target: str,
         method: str = "GET",
-        post_data: Optional[str] = None,
-        auth_headers: Optional[Dict[str, str]] = None,
-        level: Optional[int] = None,
-        risk: Optional[int] = None,
+        post_data: str | None = None,
+        auth_headers: dict[str, str] | None = None,
+        level: int | None = None,
+        risk: int | None = None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         """
         Test a URL for SQL injection vulnerabilities.
 

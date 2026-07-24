@@ -19,7 +19,7 @@ from typing import Dict, List, Set
 log = logging.getLogger("ccure.web.correlation")
 
 
-def deduplicate_findings(findings: List[Dict]) -> List[Dict]:
+def deduplicate_findings(findings: list[dict]) -> list[dict]:
     """
     Deduplicate web findings by URL + finding_type.
 
@@ -38,14 +38,14 @@ def deduplicate_findings(findings: List[Dict]) -> List[Dict]:
         return []
 
     # Group by (matched_at_url, finding_type)
-    groups: Dict[str, List[Dict]] = {}
+    groups: dict[str, list[dict]] = {}
     for f in findings:
         url = (f.get("matched_at") or f.get("request_url") or "").split("?")[0]
         ftype = f.get("finding_type", "unknown")
         key = f"{url}|{ftype}"
         groups.setdefault(key, []).append(f)
 
-    deduplicated: List[Dict] = []
+    deduplicated: list[dict] = []
     for key, group in groups.items():
         if len(group) == 1:
             deduplicated.append(group[0])
@@ -64,7 +64,7 @@ def deduplicate_findings(findings: List[Dict]) -> List[Dict]:
     return deduplicated
 
 
-def _merge_finding_group(group: List[Dict]) -> Dict:
+def _merge_finding_group(group: list[dict]) -> dict:
     """
     Merge a group of duplicate findings into one.
 
@@ -87,8 +87,8 @@ def _merge_finding_group(group: List[Dict]) -> Dict:
     merged = dict(sorted_group[0])
 
     # Merge from others
-    tools_used: Set[str] = set()
-    all_evidence: List[str] = []
+    tools_used: set[str] = set()
+    all_evidence: list[str] = []
     max_cvss = merged.get("cvss_score", 0.0) or 0.0
 
     for f in sorted_group:
@@ -96,8 +96,7 @@ def _merge_finding_group(group: List[Dict]) -> Dict:
         tools_used.add(tool)
 
         cvss = f.get("cvss_score", 0.0) or 0.0
-        if cvss > max_cvss:
-            max_cvss = cvss
+        max_cvss = max(max_cvss, cvss)
 
         # Collect unique evidence
         for evidence_field in ("request_evidence", "response_evidence", "payload_used"):
@@ -120,10 +119,10 @@ def _merge_finding_group(group: List[Dict]) -> Dict:
 
 
 def correlate_with_network_findings(
-    web_findings: List[Dict],
-    network_cves: List[Dict],
+    web_findings: list[dict],
+    network_cves: list[dict],
     target_domain: str,
-) -> List[Dict]:
+) -> list[dict]:
     """
     Cross-reference web findings with network scan CVEs for the same
     host/domain. If both find the same CVE, boost confidence.
@@ -136,7 +135,7 @@ def correlate_with_network_findings(
     Returns:
         Enhanced web findings with cross-reference notes
     """
-    network_cve_ids: Set[str] = {
+    network_cve_ids: set[str] = {
         cve.get("cve_id", "").upper() for cve in network_cves if cve.get("cve_id")
     }
 

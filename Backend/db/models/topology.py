@@ -16,10 +16,9 @@ Design decisions:
     and only creates the table if it doesn't exist.
 """
 
-from sqlalchemy import BigInteger, Column, Integer, String, ForeignKey, Index
+from db.base import TIMESTAMPTZ, Base, utcnow
+from sqlalchemy import BigInteger, Column, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
-
-from db.base import Base, TIMESTAMPTZ, utcnow
 
 
 class NetworkLink(Base):

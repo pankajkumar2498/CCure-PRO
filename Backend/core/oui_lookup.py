@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import requests
 
@@ -39,9 +39,9 @@ class OUIDatabase:
 
     def __init__(
         self,
-        db_path: Optional[str] = None,
-        cache_path: Optional[str] = None,
-        api_url: Optional[str] = None,
+        db_path: str | None = None,
+        cache_path: str | None = None,
+        api_url: str | None = None,
     ):
         """Initialize OUI database. Loads on first lookup."""
         if db_path is None:
@@ -63,8 +63,8 @@ class OUIDatabase:
             "MAC_VENDOR_CACHE_PATH", DEFAULT_VENDOR_CACHE_FILE
         )
         self.api_url = api_url or DEFAULT_VENDOR_API_URL
-        self._database: Dict[str, str] = {}
-        self._cache: Dict[str, str] = {}
+        self._database: dict[str, str] = {}
+        self._cache: dict[str, str] = {}
         self._loaded = False
         self._cache_lock = threading.Lock()
         self._pending_fetches = set()
@@ -127,13 +127,11 @@ class OUIDatabase:
 
     def _load_cache(self):
         """Placeholder for disk cache load (disabled in favor of PostgreSQL cache)."""
-        pass
 
     def _save_cache(self):
         """Placeholder for disk cache save (disabled in favor of PostgreSQL cache)."""
-        pass
 
-    def _normalize_mac(self, mac_address: str) -> Optional[str]:
+    def _normalize_mac(self, mac_address: str) -> str | None:
         if not mac_address:
             return None
         mac_clean = (
@@ -141,7 +139,7 @@ class OUIDatabase:
         )
         return mac_clean if len(mac_clean) >= 6 else None
 
-    def _query_vendor_api(self, mac_address: str) -> Optional[str]:
+    def _query_vendor_api(self, mac_address: str) -> str | None:
         if not self.api_url:
             return None
 
@@ -233,7 +231,7 @@ class OUIDatabase:
             with self._cache_lock:
                 self._pending_fetches.discard(mac_clean)
 
-    def lookup(self, mac_address: str) -> Optional[str]:
+    def lookup(self, mac_address: str) -> str | None:
         """
         Look up vendor name for a MAC address.
 
@@ -283,7 +281,7 @@ class OUIDatabase:
         self._schedule_api_fetch(mac_clean)
         return None
 
-    def lookup_sync(self, mac_address: str) -> Optional[str]:
+    def lookup_sync(self, mac_address: str) -> str | None:
         """Synchronous vendor lookup using API fallback."""
         vendor = self.lookup(mac_address)
         if vendor:
@@ -322,7 +320,7 @@ class OUIDatabase:
 
 
 # Global OUI database instance
-_oui_db: Optional[OUIDatabase] = None
+_oui_db: OUIDatabase | None = None
 
 
 def get_oui_db() -> OUIDatabase:
@@ -333,7 +331,7 @@ def get_oui_db() -> OUIDatabase:
     return _oui_db
 
 
-def lookup_vendor(mac_address: str) -> Optional[str]:
+def lookup_vendor(mac_address: str) -> str | None:
     """
     Lookup vendor name for a MAC address.
 
@@ -353,7 +351,7 @@ def lookup_vendor(mac_address: str) -> Optional[str]:
 # =============================================================================
 
 #: Maps a substring of a vendor name (lowercase) to a device category string.
-VENDOR_DEVICE_MAP: Dict[str, str] = {
+VENDOR_DEVICE_MAP: dict[str, str] = {
     "cisco": "router",
     "juniper": "router",
     "ubiquiti": "wireless_ap",

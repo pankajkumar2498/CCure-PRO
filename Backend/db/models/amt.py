@@ -4,16 +4,16 @@ Purpose: AMT Inventory reference records for optional reconciliation.
 Author:  Pair Engineer
 """
 
+from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
     BigInteger,
     Column,
     ForeignKey,
+    Index,
     Integer,
     String,
-    Index,
 )
 from sqlalchemy.dialects.postgresql import MACADDR
-from db.base import Base, TIMESTAMPTZ, utcnow
 
 
 class AMTInventoryRecord(Base):

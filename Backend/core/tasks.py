@@ -4,37 +4,37 @@ core/tasks.py
 Celery background tasks for long-running network scans.
 """
 
+import asyncio
 import logging
 import os
-import asyncio
 import time
-from typing import List, Optional, Dict
-from sqlalchemy import func
-from sqlalchemy.dialects.postgresql import insert
+from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
-from db.base import SessionLocal, gen_service_id, gen_asset_id, utcnow
+from db.base import SessionLocal, gen_asset_id, gen_service_id, utcnow
 from db.models import (
     Asset,
     AssetVulnerability,
-    Service,
+    Organization,
     Scan,
+    Service,
     User,
     VulnerabilityDefinition,
-    Organization,
 )
 from orchestrator.scan_orchestrator import ScanOrchestrator
-from scans.db_helpers import (
-    update_scan_phase,
-    mark_scan_failed,
-    create_completed_scan,
-)
 from scan_helpers import (
-    resolve_pipeline_mode,
     get_terminal_phase,
-    resolve_report_context,
     phase1_summary_from_scan,
+    resolve_pipeline_mode,
+    resolve_report_context,
 )
+from scans.db_helpers import (
+    create_completed_scan,
+    mark_scan_failed,
+    update_scan_phase,
+)
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert
 
 log = logging.getLogger("ccure.tasks")
 
@@ -84,19 +84,19 @@ def _update_task_id(db: SessionLocal, scan_id: str, task_id: str):
 
 
 def _merge_host_identity(
-    enriched_hosts: List[dict], source_hosts: List[dict]
-) -> List[dict]:
+    enriched_hosts: list[dict], source_hosts: list[dict]
+) -> list[dict]:
     """
     Preserve identity/context fields from the previous phase when the next phase
     returns only partial host records.
     """
-    by_ip: Dict[str, dict] = {}
+    by_ip: dict[str, dict] = {}
     for host in source_hosts or []:
         ip = host.get("ip_address") or host.get("ip")
         if ip:
             by_ip[ip] = host
 
-    merged: List[dict] = []
+    merged: list[dict] = []
     for idx, host in enumerate(enriched_hosts or []):
         base = {}
         ip = host.get("ip_address") or host.get("ip")
@@ -144,26 +144,26 @@ def _sync_credentialed_asset_identity(
     ip: str,
     scan_id: str,
     os_type: str,
-    system_data: Dict,
-    stored_report: Dict,
-    cve_list: List[Dict],
-    severity_counts: Dict[str, int],
+    system_data: dict,
+    stored_report: dict,
+    cve_list: list[dict],
+    severity_counts: dict[str, int],
 ) -> None:
     """
     Promote trusted credentialed scan identity into the Asset Registry.
     Phase 4: Adds forensic logging and provenance.
     """
+    from core.oui_lookup import lookup_vendor
     from scans.asset_syncer import (
+        _confidence_to_percent,
         _finding_family,
         _finding_source_from_record,
-        _confidence_to_percent,
         _has_value,
-        _record_asset_change,
         _recalculate_asset_risk,
+        _record_asset_change,
         _set_asset_field,
         _to_int,
     )
-    from core.oui_lookup import lookup_vendor
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -482,7 +482,7 @@ def _sync_credentialed_asset_identity(
     )
 
 
-def _extract_credentialed_identity_names(system_data: Dict) -> tuple[str, str, str]:
+def _extract_credentialed_identity_names(system_data: dict) -> tuple[str, str, str]:
     raw_hostname_fqdn = _clean_text(system_data.get("hostname_fqdn"))
     explicit_fqdn = _clean_text(system_data.get("fqdn"))
     hostname_short = _clean_text(system_data.get("hostname_short"))
@@ -514,8 +514,8 @@ def _normalize_mac(value) -> str:
 
 
 def _credentialed_sections_with_identity(
-    sections: Optional[List[str]],
-) -> Optional[List[str]]:
+    sections: list[str] | None,
+) -> list[str] | None:
     if sections is None:
         return None
     required = ["system_info", "network"]
@@ -526,13 +526,13 @@ def _credentialed_sections_with_identity(
     return merged
 
 
-def _compact_dict(data: Dict) -> Dict:
+def _compact_dict(data: dict) -> dict:
     return {
         key: value for key, value in data.items() if value not in (None, "", [], {})
     }
 
 
-def _normalized_severity_counts(counts: Dict[str, int]) -> Dict[str, int]:
+def _normalized_severity_counts(counts: dict[str, int]) -> dict[str, int]:
     normalized = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
     for key, value in (counts or {}).items():
         label = str(key or "Info").title()
@@ -542,7 +542,7 @@ def _normalized_severity_counts(counts: Dict[str, int]) -> Dict[str, int]:
     return normalized
 
 
-def _credentialed_risk_from_counts(counts: Dict[str, int]) -> tuple[int, str]:
+def _credentialed_risk_from_counts(counts: dict[str, int]) -> tuple[int, str]:
     score = min(
         100,
         counts.get("Critical", 0) * 25
@@ -561,7 +561,7 @@ def _credentialed_risk_from_counts(counts: Dict[str, int]) -> tuple[int, str]:
     return 0, "Info"
 
 
-def _port_int(value) -> Optional[int]:
+def _port_int(value) -> int | None:
     try:
         port = int(str(value).strip())
     except (TypeError, ValueError):
@@ -572,7 +572,7 @@ def _port_int(value) -> Optional[int]:
 
 
 def _sync_credentialed_services(
-    db, asset: Asset, scan_id: str, ports: List[Dict], packages: List[Dict] = None
+    db, asset: Asset, scan_id: str, ports: list[dict], packages: list[dict] = None
 ) -> None:
     import re
 
@@ -689,7 +689,7 @@ def _sync_credentialed_vulnerabilities(
     asset: Asset,
     org_id: str,
     scan_id: str,
-    cve_list: List[Dict],
+    cve_list: list[dict],
 ) -> None:
     from scans.asset_syncer import _resolve_finding_id
 
@@ -811,7 +811,7 @@ def _sync_credentialed_vulnerabilities(
 
 @celery_app.task(name="ccure.tasks.sync_asset_discovery_task", queue="scanner")
 def sync_asset_discovery_task(
-    scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     db = SessionLocal()
     try:
@@ -837,7 +837,7 @@ def sync_asset_discovery_task(
 
 @celery_app.task(name="ccure.tasks.sync_vulnerability_audit_task", queue="scanner")
 def sync_vulnerability_audit_task(
-    scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     db = SessionLocal()
     try:
@@ -863,7 +863,7 @@ def sync_vulnerability_audit_task(
 
 @celery_app.task(name="ccure.tasks.sync_host_discovery_task", queue="scanner")
 def sync_host_discovery_task(
-    scan_id: str, org_id: str, user_id: Optional[str], hosts: List[dict]
+    scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
     db = SessionLocal()
     try:
@@ -891,20 +891,20 @@ def sync_host_discovery_task(
 def run_host_discovery_task(
     self,
     user_id: str,
-    targets: List[str],
+    targets: list[str],
     scan_type: str,
     pipeline_mode: str,
     discovery_intensity: str,
     scan_id: str,
-    rate_limit: Optional[float] = None,
-    max_concurrency: Optional[int] = None,
+    rate_limit: float | None = None,
+    max_concurrency: int | None = None,
     os_detection: bool = True,
     port_scan_intensity: str = "normal",
-    custom_ports: Optional[str] = None,
-    exclude_ports: Optional[str] = None,
-    passive_first: Optional[bool] = None,
-    exclude_ot_from_nmap: Optional[bool] = None,
-    exclude_ips: Optional[str] = None,
+    custom_ports: str | None = None,
+    exclude_ports: str | None = None,
+    passive_first: bool | None = None,
+    exclude_ot_from_nmap: bool | None = None,
+    exclude_ips: str | None = None,
 ):
     """Phase 1 Background Task."""
     import datetime
@@ -1107,16 +1107,16 @@ def run_host_discovery_task(
 def run_asset_discovery_task(
     self,
     user_id: str,
-    hosts: List[dict],
+    hosts: list[dict],
     intensity: str,
     scan_id: str,
     pipeline_mode: str,
     os_detection: bool = True,
-    custom_ports: Optional[str] = None,
-    exclude_ports: Optional[str] = None,
-    exclude_ot_from_nmap: Optional[bool] = None,
-    passive_first: Optional[bool] = None,
-    exclude_ips: Optional[str] = None,
+    custom_ports: str | None = None,
+    exclude_ports: str | None = None,
+    exclude_ot_from_nmap: bool | None = None,
+    passive_first: bool | None = None,
+    exclude_ips: str | None = None,
 ):
     """Phase 2 Background Task."""
     import datetime
@@ -1324,11 +1324,11 @@ def run_asset_discovery_task(
 def run_vulnerability_audit_task(
     self,
     user_id: str,
-    hosts: List[dict],
+    hosts: list[dict],
     scan_id: str,
     pipeline_mode: str,
-    exclude_ot_from_nmap: Optional[bool] = None,
-    exclude_ips: Optional[str] = None,
+    exclude_ot_from_nmap: bool | None = None,
+    exclude_ips: str | None = None,
 ):
     """Phase 3 Background Task."""
     db = SessionLocal()
@@ -1448,7 +1448,7 @@ def _should_chain_topology(scan_row) -> bool:
 
 def _chain_topology_if_needed(
     db, scan_id: str, user_id: str, scan_row=None
-) -> Optional[str]:
+) -> str | None:
     """
     If SNMP is configured, dispatch the topology mapping task.
     Returns the chained task ID or None if topology was not triggered.
@@ -1631,13 +1631,13 @@ def run_topology_mapping_task(
 @celery_app.task(name="ccure.tasks.run_traditional_scan", queue="scanner")
 def run_traditional_scan_task(
     user_id: str,
-    targets: List[str],
+    targets: list[str],
     phases: str,
     scan_type: str,
     intensity: str,
-    passive_first: Optional[bool] = None,
-    exclude_ot_from_nmap: Optional[bool] = None,
-    exclude_ips: Optional[str] = None,
+    passive_first: bool | None = None,
+    exclude_ot_from_nmap: bool | None = None,
+    exclude_ips: str | None = None,
 ):
     """Traditional Scan Task."""
     db = SessionLocal()
@@ -1667,23 +1667,23 @@ def run_traditional_scan_task(
 def run_credentialed_scan_task(
     user_id: str,
     ip: str,
-    username: Optional[str],
-    password: Optional[str],
-    key_path: Optional[str],
+    username: str | None,
+    password: str | None,
+    key_path: str | None,
     port: int,
     auth_method: str,
-    sections: Optional[List[str]],
+    sections: list[str] | None,
     os_type_req: str,
-    scan_id: Optional[str] = None,
-    credential_id: Optional[str] = None,
+    scan_id: str | None = None,
+    credential_id: str | None = None,
 ):
     """Phase 5 Credentialed Scan Task."""
-    from engines.credentialed.ssh_scanner import SSHScanner
-    from engines.credentialed.linux_collector import LinuxCollector
-    from engines.credentialed.windows_collector import WindowsCollector
-    from engines.credentialed.vuln_matcher import VulnMatcher
-    from routers.credentialed import _detect_os
     from core.redis_client import publish_progress_sync
+    from engines.credentialed.linux_collector import LinuxCollector
+    from engines.credentialed.ssh_scanner import SSHScanner
+    from engines.credentialed.vuln_matcher import VulnMatcher
+    from engines.credentialed.windows_collector import WindowsCollector
+    from routers.credentialed import _detect_os
 
     db = SessionLocal()
     start_time = time.time()
@@ -1707,8 +1707,8 @@ def run_credentialed_scan_task(
     try:
         key_content = None
         if credential_id:
-            from db.models import ComplianceCredential
             from core.security_crypto import decrypt_credential
+            from db.models import ComplianceCredential
             from db.models.scans import Scan
 
             # Cross-reference with the Scan record's org_id for strict multi-tenant isolation

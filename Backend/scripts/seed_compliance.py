@@ -4,19 +4,20 @@ Purpose: Seed the database with the ISO 27001:2022 framework and its 93 controls
 Usage:   python -m scripts.seed_compliance [--seed-file PATH]
 """
 
-import os
-import json
 import argparse
-from sqlalchemy.orm import Session
+import json
+import os
 
 # Import SQLAlchemy session and models
 # Ensure the root of the project is in python path
 import sys
 
+from sqlalchemy.orm import Session
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.base import SessionLocal
-from db.models.compliance import ComplianceFramework, ComplianceControl
+from db.models.compliance import ComplianceControl, ComplianceFramework
 
 
 def seed_framework_and_controls(db: Session, seed_file_path: str):
@@ -90,7 +91,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             "implementationGroup",
         )
         for k in impl_keys:
-            if k in ctrl and ctrl[k]:
+            if ctrl.get(k):
                 ig_val = ctrl[k]
                 if isinstance(ig_val, str):
                     igs = [g.strip() for g in ig_val.split(",") if g.strip()]
@@ -111,7 +112,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
             "standard_number",
         )
         for ot_key in ot_meta_keys:
-            if ot_key in ctrl and ctrl[ot_key]:
+            if ctrl.get(ot_key):
                 ot_vals = ctrl[ot_key]
                 if isinstance(ot_vals, str):
                     vals = [v.strip() for v in ot_vals.split(",") if v.strip()]

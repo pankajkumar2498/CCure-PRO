@@ -11,14 +11,14 @@ No extra dependencies - uses TCP scan mode without root.
 With root + scapy: full ARP/ICMP/SYN capability.
 """
 
-import json
-import sys
 import asyncio
+import json
 import logging
-from typing import Dict, Any
+import sys
+from typing import Any, Dict
 
-from core.models import ScanIntensity
 from api.host_discovery_api import HostDiscoveryAPI
+from core.models import ScanIntensity
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 
 
-def print_active_hosts(result: Dict[str, Any]):
+def print_active_hosts(result: dict[str, Any]):
     """Display active hosts in a formatted table in terminal."""
     if not result.get("success"):
         print(f"\n❌ Scan failed: {result.get('error', 'Unknown error')}")

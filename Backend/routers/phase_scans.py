@@ -10,32 +10,31 @@ Endpoints
     POST /scan/vulnerability-audit    → Phase 3: Vulnerability Audit & Risk Scoring
 """
 
-from typing import Optional, List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from db.base import get_db
-from db.models import User, Scan
 from auth.rbac import require_permission
+from core.quota import check_scan_quota, get_quota_status
+from core.tasks import (
+    run_asset_discovery_task,
+    run_host_discovery_task,
+    run_traditional_scan_task,
+    run_vulnerability_audit_task,
+)
+from db.base import get_db
+from db.models import Scan, User
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from scan_helpers import (
+    is_phase_in_pipeline,
+    limiter,
+    log,
+    resolve_pipeline_mode,
+    validate_total_targets,
+)
 from scans.db_helpers import (
     create_scan,
 )
-from scan_helpers import (
-    limiter,
-    resolve_pipeline_mode,
-    is_phase_in_pipeline,
-    validate_total_targets,
-    log,
-)
-from core.quota import check_scan_quota, get_quota_status
-from core.tasks import (
-    run_host_discovery_task,
-    run_asset_discovery_task,
-    run_vulnerability_audit_task,
-    run_traditional_scan_task,
-)
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["Phase-Selective Scans"])
 
@@ -49,7 +48,7 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -60,7 +59,7 @@ def _resolve_org(user: User, requested_org: Optional[str]) -> str:
 
 @router.get("/scan/quota")
 def get_scan_quota(
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
@@ -106,20 +105,20 @@ class HostDiscoveryRequest(BaseModel):
     Ignored for basic and vulnerability_audit pipelines.
     """
 
-    targets: List[str] = Field(..., examples=[["10.180.6.0/24"]])
+    targets: list[str] = Field(..., examples=[["10.180.6.0/24"]])
     scan_type: str = Field("adaptive", examples=["adaptive"])
-    pipeline_mode: Optional[str] = Field(
+    pipeline_mode: str | None = Field(
         "basic", examples=["basic"], description="basic | asset | vulnerability_audit"
     )
-    phases: Optional[List[int]] = Field(
+    phases: list[int] | None = Field(
         None, examples=[[1, 2]], description="Phase list from frontend (informational)"
     )
-    discovery_intensity: Optional[str] = Field(
+    discovery_intensity: str | None = Field(
         "normal",
         examples=["normal"],
         description="light | normal | deep (asset pipeline only)",
     )
-    port_scan_intensity: Optional[str] = Field(
+    port_scan_intensity: str | None = Field(
         "normal",
         examples=["normal"],
         description="light | normal | deep — intensity for Phase 2 port scan (asset pipeline only)",
@@ -128,36 +127,36 @@ class HostDiscoveryRequest(BaseModel):
         True,
         description="Enable Nmap -O OS fingerprinting in Phase 2 (passed through auto-chained task)",
     )
-    execution_mode: Optional[str] = Field(
+    execution_mode: str | None = Field(
         "automatic", description="automatic | interactive"
     )
-    rate_limit: Optional[float] = Field(
+    rate_limit: float | None = Field(
         None, description="Optional rate limit for probes per second (PPS)."
     )
-    max_concurrency: Optional[int] = Field(
+    max_concurrency: int | None = Field(
         None, description="Max concurrent threads (e.g. TCP connect probes)."
     )
     wait: bool = Field(
         False,
         description="If true, wait for task completion (up to 300s) before returning.",
     )
-    custom_ports: Optional[str] = Field(
+    custom_ports: str | None = Field(
         None, description="Custom ports/ranges to scan (e.g. '22,80,443')"
     )
-    exclude_ports: Optional[str] = Field(
+    exclude_ports: str | None = Field(
         None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')"
     )
-    options: Optional[dict] = Field(
+    options: dict | None = Field(
         None,
         description="Additional scan configurations including SNMP credentials for topology mapping",
     )
-    passive_first: Optional[bool] = Field(
+    passive_first: bool | None = Field(
         None, description="Bypass active scan on hosts already resolved passively"
     )
-    exclude_ot_from_nmap: Optional[bool] = Field(
+    exclude_ot_from_nmap: bool | None = Field(
         None, description="Exclude OT ports from Nmap scanning"
     )
-    exclude_ips: Optional[str] = Field(
+    exclude_ips: str | None = Field(
         None, description="IPs/subnets to exclude from this scan"
     )
 
@@ -170,31 +169,31 @@ class AssetDiscoveryRequest(BaseModel):
     backend can decide whether this is the terminal phase (asset) or not (vulnerability_audit).
     """
 
-    hosts: List[dict] = Field(..., description="Host dicts from Host Discovery")
+    hosts: list[dict] = Field(..., description="Host dicts from Host Discovery")
     intensity: str = Field("normal", examples=["normal"])
-    scan_id: Optional[str] = Field(None)
-    pipeline_mode: Optional[str] = Field(
+    scan_id: str | None = Field(None)
+    pipeline_mode: str | None = Field(
         "asset", examples=["asset"], description="basic | asset | vulnerability_audit"
     )
     os_detection: bool = Field(
         True, description="Enable Nmap -O OS fingerprinting during port scan"
     )
-    phases: Optional[List[int]] = Field(
+    phases: list[int] | None = Field(
         None, description="Phase list from frontend (informational)"
     )
-    custom_ports: Optional[str] = Field(
+    custom_ports: str | None = Field(
         None, description="Custom ports/ranges to scan (e.g. '22,80,443')"
     )
-    exclude_ports: Optional[str] = Field(
+    exclude_ports: str | None = Field(
         None, description="Ports/ranges to exclude from scan (e.g. '2375,6443')"
     )
-    exclude_ot_from_nmap: Optional[bool] = Field(
+    exclude_ot_from_nmap: bool | None = Field(
         None, description="Exclude OT ports from Nmap scanning"
     )
-    exclude_ips: Optional[str] = Field(
+    exclude_ips: str | None = Field(
         None, description="IPs/subnets to exclude from this scan"
     )
-    passive_first: Optional[bool] = Field(
+    passive_first: bool | None = Field(
         None, description="Bypass active scan on hosts already resolved passively"
     )
 
@@ -206,25 +205,25 @@ class VulnerabilityAuditRequest(BaseModel):
     Only reached when pipeline_mode is "vulnerability_audit". Always marks the scan complete.
     """
 
-    hosts: List[dict] = Field(..., description="Host dicts from Asset Discovery")
-    scan_id: Optional[str] = Field(None)
-    pipeline_mode: Optional[str] = Field(
+    hosts: list[dict] = Field(..., description="Host dicts from Asset Discovery")
+    scan_id: str | None = Field(None)
+    pipeline_mode: str | None = Field(
         "vulnerability_audit",
         examples=["vulnerability_audit"],
         description="basic | asset | vulnerability_audit",
     )
-    vulnerability_profile: Optional[str] = Field(
+    vulnerability_profile: str | None = Field(
         "recommended",
         examples=["recommended"],
         description="recommended | conservative | deep",
     )
-    phases: Optional[List[int]] = Field(
+    phases: list[int] | None = Field(
         None, description="Phase list from frontend (informational)"
     )
-    exclude_ot_from_nmap: Optional[bool] = Field(
+    exclude_ot_from_nmap: bool | None = Field(
         None, description="Exclude OT ports from Nmap scanning"
     )
-    exclude_ips: Optional[str] = Field(
+    exclude_ips: str | None = Field(
         None, description="IPs/subnets to exclude from this scan"
     )
 
@@ -232,13 +231,13 @@ class VulnerabilityAuditRequest(BaseModel):
 class PhasesRequest(BaseModel):
     """Convenience endpoint — run any combination of phases in one call."""
 
-    targets: List[str] = Field(..., examples=[["10.180.6.0/24"]])
+    targets: list[str] = Field(..., examples=[["10.180.6.0/24"]])
     phases: str = Field("1", examples=["1+2"], description="'1' | '1+2' | '1+2+3+4'")
     scan_type: str = Field("adaptive", examples=["adaptive"])
     intensity: str = Field("normal", examples=["normal"])
-    passive_first: Optional[bool] = Field(None)
-    exclude_ot_from_nmap: Optional[bool] = Field(None)
-    exclude_ips: Optional[str] = Field(None)
+    passive_first: bool | None = Field(None)
+    exclude_ot_from_nmap: bool | None = Field(None)
+    exclude_ips: str | None = Field(None)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -249,7 +248,7 @@ class PhasesRequest(BaseModel):
 async def scan_host_discovery(
     request: Request,
     req: HostDiscoveryRequest,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
@@ -377,7 +376,7 @@ async def scan_host_discovery(
 async def scan_asset_discovery(
     request: Request,
     req: AssetDiscoveryRequest,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):

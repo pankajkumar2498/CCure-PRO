@@ -1,9 +1,9 @@
-import pytest
-from fastapi import HTTPException
 from unittest.mock import MagicMock
 
-from core.utils import InputValidator
+import pytest
 from core.quota import check_scan_quota
+from core.utils import InputValidator
+from fastapi import HTTPException
 
 
 def test_parse_custom_ports_success():

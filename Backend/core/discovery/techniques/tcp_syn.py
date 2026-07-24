@@ -5,6 +5,7 @@ Requires root. Detects open/closed/filtered states per port.
 
 import logging
 from typing import Dict, List
+
 from core.constants import SCAPY_AVAILABLE
 from core.risk import fingerprint_os
 
@@ -14,9 +15,9 @@ _ICMP3_FILTERED = {1, 2, 9, 10, 13}
 
 
 def probe(
-    ips: List[str],
-    ports: List[int],
-    results: Dict[str, Dict],
+    ips: list[str],
+    ports: list[int],
+    results: dict[str, dict],
     timeout: float = 1.5,
 ) -> None:
     """
@@ -32,7 +33,7 @@ def probe(
     if not SCAPY_AVAILABLE or not ips or not ports:
         return
     try:
-        from scapy.all import sr, IP, TCP, ICMP
+        from scapy.all import ICMP, IP, TCP, sr
 
         pkts = IP(dst=ips) / TCP(dport=ports, flags="S")
         ans, unans = sr(pkts, timeout=timeout, verbose=0, multi=True)

@@ -1,14 +1,12 @@
-from typing import Optional
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
-from sqlalchemy.orm import Session
 from datetime import datetime
+from typing import Optional
 
-from auth.rbac import require_permission
 from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import hash_password, validate_password_strength
-from db.base import get_db, utcnow, gen_user_id
+from auth.rbac import require_permission
+from core.audit import log_audit_event
+from db.base import gen_user_id, get_db, utcnow
 from db.models import (
     AssetNote,
     AssetTag,
@@ -20,7 +18,9 @@ from db.models import (
     Scan,
     User,
 )
-from core.audit import log_audit_event
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/admin/users", tags=["User Management"])
 log = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def _scoped_users_query(db: Session, current_user: User, scope: str = "active"):
 
 
 def _resolve_target_org_id(
-    db: Session, current_user: User, requested_org_id: Optional[str]
+    db: Session, current_user: User, requested_org_id: str | None
 ) -> str:
     if not _is_superadmin(current_user):
         return str(current_user.org_id)
@@ -159,17 +159,17 @@ class UserCreateSchema(BaseModel):
 
     username: str
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str | None = None
     role_id: int
     password: str
-    organization_id: Optional[str] = None
+    organization_id: str | None = None
 
 
 class UserUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    full_name: str | None = None
+    email: EmailStr | None = None
 
 
 class UserRoleUpdateSchema(BaseModel):
@@ -181,8 +181,8 @@ class UserRoleUpdateSchema(BaseModel):
 class UserStatusUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    is_active: Optional[bool] = None
-    locked_until: Optional[datetime] = None
+    is_active: bool | None = None
+    locked_until: datetime | None = None
 
 
 class UserResetPasswordSchema(BaseModel):
@@ -198,10 +198,10 @@ class UserResetPasswordSchema(BaseModel):
 @router.get("")
 @router.get("/")
 def list_users(
-    role_id: Optional[int] = None,
-    organization_id: Optional[str] = None,
-    is_active: Optional[bool] = None,
-    q: Optional[str] = None,
+    role_id: int | None = None,
+    organization_id: str | None = None,
+    is_active: bool | None = None,
+    q: str | None = None,
     scope: str = "active",
     skip: int = 0,
     limit: int = 50,

@@ -4,16 +4,17 @@ Verifies catalog seeding (52 controls across CIP-002..CIP-014), theme check cons
 rule mapping, and executive report endpoints.
 """
 
+import os
+
 import pytest
 from db.models.compliance import (
-    ComplianceFramework,
     ComplianceControl,
-    ComplianceScore,
+    ComplianceFramework,
     ComplianceRule,
+    ComplianceScore,
 )
 from scripts.seed_compliance import seed_framework_and_controls
 from scripts.seed_real_rules import seed_and_evaluate
-import os
 
 
 def test_nerc_cip_framework_seeding(db_session):

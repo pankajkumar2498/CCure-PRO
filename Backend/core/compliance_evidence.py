@@ -5,19 +5,19 @@ Translates raw scans and asset findings into normalized payloads for rule check 
 
 import json
 import logging
-from typing import Dict, Any
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from typing import Any, Dict
 
+from core.redis_client import get_redis_client
 from db.models.assets import Asset
 from db.models.findings import (
+    AssetVulnerability,
     Service,
     TLSDetail,
-    AssetVulnerability,
     VulnerabilityDefinition,
 )
 from db.models.topology import NetworkLink
-from core.redis_client import get_redis_client
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance.evidence")
 redis = get_redis_client()
@@ -60,12 +60,12 @@ class ComplianceEvidenceProvider:
                 f"Invalidated {keys_count} Redis evidence cache keys for assets: {asset_ids}"
             )
         except Exception as e:
-            log.warning(f"Failed to clear Redis evidence cache pipeline: {str(e)}")
+            log.warning(f"Failed to clear Redis evidence cache pipeline: {e!s}")
 
     @classmethod
     def get_normalized_evidence(
         cls, db: Session, asset_id: str, source: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Resolves normalise evidence, utilizing Redis cache."""
         cache_key = cls.get_cache_key(asset_id, source)
         try:
@@ -74,7 +74,7 @@ class ComplianceEvidenceProvider:
                 log.debug(f"Cache hit for evidence {cache_key}")
                 return json.loads(cached_data)
         except Exception as e:
-            log.warning(f"Failed to query Redis cache: {str(e)}")
+            log.warning(f"Failed to query Redis cache: {e!s}")
 
         # Cache miss - fetch and translate
         log.info(
@@ -85,14 +85,14 @@ class ComplianceEvidenceProvider:
         try:
             redis.setex(cache_key, EPL_CACHE_TTL, json.dumps(payload))
         except Exception as e:
-            log.warning(f"Failed to save evidence to Redis cache: {str(e)}")
+            log.warning(f"Failed to save evidence to Redis cache: {e!s}")
 
         return payload
 
     @classmethod
     def _fetch_and_translate(
         cls, db: Session, asset_id: str, source: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Routes to specific scanner adapters based on source."""
         if source == "vulnerability_audit":
             return cls._adapt_vulnerability_audit(db, asset_id)
@@ -115,7 +115,7 @@ class ComplianceEvidenceProvider:
 
     # ── 1. Vulnerability Audit Mapping ──────────────────────────────────────────
     @staticmethod
-    def _adapt_vulnerability_audit(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_vulnerability_audit(db: Session, asset_id: str) -> dict[str, Any]:
         vulns = (
             db.query(AssetVulnerability)
             .join(VulnerabilityDefinition)
@@ -158,7 +158,7 @@ class ComplianceEvidenceProvider:
 
     # ── 2. Malware Scan Mapping ───────────────────────────────────────────────
     @staticmethod
-    def _adapt_malware_scan(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_malware_scan(db: Session, asset_id: str) -> dict[str, Any]:
         # Checks if anti-malware services are present and active
         services = db.query(Service).filter(Service.asset_id == asset_id).all()
         malware_processes = [
@@ -197,7 +197,7 @@ class ComplianceEvidenceProvider:
 
     # ── 3. Services & Ports Mapping ───────────────────────────────────────────
     @staticmethod
-    def _adapt_services_ports(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_services_ports(db: Session, asset_id: str) -> dict[str, Any]:
         services = db.query(Service).filter(Service.asset_id == asset_id).all()
         ports_list = [svc.port for svc in services if svc.state == "open"]
 
@@ -212,7 +212,7 @@ class ComplianceEvidenceProvider:
 
     # ── 4. TLS & Certificates Mapping ────────────────────────────────────────
     @staticmethod
-    def _adapt_tls_certificates(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_tls_certificates(db: Session, asset_id: str) -> dict[str, Any]:
         tls_certs = (
             db.query(TLSDetail).join(Service).filter(Service.asset_id == asset_id).all()
         )
@@ -233,7 +233,7 @@ class ComplianceEvidenceProvider:
 
     # ── 5. Network Topology Mapping ───────────────────────────────────────────
     @staticmethod
-    def _adapt_network_topology(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_network_topology(db: Session, asset_id: str) -> dict[str, Any]:
         links = (
             db.query(NetworkLink)
             .filter(
@@ -255,7 +255,7 @@ class ComplianceEvidenceProvider:
 
     # ── 6. Credential Validation Mapping ──────────────────────────────────────
     @staticmethod
-    def _adapt_credential_validation(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_credential_validation(db: Session, asset_id: str) -> dict[str, Any]:
         asset = db.query(Asset).filter(Asset.id == asset_id).first()
         creds_status = (
             (asset.custom_attributes or {}).get("credentialed_status", "unknown")
@@ -277,7 +277,7 @@ class ComplianceEvidenceProvider:
 
     # ── 7. Offline Configuration Scan Mapping ─────────────────────────────────
     @staticmethod
-    def _adapt_offline_configuration(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_offline_configuration(db: Session, asset_id: str) -> dict[str, Any]:
         asset = db.query(Asset).filter(Asset.id == asset_id).first()
         registry_attrs = (
             (asset.custom_attributes or {}).get("registry_hardening", {})
@@ -394,7 +394,7 @@ class ComplianceEvidenceProvider:
 
     # ── 8. Web Vulnerability Audit Mapping ─────────────────────────────────────────
     @staticmethod
-    def _adapt_web_vulnerability_audit(db: Session, asset_id: str) -> Dict[str, Any]:
+    def _adapt_web_vulnerability_audit(db: Session, asset_id: str) -> dict[str, Any]:
         """Query open WebFinding records for the web asset to drive policy compliance."""
         from db.models.web_scans import WebFinding
 

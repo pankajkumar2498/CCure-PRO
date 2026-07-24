@@ -25,8 +25,8 @@ log = logging.getLogger("ccure.discovery.arp")
 
 
 def probe(
-    ips: List[str],
-    results: Dict[str, Dict],
+    ips: list[str],
+    results: dict[str, dict],
     timeout: float = 2.0,
 ) -> None:
     """
@@ -53,8 +53,8 @@ def probe(
         return
 
     try:
-        from scapy.all import srp, Ether, ARP
         from core.oui_lookup import classify_mac
+        from scapy.all import ARP, Ether, srp
 
         ans, _ = srp(
             Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ips),
@@ -90,7 +90,7 @@ def probe(
         log.debug("arp.probe error: %s", exc)
 
 
-def _latency_ms(sent, received) -> Optional[float]:
+def _latency_ms(sent, received) -> float | None:
     """Extract round-trip latency from Scapy packets."""
     try:
         t_send = getattr(sent, "sent_time", None) or getattr(sent, "time", None)
@@ -101,5 +101,4 @@ def _latency_ms(sent, received) -> Optional[float]:
                 return elapsed
     except Exception as exc:
         log.debug("Failed to calculate ARP latency: %s", exc)
-        pass
     return None

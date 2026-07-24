@@ -19,15 +19,13 @@ _warnings.warn(
 )
 
 # Re-export for any remaining legacy callers
-from db.base import engine, SessionLocal, Base, get_db  # noqa: F401
-from db.models.users import User, RefreshTokenSession  # noqa: F401
+from db.base import Base, SessionLocal, engine, get_db
+from db.models.users import RefreshTokenSession, User
 
 
 def ensure_auth_schema():
     """No-op — schema is managed by db/migrate_production_schema.py."""
-    pass
 
 
 def create_tables():
     """No-op — schema is managed by db/migrate_production_schema.py."""
-    pass

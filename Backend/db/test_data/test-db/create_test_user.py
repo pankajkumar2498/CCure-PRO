@@ -45,9 +45,9 @@ def create_test_user():
         try:
             import bcrypt
 
-            password_hash = bcrypt.hashpw(
-                "Test@123".encode("utf-8"), bcrypt.gensalt(12)
-            ).decode("utf-8")
+            password_hash = bcrypt.hashpw(b"Test@123", bcrypt.gensalt(12)).decode(
+                "utf-8"
+            )
         except Exception as e:
             print(f"⚠ Bcrypt failed: {e}")
             print("  Using fallback method...")

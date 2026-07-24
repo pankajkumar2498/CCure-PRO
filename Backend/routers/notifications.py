@@ -27,18 +27,17 @@ import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from auth.dependencies import get_current_user
+from core.redis_client import publish_notification_sync, redis_client
+from db.base import SessionLocal, gen_notification_id, get_db, utcnow
+from db.models import Notification, Role, User
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
-from db.base import get_db, gen_notification_id, SessionLocal, utcnow
-from db.models import User, Notification, Role
-from auth.dependencies import get_current_user
-from core.redis_client import publish_notification_sync, redis_client
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 logger = logging.getLogger(__name__)
@@ -83,11 +82,11 @@ class NotificationResponse(BaseModel):
     title: str
     message: str
     is_read: bool
-    related_scan_id: Optional[str]
+    related_scan_id: str | None
     related_data: dict
-    action_url: Optional[str]
+    action_url: str | None
     created_at: datetime
-    read_at: Optional[datetime]
+    read_at: datetime | None
 
     class Config:
         from_attributes = True
@@ -98,7 +97,7 @@ class NotificationSummaryResponse(BaseModel):
 
     total_unread: int
     by_category: dict  # {"scan": 2, "security": 1, "system": 0, "admin": 0}
-    last_notification_at: Optional[datetime]
+    last_notification_at: datetime | None
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -170,9 +169,9 @@ def create_notification(
     category: NotificationCategory,
     title: str,
     message: str,
-    related_scan_id: Optional[str] = None,
-    related_data: Optional[dict] = None,
-    action_url: Optional[str] = None,
+    related_scan_id: str | None = None,
+    related_data: dict | None = None,
+    action_url: str | None = None,
 ) -> Notification:
     """
     Create and store a new notification.
@@ -205,15 +204,15 @@ def create_notification(
 def fan_out_notification(
     db: Session,
     org_id: str,
-    target_roles: List[str],
+    target_roles: list[str],
     notification_type: NotificationType,
     category: NotificationCategory,
     title: str,
     message: str,
-    related_scan_id: Optional[str] = None,
-    related_data: Optional[dict] = None,
-    action_url: Optional[str] = None,
-    exclude_user_id: Optional[str] = None,
+    related_scan_id: str | None = None,
+    related_data: dict | None = None,
+    action_url: str | None = None,
+    exclude_user_id: str | None = None,
 ) -> int:
     """
     Fan-out a notification to all active users in an organization matching specific roles,
@@ -282,9 +281,9 @@ def fan_out_notification(
 # ────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("", response_model=List[NotificationResponse])
+@router.get("", response_model=list[NotificationResponse])
 def list_notifications(
-    category: Optional[str] = Query(
+    category: str | None = Query(
         None, description="Filter by category (scan, security, system, admin)"
     ),
     unread_only: bool = Query(False, description="Show only unread notifications"),
@@ -478,7 +477,6 @@ def delete_notification(
     db.delete(notification)
     db.commit()
     _publish_summary(db, str(current_user.id))
-    return None
 
 
 @router.delete("", status_code=204)
@@ -492,4 +490,3 @@ def delete_all_notifications(
     ).delete()
     db.commit()
     _publish_summary(db, str(current_user.id))
-    return None

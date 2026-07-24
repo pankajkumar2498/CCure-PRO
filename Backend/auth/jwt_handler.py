@@ -10,17 +10,16 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
-from fastapi import Request
-from core.ip_resolver import get_client_ip
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from core.ip_resolver import get_client_ip
+from db.base import SessionLocal
+from db.models.users import RefreshTokenSession, User
+from fastapi import Request
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-
-from db.base import SessionLocal
-from db.models.users import RefreshTokenSession, User
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -127,8 +126,8 @@ def _hash_token(token: str) -> str:
 def create_access_token(
     user_id: int,
     username: str,
-    role: Optional[str] = None,
-    org_id: Optional[str] = None,
+    role: str | None = None,
+    org_id: str | None = None,
 ) -> str:
     payload = {"sub": str(user_id), "username": username, "type": "access"}
     if role is not None:
@@ -142,10 +141,10 @@ def create_access_token(
 
 
 def create_mfa_challenge_token(
-    user_id: Union[str, int],
+    user_id: str | int,
     username: str,
-    role: Optional[str] = None,
-    org_id: Optional[str] = None,
+    role: str | None = None,
+    org_id: str | None = None,
 ) -> str:
     """Create a short-lived (5 minutes) challenge token for multi-factor authentication step-up."""
     payload = {"sub": str(user_id), "username": username, "type": "mfa_challenge"}
@@ -169,7 +168,7 @@ def create_download_ticket(user_id: str, username: str) -> str:
 
 
 def create_refresh_token(
-    user_id, db: Optional[Session] = None, request: Optional[Request] = None
+    user_id, db: Session | None = None, request: Request | None = None
 ) -> str:
     """
     Create a new refresh token for a user.
@@ -225,7 +224,7 @@ def create_refresh_token(
             db.close()
 
 
-def decode_token(token: str) -> Optional[dict]:
+def decode_token(token: str) -> dict | None:
     """
     Decode and validate a JWT.
     Returns the payload dict, or None if invalid / expired.
@@ -236,9 +235,7 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-def _get_refresh_session(
-    db: Session, refresh_token: str
-) -> Optional[RefreshTokenSession]:
+def _get_refresh_session(db: Session, refresh_token: str) -> RefreshTokenSession | None:
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         return None
@@ -271,7 +268,7 @@ def _get_refresh_session(
     return session_row
 
 
-def revoke_refresh_token(refresh_token: str, db: Optional[Session] = None) -> bool:
+def revoke_refresh_token(refresh_token: str, db: Session | None = None) -> bool:
     owns_session = db is None
     db = db or SessionLocal()
 
@@ -293,8 +290,8 @@ def revoke_refresh_token(refresh_token: str, db: Optional[Session] = None) -> bo
 
 
 def refresh_access_token(
-    refresh_token: str, db: Optional[Session] = None, request: Optional[Request] = None
-) -> Optional[dict]:
+    refresh_token: str, db: Session | None = None, request: Request | None = None
+) -> dict | None:
     """
     Given a valid refresh token, rotate it and return fresh access/refresh tokens.
     Returns None if the refresh token is invalid, expired, revoked, unknown, or from a deactivated org.

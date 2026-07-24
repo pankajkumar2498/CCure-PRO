@@ -12,12 +12,7 @@ FastAPI router that wires up all authentication endpoints:
 
 import logging
 import os
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-from typing import Optional, List, Union
+from typing import List, Optional, Union
 from uuid import UUID
 
 from auth.dependencies import get_current_user
@@ -25,18 +20,22 @@ from auth.email_utils import email_matches, normalize_email
 from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
-    create_refresh_token,
     create_download_ticket,
+    create_refresh_token,
     decode_token,
     hash_password,
     refresh_access_token,
     revoke_refresh_token,
-    verify_password,
     validate_password_strength,
+    verify_password,
 )
-from db.base import get_db, gen_org_id, gen_user_id
-from db.models import User, Organization, Role, RefreshTokenSession
+from db.base import gen_org_id, gen_user_id, get_db
+from db.models import Organization, RefreshTokenSession, Role, User
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, EmailStr, field_validator
 from scan_helpers import limiter
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -88,11 +87,11 @@ class ResetPasswordRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class PermissionOut(BaseModel):
@@ -102,11 +101,11 @@ class PermissionOut(BaseModel):
 
 class RoleOut(BaseModel):
     name: str
-    permissions: List[PermissionOut]
+    permissions: list[PermissionOut]
 
 
 class OrganizationOut(BaseModel):
-    id: Union[str, UUID, int]
+    id: str | UUID | int
     name: str
     slug: str
 
@@ -114,28 +113,28 @@ class OrganizationOut(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: Union[str, UUID, int]
-    org_id: Optional[Union[str, UUID, int]] = None
+    id: str | UUID | int
+    org_id: str | UUID | int | None = None
     username: str
     email: str
     created_at: str
     mfa_enabled: bool = False
-    role: Optional[RoleOut] = None
-    organization: Optional[OrganizationOut] = None
+    role: RoleOut | None = None
+    organization: OrganizationOut | None = None
 
     model_config = {"from_attributes": True}
 
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
     user: UserOut
 
 
 class RefreshResponse(BaseModel):
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
 
 
@@ -199,9 +198,7 @@ def _clear_refresh_cookie(response: Response) -> None:
         )
 
 
-def _resolve_refresh_token(
-    request: Request, token_from_body: Optional[str]
-) -> Optional[str]:
+def _resolve_refresh_token(request: Request, token_from_body: str | None) -> str | None:
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
 
 
@@ -362,9 +359,10 @@ def login(
     - This prevents new sessions from being created for inactive orgs.
     - Existing sessions are checked on every request in middleware.
     """
+    import datetime
+
     from core.audit import log_audit_event
     from db.base import utcnow
-    import datetime
 
     email = normalize_email(req.email)
     user = db.query(User).filter(email_matches(User.email, email)).first()
@@ -556,7 +554,7 @@ def login(
 def logout(
     request: Request,
     response: Response,
-    req: Optional[LogoutRequest] = None,
+    req: LogoutRequest | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -646,7 +644,7 @@ def me(current_user: User = Depends(get_current_user)):
 def refresh(
     request: Request,
     response: Response,
-    req: Optional[RefreshRequest] = None,
+    req: RefreshRequest | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -687,13 +685,14 @@ def forgot_password(
 
     Always returns 200 OK to prevent account enumeration.
     """
-    import secrets
     import hashlib
-    from datetime import datetime, timezone, timedelta
-    from core.tasks import send_password_reset_email_task
-    from core.audit import log_audit_event
-    from db.models import PasswordResetToken
+    import secrets
+    from datetime import datetime, timedelta, timezone
+
     from config import AppConfig
+    from core.audit import log_audit_event
+    from core.tasks import send_password_reset_email_task
+    from db.models import PasswordResetToken
 
     email = normalize_email(req.email)
     logger.info("Forgot password requested for: %s", email)
@@ -757,9 +756,10 @@ def reset_password_endpoint(
     """
     import hashlib
     from datetime import datetime, timezone
+
+    from auth.jwt_handler import hash_password
     from core.audit import log_audit_event
     from db.models import PasswordResetToken, RefreshTokenSession
-    from auth.jwt_handler import hash_password
 
     token_hash = hashlib.sha256(req.token.encode("utf-8")).hexdigest()
 
@@ -827,8 +827,8 @@ def reset_password_endpoint(
 
 def encrypt_secret(plain_secret: str) -> str:
     """Symmetrically encrypt the secret key using Fernet."""
-    from cryptography.fernet import Fernet
     from config import AppConfig
+    from cryptography.fernet import Fernet
 
     f = Fernet(AppConfig.MFA_KEY)
     return f.encrypt(plain_secret.encode()).decode()
@@ -836,8 +836,8 @@ def encrypt_secret(plain_secret: str) -> str:
 
 def decrypt_secret(encrypted_secret: str) -> str:
     """Symmetrically decrypt the secret key using Fernet."""
-    from cryptography.fernet import Fernet
     from config import AppConfig
+    from cryptography.fernet import Fernet
 
     f = Fernet(AppConfig.MFA_KEY)
     return f.decrypt(encrypted_secret.encode()).decode()
@@ -857,8 +857,9 @@ def send_email_otp(
     """
     import secrets
     from datetime import timedelta
-    from db.base import utcnow
+
     from core.tasks import send_mfa_otp_task
+    from db.base import utcnow
 
     payload = decode_token(req.mfa_token)
     if not payload or payload.get("type") != "mfa_challenge":
@@ -901,8 +902,8 @@ def verify_mfa(
     Verify the MFA code (App TOTP, Email OTP, or Recovery Backup Code).
     Rate limited to 5 requests/minute.
     """
-    from db.base import utcnow
     from core.audit import log_audit_event
+    from db.base import utcnow
 
     payload = decode_token(req.mfa_token)
     if not payload or payload.get("type") != "mfa_challenge":
@@ -1055,10 +1056,11 @@ def enable_mfa(
     Initiates MFA setup by generating a TOTP secret and rendering it as a QR code.
     Accessible only to authenticated users. If MFA is already active, returns 400.
     """
+    import base64
+    import io
+
     import pyotp
     import qrcode
-    import io
-    import base64
 
     if current_user.mfa_enabled:
         raise HTTPException(
@@ -1101,6 +1103,7 @@ def confirm_mfa(
     Generates backup codes and revokes other sessions.
     """
     import secrets
+
     import pyotp
     from core.audit import log_audit_event
 

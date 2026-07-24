@@ -6,8 +6,9 @@ Author:  Compliance Dev Team
 
 import base64
 import hashlib
-import os
 import logging
+import os
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 log = logging.getLogger("ccure.compliance.crypto")

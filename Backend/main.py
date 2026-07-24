@@ -18,36 +18,35 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-
 from api.host_discovery_api import HostDiscoveryAPI
-from scans.models import ensure_scan_schema
-from db.models.users import ensure_user_schema
-from scan_helpers import set_api
 
 # ── Router imports ────────────────────────────────────────────────────────────
 from auth.router import router as auth_router
-from scans.router import router as scans_router
-from routers.health import router as health_router
-from routers.traditional_scans import router as traditional_scans_router
-from routers.phase_scans import router as phase_scans_router
-from routers.credentialed import router as credentialed_router
-from routers.reports import router as reports_router
-from routers.admin_users import router as admin_users_router
-from routers.admin_rbac import router as admin_rbac_router
+from db.models.users import ensure_user_schema
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from routers.admin_orgs import router as admin_orgs_router
-from routers.audit import router as audit_router
-from routers.user_profile import router as user_profile_router
-from routers.notifications import router as notifications_router
-from routers.dashboard import router as dashboard_router
+from routers.admin_rbac import router as admin_rbac_router
+from routers.admin_users import router as admin_users_router
 from routers.assets import router as assets_router
-from routers.findings import router as findings_router
-from routers.web_scans import router as web_scans_router
-from routers.topology import router as topology_router
+from routers.audit import router as audit_router
 from routers.compliance import router as compliance_router
+from routers.credentialed import router as credentialed_router
+from routers.dashboard import router as dashboard_router
+from routers.findings import router as findings_router
+from routers.health import router as health_router
+from routers.notifications import router as notifications_router
+from routers.phase_scans import router as phase_scans_router
+from routers.reports import router as reports_router
+from routers.topology import router as topology_router
+from routers.traditional_scans import router as traditional_scans_router
+from routers.user_profile import router as user_profile_router
+from routers.web_scans import router as web_scans_router
+from scan_helpers import set_api
+from scans.models import ensure_scan_schema
+from scans.router import router as scans_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -96,10 +95,10 @@ log = logging.getLogger("ccure.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from config import AppConfig
+    from db.base import engine
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
-    from db.base import engine
-    from config import AppConfig
 
     # 0. Health check: Test database connectivity
     try:
@@ -112,8 +111,8 @@ async def lifespan(app: FastAPI):
             ensure_user_schema()
             ensure_scan_schema()
 
-            from db.models.topology import ensure_topology_schema
             from db.models.assets import ensure_mac_vendor_schema
+            from db.models.topology import ensure_topology_schema
 
             ensure_topology_schema()
             ensure_mac_vendor_schema()
@@ -142,11 +141,11 @@ async def lifespan(app: FastAPI):
         )
 
     # 1.6. Ensure first admin exists
-    from db.models.users import User
-    from db.models.rbac import Organization, Role
     from auth.email_utils import email_matches, normalize_email
     from auth.jwt_handler import hash_password
     from db.base import SessionLocal, gen_user_id
+    from db.models.rbac import Organization, Role
+    from db.models.users import User
 
     with SessionLocal() as db:
         if AppConfig.DEFAULT_ADMIN_EMAIL and AppConfig.DEFAULT_ADMIN_PASSWORD:
@@ -194,8 +193,8 @@ async def lifespan(app: FastAPI):
     # 1.7. Ensure compliance catalog (ISO 27001 framework, controls, & rules) is seeded
     try:
         from db.models.compliance import (
-            ComplianceFramework,
             ComplianceControl,
+            ComplianceFramework,
             ComplianceRule,
         )
 
@@ -422,8 +421,9 @@ async def lifespan(app: FastAPI):
     log.info("HostDiscoveryAPI initialised")
 
     # 4. Start background report cleanup
-    from routers.reports import cleanup_old_reports
     import asyncio
+
+    from routers.reports import cleanup_old_reports
 
     async def cleanup_loop():
         while True:
@@ -433,9 +433,10 @@ async def lifespan(app: FastAPI):
                 log.error("Report cleanup failed: %s", e)
 
             try:
+                from datetime import datetime, timezone
+
                 from db.base import SessionLocal
                 from db.models import PasswordResetToken
-                from datetime import datetime, timezone
 
                 db = SessionLocal()
                 try:
@@ -515,8 +516,8 @@ app.add_middleware(
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 
-from slowapi.errors import RateLimitExceeded
 from scan_helpers import limiter
+from slowapi.errors import RateLimitExceeded
 
 app.state.limiter = limiter
 

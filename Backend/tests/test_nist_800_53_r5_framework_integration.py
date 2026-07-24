@@ -5,12 +5,13 @@ Integration tests for the NIST SP 800-53 Rev. 5 framework.
 
 import os
 from datetime import datetime, timezone
+
 import pytest
 from db.models.compliance import (
-    ComplianceFramework,
     ComplianceControl,
-    ComplianceTenantFramework,
     ComplianceFinding,
+    ComplianceFramework,
+    ComplianceTenantFramework,
 )
 from scripts.seed_compliance import seed_framework_and_controls
 

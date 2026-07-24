@@ -13,20 +13,20 @@ try:
 
     logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
     from scapy.all import (
-        srp,
-        sr,
-        send,
-        Ether,
         ARP,
-        IP,
-        ICMP,
-        TCP,
-        UDP,
         DNS,
         DNSQR,
-        fragment,
-        conf,
+        ICMP,
+        IP,
+        TCP,
+        UDP,
+        Ether,
         RandShort,
+        conf,
+        fragment,
+        send,
+        sr,
+        srp,
     )
 
     conf.verb = 0
@@ -59,7 +59,7 @@ except ImportError:
 # For production, use Backend/scripts/download_nvd.py to populate cves.db
 # =============================================================================
 
-CVE_HINTS: Dict[str, List[Dict]] = {
+CVE_HINTS: dict[str, list[dict]] = {
     # SSH
     "openssh_7": [
         {"cve": "CVE-2023-38408", "cvss": 9.8, "desc": "OpenSSH <9.3p2 ssh-agent RCE"}
@@ -182,7 +182,7 @@ CVE_HINTS: Dict[str, List[Dict]] = {
 # Port Risk Database  (Nessus-style criticality per port)
 # =============================================================================
 
-PORT_DB: Dict[int, Dict] = {
+PORT_DB: dict[int, dict] = {
     # FTP / File Transfer
     20: {"service": "FTP-Data", "risk": "High", "note": "FTP data channel, cleartext"},
     21: {
@@ -891,7 +891,7 @@ TCP_OPTIONS_FINGERPRINT = [
 # Risk Scoring Constants
 # =============================================================================
 
-RISK_WEIGHTS: Dict[str, int] = {
+RISK_WEIGHTS: dict[str, int] = {
     "Critical": 25,
     "High": 10,
     "Medium": 5,
@@ -914,15 +914,15 @@ RISK_LEVELS = [
 import re
 
 VER_PATTERNS = [
-    re.compile(r"(OpenSSH[_/]\S+)", re.I),
-    re.compile(r"(Apache/[\d.]+)", re.I),
-    re.compile(r"(nginx/[\d.]+)", re.I),
-    re.compile(r"(Microsoft-IIS/[\d.]+)", re.I),
-    re.compile(r"(PHP/[\d.]+)", re.I),
-    re.compile(r"(OpenSSL/[\d.]+[a-z]*)", re.I),
-    re.compile(r"(vsftpd\s[\d.]+)", re.I),
-    re.compile(r"(ProFTPD\s[\d.]+)", re.I),
-    re.compile(r"(Dropbear\s[\d.]+)", re.I),
-    re.compile(r"(Redis\s[\d.]+)", re.I),
-    re.compile(r"(MongoDB\s[\d.]+)", re.I),
+    re.compile(r"(OpenSSH[_/]\S+)", re.IGNORECASE),
+    re.compile(r"(Apache/[\d.]+)", re.IGNORECASE),
+    re.compile(r"(nginx/[\d.]+)", re.IGNORECASE),
+    re.compile(r"(Microsoft-IIS/[\d.]+)", re.IGNORECASE),
+    re.compile(r"(PHP/[\d.]+)", re.IGNORECASE),
+    re.compile(r"(OpenSSL/[\d.]+[a-z]*)", re.IGNORECASE),
+    re.compile(r"(vsftpd\s[\d.]+)", re.IGNORECASE),
+    re.compile(r"(ProFTPD\s[\d.]+)", re.IGNORECASE),
+    re.compile(r"(Dropbear\s[\d.]+)", re.IGNORECASE),
+    re.compile(r"(Redis\s[\d.]+)", re.IGNORECASE),
+    re.compile(r"(MongoDB\s[\d.]+)", re.IGNORECASE),
 ]

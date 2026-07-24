@@ -1,8 +1,8 @@
-import pytest
-import tempfile
 import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
 from core.oui_lookup import OUIDatabase
 
 

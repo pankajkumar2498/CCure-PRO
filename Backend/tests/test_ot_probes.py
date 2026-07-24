@@ -2,18 +2,18 @@ import socket
 from unittest.mock import MagicMock, patch
 
 from core.discovery.techniques.ot_probes import (
-    probe_modbus,
-    probe_s7,
-    probe_ethernetip,
     probe_bacnet,
-    probe_dnp3,
-    probe_opcua,
-    probe_iec104,
-    probe_ge_srtp,
-    probe_fins,
-    probe_melsec,
     probe_codesys,
+    probe_dnp3,
+    probe_ethernetip,
+    probe_fins,
+    probe_ge_srtp,
+    probe_iec104,
+    probe_melsec,
     probe_mms,
+    probe_modbus,
+    probe_opcua,
+    probe_s7,
 )
 
 
@@ -229,7 +229,7 @@ def test_probe_mms(mock_connect):
 def test_probe_modbus_fallback(mock_connect):
     # Mock socket throws exception on sendall/recv (e.g. timeout or closed connection)
     mock_sock = MagicMock()
-    mock_sock.sendall.side_effect = socket.error("Closed")
+    mock_sock.sendall.side_effect = OSError("Closed")
     mock_connect.return_value = mock_sock
     mock_sock.__enter__.return_value = mock_sock
 
@@ -243,7 +243,7 @@ def test_probe_s7_fallback(mock_connect):
     resp_cotp = b"\x03\x00\x00\x16\x11\xd0\x00\x01\x00\x02\x00\xc0\x01\x0a\xc1\x02\x01\x00\xc2\x02\x01\x02"
     mock_sock = MagicMock()
     # First recv returns COTP CC, second recv throws exception
-    mock_sock.recv.side_effect = [resp_cotp, socket.error("Timeout")]
+    mock_sock.recv.side_effect = [resp_cotp, OSError("Timeout")]
     mock_connect.return_value = mock_sock
     mock_sock.__enter__.return_value = mock_sock
 

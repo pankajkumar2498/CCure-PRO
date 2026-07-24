@@ -4,6 +4,7 @@ core/discovery/techniques/udp_probe.py — Scapy UDP Service Discovery
 
 import logging
 from typing import Dict, List
+
 from core.constants import SCAPY_AVAILABLE
 
 log = logging.getLogger("ccure.discovery.udp_probe")
@@ -13,9 +14,9 @@ _FILTERED_CODES = {1, 2, 9, 10, 13}
 
 
 def probe(
-    ips: List[str],
-    ports: List[int],
-    results: Dict[str, Dict],
+    ips: list[str],
+    ports: list[int],
+    results: dict[str, dict],
     timeout: float = 2.0,
 ) -> None:
     """
@@ -36,7 +37,7 @@ def probe(
     if not SCAPY_AVAILABLE or not ips or not ports:
         return
     try:
-        from scapy.all import sr, IP, UDP
+        from scapy.all import IP, UDP, sr
 
         pkts = [IP(dst=ip) / UDP(dport=port) for ip in ips for port in ports]
         if not pkts:
@@ -58,7 +59,7 @@ def probe(
                 state = (
                     "closed"
                     if code == 3
-                    else (("filtered" if code in _FILTERED_CODES else "filtered"))
+                    else ("filtered" if code in _FILTERED_CODES else "filtered")
                 )
                 results[ip]["port_states"][port] = state
                 # RST from ICMP still confirms host existence

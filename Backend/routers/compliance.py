@@ -4,40 +4,39 @@ Base routers for the CCure Audit PRO Policy Compliance Engine.
 """
 
 import logging
-from typing import Optional, List
 from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
-from pydantic import BaseModel, Field, SecretStr
-from sqlalchemy import or_, and_, func
-from sqlalchemy.orm import Session
+from typing import List, Optional
 
 from auth.rbac import require_permission
+from core.audit import log_audit_event
+from core.security_crypto import encrypt_credential
 from db.base import (
-    get_db,
     gen_compliance_credential_id,
     gen_compliance_remediation_request_id,
+    get_db,
 )
-from db.models import User, Asset
+from db.models import Asset, User
 from db.models.compliance import (
-    ComplianceFramework,
-    ComplianceTenantFramework,
     ComplianceControl,
-    ComplianceRule,
-    ComplianceRuleControl,
-    CompliancePolicy,
-    CompliancePolicyRule,
-    ComplianceScanRun,
+    ComplianceCredential,
+    ComplianceException,
     ComplianceFinding,
     ComplianceFindingHistory,
-    ComplianceException,
-    ComplianceScore,
+    ComplianceFramework,
+    CompliancePolicy,
+    CompliancePolicyRule,
     ComplianceRemediation,
-    ComplianceCredential,
     ComplianceRemediationRequest,
+    ComplianceRule,
+    ComplianceRuleControl,
+    ComplianceScanRun,
+    ComplianceScore,
+    ComplianceTenantFramework,
 )
-from core.security_crypto import encrypt_credential
-from core.audit import log_audit_event
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, SecretStr
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
@@ -50,7 +49,7 @@ router = APIRouter(prefix="/compliance", tags=["Compliance"])
 
 class ExceptionRequest(BaseModel):
     reason: str = Field(..., min_length=10, max_length=1000)
-    compensating_control: Optional[str] = None
+    compensating_control: str | None = None
     expires_at: datetime
 
 
@@ -64,41 +63,41 @@ class PolicyCreate(BaseModel):
     target_platform: str = Field(
         ..., pattern="^(windows|linux|network_device|cloud|database|any)$"
     )
-    rule_ids: List[str]
-    tags: Optional[List[str]] = None
+    rule_ids: list[str]
+    tags: list[str] | None = None
 
 
 class ScanTrigger(BaseModel):
     framework_id: str
     policy_id: str
-    asset_ids: Optional[List[str]] = None
-    asset_tags: Optional[List[str]] = None
+    asset_ids: list[str] | None = None
+    asset_tags: list[str] | None = None
 
 
 class AttestationRequest(BaseModel):
     status: str = Field(..., pattern="^(pass|fail|not_applicable)$")
-    note: Optional[str] = None
-    evidence_file_ids: Optional[List[str]] = None
+    note: str | None = None
+    evidence_file_ids: list[str] | None = None
 
 
 class JITCredentials(BaseModel):
     username: str = Field(..., min_length=1, max_length=150)
     auth_method: str = Field("password", pattern="^(password|key)$")
-    password: Optional[SecretStr] = None
-    key_content: Optional[SecretStr] = None
+    password: SecretStr | None = None
+    key_content: SecretStr | None = None
     port: int = Field(22, ge=1, le=65535)
 
 
 class RemediationRequest(BaseModel):
     action: str = Field(..., pattern="^(apply_script)$")
-    credential_id: Optional[str] = None
-    jit_credentials: Optional[JITCredentials] = None
+    credential_id: str | None = None
+    jit_credentials: JITCredentials | None = None
     emergency_bypass: bool = False
 
 
 class RollbackRequest(BaseModel):
-    credential_id: Optional[str] = None
-    jit_credentials: Optional[JITCredentials] = None
+    credential_id: str | None = None
+    jit_credentials: JITCredentials | None = None
     emergency_bypass: bool = False
 
 
@@ -106,8 +105,8 @@ class CredentialCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=1, max_length=150)
     auth_method: str = Field("password", pattern="^(password|key)$")
-    password: Optional[SecretStr] = None
-    key_content: Optional[SecretStr] = None
+    password: SecretStr | None = None
+    key_content: SecretStr | None = None
     port: int = Field(22, ge=1, le=65535)
 
 
@@ -349,7 +348,7 @@ def uninstall_marketplace_framework(
 
 @router.get("/policies")
 def list_policies(
-    framework_id: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -627,20 +626,20 @@ def trigger_compliance_scan(
 
 @router.get("/findings")
 def list_findings(
-    framework_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    saq_profile: Optional[str] = Query(None),
-    cde_scope: Optional[str] = Query(None),
-    cde_scope_only: Optional[bool] = Query(False),
-    impact_level: Optional[str] = Query(None),
-    zero_trust_only: Optional[bool] = Query(False),
-    sdf_scope: Optional[str] = Query(None),
-    privacy_role: Optional[str] = Query(None),
-    purdue_level: Optional[str] = Query(None),
-    component_type: Optional[str] = Query(None),
-    sl_level: Optional[str] = Query(None),
-    bes_impact_level: Optional[str] = Query(None),
-    standard_number: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
+    status: str | None = Query(None),
+    saq_profile: str | None = Query(None),
+    cde_scope: str | None = Query(None),
+    cde_scope_only: bool | None = Query(False),
+    impact_level: str | None = Query(None),
+    zero_trust_only: bool | None = Query(False),
+    sdf_scope: str | None = Query(None),
+    privacy_role: str | None = Query(None),
+    purdue_level: str | None = Query(None),
+    component_type: str | None = Query(None),
+    sl_level: str | None = Query(None),
+    bes_impact_level: str | None = Query(None),
+    standard_number: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -921,7 +920,7 @@ def create_credential(
     return new_cred
 
 
-@router.get("/credentials", response_model=List[CredentialResponse])
+@router.get("/credentials", response_model=list[CredentialResponse])
 def list_credentials(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -1120,7 +1119,7 @@ def apply_remediation(
 
 @router.get("/remediations/requests")
 def list_remediation_requests(
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -1674,19 +1673,19 @@ def approve_exception_waiver(
 
 @router.get("/summary")
 def get_dashboard_summary(
-    framework_id: Optional[str] = Query(None),
-    saq_profile: Optional[str] = Query(None),
-    cde_scope: Optional[str] = Query(None),
-    cde_scope_only: Optional[bool] = Query(False),
-    impact_level: Optional[str] = Query(None),
-    zero_trust_only: Optional[bool] = Query(False),
-    sdf_scope: Optional[str] = Query(None),
-    privacy_role: Optional[str] = Query(None),
-    purdue_level: Optional[str] = Query(None),
-    component_type: Optional[str] = Query(None),
-    sl_level: Optional[str] = Query(None),
-    bes_impact_level: Optional[str] = Query(None),
-    standard_number: Optional[str] = Query(None),
+    framework_id: str | None = Query(None),
+    saq_profile: str | None = Query(None),
+    cde_scope: str | None = Query(None),
+    cde_scope_only: bool | None = Query(False),
+    impact_level: str | None = Query(None),
+    zero_trust_only: bool | None = Query(False),
+    sdf_scope: str | None = Query(None),
+    privacy_role: str | None = Query(None),
+    purdue_level: str | None = Query(None),
+    component_type: str | None = Query(None),
+    sl_level: str | None = Query(None),
+    bes_impact_level: str | None = Query(None),
+    standard_number: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -2006,12 +2005,13 @@ def get_dashboard_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 
 import io
+
 from fastapi.responses import StreamingResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 try:
     import docx
@@ -2510,7 +2510,7 @@ def get_compliance_gap_analysis(
 @router.get("/reports/nist_csf")
 def download_nist_csf_report(
     fmt: str = "pdf",
-    functions: Optional[str] = Query(
+    functions: str | None = Query(
         None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
     ),
     db: Session = Depends(get_db),
@@ -2571,7 +2571,7 @@ def download_nist_csf_report(
 @router.get("/reports/cis_v8_1")
 def download_cis_v8_1_report(
     fmt: str = "pdf",
-    ig: Optional[str] = Query(
+    ig: str | None = Query(
         None, description="Implementation Group filter: ig1, ig2, ig3"
     ),
     db: Session = Depends(get_db),
@@ -2628,7 +2628,7 @@ def download_cis_v8_1_report(
 @router.get("/reports/soc2_type2")
 def download_soc2_type2_report(
     fmt: str = "pdf",
-    tsc: Optional[str] = Query(
+    tsc: str | None = Query(
         None, description="Trust Services Criteria filter: cc, a, pi, c, p"
     ),
     audit_period_days: int = Query(
@@ -2718,7 +2718,7 @@ def download_soc2_type2_report(
 @router.get("/reports/cert_in_2022")
 def download_cert_in_2022_report(
     fmt: str = "pdf",
-    theme: Optional[str] = Query(
+    theme: str | None = Query(
         None,
         description="CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
     ),
@@ -2927,7 +2927,7 @@ def _generate_pci_dss_pdf(
 @router.get("/reports/pci_dss_v4")
 def download_pci_dss_v4_report(
     fmt: str = "pdf",
-    saq_profile: Optional[str] = Query(
+    saq_profile: str | None = Query(
         None,
         description="Filter by SAQ profile: saq_a, saq_a_ep, saq_b_ip, saq_c, saq_d_merchant, saq_d_service_provider",
     ),
@@ -3113,7 +3113,7 @@ def _generate_privacy_pdf(
 @router.get("/reports/dpdp_2023")
 def download_dpdp_2023_report(
     fmt: str = "pdf",
-    sdf_scope: Optional[str] = Query(
+    sdf_scope: str | None = Query(
         None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
     ),
     db: Session = Depends(get_db),
@@ -3181,7 +3181,7 @@ def download_dpdp_2023_report(
 @router.get("/reports/gdpr")
 def download_gdpr_report(
     fmt: str = "pdf",
-    privacy_role: Optional[str] = Query(
+    privacy_role: str | None = Query(
         None, description="Filter by Privacy Role: controller, processor, both"
     ),
     db: Session = Depends(get_db),
@@ -3442,8 +3442,8 @@ def _generate_nist_800_53_pdf(
 @router.get("/reports/nist_800_53_r5")
 def download_nist_800_53_r5_report(
     fmt: str = "pdf",
-    impact_level: Optional[str] = Query(None, description="LOW | MODERATE | HIGH"),
-    control_family: Optional[str] = Query(None, description="SP53_AC | SP53_AU | etc"),
+    impact_level: str | None = Query(None, description="LOW | MODERATE | HIGH"),
+    control_family: str | None = Query(None, description="SP53_AC | SP53_AU | etc"),
     zero_trust_only: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
@@ -3533,16 +3533,17 @@ def _generate_iec_62443_pdf(
     scope_label="All Security Levels (SL1–SL4)",
 ):
     from io import BytesIO
-    from reportlab.lib.pagesizes import letter
+
     from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.platypus import (
-        SimpleDocTemplate,
         Paragraph,
+        SimpleDocTemplate,
         Spacer,
         Table,
         TableStyle,
     )
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -3730,9 +3731,9 @@ def _generate_iec_62443_docx(
 @router.get("/reports/iec_62443")
 def download_iec_62443_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    purdue_level: Optional[str] = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
-    component_type: Optional[str] = Query(None, description="NDD | EDR | HDR | SW"),
-    sl_level: Optional[str] = Query(None, description="SL1 | SL2 | SL3 | SL4"),
+    purdue_level: str | None = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
+    component_type: str | None = Query(None, description="NDD | EDR | HDR | SW"),
+    sl_level: str | None = Query(None, description="SL1 | SL2 | SL3 | SL4"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "read")),
 ):
@@ -4045,10 +4046,10 @@ def _generate_nist_800_82_docx(
 @router.get("/reports/nist_800_82")
 def download_nist_800_82_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    purdue_level: Optional[str] = Query(
+    purdue_level: str | None = Query(
         None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
     ),
-    component_type: Optional[str] = Query(
+    component_type: str | None = Query(
         None, description="PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED"
     ),
     db: Session = Depends(get_db),
@@ -4371,18 +4372,18 @@ def _generate_nerc_cip_docx(
 @router.get("/reports/nerc_cip")
 def download_nerc_cip_report(
     fmt: str = Query("pdf", description="pdf | docx"),
-    regional_entity: Optional[str] = Query(
+    regional_entity: str | None = Query(
         "WECC",
         description="WECC | SERC | TEXAS_RE | RELIABILITY_FIRST | MRO | NPCC",
     ),
-    bes_impact_level: Optional[str] = Query(None, description="HIGH | MEDIUM | LOW"),
-    standard_number: Optional[str] = Query(
+    bes_impact_level: str | None = Query(None, description="HIGH | MEDIUM | LOW"),
+    standard_number: str | None = Query(
         None, description="CIP-002 | CIP-003 | ... | CIP-014"
     ),
-    purdue_level: Optional[str] = Query(
+    purdue_level: str | None = Query(
         None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
     ),
-    component_type: Optional[str] = Query(
+    component_type: str | None = Query(
         None, description="BCA | PCA | EACMS | PACS | EMS | SCADA"
     ),
     db: Session = Depends(get_db),

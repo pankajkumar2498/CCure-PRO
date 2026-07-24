@@ -20,10 +20,10 @@ Usage
   python Backend/db/migrate_production_schema.py
 """
 
-import sys
-import os
 import io
+import os
 import subprocess
+import sys
 
 # Force UTF-8 output on Windows (cp1252 terminal cannot handle checkmarks/arrows) when run directly
 if __name__ == "__main__":
@@ -35,11 +35,10 @@ _BACKEND = os.path.dirname(_HERE)
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
-from sqlalchemy import text
-from db.base import engine, Base, gen_org_id
-
 # Import all models to register them in Base.metadata for bootstrapping
 import db.models
+from db.base import Base, engine, gen_org_id
+from sqlalchemy import text
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -610,7 +609,7 @@ def print_summary(conn):
         print(f"  {table:<30} {count_str:>8}   {purpose}")
 
     print("\n  ✅ Database is initialized and ready.")
-    print("")
+    print()
     print("  ✨ Stripe-Style ID Examples (what you'll see in your DB now):")
     print("     org_default              → Default Organization")
     print("     usr_def_pankaj_x9v1      → User 'pankaj' in default org")
@@ -618,7 +617,7 @@ def print_summary(conn):
     print("     ast_def_192.168.1.5      → Host 192.168.1.5 in default org")
     print("     svc_192.168.1.5_22_tcp   → TCP/22 service on that host")
     print("     fnd_ast_def_...CVE-2024  → Finding: CVE on that host")
-    print("")
+    print()
     print("  Next steps:")
     print("    1. Create your first admin user via the /auth/register endpoint")
     print("    2. The user ID will look like: usr_def_[username]_[4rand]")

@@ -6,16 +6,16 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from functools import lru_cache
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Tuple
 
+from config import AppConfig
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
-
-from config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def compute_priority(
     epss_score: Any = 0.0,
     in_kev: bool = False,
     has_exploit: bool = False,
-) -> Tuple[float, str]:
+) -> tuple[float, str]:
     try:
         cvss = float(cvss_score or 0.0)
     except (TypeError, ValueError):
@@ -97,12 +97,12 @@ def rank_cvss_version(version: str) -> int:
     return CVSS_VERSION_ORDER.get(str(version or "").strip(), 0)
 
 
-def extract_search_terms(raw_text: str, include_aliases: bool = True) -> List[str]:
+def extract_search_terms(raw_text: str, include_aliases: bool = True) -> list[str]:
     text = (raw_text or "").strip().lower()
     if not text:
         return []
 
-    terms: List[str] = []
+    terms: list[str] = []
     for canonical, aliases in SERVICE_ALIASES.items():
         matched_aliases = [
             alias
@@ -121,7 +121,7 @@ def extract_search_terms(raw_text: str, include_aliases: bool = True) -> List[st
             continue
         terms.append(token)
 
-    unique_terms: List[str] = []
+    unique_terms: list[str] = []
     seen = set()
     for term in terms:
         normalized = term.strip().lower()
@@ -133,7 +133,7 @@ def extract_search_terms(raw_text: str, include_aliases: bool = True) -> List[st
     return unique_terms[:10]
 
 
-def normalize_package_names(name: str) -> List[str]:
+def normalize_package_names(name: str) -> list[str]:
     raw = (name or "").strip().lower()
     if not raw:
         return []
@@ -157,7 +157,7 @@ def normalize_package_names(name: str) -> List[str]:
     return [item for item in candidates if item]
 
 
-def as_list(value: Any) -> List[Any]:
+def as_list(value: Any) -> list[Any]:
     if value is None:
         return []
     if isinstance(value, list):
@@ -204,7 +204,7 @@ def can_connect_vuln_db() -> bool:
         return False
 
 
-def merge_alias_fields(record: Dict[str, Any]) -> Dict[str, Any]:
+def merge_alias_fields(record: dict[str, Any]) -> dict[str, Any]:
     record = _json_safe(record)
     cve_id = record.get("cve_id") or record.get("cve")
     description = record.get("description") or record.get("desc") or ""
@@ -234,7 +234,7 @@ def build_sql_or_clauses(
     values: Sequence[str],
     param_prefix: str,
     use_exact: bool = False,
-) -> Tuple[str, Dict[str, str]]:
+) -> tuple[str, dict[str, str]]:
     """
     Build SQL OR clauses for searching multiple values across columns.
 
@@ -250,8 +250,8 @@ def build_sql_or_clauses(
     -------
     Tuple of (WHERE clause string, parameter dict)
     """
-    clauses: List[str] = []
-    params: Dict[str, str] = {}
+    clauses: list[str] = []
+    params: dict[str, str] = {}
     idx = 0
     for value in values:
         for expr in column_expressions:

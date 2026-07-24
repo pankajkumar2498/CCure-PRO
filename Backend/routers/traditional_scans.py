@@ -11,11 +11,10 @@ Endpoints
   POST /scan/subnets   → sub-networks of a parent CIDR (discovery only)
 """
 
+from auth.rbac import require_permission
+from db.models import User
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-
-from db.models import User
-from auth.rbac import require_permission
 from scan_helpers import limiter, log
 
 router = APIRouter(tags=["Traditional Scans"])

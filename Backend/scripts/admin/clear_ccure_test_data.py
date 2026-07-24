@@ -18,13 +18,11 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from config import AppConfig  # noqa: E402
-
+from config import AppConfig
 
 EXPECTED_DATABASE = "ccure_test"
 

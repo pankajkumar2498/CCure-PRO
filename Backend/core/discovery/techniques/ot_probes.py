@@ -12,10 +12,10 @@ Safe Design Constraint:
   - Safe Timeouts: Strict socket timeouts of 1.0 second.
 """
 
+import logging
+import re
 import socket
 import struct
-import re
-import logging
 from typing import Dict, Optional
 
 log = logging.getLogger("ccure.discovery.ot_probes")
@@ -38,7 +38,7 @@ def _configure_safe_socket(s: socket.socket) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_modbus(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_modbus(ip: str, timeout: float = 1.0) -> dict | None:
     """Send Modbus Read Device Identification (FC 43/14) and parse response."""
     try:
         with socket.create_connection((ip, 502), timeout=timeout) as s:
@@ -98,7 +98,7 @@ def probe_modbus(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_s7(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_s7(ip: str, timeout: float = 1.0) -> dict | None:
     """Perform COTP CR, Setup Comm PDU, and Read SZL 0x001C to parse S7 PLC model."""
     try:
         with socket.create_connection((ip, 102), timeout=timeout) as s:
@@ -155,7 +155,7 @@ def probe_s7(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_ethernetip(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_ethernetip(ip: str, timeout: float = 1.0) -> dict | None:
     """Send CIP ListIdentity command and parse Vendor ID and Product Name."""
     try:
         # Encapsulation Header with Command 0x0063 (ListIdentity)
@@ -205,7 +205,7 @@ def probe_ethernetip(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_bacnet(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_bacnet(ip: str, timeout: float = 1.0) -> dict | None:
     """Send BACnet Who-Is request and parse the Vendor ID from I-Am response."""
     try:
         # BACnet Who-Is APDU payload
@@ -262,7 +262,7 @@ def probe_bacnet(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_dnp3(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_dnp3(ip: str, timeout: float = 1.0) -> dict | None:
     """Send DNP3 Request Link Status and verify response frame format."""
     # First try TCP
     try:
@@ -305,7 +305,7 @@ def probe_dnp3(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_opcua(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_opcua(ip: str, timeout: float = 1.0) -> dict | None:
     """Send OPC UA HEL (Hello) packet and verify ACKF/ERRF response."""
     try:
         with socket.create_connection((ip, 4840), timeout=timeout) as s:
@@ -330,7 +330,7 @@ def probe_opcua(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_iec104(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_iec104(ip: str, timeout: float = 1.0) -> dict | None:
     """Send IEC 104 TESTFR Activation U-Frame and verify response."""
     try:
         with socket.create_connection((ip, 2404), timeout=timeout) as s:
@@ -355,7 +355,7 @@ def probe_iec104(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_ge_srtp(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_ge_srtp(ip: str, timeout: float = 1.0) -> dict | None:
     """Send GE SRTP System Request status query and confirm response format."""
     try:
         with socket.create_connection((ip, 18245), timeout=timeout) as s:
@@ -380,7 +380,7 @@ def probe_ge_srtp(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_fins(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_fins(ip: str, timeout: float = 1.0) -> dict | None:
     """Send FINS TCP connection request and parse confirmation header."""
     try:
         with socket.create_connection((ip, 9600), timeout=timeout) as s:
@@ -407,7 +407,7 @@ def probe_fins(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_melsec(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_melsec(ip: str, timeout: float = 1.0) -> dict | None:
     """Send MELSEC MC 3E frame CPU Type read and check response."""
     try:
         with socket.create_connection((ip, 5007), timeout=timeout) as s:
@@ -440,7 +440,7 @@ def probe_melsec(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_codesys(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_codesys(ip: str, timeout: float = 1.0) -> dict | None:
     """Send CoDeSys V2 connection handshake to verify CoDeSys presence."""
     try:
         with socket.create_connection((ip, 2455), timeout=timeout) as s:
@@ -465,7 +465,7 @@ def probe_codesys(ip: str, timeout: float = 1.0) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def probe_mms(ip: str, timeout: float = 1.0) -> Optional[Dict]:
+def probe_mms(ip: str, timeout: float = 1.0) -> dict | None:
     """Send ISO ACSE MMS Initiate Request to identify substation utility relays."""
     try:
         with socket.create_connection((ip, 102), timeout=timeout) as s:

@@ -12,21 +12,21 @@ from datetime import datetime, timezone
 # Ensure the root of the project is in python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.compliance_tasks import run_scan_task
 from db.base import SessionLocal
 from db.models import Asset, User
-from db.models.rbac import Organization
 from db.models.compliance import (
-    ComplianceFramework,
     ComplianceControl,
-    ComplianceRule,
-    ComplianceRuleControl,
-    ComplianceRemediation,
-    ComplianceTenantFramework,
+    ComplianceFramework,
     CompliancePolicy,
     CompliancePolicyRule,
+    ComplianceRemediation,
+    ComplianceRule,
+    ComplianceRuleControl,
     ComplianceScanRun,
+    ComplianceTenantFramework,
 )
-from core.compliance_tasks import run_scan_task
+from db.models.rbac import Organization
 
 
 def seed_and_evaluate():
@@ -2782,7 +2782,7 @@ def seed_and_evaluate():
 
     except Exception as e:
         db.rollback()
-        print(f"Error seeding rules/running evaluation: {str(e)}")
+        print(f"Error seeding rules/running evaluation: {e!s}")
     finally:
         db.close()
 

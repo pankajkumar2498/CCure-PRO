@@ -14,18 +14,17 @@ Field notes (verified against db/models/findings.py):
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import func, or_, String
-from sqlalchemy.orm import Session
-
 from auth.rbac import require_permission
+from core.audit import log_audit_event
+from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
 from db.models import User
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition
-from core.vuln_intel import compute_priority
-from core.audit import log_audit_event
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import String, func, or_
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.findings")
 router = APIRouter(prefix="/findings", tags=["Findings"])
@@ -37,7 +36,7 @@ def _is_superadmin(user: User) -> bool:
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: Optional[str]) -> str:
+def _resolve_org(user: User, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -49,17 +48,17 @@ def _resolve_org(user: User, requested_org: Optional[str]) -> str:
 @router.get("")
 @router.get("/")
 def list_findings(
-    severity: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    priority: Optional[str] = Query(None),
-    in_kev: Optional[bool] = Query(None),
-    search: Optional[str] = Query(None),
-    asset_id: Optional[str] = Query(None),
-    scan_id: Optional[str] = Query(None),
+    severity: str | None = Query(None),
+    status: str | None = Query(None),
+    priority: str | None = Query(None),
+    in_kev: bool | None = Query(None),
+    search: str | None = Query(None),
+    asset_id: str | None = Query(None),
+    scan_id: str | None = Query(None),
     sort_by: str = Query("priority"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("findings", "read")),
 ):
@@ -177,7 +176,7 @@ def list_findings(
 @router.get("/{finding_id}")
 def get_finding(
     finding_id: str,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("findings", "read")),
 ):
@@ -227,7 +226,7 @@ def get_finding(
                         vuln.references = clean_refs
 
                     if details.get("published") and not vuln.published_at:
-                        from datetime import datetime, date
+                        from datetime import date, datetime
 
                         pub = details.get("published")
                         if isinstance(pub, str):
@@ -320,15 +319,15 @@ def get_finding(
 
 class StatusUpdate(BaseModel):
     status: str
-    accepted_risk_reason: Optional[str] = None
-    remediation_notes: Optional[str] = None
+    accepted_risk_reason: str | None = None
+    remediation_notes: str | None = None
 
 
 @router.patch("/{finding_id}/status")
 def update_finding_status(
     finding_id: str,
     body: StatusUpdate,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("findings", "update")),
 ):
@@ -434,7 +433,7 @@ class NotesUpdate(BaseModel):
 def update_finding_notes(
     finding_id: str,
     body: NotesUpdate,
-    org_id: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("findings", "update")),
 ):

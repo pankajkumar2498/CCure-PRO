@@ -1,7 +1,7 @@
 from db.base import SessionLocal
+from db.models.rbac import Organization
 from db.models.scans import Scan
 from db.models.users import User
-from db.models.rbac import Organization
 
 
 def test_debug_scan():

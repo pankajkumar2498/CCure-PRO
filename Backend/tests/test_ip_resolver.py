@@ -4,8 +4,8 @@ tests/test_ip_resolver.py
 Unit tests for core/ip_resolver.py to verify secure client IP resolution.
 """
 
+from core.ip_resolver import _is_trusted_proxy, get_client_ip
 from fastapi import Request
-from core.ip_resolver import get_client_ip, _is_trusted_proxy
 
 
 def create_mock_request(client_ip=None, headers=None) -> Request:

@@ -49,7 +49,7 @@ _OID_IF_NUMBER = "if_number"
 _OID_BRIDGE_MIB = "bridge_mib"
 
 
-def _classify_from_snmp(snmp_info: Dict) -> Optional[str]:
+def _classify_from_snmp(snmp_info: dict) -> str | None:
     """Return category string from SNMP probe findings, or None."""
     if not snmp_info or not snmp_info.get("open"):
         return None
@@ -76,7 +76,7 @@ def _classify_from_snmp(snmp_info: Dict) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 # Extended vendor keyword table (lowercase substring match)
-_VENDOR_DEVICE_MAP: Dict[str, str] = {
+_VENDOR_DEVICE_MAP: dict[str, str] = {
     # Routers / firewalls
     "cisco": "router",
     "juniper": "router",
@@ -166,7 +166,7 @@ _VENDOR_DEVICE_MAP: Dict[str, str] = {
 }
 
 
-def _classify_from_vendor(vendor: Optional[str]) -> Optional[str]:
+def _classify_from_vendor(vendor: str | None) -> str | None:
     if not vendor:
         return None
     v = vendor.lower()
@@ -176,7 +176,7 @@ def _classify_from_vendor(vendor: Optional[str]) -> Optional[str]:
     return None
 
 
-_VENDOR_OS_MAP: Dict[str, str] = {
+_VENDOR_OS_MAP: dict[str, str] = {
     "cisco": "Cisco IOS",
     "juniper": "Junos OS",
     "fortinet": "FortiOS",
@@ -187,7 +187,7 @@ _VENDOR_OS_MAP: Dict[str, str] = {
 }
 
 
-def _os_from_vendor(vendor: Optional[str]) -> Optional[str]:
+def _os_from_vendor(vendor: str | None) -> str | None:
     if not vendor:
         return None
     v = vendor.lower()
@@ -197,7 +197,7 @@ def _os_from_vendor(vendor: Optional[str]) -> Optional[str]:
     return None
 
 
-def _classify_from_netbios(host: Dict) -> Optional[str]:
+def _classify_from_netbios(host: dict) -> str | None:
     names = host.get("netbios_names")
     if not names:
         return None
@@ -215,7 +215,7 @@ def _classify_from_netbios(host: Dict) -> Optional[str]:
     return None
 
 
-def _classify_from_mdns(host: Dict) -> Optional[str]:
+def _classify_from_mdns(host: dict) -> str | None:
     mdns_services = host.get("mdns_services")
     if not mdns_services:
         return None
@@ -233,7 +233,7 @@ def _classify_from_mdns(host: Dict) -> Optional[str]:
 # Signal 4 — Open port profile
 # ---------------------------------------------------------------------------
 
-_PORT_PROFILE_RULES: List[Dict] = [
+_PORT_PROFILE_RULES: list[dict] = [
     # Each rule: {"ports": required_set, "any": optional_hint_set, "category": str}
     # Evaluated in order; first match wins.
     {"ports": {9100}, "category": "printer"},  # JetDirect
@@ -282,7 +282,7 @@ _PORT_PROFILE_RULES: List[Dict] = [
 ]
 
 
-def _classify_from_ports(open_ports: List[int]) -> Optional[str]:
+def _classify_from_ports(open_ports: list[int]) -> str | None:
     port_set = set(open_ports)
     for rule in _PORT_PROFILE_RULES:
         required = rule.get("ports", set())
@@ -297,7 +297,7 @@ def _classify_from_ports(open_ports: List[int]) -> Optional[str]:
 # Signal 4 — Banner / sysDescr keyword matching
 # ---------------------------------------------------------------------------
 
-_BANNER_KEYWORDS: Dict[str, str] = {
+_BANNER_KEYWORDS: dict[str, str] = {
     "catalyst": "switch",
     "nexus": "switch",
     "procurve": "switch",
@@ -350,7 +350,7 @@ _BANNER_KEYWORDS: Dict[str, str] = {
 }
 
 
-def _classify_from_banners(host: Dict) -> Optional[str]:
+def _classify_from_banners(host: dict) -> str | None:
     """Scan all banner-like fields in the host dict for device keywords."""
     # Collect text to scan
     texts = []
@@ -379,7 +379,7 @@ def _classify_from_banners(host: Dict) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
+def _classify_from_ttl(ttl: int | None) -> str | None:
     if ttl is None:
         return None
     if ttl >= 250:
@@ -392,7 +392,7 @@ def _classify_from_ttl(ttl: Optional[int]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def _classify_from_cpe(os_cpe: Optional[List[str]]) -> Optional[str]:
+def _classify_from_cpe(os_cpe: list[str] | None) -> str | None:
     if not os_cpe:
         return None
     for item in os_cpe:
@@ -415,7 +415,7 @@ def _classify_from_cpe(os_cpe: Optional[List[str]]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def classify_device(host: Dict) -> str:
+def classify_device(host: dict) -> str:
     """
     Run all evidence signals through a weighted scoring matrix and return the winning category.
 
@@ -451,9 +451,12 @@ def classify_device(host: Dict) -> str:
             category = "endpoint"
         elif "esxi" in os_fam.lower() or "esxi" in os_n:
             category = "virtual_machine"
-        elif "cisco ios" in os_fam.lower() or "cisco" in os_n:
-            category = "router"
-        elif "junos" in os_fam.lower() or "juniper" in os_n:
+        elif (
+            "cisco ios" in os_fam.lower()
+            or "cisco" in os_n
+            or "junos" in os_fam.lower()
+            or "juniper" in os_n
+        ):
             category = "router"
         elif "fortios" in os_fam.lower() or "fortinet" in os_n:
             category = "firewall"
@@ -595,9 +598,7 @@ def classify_device(host: Dict) -> str:
         types = {
             n.get("type") for n in netbios_names if isinstance(n, dict) and "type" in n
         }
-        if {0x1D, 0x1B, 0x1C} & types:
-            add_score("server", 98, "netbios")
-        elif 0x20 in types:
+        if {0x1D, 0x1B, 0x1C} & types or 0x20 in types:
             add_score("server", 98, "netbios")
         elif 0x00 in types:
             add_score("endpoint", 96, "netbios")
@@ -714,7 +715,7 @@ def classify_device(host: Dict) -> str:
     return winner
 
 
-def _write(host: Dict, category: str, signal: str) -> None:
+def _write(host: dict, category: str, signal: str) -> None:
     host["device_category"] = category
     host["device_category_signal"] = signal
     log.debug(
@@ -725,7 +726,7 @@ def _write(host: Dict, category: str, signal: str) -> None:
     )
 
 
-def _extract_ttl(host: Dict) -> Optional[int]:
+def _extract_ttl(host: dict) -> int | None:
     """Best-effort TTL extraction from various host dict shapes."""
     for key in ("ttl", "ip_ttl"):
         if key in host:

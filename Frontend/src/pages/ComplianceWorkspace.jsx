@@ -285,7 +285,35 @@ const THEME_LABELS = {
   SP82_SI: "System & Information Integrity",
   SP82_RA: "Risk Assessment & Hazard Analysis",
   SP82_SA: "System & Services Acquisition",
+
+  // EU NIS 2 Directive (Directive (EU) 2022/2555)
+  NIS2_GOV: "Governance & Risk Analysis Policies (Art. 21.2a)",
+  NIS2_INC: "Incident Handling & 24h CSIRT Warning (Art. 21.2b)",
+  NIS2_BC: "Business Continuity & Backups (Art. 21.2c)",
+  NIS2_SUPPLY: "Supply Chain & Vendor Risk (Art. 21.2d)",
+  NIS2_SEC: "Vulnerability Management & CVD (Art. 21.2e)",
+  NIS2_AUDIT: "Security Effectiveness & Audits (Art. 21.2f)",
+  NIS2_HYGIENE: "Cyber Hygiene & Security Training (Art. 21.2g)",
+  NIS2_CRYPTO: "Cryptography & Data Encryption (Art. 21.2h)",
+  NIS2_IAM: "Access Control & Least Privilege (Art. 21.2i)",
+  NIS2_MFA: "Multi-Factor Authentication & Comms (Art. 21.2j)",
 };
+
+const GAP_FRAMEWORK_OPTIONS = [
+  { id: "cfw_iso27001_2022", name: "ISO 27001:2022 (Information Security)" },
+  { id: "cfw_nist_csf_v2", name: "NIST CSF 2.0 (Cybersecurity Framework)" },
+  { id: "cfw_soc2_type2", name: "SOC 2 Type II (Trust Services)" },
+  { id: "cfw_cis_v8_1", name: "CIS Controls v8.1 (Critical Controls)" },
+  { id: "cfw_cert_in_2022", name: "CERT-In 2022 (Cyber Incident Directives)" },
+  { id: "cfw_pci_dss_v4", name: "PCI-DSS v4.0 (Payment Card Security)" },
+  { id: "cfw_dpdp_2023", name: "DPDP Act 2023 (Data Protection)" },
+  { id: "cfw_gdpr", name: "EU GDPR (General Data Protection)" },
+  { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5 (Federal & Defense)" },
+  { id: "cfw_iec_62443", name: "IEC 62443 (Industrial & OT/ICS)" },
+  { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT Security)" },
+  { id: "cfw_nerc_cip", name: "NERC CIP (Power Grid Critical Infra)" },
+  { id: "cfw_nis2", name: "EU NIS 2 Directive (Directive 2022/2555)" },
+];
 
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
@@ -338,8 +366,15 @@ export default function ComplianceWorkspace() {
   const [slLevelFilter, setSlLevelFilter] = useState("all");
   const [besImpactLevelFilter, setBesImpactLevelFilter] = useState("all");
   const [standardNumberFilter, setStandardNumberFilter] = useState("all");
+  const [nis2EntityTypeFilter, setNis2EntityTypeFilter] = useState("all");
+  const [nis2SectorFilter, setNis2SectorFilter] = useState("all");
+  const [nis2MemberStateFilter, setNis2MemberStateFilter] = useState("all");
+  const [nis2AnnualTurnover, setNis2AnnualTurnover] = useState(50000000);
   const [regionalEntityFilter, setRegionalEntityFilter] = useState("WECC");
   const [gapAnalysis, setGapAnalysis] = useState(null);
+  const [gapSourceFramework, setGapSourceFramework] =
+    useState("cfw_iso27001_2022");
+  const [gapTargetFramework, setGapTargetFramework] = useState("cfw_nis2");
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
 
@@ -356,6 +391,12 @@ export default function ComplianceWorkspace() {
     setSlLevelFilter("all");
     setBesImpactLevelFilter("all");
     setStandardNumberFilter("all");
+    setNis2EntityTypeFilter("all");
+    setNis2SectorFilter("all");
+    setNis2MemberStateFilter("all");
+    if (selectedFrameworkId && selectedFrameworkId !== "all") {
+      setGapTargetFramework(selectedFrameworkId);
+    }
   }, [selectedFrameworkId]);
 
   // Modals state
@@ -540,8 +581,8 @@ export default function ComplianceWorkspace() {
   ]);
 
   const fetchGapAnalysis = async (
-    sourceId = "cfw_iso27001_2022",
-    targetId = "cfw_nist_csf_v2",
+    sourceId = gapSourceFramework,
+    targetId = gapTargetFramework,
   ) => {
     setLoadingGapAnalysis(true);
     try {
@@ -622,6 +663,17 @@ export default function ComplianceWorkspace() {
         }
       }
     }
+    if (selectedFrameworkId === "cfw_nis2") {
+      if (nis2EntityTypeFilter && nis2EntityTypeFilter !== "all") {
+        params.push(`nis2_entity_type=${nis2EntityTypeFilter}`);
+      }
+      if (nis2SectorFilter && nis2SectorFilter !== "all") {
+        params.push(`nis2_sector=${nis2SectorFilter}`);
+      }
+      if (nis2MemberStateFilter && nis2MemberStateFilter !== "all") {
+        params.push(`nis2_member_state=${nis2MemberStateFilter}`);
+      }
+    }
     const queryString = params.length > 0 ? `?${params.join("&")}` : "";
 
     try {
@@ -647,6 +699,7 @@ export default function ComplianceWorkspace() {
             { id: "cfw_iec_62443", name: "IEC 62443 (OT/ICS)" },
             { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT)" },
             { id: "cfw_nerc_cip", name: "NERC CIP (Power Grid)" },
+            { id: "cfw_nis2", name: "EU NIS 2 Directive" },
           ];
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
@@ -1209,6 +1262,9 @@ export default function ComplianceWorkspace() {
                 <option value="cfw_nerc_cip">
                   NERC CIP (Critical Infrastructure Protection - Power Grid)
                 </option>
+                <option value="cfw_nis2">
+                  EU NIS 2 Directive (Directive (EU) 2022/2555)
+                </option>
               </select>
             </div>
             {(selectedFrameworkId === "cfw_iec_62443" ||
@@ -1370,181 +1426,346 @@ export default function ComplianceWorkspace() {
                     </select>
                   </div>
                 )}
-                {selectedFrameworkId === "cfw_nerc_cip" && (
-                  <>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        Regional Entity:
-                      </span>
-                      <select
-                        className="cw-pagination-select"
-                        value={regionalEntityFilter}
-                        onChange={(e) =>
-                          setRegionalEntityFilter(e.target.value)
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: "6px",
-                          fontSize: "0.85rem",
-                          background: "var(--bg-white)",
-                          border: "1px solid var(--border)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="WECC">
-                          WECC (Western Electricity Coordinating Council)
-                        </option>
-                        <option value="SERC">
-                          SERC Reliability Corporation
-                        </option>
-                        <option value="TEXAS_RE">
-                          Texas RE (Texas Reliability Entity)
-                        </option>
-                        <option value="RELIABILITY_FIRST">
-                          ReliabilityFirst (RF)
-                        </option>
-                        <option value="MRO">
-                          MRO (Midwest Reliability Organization)
-                        </option>
-                        <option value="NPCC">
-                          NPCC (Northeast Power Coordinating Council)
-                        </option>
-                      </select>
-                    </div>
+              </>
+            )}
+            {selectedFrameworkId === "cfw_nerc_cip" && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Regional Entity:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={regionalEntityFilter}
+                    onChange={(e) => setRegionalEntityFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="WECC">
+                      WECC (Western Electricity Coordinating Council)
+                    </option>
+                    <option value="SERC">SERC Reliability Corporation</option>
+                    <option value="TEXAS_RE">
+                      Texas RE (Texas Reliability Entity)
+                    </option>
+                    <option value="RELIABILITY_FIRST">
+                      ReliabilityFirst (RF)
+                    </option>
+                    <option value="MRO">
+                      MRO (Midwest Reliability Organization)
+                    </option>
+                    <option value="NPCC">
+                      NPCC (Northeast Power Coordinating Council)
+                    </option>
+                  </select>
+                </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        BES Impact:
-                      </span>
-                      <select
-                        className="cw-pagination-select"
-                        value={besImpactLevelFilter}
-                        onChange={(e) =>
-                          setBesImpactLevelFilter(e.target.value)
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: "6px",
-                          fontSize: "0.85rem",
-                          background: "var(--bg-white)",
-                          border: "1px solid var(--border)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="all">All BES Impact Baselines</option>
-                        <option value="High">
-                          High Impact BES Cyber Systems
-                        </option>
-                        <option value="Medium">
-                          Medium Impact BES Cyber Systems
-                        </option>
-                        <option value="Low">
-                          Low Impact BES Cyber Systems
-                        </option>
-                      </select>
-                    </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    BES Impact:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={besImpactLevelFilter}
+                    onChange={(e) => setBesImpactLevelFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All BES Impact Baselines</option>
+                    <option value="High">High Impact BES Cyber Systems</option>
+                    <option value="Medium">
+                      Medium Impact BES Cyber Systems
+                    </option>
+                    <option value="Low">Low Impact BES Cyber Systems</option>
+                  </select>
+                </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        Standard:
-                      </span>
-                      <select
-                        className="cw-pagination-select"
-                        value={standardNumberFilter}
-                        onChange={(e) =>
-                          setStandardNumberFilter(e.target.value)
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: "6px",
-                          fontSize: "0.85rem",
-                          background: "var(--bg-white)",
-                          border: "1px solid var(--border)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="all">
-                          All Standards (CIP-002 to CIP-014)
-                        </option>
-                        <option value="CIP-002">
-                          CIP-002 (Asset Categorization)
-                        </option>
-                        <option value="CIP-003">
-                          CIP-003 (Security Management)
-                        </option>
-                        <option value="CIP-004">
-                          CIP-004 (Personnel & Training)
-                        </option>
-                        <option value="CIP-005">
-                          CIP-005 (Electronic Security Perimeters)
-                        </option>
-                        <option value="CIP-006">
-                          CIP-006 (Physical Security)
-                        </option>
-                        <option value="CIP-007">
-                          CIP-007 (System Security Management)
-                        </option>
-                        <option value="CIP-008">
-                          CIP-008 (Incident Reporting)
-                        </option>
-                        <option value="CIP-009">
-                          CIP-009 (Recovery Plans)
-                        </option>
-                        <option value="CIP-010">
-                          CIP-010 (Configuration & Change Mgmt)
-                        </option>
-                        <option value="CIP-011">
-                          CIP-011 (Information Protection)
-                        </option>
-                        <option value="CIP-012">
-                          CIP-012 (Control Center Comms)
-                        </option>
-                        <option value="CIP-013">
-                          CIP-013 (Supply Chain Risk Mgmt)
-                        </option>
-                        <option value="CIP-014">
-                          CIP-014 (Physical Security Substation)
-                        </option>
-                      </select>
-                    </div>
-                  </>
-                )}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Standard:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={standardNumberFilter}
+                    onChange={(e) => setStandardNumberFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">
+                      All Standards (CIP-002 to CIP-014)
+                    </option>
+                    <option value="CIP-002">
+                      CIP-002 (Asset Categorization)
+                    </option>
+                    <option value="CIP-003">
+                      CIP-003 (Security Management)
+                    </option>
+                    <option value="CIP-004">
+                      CIP-004 (Personnel & Training)
+                    </option>
+                    <option value="CIP-005">
+                      CIP-005 (Electronic Security Perimeters)
+                    </option>
+                    <option value="CIP-006">CIP-006 (Physical Security)</option>
+                    <option value="CIP-007">
+                      CIP-007 (System Security Management)
+                    </option>
+                    <option value="CIP-008">
+                      CIP-008 (Incident Reporting)
+                    </option>
+                    <option value="CIP-009">CIP-009 (Recovery Plans)</option>
+                    <option value="CIP-010">
+                      CIP-010 (Configuration & Change Mgmt)
+                    </option>
+                    <option value="CIP-011">
+                      CIP-011 (Information Protection)
+                    </option>
+                    <option value="CIP-012">
+                      CIP-012 (Control Center Comms)
+                    </option>
+                    <option value="CIP-013">
+                      CIP-013 (Supply Chain Risk Mgmt)
+                    </option>
+                    <option value="CIP-014">
+                      CIP-014 (Physical Security Substation)
+                    </option>
+                  </select>
+                </div>
+              </>
+            )}
+            {selectedFrameworkId === "cfw_nis2" && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Entity Scope:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={nis2EntityTypeFilter}
+                    onChange={(e) => setNis2EntityTypeFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">All Entities</option>
+                    <option value="essential">
+                      Essential Entity (Art. 3.1)
+                    </option>
+                    <option value="important">
+                      Important Entity (Art. 3.2)
+                    </option>
+                  </select>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Sector:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={nis2SectorFilter}
+                    onChange={(e) => setNis2SectorFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">
+                      All 18 Critical Sectors (Annex I & II)
+                    </option>
+                    <option value="energy">
+                      Energy (Electricity, Oil, Gas, Hydrogen, Heating)
+                    </option>
+                    <option value="transport">
+                      Transport (Air, Rail, Water, Road)
+                    </option>
+                    <option value="banking">
+                      Banking & Credit Institutions
+                    </option>
+                    <option value="financial_market_infra">
+                      Financial Market Infrastructures
+                    </option>
+                    <option value="health">
+                      Health & Healthcare (Hospitals, Pharma, Labs)
+                    </option>
+                    <option value="drinking_water">
+                      Drinking Water Supply & Distribution
+                    </option>
+                    <option value="wastewater">
+                      Wastewater Collection & Treatment
+                    </option>
+                    <option value="digital_infrastructure">
+                      Digital Infrastructure (DNS, TLD, Cloud, DC, CDN)
+                    </option>
+                    <option value="ict">
+                      ICT Service Management (B2B Managed Services & MSPs)
+                    </option>
+                    <option value="public_admin">
+                      Public Administration (Central & Regional)
+                    </option>
+                    <option value="space">
+                      Space (Operators of Ground-Based Infrastructure)
+                    </option>
+                    <option value="postal_courier">
+                      Postal & Courier Services
+                    </option>
+                    <option value="waste_management">Waste Management</option>
+                    <option value="chemicals">
+                      Chemicals Production, Processing & Distribution
+                    </option>
+                    <option value="food">
+                      Food Production, Processing & Wholesale Distribution
+                    </option>
+                    <option value="manufacturing">
+                      Manufacturing (Medical, Electronics, Machinery)
+                    </option>
+                    <option value="digital_providers">
+                      Digital Providers (Online Marketplaces, Search, Social)
+                    </option>
+                    <option value="research">Research Organisations</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Member State:
+                  </span>
+                  <select
+                    className="cw-pagination-select"
+                    value={nis2MemberStateFilter}
+                    onChange={(e) => setNis2MemberStateFilter(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--bg-white)",
+                      border: "1px solid var(--border)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="all">
+                      All EU (Generic / ENISA Coordinated)
+                    </option>
+                    <option value="DE">
+                      Germany — BSI (Bundesamt für Sicherheit in der
+                      Informationstechnik)
+                    </option>
+                    <option value="FR">
+                      France — ANSSI (Agence nationale de la sécurité des SI)
+                    </option>
+                    <option value="IT">
+                      Italy — ACN (Agenzia per la Cybersicurezza Nazionale)
+                    </option>
+                    <option value="NL">Netherlands — NCSC-NL</option>
+                    <option value="BE">
+                      Belgium — CCB (Centre for Cybersecurity Belgium)
+                    </option>
+                    <option value="ES">Spain — INCIBE / CCN-CERT</option>
+                    <option value="SE">
+                      Sweden — MSB (Myndigheten för samhällsskydd och beredskap)
+                    </option>
+                    <option value="PL">Poland — NASK / CERT Polska</option>
+                    <option value="IE">Ireland — NCSC-IE</option>
+                  </select>
+                </div>
               </>
             )}
             {selectedFrameworkId === "cfw_nist_800_53_r5" && (
@@ -1738,21 +1959,58 @@ export default function ComplianceWorkspace() {
                 </label>
               </>
             )}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                }}
+              >
+                Gap Source:
+              </span>
+              <select
+                className="cw-pagination-select"
+                value={gapSourceFramework}
+                onChange={(e) => setGapSourceFramework(e.target.value)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "6px",
+                  fontSize: "0.85rem",
+                  background: "var(--bg-white)",
+                  border: "1px solid var(--border)",
+                  fontWeight: 600,
+                }}
+              >
+                {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                  <option key={`tb_src_${fw.id}`} value={fw.id}>
+                    {fw.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               className="db-btn db-btn--ghost"
               onClick={() =>
                 fetchGapAnalysis(
-                  "cfw_iso27001_2022",
+                  gapSourceFramework,
                   selectedFrameworkId === "all"
-                    ? "cfw_cis_v8_1"
+                    ? gapTargetFramework
                     : selectedFrameworkId,
                 )
               }
               disabled={loadingGapAnalysis}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
-              <span>📊</span>{" "}
-              {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
+              <span>
+                📊 {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
+              </span>
             </button>
             <button
               className="db-btn db-btn--primary"
@@ -1760,7 +2018,7 @@ export default function ComplianceWorkspace() {
               disabled={loading}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
-              <span>⚡</span> Run Compliance Scan
+              <span>⚡ Run Compliance Scan</span>
             </button>
             {activeTab === "policies" && (
               <button
@@ -2176,6 +2434,28 @@ export default function ComplianceWorkspace() {
                   className="db-btn db-btn--ghost"
                   onClick={() =>
                     handleDownloadReport(
+                      `/compliance/reports/nis2?fmt=pdf&nis2_entity_type=${nis2EntityTypeFilter}${nis2SectorFilter !== "all" ? `&nis2_sector=${nis2SectorFilter}` : ""}`,
+                      "nis2_compliance_report.pdf",
+                    )
+                  }
+                >
+                  Download NIS 2 PDF
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
+                      `/compliance/reports/nis2?fmt=docx&nis2_entity_type=${nis2EntityTypeFilter}${nis2SectorFilter !== "all" ? `&nis2_sector=${nis2SectorFilter}` : ""}`,
+                      "nis2_compliance_report.docx",
+                    )
+                  }
+                >
+                  Download NIS 2 Word
+                </button>
+                <button
+                  className="db-btn db-btn--ghost"
+                  onClick={() =>
+                    handleDownloadReport(
                       "/compliance/reports/executive",
                       "executive_compliance_report.pdf",
                     )
@@ -2238,8 +2518,289 @@ export default function ComplianceWorkspace() {
                                     : selectedFrameworkId ===
                                         "cfw_nist_800_53_r5"
                                       ? "NIST SP 800-53 R5 20 Control Families Breakdown"
-                                      : "ISO 27001 Themes Quadrant Breakdown"}
+                                      : selectedFrameworkId === "cfw_nis2"
+                                        ? "EU NIS 2 Directive 10 Risk Management Domains (Art. 21.2)"
+                                        : "ISO 27001 Themes Quadrant Breakdown"}
                     </h3>
+
+                    {selectedFrameworkId === "cfw_nis2" && (
+                      <div
+                        style={{
+                          background: "var(--bg-card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          padding: "16px",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "10px",
+                          }}
+                        >
+                          <h4
+                            style={{
+                              margin: 0,
+                              color: "var(--text-main)",
+                              fontSize: "0.95rem",
+                            }}
+                          >
+                            💶 EU NIS 2 Regulatory Fine Risk Exposure Calculator
+                            (Article 32 & 34)
+                          </h4>
+                          <span
+                            style={{
+                              background:
+                                nis2EntityTypeFilter === "important"
+                                  ? "#f59e0b"
+                                  : "#2563eb",
+                              color: "#fff",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            {nis2EntityTypeFilter === "important"
+                              ? "Important Entity (Art. 3.2)"
+                              : "Essential Entity (Art. 3.1)"}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "16px",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <label
+                              style={{
+                                fontSize: "0.8rem",
+                                color: "var(--text-muted)",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Annual Global Turnover (EUR €):
+                            </label>
+                            <input
+                              type="number"
+                              className="cw-pagination-select"
+                              value={nis2AnnualTurnover}
+                              onChange={(e) =>
+                                setNis2AnnualTurnover(Number(e.target.value))
+                              }
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                fontSize: "0.85rem",
+                                fontWeight: 600,
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "0.8rem",
+                                color: "var(--text-muted)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Statutory Fine Ceiling:
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "1.1rem",
+                                fontWeight: 700,
+                                color: "var(--danger)",
+                              }}
+                            >
+                              €
+                              {nis2EntityTypeFilter === "important"
+                                ? Math.max(
+                                    7000000,
+                                    nis2AnnualTurnover * 0.014,
+                                  ).toLocaleString()
+                                : Math.max(
+                                    10000000,
+                                    nis2AnnualTurnover * 0.02,
+                                  ).toLocaleString()}
+                            </div>
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "0.8rem",
+                                color: "var(--text-muted)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Executive Board Liability Exposure:
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "0.85rem",
+                                fontWeight: 600,
+                                color: "var(--warning)",
+                              }}
+                            >
+                              Article 20 Personal Liability & Operational Ban
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedFrameworkId === "cfw_nis2" && (
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "8px",
+                          padding: "16px",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "10px",
+                          }}
+                        >
+                          <h4
+                            style={{
+                              margin: 0,
+                              color: "#1e293b",
+                              fontSize: "0.95rem",
+                            }}
+                          >
+                            🚨 Article 23 CSIRT Mandatory Incident Reporting SLA
+                            Readiness Tracker
+                          </h4>
+                          <span
+                            style={{
+                              background: "#059669",
+                              color: "#fff",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            Directive SLA Enforced
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              background: "#ffffff",
+                              padding: "12px",
+                              borderRadius: "6px",
+                              border: "1px solid #e2e8f0",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "0.78rem",
+                                fontWeight: 700,
+                                color: "#e11d48",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              ⚡ Early Warning (≤ 24 Hours)
+                            </div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: "0.78rem",
+                                color: "#475569",
+                              }}
+                            >
+                              Submit initial CSIRT warning indicating whether
+                              incident is suspect/unlawful or has cross-border
+                              impact.
+                            </p>
+                          </div>
+
+                          <div
+                            style={{
+                              background: "#ffffff",
+                              padding: "12px",
+                              borderRadius: "6px",
+                              border: "1px solid #e2e8f0",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "0.78rem",
+                                fontWeight: 700,
+                                color: "#d97706",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              ⏰ Incident Notification (≤ 72 Hours)
+                            </div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: "0.78rem",
+                                color: "#475569",
+                              }}
+                            >
+                              Submit formal incident notification updating
+                              initial assessment, severity metrics, and
+                              technical IoC indicators.
+                            </p>
+                          </div>
+
+                          <div
+                            style={{
+                              background: "#ffffff",
+                              padding: "12px",
+                              borderRadius: "6px",
+                              border: "1px solid #e2e8f0",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "0.78rem",
+                                fontWeight: 700,
+                                color: "#2563eb",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              📋 Final Report (≤ 1 Month)
+                            </div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: "0.78rem",
+                                color: "#475569",
+                              }}
+                            >
+                              Provide complete root-cause analysis, forensic
+                              evidence, technical remediations applied, and
+                              cross-border impact.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="quadrant-grid">
                       {Object.entries(summary.quadrant_scores || {}).map(
                         ([key, val]) => (
@@ -4031,6 +4592,113 @@ export default function ComplianceWorkspace() {
           <div
             style={{ display: "flex", flexDirection: "column", gap: "16px" }}
           >
+            {/* Interactive Any-to-Any Framework Selector Bar */}
+            <div
+              style={{
+                background: "#f1f5f9",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      color: "#334155",
+                    }}
+                  >
+                    Source Baseline:
+                  </label>
+                  <select
+                    value={gapSourceFramework}
+                    onChange={(e) => setGapSourceFramework(e.target.value)}
+                    style={{
+                      padding: "5px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                      background: "#ffffff",
+                    }}
+                  >
+                    {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                      <option key={`modal_src_${fw.id}`} value={fw.id}>
+                        {fw.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <span style={{ fontWeight: 800, color: "#64748b" }}>➔</span>
+
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      color: "#334155",
+                    }}
+                  >
+                    Target Mandate:
+                  </label>
+                  <select
+                    value={gapTargetFramework}
+                    onChange={(e) => setGapTargetFramework(e.target.value)}
+                    style={{
+                      padding: "5px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                      background: "#ffffff",
+                    }}
+                  >
+                    {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                      <option key={`modal_tgt_${fw.id}`} value={fw.id}>
+                        {fw.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button
+                className="db-btn db-btn--primary"
+                onClick={() =>
+                  fetchGapAnalysis(gapSourceFramework, gapTargetFramework)
+                }
+                disabled={loadingGapAnalysis}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>🔄</span>{" "}
+                {loadingGapAnalysis ? "Calculating..." : "Recalculate Gap"}
+              </button>
+            </div>
             <div
               style={{
                 background: "#f8fafc",

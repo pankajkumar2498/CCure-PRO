@@ -16,7 +16,7 @@ from typing import List, Optional, Union
 from uuid import UUID
 
 from auth.dependencies import get_current_user
-from auth.email_utils import email_matches, normalize_email
+from auth.email_utils import email_matches, normalize_email, username_matches
 from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
@@ -208,7 +208,7 @@ def check_username(request: Request, q: str, db: Session = Depends(get_db)):
     """Check if a username is available"""
     if len(q.strip()) < 3:
         return {"available": False}
-    exists = db.query(User).filter(User.username == q.strip()).first()
+    exists = db.query(User).filter(username_matches(User.username, q)).first()
     return {"available": not bool(exists)}
 
 
@@ -239,7 +239,7 @@ def register(
     if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    if db.query(User).filter(User.username == req.username.strip()).first():
+    if db.query(User).filter(username_matches(User.username, req.username)).first():
         raise HTTPException(status_code=409, detail="Username already taken")
 
     # For production auto-registration, place new users in the Self-Service Organization with the 'analyst' role.

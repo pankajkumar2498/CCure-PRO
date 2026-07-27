@@ -14,16 +14,26 @@ function validate(username, email, password, confirm) {
     return "Username must be at least 3 characters.";
   if (!/\S+@\S+\.\S+/.test(email)) return "Enter a valid email address.";
   if (password.length < 12) return "Password must be at least 12 characters.";
+  if (!/[A-Z]/.test(password))
+    return "Password must contain at least one uppercase letter.";
+  if (!/[0-9]/.test(password))
+    return "Password must contain at least one digit.";
+  if (!/[^a-zA-Z0-9]/.test(password))
+    return "Password must contain at least one special character.";
   if (password !== confirm) return "Passwords do not match.";
   return null;
 }
 
 function strengthOf(pw) {
   if (!pw) return { label: "", level: 0 };
-  if (pw.length < 12) return { label: "Weak", level: 1 };
-  if (pw.length < 14) return { label: "Fair", level: 2 };
-  if (/[^a-zA-Z0-9]/.test(pw)) return { label: "Strong", level: 4 };
-  return { label: "Good", level: 3 };
+  let level = 0;
+  if (pw.length >= 12) level++;
+  if (/[A-Z]/.test(pw)) level++;
+  if (/[0-9]/.test(pw)) level++;
+  if (/[^a-zA-Z0-9]/.test(pw)) level++;
+
+  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+  return { label: labels[level], level };
 }
 
 export default function Register() {
@@ -82,15 +92,21 @@ export default function Register() {
       let errMsg = "Registration failed. Please try again.";
       if (err.response?.data?.details) {
         errMsg = err.response.data.details
-          .map((d) => d.msg || d.type)
+          .map((d) => (d.msg || d.type || "").replace(/^Value error,\s*/i, ""))
+          .filter(Boolean)
           .join(", ");
       } else if (err.response?.data?.message) {
         errMsg = err.response.data.message;
       } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
-        errMsg = Array.isArray(detail)
-          ? detail.map((d) => d.msg).join(", ")
-          : detail;
+        if (Array.isArray(detail)) {
+          errMsg = detail
+            .map((d) => (d.msg || "").replace(/^Value error,\s*/i, ""))
+            .filter(Boolean)
+            .join(", ");
+        } else if (typeof detail === "string") {
+          errMsg = detail.replace(/^Value error,\s*/i, "");
+        }
       }
       setError(errMsg);
     } finally {
@@ -179,15 +195,65 @@ export default function Register() {
               required
             />
             {password && (
-              <div className="strength-bar">
-                {[1, 2, 3, 4].map((n) => (
+              <>
+                <div className="strength-bar">
+                  {[1, 2, 3, 4].map((n) => (
+                    <span
+                      key={n}
+                      className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`}
+                    />
+                  ))}
+                  <span className="strength-label">{strength.label}</span>
+                </div>
+                <div
+                  className="field-hint"
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "0.78rem",
+                    display: "flex",
+                    gap: "10px",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <span
-                    key={n}
-                    className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`}
-                  />
-                ))}
-                <span className="strength-label">{strength.label}</span>
-              </div>
+                    style={{
+                      color:
+                        password.length >= 12
+                          ? "var(--success, #10b981)"
+                          : "var(--text-muted, #888)",
+                    }}
+                  >
+                    {password.length >= 12 ? "✓" : "•"} 12+ chars
+                  </span>
+                  <span
+                    style={{
+                      color: /[A-Z]/.test(password)
+                        ? "var(--success, #10b981)"
+                        : "var(--text-muted, #888)",
+                    }}
+                  >
+                    {/[A-Z]/.test(password) ? "✓" : "•"} Uppercase
+                  </span>
+                  <span
+                    style={{
+                      color: /[0-9]/.test(password)
+                        ? "var(--success, #10b981)"
+                        : "var(--text-muted, #888)",
+                    }}
+                  >
+                    {/[0-9]/.test(password) ? "✓" : "•"} Number
+                  </span>
+                  <span
+                    style={{
+                      color: /[^a-zA-Z0-9]/.test(password)
+                        ? "var(--success, #10b981)"
+                        : "var(--text-muted, #888)",
+                    }}
+                  >
+                    {/[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Special char
+                  </span>
+                </div>
+              </>
             )}
           </div>
 

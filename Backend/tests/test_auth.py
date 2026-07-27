@@ -78,6 +78,58 @@ def test_register_normalizes_email_to_lowercase(client: TestClient):
     assert response.json()["user"]["email"] == "mixedcase@example.com"
 
 
+def test_register_weak_passwords_return_422(client: TestClient):
+    """Registration fails with HTTP 422 when password complexity is not met."""
+    weak_passwords = [
+        "short1!",  # Too short (< 12 chars)
+        "nopassworduppercase123!",  # Missing uppercase letter
+        "NOUPPERCASESPECIAL!",  # Missing digit
+        "NoSpecialChar123",  # Missing special character
+    ]
+
+    for pw in weak_passwords:
+        res = client.post(
+            "/auth/register",
+            json={
+                "username": "testuser422",
+                "email": "testuser422@example.com",
+                "password": pw,
+            },
+        )
+        assert res.status_code == 422, f"Expected 422 for password: {pw}"
+
+
+def test_register_username_case_insensitive_collision(client: TestClient):
+    """Registration prevents registering duplicate usernames with different casing (e.g., abhilash vs Abhilash)."""
+    # First registration
+    res1 = client.post(
+        "/auth/register",
+        json={
+            "username": "abhilash",
+            "email": "abhilash1@test.com",
+            "password": "StrongP@ssw0rd!",
+        },
+    )
+    assert res1.status_code == 201
+
+    # Check username endpoint should indicate Abhilash is not available
+    res_check = client.get("/auth/check-username?q=Abhilash")
+    assert res_check.status_code == 200
+    assert res_check.json()["available"] is False
+
+    # Attempt second registration with different casing (Abhilash)
+    res2 = client.post(
+        "/auth/register",
+        json={
+            "username": "Abhilash",
+            "email": "abhilash2@test.com",
+            "password": "StrongP@ssw0rd!",
+        },
+    )
+    assert res2.status_code == 409
+    assert "Username already taken" in res2.json()["detail"]
+
+
 def test_get_current_user(client: TestClient, auth_headers: dict):
     """Test accessing protected route with valid token."""
     response = client.get("/auth/me", headers=auth_headers)

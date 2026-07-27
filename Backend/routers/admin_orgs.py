@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from auth.dependencies import get_current_user
-from auth.email_utils import email_matches, normalize_email
+from auth.email_utils import email_matches, normalize_email, username_matches
 from auth.jwt_handler import hash_password
 from auth.rbac import require_permission
 from core.audit import log_audit_event
@@ -150,7 +150,11 @@ def create_organization(
         normalize_email(org_data.admin_email) if org_data.admin_email else None
     )
     if org_data.admin_username and org_data.admin_email and org_data.admin_password:
-        if db.query(User).filter(User.username == org_data.admin_username).first():
+        if (
+            db.query(User)
+            .filter(username_matches(User.username, org_data.admin_username))
+            .first()
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=f"Admin username '{org_data.admin_username}' is already in use",

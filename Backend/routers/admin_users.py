@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from auth.email_utils import email_matches, normalize_email
+from auth.email_utils import email_matches, normalize_email, username_matches
 from auth.jwt_handler import hash_password, validate_password_strength
 from auth.rbac import require_permission
 from core.audit import log_audit_event
@@ -252,7 +252,11 @@ def create_user(
     target_org_id = _resolve_target_org_id(db, current_user, user_data.organization_id)
     email = normalize_email(user_data.email)
 
-    if db.query(User).filter(User.username == user_data.username).first():
+    if (
+        db.query(User)
+        .filter(username_matches(User.username, user_data.username))
+        .first()
+    ):
         raise HTTPException(status_code=400, detail="Username already exists")
     if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=400, detail="Email already exists")

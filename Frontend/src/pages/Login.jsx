@@ -3,9 +3,16 @@
  * Dark-themed auth page consistent with the dashboard brand.
  * API: POST /auth/login -> { access_token, user }
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import AuthHeroPanel from "../components/auth/AuthHeroPanel";
+import AuthTrustFooter from "../components/auth/AuthTrustFooter";
+import {
+  ShieldLogoIcon,
+  EyeIcon,
+  EyeOffIcon,
+} from "../components/auth/AuthIcons";
 import {
   verifyMfa as verifyMfaApi,
   sendEmailOtp as sendEmailOtpApi,
@@ -24,8 +31,17 @@ export default function Login() {
     ? `${fromLocation.pathname || "/dashboard"}${fromLocation.search || ""}${fromLocation.hash || ""}`
     : savedRedirect || "/dashboard";
 
-  const [email, setEmail] = useState("");
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem("ccure_remember_me") === "true";
+  });
+
+  const [email, setEmail] = useState(() => {
+    return localStorage.getItem("ccure_remembered_email") || "";
+  });
+
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,16 +52,30 @@ export default function Login() {
   const [emailSent, setEmailSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  const resendIntervalRef = useRef(null);
+
   const noticeMessage = useMemo(() => {
     return location.state?.message || authMessage || "";
   }, [location.state, authMessage]);
 
+  const clearResendInterval = () => {
+    if (resendIntervalRef.current) {
+      clearInterval(resendIntervalRef.current);
+      resendIntervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearResendInterval();
+  }, []);
+
   const startCooldown = () => {
+    clearResendInterval();
     setResendCooldown(60);
-    const interval = setInterval(() => {
+    resendIntervalRef.current = setInterval(() => {
       setResendCooldown((prev) => {
         if (prev <= 1) {
-          clearInterval(interval);
+          clearResendInterval();
           return 0;
         }
         return prev - 1;
@@ -53,13 +83,30 @@ export default function Login() {
     }, 1000);
   };
 
+  const handleKeyDown = (e) => {
+    if (e.getModifierState) {
+      setCapsLockOn(e.getModifierState("CapsLock"));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Remember Me persistence
+    if (rememberMe) {
+      localStorage.setItem("ccure_remember_me", "true");
+      localStorage.setItem("ccure_remembered_email", normalizedEmail);
+    } else {
+      localStorage.removeItem("ccure_remember_me");
+      localStorage.removeItem("ccure_remembered_email");
+    }
+
     try {
-      const res = await login({ email: email.trim().toLowerCase(), password });
+      const res = await login({ email: normalizedEmail, password });
       if (res?.status === "mfa_required") {
         setMfaToken(res.mfa_token);
         setShowMfa(true);
@@ -113,7 +160,6 @@ export default function Login() {
     setEmailSent(false);
 
     try {
-      // Start cooldown immediately to block duplicates
       startCooldown();
       await sendEmailOtpApi(mfaToken);
       setEmailSent(true);
@@ -126,7 +172,8 @@ export default function Login() {
           : detail;
       }
       setError(errMsg);
-      setResendCooldown(0); // reset on failure
+      clearResendInterval();
+      setResendCooldown(0);
     }
   };
 
@@ -135,201 +182,218 @@ export default function Login() {
     setMfaToken("");
     setMfaCode("");
     setEmailSent(false);
+    clearResendInterval();
     setResendCooldown(0);
     setError("");
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-brand">
-          <span className="auth-brand-gem">*</span>
-          <div className="auth-brand-text">
-            <span className="auth-brand-name">CCure Audit</span>
-            <span className="auth-brand-badge">PRO</span>
+    <div className="auth-split-wrapper">
+      {/* Left Enterprise Showcase Panel */}
+      <AuthHeroPanel pageType="login" />
+
+      {/* Right Form Panel */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          {/* Mobile Brand Header */}
+          <div className="auth-brand">
+            <ShieldLogoIcon size={24} />
+            <div className="auth-brand-text">
+              <span className="auth-brand-name">CCure Audit</span>
+              <span className="auth-brand-badge">PRO</span>
+            </div>
           </div>
-        </div>
 
-        {showMfa ? (
-          <>
-            <h1 className="auth-title">Verification Code</h1>
-            <p className="auth-sub">
-              Enter the code from your authenticator app, email OTP, or a backup
-              code.
-            </p>
+          {showMfa ? (
+            <>
+              <h1 className="auth-title">Verification Code</h1>
+              <p className="auth-sub">Enter your security verification code</p>
 
-            {error && (
-              <div className="auth-error" role="alert">
-                <span>!</span> {error}
-              </div>
-            )}
+              {error && (
+                <div className="auth-error" role="alert">
+                  <span>⚠</span> {error}
+                </div>
+              )}
 
-            {emailSent && (
-              <div
-                role="status"
-                style={{
-                  marginBottom: 16,
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(16, 185, 129, 0.35)",
-                  background: "rgba(16, 185, 129, 0.12)",
-                  color: "#a7f3d0",
-                  fontSize: 14,
-                }}
-              >
-                Verification code sent to your email!
-              </div>
-            )}
+              {emailSent && (
+                <div className="auth-success" role="status">
+                  ✓ Verification code sent to your email!
+                </div>
+              )}
 
-            <form
-              onSubmit={handleMfaSubmit}
-              className="auth-form form-horizontal"
-            >
-              <div className="field">
-                <label htmlFor="mfaCode">Verification Code</label>
-                <input
-                  id="mfaCode"
-                  type="text"
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder="Enter code"
-                  required
-                  autoFocus
-                  maxLength={12}
-                />
-              </div>
+              <form onSubmit={handleMfaSubmit} className="auth-form">
+                <div className="field">
+                  <label htmlFor="mfaCode">Verification Code</label>
+                  <input
+                    id="mfaCode"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    placeholder="Enter code"
+                    required
+                    autoFocus
+                    maxLength={12}
+                  />
+                </div>
 
-              <div style={{ margin: "6px 0 20px 0", textAlign: "center" }}>
+                <div style={{ margin: "4px 0 12px 0", textAlign: "center" }}>
+                  <button
+                    type="button"
+                    onClick={handleSendEmailOtp}
+                    disabled={resendCooldown > 0}
+                    className="auth-link"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      fontSize: "0.8rem",
+                      cursor: resendCooldown > 0 ? "not-allowed" : "pointer",
+                      opacity: resendCooldown > 0 ? 0.6 : 1,
+                    }}
+                  >
+                    {resendCooldown > 0
+                      ? `Resend code in ${resendCooldown}s`
+                      : "Send code to email"}
+                  </button>
+                </div>
+
+                <button type="submit" className="auth-btn" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <span className="btn-spinner" /> Verifying...
+                    </>
+                  ) : (
+                    "Verify Code →"
+                  )}
+                </button>
+              </form>
+
+              <p className="auth-switch">
                 <button
                   type="button"
-                  onClick={handleSendEmailOtp}
-                  disabled={resendCooldown > 0}
+                  onClick={handleBackToLogin}
+                  className="auth-link"
                   style={{
                     background: "none",
                     border: "none",
-                    color: resendCooldown > 0 ? "#6b7280" : "#818cf8",
-                    cursor: resendCooldown > 0 ? "not-allowed" : "pointer",
-                    fontSize: "12px",
-                    padding: 0,
-                    textDecoration: resendCooldown > 0 ? "none" : "underline",
-                    fontWeight: 500,
+                    cursor: "pointer",
+                    fontSize: "0.84rem",
                   }}
                 >
-                  {resendCooldown > 0
-                    ? `Resend code to email in ${resendCooldown}s`
-                    : "Send verification code to email"}
+                  ← Back to credentials login
                 </button>
-              </div>
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="auth-title">Sign in</h1>
+              <p className="auth-sub">
+                Enter your credentials to access your workspace
+              </p>
 
-              <button type="submit" className="auth-btn" disabled={loading}>
-                {loading ? <span className="btn-spinner" /> : "Verify ->"}
-              </button>
-            </form>
+              {error && (
+                <div className="auth-error" role="alert">
+                  <span>⚠</span> {error}
+                </div>
+              )}
 
-            <p className="auth-switch">
-              <button
-                type="button"
-                onClick={handleBackToLogin}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#9ca3af",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  fontSize: "13px",
-                  marginTop: "8px",
-                }}
-              >
-                Back to credentials login
-              </button>
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 className="auth-title">Sign in</h1>
-            <p className="auth-sub">Network intelligence platform</p>
+              {!error && noticeMessage && (
+                <div className="auth-info" role="status">
+                  ℹ {noticeMessage}
+                </div>
+              )}
 
-            {error && (
-              <div className="auth-error" role="alert">
-                <span>!</span> {error}
-              </div>
-            )}
-
-            {!error && noticeMessage && (
-              <div
-                role="status"
-                style={{
-                  marginBottom: 16,
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(59, 130, 246, 0.35)",
-                  background: "rgba(59, 130, 246, 0.12)",
-                  color: "#bfdbfe",
-                  fontSize: 14,
-                }}
-              >
-                {noticeMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="auth-form form-horizontal">
-              <div className="field">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="username@ccure.com"
-                  required
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="password">Password</label>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
-                  }}
-                >
+              <form onSubmit={handleSubmit} className="auth-form">
+                <div className="field">
+                  <label htmlFor="email">Email</label>
                   <input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="........"
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
                     required
                   />
-                  <div style={{ textAlign: "right" }}>
-                    <Link
-                      to="/forgot-password"
-                      style={{
-                        fontSize: "12px",
-                        color: "#818cf8",
-                        textDecoration: "none",
-                        fontWeight: 500,
-                      }}
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
                 </div>
-              </div>
 
-              <button type="submit" className="auth-btn" disabled={loading}>
-                {loading ? <span className="btn-spinner" /> : "Login ->"}
-              </button>
-            </form>
+                <div className="field">
+                  <label htmlFor="password">Password</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      onKeyUp={handleKeyDown}
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button
+                      type="button"
+                      tabIndex="-1"
+                      aria-label="Toggle password visibility"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                    >
+                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                  {capsLockOn && (
+                    <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
+                  )}
+                </div>
 
-            <p className="auth-switch">
-              No account? <Link to="/register">Register here</Link>
-            </p>
-          </>
-        )}
+                {/* Remember Me & Forgot Password Row */}
+                <div className="auth-checkbox-row">
+                  <label className="auth-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />
+                    <span>Remember me</span>
+                  </label>
+                  <Link
+                    to="/forgot-password"
+                    className="auth-link"
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+
+                <button
+                  type="submit"
+                  className="auth-btn"
+                  disabled={loading}
+                  style={{ marginTop: "16px" }}
+                >
+                  {loading ? (
+                    <>
+                      <span className="btn-spinner" /> Signing in...
+                    </>
+                  ) : (
+                    "Sign In →"
+                  )}
+                </button>
+              </form>
+
+              <p className="auth-switch">
+                No account?{" "}
+                <Link to="/register" className="auth-link">
+                  Register here
+                </Link>
+              </p>
+            </>
+          )}
+
+          {/* Reusable Enterprise Security Trust Footer */}
+          <AuthTrustFooter />
+        </div>
       </div>
     </div>
   );

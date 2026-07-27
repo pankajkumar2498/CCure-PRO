@@ -5,6 +5,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { forgotPassword } from "../api/auth";
+import AuthHeroPanel from "../components/auth/AuthHeroPanel";
+import AuthTrustFooter from "../components/auth/AuthTrustFooter";
+import { ShieldLogoIcon } from "../components/auth/AuthIcons";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -41,71 +44,74 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        {/* Brand */}
-        <div className="auth-brand">
-          <span className="auth-brand-gem">◈</span>
-          <div className="auth-brand-text">
-            <span className="auth-brand-name">CCure Audit</span>
-            <span className="auth-brand-badge">PRO</span>
-          </div>
-        </div>
+    <div className="auth-split-wrapper">
+      {/* Left Enterprise Showcase Panel */}
+      <AuthHeroPanel pageType="forgot" />
 
-        <h1 className="auth-title">Reset password</h1>
-        <p className="auth-sub">Enter your email to receive a recovery link</p>
-
-        {error && (
-          <div className="auth-error" role="alert">
-            <span>⚠</span> {error}
-          </div>
-        )}
-
-        {success ? (
-          <div
-            role="status"
-            style={{
-              marginTop: 16,
-              marginBottom: 16,
-              padding: "16px",
-              borderRadius: 10,
-              border: "1px solid rgba(16, 185, 129, 0.35)",
-              background: "rgba(16, 185, 129, 0.12)",
-              color: "#a7f3d0",
-              fontSize: 14,
-              lineHeight: 1.5,
-            }}
-          >
-            ✓ {success}
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="auth-form form-horizontal">
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="username@ccure.com"
-                required
-              />
+      {/* Right Form Panel */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          {/* Mobile Brand Header */}
+          <div className="auth-brand">
+            <ShieldLogoIcon size={24} />
+            <div className="auth-brand-text">
+              <span className="auth-brand-name">CCure Audit</span>
+              <span className="auth-brand-badge">PRO</span>
             </div>
+          </div>
 
-            <button type="submit" className="auth-btn" disabled={loading}>
-              {loading ? (
-                <span className="btn-spinner" />
-              ) : (
-                "Send recovery link →"
-              )}
-            </button>
-          </form>
-        )}
+          <h1 className="auth-title">Reset password</h1>
+          <p className="auth-sub">
+            Enter your email to receive an encrypted reset link
+          </p>
 
-        <p className="auth-switch">
-          Remember your password? <Link to="/login">Sign in</Link>
-        </p>
+          {error && (
+            <div className="auth-error" role="alert">
+              <span>⚠</span> {error}
+            </div>
+          )}
+
+          {success ? (
+            <div className="auth-success" role="status">
+              ✓ {success}
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="auth-form">
+              <div className="field">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  required
+                />
+              </div>
+
+              <button type="submit" className="auth-btn" disabled={loading}>
+                {loading ? (
+                  <>
+                    <span className="btn-spinner" /> Sending recovery link...
+                  </>
+                ) : (
+                  "Send recovery link →"
+                )}
+              </button>
+            </form>
+          )}
+
+          <p className="auth-switch">
+            Remember your password?{" "}
+            <Link to="/login" className="auth-link">
+              Sign in
+            </Link>
+          </p>
+
+          {/* Reusable Enterprise Security Trust Footer */}
+          <AuthTrustFooter />
+        </div>
       </div>
     </div>
   );

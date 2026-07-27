@@ -8,6 +8,7 @@ Usage:   python -m scripts.seed_real_rules
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Optional
 
 # Ensure the root of the project is in python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,7 +30,7 @@ from db.models.compliance import (
 from db.models.rbac import Organization
 
 
-def seed_and_evaluate():
+def seed_and_evaluate(target_ip: Optional[str] = None):
     db = SessionLocal()
     try:
         # 1. Verify framework exists
@@ -1991,18 +1992,19 @@ def seed_and_evaluate():
             existing_rule.remediation_id = rem_id
             db.flush()
 
-            # Set junction mappings to ISO controls
-            control_id = rule["control_id"]
+            raw_ctrl_id = rule["control_id"]
+            normalized_ctrl_id = raw_ctrl_id.replace(".", "_").replace("-", "_")
             control_exists = (
                 db.query(ComplianceControl)
-                .filter(ComplianceControl.id == control_id)
+                .filter(
+                    (ComplianceControl.id == raw_ctrl_id)
+                    | (ComplianceControl.id == normalized_ctrl_id)
+                )
                 .first()
             )
             if not control_exists:
-                print(
-                    f"Warning: Control {control_id} does not exist in the database! Skipping link."
-                )
                 continue
+            control_id = control_exists.id
 
             link = (
                 db.query(ComplianceRuleControl)
@@ -3236,8 +3238,10 @@ def seed_and_evaluate():
                         db.add(new_link)
                 db.commit()
 
-        # 4. Find scanned target asset: 10.180.6.14
-        target_ip = "10.180.6.14"
+        # 4. Find scanned target asset if specified
+        if not target_ip:
+            return
+
         asset = db.query(Asset).filter(Asset.ip_address == target_ip).first()
         if not asset:
             print(

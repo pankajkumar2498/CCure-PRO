@@ -2029,7 +2029,7 @@ def get_dashboard_summary(
 
 import io
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -2051,24 +2051,44 @@ def _generate_soa_docx(
     subtitle: str = "Controls Compliance Ledger Catalog",
 ) -> io.BytesIO:
     """Generates the Word Statement of Applicability document using python-docx."""
+    try:
+        from docx import Document
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        from docx.shared import Inches, Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
     doc = Document()
-    doc.add_heading(title, level=1)
-    doc.add_paragraph(subtitle)
+    p_title = doc.add_paragraph()
+    run_t = p_title.add_run(title)
+    run_t.font.size = Pt(18)
+    run_t.font.bold = True
+    run_t.font.color.rgb = RGBColor(15, 23, 42)
+
+    p_sub = doc.add_paragraph()
+    run_sub = p_sub.add_run(subtitle)
+    run_sub.font.italic = True
 
     table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = "Control ID"
-    hdr_cells[1].text = "Name"
-    hdr_cells[2].text = "Category"
-    hdr_cells[3].text = "Scan Mode"
-    hdr_cells[4].text = "Verdict Status"
+    hdr_names = ["Control ID", "Name", "Category", "Scan Mode", "Verdict Status"]
+    for i, name in enumerate(hdr_names):
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="0F172A"/>')
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
+        hdr_cells[i].text = name
+        for p in hdr_cells[i].paragraphs:
+            for run in p.runs:
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(255, 255, 255)
 
     for c in controls:
         row_cells = table.add_row().cells
         row_cells[0].text = str(c.control_number or c.id)
-        row_cells[1].text = str(c.title)
-        row_cells[2].text = str(c.theme)
-        row_cells[3].text = str(c.scannability)
+        row_cells[1].text = str(c.title or "")
+        row_cells[2].text = str(c.theme or "N/A")
+        row_cells[3].text = str(c.scannability or "manual").upper()
 
         f = findings_map.get(c.id)
         row_cells[4].text = str(f.status).upper() if f else "PENDING"
@@ -2802,18 +2822,44 @@ def _generate_pci_dss_docx(
     subtitle: str = "Payment Card Industry Data Security Standard Assessment Ledger",
 ) -> io.BytesIO:
     """Generates the Word PCI-DSS report using python-docx."""
+    try:
+        from docx import Document
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        from docx.shared import Inches, Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
     doc = Document()
-    doc.add_heading(title, level=1)
-    doc.add_paragraph(subtitle)
+    p_title = doc.add_paragraph()
+    run_t = p_title.add_run(title)
+    run_t.font.size = Pt(18)
+    run_t.font.bold = True
+    run_t.font.color.rgb = RGBColor(30, 64, 175)
+
+    p_sub = doc.add_paragraph()
+    run_sub = p_sub.add_run(subtitle)
+    run_sub.font.italic = True
 
     table = doc.add_table(rows=1, cols=6)
+    table.style = "Table Grid"
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = "Control ID"
-    hdr_cells[1].text = "Name"
-    hdr_cells[2].text = "SAQ Profile Relevance"
-    hdr_cells[3].text = "March 31, 2025 Mandatory"
-    hdr_cells[4].text = "CDE Scope Tagging"
-    hdr_cells[5].text = "Verdict Status"
+    hdr_names = [
+        "Control ID",
+        "Name",
+        "SAQ Profile Relevance",
+        "March 31, 2025 Mandatory",
+        "CDE Scope Tagging",
+        "Verdict Status",
+    ]
+    for i, name in enumerate(hdr_names):
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="1E40AF"/>')
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
+        hdr_cells[i].text = name
+        for p in hdr_cells[i].paragraphs:
+            for run in p.runs:
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(255, 255, 255)
 
     for c in controls:
         row_cells = table.add_row().cells
@@ -3024,19 +3070,45 @@ def _generate_privacy_docx(
     scope_label: str = "",
 ) -> io.BytesIO:
     """Generates Word report for privacy frameworks (DPDP / GDPR)."""
+    try:
+        from docx import Document
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        from docx.shared import Inches, Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
     doc = Document()
-    doc.add_heading(title, level=1)
-    doc.add_paragraph(subtitle)
+    p_title = doc.add_paragraph()
+    run_t = p_title.add_run(title)
+    run_t.font.size = Pt(18)
+    run_t.font.bold = True
+    run_t.font.color.rgb = RGBColor(29, 78, 216)
+
+    p_sub = doc.add_paragraph()
+    run_sub = p_sub.add_run(subtitle)
+    run_sub.font.italic = True
     if scope_label:
         doc.add_paragraph(f"Scope Filter: {scope_label}")
 
     table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = "Control Number"
-    hdr_cells[1].text = "Title"
-    hdr_cells[2].text = "Theme / Principle"
-    hdr_cells[3].text = "Scannability"
-    hdr_cells[4].text = "Verdict"
+    hdr_names = [
+        "Control Number",
+        "Title",
+        "Theme / Principle",
+        "Scannability",
+        "Verdict",
+    ]
+    for i, name in enumerate(hdr_names):
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="1D4ED8"/>')
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
+        hdr_cells[i].text = name
+        for p in hdr_cells[i].paragraphs:
+            for run in p.runs:
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(255, 255, 255)
 
     for c in controls:
         row_cells = table.add_row().cells
@@ -3274,6 +3346,14 @@ def download_gdpr_report(
 def _generate_nist_800_53_docx(
     controls, findings_map, title, subtitle, scope_label=None
 ):
+    try:
+        from docx import Document
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        from docx.shared import Inches, Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
     doc = Document()
     p_title = doc.add_paragraph()
     run_t = p_title.add_run(title)
@@ -3281,8 +3361,9 @@ def _generate_nist_800_53_docx(
     run_t.font.bold = True
     run_t.font.color.rgb = RGBColor(10, 46, 92)  # Federal Navy Blue
 
-    p_sub = doc.add_paragraph(subtitle)
-    p_sub.style = "Italic"
+    p_sub = doc.add_paragraph()
+    run_sub = p_sub.add_run(subtitle)
+    run_sub.font.italic = True
     if scope_label:
         doc.add_paragraph(f"Scope / Baseline: {scope_label}")
 
@@ -3298,13 +3379,13 @@ def _generate_nist_800_53_docx(
         "Verdict",
     ]
     for i, name in enumerate(hdr_names):
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="0A2E5C"/>')
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
         hdr_cells[i].text = name
         for p in hdr_cells[i].paragraphs:
             for run in p.runs:
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(255, 255, 255)
-        shading_elm = parse_xml(r'<w:shd {} w:fill="0A2E5C"/>'.format(nsdecls("w")))
-        hdr_cells[i]._tc.get_or_add_tcPr().append(shading_elm)
 
     for c in controls:
         f = findings_map.get(c.id)
@@ -3333,10 +3414,10 @@ def _generate_nist_800_53_pdf(
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=15 * mm,
-        leftMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        rightMargin=12 * mm,
+        leftMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
     )
     styles = getSampleStyleSheet()
     story = []
@@ -3357,13 +3438,28 @@ def _generate_nist_800_53_pdf(
         leading=14,
         textColor=colors.HexColor("#4b5563"),
     )
+    hdr_style = ParagraphStyle(
+        "NISTHeader",
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=10,
+        textColor=colors.white,
+    )
     badge_style = ParagraphStyle(
         "BadgeText",
         fontName="Helvetica-Bold",
-        fontSize=7,
-        leading=8,
+        fontSize=7.5,
+        leading=9,
         alignment=1,
         textColor=colors.white,
+    )
+    kpi_style = ParagraphStyle(
+        "KPIStyle",
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        alignment=1,
+        textColor=colors.HexColor("#334155"),
     )
 
     story.append(Paragraph(title, title_style))
@@ -3372,10 +3468,74 @@ def _generate_nist_800_53_pdf(
         story.append(
             Paragraph(f"<b>Filter Baseline:</b> {scope_label}", styles["Normal"])
         )
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
+
+    # Executive Headline Summary Box
+    total_c = len(controls)
+    passed_c = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status == "pass"
+    )
+    failed_c = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status == "fail"
+    )
+    untested_c = total_c - (passed_c + failed_c)
+    score_pct = round((passed_c / total_c * 100), 1) if total_c > 0 else 0.0
+
+    kpi_table = Table(
+        [
+            [
+                Paragraph(
+                    f"TOTAL CONTROLS<br/><font size=13 color='#0F172A'><b>{total_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"PASSED<br/><font size=13 color='#16A34A'><b>{passed_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"FAILED<br/><font size=13 color='#DC2626'><b>{failed_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"UNTESTED<br/><font size=13 color='#475569'><b>{untested_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"POSTURE SCORE<br/><font size=13 color='#0A2E5C'><b>{score_pct}%</b></font>",
+                    kpi_style,
+                ),
+            ]
+        ],
+        colWidths=[100, 100, 100, 100, 110],
+    )
+    kpi_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    story.append(kpi_table)
+    story.append(Spacer(1, 12))
 
     table_data = [
-        ["Control", "Title", "Family", "FedRAMP Baseline", "Zero Trust", "Verdict"]
+        [
+            Paragraph("Control ID", hdr_style),
+            Paragraph("Title", hdr_style),
+            Paragraph("Family", hdr_style),
+            Paragraph("FedRAMP Baseline", hdr_style),
+            Paragraph("Zero Trust", hdr_style),
+            Paragraph("Verdict", hdr_style),
+        ]
     ]
     for c in controls:
         f = findings_map.get(c.id)
@@ -3397,7 +3557,7 @@ def _generate_nist_800_53_pdf(
             else "#F59E0B" if "MODERATE" in b_str else "#22C55E"
         )
         b_cell = Table(
-            [[Paragraph(b_str, badge_style)]], colWidths=[65], rowHeights=[14]
+            [[Paragraph(b_str, badge_style)]], colWidths=[70], rowHeights=[16]
         )
         b_cell.setStyle(
             TableStyle(
@@ -3412,7 +3572,7 @@ def _generate_nist_800_53_pdf(
         )
 
         v_cell = Table(
-            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+            [[Paragraph(verdict, badge_style)]], colWidths=[72], rowHeights=[16]
         )
         v_cell.setStyle(
             TableStyle(
@@ -3439,7 +3599,7 @@ def _generate_nist_800_53_pdf(
             ]
         )
 
-    t = Table(table_data, colWidths=[60, 180, 80, 75, 60, 65])
+    t = Table(table_data, colWidths=[65, 165, 75, 75, 55, 75])
     t.setStyle(
         TableStyle(
             [
@@ -3597,14 +3757,29 @@ def _generate_iec_62443_pdf(
         leading=14,
         textColor=colors.HexColor("#6B7280"),
     )
+    hdr_style = ParagraphStyle(
+        "IECHdr",
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=10,
+        textColor=colors.white,
+    )
     badge_style = ParagraphStyle(
         "IECBadge",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=8,
-        leading=10,
+        fontSize=7.5,
+        leading=9,
         textColor=colors.white,
         alignment=1,
+    )
+    kpi_style = ParagraphStyle(
+        "IECKPIStyle",
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        alignment=1,
+        textColor=colors.HexColor("#334155"),
     )
 
     story.append(Paragraph(title, title_style))
@@ -3615,16 +3790,73 @@ def _generate_iec_62443_pdf(
         story.append(
             Paragraph(f"<b>Scope Baseline:</b> {scope_label}", styles["Normal"])
         )
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
+
+    # Executive Headline Summary Box
+    total_c = len(controls)
+    passed_c = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status == "pass"
+    )
+    failed_c = sum(
+        1
+        for c in controls
+        if findings_map.get(c.id) and findings_map.get(c.id).status == "fail"
+    )
+    untested_c = total_c - (passed_c + failed_c)
+    score_pct = round((passed_c / total_c * 100), 1) if total_c > 0 else 0.0
+
+    kpi_table = Table(
+        [
+            [
+                Paragraph(
+                    f"TOTAL CONTROLS<br/><font size=13 color='#0F172A'><b>{total_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"PASSED<br/><font size=13 color='#16A34A'><b>{passed_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"FAILED<br/><font size=13 color='#DC2626'><b>{failed_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"UNTESTED<br/><font size=13 color='#475569'><b>{untested_c}</b></font>",
+                    kpi_style,
+                ),
+                Paragraph(
+                    f"READY SCORE<br/><font size=13 color='#F43F5E'><b>{score_pct}%</b></font>",
+                    kpi_style,
+                ),
+            ]
+        ],
+        colWidths=[100, 100, 100, 100, 140],
+    )
+    kpi_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF1F2")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#FECDD3")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#FFE4E6")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    story.append(kpi_table)
+    story.append(Spacer(1, 12))
 
     table_data = [
         [
-            "Requirement ID",
-            "Control Title",
-            "Theme",
-            "Purdue Level",
-            "Target SL",
-            "Verdict",
+            Paragraph("Requirement ID", hdr_style),
+            Paragraph("Control Title", hdr_style),
+            Paragraph("Theme", hdr_style),
+            Paragraph("Purdue Level", hdr_style),
+            Paragraph("Target SL", hdr_style),
+            Paragraph("Verdict", hdr_style),
         ]
     ]
     for c in controls:
@@ -3646,7 +3878,7 @@ def _generate_iec_62443_pdf(
         purdue_str = ", ".join([t for t in tags if t in purdue_levels_set]) or "L1-L3.5"
 
         v_cell = Table(
-            [[Paragraph(verdict, badge_style)]], colWidths=[55], rowHeights=[14]
+            [[Paragraph(verdict, badge_style)]], colWidths=[72], rowHeights=[16]
         )
         v_cell.setStyle(
             TableStyle(
@@ -3671,7 +3903,7 @@ def _generate_iec_62443_pdf(
             ]
         )
 
-    t = Table(table_data, colWidths=[75, 185, 75, 75, 60, 60])
+    t = Table(table_data, colWidths=[80, 175, 70, 75, 60, 75])
     t.setStyle(
         TableStyle(
             [

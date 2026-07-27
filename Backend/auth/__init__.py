@@ -1,1 +1,1 @@
-from auth.router import router as auth_router
+# Package marker for auth

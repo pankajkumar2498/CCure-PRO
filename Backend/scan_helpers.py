@@ -14,18 +14,19 @@ from typing import Dict, List, Optional
 from api.host_discovery_api import HostDiscoveryAPI
 from config import AppConfig
 from db.models import Scan
-from scans.progress import (
-    finish_progress as _db_finish_progress,
-)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.api")
 
 # ─── Rate limiter (shared across routers) ────────────────────────────────────
 # Uses the same Redis instance as Celery for persistence
 limiter = Limiter(key_func=get_remote_address, storage_uri=AppConfig.CELERY_BROKER_URL)
+
+from scans.progress import (
+    finish_progress as _db_finish_progress,
+)
+from sqlalchemy.orm import Session
 
 # ─── Application state ──────────────────────────────────────────────────────
 _api_instance: HostDiscoveryAPI | None = None

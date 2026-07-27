@@ -334,6 +334,10 @@ export default function ComplianceWorkspace() {
   const [exceptions, setExceptions] = useState([]);
   const [error, setError] = useState(null);
 
+  // Executive Compliance Reports Hub State
+  const [reportFw, setReportFw] = useState("soa");
+  const [reportFmt, setReportFmt] = useState("pdf");
+
   // Remediation & Credentials Manager States
   const [credentialsList, setCredentialsList] = useState([]);
   const [approvalsList, setApprovalsList] = useState([]);
@@ -1171,14 +1175,23 @@ export default function ComplianceWorkspace() {
   const handleDownloadReport = async (endpoint, filename) => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get(endpoint, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const res = await axiosInstance.get(endpoint, {
+        responseType: "arraybuffer",
+      });
+      const mimeType =
+        res.headers["content-type"] ||
+        (filename.endsWith(".docx")
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "application/pdf");
+      const blob = new Blob([res.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (e) {
       pushToast(
         "Failed to download report: " +
@@ -2155,314 +2168,299 @@ export default function ComplianceWorkspace() {
                 </div>
               </div>
 
+              {/* Executive Compliance Reports & SoA Hub */}
               <div
                 className="db-card"
                 style={{
                   marginBottom: "2rem",
-                  padding: "1.5rem",
-                  display: "flex",
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                  background: "var(--bg-white)",
+                  padding: "1.75rem",
+                  background:
+                    "linear-gradient(135deg, rgba(15, 23, 42, 0.03) 0%, rgba(30, 58, 138, 0.06) 100%)",
+                  border: "1px solid rgba(226, 232, 240, 0.8)",
+                  borderRadius: "12px",
                 }}
               >
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/soa?fmt=pdf",
-                      "statement_of_applicability.pdf",
-                    )
-                  }
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "1.25rem",
+                    flexWrap: "wrap",
+                    gap: "1rem",
+                  }}
                 >
-                  Download SoA PDF (ISO)
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/soa?fmt=docx",
-                      "statement_of_applicability.docx",
-                    )
-                  }
+                  <div>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: "1.15rem",
+                        fontWeight: "700",
+                        color: "#0F172A",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <span>📄</span> Executive Compliance Reports & SoA Hub
+                    </h3>
+                    <p
+                      style={{
+                        margin: "4px 0 0 0",
+                        fontSize: "0.85rem",
+                        color: "#64748B",
+                      }}
+                    >
+                      Generate audit-grade Statement of Applicability (SoA) and
+                      regulatory assessment reports in PDF & DOCX formats.
+                    </p>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <select
+                      className="db-input"
+                      value={reportFw}
+                      onChange={(e) => setReportFw(e.target.value)}
+                      style={{
+                        padding: "0.45rem 0.75rem",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        borderRadius: "6px",
+                        background: "#FFFFFF",
+                        border: "1px solid #CBD5E1",
+                      }}
+                    >
+                      <option value="soa">
+                        Statement of Applicability (SoA - ISO 27001)
+                      </option>
+                      <option value="nist_csf">
+                        NIST CSF v2.0 Audit Ledger
+                      </option>
+                      <option value="cis_v8_1">
+                        CIS Controls v8.1 Executive Report
+                      </option>
+                      <option value="soc2_type2">
+                        SOC 2 Type II Trust Services Report
+                      </option>
+                      <option value="cert_in_2022">
+                        CERT-In 2022 Cyber Incident Directive
+                      </option>
+                      <option value="pci_dss_v4">
+                        PCI-DSS v4.0 Assessment Ledger
+                      </option>
+                      <option value="dpdp_2023">
+                        DPDP Act 2023 Compliance Report
+                      </option>
+                      <option value="gdpr">
+                        EU GDPR 2016/679 Privacy Report
+                      </option>
+                      <option value="nist_800_53_r5">
+                        NIST SP 800-53 Rev. 5 Federal Audit
+                      </option>
+                      <option value="iec_62443">
+                        IEC 62443 Industrial Cybersecurity
+                      </option>
+                      <option value="nist_800_82">
+                        NIST SP 800-82 Rev. 3 OT Security
+                      </option>
+                      <option value="nerc_cip">
+                        NERC CIP Critical Infrastructure
+                      </option>
+                      <option value="nis2">
+                        EU NIS 2 Directive Audit Report
+                      </option>
+                      <option value="executive">
+                        Multi-Framework Executive Briefing
+                      </option>
+                    </select>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "6px",
+                        overflow: "hidden",
+                        background: "#FFFFFF",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setReportFmt("pdf")}
+                        style={{
+                          padding: "0.45rem 0.85rem",
+                          fontSize: "0.82rem",
+                          fontWeight: "600",
+                          border: "none",
+                          cursor: "pointer",
+                          background:
+                            reportFmt === "pdf" ? "#0F172A" : "transparent",
+                          color: reportFmt === "pdf" ? "#FFFFFF" : "#475569",
+                        }}
+                      >
+                        PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReportFmt("docx")}
+                        style={{
+                          padding: "0.45rem 0.85rem",
+                          fontSize: "0.82rem",
+                          fontWeight: "600",
+                          border: "none",
+                          cursor: "pointer",
+                          background:
+                            reportFmt === "docx" ? "#2563EB" : "transparent",
+                          color: reportFmt === "docx" ? "#FFFFFF" : "#475569",
+                        }}
+                      >
+                        Word (.docx)
+                      </button>
+                    </div>
+
+                    <button
+                      className="db-btn db-btn--primary"
+                      disabled={loading}
+                      style={{
+                        padding: "0.45rem 1.1rem",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                      }}
+                      onClick={() => {
+                        let ep = `/compliance/reports/${reportFw}?fmt=${reportFmt}`;
+                        let fname = `${reportFw}_report.${reportFmt}`;
+                        if (reportFw === "pci_dss_v4") {
+                          if (saqProfileFilter !== "all")
+                            ep += `&saq_profile=${saqProfileFilter}`;
+                          if (cdeScopeFilter) ep += "&cde_scope_only=true";
+                        } else if (
+                          reportFw === "dpdp_2023" &&
+                          sdfScopeFilter !== "all"
+                        ) {
+                          ep += `&sdf_scope=${sdfScopeFilter}`;
+                        } else if (
+                          reportFw === "gdpr" &&
+                          privacyRoleFilter !== "all"
+                        ) {
+                          ep += `&privacy_role=${privacyRoleFilter}`;
+                        } else if (reportFw === "nist_800_53_r5") {
+                          if (impactLevelFilter !== "all")
+                            ep += `&impact_level=${impactLevelFilter}`;
+                          if (zeroTrustOnly) ep += "&zero_trust_only=true";
+                        } else if (reportFw === "iec_62443") {
+                          if (purdueLevelFilter !== "all")
+                            ep += `&purdue_level=${purdueLevelFilter}`;
+                          if (componentTypeFilter !== "all")
+                            ep += `&component_type=${componentTypeFilter}`;
+                          if (slLevelFilter !== "all")
+                            ep += `&sl_level=${slLevelFilter}`;
+                        } else if (reportFw === "nist_800_82") {
+                          if (purdueLevelFilter !== "all")
+                            ep += `&purdue_level=${purdueLevelFilter}`;
+                          if (componentTypeFilter !== "all")
+                            ep += `&component_type=${componentTypeFilter}`;
+                        } else if (reportFw === "nerc_cip") {
+                          ep += `&regional_entity=${regionalEntityFilter}`;
+                          if (besImpactLevelFilter !== "all")
+                            ep += `&bes_impact_level=${besImpactLevelFilter}`;
+                          if (standardNumberFilter !== "all")
+                            ep += `&standard_number=${standardNumberFilter}`;
+                          if (purdueLevelFilter !== "all")
+                            ep += `&purdue_level=${purdueLevelFilter}`;
+                          if (componentTypeFilter !== "all")
+                            ep += `&component_type=${componentTypeFilter}`;
+                        } else if (reportFw === "nis2") {
+                          ep += `&nis2_entity_type=${nis2EntityTypeFilter}`;
+                          if (nis2SectorFilter !== "all")
+                            ep += `&nis2_sector=${nis2SectorFilter}`;
+                        } else if (reportFw === "executive") {
+                          ep = "/compliance/reports/executive";
+                          fname = "executive_compliance_report.pdf";
+                        }
+                        handleDownloadReport(ep, fname);
+                      }}
+                    >
+                      {loading
+                        ? "Generating..."
+                        : `📥 Download ${reportFmt.toUpperCase()} Report`}
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    flexWrap: "wrap",
+                    paddingTop: "0.75rem",
+                    borderTop: "1px dashed #CBD5E1",
+                  }}
                 >
-                  Download SoA Word (ISO)
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/nist_csf?fmt=pdf",
-                      "nist_csf_v2_report.pdf",
-                    )
-                  }
-                >
-                  Download NIST CSF PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/nist_csf?fmt=docx",
-                      "nist_csf_v2_report.docx",
-                    )
-                  }
-                >
-                  Download NIST CSF Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/cis_v8_1?fmt=pdf",
-                      "cis_v8_1_executive_report.pdf",
-                    )
-                  }
-                >
-                  Download CIS Controls PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/cis_v8_1?fmt=docx",
-                      "cis_v8_1_executive_report.docx",
-                    )
-                  }
-                >
-                  Download CIS Controls Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/soc2_type2?fmt=pdf",
-                      "soc2_type2_executive_report.pdf",
-                    )
-                  }
-                >
-                  Download SOC 2 PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/soc2_type2?fmt=docx",
-                      "soc2_type2_executive_report.docx",
-                    )
-                  }
-                >
-                  Download SOC 2 Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/cert_in_2022?fmt=pdf",
-                      "cert_in_2022_executive_report.pdf",
-                    )
-                  }
-                >
-                  Download CERT-In PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/cert_in_2022?fmt=docx",
-                      "cert_in_2022_executive_report.docx",
-                    )
-                  }
-                >
-                  Download CERT-In Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/pci_dss_v4?fmt=pdf${saqProfileFilter !== "all" ? `&saq_profile=${saqProfileFilter}` : ""}${cdeScopeFilter ? "&cde_scope_only=true" : ""}`,
-                      "pci_dss_v4_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download PCI-DSS PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/pci_dss_v4?fmt=docx${saqProfileFilter !== "all" ? `&saq_profile=${saqProfileFilter}` : ""}${cdeScopeFilter ? "&cde_scope_only=true" : ""}`,
-                      "pci_dss_v4_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download PCI-DSS Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/dpdp_2023?fmt=pdf${sdfScopeFilter !== "all" ? `&sdf_scope=${sdfScopeFilter}` : ""}`,
-                      "dpdp_2023_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download DPDP PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/dpdp_2023?fmt=docx${sdfScopeFilter !== "all" ? `&sdf_scope=${sdfScopeFilter}` : ""}`,
-                      "dpdp_2023_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download DPDP Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/gdpr?fmt=pdf${privacyRoleFilter !== "all" ? `&privacy_role=${privacyRoleFilter}` : ""}`,
-                      "gdpr_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download GDPR PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/gdpr?fmt=docx${privacyRoleFilter !== "all" ? `&privacy_role=${privacyRoleFilter}` : ""}`,
-                      "gdpr_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download GDPR Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nist_800_53_r5?fmt=pdf${impactLevelFilter !== "all" ? `&impact_level=${impactLevelFilter}` : ""}${zeroTrustOnly ? "&zero_trust_only=true" : ""}`,
-                      "nist_800_53_r5_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download NIST 800-53 PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nist_800_53_r5?fmt=docx${impactLevelFilter !== "all" ? `&impact_level=${impactLevelFilter}` : ""}${zeroTrustOnly ? "&zero_trust_only=true" : ""}`,
-                      "nist_800_53_r5_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download NIST 800-53 Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/iec_62443?fmt=pdf${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}${slLevelFilter !== "all" ? `&sl_level=${slLevelFilter}` : ""}`,
-                      "iec_62443_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download IEC 62443 PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/iec_62443?fmt=docx${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}${slLevelFilter !== "all" ? `&sl_level=${slLevelFilter}` : ""}`,
-                      "iec_62443_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download IEC 62443 Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nist_800_82?fmt=pdf${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
-                      "nist_800_82_r3_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download NIST 800-82 PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nist_800_82?fmt=docx${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
-                      "nist_800_82_r3_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download NIST 800-82 Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nerc_cip?fmt=pdf&regional_entity=${regionalEntityFilter}${besImpactLevelFilter !== "all" ? `&bes_impact_level=${besImpactLevelFilter}` : ""}${standardNumberFilter !== "all" ? `&standard_number=${standardNumberFilter}` : ""}${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
-                      "nerc_cip_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download NERC CIP PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nerc_cip?fmt=docx&regional_entity=${regionalEntityFilter}${besImpactLevelFilter !== "all" ? `&bes_impact_level=${besImpactLevelFilter}` : ""}${standardNumberFilter !== "all" ? `&standard_number=${standardNumberFilter}` : ""}${purdueLevelFilter !== "all" ? `&purdue_level=${purdueLevelFilter}` : ""}${componentTypeFilter !== "all" ? `&component_type=${componentTypeFilter}` : ""}`,
-                      "nerc_cip_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download NERC CIP Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nis2?fmt=pdf&nis2_entity_type=${nis2EntityTypeFilter}${nis2SectorFilter !== "all" ? `&nis2_sector=${nis2SectorFilter}` : ""}`,
-                      "nis2_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download NIS 2 PDF
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      `/compliance/reports/nis2?fmt=docx&nis2_entity_type=${nis2EntityTypeFilter}${nis2SectorFilter !== "all" ? `&nis2_sector=${nis2SectorFilter}` : ""}`,
-                      "nis2_compliance_report.docx",
-                    )
-                  }
-                >
-                  Download NIS 2 Word
-                </button>
-                <button
-                  className="db-btn db-btn--ghost"
-                  onClick={() =>
-                    handleDownloadReport(
-                      "/compliance/reports/executive",
-                      "executive_compliance_report.pdf",
-                    )
-                  }
-                >
-                  Download Executive Brief
-                </button>
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      fontWeight: "600",
+                      color: "#64748B",
+                      alignSelf: "center",
+                      marginRight: "0.5rem",
+                    }}
+                  >
+                    Quick Downloads:
+                  </span>
+                  <button
+                    className="db-btn db-btn--ghost"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    onClick={() =>
+                      handleDownloadReport(
+                        "/compliance/reports/soa?fmt=pdf",
+                        "statement_of_applicability.pdf",
+                      )
+                    }
+                  >
+                    SoA PDF
+                  </button>
+                  <button
+                    className="db-btn db-btn--ghost"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    onClick={() =>
+                      handleDownloadReport(
+                        "/compliance/reports/soa?fmt=docx",
+                        "statement_of_applicability.docx",
+                      )
+                    }
+                  >
+                    SoA Word
+                  </button>
+                  <button
+                    className="db-btn db-btn--ghost"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    onClick={() =>
+                      handleDownloadReport(
+                        "/compliance/reports/executive",
+                        "executive_compliance_report.pdf",
+                      )
+                    }
+                  >
+                    Executive Brief (PDF)
+                  </button>
+                  <button
+                    className="db-btn db-btn--ghost"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    onClick={() =>
+                      handleDownloadReport(
+                        "/compliance/reports/nist_csf?fmt=pdf",
+                        "nist_csf_v2_report.pdf",
+                      )
+                    }
+                  >
+                    NIST CSF PDF
+                  </button>
+                </div>
               </div>
 
               <div className="quadrant-scores">
@@ -2855,7 +2853,20 @@ export default function ComplianceWorkspace() {
                         </div>
                         <button
                           className="db-btn db-btn--danger fw-action-btn"
+                          disabled={!isComplianceAdmin}
+                          title={
+                            !isComplianceAdmin
+                              ? "Requires Org Admin or Superadmin permission"
+                              : ""
+                          }
+                          style={{
+                            opacity: !isComplianceAdmin ? 0.5 : 1,
+                            cursor: !isComplianceAdmin
+                              ? "not-allowed"
+                              : "pointer",
+                          }}
                           onClick={() =>
+                            isComplianceAdmin &&
                             handleUninstallFramework(fw.framework_id)
                           }
                         >
@@ -2867,7 +2878,20 @@ export default function ComplianceWorkspace() {
                         <div className="framework-status-placeholder" />
                         <button
                           className="db-btn db-btn--primary fw-action-btn"
+                          disabled={!isComplianceAdmin}
+                          title={
+                            !isComplianceAdmin
+                              ? "Requires Org Admin or Superadmin permission"
+                              : ""
+                          }
+                          style={{
+                            opacity: !isComplianceAdmin ? 0.5 : 1,
+                            cursor: !isComplianceAdmin
+                              ? "not-allowed"
+                              : "pointer",
+                          }}
                           onClick={() =>
+                            isComplianceAdmin &&
                             handleInstallFramework(fw.framework_id)
                           }
                         >

@@ -196,11 +196,14 @@ export default function SecurityReports() {
     try {
       const response = await api.get(`/reports/download/${scanId}`, {
         params: { fmt: format },
-        responseType: "blob",
+        responseType: "arraybuffer",
       });
 
       // Create a blob URL and trigger download
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const mimeType =
+        response.headers["content-type"] || "application/octet-stream";
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
 

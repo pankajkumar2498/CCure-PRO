@@ -87,8 +87,11 @@ Backend/db/test_data/prod_schema.sql
 .agent/
 
 
-# docs/
-docs/
+# docs/ binaries ignored, markdown tracked
+docs/*.docx
+docs/*.pdf
+!docs/*.md
+!docs/**/*.md
 
 # pre-commit cache
 .pre-commit-cache/

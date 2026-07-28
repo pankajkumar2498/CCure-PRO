@@ -121,6 +121,12 @@ jobs:
           cd Backend
           pytest --cov=. --cov-report=xml -v --reruns 1
 
+      - name: Verify Documentation Build & Integrity
+        run: |
+          cd Backend
+          python scripts/compile_docs.py
+          pytest tests/test_docs_integrity.py -v
+
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest

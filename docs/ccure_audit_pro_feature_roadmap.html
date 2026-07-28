@@ -1,0 +1,592 @@
+
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans); }
+  .roadmap { padding: 1.5rem 0; }
+  .phase-block { margin-bottom: 2.5rem; }
+  .phase-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1rem; }
+  .phase-badge { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .phase-title { font-size: 17px; font-weight: 500; color: var(--color-text-primary); }
+  .phase-desc { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 1rem 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.1rem; cursor: pointer; transition: border-color 0.15s; }
+  .card:hover { border-color: var(--color-border-secondary); }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .card-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); line-height: 1.35; }
+  .card-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .card-desc { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 8px; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; border: 0.5px solid; }
+  .effort-low { background: var(--color-background-success); color: var(--color-text-success); border-color: var(--color-border-success); }
+  .effort-med { background: var(--color-background-warning); color: var(--color-text-warning); border-color: var(--color-border-warning); }
+  .effort-high { background: var(--color-background-danger); color: var(--color-text-danger); border-color: var(--color-border-danger); }
+  .stack-tag { background: var(--color-background-secondary); color: var(--color-text-secondary); border-color: var(--color-border-tertiary); }
+  .divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 2rem 0; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 1.5rem; font-size: 12px; color: var(--color-text-secondary); align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .done-banner { background: var(--color-background-success); border: 0.5px solid var(--color-border-success); border-radius: var(--border-radius-md); padding: 0.6rem 1rem; margin-bottom: 1.5rem; font-size: 13px; color: var(--color-text-success); }
+
+  .detail-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
+  .detail-modal.open { display: flex; }
+  .detail-box { background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-lg); max-width: 540px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 1.4rem; }
+  .detail-title { font-size: 16px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 0.3rem; }
+  .detail-subtitle { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 1rem; }
+  .detail-section { margin-bottom: 1rem; }
+  .detail-section h4 { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); margin: 0 0 6px; }
+  .detail-section ul { margin: 0; padding-left: 1.1rem; }
+  .detail-section li { font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; }
+  .detail-section code { font-family: var(--font-mono); font-size: 11px; background: var(--color-background-secondary); padding: 1px 5px; border-radius: 4px; color: var(--color-text-primary); }
+  .close-btn { float: right; background: none; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 4px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-secondary); }
+  .close-btn:hover { background: var(--color-background-secondary); }
+</style>
+
+<div class="roadmap">
+  <div class="done-banner">
+    Already implemented: Basic Network Scan · Asset Discovery Scan · Advanced Scan · Credentialed Scanning (SSH/Linux)
+  </div>
+
+  <div class="legend">
+    <span style="font-weight:500; color: var(--color-text-primary);">Effort:</span>
+    <span class="legend-item"><span class="tag effort-low">Low</span> 1–3 days</span>
+    <span class="legend-item"><span class="tag effort-med">Medium</span> 4–10 days</span>
+    <span class="legend-item"><span class="tag effort-high">High</span> 2–4+ weeks</span>
+    <span style="margin-left:4px; color: var(--color-text-tertiary);">Click any card for implementation details.</span>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div class="phase-block">
+    <div class="phase-header">
+      <span class="phase-badge" style="background:#E1F5EE;color:#0F6E56;border:0.5px solid #9FE1CB;">Phase 1 · Quick Wins</span>
+      <span class="phase-title">Core Hardening & Reporting</span>
+    </div>
+    <p class="phase-desc">Build on your existing scan engine. These features complete the MVP and make your app production-worthy immediately.</p>
+    <div class="cards" id="phase1-cards"></div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- PHASE 2 -->
+  <div class="phase-block">
+    <div class="phase-header">
+      <span class="phase-badge" style="background:#E6F1FB;color:#185FA5;border:0.5px solid #B5D4F4;">Phase 2 · Power Features</span>
+      <span class="phase-title">Scan Intelligence & Windows Support</span>
+    </div>
+    <p class="phase-desc">Expand scanning capabilities and make CCure competitive with Nessus / OpenVAS on real-world networks.</p>
+    <div class="cards" id="phase2-cards"></div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- PHASE 3 -->
+  <div class="phase-block">
+    <div class="phase-header">
+      <span class="phase-badge" style="background:#FAEEDA;color:#854F0B;border:0.5px solid #FAC775;">Phase 3 · Enterprise</span>
+      <span class="phase-title">Scheduling, Multi-tenancy & Alerting</span>
+    </div>
+    <p class="phase-desc">Transform CCure into a continuous monitoring platform. These unlock recurring revenue and enterprise contracts.</p>
+    <div class="cards" id="phase3-cards"></div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- PHASE 4 -->
+  <div class="phase-block">
+    <div class="phase-header">
+      <span class="phase-badge" style="background:#EEEDFE;color:#534AB7;border:0.5px solid #AFA9EC;">Phase 4 · Advanced Intelligence</span>
+      <span class="phase-title">AI Analysis, Compliance & SIEM Integration</span>
+    </div>
+    <p class="phase-desc">Differentiate CCure with AI-powered risk reasoning, compliance mapping, and ecosystem integrations.</p>
+    <div class="cards" id="phase4-cards"></div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="detail-modal" id="modal">
+  <div class="detail-box">
+    <button class="close-btn" onclick="closeModal()">Close</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+const features = {
+  phase1: [
+    {
+      icon: "📊",
+      title: "Real-time Scan Progress (SSE/WebSocket)",
+      effort: "med",
+      stack: ["FastAPI SSE", "React EventSource"],
+      desc: "Live streaming progress bar for all scan types, replacing the current polling endpoint.",
+      what: "Your /scan/progress/{scan_id} endpoint already exists with in-memory tracking. This feature streams that data live to the frontend instead of requiring the client to poll every N seconds.",
+      why: "Users currently stare at a blank screen not knowing if a scan is running or hung. Real-time feedback is the #1 UX request in tools like this.",
+      how: [
+        "Backend: Add GET /scan/stream/{scan_id} using FastAPI's StreamingResponse with text/event-stream content-type",
+        "Emit JSON events every 500ms: {phase, percentage, hosts_found, elapsed_time, current_ip}",
+        "Frontend: Replace the polling useEffect in your scan pages with new EventSource('/scan/stream/{scanId}')",
+        "Handle EventSource 'message', 'error', 'open' events; close on completion event",
+        "Add animated progress bars to Phase1Results, Phase2Results, Phase3Results JSX"
+      ],
+      files: ["Backend/main.py (add /scan/stream route)", "Frontend/src/pages/scan/Phase1Results.jsx", "Frontend/src/context/ScanContext.jsx"]
+    },
+    {
+      icon: "📤",
+      title: "Export Reports: CSV / JSON / XLSX",
+      effort: "low",
+      stack: ["openpyxl", "csv module", "FastAPI FileResponse"],
+      desc: "Allow users to download scan data in CSV, JSON, or Excel format from the Scan History and Results pages.",
+      what: "You already generate PDF reports. This adds structured data exports (CSV/XLSX) for analysts who need to import results into Excel, Splunk, or other tools.",
+      why: "Security teams always need raw data. PDF is for management; CSV/XLSX is for analysts. This is the #1 analyst request.",
+      how: [
+        "Backend: Add GET /reports/export/{scan_id}?fmt=csv|json|xlsx endpoint",
+        "For CSV: use Python's csv.DictWriter to flatten host/port/CVE rows",
+        "For XLSX: use openpyxl — one sheet per data type (Hosts, Ports, CVEs, Summary)",
+        "For JSON: return the raw scan payload with Content-Disposition: attachment header",
+        "Frontend: Add export buttons to SecurityReports.jsx and ScanHistory.jsx using your existing ExportPanel.jsx component"
+      ],
+      files: ["Backend/main.py", "Backend/scans/router.py", "Frontend/src/components/scan/ExportPanel.jsx"]
+    },
+    {
+      icon: "🔍",
+      title: "CVE Detail Drill-Down & NVD Links",
+      effort: "low",
+      stack: ["React modal", "NVD API"],
+      desc: "Clicking any CVE opens a detail panel with full description, CVSS vector, remediation steps, and NVD link.",
+      what: "Your CVE list shows CVE IDs and severity. This adds a drill-down modal/panel with full NVD data — description, CVSS 3.x vector string, affected versions, and a fix recommendation.",
+      why: "Security analysts need to triage CVEs. Without full context they must leave the app to look up each CVE manually.",
+      how: [
+        "Frontend: In CredentialedResults.jsx and Phase3Results.jsx, make each CVE row clickable",
+        "Open a Modal.jsx with CVE ID, severity badge, CVSS score breakdown, description, and 'View on NVD' link",
+        "Backend: Add GET /cve/{cve_id} endpoint that queries your existing cves.db SQLite database",
+        "The cve_database.py already has get_cve_database() — add a .get_cve_by_id(cve_id) method",
+        "Optionally: cache NVD API calls with a 24h TTL to enrich data not in local DB"
+      ],
+      files: ["Backend/core/cve_database.py", "Backend/main.py", "Frontend/src/pages/scan/CredentialedResults.jsx", "Frontend/src/components/layout/Modal.jsx"]
+    },
+    {
+      icon: "🏷️",
+      title: "Asset Tagging & Custom Labels",
+      effort: "low",
+      stack: ["SQLAlchemy", "FastAPI PATCH"],
+      desc: "Tag discovered hosts with custom labels (e.g. 'Production', 'DMZ', 'Critical') for filtering and grouping.",
+      what: "Add a tagging system to scan results. Users can label hosts after discovery and filter scan history by tag. Tags persist in the database.",
+      why: "Large networks have hundreds of hosts. Without tags, every scan looks the same. Tags let teams track 'Production DB servers' vs 'Dev VMs'.",
+      how: [
+        "Database: Add an asset_tags table with columns: id, user_id, ip_address, label, color, created_at",
+        "Backend: Add POST /assets/tags, DELETE /assets/tags/{id}, GET /assets?tag=X endpoints",
+        "Frontend: In Phase1Results.jsx host rows, add a tag button that opens a tag picker",
+        "Store tags in localStorage initially, then sync to backend when user is logged in",
+        "Add a tag filter dropdown to ScanHistory.jsx"
+      ],
+      files: ["Backend/auth/models.py (new table)", "Backend/main.py", "Frontend/src/pages/scan/Phase1Results.jsx"]
+    },
+    {
+      icon: "🔔",
+      title: "In-App Notifications & Scan Completion Alerts",
+      effort: "low",
+      stack: ["React Context", "browser Notification API"],
+      desc: "Toast notifications when scans complete, fail, or find critical CVEs. Optional browser push notifications.",
+      what: "Show in-app toasts when scans finish. Optionally use the browser Notification API to alert users who switched tabs.",
+      why: "Scans take time. Users navigate away. Without alerts they have to keep checking manually.",
+      how: [
+        "Frontend: Create a NotificationContext.jsx with addNotification(type, message) function",
+        "Types: success, warning, danger, info — styled as toast banners using your existing CSS variables",
+        "Hook into ScanContext.jsx: when scan status changes to 'complete' or 'failed', fire a notification",
+        "On scan completion: request browser notification permission, then use new Notification() API",
+        "Store notification history in component state; show a bell icon in AppLayout.jsx with unread count badge"
+      ],
+      files: ["Frontend/src/context/ScanContext.jsx", "Frontend/src/components/layout/AppLayout.jsx", "Frontend/src/context/NotificationContext.jsx (new)"]
+    },
+    {
+      icon: "📋",
+      title: "Scan Templates & Saved Profiles",
+      effort: "med",
+      stack: ["SQLAlchemy", "React form"],
+      desc: "Save scan configurations (target, scan type, intensity, pipeline mode) as named templates for one-click re-scanning.",
+      what: "Users can save their common scan configurations (e.g. 'Weekly Prod Scan — 192.168.1.0/24, adaptive, advanced') as named templates. These appear in the New Scan page for one-click setup.",
+      why: "Security teams run the same scans weekly. Without templates, they re-enter the same parameters every time.",
+      how: [
+        "Database: Add a scan_templates table: id, user_id, name, target, scan_type, pipeline_mode, intensity, created_at",
+        "Backend: Add CRUD endpoints at /scan-templates (GET list, POST create, DELETE id, PATCH id)",
+        "Frontend: In NewScan.jsx, add a 'Load Template' dropdown at the top",
+        "After any scan, add a 'Save as Template' button that pre-fills the template form with current config",
+        "Templates page in settings showing all saved configs"
+      ],
+      files: ["Backend/auth/models.py", "Backend/main.py", "Frontend/src/pages/scan/NewScan.jsx"]
+    },
+  ],
+  phase2: [
+    {
+      icon: "🪟",
+      title: "Windows Credentialed Scanning (WinRM/SMB)",
+      effort: "high",
+      stack: ["pywinrm", "impacket", "PowerShell"],
+      desc: "SSH credentialed scanning already works for Linux. This adds WinRM/PowerShell-based scanning for Windows targets.",
+      what: "Your scripts/ directory already has Windows prep scripts (Prepare-WindowsForVulnScan.ps1). This implements the actual WinRM scanning engine to match the Linux SSHScanner.",
+      why: "Most enterprise networks are predominantly Windows. Without Windows scanning, CCure can't audit the majority of endpoints.",
+      how: [
+        "Install: pip install pywinrm impacket",
+        "Create Backend/engines/credentialed/windows_collector.py mirroring linux_collector.py",
+        "Connect via winrm.Session(ip, auth=(user, password)) — supports both NTLM and Kerberos",
+        "Collect: installed software (Win32_Product WMI), running services, open ports, user accounts, scheduled tasks",
+        "Reuse existing VulnMatcher for CVE matching against Windows package names",
+        "Add CredentialedScanRequest.auth_type field: 'ssh' | 'winrm' | 'smb'",
+        "Frontend: Add OS toggle (Linux/Windows) in CredentialedScan.jsx with conditional field hints"
+      ],
+      files: ["Backend/engines/credentialed/windows_collector.py (new)", "Backend/main.py", "Frontend/src/pages/scan/CredentialedScan.jsx"]
+    },
+    {
+      icon: "🕐",
+      title: "Scheduled Scans (Cron-based)",
+      effort: "high",
+      stack: ["APScheduler", "SQLAlchemy", "React calendar UI"],
+      desc: "Schedule recurring scans (daily, weekly, custom cron) that run automatically and save results to history.",
+      what: "Users define a scan schedule (target + pipeline mode + cron expression). A background scheduler runs these automatically, stores results exactly like a manual scan, and sends notifications.",
+      why: "Continuous monitoring is the core value proposition of professional scanners. Scheduled scans transform CCure from a one-off tool into a security posture tracker.",
+      how: [
+        "Install: pip install apscheduler",
+        "Database: Add scheduled_scans table: id, user_id, name, cron_expr, target, pipeline_mode, last_run, next_run, enabled",
+        "In main.py lifespan: initialize AsyncIOScheduler, load all enabled schedules from DB on startup",
+        "Create Backend/scheduler/scan_runner.py — a standalone async function that runs a full pipeline scan",
+        "Backend: CRUD endpoints at /scheduled-scans",
+        "Frontend: New ScheduledScans.jsx page with a schedule form (target, frequency radio: daily/weekly/custom cron)",
+        "Show next_run time and last_run status for each schedule"
+      ],
+      files: ["Backend/main.py", "Backend/scheduler/ (new module)", "Frontend/src/pages/ScheduledScans.jsx (new)"]
+    },
+    {
+      icon: "📡",
+      title: "UDP Port Scanning",
+      effort: "med",
+      stack: ["scapy", "asyncio"],
+      desc: "Complement TCP port scanning with UDP service discovery (DNS, SNMP, TFTP, NTP, etc.).",
+      what: "Your port_engine.py does TCP SYN scanning. UDP services (DNS:53, SNMP:161, NTP:123, TFTP:69) are invisible without UDP probing. Many critical exposures are UDP-only.",
+      why: "SNMP community strings, exposed DNS resolvers, and rogue NTP servers are common enterprise vulnerabilities only found via UDP.",
+      how: [
+        "In Backend/engines/port/port_engine.py, add async_udp_scan(ip, ports) method",
+        "Use Scapy: send UDP packet, wait for ICMP Port Unreachable response (port closed) or timeout (open|filtered)",
+        "Focus on well-known UDP ports: 53, 67, 69, 123, 137, 161, 500, 514, 1900, 5353",
+        "Probe UDP services with protocol-specific payloads (DNS query for 53, SNMP GetRequest for 161)",
+        "Mark ports as 'open', 'closed', or 'filtered' based on response type",
+        "Add udp_ports field to host results and display in Phase2Results.jsx as a separate UDP section"
+      ],
+      files: ["Backend/engines/port/port_engine.py", "Frontend/src/pages/scan/Phase2Results.jsx"]
+    },
+    {
+      icon: "🌐",
+      title: "Service Version Detection & Banner Grabbing",
+      effort: "med",
+      stack: ["asyncio sockets", "regex"],
+      desc: "Connect to open ports and extract service banners/version strings to improve CVE matching accuracy.",
+      what: "Currently open ports are identified by number (port 22 = SSH). Banner grabbing actually connects and reads the service hello string ('OpenSSH_8.9p1 Ubuntu') for precise version matching.",
+      why: "CVE matching is only as good as version data. Banner grabbing dramatically reduces false positives and catches version-specific vulnerabilities.",
+      how: [
+        "Add Backend/engines/port/banner_grabber.py with async grab_banner(ip, port, timeout=2) function",
+        "Use asyncio.open_connection() to establish TCP connection, read first 512 bytes",
+        "Parse common banners with regex: SSH version, HTTP Server header, FTP welcome, SMTP banner",
+        "For HTTP ports (80, 443, 8080): send GET / HTTP/1.0 and parse Server: header",
+        "Pass banner strings to VulnMatcher for more accurate CVE lookups",
+        "Store raw_banner field in port result objects and display in Phase2Results.jsx"
+      ],
+      files: ["Backend/engines/port/port_engine.py", "Backend/engines/port/banner_grabber.py (new)", "Backend/engines/credentialed/vuln_matcher.py"]
+    },
+    {
+      icon: "🗺️",
+      title: "Network Topology Map (Visual)",
+      effort: "high",
+      stack: ["D3.js or vis.js", "React", "FastAPI"],
+      desc: "Interactive network graph showing discovered hosts, open ports, and connections rendered visually.",
+      what: "After scanning, display an interactive force-directed graph: nodes are hosts, edges show detected connections. Color nodes by OS type, size by risk score.",
+      why: "Visual topology maps are a signature feature of enterprise scanners (Nmap Zenmap, Nessus). They're the most-shared screenshot from security tools.",
+      how: [
+        "Frontend: Install vis-network or use D3 force-directed graph",
+        "Create Frontend/src/pages/NetworkMap.jsx — takes Phase 1+2 scan data as input",
+        "Nodes: each host with IP label, OS icon, risk-color border (green/amber/red by risk score)",
+        "Edges: detected connections between hosts (ARP neighbor, same subnet, known port communications)",
+        "Click node: show host detail panel (ports, CVEs, scan history)",
+        "Controls: zoom, pan, group by subnet, filter by OS/risk",
+        "Add 'View Map' button to ScanHistory.jsx rows with phase2+ results"
+      ],
+      files: ["Frontend/src/pages/NetworkMap.jsx (new)", "Frontend/src/components/layout/AppLayout.jsx"]
+    },
+    {
+      icon: "🔄",
+      title: "Scan Comparison & Diff View",
+      effort: "med",
+      stack: ["Python deepdiff", "React diff UI"],
+      desc: "Compare two scans of the same target and highlight new hosts, closed ports, new CVEs, and resolved issues.",
+      what: "Select two scans and get a structured diff: new hosts appeared, hosts went offline, new open ports, new CVEs found, CVEs that were fixed since last scan.",
+      why: "Change detection is how security teams prove their patching worked. 'Show me what changed since last Tuesday' is the #1 recurring request.",
+      how: [
+        "Backend: Add POST /scans/compare with body {scan_id_a, scan_id_b}",
+        "Compare host lists, port lists, and CVE lists between the two scan payloads",
+        "Return {added_hosts, removed_hosts, changed_hosts: [{ip, added_ports, removed_ports, new_cves, fixed_cves}]}",
+        "Frontend: Add 'Compare' checkbox multi-select to ScanHistory.jsx rows",
+        "Create ScanDiff.jsx page with color-coded diff display: green=new/fixed, red=appeared/worsened",
+        "Export diff report as PDF using existing report generator"
+      ],
+      files: ["Backend/main.py", "Backend/scans/router.py", "Frontend/src/pages/ScanDiff.jsx (new)"]
+    },
+  ],
+  phase3: [
+    {
+      icon: "👥",
+      title: "Multi-user Teams & RBAC",
+      effort: "high",
+      stack: ["SQLAlchemy", "FastAPI Depends", "JWT roles"],
+      desc: "Organizations, teams, and role-based access control: Admin, Analyst, Viewer roles per team.",
+      what: "Your auth system has single users. This adds organizations (a group of users sharing scans), roles (Admin can run scans, Analyst can view+export, Viewer read-only), and team-level scan visibility.",
+      why: "Enterprise sales require team features. A single-user tool can't be deployed company-wide.",
+      how: [
+        "Database: Add organizations table, team_memberships table with user_id + org_id + role",
+        "Add org_id foreign key to Scan table so scans belong to an org, not just a user",
+        "Update JWT payload to include org_id and role; update get_current_user dependency to provide both",
+        "Create role-checking decorators: require_role('admin'), require_role('analyst')",
+        "Frontend: Org switcher in AppLayout.jsx header; Settings page for managing team members",
+        "Invite flow: POST /orgs/{id}/invite sends email with time-limited token"
+      ],
+      files: ["Backend/auth/models.py", "Backend/auth/dependencies.py", "Backend/auth/router.py", "Frontend/src/pages/Settings.jsx (new)"]
+    },
+    {
+      icon: "📧",
+      title: "Email Alerting on Critical Findings",
+      effort: "med",
+      stack: ["fastapi-mail or smtplib", "Jinja2 templates"],
+      desc: "Send email alerts when a scan finds Critical/High CVEs or new exposed services above a threshold.",
+      what: "Configure alert rules: 'Email me when any scan on 192.168.0.0/24 finds a Critical CVE' or 'Alert when a new SSH port appears on prod servers'. Emails include a summary with CVE list.",
+      why: "Scheduled scans are useless without alerting. You need to know immediately when something critical is found, not the next time you log in.",
+      how: [
+        "Install: pip install fastapi-mail",
+        "Database: Add alert_rules table: id, user_id, target_filter, severity_threshold, alert_on_new_ports, email",
+        "Backend: After every scan completes, run alert_checker.py — evaluates all rules for this scan's target",
+        "Email template: HTML email with scan summary, CVE table, link back to CCure result page",
+        "Frontend: Alert Rules page at /settings/alerts — CRUD for alert rules",
+        "Configuration: SMTP settings in .env (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)"
+      ],
+      files: ["Backend/alerts/ (new module)", "Backend/main.py", "Frontend/src/pages/AlertSettings.jsx (new)"]
+    },
+    {
+      icon: "📈",
+      title: "Risk Score Trending & Dashboard Analytics",
+      effort: "med",
+      stack: ["Chart.js or Recharts", "SQLAlchemy aggregation"],
+      desc: "Track risk score over time per target. Dashboard shows trend charts, top-risk hosts, CVE breakdown heatmap.",
+      what: "A metrics dashboard showing: risk score trend (line chart over time per target), vulnerability heatmap (hosts × severity), top 10 riskiest hosts, CVE age distribution.",
+      why: "Management needs to see security posture improving (or degrading) over time. Charts are what get shown in board meetings.",
+      how: [
+        "Backend: Add GET /analytics/risk-trend?target=X&days=30 — queries scan history and aggregates risk scores by date",
+        "Add GET /analytics/dashboard — returns top-risk hosts, total CVE counts by severity, scan frequency",
+        "Frontend: New Dashboard.jsx upgrade with Recharts LineChart for risk trend, BarChart for severity distribution",
+        "Heatmap: a grid of hosts × severity levels using CSS grid with color-coded cells",
+        "Date range picker to filter analytics view"
+      ],
+      files: ["Backend/main.py", "Frontend/src/pages/Dashboard.jsx", "Frontend/src/pages/Analytics.jsx (new)"]
+    },
+    {
+      icon: "🔗",
+      title: "Webhook & SIEM Integration",
+      effort: "med",
+      stack: ["httpx", "FastAPI background tasks"],
+      desc: "Push scan results to Splunk, Elasticsearch, Slack, or any webhook endpoint in real-time.",
+      what: "After each scan, POST the results as JSON/CEF to configured webhook URLs. Supports Splunk HEC, Elasticsearch bulk API, Slack incoming webhooks, and generic HTTP.",
+      why: "Security teams live in Splunk/Elastic/Sentinel. If CCure can't feed those tools, it's a silo.",
+      how: [
+        "Database: Add webhooks table: id, user_id, name, url, type (splunk/elastic/slack/generic), secret, enabled",
+        "Backend: Create Backend/integrations/webhook_sender.py with async send_to_webhook(scan_result, webhook)",
+        "Format adapters: splunk_formatter (JSON with time field), elastic_formatter (bulk API format), slack_formatter (Block Kit)",
+        "Use FastAPI BackgroundTasks to fire webhooks after scan completion without blocking response",
+        "Frontend: Integrations page at /settings/integrations with webhook CRUD and test-fire button"
+      ],
+      files: ["Backend/integrations/ (new module)", "Backend/main.py", "Frontend/src/pages/Integrations.jsx (new)"]
+    },
+    {
+      icon: "🗃️",
+      title: "Asset Inventory Database",
+      effort: "med",
+      stack: ["SQLAlchemy", "React table"],
+      desc: "Persistent asset registry: all discovered hosts across all scans with history, tags, owner, and last-seen date.",
+      what: "A queryable database of every host ever discovered. Each asset record shows: all historical scan results, tags, assigned owner, OS fingerprint history, open port history, risk score trend.",
+      why: "This transforms CCure from a scanner into an asset management platform — much higher value, much stickier.",
+      how: [
+        "Database: Add assets table: id, org_id, ip_address, mac_address, hostname, os_fingerprint, first_seen, last_seen, owner, tags",
+        "On every Phase 1 scan completion, upsert discovered hosts into assets table",
+        "Backend: GET /assets (filterable by tag, os, risk, subnet), GET /assets/{ip}/history",
+        "Frontend: New Assets.jsx page with filterable, sortable table. Click row to see asset detail page",
+        "Asset detail: timeline of scans, port history graph, CVE history, owner assignment field"
+      ],
+      files: ["Backend/auth/models.py", "Backend/main.py", "Frontend/src/pages/Assets.jsx (new)"]
+    },
+  ],
+  phase4: [
+    {
+      icon: "🤖",
+      title: "AI-powered Risk Narrative & Remediation",
+      effort: "med",
+      stack: ["Anthropic API", "Jinja2 prompt templates"],
+      desc: "Use Claude to generate plain-English risk summaries, prioritized remediation steps, and attack path analysis for each scan.",
+      what: "After each scan, call Claude API with the CVE list and host context. Claude returns: executive summary in plain English, top 5 prioritized remediation actions with specific commands, estimated fix effort.",
+      why: "Security reports are unreadable to non-experts. AI narration bridges the gap between technical findings and business decisions.",
+      how: [
+        "Backend: Create Backend/ai/risk_analyst.py with async generate_risk_narrative(scan_result) function",
+        "Build a structured prompt: 'You are a security analyst. Here are the findings from scanning [target]: [CVE list]. Generate: 1) Executive summary, 2) Top 5 remediation steps with specific fix commands, 3) Attack path: most likely exploitation chain'",
+        "Call Anthropic API with claude-sonnet-4-6; stream response back to frontend via SSE",
+        "Cache AI narratives per scan_id so they don't regenerate on every page load",
+        "Frontend: Add 'AI Analysis' tab in scan result pages; show generated narrative with copy-to-clipboard"
+      ],
+      files: ["Backend/ai/ (new module)", "Backend/main.py", "Frontend/src/pages/scan/Phase3Results.jsx"]
+    },
+    {
+      icon: "📜",
+      title: "Compliance Mapping (CIS, NIST, PCI-DSS)",
+      effort: "high",
+      stack: ["Python compliance engine", "JSON compliance DB"],
+      desc: "Map scan findings to compliance frameworks — CIS Benchmarks, NIST 800-53, PCI-DSS — and generate compliance gap reports.",
+      what: "A compliance engine that maps your credentialed scan findings (missing patches, weak configs, open ports) to specific control requirements in CIS/NIST/PCI frameworks. Generate a gap report showing pass/fail per control.",
+      why: "Compliance is the #1 driver of security tool procurement. If CCure can show 'you fail PCI-DSS control 6.3.3', it becomes a necessity, not a nice-to-have.",
+      how: [
+        "Create Backend/compliance/ module with a JSON database mapping checks to framework controls",
+        "Example: {'check': 'ssh_root_login_disabled', 'cis_ubuntu': 'CIS 5.2.10', 'nist': 'AC-6', 'pci': 'Req 7.1'}",
+        "After credentialed scan, run each check against collected system_data; record pass/fail",
+        "Generate compliance report: per-framework compliance percentage, failed controls with remediation",
+        "Frontend: Compliance tab in CredentialedResults.jsx; framework selector (CIS/NIST/PCI)",
+        "Export compliance report as PDF via existing report generator"
+      ],
+      files: ["Backend/compliance/ (new module)", "Backend/engines/credentialed/linux_collector.py", "Frontend/src/pages/scan/CredentialedResults.jsx"]
+    },
+    {
+      icon: "🔐",
+      title: "SSL/TLS Certificate Auditing",
+      effort: "med",
+      stack: ["ssl module", "cryptography lib", "pyOpenSSL"],
+      desc: "For HTTPS services, audit TLS configuration: expired certs, weak cipher suites, protocol versions, HSTS, certificate chain.",
+      what: "When port 443 (or any TLS port) is discovered, perform a TLS handshake audit: certificate expiry, subject/SAN, issuer, weak ciphers (RC4, 3DES), old protocols (SSLv3, TLS 1.0), HSTS header, certificate transparency.",
+      why: "Expired certs and weak TLS configs are extremely common findings. This is a Qualys SSL Labs-style feature that adds massive value.",
+      how: [
+        "Create Backend/engines/tls/tls_auditor.py with audit_tls(ip, port) function",
+        "Use Python ssl module to connect and get cert details; use cryptography lib to parse x509",
+        "Check: days until expiry, signature algorithm, key size, SANs, issuer chain",
+        "Use socket + ssl to test supported cipher suites via OpenSSL bindings",
+        "Test TLS versions: attempt handshake with TLSv1, TLSv1.1, TLSv1.2, TLSv1.3",
+        "Assign grade: A (TLS1.3, strong ciphers) to F (expired cert or SSLv3 supported)",
+        "Display TLS grade badge in Phase2Results.jsx for each HTTPS port"
+      ],
+      files: ["Backend/engines/tls/ (new module)", "Backend/engines/port/port_engine.py", "Frontend/src/pages/scan/Phase2Results.jsx"]
+    },
+    {
+      icon: "🕵️",
+      title: "Passive Reconnaissance (OSINT)",
+      effort: "high",
+      stack: ["shodan API", "DNSPython", "whois", "Certificate Transparency"],
+      desc: "Enrich discovered hosts with OSINT data: Shodan history, passive DNS, WHOIS, leaked credentials check.",
+      what: "For each discovered host, automatically query: Shodan for historical port/CVE data, WHOIS for ownership info, passive DNS for hostname history, Certificate Transparency logs for subdomains, and optionally HaveIBeenPwned for associated email breaches.",
+      why: "OSINT enrichment is what separates basic scanners from threat intelligence platforms. This data helps prioritize which hosts are most exposed to external threats.",
+      how: [
+        "Create Backend/recon/ module with ShodanEnricher, PassiveDNS, WhoisLookup classes",
+        "Shodan: pip install shodan; use shodan.Shodan(api_key).host(ip) — store API key in .env",
+        "DNS: pip install dnspython; resolve PTR, A, AAAA, MX records for discovered hostnames",
+        "Certificate Transparency: query crt.sh API for subdomains of discovered hostnames",
+        "Run enrichment asynchronously via BackgroundTasks after scan completes",
+        "Frontend: 'Intelligence' panel in host detail views with OSINT data and sources"
+      ],
+      files: ["Backend/recon/ (new module)", "Backend/main.py", "Frontend/src/pages/scan/Phase1Results.jsx"]
+    },
+    {
+      icon: "🧪",
+      title: "Safe Exploit Verification (Proof-of-Concept Checks)",
+      effort: "high",
+      stack: ["asyncio", "custom exploit modules"],
+      desc: "Non-destructive exploit verification: safely confirm if CVEs are actually exploitable on discovered hosts.",
+      what: "For select high-confidence CVEs (EternalBlue MS17-010, Apache path traversal, default credentials), run a safe PoC check that verifies exploitability without causing harm. Returns confirmed/not-confirmed, not just 'might be vulnerable'.",
+      why: "False positives waste analyst time. 'Confirmed exploitable' vs 'potentially vulnerable' is the difference between red alert and low priority.",
+      how: [
+        "Create Backend/engines/exploit_checks/ module with a safe-check registry",
+        "Each check: a standalone async function that returns {cve, confirmed: bool, evidence: str}",
+        "Example checks: SMB signing disabled (EternalBlue precondition), anonymous FTP login, default Telnet creds",
+        "Important: checks must be READ-ONLY — connection attempts only, no writes, no payload delivery",
+        "Gate this feature behind explicit user consent and a Terms acknowledgement modal",
+        "Frontend: 'Verify Exploitability' button per CVE in Phase3Results — requires elevated permission"
+      ],
+      files: ["Backend/engines/exploit_checks/ (new module)", "Backend/main.py", "Frontend/src/pages/scan/Phase3Results.jsx"]
+    },
+    {
+      icon: "📱",
+      title: "Mobile App (React Native / PWA)",
+      effort: "high",
+      stack: ["PWA / React Native", "Service Worker"],
+      desc: "Mobile-responsive PWA or React Native app for viewing scan results, receiving push notifications, and triggering scans on the go.",
+      what: "Convert the existing React frontend to a Progressive Web App with offline support and push notifications. Alternatively build a React Native wrapper. Core use case: receive critical CVE alerts on mobile and drill into findings.",
+      why: "Security teams are on call. Mobile access to scan results is essential for incident response.",
+      how: [
+        "PWA path (easier): Add vite-plugin-pwa to Frontend/vite.config.js",
+        "Configure service worker: cache scan history pages offline, intercept API calls for background sync",
+        "Add Web Push Notifications using VAPID keys (backend: pywebpush, frontend: serviceWorker.pushManager)",
+        "Mobile-optimize layouts: AppLayout.jsx responsive breakpoints, touch-friendly scan result cards",
+        "App manifest: icons, theme color, standalone display mode — enables 'Add to Home Screen'",
+        "React Native path: eject to expo + share API layer from Frontend/src/api/"
+      ],
+      files: ["Frontend/vite.config.js", "Frontend/src/ (service worker + manifest)", "Backend/main.py (push endpoint)"]
+    },
+  ]
+};
+
+function renderCards(containerId, cards) {
+  const container = document.getElementById(containerId);
+  cards.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="card-header">
+        <span class="card-title">${f.title}</span>
+        <span class="card-icon">${f.icon}</span>
+      </div>
+      <div class="card-desc">${f.desc}</div>
+      <div class="card-tags">
+        <span class="tag effort-${f.effort}">${f.effort === 'low' ? 'Low effort' : f.effort === 'med' ? 'Medium effort' : 'High effort'}</span>
+        ${f.stack.map(s => `<span class="tag stack-tag">${s}</span>`).join('')}
+      </div>
+    `;
+    div.onclick = () => openModal(f);
+    container.appendChild(div);
+  });
+}
+
+function openModal(f) {
+  const content = document.getElementById('modal-content');
+  content.innerHTML = `
+    <div class="detail-title">${f.icon} ${f.title}</div>
+    <div class="detail-subtitle">
+      <span class="tag effort-${f.effort}" style="margin-right:6px">${f.effort === 'low' ? 'Low effort (1–3 days)' : f.effort === 'med' ? 'Medium effort (4–10 days)' : 'High effort (2–4 weeks)'}</span>
+      ${f.stack.map(s => `<span class="tag stack-tag" style="margin-right:4px">${s}</span>`).join('')}
+    </div>
+    <div class="detail-section">
+      <h4>What it is</h4>
+      <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.6;margin:0">${f.what}</p>
+    </div>
+    <div class="detail-section">
+      <h4>Why it matters</h4>
+      <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.6;margin:0">${f.why}</p>
+    </div>
+    <div class="detail-section">
+      <h4>How to implement</h4>
+      <ul>${f.how.map(h => `<li>${h.replace(/`([^`]+)`/g, '<code>$1</code>')}</li>`).join('')}</ul>
+    </div>
+    <div class="detail-section">
+      <h4>Files to touch</h4>
+      <ul>${f.files.map(file => `<li><code>${file}</code></li>`).join('')}</ul>
+    </div>
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+renderCards('phase1-cards', features.phase1);
+renderCards('phase2-cards', features.phase2);
+renderCards('phase3-cards', features.phase3);
+renderCards('phase4-cards', features.phase4);
+</script>

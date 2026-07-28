@@ -197,10 +197,10 @@ def get_vuln_engine() -> Engine:
 def can_connect_vuln_db() -> bool:
     try:
         with get_vuln_engine().connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
+            conn.exec_driver_sql("SELECT 1 FROM cve LIMIT 1")
         return True
     except SQLAlchemyError as exc:
-        logger.warning("Vulnerability-intel database unavailable: %s", exc)
+        logger.debug("Vulnerability-intel database or 'cve' table unavailable: %s", exc)
         return False
 
 

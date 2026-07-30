@@ -173,7 +173,10 @@ export default function SecurityReports() {
 
       // Filter for scans that actually completed and have reports
       const reportableScans = allScans.filter(
-        (s) => s.status === "complete" || s.has_json_report || s.has_xml_report,
+        (s) =>
+          s.status === "complete" ||
+          s.has_executive_report ||
+          s.has_technical_report,
       );
 
       setScans(reportableScans);

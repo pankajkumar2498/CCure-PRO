@@ -50,10 +50,10 @@ def test_report_generation_empty_data():
         gen = ScanReportGenerator(output_dir=temp_dir)
         paths = gen.generate(result, scan_type="credentialed_scan")
 
-        assert "json_pdf" in paths
-        assert "xml_pdf" in paths
-        assert os.path.exists(paths["json_pdf"])
-        assert os.path.exists(paths["xml_pdf"])
+        assert "executive_pdf" in paths
+        assert "technical_pdf" in paths
+        assert os.path.exists(paths["executive_pdf"])
+        assert os.path.exists(paths["technical_pdf"])
     finally:
         shutil.rmtree(temp_dir)
 
@@ -139,11 +139,11 @@ def test_report_generation_extreme_load():
         gen = ScanReportGenerator(output_dir=temp_dir)
         paths = gen.generate(result, scan_type="credentialed_scan")
 
-        assert "json_pdf" in paths
-        assert "xml_pdf" in paths
-        assert os.path.exists(paths["json_pdf"])
-        assert os.path.exists(paths["xml_pdf"])
-        assert os.path.getsize(paths["json_pdf"]) > 0
-        assert os.path.getsize(paths["xml_pdf"]) > 0
+        assert "executive_pdf" in paths
+        assert "technical_pdf" in paths
+        assert os.path.exists(paths["executive_pdf"])
+        assert os.path.exists(paths["technical_pdf"])
+        assert os.path.getsize(paths["executive_pdf"]) > 0
+        assert os.path.getsize(paths["technical_pdf"]) > 0
     finally:
         shutil.rmtree(temp_dir)

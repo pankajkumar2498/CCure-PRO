@@ -1220,6 +1220,19 @@ def sync_vulnerability_audit(
         source_family = _finding_family("vulnerability_audit")
         found_in_this_scan = set()
         vulns = host.get("vulnerabilities") or host.get("cves") or []
+
+        # Service rows are written by the asset-discovery phase, not here, so
+        # the set of valid FK targets is read back rather than assumed. A
+        # finding referencing a service row that was never recorded would fail
+        # the foreign key and abort the whole insert.
+        synced_service_ids = set()
+        if vulns:
+            synced_service_ids = {
+                row[0]
+                for row in db.query(Service.id)
+                .filter(Service.asset_id == asset_id)
+                .all()
+            }
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id:
@@ -1232,6 +1245,7 @@ def sync_vulnerability_audit(
             cwe_ids = []
             references = []
             published_at = None
+            affected_software = []
 
             try:
                 from core.cve_database import get_cve_database
@@ -1255,6 +1269,16 @@ def sync_vulnerability_audit(
                                 clean_refs.append(ref["url"])
                         references = clean_refs
 
+                        # CPE version ranges. The report compares the detected
+                        # service version against these boundaries to confirm a
+                        # finding or rule it out; without them every finding can
+                        # only ever be reported as unverified.
+                        affected_software = [
+                            cpe
+                            for cpe in (details.get("affected") or [])
+                            if isinstance(cpe, dict)
+                        ]
+
                         from datetime import date, datetime
 
                         pub = details.get("published")
@@ -1271,24 +1295,63 @@ def sync_vulnerability_audit(
                 )
 
             # UPSERT Catalog
+            #
+            # This backfills enrichment onto CVE rows that already exist. The
+            # previous do-nothing behaviour meant a CVE first seen before the
+            # feed carried CPE ranges could never acquire them, so its findings
+            # would stay permanently unverifiable. Each field falls back to the
+            # stored value, so a lookup that returns nothing never erases data.
+            catalog_stmt = insert(VulnerabilityDefinition).values(
+                id=cve_id,
+                cve_id=cve_id,
+                title=v.get("title", f"Vuln {cve_id}"),
+                description=description,
+                cvss_vector=cvss_vector,
+                cwe_ids=cwe_ids,
+                references=references,
+                affected_software=affected_software,
+                published_at=published_at,
+                severity=str(v.get("severity", "Medium")).title(),
+                cvss_v3_score=float(v.get("cvss", 0.0)) or None,
+                source="scanner",
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
             db.execute(
-                insert(VulnerabilityDefinition)
-                .values(
-                    id=cve_id,
-                    cve_id=cve_id,
-                    title=v.get("title", f"Vuln {cve_id}"),
-                    description=description,
-                    cvss_vector=cvss_vector,
-                    cwe_ids=cwe_ids,
-                    references=references,
-                    published_at=published_at,
-                    severity=str(v.get("severity", "Medium")).title(),
-                    cvss_v3_score=float(v.get("cvss", 0.0)),
-                    source="scanner",
-                    created_at=utcnow(),
-                    updated_at=utcnow(),
+                catalog_stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "description": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.description, ""),
+                            VulnerabilityDefinition.description,
+                        ),
+                        "cvss_vector": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.cvss_vector, ""),
+                            VulnerabilityDefinition.cvss_vector,
+                        ),
+                        "cvss_v3_score": func.coalesce(
+                            catalog_stmt.excluded.cvss_v3_score,
+                            VulnerabilityDefinition.cvss_v3_score,
+                        ),
+                        "published_at": func.coalesce(
+                            catalog_stmt.excluded.published_at,
+                            VulnerabilityDefinition.published_at,
+                        ),
+                        "cwe_ids": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.cwe_ids, "[]"),
+                            VulnerabilityDefinition.cwe_ids,
+                        ),
+                        "references": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.references, "[]"),
+                            VulnerabilityDefinition.references,
+                        ),
+                        "affected_software": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.affected_software, "[]"),
+                            VulnerabilityDefinition.affected_software,
+                        ),
+                        "updated_at": utcnow(),
+                    },
                 )
-                .on_conflict_do_nothing(index_elements=["id"])
             )
 
             # PHASE 4: Detect Reopened Vulnerabilities
@@ -1306,6 +1369,25 @@ def sync_vulnerability_audit(
                     db, asset_id, scan_id, "vulnerability_reopened", cve_id, "open"
                 )
 
+            # Bind the finding to the service it was observed on. The report
+            # resolves the port, product, and detected version through this FK,
+            # which is what lets it compare the running version against the
+            # CVE's vulnerable range instead of reporting it unverified.
+            finding_service_id = None
+            vuln_port = v.get("port")
+            if vuln_port is not None:
+                try:
+                    finding_service_id = gen_service_id(
+                        asset_id, int(vuln_port), str(v.get("protocol") or "tcp")
+                    )
+                except (TypeError, ValueError):
+                    finding_service_id = None
+
+            # Only reference a service row that this scan actually recorded,
+            # otherwise the FK insert fails and takes the whole finding with it.
+            if finding_service_id and finding_service_id not in synced_service_ids:
+                finding_service_id = None
+
             # UPSERT Finding
             proof = f"Source_Family:network_service\n{v.get('proof') or v.get('evidence') or ''}".strip()
             plugin_output = (
@@ -1319,13 +1401,16 @@ def sync_vulnerability_audit(
                     scan_id=scan_id,
                     asset_id=asset_id,
                     vuln_id=cve_id,
+                    service_id=finding_service_id,
                     severity=str(v.get("severity", "Medium")).title(),
-                    cvss_score=float(v.get("cvss", 0.0)),
+                    cvss_score=float(v.get("cvss", 0.0)) or None,
                     status="open",
                     proof=proof,
                     plugin_output=plugin_output,
                     source_family=source_family,
-                    evidence_source="vulnerability_audit",
+                    evidence_source=str(
+                        v.get("evidence_source") or "vulnerability_audit"
+                    ),
                     first_found_at=utcnow(),
                     last_found_at=utcnow(),
                 )
@@ -1336,9 +1421,16 @@ def sync_vulnerability_audit(
                         "scan_id": scan_id,
                         "status": "open",
                         "severity": str(v.get("severity", "Medium")).title(),
-                        "cvss_score": float(v.get("cvss", 0.0)),
+                        "cvss_score": float(v.get("cvss", 0.0)) or None,
                         "source_family": source_family,
-                        "evidence_source": "vulnerability_audit",
+                        "evidence_source": str(
+                            v.get("evidence_source") or "vulnerability_audit"
+                        ),
+                        # Keep an existing binding when this pass could not
+                        # resolve one, so a re-scan never loses port context.
+                        "service_id": func.coalesce(
+                            finding_service_id, AssetVulnerability.service_id
+                        ),
                         "proof": func.coalesce(
                             func.nullif(proof, ""), AssetVulnerability.proof
                         ),

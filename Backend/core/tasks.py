@@ -985,8 +985,8 @@ def run_host_discovery_task(
             user_id=user_id,
             phase1_data=result,
             is_final=is_final,
-            report_json_path=report_paths.get("json_pdf"),
-            report_xml_path=report_paths.get("xml_pdf"),
+            report_executive_path=report_paths.get("executive_pdf"),
+            report_technical_path=report_paths.get("technical_pdf"),
         )
 
         # 4. Final Progress Push (Post-Commit)
@@ -1226,8 +1226,8 @@ def run_asset_discovery_task(
             },
             is_final=is_final,
             pipeline_mode=mode,
-            report_json_path=report_paths.get("json_pdf"),
-            report_xml_path=report_paths.get("xml_pdf"),
+            report_executive_path=report_paths.get("executive_pdf"),
+            report_technical_path=report_paths.get("technical_pdf"),
         )
 
         # Final Progress Push
@@ -1398,8 +1398,8 @@ def run_vulnerability_audit_task(
             },
             is_final=True,
             pipeline_mode=mode,
-            report_json_path=report_paths.get("json_pdf"),
-            report_xml_path=report_paths.get("xml_pdf"),
+            report_executive_path=report_paths.get("executive_pdf"),
+            report_technical_path=report_paths.get("technical_pdf"),
         )
 
         # Final Progress Push
@@ -2017,8 +2017,8 @@ def run_credentialed_scan_task(
             results={"credentialed": {"report": stored_report}},
             summary=report_result["summary"],
             scan_duration=scan_duration,
-            report_json_path=report_paths.get("json_pdf"),
-            report_xml_path=report_paths.get("xml_pdf"),
+            report_executive_path=report_paths.get("executive_pdf"),
+            report_technical_path=report_paths.get("technical_pdf"),
             scan_id=scan_id,
             commit=False,  # ENTERPRISE FIX: Do not commit yet
         )

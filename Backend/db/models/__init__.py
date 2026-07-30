@@ -45,6 +45,7 @@ from .findings import (
 from .notifications import Notification
 from .rbac import Organization, Permission, Role, RolePermission
 from .scans import Scan, ScanPhase
+from .scan_reports import ScanReport
 from .topology import NetworkLink, ensure_topology_schema
 from .users import AuditLog, PasswordResetToken, RefreshTokenSession, User
 from .web_scans import WebAsset, WebFinding, WebScan

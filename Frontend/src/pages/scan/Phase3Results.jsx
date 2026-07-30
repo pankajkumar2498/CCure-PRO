@@ -437,8 +437,8 @@ export default function Phase3Results() {
           data: fullScan?.results?.phase3?.data || [],
           summary: fullScan?.results?.phase3?.summary || {},
           reports: {
-            json_pdf: fullScan?.report_json_path,
-            xml_pdf: fullScan?.report_xml_path,
+            executive_pdf: fullScan?.report_executive_path,
+            technical_pdf: fullScan?.report_technical_path,
           },
         };
 

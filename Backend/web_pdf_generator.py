@@ -54,11 +54,11 @@ LIGHT_GREY = colors.HexColor("#F7F9FC")
 
 # Severity colors
 SEV_COLORS = {
-    "critical": colors.HexColor("#DC2626"),
-    "high": colors.HexColor("#EA580C"),
-    "medium": colors.HexColor("#CA8A04"),
-    "low": colors.HexColor("#2563EB"),
-    "info": colors.HexColor("#6B7280"),
+    "critical": colors.HexColor("#800000"),
+    "high": colors.HexColor("#D9534F"),
+    "medium": colors.HexColor("#F0AD4E"),
+    "low": colors.HexColor("#E6B800"),
+    "info": colors.HexColor("#337AB7"),
 }
 
 PAGE_W, PAGE_H = A4
@@ -621,12 +621,14 @@ class WebScanReportGenerator:
         filename = f"web_scan_{safe_domain}_{now.strftime('%d-%m-%Y_%H-%M-%S')}.pdf"
         filepath = os.path.join(self.output_dir, filename)
 
+        from report_helpers import NumberedCanvas
+
         doc = SimpleDocTemplate(
             filepath,
             pagesize=A4,
             leftMargin=MARGIN,
             rightMargin=MARGIN,
-            topMargin=28 * mm,
+            topMargin=18 * mm,
             bottomMargin=18 * mm,
             title=f"Web Security Report — {domain}",
             author="CCure-Audit PRO",
@@ -642,10 +644,6 @@ class WebScanReportGenerator:
             doc.scan_timestamp = now.strftime("%d %b %Y  %H:%M:%S")
 
         story = _build_web_scan_story(scan, findings, assets, self.styles)
-        doc.build(
-            story,
-            onFirstPage=_draw_web_header_footer,
-            onLaterPages=_draw_web_header_footer,
-        )
+        doc.build(story, canvasmaker=NumberedCanvas)
 
         return filepath

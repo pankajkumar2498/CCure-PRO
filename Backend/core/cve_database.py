@@ -102,7 +102,23 @@ class CVEDatabase:
         return []
 
     def _search_postgres(self, service_name: str, version: str = "") -> list[dict]:
-        terms = extract_search_terms(f"{service_name} {version}")
+        """
+        Find CVEs whose CPE product/vendor matches the detected service.
+
+        Matching is deliberately restricted to the structured CPE columns. An
+        earlier version also OR'd in a full-text match against the CVE
+        description, which made this a keyword search over prose: a banner
+        containing "ssh" returned every CVE that merely *mentions* SSH —
+        Cisco IOS, PuTTY, Dropbear, ScreenOS — and attached them all to the
+        host. Product identity must come from CPE, never from prose.
+
+        Each row carries the CPE version boundaries so the caller can compare
+        the detected version against the vulnerable range and confirm or rule
+        out the finding.
+        """
+        # The version is excluded from term extraction: version tokens are not
+        # product names and only add spurious matches.
+        terms = extract_search_terms(service_name)
         if not terms:
             return self._fallback_search(service_name, version)
 
@@ -114,7 +130,6 @@ class CVEDatabase:
             values=terms,
             param_prefix="term",
         )
-        params["ts_query"] = " ".join(terms)
         query = text(
             f"""
             SELECT
@@ -134,15 +149,23 @@ class CVEDatabase:
                 kev.product AS kev_product,
                 kev.vuln_name AS kev_vuln_name,
                 COALESCE(exploits.has_exploit, FALSE) AS has_exploit,
-                exploits.exploit_sources
+                exploits.exploit_sources,
+                COALESCE(jsonb_agg(DISTINCT jsonb_build_object(
+                    'cpe_uri', cpe.cpe_uri,
+                    'vendor', cpe.vendor,
+                    'product', cpe.product,
+                    'version_start_including', cpe.version_start_including,
+                    'version_start_excluding', cpe.version_start_excluding,
+                    'version_end_including', cpe.version_end_including,
+                    'version_end_excluding', cpe.version_end_excluding
+                )) FILTER (WHERE cpe.cpe_uri IS NOT NULL), '[]'::jsonb) AS affected
             FROM cve c
             {BEST_CVSS_LATERAL}
             LEFT JOIN epss ON epss.cve_id = c.cve_id
             LEFT JOIN kev ON kev.cve_id = c.cve_id
             LEFT JOIN exploits ON exploits.cve_id = c.cve_id
-            LEFT JOIN cpe ON cpe.cve_id = c.cve_id
+            JOIN cpe ON cpe.cve_id = c.cve_id
             WHERE ({where_sql})
-               OR c.description_tsv @@ websearch_to_tsquery('english', :ts_query)
             GROUP BY
                 c.cve_id, c.description, c.published_date, c.last_modified,
                 best_cvss.version, best_cvss.base_score, best_cvss.severity, best_cvss.vector,
@@ -154,14 +177,21 @@ class CVEDatabase:
                 COALESCE(epss.epss_score, 0) DESC,
                 COALESCE(best_cvss.base_score, 0) DESC,
                 c.published_date DESC
-            LIMIT 20
+            LIMIT 200
             """
         )
 
         try:
             with get_vuln_engine().connect() as conn:
                 rows = conn.execute(query, params).mappings().all()
-            return [self._format_postgres_row(row) for row in rows]
+            results = []
+            for row in rows:
+                record = self._format_postgres_row(row)
+                # Carry the CPE ranges through so the report can version-gate.
+                record["affected"] = as_list(row.get("affected"))
+                record["detected_version"] = version or ""
+                results.append(record)
+            return results
         except SQLAlchemyError as exc:
             logger.error("PostgreSQL CVE search failed for %s: %s", service_name, exc)
             if self.sqlite_available:

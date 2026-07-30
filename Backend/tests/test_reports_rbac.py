@@ -90,7 +90,7 @@ def test_report_download_requires_reports_read_permission(client, db_session):
         scan_type="adaptive",
         pipeline_mode="basic",
         status="complete",
-        report_json_path=_temp_report_path(),
+        report_executive_path=_temp_report_path(),
     )
     db_session.add(scan)
     db_session.commit()
@@ -103,8 +103,8 @@ def test_report_download_requires_reports_read_permission(client, db_session):
         assert response.status_code == 403
         assert "reports:read" in response.json()["detail"]
     finally:
-        if scan.report_json_path and os.path.exists(scan.report_json_path):
-            os.remove(scan.report_json_path)
+        if scan.report_executive_path and os.path.exists(scan.report_executive_path):
+            os.remove(scan.report_executive_path)
 
 
 def test_superadmin_can_download_report_across_orgs(client, db_session):
@@ -163,7 +163,7 @@ def test_superadmin_can_download_report_across_orgs(client, db_session):
         scan_type="adaptive",
         pipeline_mode="basic",
         status="complete",
-        report_json_path=report_path,
+        report_executive_path=report_path,
     )
     db_session.add(scan)
     db_session.commit()
@@ -219,7 +219,7 @@ def test_report_delete_requires_reports_delete_permission(client, db_session):
         scan_type="adaptive",
         pipeline_mode="basic",
         status="complete",
-        report_json_path=report_path,
+        report_executive_path=report_path,
     )
     db_session.add(scan)
     db_session.commit()

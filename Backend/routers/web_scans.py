@@ -440,9 +440,10 @@ def cancel_web_scan(
         try:
             from core.celery_app import celery_app
 
-            celery_app.control.revoke(
-                scan.current_task_id, terminate=True, signal="SIGKILL"
-            )
+            import sys
+
+            sig = "SIGTERM" if sys.platform == "win32" else "SIGKILL"
+            celery_app.control.revoke(scan.current_task_id, terminate=True, signal=sig)
         except Exception as exc:
             log.warning("Failed to revoke task %s: %s", scan.current_task_id, exc)
 

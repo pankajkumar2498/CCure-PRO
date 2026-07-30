@@ -76,6 +76,15 @@ def test_nerc_cip_theme_constraints(db_session, test_org):
     )
     assert ctrl_in_db.theme == "CIP_005"
 
+    # Both rows are attached to the seeded NERC CIP framework, which is
+    # reference data and survives the per-test reset. Without this the control
+    # count for that framework grows by one for the rest of the session, which
+    # any later assertion on control counts would see as an order-dependent
+    # failure.
+    db_session.delete(score)
+    db_session.delete(ctrl_in_db)
+    db_session.commit()
+
 
 def test_nerc_cip_rules_seeding(db_session):
     """Test seeding custom and auto-generated rules for NERC CIP controls."""

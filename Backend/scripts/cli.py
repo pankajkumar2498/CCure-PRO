@@ -115,10 +115,11 @@ def print_active_hosts(result: dict[str, Any]):
     if reports:
         print("\n📄 GENERATED REPORTS")
         print("=" * 100)
-        if reports.get("json_pdf"):
-            print(f"JSON Report: {reports['json_pdf']}")
-        if reports.get("xml_pdf"):
-            print(f"XML Report:  {reports['xml_pdf']}")
+        # The dict keys are historical; the labels name the audience.
+        if reports.get("executive_pdf"):
+            print(f"Executive summary: {reports['executive_pdf']}")
+        if reports.get("technical_pdf"):
+            print(f"Technical report:  {reports['technical_pdf']}")
         print("=" * 100)
 
 

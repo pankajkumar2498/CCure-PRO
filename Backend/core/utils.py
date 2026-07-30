@@ -351,13 +351,18 @@ from functools import lru_cache
 
 
 @lru_cache(maxsize=1024)
-def lookup_cve(banner: str) -> list[dict]:
+def lookup_cve(banner: str, version: str = "") -> list[dict]:
     """
-    Match a banner / service string against CVE database.
-    Falls back to hardcoded hints if database is unavailable.
+    Match a banner / service string against the CVE database.
 
-    Cashed with LRU to prevent redundant DB hits for common services
-    (e.g. many ports running the same web server).
+    ``version`` is the version the scanner actually fingerprinted for this
+    service. It is passed through to the database layer and returned on each
+    record so the report can compare it against the CVE's published vulnerable
+    range. Without it every match is unverifiable and the report can only ever
+    say "potential".
+
+    Cached with LRU to avoid redundant DB hits for common services (e.g. many
+    ports running the same web server).
     """
     if not banner:
         return []
@@ -368,17 +373,22 @@ def lookup_cve(banner: str) -> list[dict]:
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
         try:
-            db_results = CVE_DB.search_cves_for_service(banner, "")
+            db_results = CVE_DB.search_cves_for_service(banner, version)
             if db_results:
                 found.extend(db_results)
         except Exception as e:
             log.debug("CVE DB search error for '%s': %s", banner, e)
 
-    # Fallback to hardcoded hints if no database results
+    # Fallback to the hardcoded hint table only when the database is
+    # unavailable. These hints carry no CPE data, so findings derived from them
+    # cannot be version-verified and are reported at low confidence.
     if not found:
         for key, hints in CVE_HINTS.items():
             if key in banner_lc:
-                found.extend(hints)
+                for hint in hints:
+                    entry = dict(hint)
+                    entry.setdefault("detection_source", "hint_table")
+                    found.append(entry)
 
     return found
 

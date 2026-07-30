@@ -13,7 +13,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
 from config import AppConfig
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -202,6 +202,35 @@ def can_connect_vuln_db() -> bool:
     except SQLAlchemyError as exc:
         logger.debug("Vulnerability-intel database or 'cve' table unavailable: %s", exc)
         return False
+
+
+def get_feed_freshness() -> dict[str, Any]:
+    """
+    Report how current the vulnerability feed is.
+
+    A vulnerability report is only as good as the feed behind it: a scan run
+    against a feed that is weeks old cannot know about anything published
+    since, and "no findings" then means far less than it appears. The report
+    therefore states the feed date rather than leaving the reader to assume it
+    is current.
+
+    Returns ``{"last_modified": date|None, "cve_count": int|None}``. Values are
+    None when the feed cannot be queried, so the report says "not recorded"
+    instead of implying freshness it cannot demonstrate.
+    """
+    blank: dict[str, Any] = {"last_modified": None, "cve_count": None}
+    try:
+        with get_vuln_engine().connect() as conn:
+            row = conn.execute(
+                text("SELECT max(last_modified), count(*) FROM cve")
+            ).first()
+    except SQLAlchemyError as exc:
+        logger.debug("Vulnerability feed freshness unavailable: %s", exc)
+        return blank
+
+    if not row:
+        return blank
+    return {"last_modified": row[0], "cve_count": row[1]}
 
 
 def merge_alias_fields(record: dict[str, Any]) -> dict[str, Any]:

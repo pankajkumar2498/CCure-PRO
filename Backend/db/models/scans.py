@@ -113,9 +113,10 @@ class Scan(Base):
     info_count = Column(Integer, nullable=False, default=0)
 
     # ── Report Artifacts ──────────────────────────────────────────────────────
+    # Named for the audience, not the payload format the report was built from.
     report_pdf_path = Column(String(512), nullable=True)
-    report_xml_path = Column(String(512), nullable=True)
-    report_json_path = Column(String(512), nullable=True)
+    report_technical_path = Column(String(512), nullable=True)
+    report_executive_path = Column(String(512), nullable=True)
 
     # ── Soft Delete / Archive ─────────────────────────────────────────────────
     is_archived = Column(Boolean, nullable=False, default=False)

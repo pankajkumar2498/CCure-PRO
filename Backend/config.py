@@ -124,8 +124,36 @@ class CeleryConfig:
     )
 
 
+#: Environment variables that explicitly configure the vulnerability-intel
+#: database. If any of these is set, the dedicated database is what the user
+#: asked for and DATABASE_URL must not silently take its place.
+_VULN_DB_ENV_KEYS = (
+    "VULN_DB_HOST",
+    "VULN_DB_PORT",
+    "VULN_DB_NAME",
+    "VULN_DB_USER",
+    "VULN_DB_PASSWORD",
+)
+
+
 class VulnIntelConfig:
-    """Separate vulnerability-intelligence database configuration."""
+    """
+    Configuration for the dedicated vulnerability-intelligence database.
+
+    Resolution order for the connection URL:
+
+      1. ``VULNERABILITY_INTEL_DATABASE_URL`` — explicit, always wins.
+      2. The ``VULN_DB_*`` settings, when any of them is set.
+      3. ``DATABASE_URL`` — only when no vulnerability-specific configuration
+         exists at all (single-database deployments, CI).
+
+    Step 2 previously did not exist: the URL fell straight through to
+    ``DATABASE_URL``, so a deployment that configured ``VULN_DB_NAME=vuln_intel``
+    silently had every CVE query sent to the application database instead. The
+    dedicated CVE database was never read, and because the application database
+    has no ``cve`` table the connectivity probe failed and the scanner quietly
+    dropped to the small bundled SQLite snapshot.
+    """
 
     HOST: str = os.getenv("VULN_DB_HOST", os.getenv("PGHOST", "localhost"))
     PORT: int = int(os.getenv("VULN_DB_PORT", os.getenv("PGPORT", "5432")))
@@ -136,12 +164,27 @@ class VulnIntelConfig:
     )
 
     @staticmethod
+    def is_explicitly_configured() -> bool:
+        """True when the deployment names a dedicated CVE database."""
+        return any(os.getenv(key) for key in _VULN_DB_ENV_KEYS)
+
+    @staticmethod
     def database_url() -> str:
-        url_override = os.getenv("VULNERABILITY_INTEL_DATABASE_URL") or os.getenv(
-            "DATABASE_URL"
-        )
-        if url_override:
-            return url_override
+        explicit_url = os.getenv("VULNERABILITY_INTEL_DATABASE_URL")
+        if explicit_url:
+            return explicit_url
+
+        if VulnIntelConfig.is_explicitly_configured():
+            return (
+                f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
+                f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}"
+                f"/{VulnIntelConfig.DATABASE}"
+            )
+
+        shared_url = os.getenv("DATABASE_URL")
+        if shared_url:
+            return shared_url
+
         return (
             f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
             f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}/{VulnIntelConfig.DATABASE}"

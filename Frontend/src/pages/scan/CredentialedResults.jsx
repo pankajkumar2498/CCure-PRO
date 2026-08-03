@@ -27,6 +27,59 @@ const STAGES = [
   { id: "syncing", label: "Finalizing", icon: "💾" },
 ];
 
+/**
+ * How a listening socket relates to the network.
+ *
+ * The socket table proves a service is running; only a port scan proves it can
+ * be reached. The one case the host settles alone is a loopback bind, which is
+ * why "host-only" is a confident verdict while "undetermined" is not.
+ */
+const EXPOSURE_META = {
+  exposed: {
+    label: "Exposed",
+    color: "#ff4d4d",
+    title: "Listening and confirmed reachable from the scanner",
+  },
+  host_only: {
+    label: "Host-only",
+    color: "#22c55e",
+    title: "Bound to loopback — not reachable from the network",
+  },
+  filtered: {
+    label: "Filtered",
+    color: "#60a5fa",
+    title: "Listening on the host but not reachable from the scanner",
+  },
+  undetermined: {
+    label: "Not tested",
+    color: "var(--text-muted)",
+    title:
+      "No network port scan was performed against this host, so reachability is unknown",
+  },
+};
+
+function ExposureBadge({ exposure }) {
+  const meta = EXPOSURE_META[exposure] || EXPOSURE_META.undetermined;
+  return (
+    <span
+      title={meta.title}
+      style={{
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        padding: "2px 7px",
+        borderRadius: 4,
+        color: meta.color,
+        border: `1px solid ${meta.color}`,
+        opacity: exposure === "undetermined" ? 0.75 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 /* ── helpers ── */
 function KV({ k, v, danger, warn, mono }) {
   return (
@@ -158,14 +211,22 @@ const maskSecretLine = (value) => {
 };
 
 function hydrateFromHistory(detail) {
-  const report = detail?.results?.credentialed?.report;
-  return report
-    ? {
-        scan_id: detail.id,
-        scan_no: detail.scan_no ?? detail.display_id,
-        ...report,
-      }
-    : null;
+  const credentialed = detail?.results?.credentialed;
+  const report = credentialed?.report;
+  if (!report) return null;
+  // `reports` holds every audited host; `report` repeats the first for
+  // consumers written before a scan could cover more than one.
+  const reports =
+    Array.isArray(credentialed.reports) && credentialed.reports.length
+      ? credentialed.reports
+      : [report];
+  return {
+    scan_id: detail.id,
+    scan_no: detail.scan_no ?? detail.display_id,
+    _reports: reports,
+    _hostsFailed: credentialed.hosts_failed || [],
+    ...report,
+  };
 }
 
 export default function CredentialedResults() {
@@ -189,6 +250,9 @@ export default function CredentialedResults() {
   const [portsSearch, setPortsSearch] = useState("");
   const [packagesSearch, setPackagesSearch] = useState("");
   const [usersSearch, setUsersSearch] = useState("");
+  // Which audited host is on screen. A scan may cover many; the report body
+  // describes one at a time.
+  const [hostIndex, setHostIndex] = useState(0);
 
   // Live progress state
   const [progress, setProgress] = useState({
@@ -660,6 +724,21 @@ export default function CredentialedResults() {
 
   if (!result) return null;
 
+  // A scan covers one or more hosts. Everything below renders the selected
+  // one; the scan-level identifiers stay on the outer record.
+  const allReports =
+    Array.isArray(result._reports) && result._reports.length
+      ? result._reports
+      : [result];
+  const activeReport = allReports[Math.min(hostIndex, allReports.length - 1)];
+  const hostsFailed = result._hostsFailed || [];
+  const view = {
+    scan_id: result.scan_id,
+    scan_no: result.scan_no,
+    display_id: result.display_id,
+    ...activeReport,
+  };
+
   const {
     target,
     username,
@@ -692,7 +771,11 @@ export default function CredentialedResults() {
     cron_info_raw = "",
     suspicious_scheduled_tasks = [],
     local_groups = [],
-  } = result;
+    coverage = {},
+    exposure_summary = {},
+    collection_errors = {},
+    inventory_complete = true,
+  } = view;
 
   // Parse network_interfaces_raw if it is in JSON format
   const parsedInterfaces = (() => {
@@ -788,19 +871,21 @@ export default function CredentialedResults() {
   const filteredPorts = open_ports_credentialed.filter((p) => {
     if (!portsSearch) return true;
     const query = portsSearch.toLowerCase();
-    return (
-      String(p.port || "")
+    // Searches every column the table shows, including the resolved software
+    // and the exposure verdict — "exposed" is the filter an operator reaches
+    // for first on a host with a hundred listeners.
+    return [
+      p.port,
+      p.local_addr,
+      p.state,
+      p.process,
+      p.product,
+      p.version,
+      p.exposure,
+    ].some((field) =>
+      String(field || "")
         .toLowerCase()
-        .includes(query) ||
-      String(p.local_addr || "")
-        .toLowerCase()
-        .includes(query) ||
-      String(p.state || "")
-        .toLowerCase()
-        .includes(query) ||
-      String(p.process || "")
-        .toLowerCase()
-        .includes(query)
+        .includes(query),
     );
   });
 
@@ -1049,6 +1134,173 @@ export default function CredentialedResults() {
             </span>
           )}
         </div>
+
+        {/* Host selector — only when the scan covered more than one host */}
+        {allReports.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+              margin: "0 0 14px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--text-muted)",
+                marginRight: 4,
+              }}
+            >
+              {allReports.length} hosts audited:
+            </span>
+            {allReports.map((r, i) => {
+              const isActive = i === hostIndex;
+              const worst = r.severity_summary || {};
+              const dot = worst.Critical
+                ? SEV_COLOR.Critical
+                : worst.High
+                  ? SEV_COLOR.High
+                  : worst.Medium
+                    ? SEV_COLOR.Medium
+                    : "var(--ok)";
+              return (
+                <button
+                  key={r.target || i}
+                  onClick={() => setHostIndex(i)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "5px 11px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontFamily: "var(--mono)",
+                    cursor: "pointer",
+                    background: isActive ? "var(--accent)" : "var(--bg-card)",
+                    color: isActive ? "#fff" : "var(--text)",
+                    border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
+                    fontWeight: isActive ? 700 : 500,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: isActive ? "#fff" : dot,
+                    }}
+                  />
+                  {r.target}
+                  <span style={{ opacity: 0.7 }}>({r.cve_count ?? 0})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Hosts that could not be audited. Silently omitting them would let a
+            partial scan read as a complete one. */}
+        {hostsFailed.length > 0 && (
+          <div
+            className="alert alert--warn"
+            style={{ marginBottom: 14, fontSize: 13, lineHeight: 1.55 }}
+          >
+            <strong>
+              ⚠ {hostsFailed.length} host
+              {hostsFailed.length !== 1 ? "s" : ""} could not be audited
+            </strong>
+            <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+              {hostsFailed.map((h) => (
+                <li key={h.target}>
+                  <code>{h.target}</code> — {h.reason}
+                </li>
+              ))}
+            </ul>
+            <p style={{ margin: "6px 0 0", opacity: 0.85 }}>
+              These hosts are unassessed. Their absence from the findings below
+              is not evidence that they are clean.
+            </p>
+          </div>
+        )}
+
+        {/* Assessment coverage — what this scan did and did not examine */}
+        {Object.keys(coverage).length > 0 && (
+          <Section title="🧭 Assessment coverage — what this scan examined">
+            <p
+              className="muted"
+              style={{ fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.6 }}
+            >
+              Coverage bounds every conclusion in this report. A check this
+              policy does not perform cannot produce a finding here, so an empty
+              section means "not looked for", not "not present".
+            </p>
+            <div style={{ display: "grid", gap: "0 24px" }}>
+              {coverage.authenticated_checks && (
+                <KV
+                  k="Authenticated checks"
+                  v={coverage.authenticated_checks}
+                />
+              )}
+              {coverage.unauthenticated_checks && (
+                <KV
+                  k="Unauthenticated checks"
+                  v={coverage.unauthenticated_checks}
+                  warn
+                />
+              )}
+              {coverage.network_reachability && (
+                <KV
+                  k="Network reachability"
+                  v={coverage.network_reachability}
+                  warn={!exposure_summary.correlated_with_port_scan}
+                />
+              )}
+              {coverage.port_range && (
+                <KV k="Port scan" v={coverage.port_range} warn />
+              )}
+              {coverage.service_detection && (
+                <KV k="Service detection" v={coverage.service_detection} />
+              )}
+              {coverage.os_detection && (
+                <KV k="OS detection" v={coverage.os_detection} />
+              )}
+              {coverage.discovery_scan_method && (
+                <KV k="Host discovery" v={coverage.discovery_scan_method} />
+              )}
+              <KV
+                k="Software inventory"
+                v={
+                  inventory_complete
+                    ? `Complete — ${package_count} package(s) enumerated`
+                    : "Incomplete — see collection errors below"
+                }
+                danger={!inventory_complete}
+              />
+            </div>
+            {Object.keys(collection_errors).length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <h4 className="section-title">Collection errors</h4>
+                <CredTable
+                  head={["Section", "Reason"]}
+                  rows={Object.entries(collection_errors).map(
+                    ([section, reason]) => ({
+                      cells: [
+                        { content: <code>{section}</code> },
+                        {
+                          content: String(reason),
+                          style: { color: "#f59e0b", fontSize: 12 },
+                        },
+                      ],
+                    }),
+                  )}
+                />
+              </div>
+            )}
+          </Section>
+        )}
 
         {/* System Info */}
         <Section title="🖥 System Information" defaultOpen>
@@ -1417,11 +1669,41 @@ export default function CredentialedResults() {
           </Section>
         )}
 
-        {/* Open Ports */}
+        {/* Listening sockets — read from the host, not from a port scan */}
         {open_ports_credentialed.length > 0 && (
           <Section
-            title={`🔌 Open Ports — socket table (${open_ports_credentialed.length})`}
+            title={`🔌 Listening sockets — host socket table (${open_ports_credentialed.length})`}
           >
+            <p
+              className="muted"
+              style={{ fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.6 }}
+            >
+              {exposure_summary.correlated_with_port_scan ? (
+                <>
+                  These are the sockets the host reports it is listening on,
+                  correlated with the port scan.{" "}
+                  <strong style={{ color: "#ff4d4d" }}>
+                    {exposure_summary.listeners_exposed || 0} exposed
+                  </strong>
+                  {", "}
+                  <strong style={{ color: "#60a5fa" }}>
+                    {exposure_summary.listeners_filtered || 0} filtered
+                  </strong>
+                  {", "}
+                  <strong style={{ color: "#22c55e" }}>
+                    {exposure_summary.listeners_host_only || 0} host-only
+                  </strong>
+                  .
+                </>
+              ) : (
+                <>
+                  These are the sockets the host reports it is listening on —
+                  not the results of a network port scan. Except for
+                  loopback-bound services, whether each one is reachable from
+                  the network was not tested.
+                </>
+              )}
+            </p>
             <div style={{ marginBottom: 12 }}>
               <input
                 type="text"
@@ -1447,13 +1729,10 @@ export default function CredentialedResults() {
               </p>
             ) : (
               <CredTable
-                head={["State", "Local Addr", "Port", "Process"]}
+                head={["Exposure", "Local Addr", "Port", "Process", "Software"]}
                 rows={filteredPorts.map((p) => ({
                   cells: [
-                    {
-                      content: p.state,
-                      style: { color: "var(--ok)", fontSize: 11 },
-                    },
+                    { content: <ExposureBadge exposure={p.exposure} /> },
                     {
                       content: (
                         <code style={{ fontSize: 11 }}>{p.local_addr}</code>
@@ -1461,8 +1740,39 @@ export default function CredentialedResults() {
                     },
                     { content: <code style={{ fontSize: 12 }}>{p.port}</code> },
                     {
-                      content: p.process,
-                      style: { fontSize: 11, color: "var(--text-muted)" },
+                      content: (
+                        <>
+                          {p.process}
+                          {p.pid && (
+                            <span
+                              className="muted"
+                              style={{ fontSize: 10, marginLeft: 5 }}
+                            >
+                              pid {p.pid}
+                            </span>
+                          )}
+                        </>
+                      ),
+                      style: { fontSize: 11 },
+                    },
+                    {
+                      // What is actually answering on the port, read from the
+                      // binary itself. Absent when the process is protected or
+                      // ships no version resource — shown as unknown rather
+                      // than left blank, which reads as "nothing there".
+                      content: p.product ? (
+                        <>
+                          {p.product}
+                          {p.version && (
+                            <code style={{ fontSize: 11, marginLeft: 6 }}>
+                              {p.version}
+                            </code>
+                          )}
+                        </>
+                      ) : (
+                        <span className="muted">Not identified</span>
+                      ),
+                      style: { fontSize: 11 },
                     },
                   ],
                 }))}

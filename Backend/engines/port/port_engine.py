@@ -42,11 +42,111 @@ from core.constants import (
     SCAN_PORTS_QUICK,
     SCAPY_AVAILABLE,
 )
-from core.models import PortResult, ScanIntensity
+from core.models import FINGERPRINT_SOURCES, PortResult, ScanIntensity
 from core.nmap.wrapper import NMAP_AVAILABLE, NmapScanner, NmapScanResult
-from core.utils import extract_version, lookup_cve
+from core.utils import extract_version
+from scans.finding_normalizer import version_precision
 
 log = logging.getLogger("ccure.port")
+
+#: Fields that describe *what is running* on the port, as opposed to how the
+#: port behaved. Only these are taken from the stronger observation.
+_IDENTITY_FIELDS = (
+    "service",
+    "product",
+    "version",
+    "extra",
+    "cpe",
+    "version_precision",
+    "fingerprint_source",
+)
+
+
+def _summarize_ports(ports: list[int], limit: int = 12) -> str:
+    """Compact port list for the scan record: '22, 80, 443 … (+40 more)'."""
+    if not ports:
+        return "none"
+    head = ", ".join(str(p) for p in ports[:limit])
+    if len(ports) > limit:
+        return f"{head} (+{len(ports) - limit} more)"
+    return head
+
+
+def _ports_spec(ports: list[int]) -> str:
+    """
+    The probed port set as a lossless, re-parseable spec: ``1-1024,1433,3306``.
+
+    Distinct from :func:`_summarize_ports`, which is for humans and truncates.
+    A later stage has to be able to answer "was this port actually probed?",
+    and the difference between "probed and did not answer" and "never probed"
+    is the difference between reporting a service as firewalled and admitting
+    it was not tested.
+    """
+    if not ports:
+        return ""
+    ordered = sorted(set(ports))
+    parts: list[str] = []
+    start = prev = ordered[0]
+    for port in ordered[1:]:
+        if port == prev + 1:
+            prev = port
+            continue
+        parts.append(str(start) if start == prev else f"{start}-{prev}")
+        start = prev = port
+    parts.append(str(start) if start == prev else f"{start}-{prev}")
+    return ",".join(parts)
+
+
+def _rank(record: dict) -> int:
+    try:
+        return FINGERPRINT_SOURCES.index(record.get("fingerprint_source") or "")
+    except ValueError:
+        return 0
+
+
+def _record_port(host: dict, incoming: dict) -> None:
+    """
+    Add a port observation to a host, keeping the best-evidenced identification.
+
+    Ports arrive from several places — discovery enrichment, the OT and SNMP
+    probes, the TCP fallback, and Nmap service detection — and they do not
+    arrive in quality order. The previous rule was "first writer wins", which
+    meant a discovery-time connect-and-read on port 445 or 502 permanently
+    blocked the Nmap fingerprint for that port. Downstream, a service with no
+    version cannot be version-checked, so every CVE against it was withheld as
+    unverifiable: a silent false negative created by arrival order.
+
+    Identification now comes from whichever observation is better evidenced;
+    everything else (banner, risk metadata) fills in from either.
+    """
+    ports = host.setdefault("open_ports", [])
+    for index, existing in enumerate(ports):
+        if existing.get("port") != incoming.get("port"):
+            continue
+        if (existing.get("protocol") or "tcp") != (incoming.get("protocol") or "tcp"):
+            continue
+
+        winner, loser = (
+            (incoming, existing)
+            if _rank(incoming) > _rank(existing)
+            else (existing, incoming)
+        )
+        merged = dict(loser)
+        merged.update({k: v for k, v in winner.items() if v not in (None, "", [], {})})
+        for key in _IDENTITY_FIELDS:
+            merged[key] = winner.get(key) or loser.get(key) or merged.get(key)
+        # A port observed open by any probe is open, whichever record wins.
+        if "open" in (existing.get("state", ""), incoming.get("state", "")):
+            merged["state"] = "open"
+        merged["cves"] = (existing.get("cves") or []) + [
+            c
+            for c in (incoming.get("cves") or [])
+            if c not in (existing.get("cves") or [])
+        ]
+        ports[index] = merged
+        return
+
+    ports.append(incoming)
 
 
 class PortEngine:
@@ -95,8 +195,12 @@ class PortEngine:
             Same list, each active host enriched with:
               open_ports   → List[PortResult dicts]
               udp_services → List[UDP service dicts]
-              cves         → Initial CVE list from banner matching
               os_guess     → Nmap OS detection (if available)
+
+        This engine identifies services; it does not assess them. CVE candidate
+        generation was removed from here because a port scan cannot verify what
+        it matches: it produced candidates keyed on service names ("http",
+        "ssh") that the vulnerability phase then generated a second time.
         """
         active = [h for h in hosts if h.get("is_active")]
         if not active:
@@ -350,30 +454,9 @@ class PortEngine:
             return
 
         ip = self._ip(host)
-        existing_ports = {p["port"] for p in host.get("open_ports", [])}
-
-        # ── Parallelize CVE Lookups for all open ports ────────────────────────
-        # This avoids the sequential bottleneck when a host has many ports.
-        from concurrent.futures import ThreadPoolExecutor
-
         open_ports = nmap_result.open_ports
-        results_map = {}
-
-        if open_ports:
-
-            def _lookup_task(port_obj):
-                banner = port_obj.banner or port_obj.scripts.get("banner", "")
-                query_str = banner or port_obj.service.lower()
-                return port_obj.port, lookup_cve(query_str)
-
-            with ThreadPoolExecutor(max_workers=min(len(open_ports), 20)) as pool:
-                for p_num, cves in pool.map(_lookup_task, open_ports):
-                    results_map[p_num] = cves
 
         for nmap_port in open_ports:
-            if nmap_port.port in existing_ports:
-                continue
-
             meta = PORT_DB.get(
                 nmap_port.port,
                 {
@@ -383,28 +466,43 @@ class PortEngine:
                 },
             )
 
-            # Version string: prefer Nmap's richer version over our regex
-            version_str = nmap_port.full_version or extract_version(
-                nmap_port.banner, nmap_port.service
-            )
+            # Nmap reports product, version and extra separately. They are kept
+            # that way: concatenating them into one display string forced every
+            # later version comparison to parse the version back out of prose,
+            # and lost the distinction between "no version" and "version is
+            # part of a sentence".
+            version = nmap_port.version or ""
+            if not version and nmap_port.banner:
+                version = extract_version(nmap_port.banner, nmap_port.service)
             banner = nmap_port.banner or nmap_port.scripts.get("banner", "")
 
-            # Use pre-fetched CVEs from our parallel pool
-            cves = results_map.get(nmap_port.port, [])
+            if nmap_port.version:
+                source = "version_detection"
+            elif nmap_port.product:
+                source = "service_detection"
+            elif banner:
+                source = "banner"
+            else:
+                source = "port_state"
 
             pr = PortResult(
                 port=nmap_port.port,
                 service=nmap_port.service or meta.get("service", "unknown"),
+                protocol=nmap_port.protocol or "tcp",
                 state=nmap_port.state,
                 banner=banner[:500] if banner else "",
-                version=version_str[:200] if version_str else "",
+                version=version[:200] if version else "",
                 product=nmap_port.product[:255] if nmap_port.product else "",
+                extra=nmap_port.extra[:255] if nmap_port.extra else "",
+                # The scanner's own CPE for this service. Carrying it means
+                # downstream matching compares identifiers instead of guessing
+                # which product a banner string refers to.
+                cpe=list(nmap_port.cpe or []),
+                version_precision=version_precision(version) if version else "unknown",
+                fingerprint_source=source,
                 risk=meta.get("risk", "Info"),
-                cves=cves,
             )
-            host.setdefault("open_ports", []).append(pr.to_dict())
-            host.setdefault("cves", []).extend(cves)
-            existing_ports.add(nmap_port.port)
+            _record_port(host, pr.to_dict())
 
         # Apply OS detection if available
         best_os = nmap_result.best_os
@@ -621,24 +719,22 @@ class PortEngine:
 
         elapsed = (time.time() - t0) * 1000
         meta = PORT_DB.get(port, {"service": "unknown", "risk": "Info", "note": ""})
-        cves = lookup_cve(banner or meta["service"].lower())
+        version = extract_version(banner, meta["service"])
 
         pr = PortResult(
             port=port,
             service=meta["service"],
             state="open",
             banner=banner,
-            version=extract_version(banner, meta["service"]),
+            version=version,
+            version_precision=version_precision(version) if version else "unknown",
+            fingerprint_source="banner" if banner else "connect_probe",
             risk=meta["risk"],
-            cves=cves,
         )
         host = hosts_map.get(ip)
         if host is None:
             return
-        existing = {p["port"] for p in host.get("open_ports", [])}
-        if port not in existing:
-            host.setdefault("open_ports", []).append(pr.to_dict())
-            host.setdefault("cves", []).extend(cves)
+        _record_port(host, pr.to_dict())
 
     def _scan_udp_scapy(self, ips: list[str], hosts_map: dict) -> None:
         """Original Scapy UDP scan logic (unchanged)."""
@@ -732,6 +828,64 @@ class PortEngine:
         if exclude_set:
             ports = [p for p in ports if p not in exclude_set]
         return ports
+
+    def scan_configuration(self) -> dict:
+        """
+        The parameters this scan actually ran with.
+
+        Coverage bounds every conclusion drawn from a scan: a service on a port
+        outside the scanned range cannot produce a finding, and a report that
+        cannot state the range cannot be reproduced or defended. The engine is
+        the only component that knows these values, so it publishes them rather
+        than leaving the report to guess — or, worse, to assume a default.
+        """
+        ports = self._port_list()
+        if self.custom_ports:
+            selection = f"{len(ports)} custom port(s): {_summarize_ports(ports)}"
+        elif self.intensity == ScanIntensity.LIGHT:
+            scope = (
+                "Common IT ports"
+                if self.exclude_ot_from_nmap
+                else ("Common IT and OT ports")
+            )
+            selection = f"{scope} ({len(ports)} ports)"
+        elif self.intensity == ScanIntensity.DEEP:
+            selection = "All 65535 TCP ports"
+        else:
+            selection = (
+                f"System ports 1-1024 plus curated high ports ({len(ports)} ports)"
+            )
+
+        if self.exclude_ports:
+            selection += f"; excluded {_summarize_ports(sorted(self.exclude_ports))}"
+        if self.exclude_ot_from_nmap:
+            selection += "; OT protocol ports excluded from active probing"
+
+        service_detection = (
+            "Enabled (banner and probe fingerprinting)"
+            if self.intensity in (ScanIntensity.NORMAL, ScanIntensity.DEEP)
+            or self.custom_ports
+            else "Not performed (port state only)"
+        )
+
+        return {
+            "port_range": selection,
+            # The same set, machine-readable, so a later phase can tell a port
+            # that was probed and stayed silent from one that was never probed.
+            "ports_probed_spec": _ports_spec(ports),
+            "timing_template": (
+                f"Nmap -T4 ({self.intensity.value} intensity)"
+                if NMAP_AVAILABLE
+                else "Async TCP connect fallback"
+            ),
+            "scanner": (
+                f"Nmap {self._nmap.nmap_version}".strip()
+                if NMAP_AVAILABLE and getattr(self._nmap, "nmap_version", "")
+                else ("Nmap" if NMAP_AVAILABLE else "Built-in TCP connect scanner")
+            ),
+            "service_detection": service_detection,
+            "os_detection": "Enabled" if self.os_detection else "Not performed",
+        }
 
     @staticmethod
     def _ip(host: dict) -> str | None:

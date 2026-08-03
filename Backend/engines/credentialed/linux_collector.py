@@ -147,8 +147,14 @@ class LinuxCollector:
                     elif name == "local_groups":
                         result["local_groups"] = data
                 except Exception as exc:
+                    # Recorded, not just logged. A section that failed silently
+                    # is indistinguishable from a section that found nothing —
+                    # and for the package inventory those two readings are
+                    # "could not assess this host" versus "this host is clean".
                     log.warning("Section '%s' collection failed: %s", name, exc)
+                    result.setdefault("collection_errors", {})[name] = str(exc)
 
+        result["sections_requested"] = [name for name, _fn in tasks]
         return result
 
     # ── System info ────────────────────────────────────────────────────────

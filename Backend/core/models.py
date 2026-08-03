@@ -35,16 +35,69 @@ class ScanIntensity(Enum):
 # =============================================================================
 
 
+#: How strongly a port record's service identification is evidenced. Higher
+#: wins when two observations of the same port disagree — see
+#: ``PortResult.evidence_rank``. Ordering, not arrival, decides which
+#: fingerprint a host keeps: a discovery-time connect-and-read must never
+#: displace a service-detection result, because the version it failed to
+#: capture is what every downstream version check depends on.
+FINGERPRINT_SOURCES: tuple[str, ...] = (
+    "port_state",  # the port answered; nothing else established
+    "connect_probe",  # discovery-time banner grab
+    "banner",  # a banner was captured and parsed
+    "service_detection",  # scanner identified the product
+    "version_detection",  # scanner identified product *and* version
+)
+
+
 @dataclass
 class PortResult:
+    """
+    One observed open port.
+
+    This is the pipeline's source of truth for what is running on a port, and
+    the input every later version comparison depends on. Identification is kept
+    **structured**: ``product``, ``version`` and ``extra`` stay in separate
+    fields exactly as the scanner reported them, rather than being concatenated
+    into a display string that consumers have to parse back apart.
+    """
+
     port: int
     service: str = "unknown"
+    protocol: str = "tcp"
     state: str = "open"
     banner: str = ""
+    #: The version alone, e.g. "9.5" — never the product name, never the extra
+    #: info. Empty means the scan did not establish a version.
     version: str = ""
+    #: Product name as identified by the scanner, e.g. "OpenSSH".
     product: str = ""
+    #: Scanner-supplied extra info, e.g. "protocol 2.0", "Ubuntu".
+    extra: str = ""
+    #: CPEs the scanner itself assigned to this service. This is authoritative
+    #: product identity — with it, matching a CVE to this service is a
+    #: comparison rather than a guess at what the banner text means.
+    cpe: list = field(default_factory=list)
+    #: What the version string actually pins down: "exact", "floor" (the real
+    #: version is at least this), "ceiling", or "unknown". Recorded where the
+    #: measurement happens so no consumer has to infer it from prose.
+    version_precision: str = "unknown"
+    #: Which observation produced this identification. See FINGERPRINT_SOURCES.
+    fingerprint_source: str = "port_state"
     risk: str = "Info"
     cves: list = field(default_factory=list)
+
+    @property
+    def evidence_rank(self) -> int:
+        try:
+            return FINGERPRINT_SOURCES.index(self.fingerprint_source)
+        except ValueError:
+            return 0
+
+    @property
+    def product_label(self) -> str:
+        """Display string, composed on demand from the structured fields."""
+        return " ".join(p for p in (self.product, self.version, self.extra) if p)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -116,7 +169,17 @@ class HostResult:
     smb_info: dict = field(default_factory=dict)
     ssh_info: dict = field(default_factory=dict)
     udp_services: list = field(default_factory=list)
+    #: Verified findings only. The vulnerability engine tests every candidate
+    #: against this host's own services and versions before it lands here.
     cves: list = field(default_factory=list)
+    #: Candidates ruled out during that verification, with the reason each was
+    #: withheld. Carried through to the report's suppressed-candidates
+    #: appendix and the CSV export, so the filtering stays auditable.
+    suppressed_cves: list = field(default_factory=list)
+    #: Severity breakdown of ``cves``, computed from recomputed CVSS vectors.
+    vulnerability_counts: dict = field(default_factory=dict)
+    #: How many candidates verification examined (verified + suppressed).
+    candidates_evaluated: int = 0
     host_risk_score: int = 0  # 0-100
     host_risk_level: str = "Info"  # Critical / High / Medium / Low / Info
     _ot_probed: bool = False
@@ -199,6 +262,9 @@ class HostResult:
             "ssh_info",
             "udp_services",
             "cves",
+            "suppressed_cves",
+            "vulnerability_counts",
+            "candidates_evaluated",
             "host_risk_score",
             "host_risk_level",
             "device_category",

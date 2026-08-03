@@ -120,7 +120,7 @@ class WebSessionManager:
 
     async def _form_login(self, config: dict, scan_id: str) -> "WebSession":
         """
-        Perform form-based login using httpx.
+        Perform a login and capture whatever credential it issues.
 
         Config expected:
           {
@@ -130,9 +130,28 @@ class WebSessionManager:
             "password_field": "password",
             "username": "testuser",
             "password": "testpass",
-            "success_indicator": "Dashboard",
+            "success_indicator": "Dashboard",   # optional
+            "content_type": "auto",             # auto | form | json
+            "token_path": "authentication.token",  # optional, else auto-detected
+            "extra_fields": {},                 # optional additional body fields
             "method": "POST"
           }
+
+        Two assumptions in the original implementation made authenticated
+        scanning fail silently against most modern applications, and both are
+        corrected here.
+
+        A session is not always a cookie. Applications with a JSON API answer a
+        login with a bearer token in the response body and set no cookie at all.
+        Looking only for cookies found nothing, the session was reported
+        unauthenticated, and the scan continued as an anonymous user — so every
+        authenticated area went untested and was reported as though it had been
+        assessed.
+
+        A 200 is not proof of a login. An application that re-renders the login
+        page after rejecting the credentials answers 200, which was read as
+        success. Success is now established by evidence: a credential was
+        issued, or an explicitly configured success indicator was present.
         """
         login_url = config.get("login_url", "")
         username = config.get("username", "")
@@ -140,6 +159,7 @@ class WebSessionManager:
         username_field = config.get("username_field", "username")
         password_field = config.get("password_field", "password")
         success_indicator = config.get("success_indicator", "")
+        content_type = str(config.get("content_type", "auto")).lower()
         method = config.get("method", "POST").upper()
 
         if not login_url or not username:
@@ -147,6 +167,9 @@ class WebSessionManager:
             return WebSession(
                 scan_id=scan_id, auth_error="Incomplete login configuration"
             )
+
+        payload = {username_field: username, password_field: password}
+        payload.update(config.get("extra_fields") or {})
 
         try:
             import httpx
@@ -156,59 +179,93 @@ class WebSessionManager:
                 follow_redirects=True,
                 timeout=30.0,
             ) as client:
-                form_data = {
-                    username_field: username,
-                    password_field: password,
-                }
+                attempts = (
+                    ["json", "form"]
+                    if content_type == "auto"
+                    else [content_type if content_type in ("json", "form") else "form"]
+                )
 
-                if method == "POST":
-                    resp = await client.post(login_url, data=form_data)
-                else:
-                    resp = await client.get(login_url, params=form_data)
+                resp = None
+                last_error = ""
+                for encoding in attempts:
+                    if method == "GET":
+                        resp = await client.get(login_url, params=payload)
+                    elif encoding == "json":
+                        resp = await client.post(login_url, json=payload)
+                    else:
+                        resp = await client.post(login_url, data=payload)
 
-                # Check for success
-                is_success = resp.status_code in (200, 302, 303)
-                if success_indicator:
-                    is_success = (
-                        is_success and success_indicator.lower() in resp.text.lower()
-                    )
-
-                if not is_success:
-                    log.warning(
-                        "Form login failed for scan %s (status=%d)",
-                        scan_id,
+                    if resp.status_code < 400:
+                        break
+                    last_error = f"status {resp.status_code}"
+                    log.debug(
+                        "Login attempt (%s encoding) rejected with %d",
+                        encoding,
                         resp.status_code,
                     )
+
+                if resp is None:
                     return WebSession(
-                        scan_id=scan_id,
-                        auth_error=f"Login failed with status {resp.status_code}",
+                        scan_id=scan_id, auth_error="Login request was not sent"
                     )
 
-                # Extract cookies from response
-                cookies = dict(resp.cookies)
+                cookies = self._collect_cookies(resp)
+                token = self._extract_token(resp, config.get("token_path"))
 
-                # Check for Set-Cookie headers
-                session_cookies = {}
-                for cookie_header in resp.headers.get_list("set-cookie"):
-                    parts = cookie_header.split(";")[0]
-                    if "=" in parts:
-                        name, value = parts.split("=", 1)
-                        session_cookies[name.strip()] = value.strip()
+                indicator_matched = bool(
+                    success_indicator
+                    and success_indicator.lower() in (resp.text or "").lower()
+                )
 
-                all_cookies = {**cookies, **session_cookies}
+                if resp.status_code >= 400:
+                    return WebSession(
+                        scan_id=scan_id,
+                        auth_error=(
+                            f"Login rejected by the application ({last_error}). "
+                            f"Check the credentials and the field names in the "
+                            f"scan's authentication settings."
+                        ),
+                    )
+
+                if not (cookies or token or indicator_matched):
+                    # Everything below this point would run as an anonymous
+                    # user. Failing here — loudly — is the only way that fact
+                    # reaches the report instead of being inferred from an
+                    # unexplained absence of findings.
+                    return WebSession(
+                        scan_id=scan_id,
+                        auth_error=(
+                            "Login returned "
+                            f"{resp.status_code} but issued no session cookie and "
+                            "no recognisable token, so the scan could not be "
+                            "authenticated. If this application signals login "
+                            "another way, set success_indicator or token_path in "
+                            "the authentication settings."
+                        ),
+                    )
+
+                headers = {}
+                if token:
+                    header_name = config.get("token_header") or "Authorization"
+                    prefix = config.get("token_prefix")
+                    if prefix is None:
+                        prefix = "Bearer "
+                    headers[header_name] = f"{prefix}{token}"
 
                 session = WebSession(
                     scan_id=scan_id,
-                    cookies=all_cookies,
+                    headers=headers,
+                    cookies=cookies,
                     auth_type="form_login",
                     login_url=login_url,
                 )
 
                 self._save_session(session)
                 log.info(
-                    "Form login successful for scan %s (%d cookies)",
+                    "Login successful for scan %s (%d cookie(s), token=%s)",
                     scan_id,
-                    len(all_cookies),
+                    len(cookies),
+                    "yes" if token else "no",
                 )
                 return session
 
@@ -218,6 +275,81 @@ class WebSessionManager:
         except Exception as exc:
             log.warning("Form login error for scan %s: %s", scan_id, exc)
             return WebSession(scan_id=scan_id, auth_error=str(exc))
+
+    @staticmethod
+    def _collect_cookies(resp) -> dict[str, str]:
+        """Every cookie the login exchange produced, including via redirects."""
+        cookies = dict(resp.cookies)
+        try:
+            for cookie_header in resp.headers.get_list("set-cookie"):
+                pair = cookie_header.split(";")[0]
+                if "=" in pair:
+                    name, value = pair.split("=", 1)
+                    if name.strip():
+                        cookies[name.strip()] = value.strip()
+        except Exception:
+            pass
+        return cookies
+
+    #: Response keys that hold a bearer credential across common frameworks.
+    _TOKEN_KEYS = (
+        "token",
+        "access_token",
+        "accesstoken",
+        "id_token",
+        "jwt",
+        "auth_token",
+        "authtoken",
+        "session_token",
+        "api_key",
+    )
+
+    @classmethod
+    def _extract_token(cls, resp, token_path: str | None = None) -> str | None:
+        """
+        Pull a bearer credential out of a login response.
+
+        ``token_path`` addresses it explicitly ("authentication.token"). Without
+        one, the response is searched for the key names frameworks conventionally
+        use, because requiring the operator to know the shape of their login
+        response in advance is how authenticated scanning ends up unconfigured.
+        """
+        try:
+            body = resp.json()
+        except Exception:
+            return None
+
+        if token_path:
+            node = body
+            for part in str(token_path).split("."):
+                if isinstance(node, dict) and part in node:
+                    node = node[part]
+                else:
+                    node = None
+                    break
+            if isinstance(node, str) and node.strip():
+                return node.strip()
+            log.warning(
+                "token_path '%s' did not resolve in the login response", token_path
+            )
+
+        def _search(node, depth=0):
+            if depth > 4 or not isinstance(node, dict):
+                return None
+            for key, value in node.items():
+                if (
+                    key.lower() in cls._TOKEN_KEYS
+                    and isinstance(value, str)
+                    and len(value.strip()) >= 8
+                ):
+                    return value.strip()
+            for value in node.values():
+                found = _search(value, depth + 1)
+                if found:
+                    return found
+            return None
+
+        return _search(body)
 
     def _save_session(self, session: "WebSession") -> None:
         """Persist session state to Redis."""
@@ -282,17 +414,35 @@ class WebSession:
     def get_cookies(self) -> dict[str, str]:
         return dict(self.cookies)
 
-    def get_cookies_for_playwright(self) -> list[dict]:
-        """Format cookies for Playwright's add_cookies API."""
+    def get_cookies_for_playwright(self, target_url: str = "") -> list[dict]:
+        """
+        Format cookies for Playwright's add_cookies API.
+
+        Playwright rejects a cookie that has neither a url nor a domain, and
+        rejects the whole batch — so one cookie without a domain aborted the
+        authenticated crawl entirely. That happened for every auth type except
+        form_login, since only form_login sets login_url. Scoping by url avoids
+        having to derive a domain at all, and the scan target is used when the
+        session itself does not know where it came from.
+        """
         from urllib.parse import urlparse
 
-        domain = ""
-        if self.login_url:
-            domain = urlparse(self.login_url).hostname or ""
+        origin = ""
+        for candidate in (self.login_url, target_url):
+            parsed = urlparse(candidate or "")
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                break
+
+        if not origin:
+            log.warning(
+                "No origin available for session cookies — they cannot be scoped "
+                "to a domain and are not being applied to the crawl"
+            )
+            return []
 
         return [
-            {"name": k, "value": v, "domain": domain, "path": "/"}
-            for k, v in self.cookies.items()
+            {"name": k, "value": v, "url": origin} for k, v in self.cookies.items() if k
         ]
 
     def to_dict(self) -> dict:

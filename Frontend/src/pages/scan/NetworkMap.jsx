@@ -413,6 +413,19 @@ const CATEGORY_LABELS = {
 };
 
 /** Format bits-per-second into a human-readable speed string. */
+/* Edge colour by the evidence backing the link. LLDP, CDP and EDP all describe
+ * a physical cable and share the topology palette; ARP is L3 reachability, and
+ * anything weaker (FDB) stays neutral grey. EDP is Extreme's discovery protocol
+ * and is the only neighbour source on an all-Extreme estate, so it must not
+ * fall through to the generic colour. */
+const LINK_TYPE_COLORS = {
+  lldp: "#3b82f6",
+  cdp: "#f59e0b",
+  edp: "#a78bfa",
+  arp: "#06b6d4",
+  default: "#475569",
+};
+
 const formatSpeed = (bps) => {
   if (!bps || bps <= 0) return null;
   if (bps >= 1_000_000_000)
@@ -461,7 +474,18 @@ export default function NetworkMap() {
 
   const [subnetMask, setSubnetMask] = useState(24);
   const [layoutMode, setLayoutMode] = useState("hierarchical"); // "hierarchical" or "force"
+  // Links accumulate across scans. An org-wide map with no freshness window is
+  // the union of every adjacency ever recorded, decommissioned hosts included,
+  // so it defaults to the last 30 days. A scan-specific map needs no window —
+  // the scan already defines one.
+  const [activeWithinDays, setActiveWithinDays] = useState(() =>
+    paramScanId || searchParams.get("scan_id") ? 0 : 30,
+  );
   const endpointPageSize = 50;
+
+  // Declared before fetchTopology, which resets them on every load.
+  const expandedSubnetsRef = useRef(new Set());
+  const filteredSubnetsRef = useRef(new Set());
 
   /* ── Fetch topology data ──────────────────────────────────────────────── */
   const fetchTopology = useCallback(async () => {
@@ -474,8 +498,11 @@ export default function NetworkMap() {
     setFilteredSubnets(new Set());
     try {
       const baseUrl = scanId ? `/topology/map/${scanId}` : "/topology/map";
-      const url = `${baseUrl}?subnet_mask=${subnetMask}`;
-      const { data } = await api.get(url);
+      const params = new URLSearchParams({ subnet_mask: String(subnetMask) });
+      if (activeWithinDays > 0) {
+        params.set("active_within_days", String(activeWithinDays));
+      }
+      const { data } = await api.get(`${baseUrl}?${params.toString()}`);
       if (!data.success) throw new Error("Failed to load topology data");
 
       allNodesRef.current = data.nodes || [];
@@ -495,15 +522,11 @@ export default function NetworkMap() {
     } finally {
       setLoading(false);
     }
-  }, [scanId, subnetMask]);
+  }, [scanId, subnetMask, activeWithinDays]);
 
   useEffect(() => {
     fetchTopology();
   }, [fetchTopology]);
-
-  // Keep references to prevent stale React hook closures inside vis-network callbacks
-  const expandedSubnetsRef = useRef(new Set());
-  const filteredSubnetsRef = useRef(new Set());
 
   const isMacOnlySubnet = useCallback((subnetOrId) => {
     const value = String(subnetOrId || "").replace(/^subnet:/, "");
@@ -549,19 +572,35 @@ export default function NetworkMap() {
       isMacOnlySubnet(node.subnet),
     ).length;
     const ipResolved = hostNodes.filter((node) => node.ip).length;
+    // `source_key` is the identity of the device that observed the endpoint —
+    // a MAC, `ip:<addr>` or `name:<label>` depending on what SNMP could resolve.
     const sources = new Set(
-      hostNodes.map((node) => node.source_mac).filter(Boolean),
+      hostNodes.map((node) => node.source_key).filter(Boolean),
     );
-    const linkTypes = new Set(
-      edges.map((edge) => edge.link_type).filter(Boolean),
-    );
+    // Count every protocol that backed a link, not just the strongest one: an
+    // adjacency reported as "lldp" may also have been corroborated by ARP.
+    const linkTypes = new Set();
+    edges.forEach((edge) => {
+      String(edge.observed_types || edge.link_type || "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .forEach((t) => linkTypes.add(t));
+      Object.keys(edge.link_details?.type_counts || {}).forEach((t) =>
+        linkTypes.add(t),
+      );
+    });
     return {
       macOnly,
       ipResolved,
       sources: sources.size,
       hasArp: linkTypes.has("arp"),
       hasFdb: linkTypes.has("fdb"),
-      hasLldpOrCdp: linkTypes.has("lldp") || linkTypes.has("cdp"),
+      // EDP counts as neighbour discovery: on an all-Extreme network it is
+      // the only protocol reporting physical adjacency, and reporting
+      // "LLDP/CDP unavailable" there would be misleading.
+      hasLldpOrCdp:
+        linkTypes.has("lldp") || linkTypes.has("cdp") || linkTypes.has("edp"),
     };
   }, [stats, subnets, isMacOnlySubnet]);
 
@@ -878,16 +917,39 @@ export default function NetworkMap() {
       });
     });
 
-    // Re-populate DataSet
+    // Re-populate DataSet.
+    // vis-network's DataSet throws on a duplicate id and the exception unwinds
+    // the whole render, blanking the map. The backend guarantees unique ids;
+    // this keeps one bad payload from costing the user the entire view.
+    const seenNodeIds = new Set();
+    const uniqueNodes = [];
+    let droppedNodes = 0;
+    [...finalNodes, ...activeHosts].forEach((node) => {
+      if (node?.id == null || seenNodeIds.has(node.id)) {
+        droppedNodes += 1;
+        return;
+      }
+      seenNodeIds.add(node.id);
+      uniqueNodes.push(node);
+    });
+    if (droppedNodes) {
+      console.warn(
+        `NetworkMap: dropped ${droppedNodes} duplicate/invalid node(s) from the topology payload`,
+      );
+    }
+
     dsNodesRef.current.clear();
-    dsNodesRef.current.add([...finalNodes, ...activeHosts]);
+    dsNodesRef.current.add(uniqueNodes);
 
     // Build edges (infra-to-infra and infra-to-subnet)
     const validNodeIds = new Set(dsNodesRef.current.getIds());
+    const seenEdgeIds = new Set();
     const visibleEdges = allEdgesRef.current
       .filter((e) => {
         if (!validNodeIds.has(e.from)) return false;
         if (!validNodeIds.has(e.to)) return false;
+        if (e.id == null || seenEdgeIds.has(e.id)) return false;
+        seenEdgeIds.add(e.id);
         return true;
       })
       .map((e) => {
@@ -929,14 +991,7 @@ export default function NetworkMap() {
           label: e.label || "",
           width: thickness,
           color: {
-            color:
-              e.link_type === "lldp"
-                ? "#3b82f6"
-                : e.link_type === "cdp"
-                  ? "#f59e0b"
-                  : e.link_type === "arp"
-                    ? "#06b6d4"
-                    : "#475569",
+            color: LINK_TYPE_COLORS[e.link_type] || LINK_TYPE_COLORS.default,
             highlight: "#60a5fa",
           },
           dashes: e.speed_bps && e.speed_bps < 100_000_000 ? [5, 5] : false,
@@ -957,23 +1012,35 @@ export default function NetworkMap() {
     }));
   }, [searchQuery, formatNode, isMacOnlySubnet]);
 
+  // Expand/collapse and filter handlers call syncGraphView outside the
+  // initialisation try/catch, so a render failure there would surface as an
+  // unhandled exception rather than a message the user can act on.
+  const safeSyncGraphView = useCallback(() => {
+    try {
+      syncGraphView();
+    } catch (err) {
+      console.error("NetworkMap: failed to render topology view", err);
+      setError("Failed to render the topology view. Try reloading the map.");
+    }
+  }, [syncGraphView]);
+
   /* ── Subnet Expand / Collapse Logic ────────────────────────────────────────── */
   const expandSubnet = useCallback(
     (subnetNodeId) => {
       expandedSubnetsRef.current.add(subnetNodeId);
       setExpandedSubnets(new Set(expandedSubnetsRef.current));
-      syncGraphView();
+      safeSyncGraphView();
     },
-    [syncGraphView],
+    [safeSyncGraphView],
   );
 
   const collapseSubnet = useCallback(
     (subnetNodeId) => {
       expandedSubnetsRef.current.delete(subnetNodeId);
       setExpandedSubnets(new Set(expandedSubnetsRef.current));
-      syncGraphView();
+      safeSyncGraphView();
     },
-    [syncGraphView],
+    [safeSyncGraphView],
   );
 
   /* ── Search Apply ────────────────────────────────────────────────────────── */
@@ -982,8 +1049,8 @@ export default function NetworkMap() {
   };
 
   useEffect(() => {
-    syncGraphView();
-  }, [searchQuery, syncGraphView]);
+    safeSyncGraphView();
+  }, [searchQuery, safeSyncGraphView]);
 
   /* ── Initialise vis-network canvas ────────────────────────────────────────── */
   useEffect(() => {
@@ -1000,7 +1067,7 @@ export default function NetworkMap() {
         dsNodesRef.current = new DataSet([]);
         dsEdgesRef.current = new DataSet([]);
 
-        syncGraphView();
+        safeSyncGraphView();
 
         const isHierarchical = layoutMode === "hierarchical";
 
@@ -1124,19 +1191,19 @@ export default function NetworkMap() {
     }
     setFilteredSubnets(new Set(filteredSubnetsRef.current));
     setExpandedSubnets(new Set(expandedSubnetsRef.current));
-    syncGraphView();
+    safeSyncGraphView();
   };
 
   const selectAllSubnets = () => {
     filteredSubnetsRef.current = new Set();
     setFilteredSubnets(new Set());
-    syncGraphView();
+    safeSyncGraphView();
   };
 
   const deselectAllSubnets = () => {
     filteredSubnetsRef.current = new Set(subnets);
     setFilteredSubnets(new Set(subnets));
-    syncGraphView();
+    safeSyncGraphView();
   };
 
   /* ── Fit / View Controls ────────────────────────────────────────────────── */
@@ -1165,13 +1232,13 @@ export default function NetworkMap() {
     });
     expandedSubnetsRef.current = nextExpanded;
     setExpandedSubnets(new Set(nextExpanded));
-    syncGraphView();
+    safeSyncGraphView();
   };
 
   const handleCollapseAll = () => {
     expandedSubnetsRef.current = new Set();
     setExpandedSubnets(new Set());
-    syncGraphView();
+    safeSyncGraphView();
   };
 
   const legendItems = useMemo(() => {
@@ -1262,6 +1329,24 @@ export default function NetworkMap() {
               </select>
             </div>
 
+            {/* Freshness window — keeps decommissioned adjacency out of the map */}
+            {!scanId && (
+              <div className="nmap-control-select-group">
+                <span className="nmap-control-select-label">Seen within:</span>
+                <select
+                  value={activeWithinDays}
+                  onChange={(e) => setActiveWithinDays(Number(e.target.value))}
+                  className="nmap-control-select"
+                  title="Only show links observed within this window"
+                >
+                  <option value={7}>Last 7 days</option>
+                  <option value={30}>Last 30 days</option>
+                  <option value={90}>Last 90 days</option>
+                  <option value={0}>All recorded history</option>
+                </select>
+              </div>
+            )}
+
             {/* Layout Mode selection */}
             <div className="nmap-control-select-group">
               <span className="nmap-control-select-label">Layout:</span>
@@ -1319,8 +1404,8 @@ export default function NetworkMap() {
             className={`nmap-quality-pill ${topologyQuality.hasLldpOrCdp ? "is-good" : "is-warn"}`}
           >
             {topologyQuality.hasLldpOrCdp
-              ? "LLDP/CDP present"
-              : "LLDP/CDP unavailable"}
+              ? "Neighbour discovery present"
+              : "No neighbour discovery (LLDP/CDP/EDP)"}
           </div>
         </div>
 

@@ -281,6 +281,43 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                 # 3.3. Criteria matching
                 check_def = rule.check_definition or {}
                 key = check_def.get("key")
+
+                # A control with no evidence has not been assessed, and an
+                # unassessed control is not a failed one. Previously any missing
+                # key evaluated to False and was recorded as "fail", so an asset
+                # that had simply never been scanned for a given source reported
+                # as non-compliant against every rule using it — a finding the
+                # customer cannot act on and an auditor cannot accept.
+                evidence_missing = (
+                    not evidence
+                    or evidence.get("_evidence_available") is False
+                    or (key and key not in evidence)
+                )
+                if evidence_missing:
+                    _save_finding(
+                        db,
+                        org_id,
+                        asset.id,
+                        rule,
+                        run_id=scan_run_id,
+                        status="manual_review",
+                        evidence={
+                            "message": (
+                                evidence.get("_reason")
+                                if isinstance(evidence, dict)
+                                and evidence.get("_reason")
+                                else (
+                                    f"No '{rule.evidence_source}' evidence has been "
+                                    f"collected for this asset, so the control could "
+                                    f"not be evaluated."
+                                )
+                            ),
+                            "evidence_source": rule.evidence_source,
+                            "required_key": key,
+                        },
+                    )
+                    continue
+
                 actual_val = evidence.get(key) if key else None
 
                 passed = _evaluate_operator(
@@ -1048,7 +1085,12 @@ def _run_active_reverification_probes(
                 .first()
             )
             if svc:
+                # A live TCP connect from the scanner is a direct reachability
+                # observation, so it sets both the state and the reachability
+                # flag. Leaving the flag behind would let a re-verified port
+                # keep whatever the original scan concluded.
                 svc.state = "open" if is_open else "closed"
+                svc.network_reachable = is_open
                 svc.updated_at = datetime.now(timezone.utc)
                 db.add(svc)
                 db.commit()

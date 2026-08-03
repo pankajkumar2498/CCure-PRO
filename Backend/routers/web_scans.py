@@ -23,6 +23,7 @@ from auth.dependencies import get_current_user
 from auth.jwt_handler import decode_token
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
 from db.models import User
+from core.web.auth.secrets import encrypt_auth_config
 from db.models.web_scans import WebAsset, WebFinding, WebScan
 from fastapi import (
     APIRouter,
@@ -33,7 +34,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger("ccure.routers.web_scans")
@@ -83,6 +84,25 @@ class WebScanAuthSchema(BaseModel):
     token: str | None = None
     cookies: dict[str, str] | None = None
     headers: dict[str, str] | None = None
+    # Token-based logins. The session manager supports these, but with no field
+    # here Pydantic drops them from the request body, so an operator scanning a
+    # JSON-API application had no way to describe its login and the scan ran
+    # anonymously.
+    method: str = Field(default="POST", description="Login request method")
+    content_type: str = Field(
+        default="auto",
+        description="Login body encoding: auto, form, or json",
+    )
+    token_path: str | None = Field(
+        default=None,
+        description="Dot path to the token in a JSON login response, "
+        "e.g. 'authentication.token'. Auto-detected when omitted.",
+    )
+    token_header: str = Field(default="Authorization")
+    token_prefix: str = Field(default="Bearer ")
+    extra_fields: dict[str, str] | None = Field(
+        default=None, description="Additional fields to send with the login"
+    )
 
 
 class WebScanOptionsSchema(BaseModel):
@@ -90,6 +110,25 @@ class WebScanOptionsSchema(BaseModel):
     enable_xss: bool = True
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
+    # The orchestrator implements quick/standard/deep depth profiles and
+    # defaults to standard. Without this field the request body could not carry
+    # the choice, so the profiles were unreachable through the API.
+    scan_depth: str = Field(
+        default="standard",
+        description="Template coverage: quick, standard, or deep",
+    )
+
+    @field_validator("scan_depth")
+    @classmethod
+    def _known_depth(cls, value: str) -> str:
+        from orchestrator.web_orchestrator import SCAN_DEPTHS
+
+        normalized = (value or "").strip().lower()
+        if normalized not in SCAN_DEPTHS:
+            raise ValueError(
+                f"scan_depth must be one of: {', '.join(sorted(SCAN_DEPTHS))}"
+            )
+        return normalized
 
 
 class StartWebScanRequest(BaseModel):
@@ -201,7 +240,7 @@ def start_web_scan(
         target_url=target_url,
         target_domain=target_domain,
         scan_scope=body.scan_scope.model_dump(),
-        auth_config=body.auth.model_dump(exclude_none=True),
+        auth_config=encrypt_auth_config(body.auth.model_dump(exclude_none=True)),
         options={
             **body.options.model_dump(),
             "_launch": {
@@ -440,9 +479,10 @@ def cancel_web_scan(
         try:
             from core.celery_app import celery_app
 
-            celery_app.control.revoke(
-                scan.current_task_id, terminate=True, signal="SIGKILL"
-            )
+            import sys
+
+            sig = "SIGTERM" if sys.platform == "win32" else "SIGKILL"
+            celery_app.control.revoke(scan.current_task_id, terminate=True, signal=sig)
         except Exception as exc:
             log.warning("Failed to revoke task %s: %s", scan.current_task_id, exc)
 

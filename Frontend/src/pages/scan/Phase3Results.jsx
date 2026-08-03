@@ -437,8 +437,8 @@ export default function Phase3Results() {
           data: fullScan?.results?.phase3?.data || [],
           summary: fullScan?.results?.phase3?.summary || {},
           reports: {
-            json_pdf: fullScan?.report_json_path,
-            xml_pdf: fullScan?.report_xml_path,
+            executive_pdf: fullScan?.report_executive_path,
+            technical_pdf: fullScan?.report_technical_path,
           },
         };
 
@@ -1023,7 +1023,59 @@ export default function Phase3Results() {
               <span className="summary-item">
                 <b>{fmtSec(phase3Summary?.scan_duration)}s</b> Duration
               </span>
+              {phase3Summary?.credentialed_hosts > 0 && (
+                <span className="summary-item" style={{ color: "#22c55e" }}>
+                  🔐 <b>{phase3Summary.credentialed_hosts}</b> Authenticated
+                </span>
+              )}
             </div>
+
+            {/* Authenticated coverage. Which hosts were logged into bounds what
+                the package-level findings below can possibly cover, and a host
+                that was skipped is unassessed rather than clean. */}
+            {phase3Summary?.credentialed_hosts !== undefined && (
+              <div
+                style={{
+                  margin: "0 0 16px",
+                  padding: "12px 16px",
+                  borderRadius: 8,
+                  background: "rgba(34, 197, 94, 0.07)",
+                  border: "1px solid rgba(34, 197, 94, 0.25)",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong>🔐 Authenticated checks</strong>
+                <p style={{ margin: "6px 0 0", opacity: 0.92 }}>
+                  {phase3Summary.credentialed_hosts} host
+                  {phase3Summary.credentialed_hosts === 1
+                    ? " was"
+                    : "s were"}{" "}
+                  logged into and assessed against the installed-package
+                  inventory. Listening services on those hosts were correlated
+                  with the port scan, so exposed services are distinguished from
+                  ones that are running but unreachable.
+                </p>
+                {phase3Summary.credentialed_skipped?.length > 0 && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                      {phase3Summary.credentialed_skipped.length} host
+                      {phase3Summary.credentialed_skipped.length === 1
+                        ? ""
+                        : "s"}{" "}
+                      not authenticated — findings for these are network-only
+                    </summary>
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                      {phase3Summary.credentialed_skipped.map((s) => (
+                        <li key={s.target}>
+                          <code>{s.target}</code> — {s.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
 
             <div
               style={{
@@ -1079,6 +1131,30 @@ export default function Phase3Results() {
                       >
                         <td>
                           <code className="ip-code">{host.ip_address}</code>
+                          {/* Whether this host's findings rest on an
+                              authenticated read of the OS or only on what the
+                              network exposed. The two are not comparable. */}
+                          {host.credentialed && (
+                            <span
+                              title={
+                                host.exposure_summary?.correlated_with_port_scan
+                                  ? `Authenticated — ${host.exposure_summary.listeners_exposed ?? 0} listening service(s) confirmed reachable, ${host.exposure_summary.listeners_host_only ?? 0} host-only`
+                                  : "Authenticated audit of the installed package inventory"
+                              }
+                              style={{
+                                marginLeft: 6,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: "#22c55e",
+                                border: "1px solid #22c55e",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              🔐 AUTH
+                            </span>
+                          )}
                           {(() => {
                             let hName = host.hostname;
                             if (!hName || hName === "Unknown") {

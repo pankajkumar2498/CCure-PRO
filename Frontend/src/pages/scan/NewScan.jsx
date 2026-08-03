@@ -547,6 +547,13 @@ export default function NewScan() {
   const [customPortsError, setCustomPortsError] = useState("");
   const [parsedCustomPortsCount, setParsedCustomPortsCount] = useState(0);
 
+  // Authenticated checks — a policy option on the Vulnerability Audit, not a
+  // separate scan. Only stored credentials qualify: the pipeline runs
+  // unattended, so there is nothing to hold a one-time secret for.
+  const [credentialedEnabled, setCredentialedEnabled] = useState(false);
+  const [credentialsList, setCredentialsList] = useState([]);
+  const [selectedCredIds, setSelectedCredIds] = useState([]);
+
   // SNMP settings for topology mapping (optional)
   const [snmpEnabled, setSnmpEnabled] = useState(false);
   const [snmpVersion, setSnmpVersion] = useState("v2c");
@@ -569,6 +576,24 @@ export default function NewScan() {
     () => !!excludeIps,
   );
   const [excludeIpsError, setExcludeIpsError] = useState("");
+
+  // Load the org's stored credentials the first time authenticated checks are
+  // switched on, rather than on every visit to this page.
+  useEffect(() => {
+    if (!credentialedEnabled || credentialsList.length) return;
+    let cancelled = false;
+    api
+      .get("/compliance/credentials")
+      .then((res) => {
+        if (!cancelled) setCredentialsList(res.data || []);
+      })
+      .catch((err) => {
+        console.error("Failed to load credentials for scan", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentialedEnabled, credentialsList.length]);
 
   const parseCustomPortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
@@ -1292,6 +1317,41 @@ export default function NewScan() {
     setLoading(true);
     setPipelineState(PIPELINE_STATES.DISCOVERY);
     try {
+      const scanOptions = {
+        ...(snmpEnabled
+          ? {
+              snmp: {
+                version: snmpVersion,
+                ...(snmpVersion !== "v3" ? { community: snmpCommunity } : {}),
+                ...(snmpVersion === "v3"
+                  ? {
+                      username: snmpUsername,
+                      auth_protocol: snmpAuthProtocol,
+                      auth_passphrase: snmpAuthPassphrase,
+                      ...(snmpPrivProtocol
+                        ? {
+                            priv_protocol: snmpPrivProtocol,
+                            priv_passphrase: snmpPrivPassphrase,
+                          }
+                        : {}),
+                      ...(snmpContextName
+                        ? { context_name: snmpContextName }
+                        : {}),
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(credentialedEnabled && selectedCredIds.length
+          ? {
+              credentials: selectedCredIds.map((id) => ({
+                credential_id: id,
+              })),
+            }
+          : {}),
+      };
+      const hasScanOptions = Object.keys(scanOptions).length > 0;
+
       const payload = buildPhasePayload(pipelineMode || "basic", {
         targets: trimmedTarget
           .split(",")
@@ -1328,32 +1388,10 @@ export default function NewScan() {
           ? { exclude_ips: excludeIps.trim() }
           : {}),
         ...(rateLimit ? { rate_limit: parseInt(rateLimit, 10) } : {}),
-        ...(snmpEnabled
-          ? {
-              options: {
-                snmp: {
-                  version: snmpVersion,
-                  ...(snmpVersion !== "v3" ? { community: snmpCommunity } : {}),
-                  ...(snmpVersion === "v3"
-                    ? {
-                        username: snmpUsername,
-                        auth_protocol: snmpAuthProtocol,
-                        auth_passphrase: snmpAuthPassphrase,
-                        ...(snmpPrivProtocol
-                          ? {
-                              priv_protocol: snmpPrivProtocol,
-                              priv_passphrase: snmpPrivPassphrase,
-                            }
-                          : {}),
-                        ...(snmpContextName
-                          ? { context_name: snmpContextName }
-                          : {}),
-                      }
-                    : {}),
-                },
-              },
-            }
-          : {}),
+        // SNMP and credentials both live under `options`, so they are merged
+        // into one object — sending them as separate `options` keys would let
+        // whichever came last silently discard the other.
+        ...(hasScanOptions ? { options: scanOptions } : {}),
       });
       const { data } = await api.post("/scan/host-discovery", payload);
       if (!data.success) throw new Error(data.error);
@@ -2469,7 +2507,132 @@ export default function NewScan() {
             </div>
           </div>
 
-          {/* 5. SNMP / Network Topology (optional, all modes) */}
+          {/* 5. Authenticated checks (Vulnerability Audit only).
+              Credentials are a policy option on the ordinary scan, not a
+              separate scan type: discovery, port scanning and unauthenticated
+              checks run first, then each reachable host is logged into and the
+              local results are merged into the same report. */}
+          {(pipelineMode === "advanced" ||
+            pipelineMode === "vulnerability_audit") && (
+            <div
+              className="ns-adv-section"
+              style={{
+                borderTop: "1.5px solid var(--border)",
+                paddingTop: "16px",
+              }}
+            >
+              <div className="ns-inline-row">
+                <div className="ns-inline-label">
+                  <span className="ns-label-main">
+                    🔐 Authenticated Checks (Credentialed)
+                  </span>
+                  <span className="ns-label-hint">
+                    Log in to each host and match installed packages, then
+                    correlate with the port scan to find what is actually
+                    exposed
+                  </span>
+                </div>
+                <label className="ns-toggle">
+                  <input
+                    type="checkbox"
+                    checked={credentialedEnabled}
+                    onChange={(e) => setCredentialedEnabled(e.target.checked)}
+                    disabled={loading || !canExecuteScans}
+                  />
+                  <span className="ns-toggle-slider" />
+                </label>
+              </div>
+
+              {credentialedEnabled && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
+                  {credentialsList.length === 0 ? (
+                    <p
+                      className="ns-label-hint"
+                      style={{ margin: 0, lineHeight: 1.6 }}
+                    >
+                      No stored credentials are registered for this
+                      organisation. Add one under the Credentials Manager in{" "}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/compliance")}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--accent)",
+                          textDecoration: "underline",
+                          padding: 0,
+                          font: "inherit",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Compliance
+                      </button>
+                      , then re-run this scan. Only stored credentials are
+                      accepted here — a pipeline scan runs unattended, so
+                      one-time credentials cannot be held for it.
+                    </p>
+                  ) : (
+                    <>
+                      <span
+                        className="ns-label-hint"
+                        style={{ lineHeight: 1.6 }}
+                      >
+                        Select the credentials to try. Each host is audited with
+                        the first one whose scope covers it; hosts with no
+                        matching credential, or with the SSH port closed, are
+                        reported as unauthenticated and listed in the scan's
+                        coverage.
+                      </span>
+                      {credentialsList.map((c) => {
+                        const checked = selectedCredIds.includes(c.id);
+                        return (
+                          <label
+                            key={c.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              fontSize: "0.84rem",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() =>
+                                setSelectedCredIds((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== c.id)
+                                    : [...prev, c.id],
+                                )
+                              }
+                              disabled={loading || !canExecuteScans}
+                            />
+                            <span style={{ fontWeight: 600 }}>{c.name}</span>
+                            <span
+                              className="ns-label-hint"
+                              style={{ fontFamily: "var(--mono)" }}
+                            >
+                              {c.username}@:{c.port ?? 22}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 6. SNMP / Network Topology (optional, all modes) */}
           <div
             className="ns-adv-section"
             style={{

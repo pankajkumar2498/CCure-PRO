@@ -222,30 +222,56 @@ def gen_web_asset_id(web_scan_id: str, url: str) -> str:
     return f"was_{scan_short}_{url_hash}"
 
 
-def gen_web_finding_id(web_asset_id: str, finding_type: str) -> str:
+def gen_web_finding_id(web_asset_id: str, finding_type: str, identity: str = "") -> str:
     """
     Generate a readable WebFinding ID.
-    Example: wfn_was_wsc_defa_xss_k8m2
+    Example: wfn_was_wsc_defa_xss_9f2c1b04
+
+    Deterministic by design. The persistence path guards against duplicates by
+    looking the id up first, and a random suffix made that lookup incapable of
+    ever matching: findings written in DETECT were written again in AUDIT, so
+    every custom check was stored twice and counted twice.
+
+    ``identity`` distinguishes findings that share a type — "misconfig" covers
+    every missing security header, and without it three distinct headers would
+    collapse onto one id and two would be discarded as already present.
     """
     asset_short = web_asset_id[:40] if len(web_asset_id) > 40 else web_asset_id
     type_part = _safe_id_part(finding_type, max_len=15)
-    return f"wfn_{asset_short}_{type_part}_{_rand()}"
+    # Not a security primitive — a short stable discriminator.
+    digest = hashlib.sha1(  # nosec B324
+        (identity or finding_type).encode("utf-8", "replace")
+    ).hexdigest()[:8]
+    return f"wfn_{asset_short}_{type_part}_{digest}"
 
 
-def gen_network_link_id(org_slug: str, src_mac: str, dst_mac: str) -> str:
+def gen_network_link_id(org_slug: str, src_key: str, dst_key: str) -> str:
     """
     Generate a readable, unique NetworkLink ID.
     Example: lnk_defa_1a2b3c4d_001122334455_66778899aabb
 
-    MACs are sorted alphabetically before hashing to ensure that a link
-    between the same two devices always has the same ID (undirected determinism).
+    Endpoint keys are sorted before formatting so that a link between the same
+    two devices always has the same ID regardless of which side reported it
+    (undirected determinism).
+
+    Keys are not always MACs — an endpoint known only by IP or by chassis name
+    is keyed ``ip:10.1.1.1`` / ``name:core-sw-01`` (see core.topology.identity).
+    Non-MAC keys are hashed rather than stripped of their separators: dropping
+    the dots from ``10.1.4.11`` and ``1.0.14.11`` yields the same token for two
+    different devices, which would silently merge their links into one row.
     """
     org_part = gen_org_token(org_slug)
-    # Sort MACs alphabetically to enforce undirected link determinism
-    macs = sorted([src_mac.lower(), dst_mac.lower()])
-    clean_src = re.sub(r"[^a-f0-9]+", "", macs[0])
-    clean_dst = re.sub(r"[^a-f0-9]+", "", macs[1])
-    return f"lnk_{org_part}_{clean_src}_{clean_dst}"
+
+    def _endpoint_token(key: str) -> str:
+        compact = re.sub(r"[^0-9a-f]+", "", str(key).lower())
+        # A bare 48-bit MAC stays readable; anything else gets a stable digest
+        # so that distinct identifiers cannot collapse onto the same token.
+        if len(compact) == 12 and re.fullmatch(r"[0-9a-f]{12}", compact):
+            return compact
+        return _stable_hash(str(key).lower(), length=16)
+
+    first, second = sorted([str(src_key).lower(), str(dst_key).lower()])
+    return f"lnk_{org_part}_{_endpoint_token(first)}_{_endpoint_token(second)}"
 
 
 def gen_compliance_credential_id(org_slug: str) -> str:

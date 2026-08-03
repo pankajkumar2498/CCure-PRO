@@ -5,12 +5,18 @@ Pytest configuration and global fixtures for the CCure Audit PRO backend.
 Tests are expected to run against PostgreSQL and require DATABASE_URL to be set accordingly.
 """
 
+import logging
 import os
 import sys
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+
+# Several helpers below log on their failure paths. The module referenced a
+# `logger` that was never defined, so those paths raised NameError instead of
+# reporting the condition they were written to report.
+logger = logging.getLogger(__name__)
 import sqlalchemy.dialects.sqlite.base as sqlite_base
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
@@ -47,30 +53,78 @@ os.environ["SKIP_DOTENV_LOAD"] = "1"
 os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "true")
 os.environ.setdefault("CELERY_TASK_EAGER_PROPAGATES", "true")
 
-# Require PostgreSQL for pytest
-database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
-if not database_url or "ccure_test" in database_url:
-    # Set dedicated isolated test database URL fallback to prevent wiping development database
-    database_url = (
-        "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_pytest_db"
-    )
-    os.environ["DATABASE_URL"] = database_url
-
-if not database_url.startswith("postgresql"):
-    raise RuntimeError(
-        "Tests must run against PostgreSQL. Set DATABASE_URL to a postgresql:// URL instead of sqlite:///."
-    )
-
-# Safety guard: refuse to run against production or development databases
+# ── Test database selection ───────────────────────────────────────────────────
+# The suite drops and rebuilds its schema, so pointing it at the wrong database
+# destroys that database. Selection therefore fails *closed*: a target must be
+# recognisable as a pytest database by name, and anything else is refused.
+#
+# This replaced a deny-list of ('ccure_db', 'prod', 'production', 'ccure_test').
+# A deny-list cannot protect a database nobody remembered to add to it —
+# 'ccure_staging', 'ccure_dev', 'main' and 'postgres' all passed it.
+import re
 from urllib.parse import urlparse
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 
+#: A database may be used by pytest only if its name matches. Keep this narrow.
+TEST_DB_NAME_PATTERN = re.compile(r"(^test_|_test$|_pytest$|_pytest_db$)")
+
+DEFAULT_TEST_DATABASE_URL = (
+    "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_pytest_db"
+)
+
+
+def _db_name(url: str) -> str:
+    return urlparse(url).path.lstrip("/")
+
+
+def _is_test_database(url: str) -> bool:
+    name = _db_name(url)
+    return bool(name) and bool(TEST_DB_NAME_PATTERN.search(name))
+
+
+# TEST_DATABASE_URL is an explicit choice and is honoured as given; DATABASE_URL
+# is inherited from the developer's .env and points at a real database, so it is
+# only accepted when it independently looks like a test database.
+_explicit = os.getenv("TEST_DATABASE_URL")
+_inherited = os.getenv("DATABASE_URL")
+
+if _explicit:
+    database_url = _explicit
+    if not _is_test_database(database_url):
+        raise RuntimeError(
+            f"TEST_DATABASE_URL points at '{_db_name(database_url)}', which is not "
+            f"a recognised pytest database. The suite drops and recreates its "
+            f"schema, so it refuses to run anywhere that is not named to match "
+            f"{TEST_DB_NAME_PATTERN.pattern}."
+        )
+elif _inherited and _is_test_database(_inherited):
+    database_url = _inherited
+else:
+    database_url = DEFAULT_TEST_DATABASE_URL
+
+if not database_url.startswith("postgresql"):
+    raise RuntimeError(
+        "Tests must run against PostgreSQL. Set TEST_DATABASE_URL to a "
+        "postgresql:// URL instead of sqlite:///."
+    )
+
+# Final assertion, after every branch above. Nothing past this point may run
+# against a database whose name does not opt in.
+if not _is_test_database(database_url):
+    raise RuntimeError(
+        f"Refusing to run tests against '{_db_name(database_url)}'. Expected a "
+        f"database matching {TEST_DB_NAME_PATTERN.pattern}."
+    )
+
+os.environ["DATABASE_URL"] = database_url
+
 
 def _ensure_test_db_exists(url: str):
+    """Create the target database when missing. Only ever called post-guard."""
     try:
-        parsed = urlparse(url)
-        target_db = parsed.path.lstrip("/")
+        target_db = _db_name(url)
         if not target_db or not url.startswith("postgresql"):
             return
         postgres_url = url.rsplit("/", 1)[0] + "/postgres"
@@ -87,20 +141,9 @@ def _ensure_test_db_exists(url: str):
         logger.debug("Test DB creation skipped: %s", err)
 
 
+# Creation happens *after* the guard. Previously it ran first, so a typo in
+# DATABASE_URL created a stray database before the check rejected the name.
 _ensure_test_db_exists(database_url)
-
-parsed = urlparse(database_url)
-db_name = parsed.path.lstrip("/")
-if db_name in ("ccure_db", "prod", "production", "ccure_test"):
-    raise RuntimeError(
-        f"Refusing to run tests against development database '{db_name}'. "
-        "Tests require an isolated test database (e.g. 'ccure_pytest_db')."
-    )
-if "prod" in db_name.lower():
-    raise RuntimeError(
-        f"Refusing to run tests against database '{db_name}' containing 'prod'. "
-        "Use a dedicated test database."
-    )
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 
@@ -183,13 +226,110 @@ UUID.bind_processor = custom_bind_processor
 # ── Database Setup ────────────────────────────────────────────────────────────
 
 
+#: True when this session built the schema straight from the models. A drift
+#: check is meaningless in that case — the database was *defined* by the models
+#: moments earlier, so any comparison is guaranteed to agree. Only the
+#: incremental path (migrations applied to a pre-existing database) can reveal a
+#: model change that no migration accounts for.
+SCHEMA_WAS_BOOTSTRAPPED = False
+
+
+def _build_test_schema():
+    """
+    Bring the test database's schema into agreement with the models.
+
+    The problem this solves: ``Base.metadata.create_all()`` silently skips
+    tables that already exist. Because the pytest database persists between
+    runs, any column change left it stale, producing ``UndefinedColumn`` errors
+    that read like application bugs. A renamed column cost a debugging session
+    exactly that way.
+
+    Why this does not simply run ``alembic upgrade head`` on an empty database:
+    revision ``7f96fc2fa41a_initial_schema`` is an intentional no-op baseline
+    adopted over an already-existing schema, and no migration creates the core
+    tables. From empty, ``upgrade head`` therefore creates nothing and the first
+    incremental revision fails on ``ALTER TABLE organizations``. The models are
+    the only complete description of the schema, so a bootstrap builds from
+    them and stamps Alembic to match.
+
+    Once bootstrapped, a database stamped *behind* head is upgraded normally —
+    which does exercise newly added migrations, against a populated schema,
+    which is the same path a real deployment takes.
+    """
+    global SCHEMA_WAS_BOOTSTRAPPED
+
+    from alembic import command
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import inspect
+
+    backend_dir = Path(__file__).absolute().parents[1]
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", database_url)
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+
+    with engine.connect() as conn:
+        inspector = inspect(conn)
+        table_count = len(inspector.get_table_names())
+        current = MigrationContext.configure(conn).get_current_revision()
+
+    forced = os.getenv("PYTEST_REBUILD_SCHEMA") == "1"
+    bootstrap = forced or current is None
+
+    if bootstrap:
+        logger.info(
+            "Bootstrapping test schema from models (%d existing tables dropped)",
+            table_count,
+        )
+        with engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+
+        # Dropping the schema also drops pg_trgm, pgcrypto and uuid-ossp, which
+        # live in it — without them create_all fails on the trigram index over
+        # vulnerability_definitions.title. db/base.py recreates all three from a
+        # "connect" event listener, so disposing the pool forces a fresh
+        # connection and lets that listener stay the single source of truth
+        # rather than duplicating the list here.
+        engine.dispose()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+
+        with engine.begin() as conn:
+            Base.metadata.create_all(bind=conn)
+        command.stamp(cfg, "head")
+        SCHEMA_WAS_BOOTSTRAPPED = True
+        return
+
+    if current != head:
+        logger.info("Applying migrations %s -> %s to test schema", current, head)
+        command.upgrade(cfg, "head")
+
+    # Gap-fill: models added without a migration still need their tables. Any
+    # table created here is a missing migration and is reported as such.
+    with engine.connect() as conn:
+        before = set(inspect(conn).get_table_names())
+    with engine.begin() as conn:
+        Base.metadata.create_all(bind=conn)
+    with engine.connect() as conn:
+        added = sorted(set(inspect(conn).get_table_names()) - before)
+    if added:
+        logger.warning(
+            "Tables created from models with no migration backing them: %s",
+            ", ".join(added),
+        )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
     from db.migrate_production_schema import create_partitions, seed_rbac
 
+    _build_test_schema()
+
     with engine.begin() as conn:
-        Base.metadata.create_all(bind=conn)
         if conn.dialect.name == "postgresql":
             all_themes = (
                 "'ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', "
@@ -237,28 +377,171 @@ def seed_system_roles():
         create_partitions(conn)
         seed_rbac(conn)
 
+    # Clear anything a previously crashed run left behind, *before* the app
+    # starts. The baseline is whatever exists once the app has seeded itself, so
+    # a stale organisation surviving into that snapshot would be recorded as
+    # reference data and never cleaned up again.
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE organizations CASCADE"))
+        conn.execute(text("TRUNCATE TABLE users CASCADE"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_client(seed_system_roles) -> Generator[TestClient, None, None]:
+    """
+    One TestClient — and therefore one application startup — per session.
+
+    Entering a TestClient runs the app's lifespan, which performs four additive
+    schema checks (ensure_user_schema, ensure_scan_schema, ensure_topology_schema,
+    ensure_mac_vendor_schema) and seeds the compliance catalog. That cost about
+    ten seconds. The `client` fixture was function-scoped, so every test paid it
+    — for tests whose own assertions ran in under a tenth of a second.
+
+    Nothing in the suite depends on a per-test application instance: no test
+    reads app.state and none manipulates dependency_overrides, which the
+    function-scoped `client` fixture continues to set per test.
+    """
+    with TestClient(app) as test_client:
+        # Lifespan has now seeded the default organisation and the compliance
+        # catalog. Capture the organisations that exist at this point: they are
+        # reference data and must survive the per-test reset.
+        with engine.begin() as conn:
+            _BASELINE_ORG_IDS.update(
+                row[0] for row in conn.execute(text("SELECT id FROM organizations"))
+            )
+            # Frameworks are captured too. They hang off the baseline organisation,
+            # so deleting test-created organisations does not reach the ones a
+            # test creates directly — without this they accumulate across the
+            # session and leak between tests.
+            _BASELINE_FRAMEWORK_IDS.update(
+                row[0]
+                for row in conn.execute(text("SELECT id FROM compliance_frameworks"))
+            )
+            _BASELINE_CONTROL_IDS.update(
+                row[0]
+                for row in conn.execute(text("SELECT id FROM compliance_controls"))
+            )
+        logger.info(
+            "Reference data seeded; preserving %d organisation(s), %d framework(s) "
+            "and %d control(s) across resets",
+            len(_BASELINE_ORG_IDS),
+            len(_BASELINE_FRAMEWORK_IDS),
+            len(_BASELINE_CONTROL_IDS),
+        )
+        yield test_client
+
+
+#: Organisations that exist after session seeding. These are reference data, not
+#: test data, and must survive the per-test reset — the compliance catalog hangs
+#: off one of them.
+_BASELINE_ORG_IDS: set[str] = set()
+
+#: Compliance frameworks present after seeding. Same rationale as the orgs
+#: above: these carry the ~800 seeded controls and must outlive a test, but a
+#: framework a *test* creates must not.
+_BASELINE_FRAMEWORK_IDS: set[str] = set()
+
+#: Controls present after seeding. A test that adds a control to an *existing*
+#: seeded framework (test_nerc_cip_framework_integration and
+#: test_nis2_framework_integration both do) is reached by neither the
+#: organisation delete nor the framework delete, so those rows accumulated
+#: across the session. Harmless until something asserts a control count, at
+#: which point it becomes an order-dependent failure.
+_BASELINE_CONTROL_IDS: set[str] = set()
+
+#: Roles seeded by seed_rbac(); anything else is test-created.
+_SYSTEM_ROLES = ("superadmin", "org_admin", "analyst", "viewer", "scanner")
+
+
+def _purge_test_data():
+    """
+    Remove test-created rows, leaving reference data in place.
+
+    This used to be ``TRUNCATE TABLE organizations, users CASCADE``. That looks
+    narrow but is not: ``compliance_frameworks.tenant_id`` references
+    ``organizations`` with ON DELETE CASCADE, and ``compliance_controls``
+    cascades from there in turn, so the statement reached 63 tables and wiped
+    the ~800 seeded compliance controls on every single test. The application's
+    startup then re-seeded all twelve frameworks the next time a test built a
+    TestClient.
+
+    Deleting only the organisations that tests created keeps the cascade doing
+    the useful half of its job (removing that tenant's scans, assets, users and
+    findings) while leaving the catalog intact.
+    """
+    with engine.begin() as conn:
+        if _BASELINE_ORG_IDS:
+            # Cheap guard: the cascading DELETE touches 63 tables, so it is
+            # worth one indexed count to skip it when a test created nothing.
+            pending = conn.execute(
+                text("SELECT 1 FROM organizations WHERE id <> ALL(:keep) LIMIT 1"),
+                {"keep": list(_BASELINE_ORG_IDS)},
+            ).scalar()
+            if pending:
+                conn.execute(
+                    text("DELETE FROM organizations WHERE id <> ALL(:keep)"),
+                    {"keep": list(_BASELINE_ORG_IDS)},
+                )
+        else:
+            # No baseline captured (session fixtures did not run, e.g. a single
+            # test invoked with --noconftest-style isolation) — fall back to the
+            # old behaviour rather than silently leaving tenant data behind.
+            conn.execute(text("TRUNCATE TABLE organizations CASCADE"))
+
+        # users has no seeded rows and cascades only to notifications,
+        # password_reset_tokens and refresh_token_sessions.
+        if conn.execute(text("SELECT 1 FROM users LIMIT 1")).scalar():
+            conn.execute(text("TRUNCATE TABLE users CASCADE"))
+
+        # Frameworks created by a test against the baseline organisation are not
+        # reached by the organisation delete above, so they are removed here.
+        # Their controls follow via ON DELETE CASCADE.
+        if _BASELINE_FRAMEWORK_IDS:
+            stray = conn.execute(
+                text(
+                    "SELECT 1 FROM compliance_frameworks "
+                    "WHERE id <> ALL(:keep) LIMIT 1"
+                ),
+                {"keep": list(_BASELINE_FRAMEWORK_IDS)},
+            ).scalar()
+            if stray:
+                conn.execute(
+                    text("DELETE FROM compliance_frameworks WHERE id <> ALL(:keep)"),
+                    {"keep": list(_BASELINE_FRAMEWORK_IDS)},
+                )
+
+        # Controls added to a framework that is itself baseline. Guarded by a
+        # count rather than a scan over ~800 ids, so the common case (nothing
+        # added) costs one aggregate. Their rule links follow via cascade.
+        if _BASELINE_CONTROL_IDS:
+            total = conn.execute(
+                text("SELECT count(*) FROM compliance_controls")
+            ).scalar()
+            if total != len(_BASELINE_CONTROL_IDS):
+                conn.execute(
+                    text("DELETE FROM compliance_controls WHERE id <> ALL(:keep)"),
+                    {"keep": list(_BASELINE_CONTROL_IDS)},
+                )
+
+        conn.execute(
+            text("DELETE FROM roles WHERE name <> ALL(:system_roles)"),
+            {"system_roles": list(_SYSTEM_ROLES)},
+        )
+
 
 @pytest.fixture(scope="function", autouse=True)
-def reset_database():
-    """Clean up the database before and after each test to ensure isolation in PostgreSQL."""
-    from sqlalchemy import text
+def reset_database(session_client):
+    """
+    Purge test-created data after each test.
 
-    def _cleanup():
-        with engine.begin() as conn:
-            # Truncate organizations and users. Clean up any custom roles.
-            # Do NOT truncate system roles, as they are seeded session-wide.
-            conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
-            conn.execute(
-                text(
-                    "DELETE FROM roles WHERE name NOT IN ('superadmin', 'org_admin', 'analyst', 'viewer', 'scanner')"
-                )
-            )
-
-    # Clean up before the test (in case a previous run crashed and left dirty state)
-    _cleanup()
+    This used to purge before *and* after every test, paying for the same
+    cleanup twice. Teardown runs even when a test fails, so the post-test purge
+    is what provides isolation; the pre-test purge only covered a previous
+    process dying mid-test, which is a once-per-session concern and is handled
+    when the session's baseline is established.
+    """
     yield
-    # Clean up after the test
-    _cleanup()
+    _purge_test_data()
 
 
 @pytest.fixture(scope="function")
@@ -272,15 +555,22 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture(scope="function")
-def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """FastAPI TestClient that overrides the get_db dependency."""
+def client(
+    session_client: TestClient, db_session: Session
+) -> Generator[TestClient, None, None]:
+    """
+    The session's TestClient, with get_db pointed at this test's session.
+
+    The client is shared; the dependency override is not. Overrides are applied
+    and cleared per test exactly as before, so each test still talks to its own
+    database session — only the application startup is now shared.
+    """
 
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
+    yield session_client
     app.dependency_overrides.clear()
 
 

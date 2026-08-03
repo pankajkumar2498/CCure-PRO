@@ -19,14 +19,41 @@ from typing import Dict, List, Set
 log = logging.getLogger("ccure.web.correlation")
 
 
+def _finding_identity(f: dict) -> str:
+    """
+    What makes a finding *this* finding rather than another one.
+
+    ``finding_type`` is a category, not an identity — "misconfig" covers every
+    missing security header, every permissive CORS policy and every exposed
+    admin panel. Keying deduplication on it alone merged all of them into one
+    row per URL: a host missing eight security headers reported a single
+    finding and quietly discarded the other seven.
+
+    The template id is the precise identity where a tool supplies one (nuclei
+    templates are stable ids); the title is the fallback, and is what the
+    built-in checks distinguish themselves by.
+    """
+    for key in ("template_id", "template-id", "plugin_id", "check_id"):
+        value = str(f.get(key) or "").strip()
+        if value:
+            return value.lower()
+    title = str(f.get("title") or f.get("name") or "").strip().lower()
+    if title:
+        return title
+    return str(f.get("finding_type") or "unknown").strip().lower()
+
+
 def deduplicate_findings(findings: list[dict]) -> list[dict]:
     """
-    Deduplicate web findings by URL + finding_type.
+    Collapse repeat reports of the *same* issue at the same location.
 
     When duplicates are found:
       - Keep the one with highest severity
       - Merge evidence from both
       - Mark as verified if multiple tools confirm
+
+    Two findings are the same only when they are the same check at the same
+    place. Anything coarser is not deduplication, it is data loss.
 
     Args:
         findings: Raw finding dicts from all detection tools
@@ -37,12 +64,12 @@ def deduplicate_findings(findings: list[dict]) -> list[dict]:
     if not findings:
         return []
 
-    # Group by (matched_at_url, finding_type)
+    # Group by (url, finding_type, specific check identity)
     groups: dict[str, list[dict]] = {}
     for f in findings:
         url = (f.get("matched_at") or f.get("request_url") or "").split("?")[0]
         ftype = f.get("finding_type", "unknown")
-        key = f"{url}|{ftype}"
+        key = f"{url}|{ftype}|{_finding_identity(f)}"
         groups.setdefault(key, []).append(f)
 
     deduplicated: list[dict] = []

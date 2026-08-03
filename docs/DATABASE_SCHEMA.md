@@ -223,31 +223,31 @@ Purged daily by the background cleanup loop in `main.py`.
 
 One row per scan session.
 
-| Column                                                                                   | Type                                           | Notes                                                            |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
-| `id`                                                                                     | `String(100)` PK                               | `scn_{org_token}_{ddmonyy}_{4rand}`                              |
-| `org_id`                                                                                 | `String(100)` FK → `organizations.id`, cascade |                                                                  |
-| `created_by`                                                                             | `String(150)` FK → `users.id` `SET NULL`       |                                                                  |
-| `scan_no`                                                                                | `BigInteger` nullable                          | per-org sequential display number                                |
-| `scan_name`                                                                              | `String(255)` nullable                         |                                                                  |
-| `target_network`                                                                         | `CIDR` nullable                                |                                                                  |
-| `target_hosts`                                                                           | `JSONB` default `[]`                           |                                                                  |
-| `target_str`                                                                             | `String(512)`                                  | human-readable target summary                                    |
-| `scan_type`                                                                              | `String(50)` default `adaptive`                |                                                                  |
-| `pipeline_mode`                                                                          | `String(50)` default `basic`                   | `basic / asset / vulnerability_audit`                            |
-| `intensity`                                                                              | `String(50)` default `normal`                  |                                                                  |
-| `options`                                                                                | `JSONB` default `{}`                           | execution_mode, custom_ports, discovery_intensity (GIN-indexed)  |
-| `status`                                                                                 | `String(50)` default `queued`, indexed         | `queued → running → complete / failed / cancelled / unreachable` |
-| `failure_reason`                                                                         | `Text` nullable                                |                                                                  |
-| `current_task_id`                                                                        | `String(100)` nullable                         | active Celery task ID, used for revocation                       |
-| `queued_at`, `started_at`, `completed_at`                                                | `TIMESTAMPTZ`                                  |                                                                  |
-| `duration_seconds`                                                                       | `Float` nullable                               |                                                                  |
-| `total_hosts`, `active_hosts`                                                            | `Integer` default 0                            |                                                                  |
-| `total_vulns`, `critical_count`, `high_count`, `medium_count`, `low_count`, `info_count` | `Integer` default 0                            | denormalized for dashboard speed                                 |
-| `report_pdf_path`, `report_xml_path`, `report_json_path`                                 | `String(512)` nullable                         |                                                                  |
-| `is_archived`, `archived_at`                                                             | `Boolean / TIMESTAMPTZ`                        | Archived Scans view                                              |
-| `is_deleted`, `deleted_at`                                                               | `Boolean / TIMESTAMPTZ`                        | Recycle Bin                                                      |
-| `created_at`, `updated_at`                                                               | `TIMESTAMPTZ`                                  |                                                                  |
+| Column                                                                                   | Type                                           | Notes                                                                    |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| `id`                                                                                     | `String(100)` PK                               | `scn_{org_token}_{ddmonyy}_{4rand}`                                      |
+| `org_id`                                                                                 | `String(100)` FK → `organizations.id`, cascade |                                                                          |
+| `created_by`                                                                             | `String(150)` FK → `users.id` `SET NULL`       |                                                                          |
+| `scan_no`                                                                                | `BigInteger` nullable                          | per-org sequential display number                                        |
+| `scan_name`                                                                              | `String(255)` nullable                         |                                                                          |
+| `target_network`                                                                         | `CIDR` nullable                                |                                                                          |
+| `target_hosts`                                                                           | `JSONB` default `[]`                           |                                                                          |
+| `target_str`                                                                             | `String(512)`                                  | human-readable target summary                                            |
+| `scan_type`                                                                              | `String(50)` default `adaptive`                |                                                                          |
+| `pipeline_mode`                                                                          | `String(50)` default `basic`                   | `basic / asset / vulnerability_audit`                                    |
+| `intensity`                                                                              | `String(50)` default `normal`                  |                                                                          |
+| `options`                                                                                | `JSONB` default `{}`                           | execution_mode, custom_ports, discovery_intensity (GIN-indexed)          |
+| `status`                                                                                 | `String(50)` default `queued`, indexed         | `queued → running → complete / failed / cancelled / unreachable`         |
+| `failure_reason`                                                                         | `Text` nullable                                |                                                                          |
+| `current_task_id`                                                                        | `String(100)` nullable                         | active Celery task ID, used for revocation                               |
+| `queued_at`, `started_at`, `completed_at`                                                | `TIMESTAMPTZ`                                  |                                                                          |
+| `duration_seconds`                                                                       | `Float` nullable                               |                                                                          |
+| `total_hosts`, `active_hosts`                                                            | `Integer` default 0                            |                                                                          |
+| `total_vulns`, `critical_count`, `high_count`, `medium_count`, `low_count`, `info_count` | `Integer` default 0                            | denormalized for dashboard speed                                         |
+| `report_pdf_path`, `report_technical_path`, `report_executive_path`                      | `String(512)` nullable                         | renamed from `report_xml_path` / `report_json_path` (rev `w6b7c8d9e0f1`) |
+| `is_archived`, `archived_at`                                                             | `Boolean / TIMESTAMPTZ`                        | Archived Scans view                                                      |
+| `is_deleted`, `deleted_at`                                                               | `Boolean / TIMESTAMPTZ`                        | Recycle Bin                                                              |
+| `created_at`, `updated_at`                                                               | `TIMESTAMPTZ`                                  |                                                                          |
 
 Constraints: unique `(org_id, scan_no)`; indexes on `(org_id, status)`, `(org_id, created_at)`, `(org_id, pipeline_mode)`, `is_deleted`, GIN on `options`.
 
@@ -270,6 +270,28 @@ One row per phase within a scan.
 | `created_at`, `updated_at`   | `TIMESTAMPTZ`                          |                                                                            |
 
 Unique: `(scan_id, phase_key)`.
+
+### `scan_reports`
+
+One row per generated report artifact. Distinct from the `report_*_path`
+columns on `scans`, which hold only the latest executive and technical PDFs:
+this table records every artifact produced, so the same scan can have several
+rows differing by format or severity filter.
+
+| Column          | Type                             | Notes                                  |
+| --------------- | -------------------------------- | -------------------------------------- |
+| `id`            | `String(36)` PK                  | UUID4                                  |
+| `scan_id`       | `String(36)` indexed             | not a declared FK                      |
+| `scan_type`     | `String(32)` default `network`   | `network`, `web`                       |
+| `report_type`   | `String(32)` default `executive` | `executive`, `technical`, `raw`        |
+| `report_format` | `String(16)` default `pdf`       | `pdf`, `csv`, `json`, `xml`            |
+| `min_severity`  | `String(16)` default `Info`      | severity floor applied when generating |
+| `file_path`     | `String(512)` not null           | path to the artifact on disk           |
+| `created_at`    | `TIMESTAMPTZ`                    |                                        |
+
+Note: `scan_id` carries no foreign-key constraint, so deleting a scan does not
+cascade to its report rows — the report-deletion endpoint removes the files and
+records explicitly.
 
 ## 6. Asset Registry Tables
 
@@ -491,34 +513,34 @@ Indexes: unique `(org_id, mac_address_1)`; `(org_id, mac_address_2)`.
 
 ### `web_scans`
 
-| Column                                                                                                         | Type                                           | Notes                                              |
-| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
-| `id`                                                                                                           | `String(100)` PK                               | `wsc_{org_token}_{ddmonyy}_{4rand}`                |
-| `org_id`                                                                                                       | `String(100)` FK → `organizations.id`, cascade |                                                    |
-| `created_by`                                                                                                   | `String(150)` FK → `users.id` `SET NULL`       |                                                    |
-| `scan_name`                                                                                                    | `String(255)` nullable                         |                                                    |
-| `target_url`                                                                                                   | `Text`                                         |                                                    |
-| `target_domain`                                                                                                | `String(512)`, indexed                         |                                                    |
-| `scan_scope`                                                                                                   | `JSONB` default `{}`                           | `include_subdomains`, `exclude_paths`, `max_depth` |
-| `auth_config`                                                                                                  | `JSONB` default `{}`                           | auth type + credential references                  |
-| `options`                                                                                                      | `JSONB` default `{}` (GIN-indexed)             | scan flags, `_launch` idempotency key              |
-| `rate_limit`                                                                                                   | `Integer` default 10                           | requests/second                                    |
-| `waf_detected`                                                                                                 | `String(100)` nullable                         |                                                    |
-| `tech_stack`                                                                                                   | `JSONB` default `[]` (GIN-indexed)             | `[{name, version, category}]`                      |
-| `subdomains`                                                                                                   | `JSONB` default `[]`                           |                                                    |
-| `status`                                                                                                       | `String(50)` default `queued`, indexed         | `queued → running → complete / failed / cancelled` |
-| `pipeline_phase`                                                                                               | `String(50)` default `queued`                  |                                                    |
-| `failure_reason`                                                                                               | `Text` nullable                                |                                                    |
-| `current_task_id`                                                                                              | `String(100)` nullable                         |                                                    |
-| `authorization_confirmed`                                                                                      | `Boolean` default `false`                      | **required** before dispatch                       |
-| `recon_status`, `crawl_status`, `detect_status`, `audit_status`                                                | `String(50)` default `pending`                 |                                                    |
-| `queued_at`, `started_at`, `completed_at`                                                                      | `TIMESTAMPTZ`                                  |                                                    |
-| `duration_seconds`                                                                                             | `Float` nullable                               |                                                    |
-| Per-phase timing fields (8 columns)                                                                            | `TIMESTAMPTZ` nullable                         | `recon_started_at`, `recon_completed_at`, etc.     |
-| `total_endpoints`, `total_findings`, `critical_count`, `high_count`, `medium_count`, `low_count`, `info_count` | `Integer` default 0                            |                                                    |
-| `report_pdf_path`, `report_json_path`                                                                          | `String(512)` nullable                         |                                                    |
-| `is_archived`, `archived_at`, `is_deleted`, `deleted_at`                                                       | `Boolean` / `TIMESTAMPTZ`                      |                                                    |
-| `created_at`, `updated_at`                                                                                     | `TIMESTAMPTZ`                                  |                                                    |
+| Column                                                                                                         | Type                                           | Notes                                               |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `id`                                                                                                           | `String(100)` PK                               | `wsc_{org_token}_{ddmonyy}_{4rand}`                 |
+| `org_id`                                                                                                       | `String(100)` FK → `organizations.id`, cascade |                                                     |
+| `created_by`                                                                                                   | `String(150)` FK → `users.id` `SET NULL`       |                                                     |
+| `scan_name`                                                                                                    | `String(255)` nullable                         |                                                     |
+| `target_url`                                                                                                   | `Text`                                         |                                                     |
+| `target_domain`                                                                                                | `String(512)`, indexed                         |                                                     |
+| `scan_scope`                                                                                                   | `JSONB` default `{}`                           | `include_subdomains`, `exclude_paths`, `max_depth`  |
+| `auth_config`                                                                                                  | `JSONB` default `{}`                           | auth type + credential references                   |
+| `options`                                                                                                      | `JSONB` default `{}` (GIN-indexed)             | scan flags, `_launch` idempotency key               |
+| `rate_limit`                                                                                                   | `Integer` default 10                           | requests/second                                     |
+| `waf_detected`                                                                                                 | `String(100)` nullable                         |                                                     |
+| `tech_stack`                                                                                                   | `JSONB` default `[]` (GIN-indexed)             | `[{name, version, category}]`                       |
+| `subdomains`                                                                                                   | `JSONB` default `[]`                           |                                                     |
+| `status`                                                                                                       | `String(50)` default `queued`, indexed         | `queued → running → complete / failed / cancelled`  |
+| `pipeline_phase`                                                                                               | `String(50)` default `queued`                  |                                                     |
+| `failure_reason`                                                                                               | `Text` nullable                                |                                                     |
+| `current_task_id`                                                                                              | `String(100)` nullable                         |                                                     |
+| `authorization_confirmed`                                                                                      | `Boolean` default `false`                      | **required** before dispatch                        |
+| `recon_status`, `crawl_status`, `detect_status`, `audit_status`                                                | `String(50)` default `pending`                 |                                                     |
+| `queued_at`, `started_at`, `completed_at`                                                                      | `TIMESTAMPTZ`                                  |                                                     |
+| `duration_seconds`                                                                                             | `Float` nullable                               |                                                     |
+| Per-phase timing fields (8 columns)                                                                            | `TIMESTAMPTZ` nullable                         | `recon_started_at`, `recon_completed_at`, etc.      |
+| `total_endpoints`, `total_findings`, `critical_count`, `high_count`, `medium_count`, `low_count`, `info_count` | `Integer` default 0                            |                                                     |
+| `report_pdf_path`, `report_json_path`                                                                          | `String(512)` nullable                         | `report_json_path` is vestigial — nothing writes it |
+| `is_archived`, `archived_at`, `is_deleted`, `deleted_at`                                                       | `Boolean` / `TIMESTAMPTZ`                      |                                                     |
+| `created_at`, `updated_at`                                                                                     | `TIMESTAMPTZ`                                  |                                                     |
 
 ### `network_links`
 

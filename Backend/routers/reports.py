@@ -104,21 +104,42 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
         hosts=hosts_list,
     )
 
+    # Feed age is a material caveat on any vulnerability report: findings can
+    # only be as current as the CVE data behind them. Recording it here means
+    # the report states the feed date instead of implying it is current.
+    feed = {}
+    try:
+        from core.vuln_intel import get_feed_freshness
+
+        freshness = get_feed_freshness()
+        if freshness.get("last_modified"):
+            feed["cve_feed_updated"] = freshness["last_modified"]
+        if freshness.get("cve_count"):
+            feed["cve_feed_size"] = freshness["cve_count"]
+    except Exception as exc:  # never block report generation on this
+        log.debug("Feed freshness unavailable for scan %s: %s", scan.id, exc)
+
     result = {
         "success": True,
         "data": payload_data,
         "summary": payload.get("summary", {}),
-        "metadata": {"scan_no": scan.scan_no, **payload_meta, **context_meta},
+        "metadata": {
+            "scan_no": scan.scan_no,
+            "scan_id": scan.id,
+            **feed,
+            **payload_meta,
+            **context_meta,
+        },
     }
     apply_phase1_summary_hints(result, db, str(scan.created_by), scan.id)
 
     report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(result, key)
     report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}
     if report_paths:
-        if report_paths.get("json_pdf"):
-            scan.report_json_path = report_paths["json_pdf"]
-        if report_paths.get("xml_pdf"):
-            scan.report_xml_path = report_paths["xml_pdf"]
+        if report_paths.get("executive_pdf"):
+            scan.report_executive_path = report_paths["executive_pdf"]
+        if report_paths.get("technical_pdf"):
+            scan.report_technical_path = report_paths["technical_pdf"]
         db.commit()
         db.refresh(scan)
 
@@ -211,6 +232,8 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
 def download_report(
     scan_id: str,
     fmt: str = "JSON",
+    type: Optional[str] = None,
+    min_severity: str = "Info",
     ticket: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_flexible),
@@ -228,18 +251,53 @@ def download_report(
         raise HTTPException(status_code=404, detail="Scan not found.")
 
     fmt_upper = fmt.upper()
-    if fmt_upper not in ("JSON", "XML"):
-        raise HTTPException(status_code=400, detail="fmt must be 'JSON' or 'XML'.")
+    type_upper = (type or "").upper()
 
-    pdf_path = scan.report_json_path if fmt_upper == "JSON" else scan.report_xml_path
+    # Determine target report format and media type
+    if fmt_upper == "CSV" or type_upper == "CSV":
+        # CSV Export Generation
+        payloads = build_legacy_scan_results(db, str(scan.id))
+        key = (
+            "credentialed"
+            if "credentialed" in payloads
+            else "phase3" if "phase3" in payloads else "phase1"
+        )
+        payload = payloads.get(key, {})
+        csv_filename = f"scan_{scan.scan_no}_{scan_id[:8]}.csv"
+        csv_path = os.path.join(_REPORTS_DIR, csv_filename)
+        from csv_generator import generate_scan_csv
+
+        generate_scan_csv(payload, csv_path, scan_type="network")
+
+        # Record Audit Log
+        try:
+            audit_entry = AuditLog(
+                user_id=user.id,
+                action="REPORT_DOWNLOAD",
+                target=f"Scan {scan.scan_no} (CSV)",
+                details=f"Downloaded CSV report for scan_id {scan_id}",
+            )
+            db.add(audit_entry)
+            db.commit()
+        except Exception:
+            pass
+
+        return FileResponse(path=csv_path, media_type="text/csv", filename=csv_filename)
+
+    # Standard PDF Report Generation (Executive vs Technical Audit)
+    is_technical = fmt_upper == "XML" or type_upper in ("TECHNICAL", "XML")
+    report_paths = _load_scan_report_paths(db, scan)
+    pdf_path = report_paths.get("technical_pdf" if is_technical else "executive_pdf")
+
     if not pdf_path or not os.path.isfile(os.path.abspath(pdf_path)):
-        report_paths = _load_scan_report_paths(db, scan)
-        pdf_path = report_paths.get("json_pdf" if fmt_upper == "JSON" else "xml_pdf")
+        pdf_path = (
+            scan.report_technical_path if is_technical else scan.report_executive_path
+        )
 
     if not pdf_path:
         raise HTTPException(
             status_code=404,
-            detail=f"No {fmt_upper} PDF report is attached to this scan.",
+            detail=f"No {'Technical' if is_technical else 'Executive'} PDF report is available for this scan.",
         )
 
     pdf_path = os.path.abspath(pdf_path)
@@ -248,6 +306,19 @@ def download_report(
         raise HTTPException(status_code=404, detail="Report file not found on disk.")
     if os.path.commonpath([reports_root, pdf_path]) != reports_root:
         raise HTTPException(status_code=400, detail="Stored report path is invalid.")
+
+    # Record Audit Log
+    try:
+        audit_entry = AuditLog(
+            user_id=user.id,
+            action="REPORT_DOWNLOAD",
+            target=f"Scan {scan.scan_no} ({'Technical' if is_technical else 'Executive'} PDF)",
+            details=f"Downloaded PDF report for scan_id {scan_id}",
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception:
+        pass
 
     return FileResponse(
         path=pdf_path,
@@ -275,7 +346,11 @@ def delete_report(
         raise HTTPException(status_code=404, detail="Scan not found.")
 
     deleted_files = 0
-    for path_attr in ("report_json_path", "report_xml_path", "report_pdf_path"):
+    for path_attr in (
+        "report_executive_path",
+        "report_technical_path",
+        "report_pdf_path",
+    ):
         report_path = getattr(scan, path_attr, None)
         if not report_path:
             continue

@@ -13,7 +13,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
 from config import AppConfig
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -157,6 +157,63 @@ def normalize_package_names(name: str) -> list[str]:
     return [item for item in candidates if item]
 
 
+def parse_cpe_identities(cpes: Any) -> list[tuple[str, str]]:
+    """
+    Extract ``(vendor, product)`` pairs from scanner-assigned CPE strings.
+
+    Both formats in circulation are handled — CPE 2.2 (``cpe:/a:vendor:product``),
+    which is what Nmap emits, and CPE 2.3 (``cpe:2.3:a:vendor:product:...``).
+    Anything that does not parse is skipped rather than guessed at: a bad
+    identity would silently select the wrong product's CVEs.
+    """
+    identities: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in as_list(cpes):
+        text_value = str(raw or "").strip().lower()
+        if not text_value.startswith("cpe:"):
+            continue
+        parts = text_value.split(":")
+        if len(parts) > 2 and parts[1] == "2.3":
+            vendor, product = (parts[3], parts[4]) if len(parts) > 4 else ("", "")
+        else:
+            # cpe:/a:vendor:product[:version]
+            vendor, product = (parts[2], parts[3]) if len(parts) > 3 else ("", "")
+        vendor, product = vendor.strip(), product.strip()
+        if not vendor or not product or product in ("*", "-"):
+            continue
+        if (vendor, product) not in seen:
+            seen.add((vendor, product))
+            identities.append((vendor, product))
+    return identities
+
+
+def build_cpe_identity_clauses(
+    identities: list[tuple[str, str]],
+) -> tuple[str, dict[str, str]]:
+    """
+    WHERE clause selecting rows by exact CPE **product**.
+
+    Equality rather than ``LIKE '%…%'``: these come from the scanner's own
+    identification, so there is nothing to guess, and equality uses the index
+    on the column.
+
+    Vendor is deliberately not part of the key. The two sides disagree on it
+    often enough to matter — Nmap still identifies nginx as ``igor_sysoev``
+    while NVD reassigned it to ``f5`` — and requiring both to agree would drop
+    every nginx CVE on the floor. Product names come from the same CPE
+    dictionary on both sides and are stable across those vendor reassignments.
+    """
+    clauses: list[str] = []
+    params: dict[str, str] = {}
+    for index, (_vendor, product) in enumerate(identities):
+        param = f"cpe_p_{index}"
+        if param in params:
+            continue
+        clauses.append(f"LOWER(cpe.product) = :{param}")
+        params[param] = product
+    return (" OR ".join(clauses)) or "FALSE", params
+
+
 def as_list(value: Any) -> list[Any]:
     if value is None:
         return []
@@ -202,6 +259,35 @@ def can_connect_vuln_db() -> bool:
     except SQLAlchemyError as exc:
         logger.debug("Vulnerability-intel database or 'cve' table unavailable: %s", exc)
         return False
+
+
+def get_feed_freshness() -> dict[str, Any]:
+    """
+    Report how current the vulnerability feed is.
+
+    A vulnerability report is only as good as the feed behind it: a scan run
+    against a feed that is weeks old cannot know about anything published
+    since, and "no findings" then means far less than it appears. The report
+    therefore states the feed date rather than leaving the reader to assume it
+    is current.
+
+    Returns ``{"last_modified": date|None, "cve_count": int|None}``. Values are
+    None when the feed cannot be queried, so the report says "not recorded"
+    instead of implying freshness it cannot demonstrate.
+    """
+    blank: dict[str, Any] = {"last_modified": None, "cve_count": None}
+    try:
+        with get_vuln_engine().connect() as conn:
+            row = conn.execute(
+                text("SELECT max(last_modified), count(*) FROM cve")
+            ).first()
+    except SQLAlchemyError as exc:
+        logger.debug("Vulnerability feed freshness unavailable: %s", exc)
+        return blank
+
+    if not row:
+        return blank
+    return {"last_modified": row[0], "cve_count": row[1]}
 
 
 def merge_alias_fields(record: dict[str, Any]) -> dict[str, Any]:

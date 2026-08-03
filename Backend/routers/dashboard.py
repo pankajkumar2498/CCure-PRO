@@ -28,6 +28,7 @@ from db.base import get_db, utcnow
 from db.models import User
 from db.models.assets import Asset, AssetChangeLog
 from db.models.findings import (
+    OBSERVED_SERVICE_STATES,
     AssetVulnerability,
     HttpSecurityDetail,
     Service,
@@ -561,7 +562,7 @@ def get_services_exposure(
             func.count(Service.asset_id.distinct()).label("asset_count"),
         )
         .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org, Service.state == "open")
+        .filter(Asset.org_id == org, Service.state.in_(OBSERVED_SERVICE_STATES))
         .group_by(Service.port, Service.protocol, Service.service_name)
         .order_by(func.count(Service.asset_id.distinct()).desc())
         .limit(20)
@@ -740,7 +741,7 @@ def get_compliance(
         .filter(
             Asset.org_id == org,
             Service.port.in_([21, 23, 80, 110, 143]),
-            Service.state == "open",
+            Service.state.in_(OBSERVED_SERVICE_STATES),
         )
         .scalar()
         or 0

@@ -149,16 +149,16 @@ def test_credentialed_report_generation_linux():
         paths = gen.generate(result, scan_type="credentialed_scan")
 
         # Validate that the reports were generated and paths don't contain errors
-        assert "json_pdf" in paths
-        assert "xml_pdf" in paths
-        assert not paths["json_pdf"].startswith("ERROR")
-        assert not paths["xml_pdf"].startswith("ERROR")
+        assert "executive_pdf" in paths
+        assert "technical_pdf" in paths
+        assert not paths["executive_pdf"].startswith("ERROR")
+        assert not paths["technical_pdf"].startswith("ERROR")
 
         # Verify files exist and have content
-        assert os.path.exists(paths["json_pdf"])
-        assert os.path.getsize(paths["json_pdf"]) > 0
-        assert os.path.exists(paths["xml_pdf"])
-        assert os.path.getsize(paths["xml_pdf"]) > 0
+        assert os.path.exists(paths["executive_pdf"])
+        assert os.path.getsize(paths["executive_pdf"]) > 0
+        assert os.path.exists(paths["technical_pdf"])
+        assert os.path.getsize(paths["technical_pdf"]) > 0
 
     finally:
         # Cleanup temporary files
@@ -287,16 +287,16 @@ def test_credentialed_report_generation_windows():
         paths = gen.generate(result, scan_type="credentialed_scan")
 
         # Validate that the reports were generated and paths don't contain errors
-        assert "json_pdf" in paths
-        assert "xml_pdf" in paths
-        assert not paths["json_pdf"].startswith("ERROR")
-        assert not paths["xml_pdf"].startswith("ERROR")
+        assert "executive_pdf" in paths
+        assert "technical_pdf" in paths
+        assert not paths["executive_pdf"].startswith("ERROR")
+        assert not paths["technical_pdf"].startswith("ERROR")
 
         # Verify files exist and have content
-        assert os.path.exists(paths["json_pdf"])
-        assert os.path.getsize(paths["json_pdf"]) > 0
-        assert os.path.exists(paths["xml_pdf"])
-        assert os.path.getsize(paths["xml_pdf"]) > 0
+        assert os.path.exists(paths["executive_pdf"])
+        assert os.path.getsize(paths["executive_pdf"]) > 0
+        assert os.path.exists(paths["technical_pdf"])
+        assert os.path.getsize(paths["technical_pdf"]) > 0
 
     finally:
         # Cleanup temporary files

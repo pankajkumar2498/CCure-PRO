@@ -54,6 +54,12 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Master key for credentials stored at rest (scan logins, credentialed
+      # scan passwords). Unset falls back to a key hardcoded in the source,
+      # which protects nothing — set this in .env for any real deployment.
+      # Note: changing it makes credentials encrypted under the old key
+      # unreadable, so re-enter stored credentials after setting it.
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
@@ -102,6 +108,12 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Master key for credentials stored at rest (scan logins, credentialed
+      # scan passwords). Unset falls back to a key hardcoded in the source,
+      # which protects nothing — set this in .env for any real deployment.
+      # Note: changing it makes credentials encrypted under the old key
+      # unreadable, so re-enter stored credentials after setting it.
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
@@ -154,6 +166,12 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Master key for credentials stored at rest (scan logins, credentialed
+      # scan passwords). Unset falls back to a key hardcoded in the source,
+      # which protects nothing — set this in .env for any real deployment.
+      # Note: changing it makes credentials encrypted under the old key
+      # unreadable, so re-enter stored credentials after setting it.
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
       - APP_ENV=production
       - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}

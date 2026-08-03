@@ -13,8 +13,10 @@ This crawler handles:
   - Scope enforcement (stay within target domain/path)
 """
 
+import hashlib
 import logging
 import re
+import uuid
 from collections import deque
 from typing import Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse
@@ -81,6 +83,12 @@ class CrawlResult:
         self.errors: list[str] = []
         self.pages_visited: int = 0
         self.api_specs: list[dict] = []
+        #: Navigations that left the authorised scope and were abandoned.
+        #: Recorded rather than merely dropped: an open redirect that sends the
+        #: crawler to a third party is itself a finding about the target.
+        self.out_of_scope: list[dict] = []
+        #: URLs the application answered with its not-found page.
+        self.soft_404s: list[str] = []
 
     def to_dict(self) -> dict:
         return {
@@ -92,6 +100,8 @@ class CrawlResult:
             "errors": self.errors,
             "pages_visited": self.pages_visited,
             "api_specs": self.api_specs,
+            "out_of_scope": self.out_of_scope,
+            "soft_404s": self.soft_404s,
         }
 
 
@@ -119,11 +129,15 @@ class PlaywrightCrawler:
         max_urls: int | None = None,
         timeout: int | None = None,
         concurrency: int | None = None,
+        settle_timeout: int | None = None,
     ):
         self.max_depth = max_depth or WebScanConfig.MAX_CRAWL_DEPTH
         self.max_urls = max_urls or WebScanConfig.MAX_CRAWL_URLS
         self.timeout = timeout or WebScanConfig.PLAYWRIGHT_TIMEOUT
         self.concurrency = concurrency or WebScanConfig.CRAWL_CONCURRENCY
+        #: How long to wait for a page to go quiet after the document loads,
+        #: bounded so a page that never goes quiet cannot stall the crawl.
+        self.settle_timeout = settle_timeout or WebScanConfig.CRAWL_SETTLE_TIMEOUT
 
     async def crawl(
         self,
@@ -206,6 +220,40 @@ class PlaywrightCrawler:
                 if auth_headers:
                     await context.set_extra_http_headers(auth_headers)
 
+                # Refuse to *navigate* off-scope in the first place.
+                #
+                # The check after page.goto() below catches a redirect that has
+                # already happened; by then the request to the third party has
+                # been sent. A scan is authorised for a target, not for whatever
+                # an open redirect on that target points at, so the navigation
+                # is aborted before it leaves.
+                #
+                # Only document requests are blocked. Sub-resources — a script or
+                # stylesheet on a CDN — are left alone, because blocking those
+                # stops the page rendering and a crawler that cannot render sees
+                # nothing to crawl.
+                blocked_navigations: list[dict] = []
+
+                async def _scope_guard(route, request):
+                    try:
+                        if (
+                            request.resource_type == "document"
+                            and not self._is_in_scope(
+                                request.url, allowed_domains, exclude_compiled
+                            )
+                        ):
+                            blocked_navigations.append({"url": request.url})
+                            await route.abort()
+                            return
+                        await route.continue_()
+                    except Exception:
+                        try:
+                            await route.continue_()
+                        except Exception:
+                            pass
+
+                await context.route("**/*", _scope_guard)
+
                 # Intercept network requests for API discovery
                 network_apis: list[dict] = []
 
@@ -232,6 +280,14 @@ class PlaywrightCrawler:
 
                 page.on("response", _on_response)
 
+                # Learn what a missing page looks like before trusting any 200.
+                soft_404 = await self._soft_404_fingerprint(page, start_url)
+                if soft_404:
+                    log.info(
+                        "Target answers unknown paths with 200 — soft-404 baseline "
+                        "recorded; pages matching it will not be reported as endpoints"
+                    )
+
                 while queue and len(visited) < self.max_urls:
                     url, depth = queue.popleft()
 
@@ -249,53 +305,130 @@ class PlaywrightCrawler:
                     visited.add(url)
                     result.pages_visited += 1
 
+                    blocked_before = len(blocked_navigations)
                     try:
+                        # Wait for the document, then give the page a bounded
+                        # moment to settle.
+                        #
+                        # Waiting on "networkidle" for the full page timeout
+                        # stalls on any application that holds a connection open
+                        # — a websocket, a polling heartbeat, an analytics
+                        # beacon. Network idle simply never arrives, so every
+                        # page costs the entire timeout, and a few hundred URLs
+                        # turn a crawl into an overnight job. The settle wait
+                        # below gives client-rendered content time to appear and
+                        # then moves on regardless.
                         response = await page.goto(
-                            url, wait_until="networkidle", timeout=self.timeout
+                            url, wait_until="domcontentloaded", timeout=self.timeout
                         )
-                        if not response:
+                        try:
+                            await page.wait_for_load_state(
+                                "networkidle", timeout=self.settle_timeout
+                            )
+                        except Exception:
+                            pass  # Busy page — crawl what has rendered so far.
+
+                        # Where the browser actually ended up. Redirects mean the
+                        # requested URL and the loaded document need not share an
+                        # origin, a path, or anything else — and everything below
+                        # is about the document, so it must be keyed to this.
+                        final_url = self._normalize_url(page.url) or url
+                        visited.add(final_url)
+
+                        # Scope is re-checked *after* navigation. A target with an
+                        # open redirect will otherwise walk the crawler onto a
+                        # third-party site, which is both outside the authorisation
+                        # this scan has and the source of the fabricated endpoints
+                        # below.
+                        if not self._is_in_scope(
+                            final_url, allowed_domains, exclude_compiled
+                        ):
+                            log.warning(
+                                "Redirect left scope: %s -> %s — not crawled",
+                                url[:100],
+                                final_url[:100],
+                            )
+                            result.out_of_scope.append(
+                                {
+                                    "from": url,
+                                    "to": final_url,
+                                    "status": response.status if response else None,
+                                }
+                            )
                             continue
 
                         # Extract page content
                         content = await page.content()
 
-                        # Record endpoint
+                        # A path the application does not have. Recording it would
+                        # invent attack surface: every downstream tool would then
+                        # test a URL that does not exist, and the report would
+                        # describe an application larger than the real one.
+                        if (
+                            soft_404
+                            and final_url != start_url
+                            and not self._has_route_fragment(final_url)
+                            and self._content_fingerprint(content) == soft_404
+                        ):
+                            result.soft_404s.append(final_url)
+                            continue
+
+                        # Record endpoint. A client-side route has no HTTP
+                        # response of its own — its status and headers belong to
+                        # the shell document — so those fields are left empty
+                        # rather than filled with the shell's, which would state
+                        # something about this route that was never observed.
+                        resp_headers = dict(response.headers) if response else {}
                         endpoint = {
-                            "url": url,
+                            "url": final_url,
                             "method": "GET",
-                            "content_type": response.headers.get("content-type", ""),
-                            "response_code": response.status,
+                            "content_type": resp_headers.get("content-type", ""),
+                            "response_code": response.status if response else None,
                             "response_size": len(content),
-                            "source": "crawler",
+                            "source": "crawler" if response else "crawler_spa_route",
                             "parameters": {},
+                            "response_headers": resp_headers,
                         }
 
-                        # Extract response headers
-                        resp_headers = dict(response.headers)
-                        endpoint["response_headers"] = resp_headers
-
                         # Technology detection from headers
-                        self._detect_tech_from_headers(resp_headers, result)
+                        if resp_headers:
+                            self._detect_tech_from_headers(resp_headers, result)
 
                         result.endpoints.append(endpoint)
 
-                        # Extract links
-                        links = await self._extract_links(page, url)
+                        # Relative links are resolved against the document that
+                        # contained them, never against the URL that was
+                        # requested to reach it.
+                        links = await self._extract_links(page, final_url)
                         for link in links:
                             if link not in visited:
                                 queue.append((link, depth + 1))
 
                         # Extract forms
-                        forms = await self._extract_forms(page, url)
+                        forms = await self._extract_forms(page, final_url)
                         result.forms.extend(forms)
 
                         # Extract JS endpoints
-                        js_eps = self._extract_js_endpoints(content, url)
+                        js_eps = self._extract_js_endpoints(content, final_url)
                         result.js_endpoints.extend(js_eps)
 
                     except Exception as exc:
-                        log.debug("Crawl error for %s: %s", url[:100], exc)
-                        result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
+                        # A navigation the scope guard aborted is a recorded
+                        # outcome, not a crawl failure — reporting it as an error
+                        # would bury an open redirect in the noise of timeouts.
+                        if len(blocked_navigations) > blocked_before:
+                            for blocked in blocked_navigations[blocked_before:]:
+                                log.warning(
+                                    "Blocked off-scope navigation: %s -> %s",
+                                    url[:100],
+                                    blocked["url"][:100],
+                                )
+                                result.out_of_scope.append(
+                                    {"from": url, "to": blocked["url"], "blocked": True}
+                                )
+                        else:
+                            log.debug("Crawl error for %s: %s", url[:100], exc)
+                            result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
 
                 # Add network-intercepted API calls
                 result.js_endpoints.extend(network_apis)
@@ -311,11 +444,14 @@ class PlaywrightCrawler:
         result.js_endpoints = self._deduplicate_endpoints(result.js_endpoints)
 
         log.info(
-            "Crawl complete: %d pages, %d endpoints, %d forms, %d JS endpoints",
+            "Crawl complete: %d pages visited, %d endpoints, %d forms, "
+            "%d JS endpoints, %d soft-404s discarded, %d off-scope navigations blocked",
             result.pages_visited,
             len(result.endpoints),
             len(result.forms),
             len(result.js_endpoints),
+            len(result.soft_404s),
+            len(result.out_of_scope),
         )
 
         return result
@@ -324,17 +460,56 @@ class PlaywrightCrawler:
 
     @staticmethod
     async def _extract_links(page, current_url: str) -> list[str]:
-        """Extract all links from the current page."""
+        """
+        Extract navigable destinations from the current page.
+
+        ``a[href]`` alone under-reports a component-framework application.
+        Angular's ``routerLink``, and the equivalent data attributes in other
+        frameworks, are frequently placed on buttons and list items that never
+        receive an href — on a typical Angular app that is where the
+        authenticated areas live, so a crawl limited to anchors sees the
+        marketing pages and stops.
+        """
         links = set()
         try:
-            elements = await page.query_selector_all("a[href]")
-            for el in elements:
+            for el in await page.query_selector_all("a[href]"):
                 href = await el.get_attribute("href")
                 if href:
-                    absolute = urljoin(current_url, href.strip())
-                    links.add(absolute)
+                    links.add(urljoin(current_url, href.strip()))
         except Exception:
             pass
+
+        # Router directives hold an application path, not a URL. Where the app
+        # routes on the fragment, that is where its paths have to be put back.
+        parsed_current = urlparse(current_url)
+        hash_routed = parsed_current.fragment.startswith("/")
+        origin = f"{parsed_current.scheme}://{parsed_current.netloc}"
+        try:
+            selector = "[routerLink], [ng-reflect-router-link], [data-href], [data-url]"
+            for el in await page.query_selector_all(selector):
+                for attr in (
+                    "routerLink",
+                    "ng-reflect-router-link",
+                    "data-href",
+                    "data-url",
+                ):
+                    raw = await el.get_attribute(attr)
+                    if not raw:
+                        continue
+                    route = raw.strip().strip("[]").strip("'\" ")
+                    if not route or route.startswith(
+                        ("javascript:", "mailto:", "tel:")
+                    ):
+                        continue
+                    if route.startswith("http"):
+                        links.add(route)
+                    elif hash_routed and route.startswith("/"):
+                        links.add(f"{origin}/#{route}")
+                    else:
+                        links.add(urljoin(current_url, route))
+        except Exception:
+            pass
+
         return list(links)
 
     @staticmethod
@@ -358,8 +533,25 @@ class PlaywrightCrawler:
 
                 for inp in input_elements:
                     input_type = (await inp.get_attribute("type") or "text").lower()
-                    input_name = await inp.get_attribute("name") or ""
                     input_id = await inp.get_attribute("id") or ""
+
+                    # Reactive-form frameworks bind fields by directive rather
+                    # than by the name attribute, so a large share of modern
+                    # inputs have no name at all. Falling back leaves the field
+                    # identifiable; without this every such input is recorded as
+                    # "" and no injection test can address it.
+                    input_name = ""
+                    for attr in (
+                        "name",
+                        "formcontrolname",
+                        "ng-reflect-name",
+                        "data-name",
+                        "id",
+                    ):
+                        value = await inp.get_attribute(attr)
+                        if value and value.strip():
+                            input_name = value.strip()
+                            break
 
                     if input_type == "file":
                         has_file_upload = True
@@ -390,10 +582,37 @@ class PlaywrightCrawler:
         return forms
 
     @staticmethod
+    def _is_plausible_endpoint(path: str) -> bool:
+        """
+        Whether a string matched in JavaScript is worth treating as a URL.
+
+        The extraction patterns match any ``url:``/``path:`` assignment, which in
+        minified bundles also catches MIME types, CSS values, i18n keys and
+        template literals. Each one that gets through becomes a fabricated
+        endpoint: it is stored as discovered attack surface and handed to nuclei
+        and sqlmap to scan, so the cost of a loose filter is paid in scan time
+        and in a report describing an application that does not exist.
+        """
+        if not path or len(path) > 512:
+            return False
+        if any(ch in path for ch in (" ", "\t", "\n", "<", ">", "{", "}", "`")):
+            return False
+        # Unresolved template placeholders are not addresses.
+        if "${" in path or "%s" in path or "{{" in path:
+            return False
+        if path.startswith(("data:", "blob:", "javascript:", "mailto:", "tel:", "#")):
+            return False
+        # MIME types and bare content types read as paths but are not.
+        if re.match(r"^(text|image|application|audio|video|font)/", path):
+            return False
+        return path.startswith("/") or path.startswith("http")
+
+    @staticmethod
     def _extract_js_endpoints(html_content: str, base_url: str) -> list[dict]:
         """Extract API endpoints from inline and referenced JavaScript."""
         endpoints = []
         seen = set()
+        parsed_base = urlparse(base_url)
         for pattern in _JS_ENDPOINT_PATTERNS:
             for match in pattern.finditer(html_content):
                 path = match.group(1).strip()
@@ -401,11 +620,16 @@ class PlaywrightCrawler:
                     continue
                 seen.add(path)
 
+                if not PlaywrightCrawler._is_plausible_endpoint(path):
+                    continue
+
                 # Resolve relative paths
                 if path.startswith("/"):
-                    parsed = urlparse(base_url)
-                    full_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+                    full_url = f"{parsed_base.scheme}://{parsed_base.netloc}{path}"
                 elif path.startswith("http"):
+                    # A URL on someone else's host is not this target's surface.
+                    if urlparse(path).netloc != parsed_base.netloc:
+                        continue
                     full_url = path
                 else:
                     continue
@@ -463,15 +687,111 @@ class PlaywrightCrawler:
 
     @staticmethod
     def _normalize_url(url: str) -> str | None:
-        """Normalize URL by removing fragments and cleaning up."""
+        """
+        Normalize a URL, keeping the parts that identify a distinct page.
+
+        Fragments are *not* uniformly discarded. Angular, React and Vue
+        applications routinely put the whole route in the fragment —
+        ``/#/login``, ``/#/search`` — so stripping it collapses every screen in
+        the application onto the root URL. A crawler that does that visits the
+        landing page once and reports the SPA as a single-page site, which is
+        exactly the class of target this crawler exists to handle.
+
+        The distinction is what the fragment looks like. A route fragment
+        (``#/...``) selects content and is kept; a plain anchor (``#section-2``)
+        scrolls within a page already crawled and is dropped, so the same page
+        is not re-visited once per heading.
+        """
         if not url or not url.startswith("http"):
             return None
         parsed = urlparse(url)
-        # Remove fragment
         normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
         if parsed.query:
             normalized += f"?{parsed.query}"
+        if parsed.fragment.startswith("/"):
+            normalized += f"#{parsed.fragment}"
         return normalized
+
+    @staticmethod
+    def _content_fingerprint(body: str) -> str:
+        """
+        A stable hash of page content, used to recognise the same page served
+        under many URLs.
+        """
+        collapsed = re.sub(r"\s+", " ", body or "").strip()
+        return hashlib.sha1(collapsed.encode("utf-8", "replace")).hexdigest()
+
+    @staticmethod
+    def _has_route_fragment(url: str) -> bool:
+        return urlparse(url).fragment.startswith("/")
+
+    async def _soft_404_fingerprint(self, page, start_url: str) -> str | None:
+        """
+        What this application returns for a path that does not exist.
+
+        Single-page applications answer *every* unmatched path with the same
+        200 and the same shell HTML, so a crawler cannot use the status code to
+        tell a real page from a missing one. Without this baseline, any stray
+        link — including one resolved from another site's markup — looks like a
+        live endpoint, and a crawl reports hundreds of URLs that are one page.
+
+        Returns the fingerprint of the not-found response, or None when no
+        usable baseline exists — either because the application answers
+        unmatched paths honestly (404/410), in which case the status code is
+        already sufficient, or because its not-found page is indistinguishable
+        from its real landing page.
+
+        That second case is the one to be careful about. An application routed
+        on the path rather than the fragment — React Router, Next.js, Angular
+        without hash routing — serves the identical shell for ``/`` and for a
+        path that does not exist. Filtering on that fingerprint would discard
+        the landing page, and with it every link the crawl would have followed,
+        leaving an empty result for a perfectly ordinary application. When the
+        baseline cannot distinguish, it is not used.
+        """
+        parsed = urlparse(start_url)
+        probe = (
+            f"{parsed.scheme}://{parsed.netloc}/"
+            f"ccure-probe-{uuid.uuid4().hex[:16]}/does-not-exist"
+        )
+
+        async def _render(url: str):
+            response = await page.goto(
+                url, wait_until="domcontentloaded", timeout=self.timeout
+            )
+            try:
+                await page.wait_for_load_state(
+                    "networkidle", timeout=self.settle_timeout
+                )
+            except Exception:
+                pass
+            return response, await page.content()
+
+        try:
+            response, probe_body = await _render(probe)
+            if not response or response.status >= 400:
+                return None
+            probe_fingerprint = self._content_fingerprint(probe_body)
+        except Exception as exc:
+            log.debug("Soft-404 baseline probe failed: %s", exc)
+            return None
+
+        try:
+            _, start_body = await _render(start_url)
+        except Exception as exc:
+            log.debug("Soft-404 comparison against the start page failed: %s", exc)
+            return probe_fingerprint
+
+        if self._content_fingerprint(start_body) == probe_fingerprint:
+            log.info(
+                "The target serves identical content for its landing page and for "
+                "a path that does not exist, so a missing page cannot be told "
+                "from a real one by content — soft-404 filtering is disabled for "
+                "this scan and discovered paths are reported as found"
+            )
+            return None
+
+        return probe_fingerprint
 
     @staticmethod
     def _is_api_call(url: str) -> bool:

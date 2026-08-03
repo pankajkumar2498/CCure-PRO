@@ -20,6 +20,7 @@ from db.base import get_db
 from db.models import AMTInventoryRecord, AuditLog, User
 from db.models.assets import Asset, AssetChangeLog, AssetNote, AssetTag
 from db.models.findings import (
+    OBSERVED_SERVICE_STATES,
     AssetVulnerability,
     Service,
     TLSDetail,
@@ -438,7 +439,7 @@ def list_global_services(
             func.max(Service.updated_at).label("last_seen"),
         )
         .join(Asset)
-        .filter(Asset.org_id == org, Service.state == "open")
+        .filter(Asset.org_id == org, Service.state.in_(OBSERVED_SERVICE_STATES))
     )
 
     # Apply filters
@@ -531,7 +532,7 @@ def list_service_assets(
             Asset.org_id == org,
             Service.port == port,
             Service.protocol.ilike(protocol),
-            Service.state == "open",
+            Service.state.in_(OBSERVED_SERVICE_STATES),
         )
     )
 

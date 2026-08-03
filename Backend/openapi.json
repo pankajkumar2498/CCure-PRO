@@ -372,11 +372,18 @@
             "title": "Credential Id"
           },
           "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "examples": [
               "10.180.6.140"
             ],
-            "title": "Ip",
-            "type": "string"
+            "title": "Ip"
           },
           "key_path": {
             "anyOf": [
@@ -429,6 +436,26 @@
             ],
             "title": "Sections"
           },
+          "targets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              [
+                "10.180.6.140",
+                "10.180.6.150-160"
+              ]
+            ],
+            "title": "Targets"
+          },
           "username": {
             "anyOf": [
               {
@@ -444,9 +471,6 @@
             "title": "Username"
           }
         },
-        "required": [
-          "ip"
-        ],
         "title": "CredentialedScanRequest",
         "type": "object"
       },
@@ -2594,6 +2618,12 @@
       },
       "WebScanAuthSchema": {
         "properties": {
+          "content_type": {
+            "default": "auto",
+            "description": "Login body encoding: auto, form, or json",
+            "title": "Content Type",
+            "type": "string"
+          },
           "cookies": {
             "anyOf": [
               {
@@ -2607,6 +2637,21 @@
               }
             ],
             "title": "Cookies"
+          },
+          "extra_fields": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional fields to send with the login",
+            "title": "Extra Fields"
           },
           "headers": {
             "anyOf": [
@@ -2632,6 +2677,12 @@
               }
             ],
             "title": "Login Url"
+          },
+          "method": {
+            "default": "POST",
+            "description": "Login request method",
+            "title": "Method",
+            "type": "string"
           },
           "password": {
             "anyOf": [
@@ -2670,6 +2721,28 @@
               }
             ],
             "title": "Token"
+          },
+          "token_header": {
+            "default": "Authorization",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "token_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dot path to the token in a JSON login response, e.g. 'authentication.token'. Auto-detected when omitted.",
+            "title": "Token Path"
+          },
+          "token_prefix": {
+            "default": "Bearer ",
+            "title": "Token Prefix",
+            "type": "string"
           },
           "type": {
             "default": "none",
@@ -2727,6 +2800,12 @@
             "minimum": 1.0,
             "title": "Rate Limit",
             "type": "integer"
+          },
+          "scan_depth": {
+            "default": "standard",
+            "description": "Template coverage: quick, standard, or deep",
+            "title": "Scan Depth",
+            "type": "string"
           }
         },
         "title": "WebScanOptionsSchema",
@@ -4888,6 +4967,112 @@
         "summary": "Pipeline Modes",
         "tags": [
           "Documentation"
+        ]
+      }
+    },
+    "/api/v1/admin/nvd-sync-status": {
+      "get": {
+        "description": "Check NVD 2.0 vulnerability sync progress, last sync timestamp, and total CVE count in vuln_intel DB.",
+        "operationId": "get_sync_status_api_v1_admin_nvd_sync_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Sync Status",
+        "tags": [
+          "Admin NVD Catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/sync-nvd": {
+      "post": {
+        "description": "Manually trigger live NVD 2.0 API vulnerability sync into vuln_intel database.\nRuns asynchronously in the background.",
+        "operationId": "trigger_nvd_sync_api_v1_admin_sync_nvd_post",
+        "parameters": [
+          {
+            "description": "Days of historical CVE modifications to pull",
+            "in": "query",
+            "name": "days_back",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "description": "Days of historical CVE modifications to pull",
+              "maximum": 3650,
+              "minimum": 1,
+              "title": "Days Back",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trigger Nvd Sync",
+        "tags": [
+          "Admin NVD Catalog"
         ]
       }
     },
@@ -11552,6 +11737,32 @@
           },
           {
             "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_severity",
+            "required": false,
+            "schema": {
+              "default": "Info",
+              "title": "Min Severity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "ticket",
             "required": false,
             "schema": {
@@ -12787,7 +12998,7 @@
     },
     "/topology/map": {
       "get": {
-        "description": "Return the network topology graph for the organization.\n\nResponse format is vis-network compatible:\n{\n    \"nodes\": [{\"id\": ..., \"label\": ..., \"group\": ..., \"ip\": ..., \"mac\": ..., \"asset_id\": ...}],\n    \"edges\": [{\"from\": ..., \"to\": ..., \"label\": ..., \"link_type\": ..., \"source_port\": ..., \"target_port\": ...}]\n}",
+        "description": "Return the network topology graph for the organization.\n\nResponse format is vis-network compatible:\n{\n    \"nodes\": [{\"id\": ..., \"label\": ..., \"group\": ..., \"tier\": ..., \"ip\": ...,\n               \"mac\": ..., \"asset_id\": ...}],\n    \"edges\": [{\"from\": ..., \"to\": ..., \"label\": ..., \"link_type\": ...,\n               \"source_port\": ..., \"target_port\": ...}]\n}",
         "operationId": "get_topology_map_topology_map_get",
         "parameters": [
           {
@@ -12836,6 +13047,26 @@
               "minimum": 8,
               "title": "Subnet Mask",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only include links seen within this many days. Omit to include all recorded history.",
+            "in": "query",
+            "name": "active_within_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only include links seen within this many days. Omit to include all recorded history.",
+              "title": "Active Within Days"
             }
           }
         ],
@@ -12896,6 +13127,26 @@
               "minimum": 8,
               "title": "Subnet Mask",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only include links seen within this many days. Omit to include all recorded history.",
+            "in": "query",
+            "name": "active_within_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only include links seen within this many days. Omit to include all recorded history.",
+              "title": "Active Within Days"
             }
           }
         ],

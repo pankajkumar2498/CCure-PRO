@@ -473,6 +473,93 @@ export default function ScanDetail() {
         )}
 
         {/* Overview Stats */}
+        {/* Which scanners actually ran. A phase that could not run its primary
+            detector produces an empty result that reads exactly like a clean
+            one, so the gap is stated next to the counts it would distort. */}
+        {(() => {
+          const coverage = scan.options?.tool_coverage;
+          if (!coverage) return null;
+          const phases = Object.entries(coverage);
+          const unavailable = [
+            ...new Set(phases.flatMap(([, c]) => c.tools_unavailable || [])),
+          ];
+          const incomplete = phases.some(
+            ([, c]) => c.assessment_complete === false,
+          );
+          // A depth that narrowed the scan is disclosed even when every tool
+          // ran — otherwise a quick pass reads as a thorough one that found
+          // nothing.
+          const narrowed = phases.find(([, c]) => c.scan_depth_caveat);
+          if (!unavailable.length && !incomplete && !narrowed) return null;
+          return (
+            <div
+              style={{
+                background: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                borderRadius: "12px",
+                padding: "16px 20px",
+                marginBottom: "24px",
+                fontSize: "0.88rem",
+                lineHeight: 1.6,
+              }}
+            >
+              <strong>
+                {unavailable.length || incomplete
+                  ? "⚠ This assessment is incomplete"
+                  : "⚠ This scan ran at reduced depth"}
+              </strong>
+              {narrowed && (
+                <p style={{ margin: "6px 0 0", opacity: 0.9 }}>
+                  <b>{narrowed[1].scan_depth_label}</b>
+                  {" — "}
+                  {narrowed[1].scan_depth_caveat}
+                </p>
+              )}
+              {/* Only claimed when something actually failed. A scan that
+                  merely ran at reduced depth has not "failed to complete", and
+                  saying so would send an operator hunting a problem that is
+                  not there. */}
+              {(unavailable.length > 0 || incomplete) && (
+                <p style={{ margin: "6px 0 0", opacity: 0.9 }}>
+                  {unavailable.length > 0 ? (
+                    <>
+                      <code>{unavailable.join(", ")}</code>{" "}
+                      {unavailable.length === 1 ? "was" : "were"} not available
+                      on the scanner, so the checks{" "}
+                      {unavailable.length === 1
+                        ? "it performs"
+                        : "they perform"}{" "}
+                      did not run. The counts below reflect only what was
+                      actually tested — they are not evidence that nothing else
+                      is present.
+                    </>
+                  ) : (
+                    <>
+                      One or more phases could not complete their checks. The
+                      counts below reflect only what was actually tested.
+                    </>
+                  )}
+                </p>
+              )}
+              <div style={{ marginTop: 10, display: "grid", gap: 4 }}>
+                {phases.map(([phase, c]) =>
+                  (c.tools || [])
+                    .filter((t) => t.status !== "ran")
+                    .map((t) => (
+                      <div
+                        key={`${phase}-${t.tool}`}
+                        style={{ fontSize: "0.8rem", opacity: 0.85 }}
+                      >
+                        <code>{phase}</code> · <b>{t.tool}</b> — {t.status}
+                        {t.detail ? `: ${t.detail}` : ""}
+                      </div>
+                    )),
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         <div
           style={{
             display: "grid",

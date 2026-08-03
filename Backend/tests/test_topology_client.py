@@ -109,7 +109,13 @@ def test_walk_target_neighbor_collisions(mock_walk, mock_get, mock_engine):
 
     # Mock walks
     async def side_effect_walk(
-        engine, auth, transport, context, oid: str, max_rows: int = 0
+        engine,
+        auth,
+        transport,
+        context,
+        oid: str,
+        max_rows: int = 0,
+        use_bulk: bool = True,
     ):
         if oid == OID_LLDP_REM_CHASSIS_ID:
             return [
@@ -234,7 +240,13 @@ def test_walk_target_interface_enrichment(mock_walk, mock_get, mock_engine):
 
     # Mock walks
     async def side_effect_walk(
-        engine, auth, transport, context, oid: str, max_rows: int = 0
+        engine,
+        auth,
+        transport,
+        context,
+        oid: str,
+        max_rows: int = 0,
+        use_bulk: bool = True,
     ):
         comm = str(auth.communityName) if hasattr(auth, "communityName") else ""
 
@@ -334,16 +346,23 @@ def test_walk_target_interface_enrichment(mock_walk, mock_get, mock_engine):
     assert iface20.speed_bps == 10000000000
     assert iface20.vlan_id == 200
 
-    # Test bridge port translation helper
-    assert result.resolve_interface("1") == iface10
-    assert result.resolve_interface("2") == iface20
+    # Bridge ports (FDB) translate through dot1dBasePortIfIndex...
+    assert result.resolve_by_bridge_port("1") == iface10
+    assert result.resolve_by_bridge_port("2") == iface20
+
+    # ...while ARP/LLDP/CDP indices are ifIndexes and must not be translated.
+    # Bridge port "1" and ifIndex 1 are different ports; only ifIndex 10 and 20
+    # exist in the interface table here.
+    assert result.resolve_by_if_index("1") is None
+    assert result.resolve_by_if_index("10") == iface10
+    assert result.resolve_by_if_index("20") == iface20
 
     # Assert FDB table populated with default and multi-VLAN entries
     assert len(result.fdb_table) == 3
 
-    # 1. Default walk entry (VLAN 1)
+    # 1. Default walk entry — VLAN unknown, not assumed to be 1
     fdb1 = next(f for f in result.fdb_table if f.mac_address == "00:11:22:33:44:55")
-    assert fdb1.vlan_id == 1
+    assert fdb1.vlan_id == 0
     assert fdb1.port_index == "1"
 
     # 2. VLAN 100 walk entry

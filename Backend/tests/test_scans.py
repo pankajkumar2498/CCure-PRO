@@ -1340,7 +1340,7 @@ def test_host_discovery_endpoint(
 
     mock_orch = AsyncMock()
     mock_orch.run_host_discovery_only.return_value = mock_result
-    mock_orch.generate_phase_report.return_value = {"json_pdf": "/fake/path.pdf"}
+    mock_orch.generate_phase_report.return_value = {"executive_pdf": "/fake/path.pdf"}
 
     with patch("core.tasks._new_orchestrator", return_value=mock_orch):
         response = client.post(

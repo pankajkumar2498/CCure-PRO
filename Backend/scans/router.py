@@ -39,6 +39,7 @@ TERMINAL_PHASE_BY_MODE = {
     "basic": 1,
     "asset": 2,
     "vulnerability_audit": 3,
+    "credentialed": 3,
 }
 
 TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}
@@ -119,8 +120,8 @@ def _scan_to_dict(
         "is_deleted": bool(scan.is_deleted),
         "deleted_at": _as_utc_iso(scan.deleted_at),
         "pipeline_mode": pipeline_mode,
-        "has_json_report": bool(getattr(scan, "report_json_path", None)),
-        "has_xml_report": bool(getattr(scan, "report_xml_path", None)),
+        "has_executive_report": bool(getattr(scan, "report_executive_path", None)),
+        "has_technical_report": bool(getattr(scan, "report_technical_path", None)),
         "summary": _scan_summary(scan),
         "created_by": str(scan.created_by) if scan.created_by else None,
         "started_by": {

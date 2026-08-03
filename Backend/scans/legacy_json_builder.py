@@ -175,8 +175,26 @@ def _raw_section(
 
 
 def _recover_credentialed_report_from_pdf(scan: Scan) -> dict | None:
-    strings = _extract_reportlab_pdf_strings(getattr(scan, "report_json_path", None))
+    strings = _extract_reportlab_pdf_strings(
+        getattr(scan, "report_executive_path", None)
+    )
     if not strings:
+        return None
+
+    # This recovery path only works on PDFs drawn with the base-14 Type1 fonts,
+    # whose text is stored as readable ASCII. Reports rendered with an embedded
+    # TTF store subset glyph indices instead, so naive extraction yields noise.
+    # Without this guard that noise would be assembled into a hollow report and
+    # returned as if it were real recovered data.
+    if not any(
+        marker in strings
+        for marker in (
+            "System Information (Credentialed)",
+            "Installed Packages",
+            "Running Services",
+            "System Users",
+        )
+    ):
         return None
 
     target = getattr(scan, "target_str", None) or _first_after(strings, "Target")
@@ -291,6 +309,12 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> dict | None:
                 "severity": severity,
                 "package": package,
                 "description": " ".join(desc_parts).strip(),
+                # Reconstructed from a credentialed audit, and tagged as such.
+                # Verification asserts credentialed origin from the record
+                # rather than inferring it, so a rebuilt record that does not
+                # say where it came from is treated as an unverifiable network
+                # claim and withheld.
+                "detection_method": "credentialed",
             }
         )
 
@@ -334,6 +358,68 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> dict | None:
         "scan_duration": scan_duration,
         "recovered_from_report_pdf": True,
     }
+
+
+def _load_threat_intel(db: Session, cve_ids: set[str]) -> dict[str, dict]:
+    """
+    Look up EPSS exploitation probability and CISA KEV membership for a set of CVEs.
+
+    Both datasets are optional. When the tables do not exist (or are empty) this
+    returns an empty mapping and the report omits those columns entirely rather
+    than displaying a default value that could be mistaken for real data.
+    """
+    if not cve_ids:
+        return {}
+
+    from sqlalchemy import text
+
+    out: dict[str, dict] = {}
+    ids = [c for c in cve_ids if c]
+
+    # The epss and kev tables live in the dedicated vulnerability-intelligence
+    # database, not the application database, so the lookup runs against that
+    # engine. If it is not configured the report simply omits these columns
+    # rather than showing a default that could be mistaken for real data.
+    from core.vuln_intel import get_vuln_engine
+
+    engine = get_vuln_engine()
+    if engine is None:
+        return {}
+
+    try:
+        with engine.connect() as conn:
+            try:
+                rows = conn.execute(
+                    text(
+                        "SELECT cve_id, epss_score, percentile FROM epss "
+                        "WHERE cve_id = ANY(:ids)"
+                    ),
+                    {"ids": ids},
+                ).fetchall()
+                for row in rows:
+                    entry = out.setdefault(row[0], {})
+                    entry["epss_score"] = float(row[1]) if row[1] is not None else None
+                    entry["epss_percentile"] = (
+                        float(row[2]) if row[2] is not None else None
+                    )
+            except Exception:
+                pass
+
+            try:
+                rows = conn.execute(
+                    text("SELECT cve_id, due_date FROM kev WHERE cve_id = ANY(:ids)"),
+                    {"ids": ids},
+                ).fetchall()
+                for row in rows:
+                    entry = out.setdefault(row[0], {})
+                    entry["in_kev"] = True
+                    entry["kev_due_date"] = str(row[1]) if row[1] else ""
+            except Exception:
+                pass
+    except Exception:
+        return out
+
+    return out
 
 
 def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
@@ -398,15 +484,84 @@ def build_legacy_scan_results(db: Session, scan_id: str) -> dict:
             .all()
         )
 
+        # Resolve the observed port/service for every finding that carries a
+        # service_id. This is what lets the report bind a CVE to a port because
+        # the scan actually saw it there, rather than inferring the port from
+        # product names appearing in CVE prose.
+        service_by_id = {svc.id: svc for svc in db_services}
+
+        # Threat-intel enrichment (EPSS probability + CISA KEV). Both are
+        # optional: if the tables are absent the report simply omits the
+        # columns rather than substituting placeholder values.
+        cve_ids = {(vdef.cve_id or vdef.id) for _, vdef in db_vulns}
+        intel = _load_threat_intel(db, cve_ids)
+
         for av, vdef in db_vulns:
+            cve_key = vdef.cve_id or vdef.id
+
+            def _score(value):
+                if value is None:
+                    return None
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return None
+
+            v3 = _score(vdef.cvss_v3_score)
+            v2 = _score(vdef.cvss_v2_score)
+            v4 = _score(vdef.cvss_v4_score)
+            finding_score = _score(av.cvss_score)
+
+            svc = service_by_id.get(av.service_id) if av.service_id else None
+            tintel = intel.get(cve_key, {})
+
             vulns_by_asset.setdefault(av.asset_id, []).append(
                 {
-                    "cve_id": vdef.cve_id,
+                    "cve_id": cve_key,
+                    "cve": cve_key,
                     "title": vdef.title,
                     "description": vdef.description,
-                    "severity": vdef.severity,
-                    "cvss": float(vdef.cvss_v3_score or 0.0),
+                    "severity": av.severity or vdef.severity,
+                    # Scores are passed through as-is. None means "not published"
+                    # and the report renders it as unscored.
+                    "cvss_score": (
+                        v3
+                        if v3 is not None
+                        else (finding_score if finding_score is not None else v4)
+                    ),
+                    "cvss_v2_score": v2,
+                    "cvss_v3_score": v3,
+                    "cvss_vector": vdef.cvss_vector,
+                    "cwe_ids": vdef.cwe_ids or [],
+                    "references": vdef.references or [],
+                    "affected_software": vdef.affected_software or [],
+                    "plugin_output": av.plugin_output or av.proof or "",
+                    "proof": av.proof or av.plugin_output or "",
+                    "plugin_family": vdef.source or "General",
+                    "source": vdef.source or "General",
+                    "published_at": str(vdef.published_at) if vdef.published_at else "",
+                    "last_modified_at": (
+                        str(vdef.last_modified_at) if vdef.last_modified_at else ""
+                    ),
                     "status": av.status,
+                    "service_id": av.service_id,
+                    "evidence_source": av.evidence_source,
+                    "remediation_notes": av.remediation_notes or "",
+                    "first_found_at": (
+                        str(av.first_found_at) if av.first_found_at else ""
+                    ),
+                    "last_found_at": str(av.last_found_at) if av.last_found_at else "",
+                    # Observed service context, resolved from the service_id FK
+                    "port": svc.port if svc else None,
+                    "protocol": svc.protocol if svc else None,
+                    "service_name": svc.service_name if svc else None,
+                    "service_product": svc.service_product if svc else None,
+                    "detected_version": svc.service_version if svc else None,
+                    # Threat intelligence
+                    "epss_score": tintel.get("epss_score"),
+                    "epss_percentile": tintel.get("epss_percentile"),
+                    "in_kev": tintel.get("in_kev", False),
+                    "kev_due_date": tintel.get("kev_due_date", ""),
                 }
             )
 

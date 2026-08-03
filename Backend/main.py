@@ -27,6 +27,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from routers.admin_nvd import router as admin_nvd_router
 from routers.admin_orgs import router as admin_orgs_router
 from routers.admin_rbac import router as admin_rbac_router
 from routers.admin_users import router as admin_users_router
@@ -478,12 +479,31 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 log.error("Password reset token cleanup failed: %s", e)
 
+    async def nvd_auto_sync_loop():
+        """Option A: Background 24-hour automatic NVD live catalog sync into vuln_intel DB."""
+        from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
+
+        # Initial delay on startup to allow DB migrations to finish
+        await asyncio.sleep(5)
+        while True:
+            try:
+                status = get_nvd_sync_status()
+                if status.get("status") != "SYNCING":
+                    log.info(
+                        "Starting automatic 24-hour live NVD catalog sync into vuln_intel DB..."
+                    )
+                    await sync_nvd_to_vuln_intel(days_back=90)
+            except Exception as e:
+                log.error("Automatic NVD sync background loop error: %s", e)
+
             await asyncio.sleep(86400)  # 24 hours
 
     cleanup_task = asyncio.create_task(cleanup_loop())
+    nvd_sync_task = asyncio.create_task(nvd_auto_sync_loop())
 
     yield
     cleanup_task.cancel()
+    nvd_sync_task.cancel()
     log.info("Shutting down")
 
 
@@ -649,6 +669,14 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
         # echo the raw 'password' field in its 'input' dictionary.
         err_copy.pop("input", None)
 
+        # Pydantic attaches the original exception object under ctx["error"]
+        # for anything a validator raised, and an exception is not JSON
+        # serialisable — leaving it in place made the 422 itself fail to
+        # render, turning a clear "which field is wrong" into a 500.
+        ctx = err_copy.get("ctx")
+        if isinstance(ctx, dict):
+            err_copy["ctx"] = {key: str(value) for key, value in ctx.items()}
+
         loc = err_copy.get("loc", ())
         if any(str(segment).lower() in _SENSITIVE_FIELDS for segment in loc):
             err_copy["ctx"] = {"note": "Value redacted for security."}
@@ -679,6 +707,7 @@ app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_rbac_router)
 app.include_router(admin_orgs_router)
+app.include_router(admin_nvd_router)
 app.include_router(audit_router)
 app.include_router(user_profile_router)
 app.include_router(notifications_router)

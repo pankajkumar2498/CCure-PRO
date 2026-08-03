@@ -26,6 +26,53 @@ log = logging.getLogger("ccure.windows_collector")
 _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*\x07|[^\[\]])")
 
 
+#: Values a Windows version resource uses to mean "nothing here". They arrive
+#: as real strings, not nulls — nginx ships binaries whose Company and Product
+#: are both the literal text "None" — and recording that as a product name is
+#: worse than recording no product at all.
+_PLACEHOLDER_VALUES = {"", "none", "null", "n/a", "unknown", "not available"}
+
+
+def _clean_value(value: Any) -> str:
+    """Text from PowerShell, with its placeholder strings treated as absent."""
+    text = str(value if value is not None else "").strip()
+    return "" if text.lower() in _PLACEHOLDER_VALUES else text
+
+
+#: Resolve specific PIDs to the software running under them.
+#:
+#: Scoped to the PIDs holding a socket rather than every process on the box.
+#: Selecting Company/Product/FileVersion forces PowerShell to read each
+#: executable's version resource, which on a busy workstation (469 processes)
+#: takes longer than the command timeout and returns nothing at all — the
+#: listening set is a few dozen, and completes comfortably.
+_PROCESS_IDENTITY_CMD = (
+    "Get-Process -Id {pids} -ErrorAction SilentlyContinue | "
+    "Select-Object Id,ProcessName,Path,Company,Product,FileVersion | "
+    "ConvertTo-Json -Compress"
+)
+
+#: Ceiling on PIDs per query, so a host with an unusual number of listening
+#: sockets cannot rebuild the timeout problem this scoping exists to avoid.
+_MAX_IDENTITY_PIDS = 250
+
+#: Which Windows services are running inside which process.
+#:
+#: Generic host processes run other people's code. ``svchost.exe`` on port 135
+#: has a perfectly accurate version resource that reads "Microsoft Windows
+#: Operating System" — true of the binary, useless for saying what is answering
+#: on the port. The service table is the only thing that can name it.
+_SERVICE_PID_CMD = (
+    "Get-CimInstance Win32_Service -Filter 'ProcessId > 0' | "
+    "Select-Object Name,DisplayName,ProcessId | ConvertTo-Json -Compress"
+)
+
+#: Processes that host other code rather than being the thing itself. For these
+#: the hosted Windows service names identify the listener; the binary's own
+#: version resource does not.
+_HOST_PROCESSES = {"svchost", "dllhost", "taskhostw", "rundll32", "system", "services"}
+
+
 def _clean_output(raw: str) -> str:
     """Strip BOM, ANSI escape sequences, and leading non-printable garbage."""
     # Remove UTF-8 BOM
@@ -295,8 +342,13 @@ class WindowsCollector:
                     elif name == "local_groups":
                         result["local_groups"] = data
                 except Exception as exc:
+                    # See the Linux collector: a swallowed section failure reads
+                    # downstream as "nothing found", which for the software
+                    # inventory means an unassessed host is reported as clean.
                     log.warning("Windows section '%s' collection failed: %s", name, exc)
+                    result.setdefault("collection_errors", {})[name] = str(exc)
 
+        result["sections_requested"] = [name for name, _fn in tasks]
         return result
 
     def _collect_system_info(self) -> dict[str, Any]:
@@ -389,6 +441,12 @@ class WindowsCollector:
                         {
                             "name": name,
                             "version": ver,
+                            # The registry query already asks for Publisher and
+                            # this discarded it. It is the vendor half of a CPE
+                            # identity: "Google Chrome" alone does not resolve
+                            # to cpe:2.3:a:google:chrome, but publisher "Google
+                            # LLC" plus product "chrome" does.
+                            "vendor": (item.get("Publisher") or "").strip(),
                             "arch": "",
                             "manager": "windows_registry",
                         }
@@ -427,24 +485,151 @@ class WindowsCollector:
             if i.get("Name")
         ]
 
+    def _process_identity_map(self, pids: set[str]) -> dict[str, dict[str, str]]:
+        """
+        PID → the software running under it, for the PIDs holding a socket.
+
+        This is the only point at which the two halves can be joined. netstat
+        reports a PID and the socket table is discarded straight afterwards, so
+        anything not resolved here is unresolvable later: the service record,
+        the asset's inventory and the report all end up naming a port with no
+        idea what is answering on it.
+
+        The binary's own version resource is preferred over a guess from the
+        installed-software list, because it describes the exact file serving
+        the port — ``mysqld`` resolves to "MySQL Server 8.0.40.0" whether or not
+        MySQL registered an uninstall entry.
+        """
+        wanted = sorted({p for p in pids if p and p.isdigit()}, key=int)
+        if not wanted:
+            return {}
+        if len(wanted) > _MAX_IDENTITY_PIDS:
+            log.debug(
+                "Resolving identity for the first %d of %d listening PIDs",
+                _MAX_IDENTITY_PIDS,
+                len(wanted),
+            )
+            wanted = wanted[:_MAX_IDENTITY_PIDS]
+
+        raw = self._run_command(
+            _PROCESS_IDENTITY_CMD.format(pids=",".join(wanted)),
+            timeout=90,
+            label="listening_processes",
+        )
+        entries = self._decode_json(raw, "listening_processes")
+        if isinstance(entries, dict):
+            entries = [entries]
+        if not isinstance(entries, list):
+            entries = []
+
+        services = self._services_by_pid()
+
+        mapping: dict[str, dict[str, str]] = {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            pid = _clean_value(entry.get("Id"))
+            name = _clean_value(entry.get("ProcessName"))
+            if not pid or not name:
+                continue
+
+            record: dict[str, str] = {"process": name}
+            # Product names the software; Company is the fallback for binaries
+            # that ship a vendor but no product string.
+            product = _clean_value(entry.get("Product")) or _clean_value(
+                entry.get("Company")
+            )
+            version = _clean_value(entry.get("FileVersion"))
+            path = _clean_value(entry.get("Path"))
+
+            hosted = services.get(pid) or []
+            if hosted:
+                record["hosted_services"] = ", ".join(hosted)[:512]
+
+            if name.lower() in _HOST_PROCESSES and hosted:
+                # The binary is a container. Its version resource describes the
+                # container ("Microsoft Windows Operating System"), not what is
+                # answering on the port, so the hosted service names take over.
+                # No version is asserted: several services can share one process
+                # and the host binary's build number is not theirs.
+                record["product"] = ", ".join(hosted)[:255]
+                version = ""
+            elif product:
+                record["product"] = product[:255]
+
+            if version:
+                record["version"] = version[:200]
+            if path:
+                record["process_path"] = path[:512]
+            mapping[pid] = record
+        return mapping
+
+    def _services_by_pid(self) -> dict[str, list[str]]:
+        """
+        PID → the Windows services running inside it.
+
+        Only meaningful for host processes, but cheap enough to fetch once and
+        attach everywhere: it is also the evidence that a socket on a shared
+        ``svchost`` belongs to RPC rather than to Windows in general.
+        """
+        try:
+            raw = self._run_command(
+                _SERVICE_PID_CMD, timeout=60, label="services_by_pid"
+            )
+            entries = self._decode_json(raw, "services_by_pid")
+        except Exception as exc:  # noqa: BLE001 — identity degrades, nothing breaks
+            log.debug("Could not map services to PIDs: %s", exc)
+            return {}
+
+        if isinstance(entries, dict):
+            entries = [entries]
+        if not isinstance(entries, list):
+            return {}
+
+        mapping: dict[str, list[str]] = {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            pid = _clean_value(entry.get("ProcessId"))
+            label = _clean_value(entry.get("DisplayName")) or _clean_value(
+                entry.get("Name")
+            )
+            if pid and pid != "0" and label:
+                mapping.setdefault(pid, []).append(label)
+        return {pid: sorted(names) for pid, names in mapping.items()}
+
     def _collect_open_ports(self) -> list[dict[str, str]]:
         raw = self._run("open_ports")
+
         ports = []
         for line in raw.splitlines():
             # Format: TCP    0.0.0.0:445    0.0.0.0:0    LISTENING    4
             parts = line.split()
             if len(parts) >= 4 and "LISTENING" in parts:
                 local = parts[1]
-                port = local.rsplit(":", 1)[-1] if ":" in local else ""
-                pid = parts[-1]
                 ports.append(
                     {
                         "state": "LISTEN",
                         "local_addr": local,
-                        "port": port,
-                        "process": f"PID {pid}",
+                        "port": local.rsplit(":", 1)[-1] if ":" in local else "",
+                        "pid": parts[-1],
+                        # Retained for protected processes the lookup cannot
+                        # read, so the record still says which PID holds the
+                        # socket even when the software cannot be named.
+                        "process": f"PID {parts[-1]}",
                     }
                 )
+
+        # Resolved after parsing, because only now is the PID set known — and
+        # querying just those is what keeps the lookup inside its timeout.
+        try:
+            processes = self._process_identity_map({p["pid"] for p in ports})
+        except Exception as exc:  # noqa: BLE001 — the socket table is still useful
+            log.debug("Could not resolve listening process identities: %s", exc)
+            processes = {}
+
+        for record in ports:
+            record.update(processes.get(record["pid"], {}))
         return ports
 
     def _collect_users(self) -> list[dict[str, str]]:
@@ -626,16 +811,34 @@ class WindowsCollector:
             log.debug("stderr for '%s': %s", key, result.stderr[:200])
         return _clean_output(result.stdout) if result.stdout else ""
 
-    def _run_json(self, key: str) -> Any:
+    def _run_command(self, cmd: str, timeout: int = 45, label: str = "") -> str:
         """
-        Run a named command and parse its output as JSON.
+        Execute a PowerShell command built at runtime.
+
+        The counterpart to :meth:`_run` for commands whose text depends on what
+        an earlier collector found — the process lookup can only be written
+        once the socket table has named its PIDs.
+        """
+        if not cmd:
+            return ""
+        result = self._ssh.run(self._wrap_ps(cmd), timeout=timeout)
+        if result.stderr:
+            log.debug("stderr for '%s': %s", label or "ad-hoc", result.stderr[:200])
+        return _clean_output(result.stdout) if result.stdout else ""
+
+    def _run_json(self, key: str) -> Any:
+        """Run a named command and parse its output as JSON."""
+        return self._decode_json(self._run(key), key)
+
+    def _decode_json(self, raw: str, label: str) -> Any:
+        """
+        Parse command output as JSON.
 
         Uses JSONDecoder.raw_decode() which:
           - Skips any leading noise/banner text before the first '[' or '{'
           - Stops parsing at the end of the first complete JSON value
           - Ignores any trailing garbage (e.g. provider metadata, blank lines)
         """
-        raw = self._run(key)
         if not raw:
             return {}
 
@@ -656,5 +859,5 @@ class WindowsCollector:
                 except json.JSONDecodeError:
                     continue  # try next occurrence
 
-        log.warning("Failed to parse JSON for command '%s' | raw=%.300s", key, raw)
+        log.warning("Failed to parse JSON for command '%s' | raw=%.300s", label, raw)
         return {}

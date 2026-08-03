@@ -85,7 +85,7 @@ Backend/db/test_data/prod_schema.sql
 
 # .md files
 .agent/
-
+.claude/
 
 # docs/ binaries ignored, markdown tracked
 docs/*.docx

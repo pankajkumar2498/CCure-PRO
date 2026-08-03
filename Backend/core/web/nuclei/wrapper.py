@@ -39,14 +39,43 @@ _SEVERITY_MAP = {
     "unknown": "info",
 }
 
-# CVSS score approximation by severity (when nuclei doesn't provide exact CVSS)
-_CVSS_APPROX = {
-    "info": 0.0,
-    "low": 3.0,
-    "medium": 5.5,
-    "high": 7.5,
-    "critical": 9.5,
-}
+#: Upper bound on URLs handed to one nuclei invocation. Nuclei runs every
+#: selected template against every target, so a crawl that found ten thousand
+#: paginated URLs would multiply the work by ten thousand. Capping keeps the
+#: scan finite; the cap being hit is recorded rather than passed over, because
+#: a truncated target list bounds what the scan could have found.
+MAX_NUCLEI_TARGETS = 2000
+
+
+def _dedupe_targets(targets: list[str] | None, fallback: str) -> list[str]:
+    """
+    Normalise the crawl's output into a stable, de-duplicated target list.
+
+    Crawlers emit the same page many times over — with tracking parameters, with
+    and without a trailing slash, through several links. Scanning each variant
+    separately multiplies runtime without testing anything new.
+    """
+    seen: dict[str, str] = {}
+    for raw in targets or []:
+        url = str(raw or "").strip()
+        if not url or not url.lower().startswith(("http://", "https://")):
+            continue
+        # Query strings matter for injection testing, so they are preserved;
+        # only the trailing-slash variant is folded away.
+        key = url.rstrip("/") or url
+        seen.setdefault(key, url)
+
+    ordered = list(seen.values())
+    if not ordered:
+        return [fallback]
+    if len(ordered) > MAX_NUCLEI_TARGETS:
+        log.warning(
+            "Crawl produced %d targets; scanning the first %d",
+            len(ordered),
+            MAX_NUCLEI_TARGETS,
+        )
+        ordered = ordered[:MAX_NUCLEI_TARGETS]
+    return ordered
 
 
 class NucleiWrapper(ToolWrapper):
@@ -93,10 +122,11 @@ class NucleiWrapper(ToolWrapper):
         exclude_tags: list[str] | None = None,
         template_ids: list[str] | None = None,
         waf_detected: bool = False,
+        targets: list[str] | None = None,
         **kwargs,
     ) -> dict:
         """
-        Run nuclei against a target URL or domain.
+        Run nuclei against a target URL, or against a discovered attack surface.
 
         Args:
             target: URL to scan (e.g., "https://example.com")
@@ -107,14 +137,32 @@ class NucleiWrapper(ToolWrapper):
             exclude_tags: Nuclei template tags to exclude
             template_ids: Specific template IDs to run
             waf_detected: If True, enables stealth mode
+            targets: Every URL the crawl found. Scanning only the root URL
+                means an endpoint the crawler discovered — ``/admin/login``,
+                an API route, an upload form — is never tested unless a
+                template happens to guess that same path. Passing the list
+                switches nuclei to ``-l``, so the work is proportional to the
+                attack surface actually found rather than to the root page.
 
         Returns:
             {"findings": [...], "stats": {...}}
         """
         self.require_available()
 
-        # Build command
-        args = [self.binary, "-u", target, "-jsonl", "-silent", "-nc"]
+        # Build command. A discovered attack surface is passed as a list file;
+        # a single target still goes through -u so the common case is unchanged.
+        target_list = _dedupe_targets(targets, fallback=target)
+        target_file = None
+        if len(target_list) > 1:
+            target_file = self._create_temp_file(
+                suffix=".txt", prefix="nuclei_targets_"
+            )
+            with open(target_file, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(target_list))
+            args = [self.binary, "-l", target_file, "-jsonl", "-silent", "-nc"]
+            log.info("Nuclei scanning %d discovered target(s)", len(target_list))
+        else:
+            args = [self.binary, "-u", target_list[0], "-jsonl", "-silent", "-nc"]
 
         # Severity filter
         sev = severity or WebScanConfig.NUCLEI_SEVERITY.split(",")
@@ -145,6 +193,11 @@ class NucleiWrapper(ToolWrapper):
         if self.templates_dir and os.path.isdir(self.templates_dir):
             args.extend(["-t", self.templates_dir])
 
+        # Out-of-band detection. Templates for blind SSRF, blind SQLi and OOB
+        # RCE rely on this; with it off they run and can never match, so the
+        # state is reported alongside the findings rather than assumed.
+        oast = self._configure_oast(args)
+
         # Auth headers for authenticated scanning
         if auth_headers:
             for header_name, header_value in auth_headers.items():
@@ -173,11 +226,16 @@ class NucleiWrapper(ToolWrapper):
                 "templates_matched": len(
                     set(f.get("template_id", "") for f in findings)
                 ),
+                # What was actually scanned, so the report can bound its own
+                # coverage instead of implying the whole application was.
+                "targets_scanned": len(target_list),
+                "oast": oast,
             }
 
             log.info(
-                "Nuclei scan complete: %d findings (%s)",
+                "Nuclei scan complete: %d findings across %d target(s) (%s)",
                 len(findings),
+                len(target_list),
                 ", ".join(f"{k}={v}" for k, v in stats["by_severity"].items() if v > 0),
             )
 
@@ -185,6 +243,57 @@ class NucleiWrapper(ToolWrapper):
 
         finally:
             self._cleanup_path(output_file)
+            if target_file:
+                self._cleanup_path(target_file)
+
+    @staticmethod
+    def _configure_oast(args: list[str]) -> dict:
+        """
+        Set up out-of-band interaction, and describe what was set up.
+
+        Returns a record of the OAST state for the scan's coverage. The record
+        matters as much as the setting: blind SSRF, blind SQL injection and
+        out-of-band command execution are invisible in the HTTP response, so a
+        scan without OAST has not tested for them. Reported as "enabled: false"
+        that is a stated limit; left unreported it is a silent false negative in
+        the classes an attacker reaches for first.
+        """
+        if not WebScanConfig.OAST_ENABLED:
+            args.append("-no-interactsh")
+            return {
+                "enabled": False,
+                "server": None,
+                "caveat": (
+                    "Out-of-band interaction testing was disabled, so blind SSRF, "
+                    "blind SQL injection and out-of-band command execution were "
+                    "not tested for. Those classes are unassessed on this target."
+                ),
+            }
+
+        server = WebScanConfig.OAST_SERVER
+        if server:
+            args.extend(["-iserver", server])
+            if WebScanConfig.OAST_TOKEN:
+                args.extend(["-itoken", WebScanConfig.OAST_TOKEN])
+            return {
+                "enabled": True,
+                "server": server,
+                "self_hosted": True,
+                "caveat": "",
+            }
+
+        return {
+            "enabled": True,
+            "server": "interact.sh (ProjectDiscovery public)",
+            "self_hosted": False,
+            "caveat": (
+                "Out-of-band testing used the public interact.sh service. It "
+                "requires outbound internet access from the scanner — if the "
+                "scanner is egress-restricted the out-of-band checks cannot "
+                "resolve and those classes are effectively untested. Set "
+                "OAST_SERVER to a self-hosted interactsh for reliable results."
+            ),
+        }
 
     def run_tech_detect(self, target: str, **kwargs) -> list[dict]:
         """
@@ -337,15 +446,19 @@ class NucleiWrapper(ToolWrapper):
             if cvss_metrics:
                 cvss_vector = str(cvss_metrics)
 
-            if cvss_score is None:
-                cvss_score = _CVSS_APPROX.get(severity_raw, 0.0)
-
+            # No score is substituted when the template publishes none. A
+            # severity-to-score table ("high" → 7.5) manufactures a measurement:
+            # it reads downstream as a computed CVSS, aggregates into risk
+            # scores, and lands in compliance evidence as if it had been
+            # derived from a vector. The severity below is a real rating
+            # supplied by the template; the score, when absent, stays absent.
             return {
                 "finding_type": finding_type,
                 "title": info.get("name", raw.get("template-id", "Unknown Finding")),
                 "description": info.get("description", ""),
                 "severity": _SEVERITY_MAP.get(severity_raw, "info"),
                 "cvss_score": cvss_score,
+                "cvss_scored": cvss_score is not None,
                 "cvss_vector": cvss_vector,
                 "detected_by": "nuclei",
                 "template_id": raw.get("template-id", ""),

@@ -11,6 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
+from engines.credentialed.package_identity import (
+    candidate_products,
+    normalize_vendor,
+    resolve_identities,
+    version_space_contains,
+)
 from core.vuln_intel import (
     build_sql_or_clauses,
     get_vuln_engine,
@@ -26,6 +32,15 @@ log = logging.getLogger("ccure.vuln_matcher")
 BATCH_QUERY_THRESHOLD = 50  # Use batch query when packages >= this
 PARALLEL_WORKERS = 4  # Parallel threads for package matching
 QUERY_TIMEOUT = 30  # Query timeout in seconds
+#: Rows fetched per resolved CPE identity. Applied per product, not across
+#: the whole result, so a large product cannot displace a small one.
+#:
+#: Sized against the real dictionary rather than guessed: once per-build
+#: pins that cannot match the installed version are filtered out in SQL,
+#: the largest product observed (google:chrome) contributes ~5,600 rows.
+#: This sits well above that, so the cap is a safety valve rather than a
+#: silent filter — and reaching it is logged with the product named.
+PER_IDENTITY_ROW_CAP = 25000
 
 BEST_CVSS_LATERAL = """
 LEFT JOIN LATERAL (
@@ -68,10 +83,17 @@ class CredentialedCVE:
     cpe_uri: str = ""
     cvss_version: str = ""
     cvss_vector: str = ""
+    #: The CPE configuration this finding matched, in the shape the report
+    #: normalizer reads. Without it the remediation resolver has no product
+    #: or fixed version to work from, so credentialed findings could not be
+    #: grouped by upgrade and their remediation text could not name one.
+    affected_software: list = None
 
     def __post_init__(self):
         if self.exploit_sources is None:
             self.exploit_sources = []
+        if self.affected_software is None:
+            self.affected_software = []
 
 
 class VulnMatcher:
@@ -86,6 +108,7 @@ class VulnMatcher:
 
     def __init__(self):
         self.engine = get_vuln_engine()
+        self._package_vendors: dict[str, str] = {}
 
     def match_packages(self, packages: list[dict[str, str]]) -> list[CredentialedCVE]:
         """
@@ -99,11 +122,17 @@ class VulnMatcher:
 
         # Extract unique package names
         package_data = {}
+        # Publisher per package: the vendor half of a CPE identity, and the
+        # signal that decides whether a product-name match can be trusted.
+        self._package_vendors = {}
         for pkg in packages:
             name = (pkg.get("name") or "").strip()
             version = (pkg.get("version") or "").strip()
             if name and name not in package_data:
                 package_data[name] = version
+                self._package_vendors[name] = (
+                    pkg.get("vendor") or pkg.get("publisher") or ""
+                ).strip()
 
         if not package_data:
             return []
@@ -111,11 +140,13 @@ class VulnMatcher:
         log.info(f"Matching {len(package_data)} unique packages against vuln database")
         start_time = time.time()
 
-        # Use batch query for large package sets
-        if len(package_data) >= BATCH_QUERY_THRESHOLD:
-            findings = self._match_packages_batch(package_data)
-        else:
-            findings = self._match_packages_parallel(package_data)
+        # One path, whatever the package count. The batch path resolves every
+        # package to a CPE identity in a single query and matches on it; the
+        # per-package path matched loose name fragments against product OR
+        # vendor, so which code ran — and therefore which findings appeared —
+        # depended on how many packages the host happened to have installed.
+        # It also issued N queries where this issues two.
+        findings = self._match_packages_batch(package_data)
 
         elapsed = time.time() - start_time
         log.info(
@@ -166,25 +197,193 @@ class VulnMatcher:
         )
         return findings
 
+    @staticmethod
+    def _row_cpe_config(row) -> dict:
+        """The matched CPE row as a configuration the report normalizer reads."""
+        return {
+            "cpe_uri": row.get("cpe_uri") or "",
+            "vendor": row.get("vendor") or "",
+            "product": row.get("product") or "",
+            "version_start_including": row.get("version_start_including"),
+            "version_start_excluding": row.get("version_start_excluding"),
+            "version_end_including": row.get("version_end_including"),
+            "version_end_excluding": row.get("version_end_excluding"),
+        }
+
+    def _resolve_package_identities(
+        self, conn, package_data: dict[str, str]
+    ) -> dict[str, list[tuple[str, str]]]:
+        """
+        Map installed package names to the CPE identities they resolve to.
+
+        Candidates are proposed from the package's display name and publisher,
+        then validated against the CPE dictionary in one query — a name only
+        counts if NVD actually publishes under it. Packages that resolve to
+        nothing are logged, because an unmatched package is a coverage gap in
+        the audit and the operator should be able to see how large it is.
+        """
+        packages = [
+            {"name": name, "vendor": self._package_vendors.get(name, "")}
+            for name in package_data
+        ]
+        candidates: set[str] = set()
+        for pkg in packages:
+            candidates.update(
+                candidate_products(
+                    pkg["name"], normalize_vendor(pkg.get("vendor") or "")
+                )
+            )
+        if not candidates:
+            return {}
+
+        rows = conn.execute(
+            text(
+                "SELECT DISTINCT LOWER(vendor) AS vendor, LOWER(product) AS product "
+                "FROM cpe WHERE LOWER(product) = ANY(:candidates)"
+            ),
+            {"candidates": sorted(candidates)},
+        ).fetchall()
+
+        known: dict[str, list[tuple[str, str]]] = {}
+        for vendor_name, product_name in rows:
+            known.setdefault(product_name, []).append((vendor_name, product_name))
+
+        resolved = resolve_identities(packages, known)
+        resolved = self._drop_mismatched_version_spaces(conn, resolved, package_data)
+        unresolved = [p["name"] for p in packages if p["name"] not in resolved]
+        log.info(
+            "Package identity resolution: %d/%d packages mapped to a CPE product; "
+            "%d unmatched (not assessed)",
+            len(resolved),
+            len(packages),
+            len(unresolved),
+        )
+        if unresolved:
+            log.debug("Unmatched packages: %s", ", ".join(sorted(unresolved)[:40]))
+        return resolved
+
+    def _drop_mismatched_version_spaces(
+        self,
+        conn,
+        resolved: dict[str, list[tuple[str, str]]],
+        package_data: dict[str, str],
+    ) -> dict[str, list[tuple[str, str]]]:
+        """
+        Discard identities numbered in a different version space to the package.
+
+        A name can resolve correctly and still be uncomparable: an installer
+        carries the installer's version, not the product's, and some CPEs are
+        numbered by year. Both compare cleanly against a release number and
+        both produce nonsense, so the published versions for the product are
+        used to check that the two sides are counting the same thing.
+        """
+        if not resolved:
+            return resolved
+
+        pairs = sorted({ident for idents in resolved.values() for ident in idents})
+        params: dict[str, str] = {}
+        clauses = []
+        for index, (vendor_name, product_name) in enumerate(pairs):
+            params[f"v_{index}"] = vendor_name
+            params[f"p_{index}"] = product_name
+            clauses.append(
+                f"(LOWER(vendor) = :v_{index} AND LOWER(product) = :p_{index})"
+            )
+
+        rows = conn.execute(
+            text(
+                "SELECT LOWER(vendor) AS vendor, LOWER(product) AS product, "
+                "version_start_including, version_start_excluding, "
+                "version_end_including, version_end_excluding "
+                f"FROM cpe WHERE {' OR '.join(clauses)}"
+            ),
+            params,
+        ).fetchall()
+
+        published: dict[tuple[str, str], list[str]] = {}
+        for row in rows:
+            key = (row[0], row[1])
+            bucket = published.setdefault(key, [])
+            for value in row[2:]:
+                if value:
+                    bucket.append(str(value))
+
+        kept: dict[str, list[tuple[str, str]]] = {}
+        for pkg_name, identities in resolved.items():
+            installed = package_data.get(pkg_name, "")
+            usable = [
+                ident
+                for ident in identities
+                if version_space_contains(installed, published.get(ident, []))
+            ]
+            if usable:
+                kept[pkg_name] = usable
+            else:
+                log.info(
+                    "Package %r (version %r) resolves to %s but is numbered in a "
+                    "different version space; no finding asserted",
+                    pkg_name,
+                    installed,
+                    identities,
+                )
+        return kept
+
     def _batch_query_cpe(
         self, conn, package_names: list[str], package_data: dict[str, str]
     ) -> list[CredentialedCVE]:
         """Execute batch query for CPE records."""
         findings: list[CredentialedCVE] = []
 
-        # Build IN clause with normalized names
-        normalized_names = set()
-        for pkg_name in package_names:
-            normalized_names.update(normalize_package_names(pkg_name))
-
-        # Use exact match where possible for better index usage
-        name_params = {
-            f"pkg_{i}": name.lower() for i, name in enumerate(normalized_names)
-        }
-        name_placeholders = ", ".join([f":pkg_{i}" for i in range(len(name_params))])
-
-        if not name_params:
+        # Resolve each installed package to the CPE identity NVD publishes it
+        # under, and query on that. Matching loose name fragments against
+        # product OR vendor was wrong in both directions: "Google Chrome" hit
+        # nothing (Chrome's CVEs never surfaced), while a vendor hit attached
+        # every CVE that vendor had ever published to one unrelated package.
+        identities_by_package = self._resolve_package_identities(conn, package_data)
+        if not identities_by_package:
+            log.info("No installed package resolved to a known CPE identity")
             return findings
+
+        # Installed versions per identity — several packages can resolve to the
+        # same product.
+        versions_by_identity: dict[tuple[str, str], set[str]] = {}
+        for pkg_name, idents in identities_by_package.items():
+            installed = (package_data.get(pkg_name) or "").strip()
+            for ident in idents:
+                versions_by_identity.setdefault(ident, set())
+                if installed:
+                    versions_by_identity[ident].add(installed)
+
+        pairs = sorted(versions_by_identity)
+        name_params = {}
+        clauses = []
+        for index, (vendor_name, product_name) in enumerate(pairs):
+            name_params[f"v_{index}"] = vendor_name
+            name_params[f"p_{index}"] = product_name
+
+            # A CPE row with no version bounds pins one exact release, so it can
+            # only apply when the installed version *is* that release. Filtering
+            # those out in SQL is what keeps the row count workable: of Chrome's
+            # ~35,000 rows, ~30,000 are per-build pins that could never match
+            # the one build installed here. Fetching them all and discarding
+            # them in Python is what forced a row cap, and the cap then dropped
+            # whole products.
+            versions = sorted(versions_by_identity[(vendor_name, product_name)])
+            pin_clauses = []
+            for v_index, version in enumerate(versions):
+                key = f"ver_{index}_{v_index}"
+                name_params[key] = version
+                pin_clauses.append(f"split_part(p.cpe_uri, ':', 6) = :{key}")
+            pin_sql = f" OR {' OR '.join(pin_clauses)}" if pin_clauses else ""
+
+            clauses.append(
+                f"(LOWER(p.vendor) = :v_{index} AND LOWER(p.product) = :p_{index}"
+                f" AND (p.version_start_including IS NOT NULL"
+                f" OR p.version_start_excluding IS NOT NULL"
+                f" OR p.version_end_including IS NOT NULL"
+                f" OR p.version_end_excluding IS NOT NULL{pin_sql}))"
+            )
+        identity_clause = " OR ".join(clauses)
 
         query = text(
             f"""
@@ -214,30 +413,56 @@ class VulnMatcher:
             LEFT JOIN epss ON epss.cve_id = c.cve_id
             LEFT JOIN kev ON kev.cve_id = c.cve_id
             LEFT JOIN exploits ON exploits.cve_id = c.cve_id
-            WHERE LOWER(p.product) IN ({name_placeholders})
-               OR LOWER(p.vendor) IN ({name_placeholders})
-            ORDER BY
-                (kev.cve_id IS NOT NULL) DESC,
-                COALESCE(epss.epss_score, 0) DESC,
-                COALESCE(best_cvss.base_score, 0) DESC
-            LIMIT 5000
+            WHERE {identity_clause}
+        """
+        )
+
+        # Rows are allocated per identity rather than across the whole result.
+        # A single global cap let the largest product crowd out every other one:
+        # Chrome alone has ~35,000 CPE rows against a 5,000-row limit, and
+        # ordering by exploitation likelihood put those first — so eight real
+        # Siemens findings on a live host were silently truncated away by a
+        # browser that happened to be installed alongside.
+        query = text(
+            f"""
+            SELECT * FROM (
+                SELECT ranked.*, ROW_NUMBER() OVER (
+                    PARTITION BY ranked.vendor, ranked.product
+                    ORDER BY ranked.in_kev DESC,
+                             COALESCE(ranked.epss_score, 0) DESC,
+                             COALESCE(ranked.cvss_score, 0) DESC
+                ) AS identity_rank
+                FROM ({query.text}) ranked
+            ) capped
+            WHERE capped.identity_rank <= {PER_IDENTITY_ROW_CAP}
         """
         )
 
         try:
             rows = conn.execute(query, name_params).mappings().all()
+            at_cap = {
+                (r.get("vendor"), r.get("product"))
+                for r in rows
+                if r.get("identity_rank") == PER_IDENTITY_ROW_CAP
+            }
+            if at_cap:
+                log.warning(
+                    "CPE row cap (%d) reached for %s — some published "
+                    "configurations were not evaluated for these products",
+                    PER_IDENTITY_ROW_CAP,
+                    ", ".join(f"{v}:{p}" for v, p in sorted(at_cap)),
+                )
 
             # Filter results in Python - match against installed versions
             for row in rows:
                 product = str(row.get("product") or "").lower()
                 vendor = str(row.get("vendor") or "").lower()
 
-                # Find matching installed package
+                # Attribute the row to the packages that resolved to exactly
+                # this identity — not to anything whose name happens to share a
+                # substring with it.
                 for pkg_name, installed_ver in package_data.items():
-                    candidates = normalize_package_names(pkg_name)
-                    if any(
-                        cand in product or cand in vendor for cand in candidates if cand
-                    ):
+                    if (vendor, product) in identities_by_package.get(pkg_name, ()):
                         # Version check
                         if installed_ver and not self._installed_version_matches(
                             installed_ver, row
@@ -289,6 +514,7 @@ class VulnMatcher:
                                 priority_level=record.get("priority_level", "P4"),
                                 matched_by="cpe",
                                 cpe_uri=row.get("cpe_uri") or "",
+                                affected_software=[self._row_cpe_config(row)],
                                 cvss_version=str(record.get("cvss_version") or ""),
                                 cvss_vector=str(record.get("cvss_vector") or ""),
                             )
@@ -580,6 +806,7 @@ class VulnMatcher:
                     priority_level=record.get("priority_level", "P4"),
                     matched_by="cpe",
                     cpe_uri=row.get("cpe_uri") or "",
+                    affected_software=[self._row_cpe_config(row)],
                     cvss_version=str(record.get("cvss_version") or ""),
                     cvss_vector=str(record.get("cvss_vector") or ""),
                 )
@@ -774,6 +1001,7 @@ class VulnMatcher:
                 "cpe_uri": f.cpe_uri,
                 "cvss_version": f.cvss_version,
                 "cvss_vector": f.cvss_vector,
+                "affected_software": f.affected_software,
             }
             for f in findings
         ]
@@ -786,47 +1014,87 @@ def _extract_cpe_exact_version(cpe_uri: str) -> str:
     return ""
 
 
+#: A dotted numeric run — the version itself, wherever it sits in the string.
+#: Real inventories wrap versions in prose: Windows DisplayVersion values like
+#: "ad 9.0.14" (AnyDesk), "v2.1", "Release 4.3".
+_VERSION_RUN = re.compile(r"\d+(?:\.\d+)*")
+
+
 def _parse_version(ver: str) -> tuple[int, ...]:
-    if ":" in ver:
-        ver = ver.split(":", 1)[1]
-    ver = re.sub(r"(ubuntu|debian|el\d+|deb\d+|~).*$", "", ver, flags=re.IGNORECASE)
-    parts = re.split(r"[.\-~+_]", ver)
-    nums: list[int] = []
-    for part in parts:
-        if not part:
-            continue
-        if part.isdigit():
-            nums.append(int(part))
-            continue
-        match = re.match(r"(\d+)([a-z]?)", part, re.IGNORECASE)
-        if match:
-            if match.group(1):
-                nums.append(int(match.group(1)))
-            if match.group(2):
-                nums.append(ord(match.group(2).lower()) - ord("a") + 1)
-    return tuple(nums) if nums else (0,)
+    """
+    Reduce a package version string to a comparable tuple.
+
+    Returns an **empty tuple** when no version can be read. That distinction
+    matters: the previous implementation split on separators and silently
+    discarded any component that would not parse, so AnyDesk's Windows
+    DisplayVersion "ad 9.0.14" became ``(0, 14)`` — a perfectly comparable
+    value that is wrong. Every "affected before 5.5.3" record then matched a
+    9.x install, and a live audit reported three Critical false positives on a
+    fully patched product. Producing nothing is recoverable; producing a wrong
+    number that compares cleanly is not.
+    """
+    if not ver:
+        return ()
+    text = str(ver)
+    if ":" in text:
+        # Debian epoch — "1:2.3.4" is version 2.3.4.
+        text = text.split(":", 1)[1]
+    text = re.sub(r"(ubuntu|debian|el\d+|deb\d+|~).*$", "", text, flags=re.IGNORECASE)
+
+    match = _VERSION_RUN.search(text)
+    if not match:
+        return ()
+    parts = tuple(int(p) for p in match.group(0).split("."))
+
+    # A trailing patch letter ("1.0.2k") orders after the plain release.
+    tail = text[match.end() : match.end() + 1]
+    if tail and tail.isalpha():
+        parts = parts + (ord(tail.lower()) - ord("a") + 1,)
+    return parts
+
+
+def _comparable(ver_a: str, ver_b: str) -> tuple[tuple, tuple] | None:
+    """Both versions as equal-length tuples, or None when either is unreadable."""
+    a, b = _parse_version(ver_a), _parse_version(ver_b)
+    if not a or not b:
+        return None
+    length = max(len(a), len(b))
+    return a + (0,) * (length - len(a)), b + (0,) * (length - len(b))
 
 
 def _version_lt(ver_a: str, ver_b: str) -> bool:
-    a = _parse_version(ver_a)
-    b = _parse_version(ver_b)
-    length = max(len(a), len(b))
-    a = a + (0,) * (length - len(a))
-    b = b + (0,) * (length - len(b))
-    return a < b
+    pair = _comparable(ver_a, ver_b)
+    if pair is None:
+        # Unreadable version: no ordering can be asserted, in either direction.
+        # Returning False here means an unparseable version never satisfies a
+        # "below the fixed release" test, so the finding is not claimed.
+        return False
+    return pair[0] < pair[1]
 
 
 def _version_lte(ver_a: str, ver_b: str) -> bool:
-    return _version_lt(ver_a, ver_b) or _version_eq(ver_a, ver_b)
+    pair = _comparable(ver_a, ver_b)
+    if pair is None:
+        return False
+    return pair[0] <= pair[1]
 
 
 def _version_gt(ver_a: str, ver_b: str) -> bool:
-    return not _version_lte(ver_a, ver_b)
+    pair = _comparable(ver_a, ver_b)
+    if pair is None:
+        return False
+    return pair[0] > pair[1]
 
 
 def _version_gte(ver_a: str, ver_b: str) -> bool:
-    return not _version_lt(ver_a, ver_b)
+    pair = _comparable(ver_a, ver_b)
+    if pair is None:
+        return False
+    return pair[0] >= pair[1]
 
 
 def _version_eq(ver_a: str, ver_b: str) -> bool:
-    return _parse_version(ver_a) == _parse_version(ver_b)
+    pair = _comparable(ver_a, ver_b)
+    if pair is None:
+        return False
+    return pair[0] == pair[1]

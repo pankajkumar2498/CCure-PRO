@@ -107,8 +107,8 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
         "scan_no": scan.scan_no,
         "status": scan.status,
         "pipeline_mode": scan.pipeline_mode,
-        "report_json_path": scan.report_json_path,
-        "report_xml_path": scan.report_xml_path,
+        "report_executive_path": scan.report_executive_path,
+        "report_technical_path": scan.report_technical_path,
         "phase1": {
             **phases_data.get("phase1", {}),
             "data": full_results.get("phase1", {}).get("data", []),
@@ -207,8 +207,8 @@ def update_scan_phase1(
     user_id: str,
     phase1_data: dict,
     is_final: bool = False,
-    report_json_path: str | None = None,
-    report_xml_path: str | None = None,
+    report_executive_path: str | None = None,
+    report_technical_path: str | None = None,
 ) -> Scan | None:
     """
     Called right after /scan/host-discovery succeeds. Updates the existing scan.
@@ -240,10 +240,10 @@ def update_scan_phase1(
         scan.completed_at = utcnow()
 
     scan.duration_seconds = duration
-    if report_json_path:
-        scan.report_json_path = report_json_path
-    if report_xml_path:
-        scan.report_xml_path = report_xml_path
+    if report_executive_path:
+        scan.report_executive_path = report_executive_path
+    if report_technical_path:
+        scan.report_technical_path = report_technical_path
 
     # Full payload embedded in summary
     full_summary = _phase_summary_payload(summary, hosts_data)
@@ -320,8 +320,8 @@ def update_scan_phase(
     phase_data: dict,
     is_final: bool = False,
     pipeline_mode: str | None = None,
-    report_json_path: str | None = None,
-    report_xml_path: str | None = None,
+    report_executive_path: str | None = None,
+    report_technical_path: str | None = None,
 ) -> Scan | None:
     """
     Called after /scan/asset-discovery (phase=2) or /scan/vulnerability-audit (phase=3).
@@ -337,10 +337,10 @@ def update_scan_phase(
 
     if pipeline_mode:
         scan.pipeline_mode = pipeline_mode
-    if report_json_path:
-        scan.report_json_path = report_json_path
-    if report_xml_path:
-        scan.report_xml_path = report_xml_path
+    if report_executive_path:
+        scan.report_executive_path = report_executive_path
+    if report_technical_path:
+        scan.report_technical_path = report_technical_path
 
     # Keep duration rolling
     scan.duration_seconds = (scan.duration_seconds or 0.0) + duration
@@ -425,23 +425,44 @@ def update_scan_phase(
         current_mode = resolve_pipeline_mode(pipeline_mode or scan.pipeline_mode)
 
         if current_mode == "vulnerability_audit":
-            # Update denormalized vuln counts on Scan row for dashboard performance
-            all_vulns = []
+            # Update denormalized vuln counts on Scan row for dashboard performance.
+            #
+            # Verification records a severity breakdown per host, computed from
+            # each CVE's published vector — the same numbers the report prints.
+            # Tallying the raw ``severity`` field here instead produced a
+            # dashboard that disagreed with the report for any record whose
+            # feed-supplied rating differs from its vector, and counted nothing
+            # at all for records that carry a vector but no severity string.
+            counted_from_verification = False
+            critical_count = high_count = medium_count = low_count = 0
             for h in hosts_data:
-                all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+                counts = h.get("vulnerability_counts")
+                if not isinstance(counts, dict) or not counts:
+                    continue
+                counted_from_verification = True
+                critical_count += int(counts.get("Critical") or 0)
+                high_count += int(counts.get("High") or 0)
+                medium_count += int(counts.get("Medium") or 0)
+                low_count += int(counts.get("Low") or 0)
 
-            critical_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical"
-            )
-            high_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "high"
-            )
-            medium_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium"
-            )
-            low_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "low"
-            )
+            if not counted_from_verification:
+                # Payload from before verification recorded counts, or a scan
+                # type that does not produce them.
+                all_vulns = []
+                for h in hosts_data:
+                    all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+
+                def _tally(tier: str) -> int:
+                    return sum(
+                        1
+                        for v in all_vulns
+                        if str(v.get("severity", "")).lower() == tier
+                    )
+
+                critical_count = _tally("critical")
+                high_count = _tally("high")
+                medium_count = _tally("medium")
+                low_count = _tally("low")
 
             scan.critical_count = critical_count
             scan.high_count = high_count
@@ -609,8 +630,8 @@ def create_completed_scan(
     results: dict,
     summary: dict,
     scan_duration: float | None = None,
-    report_json_path: str | None = None,
-    report_xml_path: str | None = None,
+    report_executive_path: str | None = None,
+    report_technical_path: str | None = None,
     pipeline_mode: str = "vulnerability_audit",
     scan_id: str | None = None,
     commit: bool = True,
@@ -632,8 +653,8 @@ def create_completed_scan(
         scan.duration_seconds = scan_duration or summary.get("scan_duration", 0.0)
         scan.total_hosts = summary.get("total_hosts", 0)
         scan.active_hosts = summary.get("active_hosts", 0)
-        scan.report_json_path = report_json_path
-        scan.report_xml_path = report_xml_path
+        scan.report_executive_path = report_executive_path
+        scan.report_technical_path = report_technical_path
         scan.pipeline_mode = pipeline_mode or scan.pipeline_mode
         scan.total_vulns = summary.get("total_vulns", scan.total_vulns or 0)
         scan.critical_count = summary.get("critical_count", scan.critical_count or 0)
@@ -667,8 +688,8 @@ def create_completed_scan(
             medium_count=summary.get("medium_count", 0),
             low_count=summary.get("low_count", 0),
             info_count=summary.get("info_count", 0),
-            report_json_path=report_json_path,
-            report_xml_path=report_xml_path,
+            report_executive_path=report_executive_path,
+            report_technical_path=report_technical_path,
         )
 
     credentialed_report = (results or {}).get("credentialed", {}).get("report")

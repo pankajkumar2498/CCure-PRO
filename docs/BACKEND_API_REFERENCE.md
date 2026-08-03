@@ -1112,6 +1112,42 @@ Delete organization (and all cascaded data).
 
 ---
 
+## 14b. Admin — NVD Catalog Sync (`/api/v1/admin`)
+
+Live synchronisation of the NVD 2.0 vulnerability catalog into the `vuln_intel`
+database. Both endpoints require `superadmin` or `org_admin`; anything else is
+rejected with `403 Admin privileges required to manage NVD catalog sync.`
+
+### `POST /api/v1/admin/sync-nvd`
+
+Triggers a catalog sync. The work runs as a FastAPI background task, so the call
+returns immediately rather than blocking for the duration of the pull.
+
+**Query params:** `days_back` (default `90`, range `1`–`3650`) — how far back to
+pull CVE modifications.
+
+**Response — started:**
+
+```json
+{
+  "success": true,
+  "status": "STARTED",
+  "message": "NVD 2.0 vulnerability catalog sync initiated for past 90 days.",
+  "triggered_by": "admin@example.com"
+}
+```
+
+**Response — already running:** a second call while a sync is in flight does not
+queue another; it returns `status: "SYNCING"` with the current progress in
+`details`.
+
+### `GET /api/v1/admin/nvd-sync-status`
+
+**Response:** `{ "success": true, "data": { ... } }` where `data` carries sync
+state, the last sync timestamp, and the total CVE count held in `vuln_intel`.
+
+---
+
 ## 15. User Profile (`/user`)
 
 ### `GET /user/profile`

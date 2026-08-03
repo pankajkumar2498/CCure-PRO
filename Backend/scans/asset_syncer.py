@@ -16,7 +16,15 @@ from db.models import (
     Service,
     VulnerabilityDefinition,
 )
-from sqlalchemy import func, or_
+from db.models.findings import (
+    SOURCE_CREDENTIALED,
+    SOURCE_NETWORK_SCAN,
+    STATE_HOST_ONLY,
+    STATE_LISTENING,
+    STATE_OPEN,
+)
+from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
+from sqlalchemy import case, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -57,6 +65,320 @@ def _get_device_signal_priority(host: dict) -> int:
     """
     signal = host.get("device_category_signal") or "none"
     return _DEVICE_SIGNAL_PRIORITY.get(signal, 0)
+
+
+def _clean(value) -> str:
+    return str(value or "").strip()
+
+
+def _port_int(value) -> int | None:
+    try:
+        port = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return port if 1 <= port <= 65535 else None
+
+
+#: Process names that identify the operating system itself rather than any
+#: installed product. They are common English words, so substring matching
+#: attaches them to whatever package happens to contain the word — on a real
+#: host "System" (PID 4, the kernel) resolved to "HP System Default Settings
+#: 1.5.20.1", putting a false product *and version* on SMB and WinRM. A wrong
+#: version is worse than none: it feeds the CVE range check.
+_GENERIC_PROCESS_NAMES = {
+    "system",
+    "idle",
+    "svchost",
+    "services",
+    "lsass",
+    "wininit",
+    "winlogon",
+    "csrss",
+    "smss",
+    "spoolsv",
+    "dllhost",
+    "conhost",
+    "taskhostw",
+    "rundll32",
+    "dwm",
+    "explorer",
+    "systemd",
+    "init",
+    "kthreadd",
+}
+
+
+def _service_identity_from_process(
+    raw_process: str, packages: list[dict] | None
+) -> tuple[str | None, str | None]:
+    """
+    Resolve the process holding a socket to an installed package and version.
+
+    The socket table names the binary; the package inventory knows its version.
+    Joining them is what turns "sshd is listening" into "OpenSSH 8.9p1 is
+    listening", which is the difference between a service row that can be
+    version-matched and one that cannot.
+
+    This is inference, not observation, so it is deliberately conservative: a
+    match must be the package's exact name or its opening words. Substring
+    matching anywhere in the name is not evidence — it is how a kernel process
+    acquired a laptop vendor's utility as its "product". Where a caller already
+    has the binary's own version resource it should use that instead and never
+    call this.
+    """
+    import re
+
+    process_name = ""
+    text = (raw_process or "").strip()
+    if text:
+        # Linux ss -tlnp: users:(("sshd",pid=1142,fd=3))
+        match = re.search(r'"([^"]+)"', text)
+        if match:
+            process_name = match.group(1).split("/")[-1].split("\\")[-1]
+        elif not text.upper().startswith("PID "):
+            process_name = (
+                text.split("/")[-1].split("\\")[-1].split()[0].strip("(),;\"'")
+            )
+
+    if not process_name:
+        return None, None
+
+    service_product: str | None = process_name
+    service_version: str | None = None
+    proc_lower = process_name.lower()
+
+    # An OS process is named, never attributed to a package.
+    bare_name = proc_lower[:-4] if proc_lower.endswith(".exe") else proc_lower
+    if bare_name in _GENERIC_PROCESS_NAMES:
+        return service_product, None
+
+    if packages:
+        for pkg in packages:
+            if pkg.get("name", "").lower() == proc_lower:
+                return pkg.get("name"), pkg.get("version")
+        # Anchored at the start only. "postgres" may claim "PostgreSQL 18";
+        # "system" may not claim "HP System Default Settings".
+        best_match = None
+        for pkg in packages:
+            pkg_name = pkg.get("name", "").lower()
+            if pkg_name.startswith(proc_lower):
+                if not best_match or len(pkg_name) < len(best_match.get("name", "")):
+                    best_match = pkg
+        if best_match:
+            return best_match.get("name"), best_match.get("version")
+    return service_product, service_version
+
+
+def upsert_credentialed_services(
+    db: Session,
+    asset_id: str,
+    scan_id: str,
+    ports: list[dict],
+    packages: list[dict] | None = None,
+) -> None:
+    """
+    Record what the host itself reports it is listening on.
+
+    Shared by the standalone credentialed audit and the credentialed pass of
+    the Vulnerability Audit pipeline, so both produce identical rows.
+
+    A listening socket is not the same observation as an open port. Whether the
+    network can reach it is a question the socket table cannot answer — except
+    for a loopback bind, which settles it. Recording every listener as "open"
+    made a service on 127.0.0.1 indistinguishable from one a scan confirmed.
+    """
+    unique_ports: dict[str, tuple[int, str, dict]] = {}
+    for port_data in ports or []:
+        if not isinstance(port_data, dict):
+            continue
+        port_num = _port_int(port_data.get("port"))
+        if not port_num:
+            continue
+        protocol = (_clean(port_data.get("protocol")) or "tcp").lower()[:10]
+        service_id = gen_service_id(asset_id, port_num, protocol)
+        if service_id not in unique_ports:
+            unique_ports[service_id] = (port_num, protocol, port_data)
+
+    for service_id, (port, protocol, port_data) in unique_ports.items():
+        scope = _clean(port_data.get("bind_scope")) or bind_scope(
+            port_data.get("local_addr")
+        )
+        reachable = port_data.get("network_reachable")
+        if reachable not in (True, False):
+            reachable = None
+
+        if scope == BIND_LOOPBACK:
+            state = STATE_HOST_ONLY
+        elif reachable is True:
+            state = STATE_OPEN
+        else:
+            state = STATE_LISTENING
+
+        raw_process = port_data.get("process") or ""
+        service_name = (
+            _clean(
+                port_data.get("service")
+                or port_data.get("name")
+                or raw_process
+                or "unknown"
+            )
+        )[:100]
+        banner = _clean(port_data.get("banner")) or None
+        # A caller that already resolved the process to a package passes the
+        # result through rather than shipping the whole inventory here just so
+        # this can redo the lookup.
+        service_product = _clean(port_data.get("product")) or None
+        service_version = _clean(port_data.get("version")) or None
+        if not service_product:
+            service_product, service_version = _service_identity_from_process(
+                raw_process, packages
+            )
+
+        svc_insert = insert(Service).values(
+            id=service_id,
+            asset_id=asset_id,
+            scan_id=scan_id,
+            port=port,
+            protocol=protocol,
+            state=state,
+            discovery_source=SOURCE_CREDENTIALED,
+            network_reachable=reachable,
+            bind_scope=scope or None,
+            credentialed_confirmed=True,
+            service_name=service_name,
+            service_product=service_product,
+            service_version=service_version,
+            banner=banner,
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+
+        # A port scan observes reachability directly; the host cannot see the
+        # firewall in front of it. So where a network observation already
+        # exists, this pass adds what the host knows (the process behind the
+        # socket, its bind scope, the confirmation) without overwriting what
+        # only the network could establish.
+        keep_network_verdict = Service.network_reachable.is_(True)
+        db.execute(
+            svc_insert.on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "state": case((keep_network_verdict, Service.state), else_=state),
+                    "network_reachable": (
+                        Service.network_reachable
+                        if reachable is None
+                        else func.coalesce(Service.network_reachable, reachable)
+                    ),
+                    "bind_scope": scope or Service.bind_scope,
+                    "discovery_source": case(
+                        (
+                            Service.discovery_source == SOURCE_NETWORK_SCAN,
+                            SOURCE_NETWORK_SCAN,
+                        ),
+                        else_=SOURCE_CREDENTIALED,
+                    ),
+                    "credentialed_confirmed": True,
+                    "scan_id": scan_id,
+                    "updated_at": utcnow(),
+                    "service_name": func.coalesce(
+                        func.nullif(Service.service_name, "unknown"),
+                        func.nullif(service_name, ""),
+                        Service.service_name,
+                    ),
+                    "service_product": func.coalesce(
+                        Service.service_product,
+                        func.nullif(service_product or "", ""),
+                    ),
+                    "service_version": func.coalesce(
+                        Service.service_version,
+                        func.nullif(service_version or "", ""),
+                    ),
+                    "banner": func.coalesce(Service.banner, func.nullif(banner, "")),
+                },
+            )
+        )
+
+
+def _upsert_network_service(db: Session, asset_id: str, scan_id: str, p: dict) -> None:
+    """
+    Record a port the scanner reached across the network.
+
+    The port-scan path only records a port once something answered on it, so
+    every row it writes is a network-confirmed observation and says so. A
+    credentialed audit may have written the same row first from the host's own
+    socket table; the flags it set there (``credentialed_confirmed``,
+    ``bind_scope``) describe the host and are preserved — this observation adds
+    reachability, it does not replace what the host reported about itself.
+    """
+    port_num = p.get("port")
+    if not port_num:
+        return
+    proto = p.get("protocol", "tcp").lower()
+    service_id = gen_service_id(asset_id, int(port_num), proto)
+
+    # A version read from inside the host supersedes the remote guess this
+    # table already holds. The usual coalesce preserves whatever was written
+    # first, which would keep nmap's "9.6.0 or later" over the authenticated
+    # 18.3 and leave the asset disagreeing with the report about the same
+    # service.
+    authenticated = p.get("fingerprint_source") == "credentialed"
+    incoming_version = func.nullif(p.get("version") or "", "")
+    version_update = (
+        func.coalesce(incoming_version, Service.service_version)
+        if authenticated
+        else func.coalesce(Service.service_version, incoming_version)
+    )
+
+    db.execute(
+        insert(Service)
+        .values(
+            id=service_id,
+            asset_id=asset_id,
+            scan_id=scan_id,
+            port=int(port_num),
+            protocol=proto,
+            state=STATE_OPEN,
+            discovery_source=SOURCE_NETWORK_SCAN,
+            network_reachable=True,
+            credentialed_confirmed=bool(p.get("credentialed_confirmed", False)),
+            service_name=p.get("service") or "unknown",
+            service_product=p.get("product") or None,
+            service_version=p.get("version") or None,
+            banner=p.get("banner"),
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        .on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "state": STATE_OPEN,
+                "discovery_source": SOURCE_NETWORK_SCAN,
+                "network_reachable": True,
+                # Never clear a confirmation the credentialed pass established.
+                "credentialed_confirmed": func.coalesce(
+                    Service.credentialed_confirmed, False
+                )
+                | bool(p.get("credentialed_confirmed", False)),
+                "scan_id": scan_id,
+                "updated_at": utcnow(),
+                "service_name": func.coalesce(
+                    func.nullif(Service.service_name, "unknown"),
+                    func.nullif(p.get("service") or "", ""),
+                    Service.service_name,
+                ),
+                # Preserve richer data on conflict — never overwrite a non-null
+                # value with null.
+                "service_product": func.coalesce(
+                    Service.service_product,
+                    func.nullif(p.get("product") or "", ""),
+                ),
+                "service_version": version_update,
+                "banner": func.coalesce(
+                    Service.banner, func.nullif(p.get("banner") or "", "")
+                ),
+            },
+        )
+    )
 
 
 def _get_stored_device_signal(asset: Asset) -> str | None:
@@ -759,53 +1081,7 @@ def sync_host_discovery(
         # Sync open ports/services discovered during Phase 1 enrichment
         ports = host.get("open_ports") or host.get("ports") or []
         for p in ports:
-            port_num = p.get("port")
-            if not port_num:
-                continue
-            proto = p.get("protocol", "tcp").lower()
-            service_id = gen_service_id(asset_id, int(port_num), proto)
-
-            db.execute(
-                insert(Service)
-                .values(
-                    id=service_id,
-                    asset_id=asset_id,
-                    scan_id=scan_id,
-                    port=int(port_num),
-                    protocol=proto,
-                    state="open",
-                    service_name=p.get("service") or "unknown",
-                    service_product=p.get("product") or None,
-                    service_version=p.get("version") or None,
-                    banner=p.get("banner"),
-                    created_at=utcnow(),
-                    updated_at=utcnow(),
-                )
-                .on_conflict_do_update(
-                    index_elements=["id"],
-                    set_={
-                        "state": "open",
-                        "scan_id": scan_id,
-                        "updated_at": utcnow(),
-                        "service_name": func.coalesce(
-                            func.nullif(Service.service_name, "unknown"),
-                            func.nullif(p.get("service") or "", ""),
-                            Service.service_name,
-                        ),
-                        "service_product": func.coalesce(
-                            Service.service_product,
-                            func.nullif(p.get("product") or "", ""),
-                        ),
-                        "service_version": func.coalesce(
-                            Service.service_version,
-                            func.nullif(p.get("version") or "", ""),
-                        ),
-                        "banner": func.coalesce(
-                            Service.banner, func.nullif(p.get("banner") or "", "")
-                        ),
-                    },
-                )
-            )
+            _upsert_network_service(db, asset_id, scan_id, p)
 
     db.commit()
 
@@ -856,55 +1132,9 @@ def sync_asset_discovery(
 
         ports = host.get("open_ports") or host.get("ports") or []
         for p in ports:
-            port_num = p.get("port")
-            if not port_num:
-                continue
-            proto = p.get("protocol", "tcp").lower()
-            service_id = gen_service_id(asset_id, int(port_num), proto)
-
-            # Use UPSERT for services (high volume), but selective update for asset enrichment
-            db.execute(
-                insert(Service)
-                .values(
-                    id=service_id,
-                    asset_id=asset_id,
-                    scan_id=scan_id,
-                    port=int(port_num),
-                    protocol=proto,
-                    state="open",
-                    service_name=p.get("service") or "unknown",
-                    service_product=p.get("product") or None,
-                    service_version=p.get("version") or None,
-                    banner=p.get("banner"),
-                    created_at=utcnow(),
-                    updated_at=utcnow(),
-                )
-                .on_conflict_do_update(
-                    index_elements=["id"],
-                    set_={
-                        "state": "open",
-                        "scan_id": scan_id,
-                        "updated_at": utcnow(),
-                        "service_name": func.coalesce(
-                            func.nullif(Service.service_name, "unknown"),
-                            func.nullif(p.get("service") or "", ""),
-                            Service.service_name,
-                        ),
-                        # Preserve richer data on conflict — never overwrite a non-null value with null
-                        "service_product": func.coalesce(
-                            Service.service_product,
-                            func.nullif(p.get("product") or "", ""),
-                        ),
-                        "service_version": func.coalesce(
-                            Service.service_version,
-                            func.nullif(p.get("version") or "", ""),
-                        ),
-                        "banner": func.coalesce(
-                            Service.banner, func.nullif(p.get("banner") or "", "")
-                        ),
-                    },
-                )
-            )
+            # UPSERT for services (high volume); asset enrichment below is a
+            # selective update.
+            _upsert_network_service(db, asset_id, scan_id, p)
 
         os_match = host.get("os_match") or host.get("os_guess")
         incoming_os_confidence = _confidence_to_percent(host.get("os_confidence"))
@@ -1097,6 +1327,10 @@ def sync_vulnerability_audit(
         db, org_id, hosts
     )
 
+    # Catalogue details for one CVE are identical wherever that CVE appears, so
+    # they are fetched once per sync rather than once per (host, finding).
+    _catalogue_cache: dict[str, dict | None] = {}
+
     touched_asset_ids = set()
     for host in hosts:
         ip = _resolve_ip(host)
@@ -1124,6 +1358,22 @@ def sync_vulnerability_audit(
         touched_asset_ids.add(asset_id)
         dns_name, fqdn = _extract_dns_identity(host)
         netbios_name = _extract_netbios_name(host)
+
+        # Phase 3 normally carries no ports — phase 2 already recorded them.
+        # A host the credentialed pass authenticated to is the exception: its
+        # ports now carry the correlation between what answered on the network
+        # and what the host says it is running, and its socket table adds
+        # services no port scan could see. Both are written here, or the
+        # correlation would exist only in the report and never in the asset.
+        if host.get("credentialed"):
+            for p in host.get("open_ports") or []:
+                _upsert_network_service(db, asset_id, scan_id, p)
+            # The listener records already carry the package each process
+            # resolved to — the enrichment did that while the inventory was
+            # loaded, so no package list needs to travel this far.
+            upsert_credentialed_services(
+                db, asset_id, scan_id, host.get("open_ports_credentialed") or []
+            )
 
         _set_asset_field(
             db,
@@ -1220,6 +1470,19 @@ def sync_vulnerability_audit(
         source_family = _finding_family("vulnerability_audit")
         found_in_this_scan = set()
         vulns = host.get("vulnerabilities") or host.get("cves") or []
+
+        # Service rows are written by the asset-discovery phase, not here, so
+        # the set of valid FK targets is read back rather than assumed. A
+        # finding referencing a service row that was never recorded would fail
+        # the foreign key and abort the whole insert.
+        synced_service_ids = set()
+        if vulns:
+            synced_service_ids = {
+                row[0]
+                for row in db.query(Service.id)
+                .filter(Service.asset_id == asset_id)
+                .all()
+            }
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id:
@@ -1232,13 +1495,21 @@ def sync_vulnerability_audit(
             cwe_ids = []
             references = []
             published_at = None
+            affected_software = []
 
             try:
                 from core.cve_database import get_cve_database
 
                 cve_db = get_cve_database()
                 if cve_db.db_available:
-                    details = cve_db.get_cve_details(cve_id)
+                    # One round trip per CVE, memoised for this sync. The same
+                    # CVE is routinely present on several hosts in a scan, and
+                    # the record is immutable for the duration of the run.
+                    if cve_id in _catalogue_cache:
+                        details = _catalogue_cache[cve_id]
+                    else:
+                        details = cve_db.get_cve_details(cve_id)
+                        _catalogue_cache[cve_id] = details
                     if details:
                         description = details.get("description")
                         cvss_vector = details.get("cvss_vector") or details.get(
@@ -1254,6 +1525,16 @@ def sync_vulnerability_audit(
                             elif isinstance(ref, dict) and ref.get("url"):
                                 clean_refs.append(ref["url"])
                         references = clean_refs
+
+                        # CPE version ranges. The report compares the detected
+                        # service version against these boundaries to confirm a
+                        # finding or rule it out; without them every finding can
+                        # only ever be reported as unverified.
+                        affected_software = [
+                            cpe
+                            for cpe in (details.get("affected") or [])
+                            if isinstance(cpe, dict)
+                        ]
 
                         from datetime import date, datetime
 
@@ -1271,24 +1552,63 @@ def sync_vulnerability_audit(
                 )
 
             # UPSERT Catalog
+            #
+            # This backfills enrichment onto CVE rows that already exist. The
+            # previous do-nothing behaviour meant a CVE first seen before the
+            # feed carried CPE ranges could never acquire them, so its findings
+            # would stay permanently unverifiable. Each field falls back to the
+            # stored value, so a lookup that returns nothing never erases data.
+            catalog_stmt = insert(VulnerabilityDefinition).values(
+                id=cve_id,
+                cve_id=cve_id,
+                title=v.get("title", f"Vuln {cve_id}"),
+                description=description,
+                cvss_vector=cvss_vector,
+                cwe_ids=cwe_ids,
+                references=references,
+                affected_software=affected_software,
+                published_at=published_at,
+                severity=str(v.get("severity", "Medium")).title(),
+                cvss_v3_score=float(v.get("cvss", 0.0)) or None,
+                source="scanner",
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
             db.execute(
-                insert(VulnerabilityDefinition)
-                .values(
-                    id=cve_id,
-                    cve_id=cve_id,
-                    title=v.get("title", f"Vuln {cve_id}"),
-                    description=description,
-                    cvss_vector=cvss_vector,
-                    cwe_ids=cwe_ids,
-                    references=references,
-                    published_at=published_at,
-                    severity=str(v.get("severity", "Medium")).title(),
-                    cvss_v3_score=float(v.get("cvss", 0.0)),
-                    source="scanner",
-                    created_at=utcnow(),
-                    updated_at=utcnow(),
+                catalog_stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "description": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.description, ""),
+                            VulnerabilityDefinition.description,
+                        ),
+                        "cvss_vector": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.cvss_vector, ""),
+                            VulnerabilityDefinition.cvss_vector,
+                        ),
+                        "cvss_v3_score": func.coalesce(
+                            catalog_stmt.excluded.cvss_v3_score,
+                            VulnerabilityDefinition.cvss_v3_score,
+                        ),
+                        "published_at": func.coalesce(
+                            catalog_stmt.excluded.published_at,
+                            VulnerabilityDefinition.published_at,
+                        ),
+                        "cwe_ids": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.cwe_ids, "[]"),
+                            VulnerabilityDefinition.cwe_ids,
+                        ),
+                        "references": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.references, "[]"),
+                            VulnerabilityDefinition.references,
+                        ),
+                        "affected_software": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.affected_software, "[]"),
+                            VulnerabilityDefinition.affected_software,
+                        ),
+                        "updated_at": utcnow(),
+                    },
                 )
-                .on_conflict_do_nothing(index_elements=["id"])
             )
 
             # PHASE 4: Detect Reopened Vulnerabilities
@@ -1306,6 +1626,25 @@ def sync_vulnerability_audit(
                     db, asset_id, scan_id, "vulnerability_reopened", cve_id, "open"
                 )
 
+            # Bind the finding to the service it was observed on. The report
+            # resolves the port, product, and detected version through this FK,
+            # which is what lets it compare the running version against the
+            # CVE's vulnerable range instead of reporting it unverified.
+            finding_service_id = None
+            vuln_port = v.get("port")
+            if vuln_port is not None:
+                try:
+                    finding_service_id = gen_service_id(
+                        asset_id, int(vuln_port), str(v.get("protocol") or "tcp")
+                    )
+                except (TypeError, ValueError):
+                    finding_service_id = None
+
+            # Only reference a service row that this scan actually recorded,
+            # otherwise the FK insert fails and takes the whole finding with it.
+            if finding_service_id and finding_service_id not in synced_service_ids:
+                finding_service_id = None
+
             # UPSERT Finding
             proof = f"Source_Family:network_service\n{v.get('proof') or v.get('evidence') or ''}".strip()
             plugin_output = (
@@ -1319,13 +1658,16 @@ def sync_vulnerability_audit(
                     scan_id=scan_id,
                     asset_id=asset_id,
                     vuln_id=cve_id,
+                    service_id=finding_service_id,
                     severity=str(v.get("severity", "Medium")).title(),
-                    cvss_score=float(v.get("cvss", 0.0)),
+                    cvss_score=float(v.get("cvss", 0.0)) or None,
                     status="open",
                     proof=proof,
                     plugin_output=plugin_output,
                     source_family=source_family,
-                    evidence_source="vulnerability_audit",
+                    evidence_source=str(
+                        v.get("evidence_source") or "vulnerability_audit"
+                    ),
                     first_found_at=utcnow(),
                     last_found_at=utcnow(),
                 )
@@ -1336,9 +1678,16 @@ def sync_vulnerability_audit(
                         "scan_id": scan_id,
                         "status": "open",
                         "severity": str(v.get("severity", "Medium")).title(),
-                        "cvss_score": float(v.get("cvss", 0.0)),
+                        "cvss_score": float(v.get("cvss", 0.0)) or None,
                         "source_family": source_family,
-                        "evidence_source": "vulnerability_audit",
+                        "evidence_source": str(
+                            v.get("evidence_source") or "vulnerability_audit"
+                        ),
+                        # Keep an existing binding when this pass could not
+                        # resolve one, so a re-scan never loses port context.
+                        "service_id": func.coalesce(
+                            finding_service_id, AssetVulnerability.service_id
+                        ),
                         "proof": func.coalesce(
                             func.nullif(proof, ""), AssetVulnerability.proof
                         ),

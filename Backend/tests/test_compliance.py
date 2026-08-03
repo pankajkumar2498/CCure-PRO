@@ -715,19 +715,91 @@ def test_unknown_evidence_source_is_unassessed_not_failed():
     assert "no evidence adapter" in payload.get("_reason", "").lower()
 
 
+class _FakeCatalogueEntry:
+    """The feed's row for a CVE, shared by every host that has it."""
+
+    def __init__(self, cve_id, severity=None, cvss_v3_score=None):
+        self.cve_id = cve_id
+        self.severity = severity
+        self.cvss_v3_score = cvss_v3_score
+
+
+class _FakeFinding:
+    """One AssetVulnerability row: this CVE, as seen on this host."""
+
+    def __init__(self, id, severity=None, cvss_score=None, vulnerability=None):
+        self.id = id
+        self.severity = severity
+        self.cvss_score = cvss_score
+        self.vulnerability = vulnerability
+
+
+def _run_vulnerability_adapter(findings):
+    """Drive the adapter over a fixed row set and hand back its payload plus
+    the filter clauses it asked the database for."""
+    from core.compliance_evidence import ComplianceEvidenceProvider
+
+    db = MagicMock()
+    query = db.query.return_value.join.return_value.filter.return_value
+    query.all.return_value = findings
+
+    payload = ComplianceEvidenceProvider._adapt_vulnerability_audit(db, "ast_test")
+    clauses = db.query.return_value.join.return_value.filter.call_args.args
+    return payload, clauses
+
+
 def test_vulnerability_evidence_counts_only_open_findings():
     """
     Remediated and risk-accepted findings must not keep failing a control. The
     query previously took every row for the asset, so a host that had fixed
     every critical still failed "no critical vulnerabilities", permanently.
     """
-    import inspect
+    _, clauses = _run_vulnerability_adapter([])
 
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    rendered = [
+        str(clause.compile(compile_kwargs={"literal_binds": True}))
+        for clause in clauses
+    ]
+    assert any("status = 'open'" in sql for sql in rendered), rendered
+    assert any("asset_id = 'ast_test'" in sql for sql in rendered), rendered
 
-    source = inspect.getsource(ComplianceEvidenceProvider._adapt_vulnerability_audit)
-    assert 'AssetVulnerability.status == "open"' in source
-    # Severity comes from the finding recorded for this host, not the feed's
-    # label for the CVE in general — the two disagree often enough to flip a
-    # control's verdict.
-    assert "finding.severity or" in source
+
+def test_vulnerability_evidence_prefers_the_severity_recorded_for_this_host():
+    """
+    Severity comes from the finding recorded for this host, not the feed's
+    label for the CVE in general — the two disagree often enough to flip a
+    control's verdict. The catalogue is only the fallback.
+    """
+    payload, _ = _run_vulnerability_adapter(
+        [
+            # The feed calls this one Low; the scan recomputed Critical here.
+            _FakeFinding(
+                "av1",
+                severity="Critical",
+                cvss_score=9.8,
+                vulnerability=_FakeCatalogueEntry(
+                    "CVE-2024-0001", severity="Low", cvss_v3_score=3.1
+                ),
+            ),
+            # No host-specific severity, so the catalogue's label stands in.
+            _FakeFinding(
+                "av2",
+                severity=None,
+                cvss_score=None,
+                vulnerability=_FakeCatalogueEntry(
+                    "CVE-2024-0002", severity="High", cvss_v3_score=7.5
+                ),
+            ),
+        ]
+    )
+
+    assert payload["total_vulnerabilities"] == 2
+    assert payload["critical_count"] == 1
+    assert payload["high_count"] == 1
+    assert payload["low_count"] == 0
+
+    by_cve = {v["cve_id"]: v for v in payload["vulnerabilities"]}
+    assert by_cve["CVE-2024-0001"]["severity"] == "Critical"
+    assert by_cve["CVE-2024-0001"]["cvss_score"] == 9.8
+    assert by_cve["CVE-2024-0002"]["severity"] == "High"
+    assert by_cve["CVE-2024-0002"]["cvss_score"] == 7.5

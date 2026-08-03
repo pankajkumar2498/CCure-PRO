@@ -425,23 +425,44 @@ def update_scan_phase(
         current_mode = resolve_pipeline_mode(pipeline_mode or scan.pipeline_mode)
 
         if current_mode == "vulnerability_audit":
-            # Update denormalized vuln counts on Scan row for dashboard performance
-            all_vulns = []
+            # Update denormalized vuln counts on Scan row for dashboard performance.
+            #
+            # Verification records a severity breakdown per host, computed from
+            # each CVE's published vector — the same numbers the report prints.
+            # Tallying the raw ``severity`` field here instead produced a
+            # dashboard that disagreed with the report for any record whose
+            # feed-supplied rating differs from its vector, and counted nothing
+            # at all for records that carry a vector but no severity string.
+            counted_from_verification = False
+            critical_count = high_count = medium_count = low_count = 0
             for h in hosts_data:
-                all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+                counts = h.get("vulnerability_counts")
+                if not isinstance(counts, dict) or not counts:
+                    continue
+                counted_from_verification = True
+                critical_count += int(counts.get("Critical") or 0)
+                high_count += int(counts.get("High") or 0)
+                medium_count += int(counts.get("Medium") or 0)
+                low_count += int(counts.get("Low") or 0)
 
-            critical_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "critical"
-            )
-            high_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "high"
-            )
-            medium_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "medium"
-            )
-            low_count = sum(
-                1 for v in all_vulns if str(v.get("severity", "")).lower() == "low"
-            )
+            if not counted_from_verification:
+                # Payload from before verification recorded counts, or a scan
+                # type that does not produce them.
+                all_vulns = []
+                for h in hosts_data:
+                    all_vulns.extend(h.get("vulnerabilities") or h.get("cves") or [])
+
+                def _tally(tier: str) -> int:
+                    return sum(
+                        1
+                        for v in all_vulns
+                        if str(v.get("severity", "")).lower() == tier
+                    )
+
+                critical_count = _tally("critical")
+                high_count = _tally("high")
+                medium_count = _tally("medium")
+                low_count = _tally("low")
 
             scan.critical_count = critical_count
             scan.high_count = high_count

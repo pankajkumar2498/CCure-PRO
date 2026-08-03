@@ -62,7 +62,9 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from engines.credentialed.coverage import COVERAGE_ROWS
 from reportlab.platypus.tableofcontents import TableOfContents
+from scans.cvss import SEVERITY_RANK
 from scans.finding_normalizer import (
     DETECTION_SEMANTICS,
     QOD_REPORT_THRESHOLD,
@@ -73,6 +75,7 @@ from scans.finding_normalizer import (
     StandardizedFinding,
     _comparable_version,
     build_scan_report,
+    group_findings_for_report,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -279,6 +282,11 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         ),
         "body": style("Body_", fontSize=8.7, leading=12.4),
         "body_bold": style("BodyB_", fontName=bold, fontSize=8.7, leading=12.4),
+        # Table header cells. A ReportLab TEXTCOLOR table command does not reach
+        # Paragraph cells — a Paragraph carries its own colour — so header cells
+        # built with a body style render dark-on-navy and are unreadable. Every
+        # header row in this report must use this style.
+        "th": style("Th_", fontName=bold, fontSize=8.7, leading=12.4, textColor=WHITE),
         "small": style("Small_", fontSize=7.6, leading=10.4, textColor=MUTED),
         "mono": style(
             "Mono_",
@@ -331,6 +339,13 @@ def _heading(text: str, style: ParagraphStyle, level: int) -> Paragraph:
 
 
 def _grid(rows, col_widths, header: bool = True, zebra: bool = True) -> Table:
+    """
+    Zebra-striped grid whose first row is the header.
+
+    Header cells must be built with ``styles["th"]``: the TEXTCOLOR command
+    below only recolours plain-string cells, so a Paragraph header carrying a
+    body style stays dark and disappears into the navy fill.
+    """
     table = Table(rows, colWidths=col_widths, repeatRows=1 if header else 0)
     commands = [
         ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
@@ -400,7 +415,8 @@ def _scan_configuration(
                 return str(candidate)
         return default
 
-    total_services = sum(len(h.services) for h in findings.hosts)
+    # Counted from the reachable set, the same basis as the port inventory.
+    total_services = sum(len(h.reachable_services) for h in findings.hosts)
 
     rows = [
         (
@@ -411,25 +427,14 @@ def _scan_configuration(
         ),
         ("Port selection", first("port_range", "ports", "port_spec", "scan_ports")),
         ("Host discovery", first("discovery_scan_method", "scan_method", "discovery")),
-        (
-            "Service detection",
-            first(
-                "service_detection",
-                "version_detection",
-                default="Enabled (banner and probe fingerprinting)",
-            ),
-        ),
-        (
-            "OS fingerprinting",
-            first(
-                "os_detection",
-                default=(
-                    "Enabled"
-                    if any(h.os_name for h in findings.hosts)
-                    else "Not recorded"
-                ),
-            ),
-        ),
+        # No defaults here. These state what the scan was configured to do, and
+        # a default is a claim: "Enabled (banner and probe fingerprinting)" was
+        # printed for scans that performed no service detection at all, and an
+        # OS line was inferred from whether any host happened to have an OS
+        # recorded. The engines now publish these, so an unrecorded value means
+        # the scan genuinely did not record it and the report says so.
+        ("Service detection", first("service_detection", "version_detection")),
+        ("OS fingerprinting", first("os_detection")),
         ("Timing profile", first("timing_template", "timing", "speed")),
         ("Scanner engine", first("scanner", "engine", "scan_engine")),
         ("Vulnerability feed", _feed_freshness_text(meta)),
@@ -437,11 +442,52 @@ def _scan_configuration(
         ("Services fingerprinted", str(total_services)),
         (
             "Candidate matches evaluated",
-            str(len(findings.excluded) + len(findings.vulnerabilities)),
+            # The scan records this when it verifies, and that recorded figure
+            # is authoritative: a report rebuilt from the database later reads
+            # back only the findings that survived, so counting what is in hand
+            # would understate what was actually examined.
+            first(
+                "candidates_evaluated",
+                default=str(len(findings.excluded) + len(findings.vulnerabilities)),
+            ),
         ),
         ("Reporting QoD threshold", f"{QOD_REPORT_THRESHOLD}%"),
     ]
+
+    # Rows a scan that authenticated adds to the above. They are appended only
+    # when the scan recorded them: printing "Not recorded" against network
+    # reachability on an ordinary port scan would imply the question applied.
+    for key, label in COVERAGE_ROWS:
+        value = first(key, default="")
+        if value:
+            rows.append((label, value))
+
+    exposed = _first_int(meta, summary, "listeners_exposed")
+    host_only = _first_int(meta, summary, "listeners_host_only")
+    if exposed is not None or host_only is not None:
+        rows.append(
+            (
+                "Service exposure",
+                f"{exposed or 0} listening service(s) confirmed reachable, "
+                f"{host_only or 0} bound to loopback and not reachable off-host",
+            )
+        )
     return rows
+
+
+def _first_int(meta: dict, summary: dict, key: str) -> Optional[int]:
+    """Read an integer that either the metadata or the summary may carry."""
+    for source in (meta, summary):
+        if not isinstance(source, dict):
+            continue
+        value = source.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _scan_metadata_block(
@@ -947,6 +993,128 @@ def _cwe_label(finding: StandardizedFinding) -> str:
         else:
             parts.append(safe)
     return ", ".join(parts)
+
+
+def _finding_group_card(group, styles: dict) -> List[Any]:
+    """
+    One card for the set of findings a single upgrade resolves.
+
+    States the count, what the upgrade clears, and everything a reader needs to
+    prioritise it — worst severity, severity spread, anything known-exploited,
+    the highest exploitation probability — without printing one card per CVE.
+    """
+    lead = group.representative
+    fg = SEVERITY_FG.get(group.severity, MUTED)
+    story: List[Any] = []
+
+    badge = group.severity.upper()
+    if group.kev_findings:
+        badge = f"KEV · {badge}"
+
+    title = (
+        f"{escape_for_reportlab(group.product)} — "
+        f"{len(group.findings)} known vulnerabilities"
+    )
+    header = Table(
+        [
+            [
+                Paragraph(
+                    f"<font color='white'><b>{title}</b></font>", styles["body_bold"]
+                ),
+                Paragraph(
+                    f"<font color='white'><b>{badge}</b></font>",
+                    ParagraphStyle(
+                        "ghdr_r", parent=styles["body_bold"], alignment=TA_RIGHT
+                    ),
+                ),
+            ]
+        ],
+        colWidths=[CONTENT_W - 40 * mm, 40 * mm],
+    )
+    header.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), fg),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    story.append(header)
+
+    spread = ", ".join(
+        f"{count} {tier}"
+        for tier, count in sorted(
+            group.severity_counts.items(),
+            key=lambda item: SEVERITY_RANK.get(item[0], 0),
+            reverse=True,
+        )
+    )
+    worst_epss = group.max_epss
+    epss_text = (
+        f"{worst_epss.epss_score * 100:.1f}% ({worst_epss.primary_cve})"
+        if worst_epss and worst_epss.epss_score
+        else "Not published in feed"
+    )
+    meta_rows = [
+        [
+            _p("<b>Findings grouped</b>", styles["body"], escape=False),
+            _p(f"{len(group.findings)} CVEs, one upgrade", styles["body"]),
+            _p("<b>Affected port</b>", styles["body"], escape=False),
+            _p(lead.port_label, styles["body"]),
+        ],
+        [
+            _p("<b>Severity spread</b>", styles["body"], escape=False),
+            _p(spread or "Unscored", styles["body"]),
+            _p("<b>Detected version</b>", styles["body"], escape=False),
+            _p(lead.detected_version or "Not determined", styles["body"]),
+        ],
+        [
+            _p("<b>Highest exploitation</b>", styles["body"], escape=False),
+            _p(epss_text, styles["body"]),
+            _p("<b>Known exploited</b>", styles["body"], escape=False),
+            _p(
+                (
+                    ", ".join(f.primary_cve for f in group.kev_findings[:4])
+                    if group.kev_findings
+                    else "None in this group"
+                ),
+                styles["body"],
+            ),
+        ],
+    ]
+    story.append(_grid(meta_rows, [34 * mm, 54 * mm, 34 * mm, 54 * mm], header=False))
+    story.append(Spacer(1, 3))
+
+    cves = group.cve_ids
+    shown = ", ".join(cves[:18])
+    if len(cves) > 18:
+        shown += f", and {len(cves) - 18} more (full list in the CSV export)"
+    story.append(
+        _p(f"<b>Covered by this upgrade:</b> {shown}", styles["small"], escape=False)
+    )
+    story.append(Spacer(1, 3))
+
+    remediation = lead.remediation
+    if remediation:
+        story.append(
+            _boxed(
+                _p(
+                    f"<b>Remediation:</b><br/>Upgrade {escape_for_reportlab(group.product)} "
+                    f"to {escape_for_reportlab(group.fixed_version)} or later. This single "
+                    f"action resolves all {len(group.findings)} findings listed above.",
+                    styles["body"],
+                    escape=False,
+                ),
+                colors.HexColor("#F0FDF4"),
+                colors.HexColor("#86EFAC"),
+            )
+        )
+    story.append(Spacer(1, 6))
+    return story
 
 
 def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
@@ -1502,11 +1670,11 @@ class ScanReportGenerator:
             )
             rows = [
                 [
-                    _p("<b>CVE</b>", styles["body_bold"], escape=False),
-                    _p("<b>Host</b>", styles["body_bold"], escape=False),
-                    _p("<b>Finding</b>", styles["body_bold"], escape=False),
-                    _p("<b>Severity</b>", styles["body_bold"], escape=False),
-                    _p("<b>CISA due date</b>", styles["body_bold"], escape=False),
+                    _p("<b>CVE</b>", styles["th"], escape=False),
+                    _p("<b>Host</b>", styles["th"], escape=False),
+                    _p("<b>Finding</b>", styles["th"], escape=False),
+                    _p("<b>Severity</b>", styles["th"], escape=False),
+                    _p("<b>CISA due date</b>", styles["th"], escape=False),
                 ]
             ]
             for finding in kev[:20]:
@@ -1539,12 +1707,12 @@ class ScanReportGenerator:
 
             rows = [
                 [
-                    _p("<b>#</b>", styles["body_bold"], escape=False),
-                    _p("<b>Remediation action</b>", styles["body_bold"], escape=False),
-                    _p("<b>Resolves</b>", styles["body_bold"], escape=False),
-                    _p("<b>Hosts</b>", styles["body_bold"], escape=False),
-                    _p("<b>Highest severity</b>", styles["body_bold"], escape=False),
-                    _p("<b>Target window</b>", styles["body_bold"], escape=False),
+                    _p("<b>#</b>", styles["th"], escape=False),
+                    _p("<b>Remediation action</b>", styles["th"], escape=False),
+                    _p("<b>Resolves</b>", styles["th"], escape=False),
+                    _p("<b>Hosts</b>", styles["th"], escape=False),
+                    _p("<b>Highest severity</b>", styles["th"], escape=False),
+                    _p("<b>Target window</b>", styles["th"], escape=False),
                 ]
             ]
             for index, entry in enumerate(plan[:12], start=1):
@@ -1602,7 +1770,8 @@ class ScanReportGenerator:
         story.append(_heading("Assessment coverage", styles["h1"], 0))
         coverage = [
             f"Hosts assessed: <b>{len(findings.hosts)}</b>.",
-            f"Open ports inventoried: <b>{sum(len(h.services) for h in findings.hosts)}</b>.",
+            f"Open ports inventoried: "
+            f"<b>{sum(len(h.reachable_services) for h in findings.hosts)}</b>.",
             f"Version-confirmed vulnerabilities: <b>{findings.confirmed_count}</b>.",
             f"Findings requiring version verification: <b>{findings.potential_count}</b>.",
         ]
@@ -1612,6 +1781,19 @@ class ScanReportGenerator:
                 f"<b>{len(findings.excluded)}</b> "
                 f"(see the methodology appendix in the technical report)."
             )
+        # What the scan did not look at bounds every conclusion above it. On a
+        # host-only credentialed audit this is the line that stops "no network
+        # findings" from being read as "no network exposure".
+        not_examined = meta.get("unauthenticated_checks") or summary.get(
+            "unauthenticated_checks"
+        )
+        if not_examined:
+            coverage.append(f"Unauthenticated network checks: {not_examined}.")
+        reachability = meta.get("network_reachability") or summary.get(
+            "network_reachability"
+        )
+        if reachability:
+            coverage.append(f"Network reachability: {reachability}.")
         story.append(
             _boxed(
                 _p(
@@ -1670,14 +1852,14 @@ class ScanReportGenerator:
         if findings.hosts:
             rows = [
                 [
-                    _p("<b>Host</b>", styles["body_bold"], escape=False),
-                    _p("<b>Operating system</b>", styles["body_bold"], escape=False),
-                    _p("<b>Ports</b>", styles["body_bold"], escape=False),
-                    _p("<b>Vulns</b>", styles["body_bold"], escape=False),
-                    _p("<b>Crit</b>", styles["body_bold"], escape=False),
-                    _p("<b>High</b>", styles["body_bold"], escape=False),
-                    _p("<b>Med</b>", styles["body_bold"], escape=False),
-                    _p("<b>Low</b>", styles["body_bold"], escape=False),
+                    _p("<b>Host</b>", styles["th"], escape=False),
+                    _p("<b>Operating system</b>", styles["th"], escape=False),
+                    _p("<b>Ports</b>", styles["th"], escape=False),
+                    _p("<b>Vulns</b>", styles["th"], escape=False),
+                    _p("<b>Crit</b>", styles["th"], escape=False),
+                    _p("<b>High</b>", styles["th"], escape=False),
+                    _p("<b>Med</b>", styles["th"], escape=False),
+                    _p("<b>Low</b>", styles["th"], escape=False),
                 ]
             ]
             for host in findings.hosts:
@@ -1692,7 +1874,9 @@ class ScanReportGenerator:
                     [
                         _p(host.display_name, styles["body"]),
                         _p(host.os_label, styles["body"]),
-                        _p(str(len(host.services)), styles["body"]),
+                        # Reachable only, matching the port inventory. A
+                        # loopback-bound daemon is running, not exposed.
+                        _p(str(len(host.reachable_services)), styles["body"]),
                         _p(str(len(host.vulnerability_findings)), styles["body"]),
                         _p(str(counts["Critical"]), styles["body"]),
                         _p(str(counts["High"]), styles["body"]),
@@ -1754,7 +1938,16 @@ class ScanReportGenerator:
                     "Credentialed" if host.credentialed else "Unauthenticated",
                 )
             )
-            detail_rows.append(("Open ports", str(len(host.services))))
+            detail_rows.append(("Open ports", str(len(host.reachable_services))))
+            host_only = len(host.services) - len(host.reachable_services)
+            if host_only:
+                detail_rows.append(
+                    (
+                        "Host-only services",
+                        f"{host_only} bound to loopback — running but not reachable "
+                        f"from the network",
+                    )
+                )
 
             grid_rows = []
             for index in range(0, len(detail_rows), 2):
@@ -1790,12 +1983,12 @@ class ScanReportGenerator:
                 story.append(_heading("Service inventory", styles["h2"], 1))
                 rows = [
                     [
-                        _p("<b>Port</b>", styles["body_bold"], escape=False),
-                        _p("<b>State</b>", styles["body_bold"], escape=False),
-                        _p("<b>Service</b>", styles["body_bold"], escape=False),
+                        _p("<b>Port</b>", styles["th"], escape=False),
+                        _p("<b>State</b>", styles["th"], escape=False),
+                        _p("<b>Service</b>", styles["th"], escape=False),
                         _p(
                             "<b>Product / version detected</b>",
-                            styles["body_bold"],
+                            styles["th"],
                             escape=False,
                         ),
                     ]
@@ -1835,19 +2028,33 @@ class ScanReportGenerator:
                 )
                 continue
 
-            story.append(
-                _heading(
-                    f"Findings on {host.ip} ({len(vulnerabilities)})", styles["h2"], 1
+            # Findings that one upgrade resolves are presented as one item. A
+            # host well behind on a browser is genuinely affected by hundreds of
+            # published CVEs; listing them individually is accurate and useless,
+            # and it pushed an ICS component with a Critical out of the document
+            # entirely once the card cap was reached. The per-CVE findings are
+            # unchanged underneath — this is how they are shown.
+            groups = group_findings_for_report(vulnerabilities)
+            grouped_count = sum(1 for g in groups if g.is_group)
+            heading = f"Findings on {host.ip} ({len(vulnerabilities)})"
+            if grouped_count:
+                heading = (
+                    f"Findings on {host.ip} ({len(vulnerabilities)} in "
+                    f"{len(groups)} remediation groups)"
                 )
-            )
+            story.append(_heading(heading, styles["h2"], 1))
             story.append(
                 HRFlowable(width="100%", thickness=0.8, color=NAVY, spaceAfter=6)
             )
 
-            for finding in vulnerabilities:
+            for group in groups:
                 if cards_rendered >= MAX_DETAIL_CARDS:
                     break
-                card = _finding_card(finding, styles)
+                card = (
+                    _finding_group_card(group, styles)
+                    if group.is_group
+                    else _finding_card(group.representative, styles)
+                )
                 # KeepTogether is applied only to the header + metadata so a long
                 # card can still split across pages instead of overflowing.
                 story.append(CondPageBreak(38 * mm))
@@ -1876,9 +2083,9 @@ class ScanReportGenerator:
                 )
                 rows = [
                     [
-                        _p("<b>Port</b>", styles["body_bold"], escape=False),
-                        _p("<b>Service</b>", styles["body_bold"], escape=False),
-                        _p("<b>Observation</b>", styles["body_bold"], escape=False),
+                        _p("<b>Port</b>", styles["th"], escape=False),
+                        _p("<b>Service</b>", styles["th"], escape=False),
+                        _p("<b>Observation</b>", styles["th"], escape=False),
                     ]
                 ]
                 for item in inventory:
@@ -1911,8 +2118,8 @@ class ScanReportGenerator:
         story.append(Spacer(1, 2 * mm))
         config_rows = [
             [
-                _p("<b>Parameter</b>", styles["body_bold"], escape=False),
-                _p("<b>Value</b>", styles["body_bold"], escape=False),
+                _p("<b>Parameter</b>", styles["th"], escape=False),
+                _p("<b>Value</b>", styles["th"], escape=False),
             ]
         ]
         for label, value in _scan_configuration(meta, summary, findings, scan_type):
@@ -1944,9 +2151,9 @@ class ScanReportGenerator:
         story.append(Spacer(1, 2 * mm))
         rows = [
             [
-                _p("<b>Confidence</b>", styles["body_bold"], escape=False),
-                _p("<b>Meaning</b>", styles["body_bold"], escape=False),
-                _p("<b>Count</b>", styles["body_bold"], escape=False),
+                _p("<b>Confidence</b>", styles["th"], escape=False),
+                _p("<b>Meaning</b>", styles["th"], escape=False),
+                _p("<b>Count</b>", styles["th"], escape=False),
             ]
         ]
         method_counts: Dict[DetectionMethod, int] = {}
@@ -2030,9 +2237,9 @@ class ScanReportGenerator:
             story.append(Spacer(1, 2 * mm))
             rows = [
                 [
-                    _p("<b>Host</b>", styles["body_bold"], escape=False),
-                    _p("<b>Identifier</b>", styles["body_bold"], escape=False),
-                    _p("<b>Reason withheld</b>", styles["body_bold"], escape=False),
+                    _p("<b>Host</b>", styles["th"], escape=False),
+                    _p("<b>Identifier</b>", styles["th"], escape=False),
+                    _p("<b>Reason withheld</b>", styles["th"], escape=False),
                 ]
             ]
             # Capped at 15. At 60 this table ran to five pages of a 34-page
@@ -2138,11 +2345,11 @@ class ScanReportGenerator:
             story.append(Spacer(1, 2 * mm))
             rows = [
                 [
-                    _p("<b>Host</b>", styles["body_bold"], escape=False),
-                    _p("<b>Identifier</b>", styles["body_bold"], escape=False),
-                    _p("<b>Finding</b>", styles["body_bold"], escape=False),
-                    _p("<b>Severity</b>", styles["body_bold"], escape=False),
-                    _p("<b>Status</b>", styles["body_bold"], escape=False),
+                    _p("<b>Host</b>", styles["th"], escape=False),
+                    _p("<b>Identifier</b>", styles["th"], escape=False),
+                    _p("<b>Finding</b>", styles["th"], escape=False),
+                    _p("<b>Severity</b>", styles["th"], escape=False),
+                    _p("<b>Status</b>", styles["th"], escape=False),
                 ]
             ]
             for finding in findings.mitigated:

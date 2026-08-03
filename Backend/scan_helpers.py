@@ -54,6 +54,10 @@ PIPELINE_PHASES: dict[str, list[int]] = {
     "basic": [1, 4],
     "asset": [1, 2, 4],
     "vulnerability_audit": [1, 2, 3, 4],
+    # A standalone credentialed audit runs no discovery and no port scan. It
+    # was previously recorded as "vulnerability_audit", which claimed three
+    # phases it never executed — the scan record has to describe what ran.
+    "credentialed": [3],
 }
 
 VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys()) | {"advanced"}
@@ -240,6 +244,52 @@ def resolve_report_context(
         context["discovery_scan_method"] = scan_method
 
     return context
+
+
+#: Parameters describing what a scan examined. They bound every conclusion
+#: drawn from it, so they travel with the scan record from the phase that knows
+#: them to any later phase or report that has to state the scan's coverage.
+SCAN_COVERAGE_KEYS = (
+    "port_range",
+    "timing_template",
+    "scanner",
+    "service_detection",
+    "os_detection",
+)
+
+
+def phase_summary_from_scan(scan_row: Scan, *phase_keys: str) -> dict:
+    """The stored summary for the first matching phase, or an empty dict."""
+    wanted = set(phase_keys)
+    for phase_row in getattr(scan_row, "phases", []) or []:
+        if getattr(phase_row, "phase_key", "") not in wanted:
+            continue
+        summary = getattr(phase_row, "summary", {}) or {}
+        if isinstance(summary, dict):
+            return summary
+    return {}
+
+
+def carry_scan_coverage(result: dict, source_summary: dict) -> None:
+    """
+    Copy an earlier phase's coverage parameters onto a later phase's result.
+
+    A vulnerability assessment does not choose ports — it assesses whatever the
+    asset discovery phase found. Its report still has to state which ports were
+    examined, and only the phase that scanned them knows. Without this the
+    report either says "not recorded" against every parameter or, worse, falls
+    back to a default that reads as a statement of fact.
+    """
+    if not source_summary:
+        return
+    summary = result.setdefault("summary", {})
+    meta = result.setdefault("metadata", {})
+    for key in SCAN_COVERAGE_KEYS:
+        value = source_summary.get(key)
+        if value in (None, ""):
+            continue
+        summary.setdefault(key, value)
+        meta.setdefault(key, value)
 
 
 def phase1_summary_from_scan(scan_row: Scan) -> dict:

@@ -343,6 +343,135 @@ def test_scanner_claim_cannot_bypass_version_range_check():
     assert "9.6p1" in report.excluded[0].reason
 
 
+def _mysql_payload(affected):
+    return _payload(
+        [
+            {
+                "port": 3306,
+                "protocol": "tcp",
+                "service": "mysql",
+                "product": "MySQL",
+                "version": "8.0.40",
+            }
+        ],
+        [
+            {
+                "cve_id": "CVE-2025-30722",
+                "title": "MySQL Server unspecified vulnerability",
+                "description": "Difficult to exploit vulnerability in MySQL Server.",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                "affected_software": affected,
+                "port": 3306,
+            }
+        ],
+    )
+
+
+def _pinned(version):
+    return {
+        "vendor": "oracle",
+        "product": "mysql",
+        "cpe23Uri": f"cpe:2.3:a:oracle:mysql:{version}:*:*:*:*:*:*:*",
+    }
+
+
+def test_matching_affected_entry_is_found_wherever_it_sits_in_the_list():
+    """
+    Oracle publishes one pinned CPE per released version, and F5 publishes one
+    range per supported nginx branch, so a CVE's affected list routinely holds
+    dozens of entries of which exactly one covers the detected version. Ruling
+    the record out on the first entry that does not match discarded real
+    findings purely on feed ordering — MySQL 8.0.40 produced zero findings
+    while every one of its CVEs sat in the suppressed appendix.
+    """
+    report = build_scan_report(
+        _mysql_payload([_pinned("5.7.1"), _pinned("8.0.39"), _pinned("8.0.40")])
+    )
+
+    assert len(report.vulnerabilities) == 1
+    assert report.vulnerabilities[0].confidence == Confidence.CONFIRMED
+    assert report.excluded == []
+
+
+def test_affected_entry_order_does_not_change_the_verdict():
+    """The same feed data must confirm regardless of the order it arrives in."""
+    entries = [_pinned("5.7.1"), _pinned("8.0.40")]
+    forward = build_scan_report(_mysql_payload(entries))
+    reversed_ = build_scan_report(_mysql_payload(list(reversed(entries))))
+
+    assert len(forward.vulnerabilities) == len(reversed_.vulnerabilities) == 1
+    assert (
+        forward.vulnerabilities[0].detection_method
+        == reversed_.vulnerabilities[0].detection_method
+        == DetectionMethod.VERSION_MATCH
+    )
+
+
+def test_branch_range_that_excludes_the_host_does_not_hide_the_one_that_covers_it():
+    """
+    nginx CVEs are published as one range per supported branch. 1.26.3 is
+    outside the 1.28.x branch range but inside the 1.25-1.27 one, and the
+    finding must survive the first range being tested first.
+    """
+    report = build_scan_report(
+        _payload(
+            [
+                {
+                    "port": 80,
+                    "protocol": "tcp",
+                    "service": "http",
+                    "product": "nginx",
+                    "version": "1.26.3",
+                }
+            ],
+            [
+                {
+                    "cve_id": "CVE-2026-40701",
+                    "title": "nginx ngx_http_ssl_module use-after-free",
+                    "description": "Heap use-after-free in the NGINX worker process.",
+                    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:L",
+                    "affected_software": [
+                        {
+                            "vendor": "f5",
+                            "product": "nginx",
+                            "versionStartIncluding": "1.28.0",
+                            "versionEndExcluding": "1.28.2",
+                            "cpe23Uri": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+                        },
+                        {
+                            "vendor": "f5",
+                            "product": "nginx",
+                            "versionStartIncluding": "1.25.0",
+                            "versionEndExcluding": "1.27.4",
+                            "cpe23Uri": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+                        },
+                    ],
+                    "port": 80,
+                }
+            ],
+        )
+    )
+
+    assert len(report.vulnerabilities) == 1
+    assert report.vulnerabilities[0].confidence == Confidence.CONFIRMED
+
+
+def test_record_is_still_disproved_when_no_affected_entry_covers_the_host():
+    """
+    Evaluating the whole affected list must not weaken the disproof: when every
+    entry excludes the detected version the finding is still suppressed, and the
+    reason still names the version that ruled it out.
+    """
+    report = build_scan_report(
+        _mysql_payload([_pinned("5.7.1"), _pinned("8.0.39"), _pinned("8.4.0")])
+    )
+
+    assert report.vulnerabilities == []
+    assert len(report.excluded) == 1
+    assert "outside the vulnerable range" in report.excluded[0].reason
+    assert "8.0.40" in report.excluded[0].reason
+
+
 def test_db_shaped_cpe_keys_are_understood():
     """cpe_uri + snake_case bounds is the shape the CVE database emits."""
     report = build_scan_report(_ssh_payload("8.2p1"))
@@ -821,3 +950,132 @@ def test_secrets_are_redacted_from_evidence():
     assert "eyJhbGciOiJIUzI1NiJ9" not in finding.evidence
     assert "hunter2" not in finding.evidence
     assert "[REDACTED]" in finding.evidence
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Presenting findings that one upgrade resolves
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _chrome_payload(count, extra_cves=()):
+    """A host well behind on a browser, plus whatever else is given."""
+    cves = [
+        {
+            "cve_id": f"CVE-2026-{9000 + i}",
+            "description": "Chrome flaw.",
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+            "affected": [
+                {
+                    "vendor": "google",
+                    "product": "chrome",
+                    "versionEndExcluding": f"14{i % 5}.0.100",
+                    "cpe23Uri": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+                }
+            ],
+            "port": 443,
+        }
+        for i in range(count)
+    ]
+    cves.extend(extra_cves)
+    return {
+        "data": [
+            {
+                "ip_address": "10.0.0.40",
+                "os_guess": "Windows 11",
+                "open_ports": [
+                    {
+                        "port": 443,
+                        "service": "https",
+                        "product": "Chrome",
+                        "version": "138.0.7204.184",
+                    }
+                ],
+                "cves": cves,
+            }
+        ]
+    }
+
+
+def test_findings_one_upgrade_resolves_are_presented_as_one_item():
+    from scans.finding_normalizer import group_findings_for_report
+
+    report = build_scan_report(_chrome_payload(40))
+    groups = group_findings_for_report(report.vulnerabilities)
+
+    assert len(report.vulnerabilities) == 40
+    assert len(groups) == 1
+    assert groups[0].is_group
+    assert len(groups[0].findings) == 40
+
+
+def test_the_group_names_the_highest_upgrade_its_findings_require():
+    """
+    An administrator performs one upgrade. Grouping per fixed version produced
+    a card per version — 76 of them for one product — when the answer is a
+    single action to the highest boundary required.
+    """
+    from scans.finding_normalizer import group_findings_for_report
+
+    report = build_scan_report(_chrome_payload(40))
+    group = group_findings_for_report(report.vulnerabilities)[0]
+
+    assert group.fixed_version == "144.0.100"
+
+
+def test_a_high_volume_product_cannot_bury_a_more_severe_finding():
+    """
+    The report renders a bounded number of finding cards. With one card per CVE
+    a browser's thousand findings pushed an ICS component carrying a Critical
+    out of the document entirely.
+    """
+    from scans.finding_normalizer import group_findings_for_report
+
+    # A credentialed package finding, as the audit of a real host produces it.
+    ics = {
+        "cve_id": "CVE-2025-40795",
+        "description": "Siemens UMC remote code execution.",
+        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+        "detection_method": "credentialed",
+        "package": "User Management Component",
+        "installed_version": "2.12",
+        "affected": [
+            {
+                "vendor": "siemens",
+                "product": "user_management_component",
+                "versionEndExcluding": "2.15.2.1",
+                "cpe23Uri": "cpe:2.3:a:siemens:user_management_component:*:*:*:*:*:*:*:*",
+            }
+        ],
+    }
+    report = build_scan_report(_chrome_payload(500, extra_cves=[ics]))
+    groups = group_findings_for_report(report.vulnerabilities)
+
+    assert len(report.vulnerabilities) == 501
+    assert len(groups) <= 3
+    # The ICS finding is present and near the top, not past a card cap.
+    products = [g.product or g.representative.primary_cve for g in groups]
+    assert any("User Management" in p or "CVE-2025-40795" in p for p in products)
+
+
+def test_a_pair_of_findings_is_not_dressed_up_as_a_group():
+    from scans.finding_normalizer import group_findings_for_report
+
+    report = build_scan_report(_chrome_payload(2))
+    groups = group_findings_for_report(report.vulnerabilities)
+
+    assert len(groups) == 2
+    assert all(not g.is_group for g in groups)
+
+
+def test_grouping_changes_presentation_only():
+    """Every finding is still present and counted; none is merged away."""
+    from scans.finding_normalizer import group_findings_for_report
+
+    report = build_scan_report(_chrome_payload(40))
+    groups = group_findings_for_report(report.vulnerabilities)
+
+    regrouped = [f for g in groups for f in g.findings]
+    assert len(regrouped) == len(report.vulnerabilities)
+    assert {f.primary_cve for f in regrouped} == {
+        f.primary_cve for f in report.vulnerabilities
+    }

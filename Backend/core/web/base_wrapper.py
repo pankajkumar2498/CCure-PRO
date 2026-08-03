@@ -26,6 +26,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from abc import ABC, abstractmethod
@@ -71,22 +72,60 @@ class ToolWrapper(ABC):
 
     # ── Binary Verification ───────────────────────────────────────────────────
 
+    def resolve_binary(self) -> str | None:
+        """
+        Locate the tool, whether or not the environment is activated.
+
+        PATH alone is not enough. A pip-installed scanner (sslyze) puts its
+        console script beside the interpreter, and a worker started by its
+        absolute path — how Celery and most service managers launch — does not
+        have that directory on PATH. The tool is installed, present, and
+        working, and ``shutil.which`` still returns None, so the scan silently
+        skips the check and reports nothing.
+
+        An explicit ``CCURE_<TOOL>_PATH`` wins, then PATH, then the
+        interpreter's own script directory.
+        """
+        override = os.environ.get(f"CCURE_{self.name.upper()}_PATH")
+        if override and os.path.isfile(override) and os.access(override, os.X_OK):
+            return override
+
+        found = shutil.which(self.binary)
+        if found:
+            return found
+
+        script_dir = os.path.dirname(sys.executable)
+        for candidate_dir in (
+            script_dir,
+            os.path.join(script_dir, "Scripts"),
+            os.path.join(script_dir, "bin"),
+        ):
+            candidate = shutil.which(self.binary, path=candidate_dir)
+            if candidate:
+                return candidate
+        return None
+
     def is_available(self) -> bool:
         """Check if the tool binary exists and is executable. Cached."""
         if self._binary_verified is not None:
             return self._binary_verified
 
-        binary_path = shutil.which(self.binary)
+        binary_path = self.resolve_binary()
         if binary_path:
+            # Remember the resolved path so the subprocess call does not have
+            # to repeat the search — and does not fall back to a bare name that
+            # PATH cannot resolve.
+            self.binary = binary_path
             self._binary_verified = True
             log.info("%s binary found at: %s", self.name, binary_path)
         else:
             self._binary_verified = False
             log.warning(
-                "%s binary NOT FOUND in PATH (expected: %s). "
+                "%s binary NOT FOUND (searched CCURE_%s_PATH, PATH, and %s). "
                 "Tool will be unavailable for scanning.",
                 self.name,
-                self.binary,
+                self.name.upper(),
+                os.path.dirname(sys.executable),
             )
         return self._binary_verified
 

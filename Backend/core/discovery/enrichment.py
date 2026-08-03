@@ -110,7 +110,6 @@ def _register_open_port(
     open_ports = result.setdefault("open_ports", [])
     if not any(p.get("port") == port for p in open_ports):
         from core.constants import PORT_DB
-        from core.utils import lookup_cve
 
         meta = PORT_DB.get(
             port,
@@ -121,22 +120,29 @@ def _register_open_port(
             },
         )
 
-        cves = lookup_cve(banner or service.lower())
-
+        # Discovery reports what it observed and nothing more. It used to look
+        # up CVEs for the banner here, which made a host-discovery scan emit
+        # vulnerability claims it had no version evidence for — and on a
+        # discovery-only run those reached the asset registry unverified.
+        # Candidate generation belongs to the vulnerability phase, which is
+        # also the only stage that verifies what it produces.
+        #
+        # The identification recorded here is a cheap connect-and-read, so it
+        # is labelled as such: the port engine's service detection outranks it
+        # and replaces these fields rather than being blocked by them.
         port_dict = {
             "port": port,
+            "protocol": "tcp",
             "service": service or meta.get("service", "unknown"),
             "state": "open",
             "banner": banner[:500] if banner else "",
             "version": version[:200] if version else "",
             "product": product[:255] if product else "",
             "risk": meta.get("risk", "Info"),
-            "cves": cves,
+            "fingerprint_source": "banner" if banner else "connect_probe",
+            "cves": [],
         }
         open_ports.append(port_dict)
-
-        if cves:
-            result.setdefault("cves", []).extend(cves)
 
 
 def _is_port_connectable(ip: str, port: int, timeout: float = 1.0) -> bool:

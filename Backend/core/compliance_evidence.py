@@ -10,6 +10,7 @@ from typing import Any, Dict
 from core.redis_client import get_redis_client
 from db.models.assets import Asset
 from db.models.findings import (
+    OBSERVED_SERVICE_STATES,
     AssetVulnerability,
     Service,
     TLSDetail,
@@ -111,46 +112,70 @@ class ComplianceEvidenceProvider:
         elif source == "web_vulnerability_audit":
             return cls._adapt_web_vulnerability_audit(db, asset_id)
 
-        return {}
+        # No adapter for this source. Returning an empty payload made every key
+        # look absent, and an absent key evaluated to a failed control — so an
+        # unsupported or not-yet-collected evidence source reported the asset as
+        # non-compliant rather than as unassessed. The caller has to be able to
+        # tell those apart.
+        log.warning(
+            "No evidence adapter for source '%s'; asset %s cannot be assessed "
+            "against rules that depend on it",
+            source,
+            asset_id,
+        )
+        return {
+            "_evidence_available": False,
+            "_reason": f"No evidence adapter is implemented for source '{source}'.",
+        }
 
     # ── 1. Vulnerability Audit Mapping ──────────────────────────────────────────
     @staticmethod
     def _adapt_vulnerability_audit(db: Session, asset_id: str) -> dict[str, Any]:
+        # Only open findings are evidence of a current condition. Every row for
+        # the asset was previously counted, including ones the syncer had closed
+        # as fixed on a later scan and ones an approver had formally accepted —
+        # so a host that had remediated every critical still failed a "no
+        # critical vulnerabilities" control, permanently and invisibly.
         vulns = (
             db.query(AssetVulnerability)
             .join(VulnerabilityDefinition)
-            .filter(AssetVulnerability.asset_id == asset_id)
+            .filter(
+                AssetVulnerability.asset_id == asset_id,
+                AssetVulnerability.status == "open",
+            )
             .all()
         )
 
-        critical_count = sum(
-            1 for v in vulns if (v.vulnerability.severity or "").lower() == "critical"
-        )
-        high_count = sum(
-            1 for v in vulns if (v.vulnerability.severity or "").lower() == "high"
-        )
-        medium_count = sum(
-            1 for v in vulns if (v.vulnerability.severity or "").lower() == "medium"
-        )
-        low_count = sum(
-            1 for v in vulns if (v.vulnerability.severity or "").lower() == "low"
-        )
+        def severity_of(finding: AssetVulnerability) -> str:
+            # The finding's own severity is the one the scan recorded for this
+            # host, recomputed from the published CVSS vector. The catalogue
+            # column is the feed's label for the CVE in general and the two
+            # disagree often enough to change a control's verdict.
+            return (
+                finding.severity
+                or (finding.vulnerability.severity if finding.vulnerability else "")
+                or ""
+            ).lower()
+
+        severities = [severity_of(v) for v in vulns]
+
+        def score_of(finding: AssetVulnerability) -> float:
+            raw = finding.cvss_score
+            if raw is None and finding.vulnerability is not None:
+                raw = finding.vulnerability.cvss_v3_score
+            return float(raw) if raw is not None else 0.0
 
         return {
             "total_vulnerabilities": len(vulns),
-            "critical_count": critical_count,
-            "high_count": high_count,
-            "medium_count": medium_count,
-            "low_count": low_count,
+            "critical_count": severities.count("critical"),
+            "high_count": severities.count("high"),
+            "medium_count": severities.count("medium"),
+            "low_count": severities.count("low"),
             "vulnerabilities": [
                 {
-                    "cve_id": v.vulnerability.cve_id,
-                    "cvss_score": (
-                        float(v.vulnerability.cvss_v3_score)
-                        if v.vulnerability.cvss_v3_score
-                        else 0.0
-                    ),
-                    "severity": v.vulnerability.severity,
+                    "cve_id": v.vulnerability.cve_id if v.vulnerability else v.id,
+                    "cvss_score": score_of(v),
+                    "severity": severity_of(v).title(),
                 }
                 for v in vulns
             ],
@@ -199,7 +224,12 @@ class ComplianceEvidenceProvider:
     @staticmethod
     def _adapt_services_ports(db: Session, asset_id: str) -> dict[str, Any]:
         services = db.query(Service).filter(Service.asset_id == asset_id).all()
-        ports_list = [svc.port for svc in services if svc.state == "open"]
+        # A service bound to loopback is not an open port for the purposes of
+        # any control that asks what this host exposes, so host_only rows are
+        # excluded here rather than counted and then explained away.
+        ports_list = [
+            svc.port for svc in services if svc.state in OBSERVED_SERVICE_STATES
+        ]
 
         return {
             "open_ports_count": len(ports_list),

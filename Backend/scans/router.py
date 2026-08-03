@@ -39,6 +39,7 @@ TERMINAL_PHASE_BY_MODE = {
     "basic": 1,
     "asset": 2,
     "vulnerability_audit": 3,
+    "credentialed": 3,
 }
 
 TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}

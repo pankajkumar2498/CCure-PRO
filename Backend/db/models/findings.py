@@ -50,6 +50,30 @@ from sqlalchemy.orm import relationship
 # Service  (open port + service fingerprint)
 # ─────────────────────────────────────────────────────────────────────────────
 
+#: How a service came to be recorded. The two sources answer different
+#: questions and are not interchangeable: a port scan establishes that
+#: something answered on the network, a credentialed audit establishes what the
+#: host is actually running. Storing them without distinction made a
+#: loopback-only listener indistinguishable from a network-confirmed open port.
+SOURCE_NETWORK_SCAN = "network_scan"
+SOURCE_CREDENTIALED = "credentialed"
+
+#: Confirmed reachable from the scanner.
+STATE_OPEN = "open"
+#: Observed listening on the host; network reachability not established.
+STATE_LISTENING = "listening"
+#: Listening, but bound to loopback — provably not reachable off-box.
+STATE_HOST_ONLY = "host_only"
+
+#: A service that is running and may be reachable. Used wherever the question
+#: is "what is this asset serving". Excludes host_only, because a loopback bind
+#: is positive evidence of non-exposure rather than missing information.
+OBSERVED_SERVICE_STATES = (STATE_OPEN, STATE_LISTENING)
+
+#: A service confirmed reachable across the network. Used where the question is
+#: specifically about exposure.
+NETWORK_EXPOSED_STATES = (STATE_OPEN,)
+
 
 class Service(Base):
     """
@@ -93,7 +117,19 @@ class Service(Base):
     # ── Port Details ──────────────────────────────────────────────────────────
     port = Column(Integer, nullable=False)
     protocol = Column(String(10), nullable=False, default="tcp")
-    state = Column(String(20), nullable=False, default="open")
+    state = Column(String(20), nullable=False, default=STATE_OPEN)
+
+    # ── Provenance ────────────────────────────────────────────────────────────
+    # Which observation produced this row, and what each side could establish.
+    # network_reachable is deliberately tri-state: NULL means nothing looked,
+    # which is a different fact from False ("looked, not reachable") and must
+    # never be collapsed into it.
+    discovery_source = Column(
+        String(30), nullable=False, default=SOURCE_NETWORK_SCAN, index=True
+    )
+    network_reachable = Column(Boolean, nullable=True)
+    bind_scope = Column(String(24), nullable=True)
+    credentialed_confirmed = Column(Boolean, nullable=False, default=False)
 
     # ── Service Identification (from nmap -sV) ────────────────────────────────
     service_name = Column(String(100), nullable=True)
@@ -123,7 +159,10 @@ class Service(Base):
     vulnerabilities = relationship("AssetVulnerability", back_populates="service")
 
     def __repr__(self):
-        return f"<Service {self.id!r} state={self.state!r}>"
+        return (
+            f"<Service {self.id!r} state={self.state!r} "
+            f"source={self.discovery_source!r}>"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

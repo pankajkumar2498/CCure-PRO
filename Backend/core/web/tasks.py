@@ -24,6 +24,7 @@ from db.base import (
     gen_web_finding_id,
     utcnow,
 )
+from core.web.correlation import _finding_identity
 from db.models.web_scans import WebAsset, WebFinding, WebScan
 
 log = logging.getLogger("ccure.web.tasks")
@@ -81,6 +82,31 @@ def _emit_progress(web_scan_id: str, phase: str, data: dict) -> None:
         client.publish(f"scan_progress:{web_scan_id}", message)
     except Exception as exc:
         log.debug("Progress publish failed: %s", exc)
+
+
+def _record_tool_coverage(db, web_scan_id: str, phase: str, coverage: dict) -> None:
+    """
+    Persist which tools ran in a phase, and which did not.
+
+    Stored alongside the scan for the same reason the network pipeline keeps
+    its coverage: findings are only interpretable against what was actually
+    attempted, and a phase that skipped its primary detector must not reach
+    the reader as a phase that found nothing.
+
+    Kept in ``options`` under a reserved key, following the existing precedent
+    for scan-scoped result metadata, so this needs no schema change.
+    """
+    if not coverage:
+        return
+    scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
+    if not scan:
+        return
+    options = dict(scan.options or {})
+    tool_coverage = dict(options.get("tool_coverage") or {})
+    tool_coverage[phase] = coverage
+    options["tool_coverage"] = tool_coverage
+    db.query(WebScan).filter(WebScan.id == web_scan_id).update({"options": options})
+    db.commit()
 
 
 def _update_scan_phase_status(
@@ -157,9 +183,24 @@ def _persist_web_findings(
     findings: list[dict],
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
+    from core.web.compliance import map_compliance
+
     for f in findings:
         finding_type = f.get("finding_type", "unknown")
         matched_at = f.get("matched_at", f.get("request_url", ""))
+
+        # Map compliance here, at the one point every finding passes through,
+        # rather than only in AUDIT. AUDIT maps the findings handed to it, but
+        # findings the CRAWL phase persists directly — sensitive files, the open
+        # redirect — never reach that list, so they landed with an empty OWASP
+        # category and no compliance tags. Mapping is a pure function of the
+        # finding type and idempotent, so doing it here is safe and makes the
+        # mapping uniform regardless of which phase wrote the row.
+        if not f.get("owasp_category"):
+            compliance = map_compliance(finding_type)
+            f["owasp_category"] = compliance.get("owasp", "")
+            if not f.get("compliance_tags"):
+                f["compliance_tags"] = compliance.get("tags", [])
 
         # Find matching web asset
         web_asset_id = None
@@ -175,15 +216,49 @@ def _persist_web_findings(
             if asset:
                 web_asset_id = asset.id
 
+        # The same identity the deduplicator uses, so a finding keeps one row
+        # across phases and re-runs while distinct checks keep their own.
         finding_id = gen_web_finding_id(
             web_asset_id or web_scan_id,
             finding_type,
+            _finding_identity(f),
         )
 
-        # Idempotent check
+        # Idempotent check.
+        #
+        # A row already exists whenever a later phase revisits a finding the
+        # DETECT phase wrote — which is every finding, because AUDIT maps
+        # compliance and merges duplicates and then re-persists the result.
+        # Bumping only the timestamp discarded all of that: OWASP category and
+        # compliance tags were computed on every run and never stored, so the
+        # report and the compliance scorecard read them back empty, and a
+        # finding whose severity was raised by corroboration from a second tool
+        # kept the lower one.
+        #
+        # Analyst-owned state (status, assignment, notes) is deliberately not
+        # touched here — a re-scan must not silently reopen a triaged finding.
         existing = db.query(WebFinding).filter(WebFinding.id == finding_id).first()
         if existing:
             existing.last_found_at = utcnow()
+            if f.get("owasp_category"):
+                existing.owasp_category = f["owasp_category"]
+            if f.get("compliance_tags"):
+                existing.compliance_tags = f["compliance_tags"]
+            if f.get("cvss_score") is not None:
+                existing.cvss_score = f["cvss_score"]
+            if f.get("is_verified"):
+                existing.is_verified = True
+            # Severity only ever moves up: corroboration adds confidence, and a
+            # second phase reporting the same issue at a lower rating is not
+            # evidence the first was wrong.
+            if _severity_rank(f.get("severity")) > _severity_rank(existing.severity):
+                existing.severity = f["severity"]
+            if f.get("detected_by") and f["detected_by"] != existing.detected_by:
+                tools = sorted(
+                    set(str(existing.detected_by or "").split(","))
+                    | set(str(f["detected_by"]).split(","))
+                )
+                existing.detected_by = ",".join(t for t in tools if t)
             continue
 
         finding = WebFinding(
@@ -251,6 +326,13 @@ def _update_scan_stats(db, web_scan_id: str) -> None:
     scan.updated_at = utcnow()
 
     db.commit()
+
+
+_SEVERITY_RANK = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
+
+
+def _severity_rank(severity) -> int:
+    return _SEVERITY_RANK.get(str(severity or "info").lower(), 0)
 
 
 def _is_api_url(url: str) -> bool:
@@ -355,6 +437,7 @@ def run_web_recon_task(
         )
         db.commit()
 
+        _record_tool_coverage(db, web_scan_id, "recon", result.get("tool_coverage"))
         _emit_progress(
             web_scan_id,
             "recon",
@@ -597,6 +680,15 @@ def run_web_detect_task(
 
         from orchestrator.web_orchestrator import WebScanOrchestrator
 
+        # RECON's fingerprint is carried into DETECT so the quick profile has
+        # something to select templates on. Standard depth ignores it — the
+        # fingerprint informs the scan, it never silently narrows it.
+        scan_row = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
+        detect_options = {
+            **(options or {}),
+            "tech_stack": (scan_row.tech_stack if scan_row else []) or [],
+        }
+
         orch = WebScanOrchestrator(silent=False)
         result = _run_async(
             orch.run_detect(
@@ -604,7 +696,7 @@ def run_web_detect_task(
                 target_url=target_url,
                 endpoints=endpoints,
                 forms=forms,
-                options=options,
+                options=detect_options,
                 auth_config=auth_config,
                 waf_detected=waf_detected,
             )
@@ -639,6 +731,7 @@ def run_web_detect_task(
                 db, web_scan_id, scan.org_id, result.get("findings", [])
             )
 
+        _record_tool_coverage(db, web_scan_id, "detect", result.get("tool_coverage"))
         _update_scan_phase_status(
             db, web_scan_id, "detect", "complete", completed_at=utcnow()
         )
@@ -765,19 +858,16 @@ def run_web_audit_task(
         # Persist additional TLS findings
         scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
         if scan and result.get("findings"):
-            # Only persist new TLS findings not already in DB
-            existing_ids = {
-                f.id
-                for f in db.query(WebFinding.id)
-                .filter(WebFinding.web_scan_id == web_scan_id)
-                .all()
-            }
-            new_findings = [
-                f
-                for f in result["findings"]
-                if f.get("detected_by") in ("sslyze", "custom")
-            ]
-            _persist_web_findings(db, web_scan_id, scan.org_id, new_findings)
+            # Every finding is re-persisted, not just the ones this phase
+            # produced. Findings already written in DETECT resolve to the same
+            # deterministic id, so this updates them in place rather than
+            # inserting a second copy — and updating them is the point: the
+            # compliance mapping and the deduplication merge that AUDIT just
+            # computed apply to the nuclei and sqlmap findings above all, and
+            # filtering by tool excluded exactly those from ever receiving it.
+            _persist_web_findings(db, web_scan_id, scan.org_id, result["findings"])
+
+        _record_tool_coverage(db, web_scan_id, "audit", result.get("tool_coverage"))
 
         # Mark scan as complete
         now = utcnow()

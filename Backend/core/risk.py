@@ -224,15 +224,35 @@ def infer_os_from_host(host: dict) -> tuple[str, str]:
 # =============================================================================
 
 
+#: Points a finding contributes, by severity tier. Mirrors the CVSS bands used
+#: for scored records so both paths below weigh a Critical the same way.
+SEVERITY_WEIGHTS: dict[str, int] = {
+    "Critical": 20,
+    "High": 10,
+    "Medium": 5,
+    "Low": 2,
+    "None": 2,
+    "Unscored": 2,
+}
+
+
 def calculate_risk(
     open_ports: list[dict],
     cves: list[dict],
     http_audit: dict,
     tls_info: dict,
+    severity_counts: dict[str, int] | None = None,
 ) -> tuple[int, str]:
     """
     Returns (score 0-100, risk_level string).
     Aggregates port risk, CVE severity, HTTP audit issues, TLS grade.
+
+    ``severity_counts`` is the severity breakdown produced by verification. When
+    supplied it is used in preference to the per-record ``cvss_score`` field,
+    because those severities are recomputed from each CVE's published vector —
+    the same numbers the report prints. Reading the raw field instead scores a
+    record that carries no numeric score as 2 points regardless of what it is,
+    so an actively confirmed MS17-010 counted for less than a medium.
     """
     score = 0
 
@@ -240,17 +260,21 @@ def calculate_risk(
     for p in open_ports:
         score += RISK_WEIGHTS.get(p.get("risk", "Info"), 0)
 
-    # CVE CVSS scores
-    for c in cves:
-        cvss = normalize_cve(c).get("cvss_score", 0)
-        if cvss >= 9.0:
-            score += 20
-        elif cvss >= 7.0:
-            score += 10
-        elif cvss >= 4.0:
-            score += 5
-        else:
-            score += 2
+    if severity_counts is not None:
+        for tier, count in severity_counts.items():
+            score += SEVERITY_WEIGHTS.get(tier, 2) * int(count or 0)
+    else:
+        # CVE CVSS scores
+        for c in cves:
+            cvss = normalize_cve(c).get("cvss_score", 0)
+            if cvss >= 9.0:
+                score += 20
+            elif cvss >= 7.0:
+                score += 10
+            elif cvss >= 4.0:
+                score += 5
+            else:
+                score += 2
 
     # HTTP header issues
     if http_audit.get("issues"):
@@ -273,6 +297,21 @@ def calculate_risk(
         if score >= threshold:
             level = lvl
             break
+
+    if severity_counts:
+        # The point total ranks hosts against each other; the level classifies
+        # the worst thing actually found on this one. A host carrying a
+        # verified Critical finding is a Critical host even at a low point
+        # total — two of them score 40, which the thresholds alone would call
+        # "Medium". Those thresholds were set when the score was computed from
+        # unverified candidates and saturated at 100 for almost every host, so
+        # they cannot be read as a severity statement on their own.
+        ranking = [lvl for _, lvl in RISK_LEVELS]
+        for tier in ("Critical", "High", "Medium", "Low"):
+            if severity_counts.get(tier):
+                if ranking.index(tier) < ranking.index(level):
+                    level = tier
+                break
 
     return score, level
 

@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
-import { runCredentialedScan } from "../../api/credentialedScan";
+import { parseTargets, runCredentialedScan } from "../../api/credentialedScan";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 import api from "../../api/axiosInstance";
@@ -32,9 +32,9 @@ const SECTIONS = [
   },
   {
     key: "ports",
-    label: "Open Ports",
+    label: "Listening Sockets",
     icon: "🔌",
-    desc: "Live socket table (ss / netstat)",
+    desc: "Host socket table — not a network port scan",
   },
   {
     key: "users",
@@ -117,10 +117,15 @@ export default function CredentialedScan() {
   const toggleAll = () =>
     setSections(allSelected ? new Set() : new Set(SECTIONS.map((s) => s.key)));
 
+  const targetList = parseTargets(ip);
+
   const handleSubmit = async () => {
     setError("");
     if (!canExecuteScans) return setError(denyMessage);
-    if (!ip.trim()) return setError("Please enter a target IP or hostname.");
+    if (targetList.length === 0)
+      return setError(
+        "Please enter at least one target IP, hostname, or range.",
+      );
 
     if (credentialSource === "stored") {
       if (!selectedCredId)
@@ -143,7 +148,7 @@ export default function CredentialedScan() {
       await new Promise((r) => setTimeout(r, 50));
       if (osType === "auto") setLoadPhase("collecting"); // detection happens first server-side
       const { data } = await runCredentialedScan({
-        ip: ip.trim(),
+        targets: targetList,
         username: credentialSource === "jit" ? username.trim() : undefined,
         password:
           credentialSource === "jit" && authMethod === "password"
@@ -200,21 +205,84 @@ export default function CredentialedScan() {
 
         {/* Form card */}
         <div className="cred-form-card">
+          {/* What this scan covers. Stated before the scan runs, because a
+              result with no network findings is easily read as a host with no
+              network exposure — and this policy never looks for that. */}
+          <div
+            style={{
+              margin: "0 0 18px",
+              padding: "12px 16px",
+              borderRadius: 8,
+              background: "rgba(96, 165, 250, 0.07)",
+              border: "1px solid rgba(96, 165, 250, 0.25)",
+              fontSize: 13,
+              lineHeight: 1.55,
+            }}
+          >
+            <strong>Scope of this scan</strong>
+            <p style={{ margin: "6px 0 0", opacity: 0.92 }}>
+              An authenticated audit reads each host from the inside: installed
+              packages matched against the vulnerability feed, hardening policy,
+              users, and the local listening-socket table. It performs{" "}
+              <strong>no host discovery and no network port scan</strong>, so it
+              cannot report TLS, SSH-algorithm, HTTP-header or
+              default-credential findings, and cannot confirm which listening
+              services are reachable from the network.
+            </p>
+            <p style={{ margin: "8px 0 0", opacity: 0.92 }}>
+              For a complete assessment, run a{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/scan/new")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--accent)",
+                  textDecoration: "underline",
+                  padding: 0,
+                  font: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                Vulnerability Audit
+              </button>{" "}
+              with a stored credential attached — discovery, port scanning and
+              unauthenticated checks run first, and the authenticated results
+              are merged into the same report.
+            </p>
+          </div>
+
           {/* Target */}
           <div className="cred-section">
             <h3 className="cred-section-title">Target</h3>
             <div className="cred-row">
               <div className="cred-field cred-field--wide">
-                <label className="field-label">IP / Hostname</label>
+                <label className="field-label">Targets</label>
                 <input
                   className="field-input"
                   type="text"
-                  placeholder="10.180.5.190 or server.local"
+                  placeholder="10.180.5.190, server.local, 10.180.5.10-20, 10.180.5.0/28"
                   value={ip}
                   onChange={(e) => setIp(e.target.value)}
                   disabled={loading || !canExecuteScans}
                   autoComplete="off"
                 />
+                <p
+                  style={{
+                    fontSize: "0.74rem",
+                    color: "var(--text-muted)",
+                    margin: "6px 0 0",
+                  }}
+                >
+                  One or more IPs, hostnames, ranges, or CIDRs — separated by
+                  commas or spaces. The same credential is used for every host.
+                  {targetList.length > 1 && (
+                    <strong style={{ color: "var(--accent)" }}>
+                      {" "}
+                      {targetList.length} target expressions entered.
+                    </strong>
+                  )}
+                </p>
               </div>
               <div className="cred-field cred-field--narrow">
                 <label className="field-label">SSH Port</label>

@@ -351,9 +351,11 @@ from functools import lru_cache
 
 
 @lru_cache(maxsize=1024)
-def lookup_cve(banner: str, version: str = "") -> list[dict]:
+def lookup_cve(
+    banner: str, version: str = "", cpes: tuple[str, ...] = ()
+) -> list[dict]:
     """
-    Match a banner / service string against the CVE database.
+    Candidate CVEs for an observed service.
 
     ``version`` is the version the scanner actually fingerprinted for this
     service. It is passed through to the database layer and returned on each
@@ -361,19 +363,26 @@ def lookup_cve(banner: str, version: str = "") -> list[dict]:
     range. Without it every match is unverifiable and the report can only ever
     say "potential".
 
+    ``cpes`` are the scanner's own CPE identifiers for the service. When
+    present the database selects candidates by exact vendor/product instead of
+    matching substrings of the banner, which is both far more precise and the
+    difference between a candidate set that fits under the row cap and one that
+    gets truncated by it.
+
     Cached with LRU to avoid redundant DB hits for common services (e.g. many
-    ports running the same web server).
+    ports running the same web server) — hence the tuple parameter, which is
+    hashable where a list would not be.
     """
-    if not banner:
+    if not banner and not cpes:
         return []
 
-    banner_lc = banner.lower()
+    banner_lc = (banner or "").lower()
     found: list[dict] = []
 
     # Try database first if available
     if CVE_DB and CVE_DB.db_available:
         try:
-            db_results = CVE_DB.search_cves_for_service(banner, version)
+            db_results = CVE_DB.search_cves_for_service(banner, version, cpes)
             if db_results:
                 found.extend(db_results)
         except Exception as e:

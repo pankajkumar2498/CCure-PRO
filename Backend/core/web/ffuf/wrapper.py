@@ -42,9 +42,14 @@ _SENSITIVE_PATHS = {
     "Thumbs.db",
     "web.config",
     "crossdomain.xml",
-    "robots.txt",
-    "sitemap.xml",
 }
+
+#: Deliberately NOT in the set above: robots.txt and sitemap.xml. Both are
+#: standard, intentionally public files present on most of the web. Reporting
+#: them as "sensitive file exposed" produced a medium-severity finding on
+#: essentially every target scanned — the kind of guaranteed false positive
+#: that trains readers to skim past this category, taking the real .git and
+#: .env findings with it.
 
 
 class FfufWrapper(ToolWrapper):
@@ -185,16 +190,35 @@ class FfufWrapper(ToolWrapper):
                     fuzz_value.endswith(ext)
                     for ext in [".bak", ".sql", ".tar.gz", ".zip"]
                 ):
+                    high_risk = fuzz_value.startswith((".git", ".env", ".htpasswd"))
                     sensitive_findings.append(
                         {
                             **path_info,
                             "finding_type": "information_disclosure",
                             "title": f"Sensitive file/directory exposed: {path_info['path']}",
-                            "severity": (
-                                "high"
-                                if fuzz_value.startswith(".git")
-                                or fuzz_value.startswith(".env")
-                                else "medium"
+                            "severity": "high" if high_risk else "medium",
+                            # matched_at and detected_by are what the WebFinding
+                            # row is keyed and attributed by. Without them the
+                            # finding persists with no location and no source
+                            # tool, so the report can say something was exposed
+                            # but not where, or how that was determined.
+                            "matched_at": path_info["url"],
+                            "request_url": path_info["url"],
+                            "request_method": "GET",
+                            "response_code": path_info["status"],
+                            "detected_by": "ffuf",
+                            "description": (
+                                f"Content discovery found {path_info['path']} "
+                                f"responding with HTTP {path_info['status']} at "
+                                f"{path_info['url']}. Files of this kind commonly "
+                                f"expose source history, credentials or "
+                                f"configuration that is not intended to be "
+                                f"reachable over the web."
+                            ),
+                            "remediation": (
+                                "Confirm whether this path should be reachable. "
+                                "If not, remove it from the web root or block it "
+                                "at the server or proxy."
                             ),
                         }
                     )

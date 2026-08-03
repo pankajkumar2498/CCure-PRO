@@ -696,3 +696,38 @@ def test_gdpr_framework_integration(client, test_user, auth_headers, db_session)
     if inst:
         db_session.delete(inst)
         db_session.commit()
+
+
+def test_unknown_evidence_source_is_unassessed_not_failed():
+    """
+    An empty evidence payload made every key look absent, and an absent key
+    evaluated to a failed control — so a source with no adapter reported the
+    asset as non-compliant rather than as unassessed. An auditor cannot accept
+    a failure the customer has no way to act on.
+    """
+    from core.compliance_evidence import ComplianceEvidenceProvider
+
+    payload = ComplianceEvidenceProvider._fetch_and_translate(
+        MagicMock(), "ast_test", "a_source_with_no_adapter"
+    )
+
+    assert payload.get("_evidence_available") is False
+    assert "no evidence adapter" in payload.get("_reason", "").lower()
+
+
+def test_vulnerability_evidence_counts_only_open_findings():
+    """
+    Remediated and risk-accepted findings must not keep failing a control. The
+    query previously took every row for the asset, so a host that had fixed
+    every critical still failed "no critical vulnerabilities", permanently.
+    """
+    import inspect
+
+    from core.compliance_evidence import ComplianceEvidenceProvider
+
+    source = inspect.getsource(ComplianceEvidenceProvider._adapt_vulnerability_audit)
+    assert 'AssetVulnerability.status == "open"' in source
+    # Severity comes from the finding recorded for this host, not the feed's
+    # label for the CVE in general — the two disagree often enough to flip a
+    # control's verdict.
+    assert "finding.severity or" in source

@@ -15,6 +15,14 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 # - gcc, libpq-dev: for building certain python packages
 # - wget, unzip, curl: for downloading security tool binaries
 # - chromium: headless browser for Playwright-based web crawling
+#
+# sqlmap is deliberately NOT installed here: it comes from requirements.txt into
+# /home/ccure/.local, which the runtime stage copies wholesale. It used to be
+# apt-installed in the `tools` stage instead, where nothing copied it onward —
+# an apt package spanning /usr/bin and /usr/share cannot ride along with the
+# per-binary COPY that carries the Go tools — so the build verified sqlmap and
+# then shipped an image without it. The verification gate in `runtime` is what
+# now prevents that, for every tool.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     libcap2-bin \
@@ -74,9 +82,6 @@ RUN mkdir -p /opt/wordlists && \
     wget -q "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" \
     -O /opt/wordlists/common.txt || echo "Wordlist download skipped"
 
-# Install sqlmap
-RUN apt-get update && apt-get install -y --no-install-recommends sqlmap && apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # ── Final Runtime Image ────────────────────────────────────────────────────
 FROM base AS runtime
 
@@ -99,6 +104,50 @@ RUN chown -R ccure:ccure /opt/playwright
 
 # Copy nuclei templates (may be in /root or /home)
 COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
+
+# ── Verify the scanners actually made it into the shipped image ────────────
+# This gate runs in `runtime`, not in `tools`, because `runtime` is what ships.
+# The tool installs above each end in `|| echo "... skipped"` so a transient
+# network failure does not abort the build; without a gate, a build that failed
+# to fetch nuclei still succeeds and produces a DAST image whose main detector
+# is absent — the scan then completes, reports nothing, and is indistinguishable
+# from a clean result.
+#
+# Verifying in an earlier stage does not establish this. `runtime` inherits from
+# `base` and copies named paths out of `tools`, so a tool present in `tools` and
+# not copied passes an earlier check and is still missing at run time. The
+# checks have to run against the final filesystem.
+#
+# nuclei fails the build. Playwright's browser is required for the crawl and is
+# also fatal: without it the crawler yields no endpoints and every later phase
+# scans only the root URL. The rest are reported so the build log states what
+# this image can and cannot check.
+RUN set -e; \
+    echo "=== Runtime tool verification ==="; \
+    for tool in nuclei subfinder ffuf sqlmap nmap; do \
+        if command -v "$tool" >/dev/null 2>&1; then \
+            echo "  OK       $tool -> $(command -v $tool)"; \
+        else \
+            echo "  MISSING  $tool"; \
+        fi; \
+    done; \
+    missing=""; \
+    command -v nuclei >/dev/null 2>&1 || missing="$missing nuclei"; \
+    command -v sqlmap >/dev/null 2>&1 || echo "  WARN: sqlmap absent — SQL injection testing will not run"; \
+    if ls /opt/playwright/chromium-* >/dev/null 2>&1; then \
+        echo "  OK       playwright chromium -> $(ls -d /opt/playwright/chromium-* | head -1)"; \
+    else \
+        missing="$missing playwright-chromium"; \
+        echo "  MISSING  playwright chromium browser"; \
+    fi; \
+    test -d /opt/nuclei-templates && \
+        echo "  OK       nuclei-templates ($(ls /opt/nuclei-templates | wc -l) entries)" || \
+        echo "  WARN: nuclei templates absent — they will be fetched on first run"; \
+    if [ -n "$missing" ]; then \
+        echo "FATAL: required scanner component(s) missing:$missing" >&2; \
+        echo "Refusing to ship a scanner image that cannot perform its primary checks." >&2; \
+        exit 1; \
+    fi
 
 # Copy application code
 COPY . .

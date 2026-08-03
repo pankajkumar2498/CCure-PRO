@@ -30,6 +30,23 @@ Everything this module emits must be traceable to observed data. Concretely:
     product-present-but-version-unknown match. Findings with no evidence tying
     them to the host are excluded from the report body and accounted for in
     ``ScanFindings.excluded``.
+
+Where verification happens
+──────────────────────────
+``verify_host_findings`` is the single verification entry point and is called
+by the vulnerability engine while the scan is still running, not at report
+time. A host record therefore carries verified findings from the moment it
+leaves the engine, and everything downstream — risk scoring, asset sync, the
+API, the reports — reads the same verified set instead of re-deriving it or,
+worse, working from raw candidates.
+
+Candidates that fail verification are not discarded: they are handed back as
+``ExcludedFinding`` entries, stored alongside the host, and reproduced in the
+report's suppressed-candidates appendix, so the filtering stays auditable.
+
+``build_scan_report`` still verifies any candidate it is handed, so payloads
+written before this moved (and credentialed audits, which do not run the
+vulnerability engine) normalize exactly as they always did.
 """
 
 from __future__ import annotations
@@ -220,15 +237,44 @@ class ServiceRecord:
     version: str = ""
     extra: str = ""
     banner: str = ""
+    #: CPEs the scanner assigned to this service, as (vendor, product) pairs.
+    #: Where the scan supplied these, product identity is a comparison rather
+    #: than an interpretation of banner text.
+    cpe_identities: Tuple[Tuple[str, str], ...] = ()
+    #: What the version pins down: "exact", "floor", "ceiling" or "unknown",
+    #: as recorded by the stage that measured it.
+    version_precision: str = ""
+    #: Whether the network can reach this service: "exposed", "host_only",
+    #: "filtered" or "undetermined". Set when an authenticated session read the
+    #: host's socket table, empty for an ordinary port scan — which observes
+    #: reachability directly and has nothing extra to say about it.
+    exposure: str = ""
+    #: The socket's bind address class, when the host reported one.
+    bind_scope: str = ""
 
     @property
     def label(self) -> str:
         return f"{self.port}/{self.protocol}"
 
     @property
+    def is_reachable(self) -> bool:
+        """
+        Whether this service is reachable from the scanner.
+
+        A loopback-bound listener is running but unreachable, and must not be
+        counted as attack surface. Everything else is treated as reachable
+        until something establishes otherwise — the conservative direction for
+        an inventory whose purpose is to bound exposure.
+        """
+        if self.exposure == "host_only":
+            return False
+        state = (self.state or "open").lower()
+        return state in ("open", "open|filtered", "listen", "listening")
+
+    @property
     def product_label(self) -> str:
         """Human product string, or empty when the scan could not fingerprint it."""
-        parts = [p for p in (self.product, self.version) if p]
+        parts = [p for p in (self.product, self.version, self.extra) if p]
         return " ".join(parts)
 
 
@@ -272,6 +318,11 @@ class StandardizedFinding:
     service_name: str = ""
     service_product: str = ""
     detected_version: str = ""
+    #: Why detection failed, when it did: "version_outside_range",
+    #: "product_absent", or "platform_mismatch". Recorded by the check that
+    #: made the call, so the suppression reason states what actually happened
+    #: rather than inferring it from which fields happen to be populated.
+    suppression_basis: str = ""
 
     # ── Scoring (never fabricated) ───────────────────────────────────────────
     cvss: Optional[CvssData] = None
@@ -426,6 +477,19 @@ class HostReport:
         if not value or value.lower() in ("unknown", "n/a", "none", "linux / windows"):
             return "Not determined"
         return value
+
+    @property
+    def reachable_services(self) -> List[ServiceRecord]:
+        """
+        The services that count as attack surface.
+
+        Excludes loopback-bound listeners, matching the port inventory. Any
+        headline figure must be drawn from here rather than from ``services``,
+        or the report states one number and then lists a different one — an
+        authenticated audit of a host running three host-only daemons reported
+        "open ports inventoried: 4" above an inventory containing one.
+        """
+        return [svc for svc in self.services if svc.is_reachable]
 
     def severity_counts(self) -> Dict[str, int]:
         counts = {
@@ -710,7 +774,24 @@ def _version_compare(left: str, right: str) -> Optional[int]:
     return 0
 
 
-def version_in_cpe_range(detected: str, cpe: Dict[str, Any]) -> Optional[bool]:
+def effective_precision(version: str, recorded: str = "") -> str:
+    """
+    What a version string actually pins down.
+
+    Prefers the precision recorded by the stage that measured the version;
+    falls back to re-deriving it from the string. Recording it at measurement
+    is the reliable path — by the time a version reaches here it may have been
+    copied between fields, and "9.6.0 or later" only reads as a lower bound
+    while the words are still attached to it.
+    """
+    if recorded in ("exact", "floor", "ceiling"):
+        return recorded
+    return version_precision(version)
+
+
+def version_in_cpe_range(
+    detected: str, cpe: Dict[str, Any], recorded_precision: str = ""
+) -> Optional[bool]:
     """
     Test a detected version against a CPE 2.3 version range.
 
@@ -721,7 +802,7 @@ def version_in_cpe_range(detected: str, cpe: Dict[str, Any]) -> Optional[bool]:
     if not detected:
         return None
 
-    precision = version_precision(detected)
+    precision = effective_precision(detected, recorded_precision)
 
     bounds = [
         ("versionStartIncluding", "version_start_including", lambda c: c >= 0, "lower"),
@@ -986,9 +1067,34 @@ def cpe_platform_conflicts(cpe: Dict[str, Any], host_os: str, product: str) -> b
     )
 
 
+def _cpe_identities_from(value: Any) -> List[Tuple[str, str]]:
+    """Parse ``(vendor, product)`` pairs out of scanner-assigned CPE strings."""
+    identities: List[Tuple[str, str]] = []
+    raw_values = value if isinstance(value, (list, tuple)) else [value]
+    for raw in raw_values:
+        text = _as_str(raw).lower()
+        if not text.startswith("cpe:"):
+            continue
+        parts = text.split(":")
+        if len(parts) > 2 and parts[1] == "2.3":
+            pair = (parts[3], parts[4]) if len(parts) > 4 else ("", "")
+        else:
+            pair = (parts[2], parts[3]) if len(parts) > 3 else ("", "")
+        vendor, product = pair[0].strip(), pair[1].strip()
+        if vendor and product and product not in ("*", "-"):
+            if (vendor, product) not in identities:
+                identities.append((vendor, product))
+    return identities
+
+
 def _cpe_matches_product(cpe: Dict[str, Any], service: ServiceRecord) -> bool:
     """
     Check whether a CPE entry refers to the product observed on this port.
+
+    When the scan recorded CPEs for the service, identity is decided by
+    comparing them — the scanner already established what this is, so there is
+    nothing to interpret. Token matching below is the fallback for services the
+    scanner could not identify that precisely.
 
     Matching is token-based rather than substring-based, because both
     directions of a substring test are wrong in practice:
@@ -1007,19 +1113,33 @@ def _cpe_matches_product(cpe: Dict[str, Any], service: ServiceRecord) -> bool:
     comparison. It is a protocol label, not a product: including it let
     ``apache:http_server`` match every HTTP port on the network.
     """
+    uri = _as_str(
+        cpe.get("cpe23Uri")
+        or cpe.get("cpe23_uri")
+        or cpe.get("cpe_uri")
+        or cpe.get("criteria")
+    )
     product = _as_str(cpe.get("product"))
-    if not product:
-        uri = _as_str(
-            cpe.get("cpe23Uri")
-            or cpe.get("cpe23_uri")
-            or cpe.get("cpe_uri")
-            or cpe.get("criteria")
-        )
+    vendor = _as_str(cpe.get("vendor"))
+    if uri:
         parts = uri.split(":")
         if len(parts) > 4:
-            product = parts[4]
+            vendor = vendor or parts[3]
+            product = product or parts[4]
     if not product:
         return False
+
+    if service.cpe_identities:
+        # Decided by identifier where possible: the scanner already established
+        # what this service is. Product only — Nmap and NVD disagree on vendor
+        # often enough (nginx is igor_sysoev to one and f5 to the other) that
+        # requiring both to agree would reject genuine matches.
+        if any(product.lower() == known for _v, known in service.cpe_identities):
+            return True
+        # No identity match is not a disproof: the scanner's CPE list is not
+        # exhaustive, and NVD names products more specifically than Nmap does
+        # ("nginx_open_source" against "nginx"). Fall through to token
+        # matching, so the identity check can only ever add matches.
 
     product_tokens = _name_tokens(product)
     if not product_tokens:
@@ -1172,9 +1292,14 @@ def classify_detection(
     affected_software: Any,
     host_services: Optional[List[ServiceRecord]] = None,
     host_os: str = "",
-) -> Tuple[DetectionMethod, str, str]:
+) -> Tuple[DetectionMethod, str, str, str]:
     """
     Decide how a CVE was tied to this host.
+
+    Returns ``(method, detected_version, fixed_version_hint, suppression_basis)``
+    where the basis names *why* a suppression happened — the check that made
+    the call is the only place that knows, and a reader of the report should
+    not be told "the version ruled this out" when the product was never found.
 
     Returns ``(method, detected_version, fixed_version_hint)``.
 
@@ -1218,7 +1343,7 @@ def classify_detection(
     fixed_hint = _as_str(_first(finding_dict, "fixed_version", "fixed_in"))
 
     if explicit in AUTHORITATIVE:
-        return AUTHORITATIVE[explicit], detected_version, fixed_hint
+        return AUTHORITATIVE[explicit], detected_version, fixed_hint, ""
 
     cpes = _cpe_products(affected_software)
 
@@ -1233,22 +1358,27 @@ def classify_detection(
     # scraped out of a banner was reported as Confirmed, which is how Spring
     # Framework, Dropbear and Dahua camera CVEs ended up attached to a VMware
     # daemon, OpenSSH and PostgreSQL respectively.
+    # Credentialed origin must be asserted by the record, never inferred from
+    # the absence of a service inventory. The old fallback — "has a package name
+    # and this payload has no services" — treated an ordinary network finding as
+    # a package-manager result whenever the host record it travelled in had been
+    # stripped of its ports, which is exactly what the stored phase-3 payload is
+    # (`to_phase3_dict` drops `open_ports` because phase 2 already reported
+    # them). Every such finding came out Confirmed at QoD 97 on the strength of
+    # a package name guessed from a banner.
     is_credentialed_package = explicit in (
         "credentialed",
         "credentialed_package",
         "package",
-    ) or (
-        bool(_as_str(_first(finding_dict, "package", "package_name")))
-        and service is None
-        and not host_services
     )
     if is_credentialed_package:
         if not detected_version:
             # The package is installed but the audit did not capture a version,
             # so vulnerability cannot be asserted — only that the package which
             # would be affected is present.
-            return DetectionMethod.PACKAGE_PRESENT, "", fixed_hint
+            return DetectionMethod.PACKAGE_PRESENT, "", fixed_hint, ""
 
+        disproved = False
         for cpe in cpes:
             verdict = version_in_cpe_range(detected_version, cpe)
             if verdict is True:
@@ -1260,16 +1390,32 @@ def classify_detection(
                         cpe.get("versionEndExcluding")
                         or cpe.get("version_end_excluding")
                     ),
+                    "",
                 )
             if verdict is False:
-                return DetectionMethod.UNVERIFIED, detected_version, fixed_hint
-        return DetectionMethod.CREDENTIALED_PACKAGE, detected_version, fixed_hint
+                # As in the network path below: a single non-matching entry does
+                # not disprove a record whose affected list holds one entry per
+                # released version, so the whole list is evaluated first.
+                disproved = True
+        if disproved:
+            return (
+                DetectionMethod.UNVERIFIED,
+                detected_version,
+                fixed_hint,
+                "version_outside_range",
+            )
+        return (
+            DetectionMethod.CREDENTIALED_PACKAGE,
+            detected_version,
+            fixed_hint,
+            "",
+        )
 
     # Without CPE data nothing can be verified either way. The engine still
     # asserted this finding against the host, so it is reported rather than
     # dropped — visibly flagged as unverified.
     if not cpes:
-        return DetectionMethod.ENGINE_REPORTED, detected_version, fixed_hint
+        return DetectionMethod.ENGINE_REPORTED, detected_version, fixed_hint, ""
 
     inventory = (
         host_services if host_services is not None else ([service] if service else [])
@@ -1285,6 +1431,7 @@ def classify_detection(
     product_matched = False
     imprecise_version = ""
     imprecise_hint = ""
+    disproved_version = ""
     platform_conflict = False
     for cpe in cpes:
         for candidate in candidates:
@@ -1299,8 +1446,14 @@ def classify_detection(
                 continue
             product_matched = True
             version = detected_version or candidate.version
-            verdict = version_in_cpe_range(version, cpe)
-            if verdict is None and version and version_precision(version) != "exact":
+            # Precision recorded by the stage that measured this version, when
+            # the version is the one that stage measured.
+            precision = effective_precision(
+                version,
+                candidate.version_precision if version == candidate.version else "",
+            )
+            verdict = version_in_cpe_range(version, cpe, precision)
+            if verdict is None and version and precision != "exact":
                 # The fingerprint is a bound, not a value: it lands inside the
                 # published range but cannot rule out a fixed release beyond
                 # the open end. Remember it in case no CPE gives a firm answer.
@@ -1323,34 +1476,62 @@ def classify_detection(
                         cpe.get("versionEndExcluding")
                         or cpe.get("version_end_excluding")
                     ),
+                    "",
                 )
             if verdict is False:
-                # Disproved: the installed version sits outside the published
-                # vulnerable range. This is what eliminates the bulk of naive
-                # port-based findings.
-                return DetectionMethod.UNVERIFIED, version, fixed_hint
+                # This configuration does not cover the detected version. Note
+                # it, but keep going: one CVE routinely carries many affected
+                # entries for the same product — Oracle publishes one pinned
+                # version per release, and F5 publishes one range per supported
+                # nginx branch. Concluding "disproved" from the first
+                # non-matching entry threw away every finding whose matching
+                # entry happened to be listed later, and the feed does not
+                # guarantee any order.
+                disproved_version = disproved_version or version
+                continue
 
     if imprecise_version:
         return (
             DetectionMethod.VERSION_IMPRECISE,
             imprecise_version,
             fixed_hint or imprecise_hint,
+            "",
+        )
+
+    if disproved_version:
+        # Every affected entry naming this product excluded the detected
+        # version, so the record really is disproved for this host.
+        return (
+            DetectionMethod.UNVERIFIED,
+            disproved_version,
+            fixed_hint,
+            "version_outside_range",
         )
 
     if product_matched:
-        return DetectionMethod.SERVICE_PRODUCT, detected_version, fixed_hint
+        return DetectionMethod.SERVICE_PRODUCT, detected_version, fixed_hint, ""
 
     if platform_conflict:
         # Every CPE that named this product was scoped to a different platform.
-        return DetectionMethod.UNVERIFIED, detected_version, fixed_hint
+        return (
+            DetectionMethod.UNVERIFIED,
+            detected_version,
+            fixed_hint,
+            "platform_mismatch",
+        )
 
     if inventory:
         # The host's services were enumerated and none of them is the affected
         # product, so the finding is disproved by absence.
-        return DetectionMethod.UNVERIFIED, detected_version, fixed_hint
+        return (
+            DetectionMethod.UNVERIFIED,
+            detected_version,
+            fixed_hint,
+            "product_absent",
+        )
 
     # Nothing was enumerated on this host, so applicability cannot be tested.
-    return DetectionMethod.ENGINE_REPORTED, detected_version, fixed_hint
+    return DetectionMethod.ENGINE_REPORTED, detected_version, fixed_hint, ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1625,7 +1806,7 @@ def parse_raw_finding(
         _first(finding_dict, "affected_software", "affected", "cpe_ids", "cpes") or []
     )
 
-    method, detected_version, fixed_hint = classify_detection(
+    method, detected_version, fixed_hint, suppression_basis = classify_detection(
         finding_dict, service, affected_software, host_services, host_os
     )
     confidence, _ = DETECTION_SEMANTICS[method]
@@ -1714,6 +1895,7 @@ def parse_raw_finding(
         ),
         service_product=service.product if service else "",
         detected_version=detected_version,
+        suppression_basis=suppression_basis,
         cvss=cvss,
         severity=severity,
         severity_source=source,
@@ -1750,7 +1932,21 @@ def _build_port_observation(
     service: ServiceRecord, host: str, hostname: str
 ) -> StandardizedFinding:
     """Record an open port as an informational inventory item, not a vulnerability."""
-    detail = [f"Port {service.port}/{service.protocol} is open."]
+    # An authenticated session can report a service the network cannot reach.
+    # Describing that as "open" would overstate the attack surface, so the
+    # observation states what was actually established.
+    opening = {
+        "exposed": f"Port {service.port}/{service.protocol} is open and reachable.",
+        "filtered": (
+            f"Port {service.port}/{service.protocol} is listening on the host "
+            f"but was not reachable from the scanner."
+        ),
+        "undetermined": (
+            f"Port {service.port}/{service.protocol} is listening on the host; "
+            f"reachability was not tested."
+        ),
+    }.get(service.exposure, f"Port {service.port}/{service.protocol} is open.")
+    detail = [opening]
     if service.product_label:
         detail.append(f"Service fingerprint: {service.product_label}.")
     elif service.service_name:
@@ -1760,6 +1956,10 @@ def _build_port_observation(
         f"Port/Protocol     : {service.port}/{service.protocol}",
         f"State             : {service.state}",
     ]
+    if service.exposure:
+        evidence_lines.append(f"Exposure          : {service.exposure}")
+    if service.bind_scope:
+        evidence_lines.append(f"Bind scope        : {service.bind_scope}")
     if service.service_name:
         evidence_lines.append(f"Service           : {service.service_name}")
     if service.product:
@@ -1838,6 +2038,12 @@ def _parse_services(host_dict: Dict[str, Any]) -> List[ServiceRecord]:
                 version=_as_str(_first(entry, "version", "service_version")),
                 extra=_as_str(_first(entry, "extra", "service_extra", "extrainfo")),
                 banner=_as_str(entry.get("banner")),
+                cpe_identities=tuple(
+                    _cpe_identities_from(_first(entry, "cpe", "cpes", "service_cpe"))
+                ),
+                version_precision=_as_str(entry.get("version_precision")),
+                exposure=_as_str(entry.get("exposure")),
+                bind_scope=_as_str(entry.get("bind_scope")),
             )
         )
     return services
@@ -1934,6 +2140,12 @@ def _extract_credentialed_host(report: Dict[str, Any]) -> Optional[Dict[str, Any
         ),
         "open_ports": report.get("open_ports_credentialed") or [],
         "credentialed": True,
+        # Candidates the audit already ruled out. They are no longer among its
+        # findings, so the report can only account for them if they travel with
+        # the host record — without this the methodology appendix reported zero
+        # suppressions for every credentialed scan, whatever it had withheld.
+        "suppressed_cves": report.get("suppressed_cves") or [],
+        "candidates_evaluated": report.get("candidates_evaluated") or 0,
     }
 
     packages = {
@@ -1950,6 +2162,13 @@ def _extract_credentialed_host(report: Dict[str, Any]) -> Optional[Dict[str, Any
         package = _as_str(_first(entry, "package", "package_name"))
         if package:
             record.setdefault("package", package)
+            # A package finding is a package finding whether or not the host
+            # also has listening services. Without this the credentialed audit
+            # of a host with a port inventory fell through to the network
+            # matching path, where a package that is not exposed on any port
+            # looks like a product the host does not run — and every finding
+            # the audit had already version-matched was suppressed.
+            record.setdefault("detection_method", "credentialed")
             # Recover the installed version from the package inventory when the
             # CVE record itself did not carry one. Detection confidence is then
             # decided by classify_detection: a known version can be range-checked
@@ -1965,6 +2184,279 @@ def _extract_credentialed_host(report: Dict[str, Any]) -> Optional[Dict[str, Any
 # ─────────────────────────────────────────────────────────────────────────────
 # Public entry points
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class FindingGroup:
+    """
+    Findings that one upgrade resolves, presented as a single item.
+
+    A host twelve Chrome versions behind is genuinely affected by ~1,700
+    published CVEs, and listing them individually is accurate and useless: the
+    reader cannot see that four products need updating, the remediation is one
+    action repeated 1,700 times, and — because a report can only print so many
+    findings — an ICS component with a Critical was pushed out of the document
+    by a browser. Grouping is how every established scanner presents this, and
+    it changes presentation only: the per-CVE findings remain the record.
+    """
+
+    product: str
+    fixed_version: str
+    findings: List[StandardizedFinding] = field(default_factory=list)
+
+    @property
+    def representative(self) -> StandardizedFinding:
+        """The finding whose detail stands for the group — the worst of them."""
+        return self.findings[0]
+
+    @property
+    def is_group(self) -> bool:
+        return len(self.findings) > 1
+
+    @property
+    def severity(self) -> str:
+        return self.representative.severity
+
+    @property
+    def severity_counts(self) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for finding in self.findings:
+            counts[finding.severity] = counts.get(finding.severity, 0) + 1
+        return counts
+
+    @property
+    def cve_ids(self) -> List[str]:
+        return sorted({f.primary_cve for f in self.findings if f.primary_cve})
+
+    @property
+    def kev_findings(self) -> List[StandardizedFinding]:
+        return [f for f in self.findings if f.in_kev]
+
+    @property
+    def max_epss(self) -> Optional[StandardizedFinding]:
+        scored = [f for f in self.findings if f.epss_score]
+        return max(scored, key=lambda f: f.epss_score) if scored else None
+
+
+#: Below this many findings, an upgrade target is shown as individual findings.
+#: Two CVEs read better as two entries than as a group of two.
+GROUPABLE_MINIMUM = 3
+
+
+def group_findings_for_report(
+    findings: List[StandardizedFinding],
+    minimum: int = GROUPABLE_MINIMUM,
+) -> List[FindingGroup]:
+    """
+    Collapse findings that a single upgrade resolves into one item each.
+
+    Grouped on the upgrade target — the same key the executive remediation plan
+    uses, so the two documents cannot disagree about how much work there is.
+    Findings with no published fix, or too few to be worth grouping, come back
+    as single-finding groups and render exactly as before.
+
+    Ordering is preserved by severity: groups are ranked by their worst finding,
+    so an ICS Critical still leads a browser's thousand Highs.
+    """
+    grouped: Dict[Any, FindingGroup] = {}
+    singles: List[FindingGroup] = []
+
+    for finding in findings:
+        remediation = finding.remediation
+        product = (remediation.product or "").strip() if remediation else ""
+        fixed = (remediation.fixed_version or "").strip() if remediation else ""
+        if not product or not fixed:
+            singles.append(
+                FindingGroup(product="", fixed_version="", findings=[finding])
+            )
+            continue
+        # Keyed on the product, not on the fixed version. An administrator
+        # performs one upgrade: splitting Chrome into a card per fixed version
+        # produced 76 cards for what is a single action. The group therefore
+        # tracks the highest boundary any of its findings requires — the same
+        # rule the executive remediation plan applies, so the two documents
+        # cannot disagree about how much work there is.
+        key = (finding.host, product.lower())
+        entry = grouped.setdefault(
+            key, FindingGroup(product=product, fixed_version=fixed)
+        )
+        entry.findings.append(finding)
+        candidate = _comparable_version(fixed)
+        current = _comparable_version(entry.fixed_version)
+        if candidate and (not current or candidate > current):
+            entry.fixed_version = fixed
+
+    result: List[FindingGroup] = []
+    for entry in grouped.values():
+        entry.findings.sort(key=lambda f: f.sort_key(), reverse=True)
+        if len(entry.findings) >= minimum:
+            result.append(entry)
+        else:
+            result.extend(
+                FindingGroup(product="", fixed_version="", findings=[f])
+                for f in entry.findings
+            )
+    result.extend(singles)
+
+    result.sort(key=lambda g: g.representative.sort_key(), reverse=True)
+    return result
+
+
+def suppression_reason(finding: StandardizedFinding) -> str:
+    """
+    Plain-English account of why a candidate was withheld.
+
+    Written once and used by both verification paths, so the wording a user
+    reads in the report appendix is the same wording recorded on the host
+    during the scan.
+    """
+    if finding.confidence == Confidence.UNVERIFIED:
+        # Stated from the basis the check recorded, not inferred from which
+        # fields are populated: a finding can carry a detected version and
+        # still have been ruled out because the product was never found.
+        if finding.suppression_basis == "version_outside_range":
+            return (
+                f"Ruled out: the version detected on this host "
+                f"({finding.detected_version}) falls outside the vulnerable "
+                f"range published for this record."
+            )
+        if finding.suppression_basis == "platform_mismatch":
+            return (
+                "Ruled out: every published configuration for this record is "
+                "scoped to a platform this host is not running."
+            )
+        return (
+            "Ruled out: the host's enumerated services do not include the "
+            "affected product."
+        )
+    _, explanation = DETECTION_SEMANTICS[finding.detection_method]
+    return (
+        f"Below the reporting confidence threshold "
+        f"(quality of detection {finding.qod}%, "
+        f"threshold {QOD_REPORT_THRESHOLD}%). {explanation}"
+    )
+
+
+@dataclass
+class HostVerification:
+    """The verified/withheld split for one host's candidate findings."""
+
+    #: Candidate records, in their original shape, that survived verification.
+    #: Kept raw rather than normalized so the report remains the single place
+    #: that decides how a finding is presented.
+    verified: List[Any] = field(default_factory=list)
+    #: Withheld candidates with the reason, for the audit trail.
+    suppressed: List[ExcludedFinding] = field(default_factory=list)
+    #: Severity breakdown of the verified set.
+    severity_counts: Dict[str, int] = field(
+        default_factory=lambda: {
+            "Critical": 0,
+            "High": 0,
+            "Medium": 0,
+            "Low": 0,
+            "None": 0,
+            "Unscored": 0,
+        }
+    )
+
+    @property
+    def evaluated(self) -> int:
+        return len(self.verified) + len(self.suppressed)
+
+    def as_host_fields(self) -> Dict[str, Any]:
+        """The fields to write onto a host record after verification."""
+        return {
+            "cves": self.verified,
+            "suppressed_cves": [
+                {
+                    "identifier": item.identifier,
+                    "host": item.host,
+                    "reason": item.reason,
+                }
+                for item in self.suppressed
+            ],
+            "vulnerability_counts": dict(self.severity_counts),
+            "candidates_evaluated": self.evaluated,
+        }
+
+
+def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
+    """
+    Split one host's candidate findings into verified and withheld.
+
+    This is the verification step itself, exposed so the vulnerability engine
+    can run it during the scan. A candidate survives only when the host's own
+    enumerated services place the affected product on this machine and the
+    detected version falls inside the published vulnerable range — the same
+    test the report applies, run once, at the point the data is produced.
+
+    The input host record is not modified; the caller decides what to store.
+    """
+    verification = HostVerification()
+    if not isinstance(host_dict, dict):
+        return verification
+
+    ip = _as_str(_first(host_dict, "ip_address", "ip", "host", "target"))
+    hostname = clean_hostname(
+        _as_str(_first(host_dict, "hostname", "netbios_name", "fqdn")), ip
+    )
+    services = _parse_services(host_dict)
+    host_os = _as_str(_first(host_dict, "os_guess", "os_name", "os"))
+
+    candidates = _first(host_dict, "cves", "vulnerabilities", "findings") or []
+    if not isinstance(candidates, list):
+        return verification
+
+    for raw in candidates:
+        candidate = {"cve_id": raw} if isinstance(raw, str) else raw
+        if not isinstance(candidate, dict):
+            continue
+
+        finding = parse_raw_finding(
+            candidate,
+            host=ip,
+            hostname=hostname,
+            service=_match_service(candidate, services),
+            host_services=services,
+            host_os=host_os,
+        )
+
+        if finding.is_reportable:
+            verification.verified.append(raw)
+            verification.severity_counts[finding.severity] = (
+                verification.severity_counts.get(finding.severity, 0) + 1
+            )
+        else:
+            verification.suppressed.append(
+                ExcludedFinding(
+                    identifier=finding.primary_cve or finding.plugin_id,
+                    host=ip,
+                    reason=suppression_reason(finding),
+                )
+            )
+
+    return verification
+
+
+def verify_credentialed_report(report: Dict[str, Any]) -> HostVerification:
+    """
+    Verify a credentialed audit's findings at the point the audit produces them.
+
+    A credentialed audit matches installed package versions against published
+    ranges, so its findings arrive with real evidence — but the audit still
+    emits candidates its own matcher could not settle, and until now those were
+    only filtered when the report was rendered. Everything in between (the
+    severity summary, the vulnerability rows written to the database, the
+    dashboard counts) was reading the unfiltered list.
+
+    The report is reshaped into the common host structure first, so the exact
+    same verification runs here as at report time — one implementation, one
+    result, wherever it is called from.
+    """
+    host = _extract_credentialed_host(report)
+    if not host:
+        return HostVerification()
+    return verify_host_findings(host)
 
 
 def build_scan_report(
@@ -1986,13 +2478,22 @@ def build_scan_report(
 
     host_dicts = _iter_host_dicts(payload)
 
-    # Credentialed audits store their payload under a distinct key.
+    # Credentialed audits store their payload under a distinct key. A scan may
+    # cover several hosts, in which case `reports` holds all of them and
+    # `report` repeats the first for consumers that predate multi-host audits;
+    # reading both would double-count that host.
     if isinstance(payload, dict) and "credentialed" in payload:
         cred = payload["credentialed"]
-        cred_report = cred.get("report") if isinstance(cred, dict) else None
-        converted = _extract_credentialed_host(cred_report or {})
-        if converted:
-            host_dicts.append(converted)
+        cred_reports: List[Any] = []
+        if isinstance(cred, dict):
+            if isinstance(cred.get("reports"), list) and cred["reports"]:
+                cred_reports = cred["reports"]
+            elif cred.get("report"):
+                cred_reports = [cred["report"]]
+        for cred_report in cred_reports:
+            converted = _extract_credentialed_host(cred_report or {})
+            if converted:
+                host_dicts.append(converted)
 
     if not host_dicts and isinstance(result_dict.get("metadata"), dict):
         # Single-target scan with no per-host breakdown available.
@@ -2035,6 +2536,28 @@ def build_scan_report(
             raw_vulns = []
 
         seen_host: set = set()
+        withheld_here: set = set()
+
+        # Candidates the vulnerability engine already ruled out while the scan
+        # was running. They are replayed from the host record rather than
+        # re-derived, because the host no longer carries them among its
+        # findings and the methodology appendix must still account for every
+        # candidate the scan evaluated.
+        for entry in host_dict.get("suppressed_cves") or []:
+            if not isinstance(entry, dict):
+                continue
+            identifier = _as_str(_first(entry, "identifier", "cve_id", "id"))
+            reason = _as_str(entry.get("reason"))
+            if not identifier or identifier in withheld_here:
+                continue
+            withheld_here.add(identifier)
+            report.excluded.append(
+                ExcludedFinding(
+                    identifier=identifier,
+                    host=_as_str(entry.get("host")) or ip,
+                    reason=reason or "Withheld during scan-time verification.",
+                )
+            )
 
         for raw in raw_vulns:
             if isinstance(raw, str):
@@ -2052,31 +2575,20 @@ def build_scan_report(
                 host_os=os_name,
             )
 
+            # Payloads written before verification moved into the scan still
+            # arrive unfiltered, so the same test runs here. On a verified
+            # payload this rejects nothing — it is the identical check against
+            # the identical data.
             if not finding.is_reportable:
-                if finding.confidence == Confidence.UNVERIFIED:
-                    if finding.detected_version:
-                        reason = (
-                            f"Ruled out: the version detected on this host "
-                            f"({finding.detected_version}) falls outside the "
-                            f"vulnerable range published for this record."
-                        )
-                    else:
-                        reason = (
-                            "Ruled out: the host's enumerated services do not "
-                            "include the affected product."
-                        )
-                else:
-                    _, explanation = DETECTION_SEMANTICS[finding.detection_method]
-                    reason = (
-                        f"Below the reporting confidence threshold "
-                        f"(quality of detection {finding.qod}%, "
-                        f"threshold {QOD_REPORT_THRESHOLD}%). {explanation}"
-                    )
+                identifier = finding.primary_cve or finding.plugin_id
+                if identifier in withheld_here:
+                    continue
+                withheld_here.add(identifier)
                 report.excluded.append(
                     ExcludedFinding(
-                        identifier=finding.primary_cve or finding.plugin_id,
+                        identifier=identifier,
                         host=ip,
-                        reason=reason,
+                        reason=suppression_reason(finding),
                     )
                 )
                 continue
@@ -2118,7 +2630,10 @@ def build_scan_report(
         if include_port_inventory:
             covered = {(f.port, f.protocol) for f in host_report.findings}
             for svc in services:
-                if svc.state and svc.state.lower() not in ("open", "open|filtered"):
+                # Listening sockets read from inside the host belong in the
+                # inventory too; only a loopback bind is excluded, because it is
+                # positively not attack surface rather than merely unconfirmed.
+                if not svc.is_reachable:
                     continue
                 if (svc.port, svc.protocol) in covered:
                     continue

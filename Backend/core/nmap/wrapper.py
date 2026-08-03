@@ -33,6 +33,7 @@ AVAILABILITY:
 import hashlib
 import json
 import logging
+import re
 import shutil
 import threading
 import time
@@ -340,6 +341,34 @@ class NmapScanner:
     # Tells Nmap to keep ≥N probes in-flight at once and send ≥M packets/sec,
     # dramatically reducing wall-clock time on local LAN subnets.
     _MULTI_PERF_ARGS = "--min-parallelism 64 --min-rate 500"
+
+    #: Resolved once per process — the binary does not change under a running
+    #: scanner, and every scan record has to name the engine version that
+    #: produced it for the result to be reproducible.
+    _version_cache: str | None = None
+
+    @property
+    def nmap_version(self) -> str:
+        """Version of the nmap binary in use, or "" when it cannot be read."""
+        if NmapScanner._version_cache is None:
+            version = ""
+            if _NMAP_BINARY:
+                try:
+                    import subprocess
+
+                    out = subprocess.run(  # noqa: S603 - fixed binary, no user input
+                        [_NMAP_BINARY, "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    ).stdout
+                    match = re.search(r"Nmap version\s+(\S+)", out)
+                    if match:
+                        version = match.group(1)
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    log.debug("Could not read nmap version: %s", exc)
+            NmapScanner._version_cache = version
+        return NmapScanner._version_cache
 
     def __init__(
         self,

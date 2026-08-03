@@ -5,8 +5,19 @@
  */
 import api from "./axiosInstance";
 
+/**
+ * Split a target field into individual expressions.
+ * Accepts commas, whitespace or newlines between entries so an operator can
+ * paste a list from a spreadsheet or an inventory export without reformatting.
+ */
+export const parseTargets = (value) =>
+  String(value ?? "")
+    .split(/[\s,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
 export const runCredentialedScan = ({
-  ip,
+  targets,
   username,
   password,
   keyPath,
@@ -17,7 +28,7 @@ export const runCredentialedScan = ({
   credentialId = null,
 }) =>
   api.post("/scan/credentialed", {
-    ip,
+    targets,
     username,
     password: authMethod === "password" ? password : undefined,
     key_path: authMethod === "key" ? keyPath : undefined,

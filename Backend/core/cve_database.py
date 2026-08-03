@@ -13,9 +13,11 @@ from typing import Any, Dict, List, Optional
 
 from core.vuln_intel import (
     as_list,
+    build_cpe_identity_clauses,
     build_sql_or_clauses,
     can_connect_vuln_db,
     extract_search_terms,
+    parse_cpe_identities,
     get_vuln_engine,
     merge_alias_fields,
     title_case_severity,
@@ -24,6 +26,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+#: Row caps for candidate enumeration. An exact (vendor, product) selection
+#: returns the CVEs published against that product and nothing else, so the cap
+#: exists only as a safety valve and rarely binds. A name match can hit tens of
+#: thousands of rows, so it stays tightly capped — and any lookup that reaches
+#: its cap is flagged on the records it returns, because ordering is by
+#: exploitation likelihood rather than by relevance to the installed version.
+CPE_MATCH_ROW_CAP = 2000
+NAME_MATCH_ROW_CAP = 200
 
 BEST_CVSS_LATERAL = """
 LEFT JOIN LATERAL (
@@ -79,10 +90,23 @@ class CVEDatabase:
             )
 
     def search_cves_for_service(
-        self, service_name: str, version: str = ""
+        self, service_name: str, version: str = "", cpes: tuple[str, ...] = ()
     ) -> list[dict]:
+        """
+        Candidate CVEs for one observed service.
+
+        ``cpes`` are the CPEs the scanner assigned to the service. When present
+        they select candidates by exact vendor/product, which is both precise
+        and index-friendly. Without them the query falls back to substring
+        matching on product and vendor names, which is what a banner string
+        forces: ``ssh`` matches openssh, libssh, libssh2 and dropbear alike.
+
+        Every record carries ``candidate_source`` so a later stage can tell an
+        exactly-identified candidate from a name-matched guess, and the
+        returned list carries ``truncated`` when the row cap was reached.
+        """
         if self.backend == "postgresql":
-            return self._search_postgres(service_name, version)
+            return self._search_postgres(service_name, version, cpes)
         if self.backend == "sqlite":
             return self._search_sqlite(service_name, version)
         return self._fallback_search(service_name, version)
@@ -101,7 +125,9 @@ class CVEDatabase:
             return self._get_sqlite_by_severity(severity)
         return []
 
-    def _search_postgres(self, service_name: str, version: str = "") -> list[dict]:
+    def _search_postgres(
+        self, service_name: str, version: str = "", cpes: tuple[str, ...] = ()
+    ) -> list[dict]:
         """
         Find CVEs whose CPE product/vendor matches the detected service.
 
@@ -116,20 +142,33 @@ class CVEDatabase:
         the detected version against the vulnerable range and confirm or rule
         out the finding.
         """
-        # The version is excluded from term extraction: version tokens are not
-        # product names and only add spurious matches.
-        terms = extract_search_terms(service_name)
-        if not terms:
-            return self._fallback_search(service_name, version)
+        # Scanner-assigned CPEs identify the product exactly, so they are used
+        # in preference to the banner text. This is what keeps the candidate
+        # set small enough that the row cap below rarely binds: a substring
+        # search for "windows" or "http" matches tens of thousands of rows and
+        # the cap then decides, by EPSS rank, which ones are even considered.
+        identities = parse_cpe_identities(cpes)
+        candidate_source = "cpe_exact"
+        row_cap = CPE_MATCH_ROW_CAP
+        if identities:
+            where_sql, params = build_cpe_identity_clauses(identities)
+        else:
+            row_cap = NAME_MATCH_ROW_CAP
+            candidate_source = "name_match"
+            # The version is excluded from term extraction: version tokens are
+            # not product names and only add spurious matches.
+            terms = extract_search_terms(service_name)
+            if not terms:
+                return self._fallback_search(service_name, version)
 
-        where_sql, params = build_sql_or_clauses(
-            column_expressions=(
-                "LOWER(cpe.product)",
-                "LOWER(cpe.vendor)",
-            ),
-            values=terms,
-            param_prefix="term",
-        )
+            where_sql, params = build_sql_or_clauses(
+                column_expressions=(
+                    "LOWER(cpe.product)",
+                    "LOWER(cpe.vendor)",
+                ),
+                values=terms,
+                param_prefix="term",
+            )
         query = text(
             f"""
             SELECT
@@ -177,7 +216,7 @@ class CVEDatabase:
                 COALESCE(epss.epss_score, 0) DESC,
                 COALESCE(best_cvss.base_score, 0) DESC,
                 c.published_date DESC
-            LIMIT 200
+            LIMIT {row_cap}
             """
         )
 
@@ -190,7 +229,24 @@ class CVEDatabase:
                 # Carry the CPE ranges through so the report can version-gate.
                 record["affected"] = as_list(row.get("affected"))
                 record["detected_version"] = version or ""
+                record["candidate_source"] = candidate_source
                 results.append(record)
+            if len(rows) >= row_cap:
+                # Enumeration stopped at the cap, so some candidates were never
+                # examined. Ordering is by exploitation likelihood, not by
+                # relevance to the installed version, so the ones dropped are
+                # not necessarily the ones that matter least. Flagging it lets
+                # the scan record the limitation instead of presenting a
+                # truncated search as a complete one.
+                logger.warning(
+                    "CVE candidate enumeration truncated at %d rows for '%s' "
+                    "(source=%s) — some candidates were not evaluated",
+                    row_cap,
+                    service_name,
+                    candidate_source,
+                )
+                for record in results:
+                    record["enumeration_truncated"] = True
             return results
         except SQLAlchemyError as exc:
             logger.error("PostgreSQL CVE search failed for %s: %s", service_name, exc)

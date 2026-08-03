@@ -32,14 +32,15 @@ from core.constants import PDF_AVAILABLE
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine
 from core.discovery.profiles import BALANCED, FAST, profile_for_pipeline
-from core.models import HostResult, ScanIntensity
+from core.models import HostResult, PortResult, ScanIntensity
 from core.oui_lookup import lookup_vendor
 from core.risk import infer_os_from_host
 from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
-from engines.port.port_engine import PortEngine
+from engines.port.port_engine import PortEngine, _record_port
 from engines.vulnerability.vulnerability_engine import VulnerabilityEngine
+from scans.finding_normalizer import version_precision
 
 if PDF_AVAILABLE:
     from pdf_generator import ScanReportGenerator
@@ -338,6 +339,27 @@ class ScanOrchestrator:
                     "scan_type": scan_type.upper(),
                     "discovery_profile": profile.name,
                 }
+
+            # Host discovery does not scan ports or fingerprint services. Saying
+            # so explicitly matters more than it looks: a report whose coverage
+            # reads "not recorded" invites the reader to assume those checks ran
+            # and found nothing, when this policy never performed them.
+            discovery_coverage = {
+                "port_range": "Not scanned — host discovery policy does not scan ports",
+                "service_detection": "Not performed",
+                "os_detection": (
+                    "Passive inference from discovery responses"
+                    if any(
+                        h.get("os_guess") not in (None, "", "Unknown")
+                        for h in formatted
+                    )
+                    else "Not performed"
+                ),
+                "scanner": f"Built-in host discovery ({profile.name} profile)",
+                "timing_template": f"{profile.name} discovery profile",
+            }
+            summary.update(discovery_coverage)
+            metadata.update(discovery_coverage)
 
             return {
                 "success": True,
@@ -750,6 +772,7 @@ class ScanOrchestrator:
         ]
         hosts_with_ports = sum(1 for h in formatted if h.get("open_ports"))
 
+        scan_config = port_engine.scan_configuration()
         summary = {
             "total_hosts": len(formatted),
             "active_hosts": active_count,
@@ -759,6 +782,10 @@ class ScanOrchestrator:
             "phase": 2,
             "scan_type": intensity_enum.value.upper(),
             "discovery_scan_method": discovery_scan_method or "N/A",
+            # Recorded on the summary as well as the metadata because only the
+            # summary is persisted with the phase: a report regenerated later
+            # must still be able to state what the scan covered.
+            **scan_config,
         }
         if custom_ports:
             summary["custom_ports"] = custom_ports
@@ -768,7 +795,10 @@ class ScanOrchestrator:
             "data": formatted,
             "summary": summary,
             "metadata": self._phase2_meta(
-                target_str, intensity_enum, discovery_scan_method
+                target_str,
+                intensity_enum,
+                discovery_scan_method,
+                scan_config,
             ),
         }
 
@@ -862,6 +892,16 @@ class ScanOrchestrator:
             "phase": 3,
             "scan_type": "vulnerability_audit",
             "discovery_scan_method": discovery_scan_method or "N/A",
+            # Verification totals are recorded on the scan itself. A report
+            # rebuilt later from the database reads back only the findings that
+            # were kept, so without these it could not state how many
+            # candidates were examined to arrive at them.
+            "candidates_evaluated": sum(
+                int(h.get("candidates_evaluated") or 0) for h in formatted
+            ),
+            "candidates_suppressed": sum(
+                len(h.get("suppressed_cves") or []) for h in formatted
+            ),
         }
         return {
             "success": True,
@@ -925,20 +965,37 @@ class ScanOrchestrator:
                 return
             try:
                 result = scanner.full_scan(ip, ports=open_port_nums)
-                # Enrich service/version info
+                # Enrich service/version info through the same contract the port
+                # engine uses. This wrote `full_version` — the product, version
+                # and extra concatenated — straight into the `version` field,
+                # which put prose back where a comparable version belongs and
+                # bypassed the evidence-ranked merge, so a deeper scan here
+                # could silently overwrite a better fingerprint with a worse
+                # one and drop the CPE entirely.
                 for nmap_port in result.open_ports:
-                    for existing in host.get("open_ports", []):
-                        if existing["port"] == nmap_port.port:
-                            if nmap_port.full_version:
-                                existing["version"] = nmap_port.full_version[:200]
-                            # Always preserve product separately from service name so
-                            # asset_syncer can write it to the service_product DB column.
-                            if nmap_port.product:
-                                existing["product"] = nmap_port.product[:255]
-                            if nmap_port.product and not existing.get("service"):
-                                existing["service"] = nmap_port.product
-                            if nmap_port.scripts and not existing.get("banner"):
-                                existing["banner"] = nmap_port.scripts.get("banner", "")
+                    version = nmap_port.version or ""
+                    record = PortResult(
+                        port=nmap_port.port,
+                        protocol=nmap_port.protocol or "tcp",
+                        state=nmap_port.state or "open",
+                        service=nmap_port.service or "",
+                        product=nmap_port.product[:255] if nmap_port.product else "",
+                        version=version[:200],
+                        extra=nmap_port.extra[:255] if nmap_port.extra else "",
+                        cpe=list(nmap_port.cpe or []),
+                        version_precision=(
+                            version_precision(version) if version else "unknown"
+                        ),
+                        fingerprint_source=(
+                            "version_detection"
+                            if nmap_port.version
+                            else (
+                                "service_detection" if nmap_port.product else "banner"
+                            )
+                        ),
+                        banner=(nmap_port.scripts or {}).get("banner", ""),
+                    ).to_dict()
+                    _record_port(host, record)
                 # CRITICAL: Add accurate OS fingerprinting results
                 best_os = result.best_os
                 if best_os and best_os.accuracy >= 75:
@@ -1172,6 +1229,13 @@ class ScanOrchestrator:
             ssh_info=data.get("ssh_info", {}),
             udp_services=data.get("udp_services", []),
             cves=data.get("cves", []),
+            # Verification metadata travels with the host record. Dropping it
+            # here would leave the stored scan with verified findings and no
+            # account of what was ruled out, which is the one thing the
+            # report's methodology appendix cannot reconstruct on its own.
+            suppressed_cves=data.get("suppressed_cves", []),
+            vulnerability_counts=data.get("vulnerability_counts", {}),
+            candidates_evaluated=data.get("candidates_evaluated", 0),
             host_risk_score=data.get("host_risk_score", 0),
             host_risk_level=data.get("host_risk_level", "Info"),
             _ot_probed=data.get("_ot_probed", False),
@@ -1328,11 +1392,16 @@ class ScanOrchestrator:
         }
 
     @staticmethod
-    def _phase2_meta(target, intensity, dsm) -> dict:
+    def _phase2_meta(target, intensity, dsm, scan_config: dict | None = None) -> dict:
         d = {"scan_intensity": intensity.value.upper()}
         if target:
             d["target"] = target
         if dsm:
             d["discovery_scan_method"] = dsm
             d["scan_method"] = dsm
+        # What the scan actually examined. Recorded from the engine that ran it
+        # so the report can bound its own coverage instead of stating "not
+        # recorded" against every parameter — or defaulting to a claim.
+        if scan_config:
+            d.update(scan_config)
         return d

@@ -309,6 +309,12 @@ def _recover_credentialed_report_from_pdf(scan: Scan) -> dict | None:
                 "severity": severity,
                 "package": package,
                 "description": " ".join(desc_parts).strip(),
+                # Reconstructed from a credentialed audit, and tagged as such.
+                # Verification asserts credentialed origin from the record
+                # rather than inferring it, so a rebuilt record that does not
+                # say where it came from is treated as an unverifiable network
+                # claim and withheld.
+                "detection_method": "credentialed",
             }
         )
 

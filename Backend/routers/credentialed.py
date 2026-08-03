@@ -16,8 +16,9 @@ from auth.rbac import require_permission
 from db.base import SessionLocal
 from db.models import ComplianceCredential, User
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE, SSHScanner
+from orchestrator.scan_orchestrator import ScanOrchestrator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from scan_helpers import limiter, log
 from scans.db_helpers import create_scan
 
@@ -28,7 +29,13 @@ router = APIRouter(tags=["Credentialed Scans"])
 
 
 class CredentialedScanRequest(BaseModel):
-    ip: str = Field(..., examples=["10.180.6.140"])
+    # `ip` remains the single-target field every existing client sends.
+    # `targets` accepts several, including ranges and CIDRs, so one audit can
+    # cover a set of hosts under one scan record instead of one scan each.
+    ip: str | None = Field(None, examples=["10.180.6.140"])
+    targets: list[str] | None = Field(
+        None, examples=[["10.180.6.140", "10.180.6.150-160"]]
+    )
     username: str | None = Field(None, examples=["root"])
     password: SecretStr | None = Field(None)
     key_path: str | None = Field(None)
@@ -46,6 +53,24 @@ class CredentialedScanRequest(BaseModel):
             ]
         },
     }
+
+    @model_validator(mode="after")
+    def require_a_target(self):
+        if not self.ip and not (self.targets and any(t.strip() for t in self.targets)):
+            raise ValueError("Provide 'ip' or a non-empty 'targets' list.")
+        return self
+
+    def requested_targets(self) -> list[str]:
+        """Raw target expressions, de-duplicated, order preserved."""
+        raw = list(self.targets or [])
+        if self.ip:
+            raw.insert(0, self.ip)
+        seen: list[str] = []
+        for item in raw:
+            token = (item or "").strip()
+            if token and token not in seen:
+                seen.append(token)
+        return seen
 
     @field_validator("key_path")
     @classmethod
@@ -132,7 +157,7 @@ def _detect_os(ssh) -> str:
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
-from core.tasks import run_credentialed_scan_task
+from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
 
 
 @router.post("/scan/credentialed")
@@ -194,12 +219,38 @@ async def scan_credentialed(
         finally:
             db.close()
 
-    # Note: test_connectivity is fast, so we keep it in the API for immediate feedback
-    if not SSHScanner.test_connectivity(req.ip, target_port, timeout=5):
+    # Expand ranges and CIDRs into the hosts that will actually be authenticated
+    # to. Doing it here rather than in the worker means an unusable target set
+    # is rejected while the operator is still looking at the form.
+    hosts = ScanOrchestrator._expand_targets(req.requested_targets())
+    if not hosts:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot reach {req.ip}:{target_port} — host is down or port is closed.",
+            detail="No valid targets to scan. Check the address, range, or CIDR.",
         )
+    if len(hosts) > MAX_CREDENTIALED_TARGETS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{len(hosts)} hosts requested — a credentialed audit authenticates "
+                f"to each one in turn and is limited to {MAX_CREDENTIALED_TARGETS} "
+                f"per scan. Narrow the range or split it across scans."
+            ),
+        )
+
+    # test_connectivity is fast, so it stays in the API for immediate feedback.
+    # With one target an unreachable host means the scan has nothing to do, so
+    # it is rejected outright — the behaviour operators already rely on. With
+    # several, one dead host must not block the rest; those are recorded as
+    # failed hosts in the report instead.
+    if len(hosts) == 1:
+        if not SSHScanner.test_connectivity(hosts[0], target_port, timeout=5):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot reach {hosts[0]}:{target_port} — host is down or port is closed.",
+            )
+
+    target_str = ", ".join(hosts)
 
     db = SessionLocal()
     try:
@@ -210,10 +261,12 @@ async def scan_credentialed(
         scan = create_scan(
             db=db,
             user_id=str(user.id),
-            target=req.ip,
-            targets=[req.ip],
+            target=target_str,
+            targets=hosts,
             scan_type="credentialed",
-            pipeline_mode="vulnerability_audit",
+            # This audit runs no discovery and no port scan. Recording it as a
+            # vulnerability_audit claimed three phases that never executed.
+            pipeline_mode="credentialed",
             org_id=target_org_id,
         )
         scan_id = str(scan.id)
@@ -223,7 +276,7 @@ async def scan_credentialed(
 
     task = run_credentialed_scan_task.delay(
         user_id=str(user.id),
-        ip=req.ip,
+        targets=hosts,
         username=req.username,
         password=(
             req.password.get_secret_value()
@@ -240,8 +293,9 @@ async def scan_credentialed(
     )
 
     log.info(
-        "Credentialed scan queued — target=%s scan_id=%s task_id=%s",
-        req.ip,
+        "Credentialed scan queued — hosts=%d target=%s scan_id=%s task_id=%s",
+        len(hosts),
+        target_str,
         scan_id,
         task.id,
     )
@@ -251,4 +305,6 @@ async def scan_credentialed(
         "scan_id": scan_id,
         "scan_no": scan_no,
         "status": "running",
+        "targets": hosts,
+        "hosts_queued": len(hosts),
     }

@@ -11,20 +11,26 @@ import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
-from db.base import SessionLocal, gen_asset_id, gen_service_id, utcnow
+from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
     Asset,
     AssetVulnerability,
     Organization,
     Scan,
-    Service,
     User,
     VulnerabilityDefinition,
 )
+from engines.credentialed.coverage import (
+    correlate_listeners,
+    credentialed_coverage,
+    mark_credentialed_confirmed,
+)
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scan_helpers import (
+    carry_scan_coverage,
     get_terminal_phase,
     phase1_summary_from_scan,
+    phase_summary_from_scan,
     resolve_pipeline_mode,
     resolve_report_context,
 )
@@ -574,114 +580,10 @@ def _port_int(value) -> int | None:
 def _sync_credentialed_services(
     db, asset: Asset, scan_id: str, ports: list[dict], packages: list[dict] = None
 ) -> None:
-    import re
+    """Persist the host's listening sockets. See asset_syncer for the semantics."""
+    from scans.asset_syncer import upsert_credentialed_services
 
-    # De-duplicate ports by ID
-    unique_ports = {}
-    for port_data in ports or []:
-        port_num = _port_int(port_data.get("port"))
-        if not port_num:
-            continue
-        protocol = _clean_text(port_data.get("protocol") or "tcp").lower()[:10]
-        service_id = gen_service_id(asset.id, port_num, protocol)
-        if service_id not in unique_ports:
-            unique_ports[service_id] = (port_num, protocol, port_data)
-
-    for service_id, (port, protocol, port_data) in unique_ports.items():
-        state = _clean_text(port_data.get("state") or "open").lower()
-        state = "open" if state in {"listen", "listening"} else state[:20]
-
-        raw_process = port_data.get("process") or ""
-        service_name = _clean_text(
-            port_data.get("service")
-            or port_data.get("name")
-            or raw_process
-            or "unknown"
-        )[:100]
-        banner = _clean_text(port_data.get("banner")) or None
-
-        # Extract product & version from process name & packages if possible
-        service_product = None
-        service_version = None
-
-        process_name = ""
-        if raw_process:
-            raw_process = raw_process.strip()
-            # Linux ss -tlnp: users:(("sshd",pid=1142,fd=3))
-            match = re.search(r'"([^"]+)"', raw_process)
-            if match:
-                process_name = match.group(1).split("/")[-1].split("\\")[-1]
-            elif not raw_process.upper().startswith("PID "):
-                process_name = (
-                    raw_process.split("/")[-1]
-                    .split("\\")[-1]
-                    .split()[0]
-                    .strip("(),;\"'")
-                )
-
-        if process_name:
-            service_product = process_name
-            proc_lower = process_name.lower()
-            if packages:
-                # 1. Exact match
-                for pkg in packages:
-                    pkg_name = pkg.get("name", "").lower()
-                    if pkg_name == proc_lower:
-                        service_product = pkg.get("name")
-                        service_version = pkg.get("version")
-                        break
-                else:
-                    # 2. Fuzzy match
-                    best_match = None
-                    for pkg in packages:
-                        pkg_name = pkg.get("name", "").lower()
-                        if proc_lower in pkg_name or pkg_name in proc_lower:
-                            if not best_match or len(pkg_name) < len(
-                                best_match.get("name", "")
-                            ):
-                                best_match = pkg
-                    if best_match:
-                        service_product = best_match.get("name")
-                        service_version = best_match.get("version")
-
-        svc_insert = insert(Service).values(
-            id=service_id,
-            asset_id=asset.id,
-            scan_id=scan_id,
-            port=port,
-            protocol=protocol,
-            state=state,
-            service_name=service_name,
-            service_product=service_product,
-            service_version=service_version,
-            banner=banner,
-            created_at=utcnow(),
-            updated_at=utcnow(),
-        )
-
-        svc_upsert = svc_insert.on_conflict_do_update(
-            index_elements=["id"],
-            set_={
-                "state": state,
-                "scan_id": scan_id,
-                "updated_at": utcnow(),
-                "service_name": func.coalesce(
-                    func.nullif(Service.service_name, "unknown"),
-                    func.nullif(service_name, ""),
-                    Service.service_name,
-                ),
-                "service_product": func.coalesce(
-                    Service.service_product,
-                    func.nullif(service_product or "", ""),
-                ),
-                "service_version": func.coalesce(
-                    Service.service_version,
-                    func.nullif(service_version or "", ""),
-                ),
-                "banner": func.coalesce(Service.banner, func.nullif(banner, "")),
-            },
-        )
-        db.execute(svc_upsert)
+    upsert_credentialed_services(db, asset.id, scan_id, ports or [], packages)
 
 
 def _sync_credentialed_vulnerabilities(
@@ -1320,6 +1222,478 @@ def run_asset_discovery_task(
         db.close()
 
 
+# ── Phase 3.5 — credentialed enrichment of the Vulnerability Audit ───────────
+#
+# Established scanners do not treat "credentialed" as a separate scan type.
+# Credentials are a policy option on the ordinary scan: discovery, port
+# scanning and unauthenticated checks run first, and where credentials are
+# available the scanner also logs in and merges local checks into the same
+# result set. That ordering is what makes the two views worth more than their
+# sum — the port scan says what is reachable, the authenticated session says
+# what is installed, and only together do they distinguish a vulnerable package
+# that is exposed from one that is not.
+#
+# This runs inside the phase-3 task, before the report is generated, so there
+# is one report, one asset sync and one set of counts rather than a second scan
+# to reconcile afterwards.
+
+
+def _credentialed_plan_for_scan(db, scan_row) -> list[dict]:
+    """
+    Credentials configured for this scan, decrypted and scoped.
+
+    Contract, carried in ``scan.options`` alongside ``snmp``::
+
+        "credentials": [
+            {"credential_id": "...", "targets": ["10.0.0.0/24"]},
+            {"credential_id": "..."}                 # applies to every host
+        ]
+
+    A malformed or inaccessible entry is skipped with a warning rather than
+    failing the scan: the unauthenticated results are still valid and worth
+    delivering, and the coverage block records that the credentialed pass did
+    not cover every host.
+    """
+    import ipaddress
+
+    if not scan_row or not scan_row.options:
+        return []
+    raw = scan_row.options.get("credentials") or []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+
+    plan: list[dict] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            entry = {"credential_id": entry}
+        if not isinstance(entry, dict):
+            continue
+        credential_id = entry.get("credential_id")
+        if not credential_id:
+            continue
+        try:
+            material = _resolve_stored_credential(db, str(scan_row.id), credential_id)
+        except Exception as exc:  # noqa: BLE001 — one bad credential is not fatal
+            log.warning(
+                "Credentialed enrichment: credential %s unusable for scan %s: %s",
+                credential_id,
+                scan_row.id,
+                exc,
+            )
+            continue
+
+        networks = []
+        for token in entry.get("targets") or []:
+            try:
+                networks.append(ipaddress.ip_network(str(token).strip(), strict=False))
+            except ValueError:
+                log.warning(
+                    "Credentialed enrichment: ignoring unparseable scope '%s'", token
+                )
+        plan.append({"material": material, "networks": networks or None})
+    return plan
+
+
+def _restate_findings_for_corrected_ports(
+    findings: list[dict], corrected: dict[tuple[int, str], str]
+) -> int:
+    """
+    Point findings at the corrected version for the port they were raised on.
+
+    A finding records the version that was detected when the plugin raised it,
+    and verification reads that recorded value before it looks at the host's
+    service inventory. So correcting the inventory alone changes nothing: the
+    finding still carries "9.6.0 or later" and is still judged against it.
+
+    This is what makes the authenticated correction take effect. It restates
+    what was detected, on the ports where a better reading exists; it does not
+    touch the finding's severity, its CPE data, or anything the feed published.
+    """
+    restated = 0
+    for finding in findings or []:
+        if not isinstance(finding, dict):
+            continue
+        try:
+            port = int(str(finding.get("port")).strip())
+        except (TypeError, ValueError):
+            continue
+        version = corrected.get((port, str(finding.get("protocol") or "tcp").lower()))
+        if not version:
+            continue
+        if str(finding.get("detected_version") or "").strip() == version:
+            continue
+        finding["detected_version"] = version
+        restated += 1
+    return restated
+
+
+def _upgrade_network_fingerprints(
+    network_ports: list[dict], listeners: list[dict]
+) -> dict[tuple[int, str], str]:
+    """
+    Replace remote version guesses with what the host itself reports.
+
+    A remote fingerprint is an inference from what a service volunteers. Nmap
+    reads PostgreSQL's protocol handshake and can only conclude "9.6.0 or
+    later" — an open-ended bound, which by design cannot disprove any CVE fixed
+    after 9.6. The authenticated session reads the binary's own version
+    resource and knows it is 18.3.
+
+    Leaving the weaker value in place is not a reporting cosmetic; it is the
+    difference between 42 PostgreSQL CVEs reported against a host that is not
+    affected by any of them, and none. Enterprise scanners resolve this the
+    same way: where an authenticated reading exists, it supersedes the remote
+    guess, and every later stage — verification, risk scoring, the report —
+    then works from the better value.
+
+    Upgrades in place and returns ``{(port, protocol): version}`` for what was
+    corrected. Deliberately conservative: only an exact host-side version, and
+    only where the two observations agree on what the product is.
+    """
+    from scans.finding_normalizer import _name_tokens, version_precision
+
+    by_key: dict[tuple[int, str], dict] = {}
+    for listener in listeners or []:
+        try:
+            port = int(str(listener.get("port")).strip())
+        except (TypeError, ValueError):
+            continue
+        proto = str(listener.get("protocol") or "tcp").lower()
+        # First listener on a port wins; duplicates are the same process bound
+        # to several addresses.
+        by_key.setdefault((port, proto), listener)
+
+    upgraded: dict[tuple[int, str], str] = {}
+    for record in network_ports or []:
+        if not isinstance(record, dict):
+            continue
+        try:
+            port = int(str(record.get("port")).strip())
+        except (TypeError, ValueError):
+            continue
+        proto = str(record.get("protocol") or "tcp").lower()
+        listener = by_key.get((port, proto))
+        if not listener:
+            continue
+
+        host_version = str(listener.get("version") or "").strip()
+        if not host_version or version_precision(host_version) != "exact":
+            continue
+
+        # Agreement on the product. A middlebox or forwarded port can put
+        # something else entirely behind the port the scanner reached, and
+        # stamping the local binary's version onto it would be worse than the
+        # imprecise fingerprint it replaced.
+        net_tokens = set(_name_tokens(record.get("product") or ""))
+        host_tokens = set(_name_tokens(listener.get("product") or ""))
+        if net_tokens and host_tokens and not (net_tokens & host_tokens):
+            continue
+
+        net_version = str(record.get("version") or "").strip()
+        if net_version and version_precision(net_version) == "exact":
+            continue  # the scan already has a precise value; leave it alone
+
+        record["version"] = host_version[:200]
+        record["version_precision"] = "exact"
+        record["fingerprint_source"] = "credentialed"
+        if not record.get("product") and listener.get("product"):
+            record["product"] = str(listener["product"])[:255]
+        upgraded[(port, proto)] = host_version[:200]
+
+    return upgraded
+
+
+def _ports_probed_in_phase2(scan_row) -> list[int] | None:
+    """
+    The exact port set the asset discovery phase probed, if it recorded one.
+
+    Returns ``None`` when the scan predates the engine publishing this, or when
+    the spec cannot be parsed. That is the honest answer, and it makes the
+    correlation fall back to "not determined" rather than reporting every
+    unprobed listener as firewalled.
+    """
+    if not scan_row:
+        return None
+    try:
+        from core.utils import InputValidator
+
+        summary = phase_summary_from_scan(scan_row, "asset_discovery", "phase2") or {}
+        spec = summary.get("ports_probed_spec")
+        if not spec:
+            return None
+        return InputValidator.parse_custom_ports(str(spec))
+    except Exception as exc:  # noqa: BLE001 — absence is a valid answer here
+        log.debug("Could not read the phase-2 probed port set: %s", exc)
+        return None
+
+
+def _credential_for_host(plan: list[dict], ip: str) -> dict | None:
+    """The first configured credential whose scope covers this host."""
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        addr = None
+
+    for entry in plan:
+        networks = entry["networks"]
+        if not networks:
+            return entry["material"]
+        if addr is not None and any(addr in net for net in networks):
+            return entry["material"]
+    return None
+
+
+def _as_credentialed_findings(cve_list: list[dict], packages: list[dict]) -> list[dict]:
+    """
+    Prepare package findings to be merged into a network-scanned host record.
+
+    Two fields have to be stamped on explicitly. ``detection_method`` because
+    verification asserts credentialed origin from the record and never infers
+    it — an unmarked package finding arriving on a host that also has
+    fingerprinted services is treated as a network claim about a product the
+    host does not appear to run, and suppressed. ``installed_version`` because
+    the matcher emits ``installed_ver``, which is not one of the keys the
+    version check reads; without it every finding degrades to "package
+    present" and loses the version evidence the audit actually collected.
+    """
+    versions = {
+        str(p.get("name") or "").strip(): str(p.get("version") or "").strip()
+        for p in packages or []
+        if isinstance(p, dict) and p.get("name")
+    }
+
+    prepared: list[dict] = []
+    for raw in cve_list or []:
+        if not isinstance(raw, dict):
+            continue
+        record = dict(raw)
+        record.setdefault("detection_method", "credentialed")
+        if not record.get("installed_version"):
+            installed = record.get("installed_ver") or versions.get(
+                str(record.get("package") or "").strip(), ""
+            )
+            if installed:
+                record["installed_version"] = installed
+        prepared.append(record)
+    return prepared
+
+
+def _apply_credentialed_enrichment(
+    db, scan_row, hosts: list[dict], scan_id: str | None = None
+) -> dict | None:
+    """
+    Authenticate to every in-scope host and merge what the OS reports.
+
+    Mutates ``hosts`` in place and returns a coverage summary, or ``None`` when
+    no credentials were configured — in which case the scan is an ordinary
+    unauthenticated audit and nothing here should alter it.
+    """
+    from core.redis_client import publish_progress_sync
+    from core.risk import calculate_risk
+    from scans.finding_normalizer import verify_host_findings
+
+    plan = _credentialed_plan_for_scan(db, scan_row)
+    if not plan:
+        return None
+
+    scanned_ports = _ports_probed_in_phase2(scan_row)
+    active = [h for h in hosts if h.get("is_active")]
+    audited: list[str] = []
+    skipped: list[dict] = []
+    upgraded_total = 0
+
+    for index, host in enumerate(active):
+        ip = host.get("ip_address") or host.get("ip")
+        if not ip:
+            continue
+
+        material = _credential_for_host(plan, ip)
+        if not material:
+            skipped.append({"target": ip, "reason": "No credential in scope"})
+            continue
+
+        port = int(material.get("port") or 22)
+        open_ports = host.get("open_ports") or []
+        open_numbers = {
+            p.get("port") for p in open_ports if isinstance(p, dict) and p.get("port")
+        }
+        # The port scan has already established what is reachable. Attempting a
+        # 20-second SSH handshake against a port it found closed would add
+        # minutes to a large scan to learn what is already known.
+        if open_numbers and port not in open_numbers:
+            skipped.append(
+                {
+                    "target": ip,
+                    "reason": f"Port {port}/tcp not open — no authenticated session attempted",
+                }
+            )
+            continue
+
+        if scan_id:
+            publish_progress_sync(
+                scan_id,
+                3,
+                {
+                    "status": "running",
+                    "stage": "credentialed",
+                    "message": f"Authenticated checks on {ip} ({index + 1}/{len(active)})",
+                    "target": ip,
+                },
+            )
+
+        try:
+            stored_report, system_data, _os_type = audit_credentialed_host(
+                ip=ip,
+                username=material.get("username"),
+                password=material.get("password"),
+                key_content=material.get("key_content"),
+                port=port,
+                os_type_req="auto",
+                network_ports=open_ports,
+                network_scanned=True,
+                scanned_ports=scanned_ports,
+            )
+        except Exception as exc:  # noqa: BLE001 — recorded, scan continues
+            log.warning("Credentialed enrichment failed for %s: %s", ip, exc)
+            skipped.append({"target": ip, "reason": str(exc)})
+            continue
+
+        # Resolve each listening process to its installed package here, while
+        # the inventory is in hand. Doing it now means the stored host record
+        # does not have to carry a few thousand package rows per host purely so
+        # the asset sync can repeat the lookup later.
+        from scans.asset_syncer import _service_identity_from_process
+
+        packages = stored_report.get("packages") or []
+        listeners = []
+        for entry in stored_report.get("open_ports_credentialed") or []:
+            record = dict(entry)
+            # A product the collector read from the binary's own version
+            # resource describes the exact file serving the port. A package
+            # match is an inference from a process name. Never let the second
+            # overwrite the first.
+            if not record.get("product"):
+                product, version = _service_identity_from_process(
+                    record.get("process") or "", packages
+                )
+                if product:
+                    record["product"] = product
+                if version and not record.get("version"):
+                    record["version"] = version
+            listeners.append(record)
+
+        host["credentialed"] = True
+        # The audit's own findings are already merged into this host's `cves`,
+        # and its packages into the listener records above. What is kept here is
+        # what nothing else carries: the host's configuration posture and this
+        # pass's own coverage.
+        host["credentialed_report"] = {
+            key: stored_report.get(key)
+            for key in (
+                "target",
+                "detected_os",
+                "system_info",
+                "hardening_audits",
+                "security_issues",
+                "package_count",
+                "collection_errors",
+                "inventory_complete",
+                "coverage",
+                "exposure_summary",
+            )
+        }
+        host["exposure_summary"] = stored_report.get("exposure_summary") or {}
+        # The reverse correlation: ports the scan reached that the host also
+        # confirms it is serving.
+        host["open_ports"] = mark_credentialed_confirmed(open_ports, listeners)
+        host["open_ports_credentialed"] = listeners
+
+        # Authenticated readings supersede remote guesses before anything is
+        # verified against them. Done here rather than at report time so the
+        # stored scan, the asset's service rows, the risk score and the report
+        # all agree on one version.
+        corrected = _upgrade_network_fingerprints(host["open_ports"], listeners)
+        if corrected:
+            # The findings already raised on those ports recorded the old
+            # version, and verification reads that record first — so without
+            # this the correction would change the inventory and nothing else.
+            restated = _restate_findings_for_corrected_ports(
+                host.get("cves") or [], corrected
+            )
+            log.info(
+                "Credentialed enrichment corrected %d fingerprint(s) and restated "
+                "%d finding(s) on %s",
+                len(corrected),
+                restated,
+                ip,
+            )
+        upgraded_total += len(corrected)
+
+        # An OS read from inside the machine outranks a stack fingerprint, and
+        # feeds straight back into platform-conflict checks during the
+        # re-verification below.
+        os_name = (stored_report.get("system_info") or {}).get("os_name")
+        if os_name:
+            host["os_guess"] = os_name
+            host["os_confidence"] = "High"
+
+        new_findings = _as_credentialed_findings(
+            stored_report.get("cves") or [], stored_report.get("packages") or []
+        )
+        prior_suppressed = list(host.get("suppressed_cves") or [])
+        prior_evaluated = int(host.get("candidates_evaluated") or 0)
+
+        host["cves"] = list(host.get("cves") or []) + new_findings
+
+        verification = verify_host_findings(host)
+        fields = verification.as_host_fields()
+        # Candidates phase 3 already ruled out are no longer among the host's
+        # findings, so re-verification cannot rediscover them. Carrying their
+        # records forward keeps the methodology appendix able to account for
+        # every candidate the scan evaluated.
+        seen = {
+            (item.get("identifier"), item.get("host"))
+            for item in fields["suppressed_cves"]
+        }
+        fields["suppressed_cves"] = fields["suppressed_cves"] + [
+            item
+            for item in prior_suppressed
+            if (item.get("identifier"), item.get("host")) not in seen
+        ]
+        fields["candidates_evaluated"] = prior_evaluated + len(new_findings)
+        host.update(fields)
+
+        score, level = calculate_risk(
+            open_ports=host.get("open_ports", []),
+            cves=host.get("cves", []),
+            http_audit=host.get("http_audit", {}),
+            tls_info=host.get("tls_info", {}),
+            severity_counts=host.get("vulnerability_counts"),
+        )
+        host["host_risk_score"] = score
+        host["host_risk_level"] = level
+
+        audited.append(ip)
+
+    log.info(
+        "Credentialed enrichment: %d/%d active host(s) audited, %d skipped",
+        len(audited),
+        len(active),
+        len(skipped),
+    )
+    return {
+        "credentialed_hosts": len(audited),
+        "credentialed_targets": audited,
+        "credentialed_skipped": skipped,
+        "fingerprints_corrected": upgraded_total,
+        **credentialed_coverage(network_scanned=True),
+    }
+
+
 @celery_app.task(name="ccure.tasks.run_vulnerability_audit", queue="scanner", bind=True)
 def run_vulnerability_audit_task(
     self,
@@ -1372,6 +1746,32 @@ def run_vulnerability_audit_task(
 
         result["data"] = _merge_host_identity(result.get("data", []), hosts)
 
+        # Phase 3.5 — authenticated checks, merged into these same results
+        # before anything reads them. Runs only when credentials were supplied.
+        credentialed_summary = _apply_credentialed_enrichment(
+            db, scan_row, result["data"], scan_id=scan_id
+        )
+        if credentialed_summary:
+            result["summary"].update(credentialed_summary)
+            result.setdefault("metadata", {}).update(
+                {**credentialed_summary, "is_credentialed": True}
+            )
+            # Re-derive the risk tallies: the enrichment can promote a host's
+            # level, and these are what the dashboard and the executive summary
+            # read.
+            result["summary"]["critical_hosts"] = sum(
+                1 for h in result["data"] if h.get("host_risk_level") == "Critical"
+            )
+            result["summary"]["high_risk_hosts"] = sum(
+                1 for h in result["data"] if h.get("host_risk_level") == "High"
+            )
+            result["summary"]["candidates_evaluated"] = sum(
+                int(h.get("candidates_evaluated") or 0) for h in result["data"]
+            )
+            result["summary"]["candidates_suppressed"] = sum(
+                len(h.get("suppressed_cves") or []) for h in result["data"]
+            )
+
         context = resolve_report_context(db, user_id, scan_id=scan_id, hosts=hosts)
         result.setdefault("metadata", {}).update(context)
 
@@ -1382,6 +1782,14 @@ def run_vulnerability_audit_task(
                 for k in ("total_hosts", "active_hosts", "inactive_hosts"):
                     if p1_sum.get(k) is not None:
                         result["summary"][k] = p1_sum[k]
+
+            # A vulnerability assessment does not choose ports; it assesses what
+            # the asset discovery phase found. Its report still has to state
+            # which ports were examined, so that phase's coverage travels
+            # forward with the scan record.
+            carry_scan_coverage(
+                result, phase_summary_from_scan(scan_row, "asset_discovery", "phase2")
+            )
 
         raw_paths = orch.generate_phase_report(result, "phase_selective_scan")
         report_paths = {k: v for k, v in raw_paths.items() if v and os.path.isfile(v)}
@@ -1581,8 +1989,10 @@ def run_topology_mapping_task(
                     "total_links": result.get("total_links", 0),
                     "links_created": result.get("links_created", 0),
                     "links_updated": result.get("links_updated", 0),
+                    "targets_walked": result.get("targets_walked", 0),
+                    "targets_offered": len(target_ips),
+                    "assets_enrolled": result.get("assets_enrolled", 0),
                     "errors": result.get("errors", []),
-                    "gateway_ip": result.get("gateway_ip"),
                 },
                 "metadata": {"phase": "topology_mapping"},
             },
@@ -1663,30 +2073,482 @@ def run_traditional_scan_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
-def run_credentialed_scan_task(
-    user_id: str,
+#: A credentialed audit authenticates to one host at a time. Expanding a CIDR
+#: is cheap; logging into every address in it is not, so an operator who pastes
+#: a /16 by mistake gets an error rather than a scan that runs for days.
+MAX_CREDENTIALED_TARGETS = 256
+
+
+def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
+    """Host hardening posture, derived from what the authenticated session read."""
+    issues = system_data.get("security_issues") or []
+    fw_disabled = any(
+        "Firewall profile" in issue and "is DISABLED" in issue for issue in issues
+    )
+
+    rdp_enabled = system_data.get("rdp_enabled")
+    if rdp_enabled is None:
+        rdp_enabled = any("RDP is enabled" in issue for issue in issues)
+
+    if os_type != "windows":
+        running_svcs = system_data.get("running_services") or []
+        fw_active = any(
+            svc.get("name") in ("ufw", "firewalld", "iptables") for svc in running_svcs
+        )
+    else:
+        fw_active = not fw_disabled
+
+    smbv1_disabled = system_data.get("smbv1_disabled", False)
+    netbios_disabled = system_data.get("netbios_disabled", False)
+    legacy_tls_disabled = system_data.get("legacy_tls_disabled", False)
+    telnet_disabled = system_data.get("telnet_disabled", False)
+    rdp_nla_enforced = system_data.get("rdp_nla_enforced", False)
+
+    hardening_audits = {
+        "firewall": {
+            "label": "Firewall Status",
+            "disabled": not fw_active,
+            "status": "PASS" if fw_active else "FAIL",
+            "detail": (
+                "Firewall is active."
+                if fw_active
+                else "Host firewall is disabled or ufw/iptables service is inactive."
+            ),
+        },
+        "smbv1": {
+            "label": "SMBv1 Status",
+            "disabled": smbv1_disabled,
+            "status": "PASS" if smbv1_disabled else "FAIL",
+            "detail": (
+                "Legacy SMBv1 protocol is disabled."
+                if smbv1_disabled
+                else "Legacy SMBv1 protocol is enabled/allowed."
+            ),
+        },
+        "netbios": {
+            "label": "NetBIOS Status",
+            "disabled": netbios_disabled,
+            "status": "PASS" if netbios_disabled else "FAIL",
+            "detail": (
+                "NetBIOS over TCP/IP is disabled."
+                if netbios_disabled
+                else "NetBIOS over TCP/IP is active on one or more network adapters."
+            ),
+        },
+        "legacy_tls": {
+            "label": "Legacy TLS Status",
+            "disabled": legacy_tls_disabled,
+            "status": "PASS" if legacy_tls_disabled else "FAIL",
+            "detail": (
+                "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) are disabled."
+                if legacy_tls_disabled
+                else "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled."
+            ),
+        },
+        "telnet": {
+            "label": "Telnet Status",
+            "disabled": telnet_disabled,
+            "status": "PASS" if telnet_disabled else "FAIL",
+            "detail": (
+                "Telnet service is disabled."
+                if telnet_disabled
+                else "Telnet service/daemon is running or client package is installed."
+            ),
+        },
+    }
+
+    if os_type == "windows":
+        hardening_audits.update(
+            {
+                "rdp": {
+                    "label": "RDP Service Status",
+                    "disabled": not rdp_enabled,
+                    "status": "PASS" if not rdp_enabled else "WARN",
+                    "detail": (
+                        "Remote Desktop is disabled."
+                        if not rdp_enabled
+                        else "Remote Desktop is enabled (requires secure NLA and restricted access)."
+                    ),
+                },
+                "rdp_nla": {
+                    "label": "RDP NLA Enforcement",
+                    "disabled": rdp_nla_enforced,
+                    "status": (
+                        "PASS"
+                        if rdp_nla_enforced
+                        else ("FAIL" if rdp_enabled else "PASS")
+                    ),
+                    "detail": (
+                        "Network Level Authentication (NLA) is enforced for RDP."
+                        if rdp_nla_enforced
+                        else "RDP is enabled but Network Level Authentication (NLA) is not enforced."
+                    ),
+                },
+            }
+        )
+
+    return hardening_audits
+
+
+def _resolve_stored_credential(
+    db,
+    scan_id: str | None,
+    credential_id: str,
+) -> dict:
+    """
+    Decrypt a saved credential for use, scoped to the scan's own tenant.
+
+    Returns the connection material; the caller is responsible for discarding
+    it. Cross-referencing the Scan row's org_id is what keeps one tenant from
+    naming another tenant's credential id.
+    """
+    from core.security_crypto import decrypt_credential
+    from db.models import ComplianceCredential
+    from db.models.scans import Scan
+
+    scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
+    scan_org_id = scan_row.org_id if scan_row else None
+
+    query = db.query(ComplianceCredential).filter(
+        ComplianceCredential.id == credential_id
+    )
+    if scan_org_id:
+        query = query.filter(ComplianceCredential.tenant_id == scan_org_id)
+
+    cred = query.first()
+    if not cred:
+        raise ValueError(
+            f"Stored credential with ID {credential_id} not found or access denied."
+        )
+
+    material = {
+        "username": cred.username,
+        "port": cred.port,
+        "auth_method": cred.auth_method,
+        "password": None,
+        "key_content": None,
+    }
+    if cred.auth_method == "password" and cred.encrypted_password:
+        material["password"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method == "key" and cred.encrypted_key_content:
+        material["key_content"] = decrypt_credential(cred.encrypted_key_content)
+    return material
+
+
+def audit_credentialed_host(
+    *,
     ip: str,
     username: str | None,
-    password: str | None,
-    key_path: str | None,
-    port: int,
-    auth_method: str,
-    sections: list[str] | None,
-    os_type_req: str,
-    scan_id: str | None = None,
-    credential_id: str | None = None,
-):
-    """Phase 5 Credentialed Scan Task."""
-    from core.redis_client import publish_progress_sync
+    password: str | None = None,
+    key_path: str | None = None,
+    key_content: str | None = None,
+    port: int = 22,
+    sections: list[str] | None = None,
+    os_type_req: str = "auto",
+    emit=None,
+    network_ports: list | None = None,
+    network_scanned: bool = False,
+    scanned_ports: list | None = None,
+    timeout: int = 20,
+) -> tuple[dict, dict, str]:
+    """
+    Run the authenticated audit against one host.
+
+    Returns ``(stored_report, system_data, os_type)``. Raises on connection or
+    authentication failure — the caller decides whether one unreachable host
+    fails the whole scan.
+
+    ``network_ports`` is the port scan's view of this host, when there is one.
+    Supplying it turns the host's socket table from a list of things that are
+    running into a statement about what is actually exposed, which is the
+    finding an authenticated scan exists to produce and which neither view can
+    reach alone. Without it, only loopback binds can be settled.
+    """
     from engines.credentialed.linux_collector import LinuxCollector
     from engines.credentialed.ssh_scanner import SSHScanner
     from engines.credentialed.vuln_matcher import VulnMatcher
     from engines.credentialed.windows_collector import WindowsCollector
     from routers.credentialed import _detect_os
+    from scans.finding_normalizer import verify_credentialed_report
+
+    def _emit(message, percentage=0, stage=None):
+        if emit:
+            emit("running", message, percentage, stage)
+
+    host_started = time.time()
+
+    _emit(f"Connecting to {ip}:{port}...", 10, "connecting")
+    connect_started = time.perf_counter()
+    with SSHScanner(
+        ip=ip,
+        username=username,
+        password=password,
+        key_path=key_path,
+        key_content=key_content,
+        port=port,
+        timeout=timeout,
+    ) as ssh:
+        credentialed_response_time_ms = int(
+            round((time.perf_counter() - connect_started) * 1000)
+        )
+        _emit("Detecting Operating System...", 20, "detection")
+        os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+
+        _emit(f"Collecting system data ({os_type})...", 30, "collection")
+        collector = (
+            WindowsCollector(ssh) if os_type == "windows" else LinuxCollector(ssh)
+        )
+
+        def on_section(name):
+            friendly = {
+                "system_info": "System Profile",
+                "packages": "Software Inventory",
+                "services": "Running Services",
+                "ports": "Network Sockets",
+                "users": "User Accounts",
+                "security": "Security Policies",
+                "network": "Interface Config",
+                "history": "Login Events",
+            }.get(name, name)
+            _emit(f"Collected {friendly}", 50, "collection")
+
+        system_data = collector.collect_all(
+            sections=_credentialed_sections_with_identity(sections),
+            on_section_complete=on_section,
+        )
+        system_data["detected_os"] = os_type
+        system_data["credentialed_response_time_ms"] = credentialed_response_time_ms
+
+    _emit("Analyzing packages for vulnerabilities...", 70, "analysis")
+    packages = system_data.get("packages", [])
+    matcher = VulnMatcher()
+    raw_findings = matcher.match_packages(packages)
+    cve_list = matcher.to_report_format(raw_findings)
+
+    # A credentialed audit that could not read the software inventory has
+    # not assessed the host — it has produced an empty result that looks
+    # identical to a clean one. Say so, as a finding, rather than letting
+    # "0 vulnerabilities" stand as the conclusion. Tagged as an active
+    # check so verification treats it as the observation it is.
+    collection_errors = system_data.get("collection_errors") or {}
+    if not packages:
+        reason = collection_errors.get("packages")
+        detail = (
+            f"Collection failed: {reason}"
+            if reason
+            else (
+                "No package manager output was returned. The account may "
+                "lack the rights to enumerate installed software, or the "
+                "platform's inventory command is unavailable."
+            )
+        )
+        cve_list.append(
+            {
+                "cve_id": "MISC-CREDENTIALED-INVENTORY-UNAVAILABLE",
+                "detection_method": "active_check",
+                "severity": "Medium",
+                "title": "Credentialed audit incomplete — software inventory unavailable",
+                "description": (
+                    f"The credentialed session to {ip} succeeded, but the "
+                    f"installed software inventory could not be collected, so "
+                    f"no package was assessed against the vulnerability feed. "
+                    f"This host is unassessed, not clean. {detail}"
+                ),
+                "package": "",
+            }
+        )
+    if collection_errors:
+        log.warning(
+            "Credentialed audit of %s completed with %d incomplete section(s): %s",
+            ip,
+            len(collection_errors),
+            ", ".join(sorted(collection_errors)),
+        )
+
+    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+    for cve in cve_list:
+        sev = cve.get("severity", "Info")
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    scan_duration = round(time.time() - host_started, 2)
+
+    _emit("Generating report and syncing assets...", 90, "syncing")
+
+    from core.oui_lookup import lookup_vendor
+
+    hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(
+        system_data
+    )
+    mac_address = _normalize_mac(system_data.get("mac_address"))
+    mac_vendor = _clean_text(
+        system_data.get("mac_vendor")
+        or (lookup_vendor(mac_address) if mac_address else "")
+    )
+    hardening_audits = _credentialed_hardening_audits(system_data, os_type)
+
+    # ── Exposure correlation ──────────────────────────────────────────────
+    # The socket table says what is running; the port scan says what answered.
+    # Joining them here — once, at the point both are in hand — is what lets
+    # every consumer downstream distinguish an exposed service from one that
+    # merely exists.
+    listeners, exposure_summary = correlate_listeners(
+        system_data.get("open_ports_credentialed") or [],
+        network_ports=network_ports,
+        network_scanned=network_scanned,
+        scanned_ports=scanned_ports,
+    )
+    system_data["open_ports_credentialed"] = listeners
+
+    stored_report = {
+        "scan_type": "credentialed",
+        "target": ip,
+        "username": username,
+        "detected_os": os_type,
+        "os_type_was_auto": (os_type_req == "auto"),
+        "system_info": {
+            "os_name": system_data.get("os_name", ""),
+            "os_family": system_data.get("os_family", ""),
+            "os_version_id": system_data.get("os_version_id", ""),
+            "os_confidence": system_data.get("os_confidence", ""),
+            "os_build": system_data.get("os_build", ""),
+            "kernel_version": system_data.get("kernel_version", ""),
+            "hostname": hostname,
+            "hostname_short": system_data.get("hostname_short", ""),
+            "hostname_fqdn_raw": raw_hostname_fqdn,
+            "fqdn": fqdn,
+            "domain": system_data.get("domain", ""),
+            "manufacturer": system_data.get("manufacturer", ""),
+            "hardware_model": system_data.get("hardware_model", ""),
+            "mac_address": mac_address,
+            "mac_vendor": mac_vendor,
+            "cpu_model": system_data.get("cpu_model", ""),
+            "cpu_count": system_data.get("cpu_count", ""),
+            "cpu_arch": system_data.get("cpu_arch", ""),
+            "uptime": system_data.get("uptime", ""),
+            "memory_summary": system_data.get("memory_summary", {}),
+            "disk_usage": system_data.get("disk_usage", []),
+            "subnet": system_data.get("subnet", ""),
+            "credentialed_response_time_ms": system_data.get(
+                "credentialed_response_time_ms", ""
+            ),
+            "serial_number": system_data.get("serial_number", ""),
+            "bios_version": system_data.get("bios_version", ""),
+        },
+        "packages": packages,
+        "package_count": len(packages),
+        "running_services": system_data.get("running_services", []),
+        "open_ports_credentialed": listeners,
+        "users": system_data.get("users", []),
+        "local_groups": system_data.get("local_groups", []),
+        "suspicious_scheduled_tasks": system_data.get("suspicious_scheduled_tasks", []),
+        "cron_info_raw": system_data.get("cron_info_raw", ""),
+        "hardening_audits": hardening_audits,
+        "suid_binaries": system_data.get("suid_binaries", []),
+        "world_writable_dirs": system_data.get("world_writable_dirs", []),
+        "sudo_nopasswd": system_data.get("sudo_nopasswd", False),
+        "sudo_rules_raw": system_data.get("sudo_rules_raw", ""),
+        "security_issues": system_data.get("security_issues", []),
+        "failed_login_count": system_data.get("failed_login_count", 0),
+        "brute_force_warning": system_data.get("brute_force_warning", False),
+        "failed_logins_recent": system_data.get("failed_logins_recent", []),
+        "network_interfaces_raw": system_data.get("network_interfaces_raw", ""),
+        "env_vars_flagged": system_data.get("env_vars_summary", []),
+        "cves": cve_list,
+        "cve_count": len(cve_list),
+        "severity_summary": severity_counts,
+        "scan_duration": scan_duration,
+        # Coverage of the audit itself, so the report can state what was
+        # examined rather than implying the whole host was.
+        "packages_enumerated": len(packages),
+        "collection_errors": collection_errors,
+        "inventory_complete": bool(packages) and not collection_errors,
+        # What this audit could and could not see. Without it, a report with no
+        # network findings reads as a host with no network exposure.
+        "coverage": credentialed_coverage(network_scanned=network_scanned),
+        "exposure_summary": exposure_summary,
+    }
+
+    # ── Verify before anything consumes the findings ──────────────────
+    # The audit's own matcher settles most candidates, but not all, and
+    # until this ran here the unsettled ones were only filtered when the
+    # PDF was rendered — after the severity summary, the asset sync and
+    # the dashboard counts had already been computed from them.
+    verification = verify_credentialed_report(stored_report)
+    cve_list = verification.verified
+    severity_counts = {
+        tier: verification.severity_counts.get(tier, 0)
+        for tier in ("Critical", "High", "Medium", "Low")
+    }
+    severity_counts["Info"] = verification.severity_counts.get(
+        "None", 0
+    ) + verification.severity_counts.get("Unscored", 0)
+    stored_report.update(
+        {
+            "cves": cve_list,
+            "cve_count": len(cve_list),
+            "severity_summary": severity_counts,
+            "suppressed_cves": [
+                {
+                    "identifier": item.identifier,
+                    "host": item.host,
+                    "reason": item.reason,
+                }
+                for item in verification.suppressed
+            ],
+            "candidates_evaluated": verification.evaluated,
+        }
+    )
+
+    return stored_report, system_data, os_type
+
+
+def _classify_credentialed_failure(reason: str) -> str:
+    """Whether a failed host was unreachable or failed for another reason."""
+    lowered = reason.lower()
+    if any(
+        msg in lowered
+        for msg in ["reach", "timeout", "no route", "connection refused", "down"]
+    ):
+        return "unreachable"
+    return "failed"
+
+
+@celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
+def run_credentialed_scan_task(
+    user_id: str,
+    ip: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    key_path: str | None = None,
+    port: int = 22,
+    auth_method: str = "password",
+    sections: list[str] | None = None,
+    os_type_req: str = "auto",
+    scan_id: str | None = None,
+    credential_id: str | None = None,
+    targets: list[str] | None = None,
+):
+    """
+    Credentialed Scan Task — authenticated audit of one or more hosts.
+
+    ``ip`` is retained so a task already queued by an older release still runs;
+    ``targets`` is what the router sends now. One scan covers every target,
+    matching how the Vulnerability Audit pipeline reports many hosts under a
+    single scan record rather than fragmenting them across several.
+
+    A host that cannot be reached does not abandon the others. The scan fails
+    only when no host could be audited at all, which keeps the single-target
+    case — where that is the same thing — behaving exactly as before.
+    """
+    from core.redis_client import publish_progress_sync
+
+    host_list = [t for t in (targets or []) if t] or ([ip] if ip else [])
+    if not host_list:
+        raise ValueError("No target supplied for credentialed scan.")
 
     db = SessionLocal()
     start_time = time.time()
+    current_target = {"ip": host_list[0]}
 
     def emit(status, message, percentage=0, stage=None):
         if not scan_id:
@@ -1699,7 +2561,8 @@ def run_credentialed_scan_task(
                 "message": message,
                 "percentage": percentage,
                 "stage": stage,
-                "target": ip,
+                "target": current_target["ip"],
+                "hosts_total": len(host_list),
                 "timestamp": utcnow().isoformat(),
             },
         )
@@ -1707,316 +2570,145 @@ def run_credentialed_scan_task(
     try:
         key_content = None
         if credential_id:
-            from core.security_crypto import decrypt_credential
-            from db.models import ComplianceCredential
-            from db.models.scans import Scan
+            # A stored credential supersedes anything the request supplied.
+            # Which of password/key is set is what selects the auth method —
+            # the stored record's own `auth_method` already decided that when
+            # it was decrypted, so nothing here needs to read it again.
+            material = _resolve_stored_credential(db, scan_id, credential_id)
+            username = material["username"]
+            port = material["port"]
+            password = material["password"]
+            key_content = material["key_content"]
 
-            # Cross-reference with the Scan record's org_id for strict multi-tenant isolation
-            scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
-            scan_org_id = scan_row.org_id if scan_row else None
+        reports: list[dict] = []
+        collected: list[tuple[dict, dict, str]] = []
+        failed_hosts: list[dict] = []
 
-            query = db.query(ComplianceCredential).filter(
-                ComplianceCredential.id == credential_id
-            )
-            if scan_org_id:
-                query = query.filter(ComplianceCredential.tenant_id == scan_org_id)
+        for index, host_ip in enumerate(host_list):
+            current_target["ip"] = host_ip
+            # Progress is reported across the whole target list so a 40-host
+            # scan does not appear to restart at 10% on every host.
+            span = 90.0 / len(host_list)
+            base = index * span
 
-            cred = query.first()
-            if not cred:
-                raise ValueError(
-                    f"Stored credential with ID {credential_id} not found or access denied."
+            def host_emit(
+                status, message, percentage=0, stage=None, _base=base, _span=span
+            ):
+                emit(status, message, int(_base + (percentage / 100.0) * _span), stage)
+
+            try:
+                stored_report, system_data, os_type = audit_credentialed_host(
+                    ip=host_ip,
+                    username=username,
+                    password=password,
+                    key_path=key_path,
+                    key_content=key_content,
+                    port=port,
+                    sections=sections,
+                    os_type_req=os_type_req,
+                    emit=host_emit,
                 )
-            username = cred.username
-            port = cred.port
-            auth_method = cred.auth_method
-            if auth_method == "password" and cred.encrypted_password:
-                password = decrypt_credential(cred.encrypted_password)
-            elif auth_method == "key" and cred.encrypted_key_content:
-                key_content = decrypt_credential(cred.encrypted_key_content)
+                reports.append(stored_report)
+                collected.append((stored_report, system_data, os_type))
+            except Exception as host_exc:  # noqa: BLE001 — recorded, not swallowed
+                reason = str(host_exc)
+                status = _classify_credentialed_failure(reason)
+                if status == "unreachable" or "authentication failed" in reason.lower():
+                    log.error("Credentialed audit of %s failed: %s", host_ip, reason)
+                else:
+                    log.exception("Credentialed audit of %s failed", host_ip)
+                failed_hosts.append(
+                    {"target": host_ip, "status": status, "reason": reason}
+                )
 
-        # 1. Connecting
-        emit("running", f"Connecting to {ip}:{port}...", 10, "connecting")
-
-        connect_started = time.perf_counter()
-        credentialed_response_time_ms = None
-        with SSHScanner(
-            ip=ip,
-            username=username,
-            password=password,
-            key_path=key_path,
-            key_content=key_content,
-            port=port,
-            timeout=20,
-        ) as ssh:
-            credentialed_response_time_ms = int(
-                round((time.perf_counter() - connect_started) * 1000)
+        # Every host failed — for a single target this is the same outcome the
+        # task has always produced, with the same reason and status.
+        if not reports:
+            reason = (
+                failed_hosts[0]["reason"]
+                if failed_hosts
+                else "No host could be audited"
             )
-            # 2. OS Detection
-            emit("running", "Detecting Operating System...", 20, "detection")
-            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
-
-            # 3. Data Collection
-            emit("running", f"Collecting system data ({os_type})...", 30, "collection")
-            collector = (
-                WindowsCollector(ssh) if os_type == "windows" else LinuxCollector(ssh)
-            )
-
-            def on_section(name):
-                # Map internal section names to friendly display names
-                friendly = {
-                    "system_info": "System Profile",
-                    "packages": "Software Inventory",
-                    "services": "Running Services",
-                    "ports": "Network Sockets",
-                    "users": "User Accounts",
-                    "security": "Security Policies",
-                    "network": "Interface Config",
-                    "history": "Login Events",
-                }.get(name, name)
-                emit("running", f"Collected {friendly}", 50, "collection")
-
-            system_data = collector.collect_all(
-                sections=_credentialed_sections_with_identity(sections),
-                on_section_complete=on_section,
-            )
-            system_data["detected_os"] = os_type
-            system_data["credentialed_response_time_ms"] = credentialed_response_time_ms
-
-        # 4. Vulnerability Matching
-        emit("running", "Analyzing packages for vulnerabilities...", 70, "analysis")
-        packages = system_data.get("packages", [])
-        matcher = VulnMatcher()
-        raw_findings = matcher.match_packages(packages)
-        cve_list = matcher.to_report_format(raw_findings)
-
-        severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
-        for cve in cve_list:
-            sev = cve.get("severity", "Info")
-            severity_counts[sev] = severity_counts.get(sev, 0) + 1
+            status = failed_hosts[0]["status"] if failed_hosts else "failed"
+            emit(status, f"Scan {status}: {reason}", 0, "error")
+            if scan_id:
+                mark_scan_failed(db, scan_id, user_id, reason, status=status)
+            db.rollback()
+            return {"success": False, "error": reason}
 
         scan_duration = round(time.time() - start_time, 2)
+        target_str = ", ".join(host_list)
 
-        # 5. Finalizing
-        emit("running", "Generating report and syncing assets...", 90, "syncing")
+        totals = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+        total_cves = 0
+        candidates_evaluated = 0
+        for report in reports:
+            for tier, count in (report.get("severity_summary") or {}).items():
+                totals[tier] = totals.get(tier, 0) + count
+            total_cves += report.get("cve_count", 0)
+            candidates_evaluated += report.get("candidates_evaluated", 0) or 0
 
-        from core.oui_lookup import lookup_vendor
+        primary = reports[0]
+        coverage = dict(primary.get("coverage") or {})
 
-        hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(
-            system_data
-        )
-        mac_address = _normalize_mac(system_data.get("mac_address"))
-        mac_vendor = _clean_text(
-            system_data.get("mac_vendor")
-            or (lookup_vendor(mac_address) if mac_address else "")
-        )
-        # Compute security settings for report and hardening audits
-        issues = system_data.get("security_issues") or []
-        fw_disabled = any(
-            "Firewall profile" in issue and "is DISABLED" in issue for issue in issues
-        )
-
-        rdp_enabled = system_data.get("rdp_enabled")
-        if rdp_enabled is None:
-            rdp_enabled = any("RDP is enabled" in issue for issue in issues)
-
-        uac_disabled = any(
-            "UAC" in issue and "disabled" in issue.lower() for issue in issues
-        )
-
-        audit_configured = True
-        if os_type == "windows" and not system_data.get("audit_policy"):
-            audit_configured = False
-        elif os_type != "windows":
-            running_svcs = system_data.get("running_services") or []
-            audit_configured = any(svc.get("name") == "auditd" for svc in running_svcs)
-
-        if os_type != "windows":
-            running_svcs = system_data.get("running_services") or []
-            fw_active = any(
-                svc.get("name") in ("ufw", "firewalld", "iptables")
-                for svc in running_svcs
-            )
-        else:
-            fw_active = not fw_disabled
-
-        smbv1_disabled = system_data.get("smbv1_disabled", False)
-        netbios_disabled = system_data.get("netbios_disabled", False)
-        legacy_tls_disabled = system_data.get("legacy_tls_disabled", False)
-        telnet_disabled = system_data.get("telnet_disabled", False)
-        rdp_nla_enforced = system_data.get("rdp_nla_enforced", False)
-
-        hardening_audits = {
-            "firewall": {
-                "label": "Firewall Status",
-                "disabled": not fw_active,
-                "status": "PASS" if fw_active else "FAIL",
-                "detail": (
-                    "Firewall is active."
-                    if fw_active
-                    else "Host firewall is disabled or ufw/iptables service is inactive."
-                ),
-            },
-            "smbv1": {
-                "label": "SMBv1 Status",
-                "disabled": smbv1_disabled,
-                "status": "PASS" if smbv1_disabled else "FAIL",
-                "detail": (
-                    "Legacy SMBv1 protocol is disabled."
-                    if smbv1_disabled
-                    else "Legacy SMBv1 protocol is enabled/allowed."
-                ),
-            },
-            "netbios": {
-                "label": "NetBIOS Status",
-                "disabled": netbios_disabled,
-                "status": "PASS" if netbios_disabled else "FAIL",
-                "detail": (
-                    "NetBIOS over TCP/IP is disabled."
-                    if netbios_disabled
-                    else "NetBIOS over TCP/IP is active on one or more network adapters."
-                ),
-            },
-            "legacy_tls": {
-                "label": "Legacy TLS Status",
-                "disabled": legacy_tls_disabled,
-                "status": "PASS" if legacy_tls_disabled else "FAIL",
-                "detail": (
-                    "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) are disabled."
-                    if legacy_tls_disabled
-                    else "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled."
-                ),
-            },
-            "telnet": {
-                "label": "Telnet Status",
-                "disabled": telnet_disabled,
-                "status": "PASS" if telnet_disabled else "FAIL",
-                "detail": (
-                    "Telnet service is disabled."
-                    if telnet_disabled
-                    else "Telnet service/daemon is running or client package is installed."
-                ),
-            },
+        # `report` stays the first host so every existing consumer — the results
+        # page, the PDF text-recovery fallback — keeps working unchanged;
+        # `reports` is the complete set.
+        results_payload = {
+            "credentialed": {
+                "report": primary,
+                "reports": reports,
+                "data": [{"ip_address": r["target"]} for r in reports],
+                "hosts_audited": len(reports),
+                "hosts_failed": failed_hosts,
+                "targets": host_list,
+            }
         }
 
-        if os_type == "windows":
-            hardening_audits.update(
-                {
-                    "rdp": {
-                        "label": "RDP Service Status",
-                        "disabled": not rdp_enabled,
-                        "status": "PASS" if not rdp_enabled else "WARN",
-                        "detail": (
-                            "Remote Desktop is disabled."
-                            if not rdp_enabled
-                            else "Remote Desktop is enabled (requires secure NLA and restricted access)."
-                        ),
-                    },
-                    "rdp_nla": {
-                        "label": "RDP NLA Enforcement",
-                        "disabled": rdp_nla_enforced,
-                        "status": (
-                            "PASS"
-                            if rdp_nla_enforced
-                            else ("FAIL" if rdp_enabled else "PASS")
-                        ),
-                        "detail": (
-                            "Network Level Authentication (NLA) is enforced for RDP."
-                            if rdp_nla_enforced
-                            else "RDP is enabled but Network Level Authentication (NLA) is not enforced."
-                        ),
-                    },
-                }
-            )
-
-        stored_report = {
+        summary = {
             "scan_type": "credentialed",
-            "target": ip,
-            "username": username,
-            "detected_os": os_type,
-            "os_type_was_auto": (os_type_req == "auto"),
-            "system_info": {
-                "os_name": system_data.get("os_name", ""),
-                "os_family": system_data.get("os_family", ""),
-                "os_version_id": system_data.get("os_version_id", ""),
-                "os_confidence": system_data.get("os_confidence", ""),
-                "os_build": system_data.get("os_build", ""),
-                "kernel_version": system_data.get("kernel_version", ""),
-                "hostname": hostname,
-                "hostname_short": system_data.get("hostname_short", ""),
-                "hostname_fqdn_raw": raw_hostname_fqdn,
-                "fqdn": fqdn,
-                "domain": system_data.get("domain", ""),
-                "manufacturer": system_data.get("manufacturer", ""),
-                "hardware_model": system_data.get("hardware_model", ""),
-                "mac_address": mac_address,
-                "mac_vendor": mac_vendor,
-                "cpu_model": system_data.get("cpu_model", ""),
-                "cpu_count": system_data.get("cpu_count", ""),
-                "cpu_arch": system_data.get("cpu_arch", ""),
-                "uptime": system_data.get("uptime", ""),
-                "memory_summary": system_data.get("memory_summary", {}),
-                "disk_usage": system_data.get("disk_usage", []),
-                "subnet": system_data.get("subnet", ""),
-                "credentialed_response_time_ms": system_data.get(
-                    "credentialed_response_time_ms", ""
-                ),
-                "serial_number": system_data.get("serial_number", ""),
-                "bios_version": system_data.get("bios_version", ""),
-            },
-            "packages": packages,
-            "package_count": len(packages),
-            "running_services": system_data.get("running_services", []),
-            "open_ports_credentialed": system_data.get("open_ports_credentialed", []),
-            "users": system_data.get("users", []),
-            "local_groups": system_data.get("local_groups", []),
-            "suspicious_scheduled_tasks": system_data.get(
-                "suspicious_scheduled_tasks", []
-            ),
-            "cron_info_raw": system_data.get("cron_info_raw", ""),
-            "hardening_audits": hardening_audits,
-            "suid_binaries": system_data.get("suid_binaries", []),
-            "world_writable_dirs": system_data.get("world_writable_dirs", []),
-            "sudo_nopasswd": system_data.get("sudo_nopasswd", False),
-            "sudo_rules_raw": system_data.get("sudo_rules_raw", ""),
-            "security_issues": system_data.get("security_issues", []),
-            "failed_login_count": system_data.get("failed_login_count", 0),
-            "brute_force_warning": system_data.get("brute_force_warning", False),
-            "failed_logins_recent": system_data.get("failed_logins_recent", []),
-            "network_interfaces_raw": system_data.get("network_interfaces_raw", ""),
-            "env_vars_flagged": system_data.get("env_vars_summary", []),
-            "cves": cve_list,
-            "cve_count": len(cve_list),
-            "severity_summary": severity_counts,
+            "cve_count": total_cves,
             "scan_duration": scan_duration,
+            "critical_count": totals["Critical"],
+            "high_count": totals["High"],
+            "medium_count": totals["Medium"],
+            "low_count": totals["Low"],
+            "info_count": totals["Info"],
+            "total_vulns": total_cves,
+            "total_hosts": len(host_list),
+            "active_hosts": len(reports),
+            "hosts_failed": len(failed_hosts),
+            "candidates_evaluated": candidates_evaluated,
+            **coverage,
         }
+
         report_result = {
             "success": True,
-            "data": {"credentialed": {"report": stored_report}},
-            "summary": {
+            "data": results_payload,
+            "summary": summary,
+            "metadata": {
+                "target": target_str,
+                "original_targets": host_list,
                 "scan_type": "credentialed",
-                "cve_count": len(cve_list),
-                "scan_duration": scan_duration,
-                "critical_count": severity_counts["Critical"],
-                "high_count": severity_counts["High"],
-                "medium_count": severity_counts["Medium"],
-                "low_count": severity_counts["Low"],
-                "info_count": severity_counts["Info"],
-                "total_vulns": len(cve_list),
+                "is_credentialed": True,
+                **coverage,
             },
-            "metadata": {"target": ip, "scan_type": "credentialed"},
         }
         orch = _new_orchestrator()
         report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
         scan = create_completed_scan(
             db=db,
             user_id=user_id,
-            target=ip,
-            targets=[ip],
+            target=target_str,
+            targets=host_list,
             scan_type="credentialed",
             phase=3,
-            results={"credentialed": {"report": stored_report}},
-            summary=report_result["summary"],
+            results=results_payload,
+            summary=summary,
             scan_duration=scan_duration,
+            # Without this the helper's default silently relabelled the scan as
+            # a vulnerability_audit — a pipeline none of whose phases ran.
+            pipeline_mode="credentialed",
             report_executive_path=report_paths.get("executive_pdf"),
             report_technical_path=report_paths.get("technical_pdf"),
             scan_id=scan_id,
@@ -2024,17 +2716,18 @@ def run_credentialed_scan_task(
         )
 
         # Sync to Asset Registry within the same transaction
-        _sync_credentialed_asset_identity(
-            db,
-            user_id=user_id,
-            ip=ip,
-            scan_id=str(scan.id),
-            os_type=os_type,
-            system_data=system_data,
-            stored_report=stored_report,
-            cve_list=cve_list,
-            severity_counts=severity_counts,
-        )
+        for stored_report, system_data, os_type in collected:
+            _sync_credentialed_asset_identity(
+                db,
+                user_id=user_id,
+                ip=stored_report["target"],
+                scan_id=str(scan.id),
+                os_type=os_type,
+                system_data=system_data,
+                stored_report=stored_report,
+                cve_list=stored_report.get("cves") or [],
+                severity_counts=stored_report.get("severity_summary") or {},
+            )
 
         # Trigger AMT reconciliation now that the asset identity has been fully synced
         try:
@@ -2051,19 +2744,19 @@ def run_credentialed_scan_task(
         # ATOMIC COMMIT: Final persistence of everything
         db.commit()
 
-        # 6. Complete
-        emit("complete", "Scan completed successfully.", 100, "complete")
+        message = "Scan completed successfully."
+        if failed_hosts:
+            message = (
+                f"Completed — {len(reports)} host(s) audited, "
+                f"{len(failed_hosts)} unreachable."
+            )
+        emit("complete", message, 100, "complete")
         return {"success": True, "scan_id": str(scan.id)}
     except Exception as exc:
         db.rollback()  # Rollback everything if any step fails
 
         reason = str(exc)
-        status = "failed"
-        if any(
-            msg in reason.lower()
-            for msg in ["reach", "timeout", "no route", "connection refused", "down"]
-        ):
-            status = "unreachable"
+        status = _classify_credentialed_failure(reason)
 
         # Suppress stack trace for expected network/credentials errors
         if (

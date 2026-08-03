@@ -82,5 +82,24 @@ pytest-asyncio
 # ── Web Application Scanning (DAST) ──────────────────────────────────────────
 playwright>=1.40.0         # Headless browser for SPA crawling
 sslyze>=6.0.0              # TLS/SSL configuration auditing
+sqlmap>=1.9                # SQL injection testing (DETECT phase)
 httpx>=0.27.0              # Async HTTP client for WAF detection, auth
 beautifulsoup4>=4.12.0     # HTML parsing for crawler
+
+# ── External scanner binaries (NOT installable via pip) ──────────────────────
+# nuclei, subfinder and ffuf are Go binaries. The Docker image installs them
+# (see Dockerfile) and verifies nuclei is present before the build succeeds.
+#
+# For a local, non-Docker environment install them onto PATH, or drop them
+# beside this interpreter (the venv's Scripts/ or bin/ directory), or point at
+# them explicitly with CCURE_NUCLEI_PATH / CCURE_SUBFINDER_PATH / CCURE_FFUF_PATH.
+#
+#   nuclei     https://github.com/projectdiscovery/nuclei/releases
+#   subfinder  https://github.com/projectdiscovery/subfinder/releases
+#   ffuf       https://github.com/ffuf/ffuf/releases
+#
+# After installing nuclei, fetch its templates once:  nuclei -update-templates
+#
+# A web scan run without nuclei still completes, but it reports the gap as a
+# finding and marks the assessment incomplete rather than returning an empty
+# result that reads as clean.

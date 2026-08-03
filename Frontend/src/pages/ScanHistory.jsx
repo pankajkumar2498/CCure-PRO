@@ -568,7 +568,22 @@ function DetailModal({ scanId, onClose }) {
                                 color: "#f97316",
                               }}
                             >
-                              {h.cves.length} CVEs
+                              {h.cves.length} verified
+                            </span>
+                          )}
+                          {/* Candidates the scan examined and ruled out. Shown
+                              so this count reconciles with the report, which
+                              lists the same suppressed candidates. */}
+                          {h.suppressed_cves?.length > 0 && (
+                            <span
+                              className="muted"
+                              style={{
+                                fontFamily: "var(--mono)",
+                                fontSize: 11,
+                              }}
+                              title="Candidate CVEs ruled out: the affected product or version is not present on this host"
+                            >
+                              {h.suppressed_cves.length} ruled out
                             </span>
                           )}
                         </div>

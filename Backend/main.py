@@ -669,6 +669,14 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
         # echo the raw 'password' field in its 'input' dictionary.
         err_copy.pop("input", None)
 
+        # Pydantic attaches the original exception object under ctx["error"]
+        # for anything a validator raised, and an exception is not JSON
+        # serialisable — leaving it in place made the 422 itself fail to
+        # render, turning a clear "which field is wrong" into a 500.
+        ctx = err_copy.get("ctx")
+        if isinstance(ctx, dict):
+            err_copy["ctx"] = {key: str(value) for key, value in ctx.items()}
+
         loc = err_copy.get("loc", ())
         if any(str(segment).lower() in _SENSITIVE_FIELDS for segment in loc):
             err_copy["ctx"] = {"note": "Value redacted for security."}

@@ -57,6 +57,29 @@ def get_nvd_sync_status() -> Dict[str, Any]:
 
     state = dict(_SYNC_STATE)
     state["database_total_cves"] = total_count
+
+    # Two stores, and they are not the same one.
+    #
+    # This sync writes `vulnerability_definitions`, which enriches findings
+    # that have already been persisted. Scanning reads the `cve`/`cpe` tables,
+    # which are loaded separately — so the CPE version ranges every verdict
+    # depends on come from there, not from here. Reporting only the count above
+    # let an operator run a sync, watch the number rise, and conclude the
+    # scanner's data had been refreshed when it had not. Both are reported so
+    # drift between them is visible rather than assumed away.
+    try:
+        from core.vuln_intel import get_feed_freshness
+
+        freshness = get_feed_freshness()
+        state["scanner_feed_total_cves"] = freshness.get("cve_count")
+        state["scanner_feed_last_modified"] = freshness.get("last_modified")
+    except Exception as exc:  # never fail status on a telemetry read
+        logger.debug("Scanner feed freshness unavailable: %s", exc)
+        state["scanner_feed_total_cves"] = None
+        state["scanner_feed_last_modified"] = None
+
+    state["catalogue_table"] = "vulnerability_definitions"
+    state["scanner_feed_tables"] = "cve, cpe"
     return state
 
 

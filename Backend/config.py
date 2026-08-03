@@ -209,6 +209,11 @@ class WebScanConfig:
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
     MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
     CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "3"))
+    #: Per-page budget for client-side rendering to settle after the document
+    #: loads. Bounded on purpose: an application holding a websocket or polling
+    #: open never reaches network idle, and waiting the full page timeout on
+    #: each URL is what turns a few hundred pages into an overnight crawl.
+    CRAWL_SETTLE_TIMEOUT: int = int(os.getenv("CRAWL_SETTLE_TIMEOUT", "5000"))  # ms
 
     # ── Scan Limits ───────────────────────────────────────────────────────────
     WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))  # 4 hours
@@ -220,6 +225,22 @@ class WebScanConfig:
         os.getenv("MAX_RESPONSE_BODY_SIZE", "10240")
     )  # 10KB evidence cap
 
+    # ── Out-of-Band (OAST) Detection ──────────────────────────────────────────
+    # Blind SSRF, blind SQL injection and out-of-band RCE produce no difference
+    # in the HTTP response — the only evidence is a callback the payload causes
+    # the target to make to a server the scanner controls. Without one, those
+    # classes cannot be detected at all, and a scan that does not test for them
+    # must not be read as having cleared them.
+    #
+    # Nuclei defaults to ProjectDiscovery's public interact.sh, which requires
+    # outbound internet from the scanner and sends interaction metadata to a
+    # third party. Both are frequently unacceptable, so this is explicit:
+    # set OAST_SERVER to a self-hosted interactsh, or set OAST_ENABLED=False to
+    # turn it off deliberately. Either way the scan reports which it was.
+    OAST_ENABLED: bool = os.getenv("OAST_ENABLED", "True").lower() == "true"
+    OAST_SERVER: str = os.getenv("OAST_SERVER", "")
+    OAST_TOKEN: str = os.getenv("OAST_TOKEN", "")
+
     # ── Nuclei Specific ───────────────────────────────────────────────────────
     NUCLEI_SEVERITY: str = os.getenv("NUCLEI_SEVERITY", "medium,high,critical")
     NUCLEI_CONCURRENCY: int = int(os.getenv("NUCLEI_CONCURRENCY", "25"))
@@ -227,7 +248,14 @@ class WebScanConfig:
     NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))  # 2 hours
 
     # ── SQLMap Specific ───────────────────────────────────────────────────────
-    SQLMAP_LEVEL: int = int(os.getenv("SQLMAP_LEVEL", "2"))
+    # Level 3, not 2. Verified against OWASP Juice Shop: the injectable search
+    # parameter that level 3 finds (boolean-based blind on `q`) is missed
+    # entirely at level 2. Level controls how many places per parameter sqlmap
+    # tests — cookies and headers enter at 2, the fuller payload set at 3 — so a
+    # level-2 scan reporting "not injectable" was frequently a scan that did not
+    # test the payload the injection needed. For a tool whose entire job is
+    # finding injection, testing too shallow to find it is the wrong default.
+    SQLMAP_LEVEL: int = int(os.getenv("SQLMAP_LEVEL", "3"))
     SQLMAP_RISK: int = int(os.getenv("SQLMAP_RISK", "2"))
     SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))  # 10 min per URL
 

@@ -43,7 +43,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -297,7 +297,16 @@ class VulnerabilityDefinition(Base):
     cvss_v4_score = Column(Numeric(3, 1), nullable=True)
     cvss_vector = Column(String(255), nullable=True)
 
-    severity = Column(String(20), nullable=False, default="info", index=True)
+    #: Which CVSS revision ``cvss_vector`` and the populated score column were
+    #: published in. Without it a v2 score filed under ``cvss_v3_score`` is
+    #: indistinguishable from a real v3 one, and the two revisions' band tables
+    #: disagree above 9.0 — v2 has no Critical tier.
+    cvss_version = Column(String(8), nullable=True)
+
+    #: Always one of ``scans.cvss.CANONICAL_SEVERITIES`` (lower case). Enforced
+    #: by ck_vuln_def_severity_canonical — two spellings of one severity split
+    #: every GROUP BY in the product and silently dropped rows from the totals.
+    severity = Column(String(20), nullable=False, default="unscored", index=True)
 
     published_at = Column(Date, nullable=True)
     last_modified_at = Column(Date, nullable=True)
@@ -394,6 +403,66 @@ class AssetVulnerability(Base):
 
     proof = Column(Text, nullable=True)
     plugin_output = Column(Text, nullable=True)
+
+    # ── What the scan actually observed ──────────────────────────────────────
+    # The vulnerability engine derives all of this while the scan is running and
+    # the reports print it, but until now none of it was stored. The API had to
+    # answer with hardcoded zeros, so the UI could not distinguish a version-
+    # confirmed finding from an unverified guess, and the dashboard reported no
+    # known-exploited vulnerabilities while the PDF named three.
+    confidence = Column(String(16), nullable=True)  # confirmed | potential
+    qod = Column(Integer, nullable=True)  # quality of detection, 0-100
+    detection_method = Column(String(40), nullable=True)
+    detected_version = Column(String(160), nullable=True)
+    cvss_vector = Column(String(200), nullable=True)
+    cvss_version = Column(String(8), nullable=True)
+    attack_surface = Column(String(16), nullable=True)  # remote | local | client
+    in_kev = Column(Boolean, nullable=False, default=False, index=True)
+    kev_due_date = Column(Date, nullable=True)
+    epss_score = Column(Numeric(7, 5), nullable=True)
+    epss_percentile = Column(Numeric(7, 5), nullable=True)
+    has_exploit = Column(Boolean, nullable=False, default=False)
+
+    #: Which corpora reported an exploit — ExploitDB, Metasploit, Nuclei,
+    #: CISA KEV, VulnCheck KEV. `has_exploit` alone cannot tell a weaponised
+    #: Metasploit module from an unreproduced proof of concept, and those
+    #: warrant very different urgency.
+    exploit_sources = Column(ARRAY(Text), nullable=True)
+    #: Someone reproduced the exploit rather than merely publishing it.
+    verified_exploit = Column(Boolean, nullable=False, default=False)
+    #: Observed being exploited against VulnCheck's honeypots — direct
+    #: observation, the strongest exploitation evidence available here.
+    canary_confirmed = Column(Boolean, nullable=False, default=False)
+    ransomware_linked = Column(Boolean, nullable=False, default=False)
+
+    #: The vendor's own advisory for this CVE, and its remediation wording.
+    #: For OT products this is often the only actionable instruction that
+    #: exists: NVD supplies a CPE range, Siemens supplies "Update to V2606 or
+    #: later version".
+    vendor_advisory_id = Column(String(100), nullable=True)
+    vendor_advisory_url = Column(Text, nullable=True)
+    vendor_remediation = Column(Text, nullable=True)
+
+    #: The probe output the finding was raised on, captured at detection time.
+    #: Distinct from ``plugin_output`` (a rendering) and from the catalogue
+    #: description (which is not evidence at all).
+    evidence = Column(Text, nullable=True)
+
+    #: ``scan_id`` is re-pointed to the latest scan on every re-scan, so it
+    #: cannot answer "what did scan N report?". This one is written once.
+    first_scan_id = Column(String(64), nullable=True)
+
+    #: The service or package this finding is about, and the version observed
+    #: for it. The grouping key that lets "one outdated Chrome" be presented as
+    #: one row resolving 1,736 CVEs rather than 1,736 rows.
+    component = Column(String(200), nullable=True)
+    component_version = Column(String(160), nullable=True)
+
+    #: The version that resolves this finding. Without it the grouped view can
+    #: state the problem but not the action — "Chrome 138.0.7204.184, 1,736
+    #: findings" with no answer to "upgrade to what?". NULL means no fix is
+    #: published, which is a real state and not the same as unrecorded.
+    component_fixed_version = Column(String(160), nullable=True)
 
     remediation_notes = Column(Text, nullable=True)
     fixed_at = Column(TIMESTAMPTZ, nullable=True)

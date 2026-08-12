@@ -165,6 +165,214 @@ def is_companion_package(name: str) -> bool:
     return bool(tokens & _COMPANION_MARKERS)
 
 
+#: Tokens marking a package as a piece of a product's developer tooling rather
+#: than software that can be independently vulnerable.
+_COMPONENT_MARKERS = {
+    "sdk",
+    "headers",
+    "libs",
+    "symbols",
+    "intellisense",
+    "winrt",
+    "targeting",
+    "documentation",
+    "samples",
+    "metadata",
+    "contracts",
+    "resources",
+    "fonts",
+    "certification",
+}
+
+#: Visual Studio ships its internals as individually registered MSIs named
+#: vs_something. They are not products and NVD publishes no CPE for them.
+_COMPONENT_PREFIXES = (
+    "vs_",
+    "icecap_",
+    "sqlsysclrtypes",
+    "dotnet_",
+    "vcpp_",
+    "winappdeploy",
+    "intellitraceprofiler",
+)
+
+#: An installed Windows update, not software. ``Get-HotFix`` output is folded
+#: into the package list as pseudo-packages so the inventory records it, but a
+#: KB is a patch: it has no CPE, its "version" is the date it was installed,
+#: and it can never resolve to anything. Four of them sat in the assessable
+#: denominator of a real host, permanently unresolvable, making coverage look
+#: worse than it was. The MSRC matcher assesses the patch level properly.
+_KB_PACKAGE = re.compile(r"^kb\d{6,}$", re.IGNORECASE)
+
+#: The Visual C++ runtime, which Windows registers as several MSIs per
+#: architecture and edition — "Minimum Runtime", "Additional Runtime", "Debug
+#: Runtime". NVD publishes no per-redistributable CPE, and they are patched as
+#: part of the redistributable package rather than individually. Ten of these
+#: were sitting in the denominator on one host.
+_VCPP_RUNTIME = re.compile(
+    r"visual\s+c\+\+.*\b(runtime|redistributable)\b", re.IGNORECASE
+)
+
+#: Pieces of a .NET installation that ship and version with the runtime:
+#: the host, the FX resolver, targeting packs. They are not separately
+#: patchable, and their DisplayVersion is the MSI's own number
+#: ("72.72.55158" for .NET 9.0.18), so mapping them to microsoft:.net would
+#: compare two unrelated numbering schemes. The runtime itself is resolved by
+#: the curated rules below and is what actually gets patched.
+_DOTNET_SUBCOMPONENT = re.compile(
+    r"^microsoft\s+\.net\s+(host|targeting\s+pack)|"
+    r"^microsoft\s+\.net\s+host\s+fx\s+resolver|"
+    r"cumulative\s+intellisense\s+pack",
+    re.IGNORECASE,
+)
+
+
+def is_component_package(name: str) -> bool:
+    """
+    True when the package is a fragment of a toolchain, not assessable software.
+
+    This exists to keep the coverage figure honest in the direction people
+    rarely check. A real Windows host reported 150 packages that resolved to no
+    CPE identity, which reads as a 150-package blind spot — but the overwhelming
+    majority were "Windows SDK Desktop Headers x64", "vs_filehandler_amd64",
+    "WinRT Intellisense IoT - en-us" and their siblings. NVD publishes no CPE
+    for any of them because none is independently vulnerable: they are header
+    files, resource MSIs and IntelliSense metadata that move with the toolchain
+    that owns them.
+
+    Counting them as unassessed overstates the gap exactly as badly as counting
+    them as assessed would overstate the coverage. Both mislead; the coverage
+    number is only worth reporting if its denominator is software an audit
+    could genuinely have findings about.
+    """
+    lowered = (name or "").strip().lower()
+    if not lowered:
+        return False
+    if lowered.startswith(_COMPONENT_PREFIXES):
+        return True
+    if _KB_PACKAGE.match(lowered):
+        return True
+    if _VCPP_RUNTIME.search(lowered):
+        return True
+    if _DOTNET_SUBCOMPONENT.search(lowered):
+        return True
+    if any(pattern.search(name or "") for pattern in _SUBCOMPONENT_PATTERNS):
+        return True
+    tokens = {t for t in re.split(r"[^a-z0-9]+", lowered) if t}
+    return bool(tokens & _COMPONENT_MARKERS)
+
+
+#: Products whose CPE name cannot be produced from their display name by
+#: tokenising, because NVD publishes them with punctuation the tokeniser has
+#: no way to reintroduce.
+#:
+#: ".NET" is the case that matters most. NVD's products are ``.net``,
+#: ``.net_framework`` and ``asp.net_core`` — with a literal leading dot.
+#: Splitting "Microsoft .NET Framework 4.7.2" on non-alphanumerics yields
+#: ``net_framework``, which misses ``.net_framework`` by one character, so the
+#: entire .NET family (338 CVEs across four products) resolved to nothing on
+#: every Windows host. No amount of token juggling recovers a character that
+#: tokenising removed; the mapping has to be stated.
+#:
+#: Each entry is matched against the whole display name, case-insensitively.
+#: Ordering matters — the first match wins, so more specific patterns lead.
+_CURATED_RULES: List[Tuple[re.Pattern, Identity]] = [
+    (re.compile(r"^microsoft\s+asp\.net\s+core", re.I), ("microsoft", "asp.net_core")),
+    (
+        re.compile(r"^microsoft\s+\.net\s+framework", re.I),
+        ("microsoft", ".net_framework"),
+    ),
+    (re.compile(r"^microsoft\s+\.net\s+core", re.I), ("microsoft", ".net_core")),
+    # "Windows Desktop Runtime" and ".NET Runtime" are both the .NET runtime,
+    # which NVD publishes simply as "microsoft:.net".
+    (
+        re.compile(r"^microsoft\s+(windows\s+desktop|\.net)\s+runtime", re.I),
+        ("microsoft", ".net"),
+    ),
+    # NVD files VirtualBox under vm_virtualbox, not virtualbox.
+    (
+        re.compile(r"^oracle\s+vm\s+virtualbox|^virtualbox\b", re.I),
+        ("oracle", "vm_virtualbox"),
+    ),
+    (
+        re.compile(r"wincc\s+runtime\s+advanced", re.I),
+        ("siemens", "wincc_runtime_advanced"),
+    ),
+    (
+        re.compile(r"wincc\s+runtime\s+professional", re.I),
+        ("siemens", "simatic_wincc_runtime_professional"),
+    ),
+    # Siemens OT software, which a general-purpose scanner rarely covers and
+    # which is the reason this tool is pointed at these hosts at all.
+    #
+    # Only products NVD actually publishes under are listed. It is tempting to
+    # map the SIMATIC HMI packages installed alongside TIA — "SIMATIC HMI
+    # Symbol Library", "SIMATIC HMI Touch Input" — onto the simatic_hmi_*
+    # CPEs, and it would raise the coverage number. It would also be wrong:
+    # those CPEs are *panel firmware* (KTP700, Comfort Panels), not the
+    # desktop libraries the engineering station installs. Matching a
+    # workstation library against panel firmware advisories would report
+    # hardware vulnerabilities on a machine that is not that hardware.
+    (
+        re.compile(r"totally\s+integrated\s+automation\s+portal", re.I),
+        ("siemens", "totally_integrated_automation_portal"),
+    ),
+    (
+        re.compile(r"\bSTEP\s*7\b|\bSIMATIC\s+STEP\s*7", re.I),
+        ("siemens", "simatic_step_7"),
+    ),
+    (
+        re.compile(r"^HP\s+PC\s+Hardware\s+Diagnostics", re.I),
+        ("hp", "pc_hardware_diagnostics"),
+    ),
+]
+
+#: Sub-components that ship inside a product this file already resolves, and
+#: that NVD publishes no CPE of their own for.
+#:
+#: TIA Portal installs "SIMATIC HMI Symbol Library", "SIMATIC Device Drivers
+#: WoW", "SIMATIC Event Database" and similar as separately registered MSIs.
+#: None has a CPE, none is patched on its own — they move when TIA Portal is
+#: updated, and TIA Portal *is* assessed by the curated rules above. Counting
+#: them as unassessed software charged the coverage figure for six entries
+#: that could never resolve no matter how much mapping work was done.
+#:
+#: The same applies to the Visual Studio and Windows SDK tooling: development
+#: headers, interop assemblies and diagnostic packs are artefacts of an
+#: install, not products an advisory is ever published against.
+#:
+#: This is a denominator correction, not a detection change — nothing that
+#: could have produced a finding stops producing one. Software that genuinely
+#: has no CPE but *is* standalone (UltraViewer, the OPC UA Local Discovery
+#: Server) is deliberately left counted as unassessed, because it really is.
+_SUBCOMPONENT_PATTERNS = (
+    re.compile(
+        r"^SIMATIC\s+(HMI\s+(Symbol\s+Library|Touch\s+Input)|"
+        r"Device\s+Drivers|Event\s+Database)",
+        re.I,
+    ),
+    re.compile(r"^SIMATIC\s+S7-PCT", re.I),
+    re.compile(r"^TIA\s+Portal\s+(Project\s+Server|Help\s+Viewer)", re.I),
+    re.compile(r"^Entity\s+Framework\b.*\bfor\s+Visual\s+Studio", re.I),
+    re.compile(r"^MSI\s+Development\s+Tools", re.I),
+    re.compile(r"Diagnostic\s+Pack\s+for\s+Visual\s+Studio", re.I),
+    re.compile(r"^Microsoft\s+Primary\s+Interoperability\s+Assemblies", re.I),
+    re.compile(r"^Universal\s+CRT\b", re.I),
+    re.compile(r"^Windows\s+Software\s+Development\s+Kit", re.I),
+)
+
+
+def curated_identity(name: str) -> Identity | None:
+    """The stated CPE identity for a display name, when one is known."""
+    text = (name or "").strip()
+    if not text:
+        return None
+    for pattern, identity in _CURATED_RULES:
+        if pattern.search(text):
+            return identity
+    return None
+
+
 _VERSION_TOKEN = re.compile(r"\bv?\d+(?:\.\d+)*\w*\b")
 _PARENTHETICAL = re.compile(r"\(.*?\)")
 
@@ -298,6 +506,27 @@ def resolve_identities(
             # and it read as a very old install, matching every server CVE.
             log.debug("Skipping companion package %r", name)
             continue
+        if is_component_package(name):
+            # A toolchain fragment is not independently vulnerable, which is
+            # why the coverage figure already excludes it from the denominator.
+            # It has to be excluded from resolution for the same reason, or the
+            # two disagree: "Microsoft .NET Framework 4.7.2 Targeting Pack" was
+            # counted as non-assessable and still resolved to
+            # microsoft:.net_framework through the curated rule below, so the
+            # runtime's CVEs were reported against build-time reference
+            # assemblies. Its DisplayVersion is the MSI's own number, so the
+            # comparison behind those findings was between two unrelated
+            # numbering schemes.
+            log.debug("Skipping component package %r", name)
+            continue
+
+        # A stated identity outranks anything the heuristics can derive, since
+        # it exists precisely for the names they cannot reach.
+        stated = curated_identity(name)
+        if stated is not None:
+            resolved[name] = [stated]
+            continue
+
         vendor = normalize_vendor(pkg.get("vendor") or pkg.get("publisher") or "")
         candidates = candidate_products(name, vendor)
 

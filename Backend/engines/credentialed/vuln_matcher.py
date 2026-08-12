@@ -13,6 +13,9 @@ from typing import Any, Dict, List, Tuple
 
 from engines.credentialed.package_identity import (
     candidate_products,
+    curated_identity,
+    is_companion_package,
+    is_component_package,
     normalize_vendor,
     resolve_identities,
     version_space_contains,
@@ -109,16 +112,104 @@ class VulnMatcher:
     def __init__(self):
         self.engine = get_vuln_engine()
         self._package_vendors: dict[str, str] = {}
+        #: OSV ecosystems applicable to the host being matched. Empty means the
+        #: host's release could not be established, and OSV matching is skipped
+        #: rather than run against every distribution in the database.
+        self._osv_ecosystems: list[str] = []
+        #: How much of the installed inventory this matcher could actually
+        #: evaluate. Reported alongside the findings so "0 vulnerabilities" can
+        #: be told apart from "nothing was assessable".
+        self._packages_seen: int = 0
+        self._packages_cpe_resolved: int = 0
+        #: Toolchain fragments — SDK headers, vs_* MSIs, IntelliSense metadata.
+        #: Counted separately so they neither inflate the coverage gap nor
+        #: disappear from the report without a trace.
+        self._packages_components: int = 0
 
-    def match_packages(self, packages: list[dict[str, str]]) -> list[CredentialedCVE]:
+    def coverage(self) -> dict:
         """
-        Match installed packages against vulnerability database.
+        What share of the installed inventory was assessable, and by what.
 
-        Uses batch query optimization when package count exceeds threshold,
-        otherwise falls back to parallel processing for smaller sets.
+        A credentialed audit that evaluated 13 of 192 packages has not audited
+        the host; it has audited 7% of it. Without this the result is
+        indistinguishable from a clean bill of health.
+
+        Toolchain components are excluded from the denominator, and that is a
+        correction rather than a flattering adjustment. On a real Windows host,
+        150 of 191 packages resolved to no CPE identity, which reads as a
+        150-package blind spot — but most were SDK headers, ``vs_*`` resource
+        MSIs and IntelliSense metadata, none of which NVD publishes a CPE for
+        because none can be independently vulnerable. Leaving them in
+        overstates the gap as badly as counting them as assessed would
+        overstate the coverage. Both counts are reported so the exclusion is
+        visible rather than assumed.
+        """
+        assessable = (
+            self._packages_seen if self._osv_ecosystems else self._packages_cpe_resolved
+        )
+        real = max(self._packages_seen - self._packages_components, 0)
+        real_assessable = real if self._osv_ecosystems else self._packages_cpe_resolved
+        return {
+            "packages_collected": self._packages_seen,
+            "packages_assessable": assessable,
+            "packages_cpe_resolved": self._packages_cpe_resolved,
+            "packages_toolchain_components": self._packages_components,
+            "packages_assessable_software": real,
+            "advisory_source": (
+                self._osv_ecosystems[0] if self._osv_ecosystems else None
+            ),
+            "coverage_pct": (
+                round(100.0 * assessable / self._packages_seen, 1)
+                if self._packages_seen
+                else 0.0
+            ),
+            # Coverage over software an audit could genuinely report on.
+            "coverage_pct_software": (
+                round(100.0 * real_assessable / real, 1) if real else 0.0
+            ),
+        }
+
+    def match_packages(
+        self,
+        packages: list[dict[str, str]],
+        os_id: str = "",
+        os_version_id: str = "",
+    ) -> list[CredentialedCVE]:
+        """
+        Match installed packages against the vulnerability database.
+
+        ``os_id`` / ``os_version_id`` come from the host's own ``/etc/os-release``
+        (``ID`` and ``VERSION_ID``). They scope OSV matching to the advisories
+        published for that exact release — without them a 24.04 host was matched
+        against 14.04, Debian and Mageia advisories whose fixed versions mean
+        nothing here.
         """
         if not packages:
             return []
+
+        self._osv_ecosystems = osv_ecosystems_for(os_id, os_version_id)
+        if self._osv_ecosystems:
+            log.info("OSV matching scoped to %s", ", ".join(self._osv_ecosystems))
+        elif os_id:
+            # A distribution was identified but has no ecosystem mapping, so its
+            # advisories cannot be reached. Worth flagging: distro-packaged
+            # software on this host will be under-reported.
+            log.warning(
+                "No OSV ecosystem mapping for distribution %r %r — advisory "
+                "matching is disabled for this host and distro-packaged "
+                "software will be under-reported.",
+                os_id,
+                os_version_id,
+            )
+        else:
+            # No /etc/os-release at all, which is the normal case for Windows.
+            # Its software is not distribution-packaged, so OSV has nothing to
+            # say about it and the CPE path is the right one.
+            log.info(
+                "No distribution release reported (version=%r); OSV advisory "
+                "matching does not apply. Matching against CPE only.",
+                os_version_id,
+            )
 
         # Extract unique package names
         package_data = {}
@@ -226,6 +317,17 @@ class VulnMatcher:
             {"name": name, "vendor": self._package_vendors.get(name, "")}
             for name in package_data
         ]
+        # Companion packages are excluded here as well as components. They are
+        # already skipped by resolve_identities — an installer is not the
+        # product it installs — so counting them as assessable-but-unresolved
+        # charged the coverage figure for software the matcher deliberately
+        # never looks at. Leaving them in was why this number disagreed with
+        # the same measurement taken offline: 93 here against 76 there.
+        self._packages_components = sum(
+            1
+            for pkg in packages
+            if is_component_package(pkg["name"]) or is_companion_package(pkg["name"])
+        )
         candidates: set[str] = set()
         for pkg in packages:
             candidates.update(
@@ -233,6 +335,13 @@ class VulnMatcher:
                     pkg["name"], normalize_vendor(pkg.get("vendor") or "")
                 )
             )
+        # Curated identities name a product NVD publishes under punctuation the
+        # tokeniser cannot reproduce, so they must be queried for explicitly or
+        # the dictionary lookup below will never confirm them.
+        for pkg in packages:
+            stated = curated_identity(pkg["name"])
+            if stated is not None:
+                candidates.add(stated[1])
         if not candidates:
             return {}
 
@@ -251,13 +360,36 @@ class VulnMatcher:
         resolved = resolve_identities(packages, known)
         resolved = self._drop_mismatched_version_spaces(conn, resolved, package_data)
         unresolved = [p["name"] for p in packages if p["name"] not in resolved]
-        log.info(
-            "Package identity resolution: %d/%d packages mapped to a CPE product; "
-            "%d unmatched (not assessed)",
-            len(resolved),
-            len(packages),
-            len(unresolved),
-        )
+        # "not assessed" is only true where OSV cannot cover the package either.
+        # OSV is matched on the package name and needs no CPE identity, so on a
+        # host with a scoped distribution the unresolved packages are still
+        # assessed against that distribution's advisories — saying otherwise
+        # understated the tool's own coverage. Where there is no OSV scope
+        # (Windows, or a distribution with no ecosystem mapping) the CPE path is
+        # the only one available and unresolved really does mean unassessed,
+        # which is worth stating plainly.
+        self._packages_seen = len(packages)
+        self._packages_cpe_resolved = len(resolved)
+        if self._osv_ecosystems:
+            log.info(
+                "Package identity resolution: %d/%d packages mapped to a CPE "
+                "product; the remaining %d are assessed against %s advisories "
+                "by package name",
+                len(resolved),
+                len(packages),
+                len(unresolved),
+                self._osv_ecosystems[0],
+            )
+        else:
+            log.warning(
+                "Package identity resolution: %d/%d packages mapped to a CPE "
+                "product; %d NOT ASSESSED — no distribution advisory source "
+                "applies to this host, so software without a CPE identity is "
+                "not evaluated at all",
+                len(resolved),
+                len(packages),
+                len(unresolved),
+            )
         if unresolved:
             log.debug("Unmatched packages: %s", ", ".join(sorted(unresolved)[:40]))
         return resolved
@@ -544,6 +676,16 @@ class VulnMatcher:
         if not name_params:
             return findings
 
+        # No release, no OSV matching. An advisory names the version a
+        # distribution fixed a flaw in *for one release*; applied to a different
+        # release its fixed version is meaningless, which is how a 24.04 host
+        # came to be assessed against 14.04 and Debian advisories.
+        if not self._osv_ecosystems:
+            return findings
+
+        eco_params = {f"osv_eco_{i}": eco for i, eco in enumerate(self._osv_ecosystems)}
+        eco_placeholders = ", ".join([f":osv_eco_{i}" for i in range(len(eco_params))])
+
         query = text(
             f"""
             SELECT
@@ -570,8 +712,21 @@ class VulnMatcher:
             LEFT JOIN epss ON epss.cve_id = c.cve_id
             LEFT JOIN kev ON kev.cve_id = c.cve_id
             LEFT JOIN exploits ON exploits.cve_id = c.cve_id
-            LEFT JOIN osv_ranges ranges ON ranges.osv_id = aff.osv_id
+            LEFT JOIN osv_ranges ranges
+                   ON ranges.osv_id = aff.osv_id
+                  -- Only this package's ranges, in this release. Joining on
+                  -- osv_id alone paired an installed package with another
+                  -- package's fixed version from the same advisory, and an
+                  -- Ubuntu 24.04 package with 25.10's fix. Rows written before
+                  -- osv_ranges gained these columns carry NULL and still match,
+                  -- so a partially re-synced database degrades to the old
+                  -- behaviour rather than losing the range entirely.
+                  AND (ranges.package_name IS NULL
+                       OR lower(ranges.package_name) = lower(aff.package_name))
+                  AND (ranges.ecosystem IS NULL
+                       OR ranges.ecosystem = aff.ecosystem)
             WHERE LOWER(aff.package_name) IN ({name_placeholders})
+              AND aff.ecosystem LIKE ANY (ARRAY[{eco_placeholders}])
             ORDER BY
                 (kev.cve_id IS NOT NULL) DESC,
                 COALESCE(epss.epss_score, 0) DESC,
@@ -581,7 +736,7 @@ class VulnMatcher:
         )
 
         try:
-            rows = conn.execute(query, name_params).mappings().all()
+            rows = conn.execute(query, {**name_params, **eco_params}).mappings().all()
 
             for row in rows:
                 osv_pkg_name = str(row.get("package_name") or "").lower()
@@ -825,6 +980,27 @@ class VulnMatcher:
             values=candidates,
             param_prefix="osv_pkg",
         )
+
+        # Scope to the host's own release, exactly as the batch path does.
+        #
+        # This filter was missing here, and this path is the one taken by every
+        # host with fewer than BATCH_QUERY_THRESHOLD packages — a container, an
+        # appliance, a minimal VM. Those hosts were matched against every
+        # distribution in the database at once, which is the precise failure
+        # osv_ecosystems_for exists to prevent: a Debian package name matching
+        # an Ubuntu advisory whose fixed version refers to a different build.
+        # Returning nothing when the release is unknown matches the batch
+        # path's behaviour, where no scope means no OSV matching rather than
+        # unscoped matching.
+        if not self._osv_ecosystems:
+            return []
+        eco_params = {f"osv_eco_{i}": eco for i, eco in enumerate(self._osv_ecosystems)}
+        eco_placeholders = ", ".join(f":osv_eco_{i}" for i in range(len(eco_params)))
+        params.update(eco_params)
+        where_sql = (
+            f"({where_sql}) AND aff.ecosystem LIKE ANY (ARRAY[{eco_placeholders}])"
+        )
+
         query = text(
             f"""
             SELECT
@@ -851,7 +1027,19 @@ class VulnMatcher:
             LEFT JOIN epss ON epss.cve_id = c.cve_id
             LEFT JOIN kev ON kev.cve_id = c.cve_id
             LEFT JOIN exploits ON exploits.cve_id = c.cve_id
-            LEFT JOIN osv_ranges ranges ON ranges.osv_id = aff.osv_id
+            LEFT JOIN osv_ranges ranges
+                   ON ranges.osv_id = aff.osv_id
+                  -- Only this package's ranges, in this release. Joining on
+                  -- osv_id alone paired an installed package with another
+                  -- package's fixed version from the same advisory, and an
+                  -- Ubuntu 24.04 package with 25.10's fix. Rows written before
+                  -- osv_ranges gained these columns carry NULL and still match,
+                  -- so a partially re-synced database degrades to the old
+                  -- behaviour rather than losing the range entirely.
+                  AND (ranges.package_name IS NULL
+                       OR lower(ranges.package_name) = lower(aff.package_name))
+                  AND (ranges.ecosystem IS NULL
+                       OR ranges.ecosystem = aff.ecosystem)
             WHERE {where_sql}
             ORDER BY
                 (kev.cve_id IS NOT NULL) DESC,
@@ -923,6 +1111,23 @@ class VulnMatcher:
     def _installed_version_matches(
         self, installed_version: str, row: dict[str, Any]
     ) -> bool:
+        # A distribution's package version is not an upstream version, and the
+        # CPE ranges published against a product describe upstream releases
+        # only. Comparing the two produces confident nonsense.
+        #
+        # Ubuntu 24.04 ships Firefox as a snap and leaves a transition stub deb
+        # versioned "1:1snap1-0ubuntu5". Reduced to a comparable number that is
+        # "1", which sits below every fixed version ever published, so every
+        # Firefox CVE back to 2008 matched — CVE-2008-0016 was reported as a
+        # Confirmed Critical on a current release. The same reduction put
+        # "9.6p1-3ubuntu13.18" below "9.8" and "2:8.2.4-1ubuntu2" below "8.2.5".
+        #
+        # For these packages the distribution's own advisory is the only
+        # authority, and that is what the OSV path consults. Declining to answer
+        # here loses nothing that was ever correct.
+        if is_distro_package_version(installed_version):
+            return False
+
         exact_version = _extract_cpe_exact_version(str(row.get("cpe_uri") or ""))
         min_incl = row.get("version_start_including")
         min_excl = row.get("version_start_excluding")
@@ -951,21 +1156,29 @@ class VulnMatcher:
     def _installed_version_matches_osv(
         self, installed_version: str, row: dict[str, Any]
     ) -> bool:
+        """
+        Whether the installed version falls inside an OSV advisory's range.
+
+        Distribution ordering is used here, not the upstream-CPE ordering.
+        An advisory's boundaries are the distribution's own package versions —
+        ``0:2.34-274.el9_8``, ``2.9.13-6ubuntu1.3`` — and comparing them with a
+        function that strips everything from ``el9`` or ``ubuntu`` onward makes
+        a backported fix indistinguishable from the version it fixes.
+        """
         introduced = str(row.get("introduced") or "").strip()
         fixed = str(row.get("fixed") or "").strip()
 
-        if (
-            introduced
-            and introduced not in {"0", "*"}
-            and not _version_gte(installed_version, introduced)
-        ):
-            return False
-        if (
-            fixed
-            and fixed not in {"*", "-"}
-            and not _version_lt(installed_version, fixed)
-        ):
-            return False
+        if introduced and introduced not in {"0", "*"}:
+            order = compare_distro_versions(installed_version, introduced)
+            # An unreadable boundary asserts nothing, so it does not exclude.
+            if order is not None and order < 0:
+                return False
+        if fixed and fixed not in {"*", "-"}:
+            order = compare_distro_versions(installed_version, fixed)
+            # Unreadable here must not claim the finding: without an ordering
+            # there is no evidence the host is below the fixed release.
+            if order is None or order >= 0:
+                return False
         return True
 
     def _row_fixed_version(self, row: dict[str, Any]) -> str:
@@ -1020,6 +1233,115 @@ def _extract_cpe_exact_version(cpe_uri: str) -> str:
 _VERSION_RUN = re.compile(r"\d+(?:\.\d+)*")
 
 
+#: Markers that identify a version string as a *distribution* package version
+#: rather than an upstream release: a Debian epoch, a Debian/Ubuntu/RPM revision
+#: suffix, a backport or snap-transition marker.
+#:
+#: Such a version orders correctly only against other versions from the same
+#: distribution, using that distribution's own advisories. It carries no usable
+#: ordering against an upstream CPE range, because the distribution backports
+#: fixes without changing the upstream component of the version.
+_DISTRO_VERSION_MARKERS = re.compile(
+    r"""
+      ^\d+:                 # Debian epoch, e.g. "1:1snap1-0ubuntu5"
+    | -\d*ubuntu            # Ubuntu revision,  e.g. "-0ubuntu5"
+    | ubuntu\d              # Ubuntu revision without a dash
+    | [-+]\d*build\d        # Ubuntu no-change rebuild, e.g. "1.80.2-1build2",
+                            # "16+257build1.1"
+    | \+~cs                 # Debian component-source rev, e.g. "6.1.13+~cs7.0.5-3"
+    | [-+~]deb\d            # Debian revision,  e.g. "+deb12u1"
+    | -\d+\+deb             # Debian revision
+    | \.el\d                # RHEL / CentOS,    e.g. ".el8_9"
+    | \.fc\d                # Fedora
+    | \+dfsg                # Debian repackaged source
+    | ~bpo                  # Debian backport
+    | snap\d                # Ubuntu snap transition stub
+    | \+esm                 # Ubuntu Expanded Security Maintenance
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def osv_ecosystems_for(os_id: str, os_version_id: str) -> list[str]:
+    """
+    The OSV ecosystems whose advisories apply to this host.
+
+    OSV records are scoped to an exact distribution release: an advisory in
+    ``Ubuntu:24.04:LTS`` states the version Canonical fixed the flaw in *for
+    24.04*, which is the only version that can be compared against a package
+    installed from that release.
+
+    Matching without this filter is what produced the false positives. A host
+    running Ubuntu 24.04 was matched against ``Ubuntu:14.04:LTS``,
+    ``Debian:11``, ``Mageia:9`` and ``Chainguard`` advisories, whose fixed
+    versions have no relationship to anything installed on it. The database
+    holds 189,789 ``Ubuntu:24.04:LTS`` records — the correct ones — and none of
+    them were being preferred.
+
+    Returns an empty list when the release cannot be established, which the
+    caller treats as "no OSV matching", because a match against the wrong
+    release is worse than no match at all.
+
+    The returned values are **SQL LIKE patterns**, not literals. Most
+    distributions name an ecosystem exactly (``Rocky Linux:9``) and their
+    pattern contains no wildcard, so it behaves as equality. Red Hat does not:
+    it splits a release across repository modules —
+    ``Red Hat:enterprise_linux:9::appstream``, ``::baseos``, ``::crb`` and more
+    — and SUSE names products rather than versions
+    (``SUSE:Linux Enterprise Server 15 SP5``). No fixed string can cover those,
+    and the earlier ``Red Hat:9`` / ``SUSE:15.5`` forms matched nothing at all:
+    RHEL-family and SUSE hosts were assessed against zero advisories while
+    67,266 applicable ones sat in the database.
+    """
+    distro = str(os_id or "").strip().lower()
+    release = str(os_version_id or "").strip()
+    if not distro or not release:
+        return []
+
+    major = release.split(".")[0]
+    minor = release.split(".")[1] if "." in release else ""
+
+    if distro == "ubuntu":
+        # Ubuntu Pro carries the same advisories for ESM-covered packages.
+        return [
+            f"Ubuntu:{release}:LTS",
+            f"Ubuntu:Pro:{release}:LTS",
+            f"Ubuntu:{release}",
+        ]
+    if distro == "debian":
+        return [f"Debian:{major}"]
+    if distro in ("rhel", "redhat", "centos", "centos-stream", "oracle", "ol"):
+        # Every repository module of this release, and nothing from another.
+        return [f"Red Hat:enterprise_linux:{major}::%"]
+    if distro == "rocky":
+        return [f"Rocky Linux:{major}"]
+    if distro in ("almalinux", "alma"):
+        return [f"AlmaLinux:{major}"]
+    if distro == "alpine":
+        parts = release.split(".")
+        return [f"Alpine:v{'.'.join(parts[:2])}"]
+    if distro in ("opensuse", "opensuse-leap", "opensuse-tumbleweed"):
+        return [f"openSUSE:Leap {release}%"]
+    if distro in ("sles", "sled", "suse"):
+        # SLES 15.5 is published as "…Enterprise Server 15 SP5", so the
+        # release's two halves have to be rebuilt into SUSE's own wording.
+        return [f"SUSE:%{major} SP{minor}%"] if minor else [f"SUSE:%{major}%"]
+    return []
+
+
+def is_distro_package_version(version: str) -> bool:
+    """
+    Whether a version string came from a distribution's package manager.
+
+    Used to stop distro versions being compared against upstream CPE ranges —
+    see ``VulnMatcher._installed_version_matches`` for what that produced.
+    """
+    text = str(version or "").strip()
+    if not text:
+        return False
+    return bool(_DISTRO_VERSION_MARKERS.search(text))
+
+
 def _parse_version(ver: str) -> tuple[int, ...]:
     """
     Reduce a package version string to a comparable tuple.
@@ -1051,6 +1373,92 @@ def _parse_version(ver: str) -> tuple[int, ...]:
     if tail and tail.isalpha():
         parts = parts + (ord(tail.lower()) - ord("a") + 1,)
     return parts
+
+
+# ── Distribution version comparison ──────────────────────────────────────────
+#
+# `_parse_version` above deliberately discards distribution suffixes, because
+# its job is to compare a package against an *upstream* CPE range where
+# "2.34-274.el9_8" and "2.34" are the same upstream release.
+#
+# On the OSV path that is exactly wrong, and it was silently costing findings.
+# A distribution almost never fixes a CVE by taking a new upstream version; it
+# backports the patch and increments the release. Rocky's fix for glibc is
+# 2.34-274.el9_8 against an installed 2.34-266.el9_8 — same upstream version,
+# eight releases apart. Stripping at "el9" reduced both to (2, 34), the
+# comparison found them equal, and "installed < fixed" came out false, so no
+# finding was asserted. Measured on a Rocky 9.8 container: glibc, openssl,
+# expat, glib2 and systemd were all genuinely behind their published fixes and
+# all five were reported as clean.
+#
+# The same regex strips "ubuntu" and "debian", so this was never a RHEL-only
+# problem — it silently suppressed every Debian- and Ubuntu-family finding
+# whose fix was a backport, which is most of them.
+#
+# What follows is rpm's `rpmvercmp` ordering, which dpkg agrees with on
+# everything these feeds contain: compare epoch first, then walk both strings
+# as alternating runs of digits and letters, with '~' sorting before anything.
+
+_VERSION_SEGMENT = re.compile(r"(\d+|[a-zA-Z]+|~)")
+
+
+def _split_evr(version: str) -> tuple[int, str]:
+    """``"1:3.5.5-4.el9_8"`` → ``(1, "3.5.5-4.el9_8")``. Absent epoch is 0."""
+    text = str(version or "").strip()
+    if ":" in text:
+        head, _, tail = text.partition(":")
+        if head.isdigit():
+            return int(head), tail
+    return 0, text
+
+
+def _compare_segments(a: str, b: str) -> int:
+    """rpmvercmp ordering of two version strings (epoch already removed)."""
+    seg_a = _VERSION_SEGMENT.findall(a)
+    seg_b = _VERSION_SEGMENT.findall(b)
+
+    for part_a, part_b in zip(seg_a, seg_b):
+        if part_a == "~" or part_b == "~":
+            # A tilde sorts before everything, so "1.0~rc1" precedes "1.0".
+            if part_a == part_b:
+                continue
+            return -1 if part_a == "~" else 1
+
+        a_num, b_num = part_a.isdigit(), part_b.isdigit()
+        if a_num and b_num:
+            left, right = int(part_a), int(part_b)
+            if left != right:
+                return -1 if left < right else 1
+        elif a_num != b_num:
+            # A numeric segment always outranks an alphabetic one, which is
+            # what makes "1.0" newer than "1.0alpha".
+            return 1 if a_num else -1
+        elif part_a != part_b:
+            return -1 if part_a < part_b else 1
+
+    if len(seg_a) == len(seg_b):
+        return 0
+    # The longer version is newer unless its next segment is a tilde.
+    longer, sign = (seg_a, 1) if len(seg_a) > len(seg_b) else (seg_b, -1)
+    return -sign if longer[min(len(seg_a), len(seg_b))] == "~" else sign
+
+
+def compare_distro_versions(ver_a: str, ver_b: str) -> int | None:
+    """
+    Order two distribution package versions: -1, 0, 1, or None if unreadable.
+
+    None means the strings carried nothing comparable, and the callers treat
+    that as "no ordering can be asserted" rather than guessing a direction.
+    """
+    if not str(ver_a or "").strip() or not str(ver_b or "").strip():
+        return None
+    epoch_a, rest_a = _split_evr(ver_a)
+    epoch_b, rest_b = _split_evr(ver_b)
+    if epoch_a != epoch_b:
+        return -1 if epoch_a < epoch_b else 1
+    if not _VERSION_SEGMENT.search(rest_a) or not _VERSION_SEGMENT.search(rest_b):
+        return None
+    return _compare_segments(rest_a, rest_b)
 
 
 def _comparable(ver_a: str, ver_b: str) -> tuple[tuple, tuple] | None:

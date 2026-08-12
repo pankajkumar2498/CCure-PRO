@@ -1,0 +1,19 @@
+# Keeps the SHA-pinned actions in .github/workflows/ from going stale.
+#
+# Pinning to a commit is what stops a compromised or re-pointed tag executing
+# in CI, but it also freezes the action at that commit forever — including its
+# security fixes. Pinning without this file trades one risk for another.
+# Dependabot opens a PR when a pinned action moves, rewriting the SHA and the
+# trailing "# v4" comment together.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -4,14 +4,30 @@
  */
 import api, { authSession } from "./axiosInstance";
 
+/**
+ * GET /scans
+ *
+ * `search` and `status` are applied server-side. Filtering in the browser only
+ * ever saw the rows already fetched, so a search past the first page silently
+ * missed matches.
+ */
 export const getScans = (
   skip = 0,
   limit = 50,
   scope = "active",
   created_by,
+  { search, status, pipeline_mode, sort_by, sort_dir } = {},
 ) => {
   const params = { skip, limit, scope };
   if (created_by) params.created_by = created_by;
+  if (search) params.search = search;
+  if (status && status !== "all") params.status = status;
+  if (pipeline_mode && pipeline_mode !== "all")
+    params.pipeline_mode = pipeline_mode;
+  if (sort_by) {
+    params.sort_by = sort_by;
+    params.sort_dir = sort_dir || "desc";
+  }
   return api.get("/scans", { params });
 };
 
@@ -38,6 +54,8 @@ const streamUrl = ({
   limit = 200,
   interval = 2,
   created_by,
+  search,
+  status,
 } = {}) => {
   const baseURL = api.defaults.baseURL || "";
   const prefix = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
@@ -48,6 +66,10 @@ const streamUrl = ({
     interval: String(interval),
   });
   if (created_by) params.set("created_by", created_by);
+  // The live stream must apply the same filters as the list request, or each
+  // snapshot replaces the filtered view with an unfiltered one.
+  if (search) params.set("search", search);
+  if (status && status !== "all") params.set("status", status);
 
   const activeOrgId = localStorage.getItem("activeOrgId");
   if (activeOrgId) params.set("org_id", activeOrgId);
@@ -80,6 +102,9 @@ export const streamScanEvents = async ({
   skip = 0,
   limit = 200,
   interval = 2,
+  created_by,
+  search,
+  status,
   signal,
   onEvent,
 } = {}) => {
@@ -90,11 +115,14 @@ export const streamScanEvents = async ({
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(streamUrl({ scope, skip, limit, interval }), {
-    headers,
-    credentials: "include",
-    signal,
-  });
+  const response = await fetch(
+    streamUrl({ scope, skip, limit, interval, created_by, search, status }),
+    {
+      headers,
+      credentials: "include",
+      signal,
+    },
+  );
 
   if (!response.ok || !response.body) {
     throw new Error(`Scan history stream failed (${response.status})`);

@@ -593,6 +593,9 @@ export default function AssetRegistry() {
                         </th>
                         <th>OS</th>
                         <th>Category</th>
+                        <th title="Open services discovered on this asset">
+                          Ports
+                        </th>
                         <th>Owner</th>
                         <th>Employee ID</th>
                         <th>Serial</th>
@@ -632,7 +635,7 @@ export default function AssetRegistry() {
                       {!loading && assets.length === 0 && (
                         <tr>
                           <td
-                            colSpan={13}
+                            colSpan={14}
                             style={{
                               textAlign: "center",
                               padding: "48px 20px",
@@ -720,6 +723,20 @@ export default function AssetRegistry() {
                               }}
                             >
                               {getCategoryLabel(a.device_category)}
+                            </td>
+                            {/* Exposure at a glance. The count comes from the
+                                asset's open services; a dash distinguishes "no
+                                open ports found" from "never port-scanned". */}
+                            <td
+                              style={{
+                                fontVariantNumeric: "tabular-nums",
+                                fontWeight: a.open_ports_count ? 600 : 400,
+                                color: a.open_ports_count
+                                  ? "var(--text)"
+                                  : "var(--text-faint)",
+                              }}
+                            >
+                              {a.open_ports_count ?? "—"}
                             </td>
                             <td>
                               <span

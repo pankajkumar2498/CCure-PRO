@@ -485,9 +485,12 @@ export default function AppLayout({
   const [runningScans, setRunningScans] = useState(0);
   const [criticalCount, setCriticalCount] = useState(0);
   const [quotaUsed, setQuotaUsed] = useState(0);
-  const [quotaLimit, setQuotaLimit] = useState(50);
+  // null means "no limit". Defaulting these to invented numbers made an
+  // enterprise plan with unlimited scans read as "30/50", and pinned the
+  // concurrency display at 5 when the real ceiling was 20.
+  const [quotaLimit, setQuotaLimit] = useState(null);
   const [concurrentUsed, setConcurrentUsed] = useState(0);
-  const [concurrentLimit, setConcurrentLimit] = useState(5);
+  const [concurrentLimit, setConcurrentLimit] = useState(null);
 
   // Poll dashboard summary for sidebar badges & quota
   useEffect(() => {
@@ -499,8 +502,23 @@ export default function AppLayout({
           setRunningScans(d?.scans?.running ?? 0);
           setCriticalCount(d?.severity?.critical ?? 0);
           setQuotaUsed(d?.scans?.last_24h ?? 0);
-          setQuotaLimit(d?.scans?.quota_limit_24h ?? 50);
+          setQuotaLimit(d?.scans?.quota_limit_24h ?? null);
           setConcurrentUsed(d?.scans?.running ?? 0);
+        }
+        // The summary carries usage but not the plan's ceilings, so the real
+        // limits come from the quota endpoint rather than a hardcoded guess.
+        try {
+          const q = await api.get("/scan/quota");
+          if (q.status === 200 && q.data) {
+            setQuotaLimit(q.data.scans_limit_24h ?? null);
+            setConcurrentLimit(q.data.concurrent_limit ?? null);
+            if (typeof q.data.scans_used_24h === "number")
+              setQuotaUsed(q.data.scans_used_24h);
+            if (typeof q.data.concurrent_running === "number")
+              setConcurrentUsed(q.data.concurrent_running);
+          }
+        } catch {
+          /* quota is advisory — never block the sidebar on it */
         }
       } catch {
         /* silent */
@@ -656,6 +674,9 @@ export default function AppLayout({
     );
   };
 
+  // A null limit is an uncapped plan, not a zero-length bar: show the count
+  // and leave the meter empty rather than implying a ceiling that isn't there.
+  const fmtLimit = (limit) => (limit > 0 ? limit : "∞");
   const quotaPct =
     quotaLimit > 0 ? Math.min((quotaUsed / quotaLimit) * 100, 100) : 0;
   const concPct =
@@ -719,7 +740,7 @@ export default function AppLayout({
             <div className="quota-row">
               <span>Scan Quota (24h)</span>
               <span>
-                {quotaUsed}/{quotaLimit}
+                {quotaUsed}/{fmtLimit(quotaLimit)}
               </span>
             </div>
             <div className="quota-bar-track">
@@ -734,7 +755,7 @@ export default function AppLayout({
             <div className="quota-row" style={{ marginTop: 6 }}>
               <span>Concurrent</span>
               <span>
-                {concurrentUsed}/{concurrentLimit}
+                {concurrentUsed}/{fmtLimit(concurrentLimit)}
               </span>
             </div>
             <div className="quota-bar-track">

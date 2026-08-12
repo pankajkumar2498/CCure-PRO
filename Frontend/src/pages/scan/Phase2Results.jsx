@@ -11,7 +11,7 @@
  * forward to Phase 3 and is a result-review action, not a scan trigger.
  */
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
@@ -117,7 +117,25 @@ export default function Phase2Results() {
     setPhase3Results,
     setPipelineState,
     executionMode,
+    setScanId,
+    setScanNo,
+    setTarget,
+    setPipelineMode,
+    setPhase1Hosts,
   } = useScan();
+
+  // Load the scan named in the URL when it is not the one already in context.
+  // This screen used to read context only, so /scan/:scanId/phase2 rendered
+  // nothing and bounced to the template picker — a refresh, a bookmark, a new
+  // tab or a shared link all lost the port-scan results. Phase 1 already
+  // hydrates this way; Phase 2 now matches it.
+  const { scanId: routeScanId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedScanId = routeScanId || searchParams.get("scan_id") || null;
+  const needsHydration = !!requestedScanId && requestedScanId !== scanId;
+  const [hydrating, setHydrating] = useState(needsHydration);
+  const [hydrateError, setHydrateError] = useState("");
+
   const [filter, setFilter] = useState("active");
   const [results, setResults] = useState(() =>
     phase2Results.length ? phase2Results : [],
@@ -132,6 +150,64 @@ export default function Phase2Results() {
   );
   const [phase2Polling, setPhase2Polling] = useState(false);
   const hasResults = results.length > 0;
+
+  useEffect(() => {
+    if (!needsHydration) {
+      setHydrating(false);
+      return;
+    }
+    let cancelled = false;
+    setHydrating(true);
+    setHydrateError("");
+
+    (async () => {
+      try {
+        const { data } = await api.get(`/scans/${requestedScanId}`);
+        if (cancelled) return;
+        const phase1 = data?.results?.phase1 || {};
+        const phase2 = data?.results?.phase2 || {};
+        const hosts2 = phase2.data || [];
+        if (!hosts2.length) {
+          setHydrateError(
+            data?.failure_reason ||
+              "This scan has no port-scan results to display.",
+          );
+          return;
+        }
+        setScanId(data.id);
+        setScanNo(data.scan_no ?? null);
+        setTarget(data.target || "");
+        setPipelineMode(data.pipeline_mode || "asset");
+        setPhase1Hosts(phase1.data || phase1.hosts || hosts2);
+        setPhase2Results(hosts2);
+        setPhase2Summary(phase2.summary || null);
+        setResults(hosts2);
+        setSummary(phase2.summary || null);
+        setPhase2Running(false);
+      } catch (err) {
+        if (cancelled) return;
+        setHydrateError(
+          err?.response?.data?.detail || "Could not load this scan's results.",
+        );
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsHydration,
+    requestedScanId,
+    setScanId,
+    setScanNo,
+    setTarget,
+    setPipelineMode,
+    setPhase1Hosts,
+    setPhase2Results,
+    setPhase2Summary,
+  ]);
 
   const [selected, setSelected] = useState(() => new Set());
   const selectionInitialized = useRef(false);
@@ -273,10 +349,13 @@ export default function Phase2Results() {
   }, [scanId, phase2Running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Don't bounce while a scan named in the URL is still loading, or when it
+    // failed to load — the error belongs on screen, not behind a redirect.
+    if (needsHydration || hydrating || hydrateError) return;
     if (!phase1Hosts.length) {
       navigate("/scan/host-discovery", { replace: true });
     }
-  }, [phase1Hosts.length, navigate]);
+  }, [phase1Hosts.length, navigate, needsHydration, hydrating, hydrateError]);
 
   const discoveredHosts = phase1Hosts;
   const activeHosts = discoveredHosts.filter((h) => h.is_active);
@@ -314,6 +393,34 @@ export default function Phase2Results() {
   };
 
   const activeResults = results.filter((h) => h.is_active);
+
+  if (hydrating) {
+    return (
+      <AppLayout pageTitle="Port Scan Results">
+        <div className="page-inner">
+          <p className="page-subtitle">Loading scan results…</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (hydrateError) {
+    return (
+      <AppLayout pageTitle="Port Scan Results">
+        <div className="page-inner">
+          <div className="alert alert--error" style={{ margin: "16px 0" }}>
+            ⚠ {hydrateError}
+          </div>
+          <button
+            className="btn btn--ghost"
+            onClick={() => navigate("/history")}
+          >
+            ← Back to Scan History
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (!phase1Hosts.length) return null;
 

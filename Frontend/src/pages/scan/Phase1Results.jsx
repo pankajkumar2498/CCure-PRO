@@ -16,7 +16,7 @@
  *   Shows host table + "Continue to Port Scan" button (navigates to Phase2Results).
  */
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
@@ -113,7 +113,77 @@ export default function Phase1Results() {
     setExcludePorts,
     excludeIps,
     setExcludeIps,
+    setScanId,
+    setScanNo,
+    setTarget,
+    setPipelineMode,
+    setPhase1Hosts,
+    setPhase1Summary,
   } = useScan();
+
+  // ── Hydration from the URL ────────────────────────────────────────────────
+  // This page used to read only from in-session state, so opening a past scan
+  // showed nothing and bounced the user to the scan template picker. The whole
+  // results view — host table, filters and every client-side export — was
+  // unreachable the moment you navigated away from a live scan.
+  const { scanId: routeScanId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedScanId = routeScanId || searchParams.get("scan_id") || null;
+  const needsHydration = !!requestedScanId && requestedScanId !== scanId;
+  const [hydrating, setHydrating] = useState(needsHydration);
+  const [hydrateError, setHydrateError] = useState("");
+
+  useEffect(() => {
+    if (!needsHydration) {
+      setHydrating(false);
+      return;
+    }
+    let cancelled = false;
+    setHydrating(true);
+    setHydrateError("");
+
+    (async () => {
+      try {
+        const { data } = await api.get(`/scans/${requestedScanId}`);
+        if (cancelled) return;
+        const phase1 = data?.results?.phase1 || {};
+        const hosts = phase1.data || phase1.hosts || [];
+        if (!hosts.length) {
+          setHydrateError(
+            data?.failure_reason ||
+              "This scan has no host-discovery results to display.",
+          );
+          return;
+        }
+        setScanId(data.id);
+        setScanNo(data.scan_no ?? null);
+        setTarget(data.target || "");
+        setPipelineMode(data.pipeline_mode || "basic");
+        setPhase1Hosts(hosts);
+        setPhase1Summary(phase1.summary || data.summary || null);
+      } catch (err) {
+        if (cancelled) return;
+        setHydrateError(
+          err?.response?.data?.detail || "Could not load this scan's results.",
+        );
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsHydration,
+    requestedScanId,
+    setScanId,
+    setScanNo,
+    setTarget,
+    setPipelineMode,
+    setPhase1Hosts,
+    setPhase1Summary,
+  ]);
 
   const [filter, setFilter] = useState("active");
   // For asset pipeline: poll once to know if Phase 2 is already done
@@ -525,10 +595,14 @@ export default function Phase1Results() {
   };
 
   useEffect(() => {
+    // Only bounce to the scan picker when there is genuinely nothing to show.
+    // While a scan id from the URL is still loading — or has failed to load, so
+    // the error can be read — an empty host list is expected, not a dead end.
+    if (needsHydration || hydrating || hydrateError) return;
     if (!phase1Hosts.length) {
       navigate("/scan", { replace: true });
     }
-  }, [phase1Hosts.length, navigate]);
+  }, [phase1Hosts.length, navigate, needsHydration, hydrating, hydrateError]);
 
   const isBasicScan = pipelineMode === "basic";
   const isAssetPipeline = pipelineMode === "asset";
@@ -631,6 +705,34 @@ export default function Phase1Results() {
     setPhase2Results,
     setPhase2Summary,
   ]);
+
+  if (hydrating) {
+    return (
+      <AppLayout pageTitle="Discovery Results">
+        <div className="page-inner">
+          <p className="page-subtitle">Loading scan results…</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (hydrateError) {
+    return (
+      <AppLayout pageTitle="Discovery Results">
+        <div className="page-inner">
+          <div className="alert alert--error" style={{ margin: "16px 0" }}>
+            ⚠ {hydrateError}
+          </div>
+          <button
+            className="btn btn--ghost"
+            onClick={() => navigate("/history")}
+          >
+            ← Back to Scan History
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (!phase1Hosts.length) return null;
 

@@ -11225,6 +11225,146 @@
         ]
       }
     },
+    "/findings/grouped/by-component": {
+      "get": {
+        "description": "Findings rolled up to the component that would be remediated.\n\nOne outdated application produces one row per CVE published against it. A\nsingle Chrome install twelve major versions behind contributed 1,736 rows to\nthe vulnerability list — accurate, and unreadable. An operator upgrades\nChrome once; this returns that as one row carrying the CVE count, the worst\nseverity, and whether any of them are known-exploited.\n\nThe per-CVE detail remains available from the ungrouped endpoint, filtered\nby the same asset and component.",
+        "operationId": "list_findings_grouped_findings_grouped_by_component_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Findings Grouped",
+        "tags": [
+          "Findings"
+        ]
+      }
+    },
     "/findings/{finding_id}": {
       "get": {
         "operationId": "get_finding_findings__finding_id__get",
@@ -12412,7 +12552,7 @@
     },
     "/scans": {
       "get": {
-        "description": "Return the current user's scan history, archived scans, or recycle-bin entries.\nDoes NOT include full results blob (use GET /scans/{id} for that).",
+        "description": "Return the current user's scan history, archived scans, or recycle-bin entries.\n\nFiltering, search and sorting run in SQL so they cover the whole history\nrather than whichever page the client happens to be holding.\nDoes NOT include full results blob (use GET /scans/{id} for that).",
         "operationId": "list_scans_scans_get",
         "parameters": [
           {
@@ -12479,6 +12619,127 @@
               ],
               "title": "Org Id"
             }
+          },
+          {
+            "description": "all | running | complete | failed | cancelled | unreachable",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "all | running | complete | failed | cancelled | unreachable",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Match target text or scan number",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Match target text or scan number",
+              "title": "Search"
+            }
+          },
+          {
+            "description": "basic | asset | vulnerability_audit | credentialed",
+            "in": "query",
+            "name": "pipeline_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "basic | asset | vulnerability_audit | credentialed",
+              "title": "Pipeline Mode"
+            }
+          },
+          {
+            "description": "Created at or after (ISO)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Created at or after (ISO)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Created at or before (ISO)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Created at or before (ISO)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "created_at | scan_no | status | target | duration | active_hosts | pipeline_mode",
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "created_at | scan_no | status | target | duration | active_hosts | pipeline_mode",
+              "title": "Sort By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Dir",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -12514,7 +12775,7 @@
     },
     "/scans/events": {
       "get": {
-        "description": "Stream scan history snapshots whenever persisted DB state changes.\nUses adaptive polling based on active running scans.",
+        "description": "Stream scan history snapshots whenever persisted DB state changes.\nUses adaptive polling based on active running scans.\n\nThe stream honours the same filters as GET /scans. Without that, a live\nupdate overwrote the client's filtered list with the unfiltered one, and\nsearching appeared to do nothing.",
         "operationId": "stream_scan_history_scans_events_get",
         "parameters": [
           {
@@ -12592,6 +12853,54 @@
                 }
               ],
               "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pipeline_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pipeline Mode"
             }
           }
         ],

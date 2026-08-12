@@ -59,7 +59,31 @@ def _asset_or_404(db: Session, asset_id: str, org_id: str) -> Asset:
     return asset
 
 
-def _serialize_asset(a: Asset) -> dict:
+_RISK_LEVEL_LABELS = {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info",
+    "informational": "Info",
+    "none": "Info",
+}
+
+
+def _normalize_risk_level(value: str | None) -> str | None:
+    """
+    Render risk level in one consistent casing.
+
+    The column mixed 'Critical' with 'info' depending on which code path last
+    wrote the row, which shows up directly in the registry table and breaks any
+    caller matching on the string.
+    """
+    if not value:
+        return value
+    return _RISK_LEVEL_LABELS.get(str(value).strip().lower(), str(value).strip())
+
+
+def _serialize_asset(a: Asset, service_counts: dict[str, int] | None = None) -> dict:
     vc = a.vuln_counts or {}
 
     # Hide/nullify os_confidence if OS details are blank or unknown
@@ -90,7 +114,7 @@ def _serialize_asset(a: Asset) -> dict:
         "subnet": a.subnet,
         "vlan_id": a.vlan_id,
         "risk_score": a.risk_score,
-        "risk_level": a.risk_level,
+        "risk_level": _normalize_risk_level(a.risk_level),
         "is_managed": a.is_managed,
         "is_active": a.is_active,
         "owner": a.owner,
@@ -109,7 +133,30 @@ def _serialize_asset(a: Asset) -> dict:
         "first_seen_at": a.first_seen_at.isoformat() if a.first_seen_at else None,
         "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
         "provenance": getattr(a, "provenance", None) or {},
+        # Exposure at a glance. These were absent from the payload entirely, so
+        # the registry rendered every asset as having no known services even
+        # when the scan had just recorded a dozen.
+        "open_ports_count": (service_counts or {}).get(a.id, 0),
+        "service_count": (service_counts or {}).get(a.id, 0),
     }
+
+
+def _service_counts_for(db: Session, assets: list[Asset]) -> dict[str, int]:
+    """Count open services per asset in one grouped query rather than per row."""
+    ids = [a.id for a in assets]
+    if not ids:
+        return {}
+    try:
+        rows = (
+            db.query(Service.asset_id, func.count(Service.id))
+            .filter(Service.asset_id.in_(ids), Service.state == "open")
+            .group_by(Service.asset_id)
+            .all()
+        )
+        return {aid: int(n) for aid, n in rows}
+    except Exception as exc:  # a count must never break the listing
+        log.debug("Service counts unavailable: %s", exc)
+        return {}
 
 
 @router.get("")
@@ -219,12 +266,13 @@ def list_assets(
     sort_col = col_map.get(sort_by, Asset.risk_score)
     q = q.order_by(sort_col.desc() if sort_dir == "desc" else sort_col.asc())
     assets = q.options(joinedload(Asset.tags)).offset(skip).limit(limit).all()
+    counts = _service_counts_for(db, assets)
 
     return {
         "total": total,
         "skip": skip,
         "limit": limit,
-        "assets": [_serialize_asset(a) for a in assets],
+        "assets": [_serialize_asset(a, counts) for a in assets],
     }
 
 
@@ -980,7 +1028,7 @@ def get_asset(
 ):
     org = _resolve_org(user, org_id)
     asset = _asset_or_404(db, asset_id, org)
-    data = _serialize_asset(asset)
+    data = _serialize_asset(asset, _service_counts_for(db, [asset]))
     data["custom_attributes"] = asset.custom_attributes or {}
     data["notes_summary"] = getattr(asset, "notes_summary", None)
     data["notes"] = [

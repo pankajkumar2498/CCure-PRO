@@ -1,468 +1,685 @@
-# CCure-Audit-PRO — Developer Setup Guide
+# Developer Setup Guide
 
-> This guide covers both **Docker Compose (recommended)** and **local manual setup** for development and production deployment. All paths are relative to the repository root.
+**CCure-Audit-PRO** — getting a working development environment, verified against
+the repository's actual scripts, Dockerfiles, CI workflow and configuration files.
+
+> Every command below exists in this repository or is a standard invocation of a
+> tool the repository declares as a dependency. Nothing is aspirational.
+
+---
 
 ## 1. Prerequisites
 
-### Host-level requirements
+| Requirement             | Version                                | Why                                                                                                                                                  |
+| ----------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Python**              | **3.11** (host worker) / **3.12** (CI) | The Backend image is `python:3.11-slim`; the `start_host_scanner_worker.ps1` error message says `py -3.11 -m venv .venv`; GitHub Actions uses `3.12` |
+| **Node.js**             | **20** (image) / **22** (CI)           | `Frontend/Dockerfile` uses `node:20-slim`; CI's `setup-node` pins `22`                                                                               |
+| **npm**                 | Bundled with Node                      | `package-lock.json` is committed; CI uses `npm ci`                                                                                                   |
+| **PostgreSQL**          | 15 (container) or 18 (host)            | Compose ships `postgres:15-alpine`; the reference host deployment runs PostgreSQL 18                                                                 |
+| **Redis**               | 7                                      | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                         |
+| **Docker + Compose v2** | current                                | The `docker compose` (space) form is used throughout                                                                                                 |
+| **Nmap**                | any recent                             | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                           |
+| **Npcap**               | current                                | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                    |
+| **Git**                 | any                                    |                                                                                                                                                      |
 
-| Requirement    | Minimum Version | Notes                                                              |
-| -------------- | --------------- | ------------------------------------------------------------------ |
-| Docker         | 24.x            | Required for all deployment modes                                  |
-| Docker Compose | v2 (plugin)     | `docker compose` (not `docker-compose`)                            |
-| PostgreSQL     | 14.x            | Must run on the **host machine**, not in Docker (see note below)   |
-| Node.js        | 18.x LTS        | Frontend development only                                          |
-| Python         | 3.11+           | Backend development only                                           |
-| nmap           | 7.x             | Required on Celery worker host (auto-installed in Docker image)    |
-| Scapy          | —               | Installed via pip; requires raw-socket access (root / CAP_NET_RAW) |
+Optional external binaries — each absent tool is a **coverage gap, not an error**,
+except Nuclei in the DAST pipeline where it is essential:
 
-> **Why PostgreSQL runs on the host:** The Celery worker containers run with raw socket access as root. Placing the database inside Docker would complicate network isolation. Docker containers connect to host PostgreSQL via `host.docker.internal:5432` (mapped to `host-gateway` in `docker-compose.yml`).
+| Tool                | Used by                             | Install                                                |
+| ------------------- | ----------------------------------- | ------------------------------------------------------ |
+| `nuclei`            | Network `nuclei_probe`, DAST DETECT | https://github.com/projectdiscovery/nuclei/releases    |
+| `subfinder`         | DAST RECON                          | https://github.com/projectdiscovery/subfinder/releases |
+| `ffuf`              | DAST CRAWL                          | https://github.com/ffuf/ffuf/releases                  |
+| `sqlmap`            | DAST DETECT                         | pip (`sqlmap>=1.9` is in `requirements.txt`)           |
+| Playwright Chromium | DAST CRAWL                          | `playwright install chromium`                          |
 
-### PostgreSQL databases required
-
-Two separate databases must exist on the host PostgreSQL instance:
-
-| Database                                     | Variable       | Purpose                                                   |
-| -------------------------------------------- | -------------- | --------------------------------------------------------- |
-| Application DB (e.g. `ccure_test`)           | `POSTGRES_DB`  | All app data (users, scans, assets, findings)             |
-| Vulnerability Intelligence DB (`vuln_intel`) | `VULN_DB_NAME` | CVE/EPSS/KEV data (external data pipeline populates this) |
-
-Create them:
-
-```sql
-CREATE DATABASE ccure_test;
-CREATE USER ccure_user WITH PASSWORD 'ccure_admin_2026';
-GRANT ALL PRIVILEGES ON DATABASE ccure_test TO ccure_user;
-
-CREATE DATABASE vuln_intel;
-GRANT CONNECT ON DATABASE vuln_intel TO admin;
-```
+After installing Nuclei, fetch its templates once:
+`nuclei -update-templates -ud <dir>` (~13 510 templates when fully installed).
 
 ---
 
-## 2. Docker Compose Setup (Recommended)
+## 2. Repository layout
 
-### Step 1 — Clone the repository
-
-```bash
-git clone <repo-url> CCure-Audit-PRO
-cd CCure-Audit-PRO
+```
+CCure-Audit-PRO/
+├── Backend/            FastAPI application, engines, Celery tasks, Alembic
+│   ├── .env            ← the file config.py loads (git-ignored)
+│   ├── .env.example    Annotated template
+│   ├── requirements.txt
+│   ├── alembic.ini · alembic/versions/  (32 revisions)
+│   ├── scripts/        seeds · admin · verification · vuln feeds · compile_docs.py
+│   └── tests/          57 modules incl. test_docs_integrity.py
+├── Frontend/           React 18 + Vite SPA
+│   ├── .env.local      VITE_API_BASE_URL
+│   └── package.json
+├── docs/               This documentation set
+├── nginx/gateway.conf  Reverse-proxy config for the compose gateway
+├── scripts/            backup_db.ps1 · install_backup_schedule.ps1 ·
+│                       install_feed_schedule.ps1 · start/stop_host_scan_stack.ps1 ·
+│                       docker-postgres-init.sql · host-nginx/
+├── .env                docker-compose variables ONLY (git-ignored)
+├── .env.example        Template for the above
+├── docker-compose.yml
+├── .pre-commit-config.yaml
+└── .github/workflows/ci.yml
 ```
 
-### Step 2 — Create the environment file
-
-```bash
-cp Backend/.env.example .env
-```
-
-Edit `.env` and fill in **all required values**:
-
-```dotenv
-# ── Database ──────────────────────────────────────────────────────
-POSTGRES_USER=ccure_user
-POSTGRES_PASSWORD=ccure_admin_2026
-POSTGRES_DB=ccure_test
-
-# ── Vulnerability Intel DB ────────────────────────────────────────
-VULN_DB_HOST=host.docker.internal
-VULN_DB_PORT=5432
-VULN_DB_NAME=vuln_intel
-VULN_DB_USER=admin
-VULN_DB_PASSWORD=root_secure_password
-
-# ── Security — MUST change in production ─────────────────────────
-# Generate: openssl rand -hex 32
-JWT_SECRET_KEY=REPLACE_WITH_LONG_RANDOM_STRING_32_CHARS_MINIMUM
-
-# ── Initial superadmin (only used if the users table is empty) ────
-DEFAULT_ADMIN_EMAIL=admin@company.com
-DEFAULT_ADMIN_PASSWORD=SecretPassword123
-
-# ── Frontend & CORS ───────────────────────────────────────────────
-CORS_ALLOW_ORIGINS=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
-VITE_API_BASE_URL=/api
-
-# ── Gateway port (public entry point) ────────────────────────────
-GATEWAY_PORT=80
-
-# ── SMTP (for password reset emails) ─────────────────────────────
-SMTP_HOST=host.docker.internal
-SMTP_PORT=1025          # MailHog/Maildev for dev
-SMTP_FROM_EMAIL=no-reply@ccureaudit.pro
-
-# ── Scanner tuning ────────────────────────────────────────────────
-SCANNER_WORKER_CONCURRENCY=20
-MAX_NMAP_PROCESSES=20
-NMAP_THREADS=20
-```
-
-### Step 3 — Start the core services (API + Redis + Frontend + Gateway)
-
-The default profile starts: `redis`, `api`, `frontend`, `gateway`.
-
-```bash
-docker compose up -d
-```
-
-Access the application at `http://localhost` (gateway, port 80) or `http://localhost:3200` (frontend direct) and `http://localhost:8000` (API direct).
-
-### Step 4 — Start the scan workers (optional, needed for actual scanning)
-
-The `worker` (network scans) and `web-worker` (DAST) services are in the `container-scanner` Docker Compose profile. They run as root (required for raw sockets).
-
-```bash
-docker compose --profile container-scanner up -d
-```
-
-**Without workers:** The API starts fine. Scans are dispatched to Celery queues but will sit pending until a worker picks them up.
-
-### Step 5 — Database migration and seed
-
-Database schema creation and RBAC seeding happen **automatically at startup** via the FastAPI lifespan handler (`main.py`). The sequence is:
-
-1. If the database is empty → `Base.metadata.create_all()` bootstraps the schema + stamps Alembic head.
-2. If the database has tables → `alembic upgrade head` runs any pending migrations.
-3. `seed_rbac()` — creates 5 roles + 40 permissions + role-permission assignments (idempotent).
-4. `seed_default_org()` — creates the default org (`org_king`, plan `pro`).
-5. If `DEFAULT_ADMIN_EMAIL` is set and no user exists with that email → creates the first `superadmin` user.
-
-You can also run the migration script manually:
-
-```bash
-docker compose exec api python db/migrate_production_schema.py
-```
-
-### Step 6 — Verify
-
-```bash
-# Check all containers are healthy
-docker compose ps
-
-# Tail API logs
-docker compose logs -f api
-
-# Confirm API is responding
-curl http://localhost:8000/health
-# Expected: {"status":"ok","version":"...","environment":"production"}
-```
+> **CAUTION — two `.env` files, two audiences.** `Backend/config.py` loads
+> **`Backend/.env`**. The repository-root `.env` is consumed by docker-compose
+> only. A token placed in the root file is silently ignored by every Python script
+> in `Backend/`, and vice versa.
 
 ---
 
-## 3. Local Development Setup (Without Docker)
+## 3. Path A — Docker Compose (fastest start)
 
-For rapid iteration on backend or frontend code without rebuilding Docker images.
-
-### 3a. Backend (FastAPI)
-
-**Requirements:** Python 3.11+, nmap installed on the host system, a running PostgreSQL instance.
+### 3.1 Configure
 
 ```bash
-cd Backend
-
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate          # Linux/macOS
-# .venv\Scripts\activate           # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create local .env (copy from example and edit)
 cp .env.example .env
-# Edit .env — set DATABASE_URL to point to your local PostgreSQL
-# e.g. DATABASE_URL=postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+cp Backend/.env.example Backend/.env
+```
 
-# Start Redis (if not already running)
-docker run -d -p 6379:6379 redis:7-alpine
+Compose refuses to start without five variables, each declared `${VAR:?message}`:
 
-# Run database migrations and seed (first time)
+| Variable                    | Set in      | Note                                                           |
+| --------------------------- | ----------- | -------------------------------------------------------------- |
+| `POSTGRES_USER`             | root `.env` |                                                                |
+| `POSTGRES_PASSWORD`         | root `.env` |                                                                |
+| `POSTGRES_DB`               | root `.env` |                                                                |
+| `JWT_SECRET_KEY`            | root `.env` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `COMPLIANCE_ENCRYPTION_KEY` | root `.env` | **Must match `Backend/.env`** on the host scanner worker       |
+
+> **CAUTION:** `COMPLIANCE_ENCRYPTION_KEY` was previously defaulted to empty. The
+> API then encrypted stored credentials under the fallback key hardcoded in
+> `core/security_crypto.py` while the host worker decrypted with the real key from
+> `Backend/.env`, so every credentialed scan failed with _"Invalid encrypted
+> payload or authentication tag"_ and silently completed as an unauthenticated
+> audit. Changing the key also makes credentials encrypted under the old key
+> unreadable — re-enter stored credentials after setting it.
+
+Two routing switches in the root `.env` deserve attention:
+
+| Variable                | Values                         | Meaning                                                                                          |
+| ----------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `DATABASE_HOST`         | blank / `host.docker.internal` | Blank → the containerized `db`. `host.docker.internal` → a native PostgreSQL on the Windows host |
+| `POSTGRES_PORT_BINDING` | `5432` / `5433`                | Use `5433` if a native PostgreSQL already owns 5432                                              |
+
+### 3.2 Start
+
+```bash
+docker compose up -d                       # redis, db, api, frontend, gateway
+docker compose --profile container-scanner up -d   # + worker and web-worker
+```
+
+The scanner workers sit behind the `container-scanner` profile because raw-socket
+discovery and Nmap need direct access to the physical network. The supported
+production layout runs the scanner worker on the host instead (§5).
+
+`api` runs `Backend/start.sh`, which executes
+`python db/migrate_production_schema.py` — Alembic migrations plus RBAC and
+default-org seeding — before launching uvicorn with `--proxy-headers
+--forwarded-allow-ips='*'`.
+
+### 3.3 Verify
+
+```bash
+docker compose ps
+curl -s http://127.0.0.1:8000/ | head           # system info
+curl -s http://127.0.0.1:8000/api/pipeline-modes
+docker compose logs -f api
+```
+
+| Surface           | URL                                                               |
+| ----------------- | ----------------------------------------------------------------- |
+| API               | `http://127.0.0.1:8000`                                           |
+| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**) |
+| ReDoc             | `http://127.0.0.1:8000/redoc`                                     |
+| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                              |
+| Frontend (direct) | `http://127.0.0.1:3200`                                           |
+| Gateway           | `http://<host>:${GATEWAY_PORT:-80}`                               |
+
+### 3.4 Rebuild rules
+
+| Change                                                                            | Action                                                                                                      |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Python under `Backend/`                                                           | `docker compose restart api` — `./Backend` is bind-mounted                                                  |
+| JSX/CSS under `Frontend/src/`                                                     | `docker compose build frontend && docker compose up -d --no-deps frontend` — assets are baked at build time |
+| `VITE_API_BASE_URL`                                                               | Same as above; Vite inlines it at build time                                                                |
+| `requirements.txt`                                                                | `docker compose build api worker web-worker`                                                                |
+| Anything under `core/`, `scans/`, `orchestrator/` while using the **host** worker | Restart the host worker (§5)                                                                                |
+
+---
+
+## 4. Path B — Local development without containers
+
+### 4.1 Backend
+
+```powershell
+cd Backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1        # Linux/macOS: source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Then create `Backend/.env` from `Backend/.env.example` and set at minimum
+`DATABASE_URL`, `JWT_SECRET_KEY`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`.
+
+Initialise the database (migrations + RBAC + default org):
+
+```bash
 python db/migrate_production_schema.py
-
-# Start the FastAPI development server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-API is now available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs` (Swagger UI).
-
-**Run the Celery worker locally:**
+Run the API:
 
 ```bash
-# In a separate terminal (same venv, Backend/ directory)
-# Must run as root (or with CAP_NET_RAW) for Scapy/Nmap
-sudo .venv/bin/celery -A core.celery_app worker \
-  --loglevel=info \
-  --queues=scanner \
-  --concurrency=4
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# or, equivalently for a one-off:
+python main.py            # __main__ block runs uvicorn on 0.0.0.0:8000
 ```
 
-**Run the web scan worker locally:**
+Run a worker:
 
 ```bash
-sudo .venv/bin/celery -A core.celery_app worker \
-  --loglevel=info \
-  --queues=web_recon,web_crawl,web_dast,web_audit \
-  --concurrency=2
+celery -A core.celery_app worker --loglevel=info \
+       --queues=scanner,default,compliance --concurrency=20 --prefetch-multiplier=1
+
+celery -A core.celery_app worker --loglevel=info \
+       --queues=web_recon,web_crawl,web_dast,web_audit --concurrency=4 --prefetch-multiplier=1
 ```
 
-> **Note on Playwright:** The web worker requires `playwright install chromium` to be run once after `pip install -r requirements.txt`:
->
-> ```bash
-> playwright install chromium
-> ```
+Celery Beat (compliance schedules and log pruning):
 
-### 3b. Frontend (React / Vite)
+```bash
+celery -A core.celery_app beat --loglevel=info
+```
 
-**Requirements:** Node.js 18+, npm or yarn.
+> **IMPORTANT:** Raw-socket discovery needs elevation. Run the worker as
+> root (Linux/macOS) or from an **elevated** PowerShell (Windows, with Npcap
+> installed). Without privileges `can_raw` is false and Phase 1 falls back to TCP
+> connect only.
+
+### 4.2 Frontend
 
 ```bash
 cd Frontend
-
-# Install dependencies
-npm install
-
-# Create local env file
-cp .env.example .env.local
-# Set VITE_API_URL=http://localhost:8000
-
-# Start dev server
-npm run dev
-# Dev server: http://localhost:5173
-# API proxy: /api/* → http://localhost:8000/*
+npm install                 # or `npm ci` to honour package-lock.json exactly
+npm run dev                 # http://localhost:3000
 ```
 
-**Build for production:**
+`vite.config.js` proxies eleven prefixes to `http://localhost:8000`: `/auth`,
+`/scan`, `/scans`, `/web-scans`, `/reports`, `/admin`, `/dashboard`, `/assets`,
+`/findings`, `/notifications`, `/topology`.
 
-```bash
-npm run build
-# Output: Frontend/dist/
-```
+> **NOTE:** `/user`, `/compliance` and `/api` are **not** proxied. Set
+> `VITE_API_BASE_URL=http://localhost:8000` in `Frontend/.env.local` so profile,
+> preferences, session, compliance and NVD-admin calls reach the backend.
 
 ---
 
-## 4. Environment Variable Reference
+## 5. Host scanner worker (Windows)
 
-### Backend Environment Variables
+The reference production layout runs the scanner worker outside Docker so Scapy
+and Nmap get raw-socket access to the physical network.
 
-All variables read from environment by `Backend/config.py`. Variables marked **Yes (Required)** will cause startup failures or broken features if absent.
+```powershell
+.\Backend\scripts\scan\start_host_scanner_worker.ps1
+.\Backend\scripts\scan\start_host_scanner_worker.ps1 -Force   # replace a running worker
+```
 
-| Variable                             | Required   | Default                                                 | Description                                                                   |
-| ------------------------------------ | ---------- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `DATABASE_URL`                       | **Yes**    | —                                                       | PostgreSQL connection string (e.g. `postgresql://user:pass@host:5432/dbname`) |
-| `CELERY_BROKER_URL`                  | **Yes**    | `redis://localhost:6379/0`                              | Redis URL for Celery task broker                                              |
-| `CELERY_RESULT_BACKEND`              | **Yes**    | `redis://localhost:6379/0`                              | Redis URL for Celery result storage                                           |
-| `JWT_SECRET_KEY`                     | **Yes**    | —                                                       | HS256 signing key — must be ≥32 random chars (`openssl rand -hex 32`)         |
-| `APP_ENV`                            | No         | `development`                                           | `production` = Secure cookie flag + no debug output                           |
-| `ENV` / `ENVIRONMENT`                | No         | `development`                                           | Alias; `APP_ENV` takes precedence                                             |
-| `LOG_LEVEL`                          | No         | `INFO`                                                  | Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)                        |
-| `DEFAULT_ADMIN_EMAIL`                | First boot | —                                                       | Seeds first superadmin user. Remove after first boot.                         |
-| `DEFAULT_ADMIN_PASSWORD`             | First boot | —                                                       | Seeds first superadmin password. Remove after first boot.                     |
-| `ACCESS_TOKEN_EXPIRES_MINUTES`       | No         | `30`                                                    | JWT access token lifetime in minutes                                          |
-| `REFRESH_TOKEN_EXPIRES_DAYS`         | No         | `7`                                                     | Refresh token lifetime in days                                                |
-| `REFRESH_COOKIE_NAME`                | No         | `ccure_refresh_token`                                   | Name of the JWT refresh token HTTP-only cookie                                |
-| `FRONTEND_URL`                       | No         | `http://localhost:3000`                                 | Used for constructing password reset email links                              |
-| `TRUSTED_PROXIES`                    | No         | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Comma-separated list of trusted proxies for client IP parsing                 |
-| `SKIP_DOTENV_LOAD`                   | No         | —                                                       | Set to any value to skip `.env` file loading (for container use)              |
-| `SMTP_HOST`                          | No         | `localhost`                                             | SMTP server hostname                                                          |
-| `SMTP_PORT`                          | No         | `1025`                                                  | SMTP port (1025 = MailHog dev; 587 = TLS submission; 465 = SSL)               |
-| `SMTP_USER`                          | No         | —                                                       | SMTP authentication username                                                  |
-| `SMTP_PASSWORD`                      | No         | —                                                       | SMTP authentication password                                                  |
-| `SMTP_SECURE`                        | No         | `False`                                                 | `True` for SSL/TLS on port 465                                                |
-| `SMTP_FROM_EMAIL`                    | No         | `no-reply@ccureaudit.pro`                               | Sender address for system emails                                              |
-| `VULN_DB_HOST`                       | No         | `host.docker.internal`                                  | Vulnerability intel PostgreSQL host                                           |
-| `VULN_DB_PORT`                       | No         | `5432`                                                  | Vulnerability intel PostgreSQL port                                           |
-| `VULN_DB_NAME`                       | No         | `vuln_intel`                                            | Vulnerability intel database name (`PGDATABASE` is an alias)                  |
-| `VULN_DB_USER`                       | No         | `admin`                                                 | Vulnerability intel database user (`PGUSER` is an alias)                      |
-| `VULN_DB_PASSWORD`                   | No         | `root`                                                  | Vulnerability intel database password (`PGPASSWORD` is an alias)              |
-| `PGHOST`                             | No         | `localhost`                                             | Alias for `VULN_DB_HOST` (legacy)                                             |
-| `SCANNER_WORKER_CONCURRENCY`         | No         | system CPU count                                        | Celery worker concurrency for the `scanner` queue                             |
-| `SCANNER_WORKER_PREFETCH_MULTIPLIER` | No         | `1`                                                     | Celery task prefetch (keep at 1 for long-running scans)                       |
-| `MAX_NMAP_PROCESSES`                 | No         | `20`                                                    | Max parallel Nmap processes                                                   |
-| `NMAP_THREADS`                       | No         | `20`                                                    | Nmap thread count per process                                                 |
-| `NMAP_TIMEOUT`                       | No         | `300`                                                   | Nmap timeout in seconds (Celery task time limit = this + 60)                  |
-| `NMAP_CACHE_ENABLED`                 | No         | `True`                                                  | Cache Nmap scan results to avoid redundant scans                              |
-| `NMAP_CACHE_TTL_HOURS`               | No         | `72`                                                    | Nmap result cache lifetime in hours                                           |
-| `NMAP_PROCESS_WAIT_TIMEOUT`          | No         | `900`                                                   | Max seconds to wait for an Nmap process to start                              |
-| `NUCLEI_BINARY`                      | No         | `nuclei`                                                | Path to Nuclei binary (must be in PATH or absolute)                           |
-| `NUCLEI_TEMPLATES_DIR`               | No         | `/opt/nuclei-templates`                                 | Path to Nuclei template library                                               |
-| `NUCLEI_CONCURRENCY`                 | No         | `25`                                                    | Nuclei parallel template execution                                            |
-| `NUCLEI_BULK_SIZE`                   | No         | `25`                                                    | Nuclei bulk request size                                                      |
-| `NUCLEI_SEVERITY`                    | No         | `medium,high,critical`                                  | Default Nuclei severity filter                                                |
-| `NUCLEI_TIMEOUT`                     | No         | `7200`                                                  | Nuclei max run time in seconds                                                |
-| `SUBFINDER_BINARY`                   | No         | `subfinder`                                             | Path to subfinder binary for subdomain enumeration                            |
-| `FFUF_BINARY`                        | No         | `ffuf`                                                  | Path to ffuf binary for directory brute-forcing                               |
-| `FFUF_WORDLIST`                      | No         | `/opt/wordlists/common.txt`                             | Wordlist path for ffuf                                                        |
-| `SQLMAP_BINARY`                      | No         | `sqlmap`                                                | Path to sqlmap binary for SQL injection testing                               |
-| `SQLMAP_LEVEL`                       | No         | `2`                                                     | sqlmap detection level (1–5)                                                  |
-| `SQLMAP_RISK`                        | No         | `2`                                                     | sqlmap risk level (1–3)                                                       |
-| `SQLMAP_TIMEOUT`                     | No         | `600`                                                   | sqlmap max run time in seconds                                                |
-| `PLAYWRIGHT_TIMEOUT`                 | No         | `60000`                                                 | Playwright browser operation timeout in milliseconds                          |
-| `MAX_CRAWL_DEPTH`                    | No         | `5`                                                     | Web crawler maximum link depth                                                |
-| `MAX_CRAWL_URLS`                     | No         | `500`                                                   | Web crawler maximum URLs to visit per scan                                    |
-| `CRAWL_CONCURRENCY`                  | No         | `3`                                                     | Web crawler parallel browser tabs                                             |
-| `MAX_RESPONSE_BODY_SIZE`             | No         | `10240`                                                 | Max response body stored in WebFinding (bytes)                                |
-| `WEB_SCAN_RATE_LIMIT`                | No         | `5`                                                     | Default requests/second for DAST scans                                        |
-| `WEB_STEALTH_RATE_LIMIT`             | No         | `2`                                                     | Reduced rate for WAF-detected targets                                         |
-| `WEB_SCAN_TIMEOUT`                   | No         | `14400`                                                 | Max total web scan time in seconds (4 hours)                                  |
+The script requires `Backend\.venv\Scripts\python.exe` and **refuses to start a
+second worker** on the `scanner` queue. Two workers on one queue is a real hazard:
+tasks go to whichever grabs them first, and if the two were started from different
+working directories they can be running different code — so editing `Backend/` and
+restarting "the" worker would silently leave the other serving stale code. The
+guard counts only top-level Celery processes, because a single worker also shows a
+child `python.exe` under the venv's base interpreter.
 
-### Frontend Environment Variables
+Whole-stack helpers:
 
-| Variable            | Default                 | Description                             |
-| ------------------- | ----------------------- | --------------------------------------- |
-| `VITE_API_URL`      | `http://localhost:8000` | Backend API base URL (dev server)       |
-| `VITE_API_BASE_URL` | `/api`                  | Backend API base URL (production build) |
+```powershell
+.\scripts\start_host_scan_stack.ps1
+.\scripts\stop_host_scan_stack.ps1
+```
+
+Restart the host worker after changing anything under `core/`, `scans/` or
+`orchestrator/`.
 
 ---
 
-## 5. Common Workflows
+## 6. Environment variables
 
-### Reset and re-seed the database
+Read by `Backend/config.py`. `_selected_env_file()` picks `Backend/.env.test` when
+`APP_ENV` is `test`/`testing` and that file exists, otherwise `Backend/.env`,
+otherwise `.env.test`. `SKIP_DOTENV_LOAD` disables loading entirely.
+
+### Application
+
+| Variable                          | Default                                                 | Effect                                                                                 |
+| --------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `APP_ENV` / `ENVIRONMENT` / `ENV` | `development`                                           | `production` disables `/docs`, `/redoc`, `/openapi.json` and hard-fails a weak JWT key |
+| `LOG_LEVEL`                       | `INFO`                                                  |                                                                                        |
+| `LOG_FORMAT`                      | `text`                                                  | `json` switches to single-line JSON records                                            |
+| `ACCESS_LOG_LEVEL`                | `WARNING`                                               | uvicorn access logger                                                                  |
+| `TRUSTED_PROXIES`                 | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Client-IP resolution for audit logs and rate limiting                                  |
+| `CORS_ALLOW_ORIGINS`              | six localhost origins                                   | Comma-separated                                                                        |
+| `FRONTEND_URL`                    | `http://localhost:3000`                                 | Base for password-reset links                                                          |
+| `PORT`                            | `8000`                                                  | Read by `start.sh`                                                                     |
+| `RELOAD`                          | `false`                                                 | `true` runs uvicorn with `--reload`                                                    |
+
+### Database
+
+| Variable                                              | Default                                | Effect                                                                                                  |
+| ----------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                        | `sqlite:///Backend/ccure_users.db`     | PostgreSQL enables pool tuning: `pool_pre_ping`, `pool_size=10`, `max_overflow=20`, `pool_recycle=3600` |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | —                                      | Compose-only; required                                                                                  |
+| `DATABASE_HOST`                                       | `db`                                   | Compose routing switch                                                                                  |
+| `POSTGRES_PORT_BINDING`                               | `5433`                                 | Host bind for the `db` container                                                                        |
+| `TEST_DATABASE_URL`                                   | pinned to `ccure_pytest_db` in compose | See §9                                                                                                  |
+
+### Vulnerability intelligence
+
+| Variable                                                                            | Default                                                | Effect                                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------- |
+| `VULNERABILITY_INTEL_DATABASE_URL`                                                  | —                                                      | Explicit URL; always wins                                 |
+| `VULN_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD`                          | `localhost` / `5432` / `ccure_test` / `ccure_user` / … | Setting **any** of these selects the dedicated database   |
+| `PGHOST` / `PGPORT` / `PGDATABASE` / `PGUSER` / `PGPASSWORD`                        | —                                                      | Fallbacks for the above                                   |
+| `NVD_API_KEY`                                                                       | —                                                      | Raises the NVD rate limit                                 |
+| `VULNCHECK_API_TOKEN`                                                               | —                                                      | Required by `sync_vulncheck.py`, which exits 2 without it |
+| `CCURE_FEED_DIR`                                                                    | `<repo>/feeds`                                         | Feed staging root (~2 GB)                                 |
+| `OSV_STAGING_DIR` · `MSRC_STAGING_DIR` · `EXPLOIT_STAGING_DIR` · `CSAF_STAGING_DIR` | derived                                                | Per-feed overrides                                        |
+
+### Authentication
+
+| Variable                                         | Default                    | Effect                                                                       |
+| ------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------- |
+| `JWT_SECRET_KEY`                                 | dev default                | **Raises `RuntimeError` in production if left at a known default**           |
+| `ACCESS_TOKEN_EXPIRES_MINUTES`                   | `30`                       |                                                                              |
+| `REFRESH_TOKEN_EXPIRES_DAYS`                     | `7`                        |                                                                              |
+| `MFA_ENCRYPTION_KEY`                             | `JWT_SECRET_KEY`           | Rotating the JWT key without setting this orphans every enrolled TOTP secret |
+| `REFRESH_COOKIE_NAME`                            | `ccure_refresh_token`      |                                                                              |
+| `REFRESH_COOKIE_PATH`                            | `/`                        |                                                                              |
+| `REFRESH_COOKIE_SAMESITE`                        | `lax`                      |                                                                              |
+| `REFRESH_COOKIE_SECURE`                          | `false`                    | **Set `true` behind HTTPS**                                                  |
+| `REFRESH_COOKIE_DOMAIN`                          | unset                      |                                                                              |
+| `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` | empty                      | Seeds the first superadmin at startup                                        |
+| `COMPLIANCE_ENCRYPTION_KEY`                      | fallback (logged at ERROR) | AES-256-GCM master key for stored credentials                                |
+| `SCAN_KEY_DIR`                                   | user home                  | Directory `key_path` must resolve under                                      |
+
+### Scanning
+
+| Variable                                                      | Default                | Effect                                                 |
+| ------------------------------------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `NMAP_TIMEOUT`                                                | `300`                  | Also sets Celery `task_time_limit = NMAP_TIMEOUT + 60` |
+| `NMAP_THREADS`                                                | `20`                   |                                                        |
+| `MAX_NMAP_PROCESSES`                                          | `20`                   | Redis-backed process limiter                           |
+| `NMAP_PROCESS_WAIT_TIMEOUT`                                   | `900`                  |                                                        |
+| `NMAP_CACHE_ENABLED`                                          | `True`                 |                                                        |
+| `NMAP_CACHE_TTL_HOURS`                                        | `72`                   |                                                        |
+| `SCAN_IP_BLACKLIST`                                           | empty                  | Comma-separated IPs/CIDRs never scanned                |
+| `PASSIVE_FIRST_DEFAULT`                                       | `False`                | OT-safety default                                      |
+| `NUCLEI_BINARY`                                               | `nuclei`               | Network plugin                                         |
+| `NUCLEI_TEMPLATES`                                            | `~/nuclei-templates`   | Network plugin                                         |
+| `NUCLEI_SEVERITIES`                                           | `critical,high,medium` | ~7 460 of ~13 510 templates                            |
+| `NUCLEI_TIMEOUT` / `NUCLEI_RATE_LIMIT` / `NUCLEI_CONCURRENCY` | `900` / `150` / `50`   | Network plugin                                         |
+| `CCURE_SNMP_WALK_CONCURRENCY`                                 | `8`                    | Topology                                               |
+| `CCURE_SNMP_WALK_TIMEOUT`                                     | `240`                  | Topology                                               |
+
+### Web scanning (DAST)
+
+| Variable                                                                            | Default                         |
+| ----------------------------------------------------------------------------------- | ------------------------------- |
+| `NUCLEI_TEMPLATES_DIR`                                                              | `/opt/nuclei-templates`         |
+| `SUBFINDER_BINARY` / `FFUF_BINARY` / `SQLMAP_BINARY`                                | `subfinder` / `ffuf` / `sqlmap` |
+| `FFUF_WORDLIST`                                                                     | `/opt/wordlists/common.txt`     |
+| `PLAYWRIGHT_TIMEOUT`                                                                | `60000` ms                      |
+| `PLAYWRIGHT_BROWSERS_PATH`                                                          | `/opt/playwright` (image)       |
+| `MAX_CRAWL_DEPTH` / `MAX_CRAWL_URLS` / `CRAWL_CONCURRENCY` / `CRAWL_SETTLE_TIMEOUT` | `5` / `500` / `3` / `5000` ms   |
+| `WEB_SCAN_TIMEOUT`                                                                  | `14400` (4 h)                   |
+| `WEB_SCAN_RATE_LIMIT` / `WEB_STEALTH_RATE_LIMIT`                                    | `5` / `2` req/s                 |
+| `MAX_RESPONSE_BODY_SIZE`                                                            | `10240` bytes of evidence       |
+| `OAST_ENABLED` / `OAST_SERVER` / `OAST_TOKEN`                                       | `True` / empty / empty          |
+| `NUCLEI_SEVERITY` (DAST)                                                            | `medium,high,critical`          |
+| `NUCLEI_CONCURRENCY` / `NUCLEI_BULK_SIZE` / `NUCLEI_TIMEOUT` (DAST)                 | `25` / `25` / `7200`            |
+| `SQLMAP_LEVEL` / `SQLMAP_RISK` / `SQLMAP_TIMEOUT`                                   | `3` / `2` / `600`               |
+
+### Task queue and mail
+
+| Variable                                      | Default                    |
+| --------------------------------------------- | -------------------------- |
+| `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` |
+| `SCANNER_WORKER_CONCURRENCY`                  | `NMAP_THREADS` (20)        |
+| `SCANNER_WORKER_PREFETCH_MULTIPLIER`          | `1`                        |
+| `WEB_WORKER_CONCURRENCY`                      | `4` (compose)              |
+| `CELERY_TASK_ALWAYS_EAGER`                    | `False`                    |
+| `SMTP_HOST` / `SMTP_PORT`                     | `localhost` / `1025`       |
+| `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SECURE` | empty / empty / `False`    |
+| `SMTP_FROM_EMAIL`                             | `no-reply@ccureaudit.pro`  |
+
+### Frontend
+
+| Variable            | Default            | Effect                                         |
+| ------------------- | ------------------ | ---------------------------------------------- |
+| `VITE_API_BASE_URL` | `""` (same-origin) | Baked at **build** time. Compose passes `/api` |
+
+---
+
+## 7. Database
+
+### Initialisation
 
 ```bash
-# Drop and recreate the application database
-psql -U postgres -c "DROP DATABASE IF EXISTS ccure_test;"
-psql -U postgres -c "CREATE DATABASE ccure_test OWNER ccure_user;"
-
-# Restart the API — schema and seed runs automatically
-docker compose restart api
-```
-
-### Seeding Compliance standards and baselines
-
-During development, you must run the following seeding commands from the `Backend/` directory (with the virtual environment active) to populate the framework catalog, baseline policies, and rules:
-
-```bash
-# 1. Seed base RBAC roles and permissions (registers 51 total permissions)
+cd Backend
 python db/migrate_production_schema.py
-
-# 2. Seed framework catalog (ISO 27001 standard controls)
-python -m scripts.seed_compliance
-
-# 3. Seed baseline check rules and remediation scripts
-python -m scripts.seed_real_rules
-
-# 4. Seed mock compliance findings (for dashboard testing)
-python -m scripts.seed_mock_findings
 ```
 
-### Run Alembic migrations manually
+Branches on whether the `public` schema has tables:
+
+- **Empty** → `Base.metadata.create_all()`, `create_partitions()` (8 hash
+  partitions each for `audit_logs` and `asset_vulnerabilities`), then
+  `alembic stamp head`.
+- **Existing** → `alembic upgrade head`.
+
+It then runs the four additive helpers (`ensure_user_schema`,
+`ensure_mac_vendor_schema`, `ensure_scan_schema`, `ensure_topology_schema`),
+seeds RBAC and the default organization, and prints a table summary.
+
+### Alembic
 
 ```bash
-# Inside the api container
-docker compose exec api alembic upgrade head
-
-# Or generate a new revision after model changes
-docker compose exec api alembic revision --autogenerate -m "add_new_column"
+cd Backend
+alembic current
+alembic history --verbose
+alembic upgrade head
+alembic downgrade -1
+alembic revision --autogenerate -m "describe the change"
 ```
 
-### Inspect Celery task queue
+`alembic.ini` leaves `sqlalchemy.url` blank; `alembic/env.py` reads
+`AppConfig.DATABASE_URL`. Head is `c3h4i5j6k7l8`, root `7f96fc2fa41a`, 32 revisions.
 
-```bash
-# Active tasks
-docker compose exec worker celery -A core.celery_app inspect active
+### Seeding
 
-# Pending tasks
-docker compose exec worker celery -A core.celery_app inspect reserved
+| Command                                | Effect                                                               |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| `python -m scripts.seed_compliance`    | Frameworks and controls from the twelve `*_controls_seed.json` files |
+| `python -m scripts.seed_real_rules`    | Compliance rules, then evaluates them                                |
+| `python scripts/admin/create_admin.py` | Create an administrator interactively                                |
+| `python scripts/print_admin.py`        | Print the seeded admin account                                       |
+| `python scripts/seed_mock_findings.py` | Sample findings for UI work                                          |
 
-# Revoke a stuck task
-docker compose exec worker celery -A core.celery_app control revoke <task-id> --terminate
+Framework seeding also runs automatically in the API lifespan when any framework's
+control count falls below its threshold.
+
+### Backups
+
+```powershell
+$env:PGPASSWORD = '<password>'
+.\scripts\backup_db.ps1 -SkipReferenceData   # fast: operational data only
+.\scripts\install_backup_schedule.ps1        # register the 6-hourly scheduled task
+Get-ScheduledTask -TaskName 'CCure DB Backup' | Get-ScheduledTaskInfo
 ```
 
-### View scan worker logs
+Restore: `pg_restore --clean --if-exists -d ccure_test <file>.dump`.
 
-```bash
-docker compose logs -f worker
-docker compose logs -f web-worker
-```
-
-### SMTP development with MailHog
-
-```bash
-# Run MailHog (catches all outgoing email in a local UI)
-docker run -d -p 1025:1025 -p 8025:8025 mailhog/mailhog
-
-# Set in .env
-SMTP_HOST=localhost
-SMTP_PORT=1025
-
-# View emails at: http://localhost:8025
-```
+> **CAUTION:** `archive_mode` is `off` on the reference deployment, so recovery
+> granularity is "since the last dump", not point-in-time. Take an ad-hoc dump
+> before any migration, bulk delete or test run.
 
 ---
 
-## 6. Production Checklist
+## 8. Vulnerability feeds
 
-Before deploying to production:
+The `vuln_intel` database is **not under this repo's Alembic control** — its
+`alembic_version` names a revision that exists nowhere in the tree. Each sync
+script asserts the tables it needs, so the feeds can be rebuilt onto an empty
+server.
 
-- [ ] Generate a cryptographically strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
-- [ ] Set `APP_ENV=production` (enables Secure cookie, disables debug)
-- [ ] Configure real SMTP credentials (not MailHog)
-- [ ] Set `CORS_ALLOW_ORIGINS` to your actual domain(s) only
-- [ ] Set `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` — **remove these env vars** after the first boot (the admin account is already created; these are not needed again)
-- [ ] Enable HTTPS on the nginx gateway (update `nginx/gateway.conf`, add TLS certificate volume)
-- [ ] Set `REFRESH_COOKIE_PATH=/` and ensure the cookie `Secure` flag is active (`APP_ENV=production`)
-- [ ] Use a dedicated PostgreSQL user with minimal privileges (`GRANT` only on required tables)
-- [ ] Configure a firewall so that ports 6379 (Redis) and 5432 (PostgreSQL) are **not** exposed publicly — only `8000` (API) and `80/443` (gateway) should be externally accessible, and even `8000` should be gateway-only in production
-- [ ] Configure PostgreSQL connection pooling (PgBouncer) if deploying at scale
-- [ ] Set `SCANNER_WORKER_CONCURRENCY` based on available CPU cores and target scan volume
-- [ ] Mount a persistent volume for `./Backend/reports` (PDF reports are stored here)
+```bash
+cd Backend
+python scripts/vuln/download_nvd.py           # NVD bulk
+python scripts/vuln/sync_osv.py               # osv.dev; --list shows ecosystems
+python scripts/vuln/sync_msrc.py              # Microsoft Security Update Guide
+python scripts/vuln/sync_exploit_intel.py     # ExploitDB + Metasploit + Nuclei + KEV
+python scripts/vuln/sync_csaf.py              # Siemens, CISA, Red Hat
+python scripts/vuln/sync_vulncheck.py         # VulnCheck KEV (needs a token)
+python scripts/vuln/backfill_finding_intel.py # Backfill existing findings
+```
+
+```powershell
+.\scripts\install_feed_schedule.ps1           # register recurring feed sync
+```
+
+Budget ~2 GB for the staged archives; `vuln_intel` itself reaches ~10 GB once
+every feed has run. Grant access with
+`Backend/scripts/grant_vuln_intel_access.sql`.
 
 ---
 
-## 7. Running Tests & Quality Gates
-
-The CCure Audit PRO backend uses `pytest` for automated test execution.
-
-### Local Test Execution & Mock Scanners
-
-If you do not have raw scanning binaries (`nmap`, `nuclei`, `subfinder`, etc.) installed on your local host system, or if you lack raw socket network access (`CAP_NET_RAW` / `CAP_NET_ADMIN` required by `Scapy`), you can run the test suite in mock mode by defining `MOCK_SCANNERS=true`:
+## 9. Testing
 
 ```bash
-# Windows (PowerShell):
-$env:MOCK_SCANNERS="true"
-pytest
-
-# Linux/macOS:
-export MOCK_SCANNERS=true
-pytest
+cd Backend
+pytest                                  # whole suite
+pytest tests/test_scans.py -v
+pytest --cov=. --cov-report=xml -v --reruns 1   # the CI invocation
 ```
 
-When this variable is set to `"true"` (or when the scanner binaries are missing on the developer's system), the tests will bypass actual process execution and utilize static XML/JSON parser fixtures in `Backend/tests/conftest.py`.
+`pytest.ini`: `python_files = test_*.py`, `addopts = --ignore=test_output.txt`.
+CI installs `pytest==7.4.4`, `pytest-cov`, `pytest-rerunfailures`, `bandit`,
+`ruff` on top of `requirements.txt`, and sets `MOCK_SCANNERS=true`.
 
-### Generating OpenAPI Schema for API contract checks
+> **CAUTION — the test suite is destructive.** It `TRUNCATE`s `organizations` and
+> `users` `CASCADE`, which reaches `scans`, `scan_phases`, `assets`, `services`,
+> `asset_change_log`, `audit_logs` and `notifications`. On 10 Aug 2026 a full-suite
+> run inherited the API container's `DATABASE_URL`, was accepted by a guard that
+> matched `_test$`, and destroyed all users, orgs, scans and assets. There was no
+> recovery.
+>
+> Three layers in `Backend/tests/conftest.py` now prevent a repeat:
+>
+> 1. `TEST_DB_NAME_PATTERN` accepts only `^pytest_`, `_pytest`, `_pytest_db`.
+> 2. `FORBIDDEN_DB_NAMES` rejects `ccure_test`, `ccure_db`, `vuln_intel`, … even if
+>    renamed into the pattern.
+> 3. `_assert_database_is_disposable()` refuses any database holding rows in
+>    `users` / `scans` / `assets` / `services` unless it carries the
+>    `_pytest_scratch_marker` sentinel table.
+>
+> `docker-compose.yml` also pins `TEST_DATABASE_URL` to `ccure_pytest_db` on `api`,
+> `worker` and `web-worker`, so `docker exec … pytest` cannot inherit the live URL.
+> **Take a backup before running the suite anyway.**
 
-To extract the OpenAPI schema from the FastAPI application configuration for validation checks or contract diffs, execute the following command from the `Backend` directory:
+### Frontend
 
 ```bash
-python -c "import json; from main import app; print(json.dumps(app.openapi()))" > openapi_new.json
+cd Frontend
+npm test          # vitest run
 ```
 
-Compare `openapi_new.json` against a tracked baseline schema `openapi.json` to detect breaking contract changes before merging.
+### Disposable scan targets
 
-### Local Git Pre-commit Hooks
+```powershell
+docker start ccure-rocky-target    # Rocky 9.8,   ssh 127.0.0.1:2222  root / ccure-test-only
+docker start ccure-ubuntu-target   # Ubuntu 24.04, ssh 127.0.0.1:2223  root / ccure-test-only
+docker start ccure-nuclei-target   # nginx on 127.0.0.1:8099 serving .env and .git/config
+```
 
-To enable automated local formatting, styling, and security checks before you can commit code, you must install and register the pre-commit configuration:
+Expected: Rocky **48 findings (4 Critical)**, Ubuntu **7** (all with no upstream
+fix), Nuclei target **4 findings, all Confirmed at QoD 99**. Zero from any of them
+is a regression, not a clean host. These targets are deliberately never updated —
+an up-to-date target cannot distinguish "matching works and the host is clean" from
+"matching is broken".
+
+### Verification scripts
+
+| Script                                            | Checks                     |
+| ------------------------------------------------- | -------------------------- |
+| `scripts/verification/verify_install.py`          | Installation prerequisites |
+| `scripts/verification/verify_permissions.py`      | RBAC seeding               |
+| `scripts/verification/check_schema.py`            | Schema state               |
+| `scripts/verification/check_compliance_data.py`   | Compliance catalog         |
+| `scripts/verification/check_cve_source.py`        | Feed connectivity          |
+| `scripts/verification/check_target_asset.py`      | One asset's record         |
+| `scripts/verification/test_scan_execution.py`     | End-to-end scan            |
+| `scripts/verification/verify_report_integrity.py` | Report generation          |
+
+---
+
+## 10. Linting and formatting
+
+### Pre-commit
 
 ```bash
-# 1. Install pre-commit framework
 pip install pre-commit
-
-# 2. Register the hooks in your local .git directory
 pre-commit install
+pre-commit run --all-files
 ```
 
-#### Troubleshooting WinError 5 Permission Denied
+`.pre-commit-config.yaml` hooks:
 
-If you encounter `PermissionError: [WinError 5] Access is denied` pointing to `C:\Users\<user>\.cache\pre-commit` when executing pre-commit, redirect the pre-commit cache folder to your local project directory by setting the `PRE_COMMIT_HOME` environment variable before running installation:
+| Hook                                                                                | Scope                        | Configuration                                                            |
+| ----------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------ |
+| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                          | pre-commit-hooks v4.6.0                                                  |
+| `black`                                                                             | `^Backend/`                  | 24.4.2                                                                   |
+| `ruff`                                                                              | `^Backend/`                  | v0.4.8, `--fix`, ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821` |
+| `bandit`                                                                            | `^Backend/`                  | 1.7.9, `-lll`, excluding `tests`, skipping `B324,B501,B507`              |
+| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)` | prettier@3.2.5                                                           |
+| `eslint`                                                                            | `^Frontend/`                 | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                  |
+
+> **NOTE:** Prettier covers `docs/*.md`, so this documentation set is
+> auto-formatted on commit.
+
+### Direct invocation
 
 ```bash
-# Windows (PowerShell):
-$env:PRE_COMMIT_HOME="$pwd\.pre-commit-cache"
-pre-commit install
-
-# Linux/macOS:
-export PRE_COMMIT_HOME="$PWD/.pre-commit-cache"
-pre-commit install
+black Backend/
+ruff check Backend/ --select=E,F,W --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821,E501
+bandit -r Backend/ -x Backend/tests -lll --skip B324,B501,B507,B110,B112,B605,B608,B104,B105,B106,B314,B113,B601,B310
 ```
 
-Once registered, every `git commit` command will automatically run formatting (Black, Prettier), linting (Ruff, ESLint), and static AST security analysis (Bandit).
+CI uses a broader Bandit skip list than pre-commit — the CI form above is the
+authoritative one to reproduce locally.
+
+---
+
+## 11. Documentation build
+
+```bash
+cd Backend
+python scripts/compile_docs.py
+pytest tests/test_docs_integrity.py -v
+```
+
+`compile_docs.py` compiles nine Markdown files from `docs/` into
+`docs/CCure_Audit_PRO_Documentation.docx`, in this order:
+`SYSTEM_ARCHITECTURE`, `BACKEND_API_REFERENCE`, `DATABASE_SCHEMA`,
+`AUTHENTICATION_AND_AUTHORIZATION`, `FRONTEND_ARCHITECTURE`,
+`DEVELOPER_SETUP_GUIDE`, `RBAC_Management_Permissions`, `SCAN_ENGINE_DEEP_DIVE`,
+`QA_REGRESSION_STRATEGY`. It installs `python-docx` on demand if absent.
+
+`test_docs_integrity.py` is the drift guard and asserts three things:
+
+1. every path in `app.routes` (except `/docs*`, `/redoc`, `/openapi.json`) appears
+   in `BACKEND_API_REFERENCE.md`;
+2. every key of `Base.metadata.tables` appears in `DATABASE_SCHEMA.md`;
+3. every permission string in `ROLE_PERMISSIONS` appears in
+   `RBAC_Management_Permissions.md`.
+
+> **NOTE:** `docker-compose.yml` mounts `./docs:/docs:ro` on the `api` service.
+> Without that mount the test cannot find the files inside the container and fails
+> on all three — which reads as documentation drift when it is a missing volume.
+
+---
+
+## 12. CI pipeline
+
+`.github/workflows/ci.yml`, on push and PR against `main`/`master`. Two jobs.
+
+### `backend-validation` (ubuntu-latest, Python 3.12)
+
+Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
+
+1. Install `requirements.txt` plus `pytest==7.4.4`, `pytest-cov`,
+   `pytest-rerunfailures`, `bandit`, `ruff`.
+2. **Bandit** static security analysis.
+3. **Ruff** lint.
+4. Verify the database connection and create the `admin` and `root` PostgreSQL
+   roles the feed scripts expect.
+5. `python db/migrate_production_schema.py`, `python -m scripts.seed_compliance`,
+   `python -m scripts.seed_real_rules`.
+6. **Alembic integrity** — `alembic downgrade -1` then `alembic upgrade head`, so
+   the newest migration must be reversible.
+7. **OpenAPI schema diff** — dumps `app.openapi()` deterministically and `diff`s
+   against the committed `Backend/openapi.json`. A mismatch **fails the build**.
+8. `pytest --cov=. --cov-report=xml -v --reruns 1` with `MOCK_SCANNERS=true`.
+9. `python scripts/compile_docs.py` and `pytest tests/test_docs_integrity.py -v`.
+
+> **IMPORTANT:** Step 7 means **any** route change must be accompanied by a
+> regenerated `Backend/openapi.json`:
+>
+> ```bash
+> cd Backend
+> python - <<'PY' > openapi.json
+> import json
+> from main import app
+> print(json.dumps(app.openapi(), sort_keys=True, indent=2, ensure_ascii=False))
+> PY
+> ```
+
+### `frontend-validation` (ubuntu-latest, Node 22)
+
+`npm ci` → `npm audit --audit-level=high` (non-blocking) → `npm run lint`
+(non-blocking; no `lint` script exists in `package.json`).
+
+---
+
+## 13. Common tasks
+
+| Task                          | Command                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| Interactive scan CLI          | `cd Backend && python scripts/cli.py`                                      |
+| Create an admin               | `python scripts/admin/create_admin.py`                                     |
+| Clear test data               | `python scripts/admin/clear_ccure_test_data.py`                            |
+| Clean up legacy findings      | `python scripts/cleanup_legacy_findings.py`                                |
+| Inspect a scan's schema state | `python scripts/verification/check_schema.py`                              |
+| Tail API logs                 | `docker compose logs -f api`                                               |
+| Tail worker logs              | `docker compose logs -f worker`                                            |
+| Open a DB shell               | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB`            |
+| Restart after Python edits    | `docker compose restart api`                                               |
+| Rebuild the frontend          | `docker compose build frontend && docker compose up -d --no-deps frontend` |
+
+---
+
+## 14. Troubleshooting
+
+| Symptom                                                              | Cause                                                                                      | Fix                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| API container starts but every request 500s                          | `SELECT 1` failed at startup; the lifespan logs the error and continues so you can exec in | Check `DATABASE_URL` and that `db` is healthy                    |
+| `RuntimeError: JWT_SECRET_KEY must be set to a strong, unique value` | A known development default with `ENVIRONMENT=production`                                  | Generate a real key                                              |
+| Compose refuses to start                                             | One of the five `${VAR:?}` variables is unset                                              | Set it in the root `.env`                                        |
+| Credentialed scans complete as unauthenticated audits                | `COMPLIANCE_ENCRYPTION_KEY` differs between API and host worker                            | Make them identical, then re-enter stored credentials            |
+| Phase 1 finds nothing on a LAN                                       | No raw-socket privilege, or Npcap missing on Windows                                       | Run elevated / install Npcap                                     |
+| Port scan is slow and version-poor                                   | `nmap` not on PATH — PortEngine logged a warning and fell back to TCP connect              | Install nmap                                                     |
+| `nuclei_probe` produces nothing                                      | Binary absent (logged as a coverage gap), or a two-argument `run()` was introduced         | Install nuclei; keep the three-argument serial signature         |
+| Web scan reports a tool gap                                          | `ToolCoverage` recorded `unavailable`                                                      | Install the tool, or accept the recorded gap                     |
+| CVE lookups return nothing                                           | `VULN_DB_*` unset, so `VulnIntelConfig` fell through to `DATABASE_URL`                     | Set `VULN_DB_NAME` et al., or `VULNERABILITY_INTEL_DATABASE_URL` |
+| Frontend calls hit the Vite server and 404                           | `/user`, `/compliance`, `/api` are not proxied                                             | Set `VITE_API_BASE_URL`                                          |
+| Frontend still points at the old API URL                             | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
+| `test_docs_integrity` fails on three missing files                   | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
+| CI fails on "Breaking OpenAPI changes detected"                      | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
+| Two workers serving different code                                   | A second host worker was started                                                           | Use `start_host_scanner_worker.ps1 -Force`                       |
+| Scan History shows the download time as the scan date                | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
+
+---
+
+## 15. Related documents
+
+- [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
+- [BACKEND_API_REFERENCE.md](BACKEND_API_REFERENCE.md)
+- [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
+- [AUTHENTICATION_AND_AUTHORIZATION.md](AUTHENTICATION_AND_AUTHORIZATION.md)
+- [RBAC_Management_Permissions.md](RBAC_Management_Permissions.md)
+- [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md)
+- [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md)

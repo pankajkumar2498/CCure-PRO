@@ -1,272 +1,634 @@
-# CCure-Audit-PRO — System Architecture
+# System Architecture
 
-> **Source of truth:** This document is generated strictly from the current implementation under `Backend/` and `Frontend/` (commit snapshot supplied for this review). Any prior documentation describing different modules, endpoints, or workflows has been superseded.
+**CCure-Audit-PRO** — network, web-application and compliance auditing platform.
 
-## 1. Product Summary
+> This document is generated from a direct audit of the current source tree. Every
+> component, path, constant and flow named below was read out of the code, not
+> inherited from previous documentation. Where a fact is easy to get wrong, the
+> file and symbol that establishes it is cited inline.
 
-CCure-Audit-PRO is a multi-tenant vulnerability management and network/web auditing platform. A single deployment serves multiple **Organizations** (tenants); every user, asset, scan, and finding is scoped to exactly one organization, with a `superadmin` role able to operate across all tenants.
+---
 
-The platform has two independent scanning subsystems:
+## 1. What the system is
 
-1. **Network Vulnerability Scanner** — a 4-phase pipeline (Host Discovery → Asset/Port Discovery → Vulnerability Audit → Risk Scoring) plus an SSH-based **Credentialed Scan**.
-2. **Web Application Scanner (DAST)** — a 4-phase pipeline (Recon → Crawl → Detect → Audit) for URL-based targets.
+CCure-Audit-PRO is a multi-tenant security-audit platform built around four
+independent assessment pipelines that share one asset registry, one finding
+store and one RBAC model:
 
-Both subsystems share the same authentication, RBAC, multi-tenancy, notification, dashboard, and reporting infrastructure.
+| Pipeline                                                            | Entry point                 | Executes as                                                  | Terminal artefact                                                                         |
+| ------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **Network scan** (host discovery → port scan → vulnerability audit) | `POST /scan/host-discovery` | Celery `scanner` queue                                       | `scans` + `scan_phases` + `assets` + `asset_vulnerabilities`, executive & technical PDFs  |
+| **Credentialed audit** (authenticated host inspection)              | `POST /scan/credentialed`   | Celery `scanner` queue                                       | Same tables, `pipeline_mode="credentialed"`                                               |
+| **Web application scan** (DAST)                                     | `POST /web-scans`           | Celery `web_recon`/`web_crawl`/`web_dast`/`web_audit` queues | `web_scans` + `web_assets` + `web_findings`, PDF                                          |
+| **Compliance evaluation**                                           | `POST /compliance/scans`    | Celery `compliance` queue                                    | `compliance_scan_runs` + `compliance_findings` + `compliance_scores`, framework PDFs/DOCX |
 
-## 2. Technology Stack
+A fifth capability, **network topology mapping**, is not a pipeline of its own —
+it is an optional Phase 4 chained onto any network scan when SNMP credentials
+are present in `scan.options` (`Backend/core/tasks.py::_chain_topology_if_needed`).
 
-| Backend framework | **FastAPI 0.111** (Python), Uvicorn ASGI server | `Backend/main.py` entry point with **179 registered endpoints** |
-| ORM / DB layer | **SQLAlchemy 2.0** + **Alembic** migrations | **46 PostgreSQL tables** across 25 Alembic migrations (`Backend/db/models/*`) |
-| Primary database | **PostgreSQL** (production) / SQLite fallback | Selected via `DATABASE_URL`; uses JSONB, INET, MACADDR, CIDR, GIN/trigram indexes |
-| Vulnerability intelligence DB | Separate PostgreSQL database (`vuln_intel`) | `core/cve_database.py`, configured via `VulnIntelConfig` |
-| Task queue | **Celery** with **Redis** broker/result backend | `core/celery_app.py` (`scanner`, `compliance`, `web_*` queues) |
-| Real-time transport | **Redis Pub/Sub** + WebSockets + SSE | `core/redis_client.py` (`/scans/events`, `/notifications/stream`) |
-| Authentication | **JWT** + **Argon2id** password hashing + **Fernet AES-256** | `auth/jwt_handler.py`, TOTP & Email OTP MFA |
-| Rate limiting | **slowapi** | `scan_helpers.limiter`, decorator on auth/scan endpoints |
-| Host discovery | **Scapy** (raw ARP/ICMP/TCP SYN/UDP probes) | `core/discovery/` |
-| Port/service scanning | **Nmap** via `python-nmap` | `engines/port/port_engine.py`, `core/nmap/wrapper.py` |
-| Credentialed scanning | **Paramiko** (SSH) | `engines/credentialed/` |
-| Web DAST tooling | **Nuclei**, **SQLMap**, **sslyze**, **subfinder**, **ffuf**, **Playwright** | `core/web/*` |
-| Policy Compliance Engine | **Celery** + **13 Framework Catalogs** + **python-docx** | ISO 27001, NIST CSF v2.0, CERT-In 2022, PCI-DSS v4.0, CIS v8.1, SOC 2, DPDP, GDPR, NIST 800-53, NIST 800-82, IEC 62443, NERC CIP, NIS2 |
-| PDF & Word report generation | **ReportLab** + **python-docx** + **docxtpl** | `pdf_generator.py`, `web_pdf_generator.py`, `compile_docs.py` |
-| Frontend framework | **React 18.3** + **Vite 5** | `Frontend/src` |
-| Frontend routing | **react-router-dom 6.23** | `Frontend/src/App.jsx` (58 frontend routes) |
-| Frontend HTTP client | **axios 1.7** with interceptors | `Frontend/src/api/axiosInstance.js` (silent refresh, non-masking 401 handler) |
-| Reverse proxy | **nginx** (gateway container) | `docker-compose.yml`, `nginx/gateway.conf` |
-| CI/CD Pipeline | **GitHub Actions** (`.github/workflows/ci.yml`) | Bandit, Ruff, Alembic integrity check, OpenAPI schema diff guard, test_docs_integrity.py |
+---
 
-## 3. High-Level Architecture
+## 2. Deployment topology
 
 ```mermaid
 graph TB
-    subgraph Client
-        SPA["React 18 SPA (Vite build)<br/>served by nginx"]
+    subgraph Browser
+        SPA["React 18 SPA<br/>Vite build, nginx-served"]
     end
 
-    subgraph Gateway
-        GW["nginx gateway<br/>(single public entry point)"]
+    subgraph "Docker Compose"
+        GW["gateway<br/>nginx:stable-alpine<br/>:GATEWAY_PORT"]
+        FE["frontend<br/>ccure-frontend :3200→80"]
+        API["api — ccure-api<br/>FastAPI + uvicorn :8000"]
+        WRK["worker (profile: container-scanner)<br/>celery: scanner,default,compliance"]
+        WEB["web-worker (profile: container-scanner)<br/>celery: web_recon,web_crawl,web_dast,web_audit"]
+        RDS["redis:7-alpine<br/>broker + result backend + pub/sub"]
+        DB[("db — postgres:15-alpine<br/>application schema")]
     end
 
-    subgraph API_Layer["FastAPI Application (main.py)"]
-        MW["Middleware:<br/>CORS → Rate Limiter →<br/>Request-ID Correlation →<br/>Exception Envelopes"]
-        Routers["18 Routers:<br/>auth, scans, health,<br/>traditional/phase/credentialed scans,<br/>reports, admin_*, audit, user_profile,<br/>notifications, dashboard, assets,<br/>findings, web_scans, compliance"]
+    subgraph "Windows host (out of Docker)"
+        HW["Host scanner worker<br/>Backend/scripts/scan/start_host_scanner_worker.ps1<br/>raw sockets for Scapy / Nmap"]
+        PG[("PostgreSQL 18<br/>application DB + vuln_intel DB")]
+        TOOLS["nmap · nuclei · subfinder · ffuf · sqlmap"]
     end
 
-    subgraph Workers["Celery Workers"]
-        ScanW["scanner queue<br/>(core.tasks)"]
-        WebW["web_recon / web_crawl /<br/>web_dast / web_audit queues<br/>(core.web.tasks)"]
-        CompW["compliance queue<br/>(core.compliance_tasks)"]
-    end
-
-    subgraph Data["Data Stores"]
-        PG[("PostgreSQL<br/>(primary app DB)")]
-        VulnDB[("PostgreSQL<br/>vuln_intel DB<br/>(CVE/EPSS/KEV)")]
-        Redis[("Redis<br/>Celery broker + result backend<br/>+ Pub/Sub progress/notifications")]
-    end
-
-    SPA -->|HTTPS| GW --> MW --> Routers
-    Routers -->|SQLAlchemy| PG
-    Routers -->|CVE lookups| VulnDB
-    Routers -->|.delay()| Redis
-    Redis --> ScanW
-    Redis --> WebW
-    Redis --> CompW
-    ScanW -->|SQLAlchemy| PG
-    WebW -->|SQLAlchemy| PG
-    CompW -->|SQLAlchemy| PG
-    ScanW -->|publish progress| Redis
-    WebW -->|publish progress| Redis
-    CompW -->|publish progress| Redis
-    Redis -->|Pub/Sub| Routers
-    Routers -->|WebSocket / SSE| SPA
+    SPA --> GW
+    GW --> FE
+    GW --> API
+    API --> RDS
+    API --> DB
+    WRK --> RDS
+    WEB --> RDS
+    HW --> RDS
+    HW --> PG
+    HW --> TOOLS
+    API -.->|"reads CVE/exploit/advisory feeds"| PG
 ```
 
-## 4. Multi-Tenant Data Model
+**Container inventory** — `docker-compose.yml`, verified service by service:
 
-Every primary entity (`User`, `Scan`, `Asset`, `AssetVulnerability`, `WebScan`, `WebFinding`, `Notification`, `AuditLog`) carries an `org_id` foreign key to `organizations.id`, with `ON UPDATE CASCADE` so renaming an org slug propagates to all child IDs (IDs are human-readable "Stripe-style" strings, see `DATABASE_SCHEMA.md`).
+| Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                      |
+| ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                    |
+| `db`         | `ccure-db`         | `postgres:15-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                               |
+| `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro` |
+| `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                     |
+| `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`         |
+| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:20-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**          |
+| `gateway`    | `ccure-gateway`    | `nginx:stable-alpine`   | `${GATEWAY_PORT:-80}:80`                        | `./nginx/gateway.conf`; single entry point so real client IPs reach the audit log                          |
 
-Tenant isolation is enforced at the **query level** in every router:
+Both scanner workers sit behind the `container-scanner` Compose profile, so
+`docker compose up` starts neither by default. That is deliberate: raw-socket
+discovery (Scapy ARP/ICMP/SYN) and Nmap need direct access to the physical
+network, which the containers do not have. The supported production layout runs
+the scanner worker **on the Windows host** via
+`Backend/scripts/scan/start_host_scanner_worker.ps1`.
 
-- A helper `_resolve_org(user, requested_org_id)` is repeated across `routers/dashboard.py`, `routers/assets.py`, `routers/findings.py`, `routers/web_scans.py`, `routers/phase_scans.py`, and `scans/router.py`. It returns `user.org_id` for normal users, but allows a `superadmin` to pass `?org_id=` to inspect any organization.
-- `scans/router.py` additionally checks `scans:read_all` permission (via `_user_can_read_all_scans`) to decide whether a non-admin sees only their own scans or all scans in their org.
+> **CAUTION:** Because `VITE_API_BASE_URL` is baked at frontend build time, a
+> change to the API URL requires `docker compose build frontend`, not a restart.
 
-## 5. Request Lifecycle (Backend)
+---
+
+## 3. Backend application structure
+
+`Backend/main.py` is deliberately thin. It owns app instantiation, the lifespan
+hook, four cross-cutting middleware/exception concerns, and 20 `include_router`
+calls. All endpoint logic lives in router modules.
+
+```
+Backend/
+├── main.py                      FastAPI app, middleware, router registration
+├── config.py                    Every env var read in one place (AppConfig et al.)
+├── scan_helpers.py              PIPELINE_PHASES, rate limiter, HostDiscoveryAPI singleton
+├── api/host_discovery_api.py    Thin façade the traditional endpoints call
+│
+├── auth/                        Authentication + RBAC
+│   ├── router.py                15 endpoints under /auth
+│   ├── jwt_handler.py           Token mint/decode/rotate, argon2+bcrypt passwords
+│   ├── dependencies.py          get_current_user, get_current_user_flexible, AuthContext
+│   ├── rbac.py                  require_permission(), require_role()
+│   ├── email_utils.py           Case-insensitive email/username matching
+│   └── mail_service.py          SMTP dispatch
+│
+├── routers/                     18 routers → 132 of the 155 HTTP operations
+├── scans/                       Scan history router, DB helpers, normalizer, CVE engine
+├── orchestrator/                scan_orchestrator.py (network), web_orchestrator.py (DAST)
+├── engines/                     discovery / port / vulnerability / credentialed
+├── core/                        Discovery techniques, Nmap wrapper, topology, web tools,
+│                                Celery app + tasks, risk, quota, audit, feeds
+├── db/                          SQLAlchemy Base, 47-table model set, RBAC seeder
+├── alembic/versions/            32 migrations, head c3h4i5j6k7l8
+├── reports/                     Generated PDF/CSV output (bind-mounted)
+└── tests/                       57 test modules, incl. test_docs_integrity.py
+```
+
+### Router registration
+
+`main.py` registers these routers in order. Prefixes are declared on the
+`APIRouter` itself, not at include time:
+
+| Module                         | Prefix                 | Tag                               | Ops      |
+| ------------------------------ | ---------------------- | --------------------------------- | -------- |
+| `auth/router.py`               | `/auth`                | Authentication                    | 15       |
+| `scans/router.py`              | `/scans`               | Scan History                      | 8 + 1 WS |
+| `routers/health.py`            | _(none)_               | Health / Progress / Documentation | 4        |
+| `routers/traditional_scans.py` | _(none)_               | Traditional Scans                 | 4        |
+| `routers/phase_scans.py`       | _(none)_               | Phase-Selective Scans             | 5        |
+| `routers/credentialed.py`      | _(none)_               | Credentialed Scans                | 1        |
+| `routers/reports.py`           | _(none)_               | Reports                           | 2        |
+| `routers/admin_users.py`       | `/admin/users`         | User Management                   | 11       |
+| `routers/admin_rbac.py`        | `/admin/roles`         | RBAC Administration               | 2        |
+| `routers/admin_orgs.py`        | `/admin/organizations` | Organization Management           | 5        |
+| `routers/admin_nvd.py`         | `/api/v1/admin`        | Admin NVD Catalog                 | 2        |
+| `routers/audit.py`             | `/admin/audit-logs`    | Audit Logs                        | 1        |
+| `routers/user_profile.py`      | `/user`                | User Profile & Preferences        | 7        |
+| `routers/notifications.py`     | `/notifications`       | Notifications                     | 7        |
+| `routers/dashboard.py`         | `/dashboard`           | Dashboard                         | 15       |
+| `routers/assets.py`            | `/assets`              | Assets                            | 16       |
+| `routers/findings.py`          | `/findings`            | Findings                          | 5        |
+| `routers/web_scans.py`         | `/web-scans`           | Web Scans                         | 8 + 1 WS |
+| `routers/topology.py`          | _(none)_               | Network Topology                  | 2        |
+| `routers/compliance.py`        | `/compliance`          | Compliance                        | 35       |
+
+**Totals: 155 HTTP operations + 2 WebSocket endpoints.** Full inventory in
+[BACKEND_API_REFERENCE.md](BACKEND_API_REFERENCE.md).
+
+---
+
+## 4. Request lifecycle
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    autonumber
+    participant C as Client (axios)
     participant CORS as CORSMiddleware
-    participant RL as slowapi RateLimiter
-    participant RID as Request-ID Middleware
-    participant Dep as FastAPI Dependencies<br/>(get_db, get_current_user, require_permission)
-    participant H as Route Handler
+    participant RID as _request_id_middleware
+    participant R as APIRoute
+    participant SEC as HTTPBearer → get_current_user
+    participant RBAC as require_permission(resource, action)
+    participant H as Handler
     participant DB as PostgreSQL
+    participant Q as Celery / Redis
 
-    C->>CORS: HTTP request (Bearer token, optional org_id)
-    CORS->>RL: allowed origin?
-    RL->>RID: under rate limit? (else 429 envelope)
-    RID->>Dep: attach X-Request-ID to request.state
-    Dep->>Dep: decode JWT → load User+Role+Org (joinedload)
-    Dep->>Dep: verify user active, org active, token claims match DB
-    Dep->>Dep: RBAC check (superadmin bypass or RolePermission lookup)
-    Dep->>H: inject User, Session
-    H->>DB: SQLAlchemy queries (org-scoped)
-    H-->>RID: JSON response
+    C->>CORS: HTTP request (+ Authorization, + org_id param)
+    CORS->>RID: allowed origin
+    RID->>RID: assign/propagate X-Request-ID
+    Note over RID: OPTIONS + Access-Control-Request-Private-Network<br/>short-circuits with a PNA preflight response
+    RID->>R: route match
+    R->>SEC: resolve bearer credentials
+    SEC->>SEC: decode_token(), assert type == "access"
+    SEC->>DB: load User joinedload(role, organization)
+    SEC-->>R: 401 if token/user invalid · 403 if user or org inactive
+    SEC->>SEC: assert token role/org claims still match the DB row
+    R->>RBAC: superadmin bypass, else role_permissions lookup
+    RBAC-->>C: 403 if the permission atom is absent
+    RBAC->>H: User
+    H->>DB: query / mutate (org-scoped)
+    H->>Q: .delay(...) for long-running work
+    H-->>RID: response body
     RID-->>C: response + X-Request-ID header
 ```
 
-Key middleware/handlers registered in `main.py`:
+### Middleware and exception pipeline (`main.py`)
 
-1. **CORSMiddleware** — origins from `CORS_ALLOW_ORIGINS` env var (defaults to localhost:3000/8080/5173) plus a permissive `allow_origin_regex` for any `http(s)://` origin; `allow_credentials=True`.
-2. **slowapi rate limiter** — `app.state.limiter`; `RateLimitExceeded` is caught and rendered as a structured `429` envelope (`error_code: RATE_LIMIT_EXCEEDED`).
-3. **Request-ID correlation middleware** — generates/propagates `X-Request-ID`, also special-cases CORS _Private Network Access_ preflight (`Access-Control-Request-Private-Network` header) by short-circuiting with the appropriate `Access-Control-Allow-Private-Network: true` response.
-4. **Global `HTTPException` handler** — converts every raised `HTTPException` into the envelope `{"success": false, "error_code": "HTTP_<status>", "message": ..., "request_id": ...}`. Endpoints can override `error_code` via `exc.headers["X-Error-Code"]` (used by the web-scan authorization gate).
-5. **`RequestValidationError` handler** — returns `422` with the same envelope plus an `errors` array; any field whose path contains `password`, `key_path`, `secret`, `token`, `api_key`, or `credential` has its echoed `input` value redacted.
+Registered in this order — note that FastAPI applies `add_middleware` in reverse,
+so the request-ID middleware is the inner layer and CORS the outer one:
 
-## 6. Application Startup (Lifespan)
+1. **`CORSMiddleware`** — origins from `CORS_ALLOW_ORIGINS` (comma-separated), or
+   a six-entry localhost default. `allow_credentials=True`,
+   `allow_origin_regex="https?://.*"`, methods `GET POST PUT DELETE PATCH OPTIONS`.
+2. **`_request_id_middleware`** (`@app.middleware("http")`) — accepts an inbound
+   `X-Request-ID` or mints a UUID4, stores it on `request.state.request_id`,
+   echoes it on the response, and logs 4xx at WARNING / 5xx at ERROR. It also
+   answers Chrome's **Private Network Access** preflight
+   (`OPTIONS` + `Access-Control-Request-Private-Network`) directly.
+3. **`RateLimitExceeded` handler** — 429 in the standard error envelope.
+4. **`HTTPException` handler** — wraps every HTTP error as
+   `{success, error_code, message, detail, request_id}`. `error_code` defaults to
+   `HTTP_<status>` but an endpoint may override it via `exc.headers["X-Error-Code"]`.
+5. **`RequestValidationError` handler** — 422 with `error_code="VALIDATION_ERROR"`.
+   It strips Pydantic's raw `input` payload from every error (which would
+   otherwise echo submitted passwords), stringifies `ctx` (an un-serialisable
+   exception object there turned the 422 into a 500), and replaces the context of
+   any field whose name matches `_SENSITIVE_FIELDS` = `{password, key_path,
+secret, token, api_key, credential}` with `"Value redacted for security."`.
 
-`main.py`'s `lifespan()` context manager runs on boot:
+### Rate limiting
 
-1. **DB connectivity check** — `SELECT 1`; logs an error but does **not** crash the process if the DB is unreachable (keeps the container alive for debugging/migration).
-2. **RBAC + default org seeding** — calls `db.migrate_production_schema.seed_rbac()` and `seed_default_org()` inside a transaction (idempotent — checks for existing rows first).
-3. **Default admin seeding** — if `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` are set and no user with that email exists, creates a `superadmin` user in the seeded `default`-slug organization. If those env vars are unset and the `users` table is empty, logs a warning only.
-4. **Engine initialization** — instantiates `HostDiscoveryAPI` (network scan engine façade) and stores it via `scan_helpers.set_api()` for use by `routers/health.py` and the traditional scan routers.
-5. **Background cleanup loop** — an `asyncio` task that, every 24 hours: deletes generated PDF reports older than 7 days (`routers/reports.cleanup_old_reports`) and purges expired rows from `password_reset_tokens`.
+`scan_helpers.limiter` is a SlowAPI `Limiter` backed by the Celery Redis URL, so
+limits persist across API workers. Its key function is **not** SlowAPI's
+`get_remote_address`: `_rate_limit_key()` calls `core.ip_resolver.get_client_ip`,
+which walks `X-Forwarded-For` from the nearest hop outward and stops at the first
+address not in `TRUSTED_PROXIES`. Behind the nginx gateway the socket peer is
+always the proxy, which would have put every user in one bucket.
 
-On shutdown, the cleanup task is cancelled.
+Applied limits, all from `@limiter.limit(...)` decorators:
 
-## 7. Router Map
+| Limit     | Endpoints                                                                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 20/minute | `GET /auth/check-username`, `GET /auth/check-email`                                                                                                                                         |
+| 10/minute | `POST /auth/login`                                                                                                                                                                          |
+| 5/minute  | `POST /auth/register`, `POST /auth/login/send-email-otp`, `POST /auth/login/verify-mfa`, all four `/scan/*` traditional endpoints, all four phase-scan endpoints, `POST /scan/credentialed` |
+| 3/minute  | `POST /auth/forgot-password`                                                                                                                                                                |
 
-All routers are registered in `main.py` via `app.include_router(...)`. Prefixes and responsibilities:
+### Application lifespan
 
-| Router module                  | Prefix                  | Responsibility                                                                                                                                   |
-| ------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `auth/router.py`               | `/auth`                 | Registration, login, logout, refresh, password reset, username/email availability checks, WS download tickets                                    |
-| `scans/router.py`              | `/scans`                | Scan history, SSE live history stream, per-scan WebSocket progress, archive/restore/recycle/purge lifecycle                                      |
-| `routers/health.py`            | `/` (+ `/scan`, `/api`) | System health/info, DB-backed scan progress, pipeline-mode documentation endpoints                                                               |
-| `routers/traditional_scans.py` | `/scan`                 | Legacy synchronous `host`/`range`/`subnet`/`subnets` endpoints (backward compatibility)                                                          |
-| `routers/phase_scans.py`       | `/scan`                 | Phase-selective async pipeline: `host-discovery`, `asset-discovery`, `vulnerability-audit`, `phases`, `quota`                                    |
-| `routers/credentialed.py`      | `/scan`                 | SSH credentialed scan trigger                                                                                                                    |
-| `routers/reports.py`           | `/reports`              | PDF report download/delete                                                                                                                       |
-| `routers/admin_users.py`       | `/admin/users`          | User CRUD, role/org assignment, soft-delete/restore/purge, password reset                                                                        |
-| `routers/admin_rbac.py`        | `/admin/roles`          | List roles and role→permission mappings                                                                                                          |
-| `routers/admin_orgs.py`        | `/admin/organizations`  | Organization CRUD, activation/deactivation                                                                                                       |
-| `routers/audit.py`             | `/admin/audit-logs`     | Immutable audit log query                                                                                                                        |
-| `routers/user_profile.py`      | `/user`                 | Profile, password change, preferences, session management                                                                                        |
-| `routers/notifications.py`     | `/notifications`        | Notification inbox, SSE stream, read/delete                                                                                                      |
-| `routers/dashboard.py`         | `/dashboard`            | 15 analytics endpoints for the Security Dashboard (network + web)                                                                                |
-| `routers/assets.py`            | `/assets`               | Asset registry, services/TLS/certificate inventories, tags/notes/changelog, AMT import                                                           |
-| `routers/findings.py`          | `/findings`             | Vulnerability findings browser and triage                                                                                                        |
-| `routers/web_scans.py`         | `/web-scans`            | Web application (DAST) scan lifecycle, findings, assets, report, WebSocket progress                                                              |
-| `routers/compliance.py`        | `/compliance`           | Multi-tenant framework marketplace, custom policies, JIT credentials, manual attestations, Maker-Checker remediation requests, exception waivers |
+`lifespan()` runs before the first request and performs, in order:
 
-See `BACKEND_API_REFERENCE.md` for the full endpoint-by-endpoint contract.
+1. `SELECT 1` connectivity probe. **Failure is logged, not raised** — the
+   container stays alive so an operator can exec in and repair it.
+2. Additive schema helpers: `ensure_user_schema()`, `ensure_scan_schema()`,
+   `ensure_topology_schema()`, `ensure_mac_vendor_schema()`.
+3. `seed_rbac(conn)` and `seed_default_org(conn)` from
+   `db/migrate_production_schema.py` — idempotent role, permission and default-org
+   seeding.
+4. First-admin seeding from `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD`
+   (skipped if the email already exists; warns if no users exist and neither var
+   is set).
+5. Compliance catalog auto-seeding — checks 12 frameworks and their control counts
+   against thresholds, and re-runs `seed_framework_and_controls` +
+   `seed_and_evaluate` if any is short.
+6. `HostDiscoveryAPI(silent=False)` instantiated and registered via `set_api()`.
+7. Two background `asyncio` tasks: a report/token cleanup loop
+   (`cleanup_old_reports(7)` plus expired `password_reset_tokens` purge) and a
+   24-hour NVD auto-sync loop (`sync_nvd_to_vuln_intel(days_back=90)`).
 
-## 8. Network Vulnerability Scan Pipeline (Overview)
+Both loops are cancelled on shutdown.
 
-A "scan" is a `Scan` row whose lifecycle is driven by **frontend-orchestrated, phase-selective** Celery tasks (`core/tasks.py`), coordinated by `orchestrator.scan_orchestrator.ScanOrchestrator`.
+---
 
-```mermaid
-flowchart LR
-    P1["Phase 1: Host Discovery<br/>core/discovery/engine.py (Scapy)<br/>profiles: FAST / BALANCED / AGGRESSIVE"]
-    P2["Phase 2: Asset Discovery<br/>(Port Scan)<br/>engines/port/port_engine.py (Nmap)"]
-    P3["Phase 3+4: Vulnerability Audit<br/>+ Risk Scoring<br/>engines/vulnerability/vulnerability_engine.py<br/>+ plugin_selector.py"]
-    Cred["Credentialed Scan (SSH)<br/>engines/credentialed/*<br/>(independent of phase pipeline)"]
+## 5. Background processing
 
-    P1 -- "pipeline_mode=asset|vulnerability_audit<br/>chains automatically" --> P2
-    P2 -- "pipeline_mode=vulnerability_audit<br/>chains automatically" --> P3
-```
-
-Three **pipeline modes** (`Scan.pipeline_mode`) determine the terminal phase:
-
-| `pipeline_mode`       | Phases run                     | Terminal phase | Discovery profile (Phase 1)                           |
-| --------------------- | ------------------------------ | -------------- | ----------------------------------------------------- |
-| `basic`               | 1                              | 1              | `FAST`                                                |
-| `asset`               | 1 → 2                          | 2              | Intensity-aware (`light`/`normal`/`deep` — see below) |
-| `vulnerability_audit` | 1 → 2 → 3 (incl. risk scoring) | 3              | `AGGRESSIVE`                                          |
-
-**`discovery_intensity`** (only meaningful when `pipeline_mode=asset`) controls how Phase 1 host discovery balances speed vs. coverage — see `SCAN_ENGINE_DEEP_DIVE.md` for the full algorithm:
-
-- `light` — `FAST` profile only.
-- `normal` (default) — `FAST` first, then `BALANCED` fallback **only** for IPs still inactive.
-- `deep` — full `BALANCED` profile for every IP.
-
-A separate **`port_scan_intensity`** (`light`/`normal`/`deep`) controls Phase 2's Nmap port range, independent of `discovery_intensity`.
-
-Each phase is tracked by a `ScanPhase` row (`status`: `pending → running → complete | failed | skipped`). Celery tasks chain themselves: `run_host_discovery_task` → `run_asset_discovery_task` → `run_vulnerability_audit_task`, each updating the `Scan`/`ScanPhase` rows and publishing progress to Redis (`scan_progress:{scan_id}` channel), consumed by the per-scan WebSocket (`GET /scans/{id}/progress` and `GET /web-scans/{id}/progress`).
-
-## 9. Web Application Scan Pipeline (Overview)
-
-`WebScan` rows are independent of the network `Scan` model (URL-based, not CIDR-based). The pipeline is a fixed 4-phase chain, each phase its own Celery queue:
+`core/celery_app.py` defines one Celery app, `ccure_tasks`, including three task
+modules and declaring **seven queues**:
 
 ```mermaid
-flowchart LR
-    R["RECON (queue: web_recon)<br/>subfinder, WAF/tech fingerprint"]
-    Cr["CRAWL (queue: web_crawl)<br/>Playwright spider + ffuf brute-force"]
-    D["DETECT (queue: web_dast)<br/>Nuclei templates + SQLMap"]
-    A["AUDIT (queue: web_audit)<br/>sslyze TLS audit + compliance mapping"]
-
-    R --> Cr --> D --> A
+graph LR
+    API[FastAPI] -->|".delay()"| B["Redis broker"]
+    B --> Q1["default<br/>email, OUI registry"]
+    B --> Q2["scanner<br/>network + credentialed + topology"]
+    B --> Q3["compliance<br/>evaluation, remediation, beat"]
+    B --> Q4["web_recon"]
+    B --> Q5["web_crawl"]
+    B --> Q6["web_dast"]
+    B --> Q7["web_audit"]
+    Q2 --> HOST["Host scanner worker (Windows)"]
+    Q4 & Q5 & Q6 & Q7 --> WW["ccure-web-worker"]
 ```
 
-Each phase persists `WebAsset`/`WebFinding` rows incrementally and updates `WebScan.recon_status` / `crawl_status` / `detect_status` / `audit_status`. Progress is broadcast over `scan_progress:{web_scan_id}` (Redis Pub/Sub) to `GET /web-scans/{id}/progress` (WebSocket).
+Configuration (`celery_app.conf`): JSON serialiser only, UTC, `task_track_started=True`,
+`worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY`,
+`worker_prefetch_multiplier=AppConfig.SCANNER_WORKER_PREFETCH_MULTIPLIER`,
+`task_time_limit = NMAP_TIMEOUT + 60`, and `task_always_eager` driven by
+`CELERY_TASK_ALWAYS_EAGER`.
 
-## 10. Policy Compliance Engine (Overview)
+**Celery Beat schedule** (`celery_app.conf.beat_schedule`) — two entries:
 
-The Policy Compliance Engine provides tenant-isolated security baseline posture evaluation (e.g. ISO 27001). Key components and workflows:
+| Schedule name                                 | Task                                | Cadence                                        |
+| --------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
+| `prune-compliance-remediation-logs-weekly`    | `compliance.prune_remediation_logs` | `crontab(hour=0, minute=0, day_of_week="sun")` |
+| `run-scheduled-compliance-scans-every-minute` | `compliance.run_scheduled_scans`    | every 60 s                                     |
 
-1. **Marketplace & Seeding**: The framework catalog contains global frameworks (ISO 27001, etc.) and technical check rules. Tenants install frameworks from the marketplace.
-2. **Technical Auditing (Scanners & Evidence)**: Compliance scan runs are triggered via background Celery tasks (`compliance.run_scan`) which map rules against asset configurations (registry settings, files, open ports, legacy services). Manual controls are attested by analysts who write notes and upload files as evidence.
-3. **Maker-Checker Remediation Queue**: Automated remediation scripts are executed over SSH using Paramiko. An analyst (Maker) initiates the remediation request (`POST /compliance/findings/{id}/remediate`), which enters a pending approval queue. A compliance officer/admin (Checker) must review and approve the script execution. Bypassing the checker queue requires explicit `emergency_bypass = True` configuration (restricted to admins).
-4. **Exception Waivers**: Findings can be exempted by requesting exception waivers with compensatory control descriptions. Waivers must be approved by compliance officers and carry expiration deadlines.
-5. **Real-time Scoring & Dashboards**: Asset-level and organization-level compliance scores (simple and risk-weighted) are cached (`compliance_scores` table) and visualized via the React workspace frontend. SoA PDF/Word reports are auto-compiled on demand.
+### Task inventory
 
-## 11. Background Jobs (Celery)
+**`core/tasks.py` — network + credentialed (queue `scanner` unless noted)**
 
-`core/celery_app.py` defines the Celery app `ccure_tasks` with:
+| Task name                                   | Function                          | Role                                      |
+| ------------------------------------------- | --------------------------------- | ----------------------------------------- | ----- | ------ | ------- | ------- |
+| `ccure.tasks.run_host_discovery`            | `run_host_discovery_task`         | Phase 1; chains Phase 2                   |
+| `ccure.tasks.run_asset_discovery`           | `run_asset_discovery_task`        | Phase 2; chains Phase 3                   |
+| `ccure.tasks.run_vulnerability_audit`       | `run_vulnerability_audit_task`    | Phase 3                                   |
+| `ccure.tasks.run_topology_mapping`          | `run_topology_mapping_task`       | Optional Phase 4                          |
+| `ccure.tasks.run_traditional_scan`          | `run_traditional_scan_task`       | `/scan/host                               | range | subnet | subnets | phases` |
+| `ccure.tasks.run_credentialed_scan`         | `run_credentialed_scan_task`      | Authenticated audit                       |
+| `ccure.tasks.sync_host_discovery_task`      | `sync_host_discovery_task`        | Persist Phase 1 payload → normalized rows |
+| `ccure.tasks.sync_asset_discovery_task`     | `sync_asset_discovery_task`       | Persist Phase 2 payload                   |
+| `ccure.tasks.sync_vulnerability_audit_task` | `sync_vulnerability_audit_task`   | Persist Phase 3 payload                   |
+| `ccure.tasks.send_password_reset_email`     | `send_password_reset_email_task`  | queue `default`                           |
+| `ccure.tasks.send_mfa_otp`                  | `send_mfa_otp_task`               | queue `default`                           |
+| `ccure.tasks.reconcile_amt_inventory_task`  | `reconcile_amt_inventory_task`    | AMT inventory reconciliation              |
+| `ccure.tasks.update_mac_vendor_registry`    | `update_mac_vendor_registry_task` | queue `default`; refreshes OUI cache      |
 
-| Queue        | Consumed by               | Tasks                                                                                                                                                                          |
-| ------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `default`    | any worker                | `send_password_reset_email_task`                                                                                                                                               |
-| `scanner`    | `worker` container (root) | `run_host_discovery`, `run_asset_discovery`, `run_vulnerability_audit`, `run_traditional_scan`, `run_credentialed_scan`, `sync_*_task` helpers, `reconcile_amt_inventory_task` |
-| `web_recon`  | `web-worker` container    | `ccure.web.run_recon`                                                                                                                                                          |
-| `web_crawl`  | `web-worker` container    | `ccure.web.run_crawl`                                                                                                                                                          |
-| `web_dast`   | `web-worker` container    | `ccure.web.run_detect`                                                                                                                                                         |
-| `web_audit`  | `web-worker` container    | `ccure.web.run_audit`                                                                                                                                                          |
-| `compliance` | `worker` container (root) | `compliance.run_scan`, `compliance.run_remediation`, `compliance.run_reverify`, `compliance.prune_remediation_logs`                                                            |
+**`core/web/tasks.py` — DAST**
 
-`task_track_started=True`, `worker_concurrency` is configurable (`SCANNER_WORKER_CONCURRENCY`, default 20), and `task_time_limit = NMAP_TIMEOUT + 60` to prevent runaway scans.
+| Task name              | Queue       | `soft_time_limit` / `time_limit` |
+| ---------------------- | ----------- | -------------------------------- |
+| `ccure.web.run_recon`  | `web_recon` | 1800 / 2400                      |
+| `ccure.web.run_crawl`  | `web_crawl` | 3600 / 4200                      |
+| `ccure.web.run_detect` | `web_dast`  | 7200 / 8400                      |
+| `ccure.web.run_audit`  | `web_audit` | 1800 / 2400                      |
 
-## 12. Notifications & Real-Time Updates
+**`core/compliance_tasks.py` — queue `compliance`**
 
-- `Notification` rows are written for events such as user creation/suspension (`routers/admin_users.py`), scan completion, etc.
-- `core/redis_client.publish_notification_sync` pushes events to `notifications:user:{user_id}`; `GET /notifications/stream` (SSE) relays them, falling back to a heartbeat-only mode if Redis is unreachable.
-- `fan_out_notification()` broadcasts a notification to all active users in an org matching given role names (e.g. `superadmin`, `org_admin`), respecting each user's `preferences.in_app_alerts` flag.
-- Scan progress uses a parallel Redis Pub/Sub channel per scan (`scan_progress:{scan_id}` / `scan_progress:{web_scan_id}`), consumed via WebSocket.
-- `GET /scans/events` provides an SSE feed of the **scan history list** itself (adaptive polling: 0.5s while any scan is `running`, else 2s), useful for list views that need to reflect status changes without a dedicated WebSocket per row. It emits `connected`, `scans`, and `heartbeat` events and is separate from the phase-selective `/scan` endpoints.
+`compliance.run_scan`, `compliance.run_remediation`, `compliance.prune_remediation_logs`,
+`compliance.run_reverify`, `compliance.run_scheduled_scans`.
 
-## 13. Frontend Architecture (Summary)
+### Cancellation
 
-The frontend is a single Vite-built React 18 SPA (`Frontend/src`). High-level points (full detail in `FRONTEND_ARCHITECTURE.md`):
+Cancellation is **cooperative**. `core/scan_control.py` exists because reading
+the `Scan` row through the task's own long-lived SQLAlchemy session returned the
+identity-map copy and never saw the API's `cancelled` commit. Every helper there
+(`read_status`, `is_cancelled`, `raise_if_cancelled`, `make_cancel_check`) opens
+its own short-lived session. `POST /scans/{id}/stop` additionally calls
+`celery_app.control.revoke(task_id, terminate=True)`, but the host worker uses a
+threads pool where `terminate` cannot kill a running thread — so the engine's
+between-batch `is_cancelled()` poll is the mechanism that actually stops work.
 
-- **Routing** (`src/App.jsx`): `react-router-dom` v6, with a top-level `<PrivateRoute>` wrapper that enforces authentication for the protected tree. Most routes are auth-only, while admin routes are further guarded with permission props such as `requiredPermission`, `requiredAny`, `requiredAll`, or `superadminOnly`.
-- **Route structure**: the app includes both the legacy scan routes and the newer dashboard/asset/compliance surfaces. The web application scanning UI is mounted as a nested route subtree under `/web-scans/*` via `Frontend/src/modules/web-scanning/WebScanningRoutes.jsx`.
-- **State management**: React Context — `AuthContext` (session/user/role), `ScanContext` (in-progress scan pipeline state), `PreferencesContext` (theme, defaults).
-- **API layer** (`src/api/`): a shared `axiosInstance` with request interceptor (attaches `Authorization: Bearer` + `org_id` query param from `localStorage.activeOrgId`) and response interceptor (silent access-token refresh via `/auth/refresh`, then forced logout on failure).
-- **RBAC mirroring**: `src/auth/permissions.js` re-implements the same `resource:action` permission-set check the backend performs, using the permission list embedded in `/auth/me`'s response, so the UI can hide/disable actions a user's role doesn't allow (the backend remains the authoritative enforcement point).
-- **Web-scan integration**: the web-scanning module calls the backend web-scan lifecycle endpoints (`POST/GET/PATCH /web-scans`, findings/assets/report routes, and a ticket-based WebSocket on `/web-scans/{id}/progress`).
+---
 
-## 14. Deployment Topology
+## 6. Data architecture
 
-`docker-compose.yml` defines 6 services:
+Two separate PostgreSQL databases:
 
-| Service      | Image/Build                                                        | Role                                                                                     |
-| ------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `redis`      | `redis:7-alpine`                                                   | Celery broker/result backend + Pub/Sub                                                   |
-| `api`        | `Backend/Dockerfile`                                               | FastAPI app (uvicorn), port 8000                                                         |
-| `worker`     | `Backend/Dockerfile` (profile `container-scanner`, runs as `root`) | Celery worker, queue `scanner` — needs root for raw sockets (Scapy/Nmap)                 |
-| `web-worker` | `Backend/Dockerfile` (profile `container-scanner`, runs as `root`) | Celery worker, queues `web_recon,web_crawl,web_dast,web_audit` — needs Playwright + root |
-| `frontend`   | `Frontend/Dockerfile`                                              | nginx serving the Vite build, port 3200                                                  |
-| `gateway`    | `nginx:stable-alpine`                                              | Single public entry point (captures real client IPs for audit logging), port 80          |
+| Database                                                            | Owner             | Managed by                                | Contents                                                                                   |
+| ------------------------------------------------------------------- | ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Application DB** (`DATABASE_URL`)                                 | This repo         | Alembic, 32 migrations                    | 47 tables — tenants, users, RBAC, scans, assets, findings, web scans, compliance, topology |
+| **`vuln_intel`** (`VULN_DB_*` / `VULNERABILITY_INTEL_DATABASE_URL`) | Feed sync scripts | **Not under this repo's Alembic control** | NVD CVEs, CVSS, CPE, OSV, MSRC, CSAF advisories, exploit intel, CISA KEV, VulnCheck KEV    |
 
-The primary PostgreSQL database and the separate `vuln_intel` database are expected to run on the Docker host (`host.docker.internal`), not as compose services — both are configured purely via environment variables (`DATABASE_URL`, `VULN_DB_*`).
+`VulnIntelConfig.database_url()` resolves in three steps:
+`VULNERABILITY_INTEL_DATABASE_URL` → the `VULN_DB_*` group (used whenever _any_
+of those five vars is set) → `DATABASE_URL`. The middle step matters: without it,
+a deployment that set `VULN_DB_NAME=vuln_intel` silently sent every CVE query to
+the application database.
+
+Feed ingest scripts under `Backend/scripts/vuln/`: `sync_osv.py`, `sync_msrc.py`,
+`sync_exploit_intel.py`, `sync_csaf.py`, `sync_vulncheck.py`, `download_nvd.py`,
+`backfill_finding_intel.py`; plus `Backend/scans/nvd_sync.py` used by the API's
+24-hour loop and by `POST /api/v1/admin/sync-nvd`.
+
+Schema detail: [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
+
+### Tenancy
+
+Every tenant-scoped table carries an `org_id` (or `tenant_id`) FK to
+`organizations.id` with `ON DELETE CASCADE`. Isolation is enforced at query time,
+not by Postgres RLS. The standard pattern, repeated across routers, is:
+
+```python
+def _is_superadmin(user): return (user.role.name or "").lower() == "superadmin"
+
+def _resolve_org(user, requested_org):
+    if _is_superadmin(user) and requested_org:
+        return requested_org        # superadmin may cross tenants explicitly
+    return str(user.org_id)         # everyone else is pinned to their own org
+```
+
+The frontend cooperates: `axiosInstance` injects `params.org_id` from
+`localStorage.activeOrgId` on every request unless the caller already set it.
+
+### Primary keys
+
+IDs are human-readable and mostly deterministic (`db/base.py`):
+
+| Generator                                                     | Shape                                            | Example                          |
+| ------------------------------------------------------------- | ------------------------------------------------ | -------------------------------- |
+| `gen_org_id(slug)`                                            | `org_{slug}`                                     | `org_default`                    |
+| `gen_user_id(org_slug, username)`                             | `usr_{orgtoken}_{user}_{rand4}`                  | `usr_defa_1a2b3c4d_pankaj_x9v1`  |
+| `gen_scan_id(org_slug)`                                       | `scn_{orgtoken}_{ddmonyy}_{rand4}`               | `scn_defa_1a2b3c4d_07may25_x9v1` |
+| `gen_asset_id(org, ip)`                                       | `ast_{orgtoken}_{ip}` — **deterministic**        | `ast_defa_1a2b3c4d_192_168_1_5`  |
+| `gen_service_id(asset_id, port, proto)`                       | `svc_{asset}_{port}_{proto}` — **deterministic** | `svc_ast_..._22_tcp`             |
+| `gen_vuln_finding_id(asset_id, vuln_id)`                      | `fnd_{asset}_{cve}` — **deterministic**          | `fnd_ast_..._CVE-2024-4577`      |
+| `gen_network_link_id(org, src, dst)`                          | `lnk_{orgtoken}_{a}_{b}`, endpoints sorted       | undirected-stable                |
+| `gen_web_scan_id` / `gen_web_asset_id` / `gen_web_finding_id` | `wsc_` / `was_` / `wfn_`                         | web pipeline                     |
+
+Determinism is a design property, not a convenience: `services` is a
+**current-state projection**, so re-scanning re-points existing rows rather than
+appending a generation. Point-in-time results live in `scan_phases.summary`,
+which the scan-detail API and the report generators read back.
+
+`db.base` also registers a `connect` event that enables the `pg_trgm`, `pgcrypto`
+and `uuid-ossp` extensions on first connection.
+
+---
+
+## 7. Real-time communication
+
+Three distinct mechanisms, each with different auth:
+
+| Channel                                                            | Transport | Auth                                                                                  | Producer                                        |
+| ------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /scans/events`                                                | SSE       | `Authorization: Bearer` via `require_permission("scans","read")`                      | API polls the DB and emits on version change    |
+| `GET /notifications/stream`                                        | SSE       | `Authorization: Bearer` via `get_current_user`                                        | Redis Pub/Sub channel `notifications:user:{id}` |
+| `WS /scans/{scan_id}/progress`, `WS /web-scans/{scan_id}/progress` | WebSocket | **`?ticket=` query param** — a 60-second `type="ticket"` JWT from `POST /auth/ticket` | Redis Pub/Sub channel `scan_progress:{scan_id}` |
+
+WebSockets cannot carry an `Authorization` header from the browser, which is why
+the ticket exists. `_get_websocket_user()` in `scans/router.py` decodes it,
+rejects any token whose `type` is not `"ticket"`, loads the user, and — unless
+they are superadmin — requires the `scans:read` permission atom.
+
+```mermaid
+sequenceDiagram
+    participant UI as SPA
+    participant API as FastAPI
+    participant R as Redis Pub/Sub
+    participant W as Celery worker
+
+    UI->>API: POST /auth/ticket (Bearer)
+    API-->>UI: { ticket }  (60 s, type="ticket")
+    UI->>API: WS /scans/{id}/progress?ticket=...
+    API->>API: _get_websocket_user → scans:read
+    API-->>UI: immediate snapshot from latest scan_phases row
+    API->>R: SUBSCRIBE scan_progress:{id}
+    W->>R: publish_progress_sync(scan_id, phase, progress)
+    R-->>API: message
+    API-->>UI: JSON frame {scan_id, phase, progress}
+```
+
+The `/scans/events` SSE stream is adaptive rather than push-based: it recomputes
+a history snapshot, compares a composite `version` string, and emits a `scans`
+event on change or a `heartbeat` otherwise — every **0.5 s while any scan is
+running, 2 s otherwise**. It honours the same filters as `GET /scans`; without
+that, a live update overwrote the client's filtered list.
+
+The notification stream degrades safely: if the Redis subscribe fails it falls
+back to a heartbeat-only loop at 25-second intervals rather than erroring.
+
+---
+
+## 8. Scan orchestration overview
+
+```mermaid
+flowchart TD
+    A["POST /scan/host-discovery<br/>pipeline_mode, discovery_intensity,<br/>port_scan_intensity, os_detection"] --> Q{"check_scan_quota"}
+    Q -->|"over limit"| E1["429 / 400"]
+    Q -->|"ok"| C["create_scan → scans row"]
+    C --> T1["run_host_discovery_task"]
+    T1 --> P1["ScanOrchestrator.run_host_discovery_only<br/>DiscoveryEngine (Scapy only)"]
+    P1 --> D{"terminal phase<br/>for pipeline_mode?"}
+    D -->|"basic, or execution_mode=interactive"| DONE["status=complete<br/>PDFs generated"]
+    D -->|"asset / vulnerability_audit"| T2["run_asset_discovery_task"]
+    T2 --> P2["PortEngine → NmapScanner<br/>(async TCP connect fallback)"]
+    P2 --> D2{"asset?"}
+    D2 -->|"yes"| DONE
+    D2 -->|"no"| T3["run_vulnerability_audit_task"]
+    T3 --> NM["_nmap_pre_enrich (sequential)"]
+    NM --> VE["VulnerabilityEngine<br/>15 plugins, dynamically selected"]
+    VE --> VER["verify_host_findings"]
+    VER --> RS["calculate_risk"]
+    RS --> DONE
+    DONE --> T4{"SNMP creds in scan.options?"}
+    T4 -->|"yes"| P4["run_topology_mapping_task"]
+```
+
+`PIPELINE_PHASES` (`scan_helpers.py`) is the authority on which phases belong to
+which mode:
+
+| `pipeline_mode`       | Phases         | Terminal core phase |
+| --------------------- | -------------- | ------------------- |
+| `basic`               | `[1, 4]`       | 1                   |
+| `asset`               | `[1, 2, 4]`    | 2                   |
+| `vulnerability_audit` | `[1, 2, 3, 4]` | 3                   |
+| `credentialed`        | `[3]`          | 3                   |
+
+`advanced` is accepted as an alias of `vulnerability_audit`
+(`PIPELINE_MODE_ALIASES`). Phase 4 (topology) is excluded from the terminal-phase
+calculation because it is an optional bolt-on, not a pipeline stage.
+
+Full engine-by-engine treatment: [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md).
+
+---
+
+## 9. Frontend architecture summary
+
+React 18 + Vite 5, no TypeScript, no Redux — state is React Context plus
+`sessionStorage`/`localStorage`.
+
+```mermaid
+graph TD
+    M["main.jsx"] --> BR["BrowserRouter"]
+    BR --> AP["AuthProvider"]
+    AP --> PP["PreferencesProvider"]
+    PP --> EB["ErrorBoundary"]
+    EB --> APP["App.jsx (ScanProvider + Routes)"]
+    APP --> PUB["Public: /login /register /forgot-password /reset-password"]
+    APP --> PRIV["PrivateRoute → AppLayout-wrapped pages"]
+    PRIV --> ADM["Nested PrivateRoute with requiredPermission for /admin/*"]
+```
+
+Key implementation facts:
+
+- **The access token never touches storage.** `api/tokenStorage.js` keeps it in a
+  module-scope variable; the refresh token is an HttpOnly cookie the browser
+  sends because `axiosInstance` sets `withCredentials: true`.
+- A single-flight 401 interceptor calls `POST /auth/refresh`, replays the
+  original request, and queues concurrent 401s behind the same refresh. Five
+  auth URLs bypass it so their 401s surface as real errors.
+- Route guarding is `components/PrivateRoute.jsx`, which supports
+  `requiredPermission`, `requiredAny`, `requiredAll` and `superadminOnly`, and on
+  denial redirects to the first permission-appropriate fallback rather than a
+  dead end.
+- Permission evaluation lives in `auth/permissions.js` and mirrors the backend:
+  superadmin short-circuits to `true`, otherwise `resource:action` must be in the
+  set returned by `/auth/me`, with `resource:manage` accepted as a wildcard.
+
+Detail: [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md).
+
+---
+
+## 10. External integrations
+
+| Integration                   | Where                                                                                             | Required?                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Nmap** binary               | `core/nmap/wrapper.py` (`shutil.which("nmap")` → `NMAP_AVAILABLE`)                                | No — PortEngine falls back to async TCP connect                         |
+| **Scapy**                     | `core/discovery/techniques/*`                                                                     | Yes for Phase 1 raw-socket techniques (needs Npcap on Windows)          |
+| **Nuclei**                    | `engines/vulnerability/plugins/nuclei_probe.py` (network) and `core/web/nuclei/wrapper.py` (DAST) | Network: optional. DAST: **essential** (`ESSENTIAL_TOOLS = {"nuclei"}`) |
+| **subfinder / ffuf / sqlmap** | `core/web/*/wrapper.py`                                                                           | Optional; absence recorded in the scan's `ToolCoverage`                 |
+| **SSLyze**                    | `core/web/sslyze/wrapper.py` — Python API, no subprocess                                          | Optional                                                                |
+| **Playwright**                | `core/web/crawling/browser.py`                                                                    | Required for CRAWL phase                                                |
+| **Paramiko (SSH)**            | `engines/credentialed/ssh_scanner.py`                                                             | Required — `POST /scan/credentialed` returns **503** without it         |
+| **pysnmp-lextudio**           | `core/topology/client.py`                                                                         | Required for topology mapping                                           |
+| **SMTP**                      | `auth/mail_service.py` via `SMTP_*`                                                               | Required for password reset and email OTP                               |
+| **NVD API**                   | `scans/nvd_sync.py`                                                                               | Key optional (raises rate limit)                                        |
+| **VulnCheck API**             | `scripts/vuln/sync_vulncheck.py`                                                                  | `VULNCHECK_API_TOKEN` required or the script exits 2                    |
+
+A missing optional tool is treated as a **coverage gap, not an error**: the web
+orchestrator's `ToolCoverage` records `ran` / `unavailable` / `failed` / `skipped`
+per tool and emits a finding when an essential tool is absent, so an incomplete
+assessment can never be read as a clean one.
+
+---
+
+## 11. Reports
+
+| Route                             | `fmt` values                                        | Produces                       |
+| --------------------------------- | --------------------------------------------------- | ------------------------------ |
+| `GET /reports/download/{scan_id}` | `JSON`, `EXECUTIVE`, `EXECUTIVE_PDF`, `PDF`         | Executive PDF                  |
+|                                   | `XML`, `TECHNICAL`, `TECHNICAL_PDF`                 | Technical PDF                  |
+|                                   | `CSV`                                               | Host inventory or findings CSV |
+| `GET /web-scans/{scan_id}/report` | —                                                   | Web scan PDF                   |
+| `GET /compliance/reports/*`       | `pdf`; `docx` on `iec_62443`, `nist_800_82`, `nis2` | Framework reports              |
+
+The `JSON`/`XML` names are historical aliases the frontend still sends; the
+handler maps them through `_FORMAT_ALIASES` and **rejects anything unrecognised
+with 400**. Previously an unknown format fell through to the executive PDF with
+HTTP 200, so `?fmt=XLSX` returned a PDF that looked like a successful Excel
+export. There is no Excel exporter in the scan modules; DOCX exists only in
+Compliance.
+
+Network reports are generated at scan completion and stored on
+`scans.report_executive_path` / `report_technical_path`. The download endpoint
+serves the stored file and regenerates only when it is missing — unconditional
+generation orphaned a PDF pair per download and bumped `scans.updated_at`, which
+corrupted the Scan History date. Generated paths are resolved and checked against
+`Backend/reports/` with `os.path.commonpath` before being served.
+
+---
+
+## 12. Configuration
+
+`Backend/config.py` is the only module that reads `os.getenv` for application
+settings, and `Backend/.env` is the file it loads (`_selected_env_file()`:
+`.env.test` when `APP_ENV` is `test`/`testing` and that file exists, otherwise
+`.env`, otherwise `.env.test`).
+
+> **IMPORTANT:** The repository-root `.env` is for docker-compose only. A token
+> placed there is silently ignored by every Python script in `Backend/`.
+
+Config classes: `DatabaseConfig`, `JWTConfig`, `ScanConfig`, `CeleryConfig`,
+`VulnIntelConfig`, `WebScanConfig`, `AdminConfig`, `EmailConfig`, and the
+aggregate `AppConfig`. Full variable table in
+[DEVELOPER_SETUP_GUIDE.md](DEVELOPER_SETUP_GUIDE.md).
+
+Two hard-fail guards worth knowing:
+
+- `auth/jwt_handler.py` raises `RuntimeError` at import if `JWT_SECRET_KEY` is one
+  of four known development defaults **and** `ENVIRONMENT == "production"`.
+- `docker-compose.yml` uses `${VAR:?message}` for `POSTGRES_USER`,
+  `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET_KEY` and
+  `COMPLIANCE_ENCRYPTION_KEY`, so the stack refuses to start without them. The
+  last one must match `Backend/.env` on the host scanner worker; a mismatch made
+  every credentialed scan silently complete as an unauthenticated audit.
+
+`core/security_crypto.py` (AES-256-GCM, used for stored scan credentials)
+resolves its key **on first use, not at import**, and logs at ERROR when it falls
+back to the hardcoded development key — import order previously decided which key
+a Celery worker used.
+
+---
+
+## 13. Documentation drift guard
+
+`Backend/tests/test_docs_integrity.py` is executed by CI and asserts:
+
+1. every path in `app.routes` (except `/docs*`, `/redoc`, `/openapi.json`) appears
+   in `docs/BACKEND_API_REFERENCE.md`;
+2. every key of `Base.metadata.tables` appears in `docs/DATABASE_SCHEMA.md`;
+3. every permission string in `ROLE_PERMISSIONS` appears in
+   `docs/RBAC_Management_Permissions.md`.
+
+`docker-compose.yml` mounts `./docs:/docs:ro` on the `api` service so the test can
+find these files inside the container. `Backend/scripts/compile_docs.py` compiles
+eight of these Markdown files plus `QA_REGRESSION_STRATEGY.md` into
+`docs/CCure_Audit_PRO_Documentation.docx`.
+
+---
+
+## 14. Related documents
+
+- [BACKEND_API_REFERENCE.md](BACKEND_API_REFERENCE.md) — all 155 HTTP operations + 2 WebSockets
+- [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) — 47 tables, relationships, constraints, migrations
+- [AUTHENTICATION_AND_AUTHORIZATION.md](AUTHENTICATION_AND_AUTHORIZATION.md) — end-to-end auth trace
+- [RBAC_Management_Permissions.md](RBAC_Management_Permissions.md) — 51 permissions, 5 roles, matrices
+- [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md) — every engine, plugin and probe
+- [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) — SPA structure and integration
+- [DEVELOPER_SETUP_GUIDE.md](DEVELOPER_SETUP_GUIDE.md) — verified setup, build and test commands

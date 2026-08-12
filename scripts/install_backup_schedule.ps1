@@ -18,7 +18,7 @@
     registered to run as the current user and is readable only by them.
 
 .EXAMPLE
-    .\scripts\install_backup_schedule.ps1 -Password 'ccure_admin_2026'
+    .\scripts\install_backup_schedule.ps1 -Password '<ccure_user password>'
 
 .EXAMPLE
     Remove it again:

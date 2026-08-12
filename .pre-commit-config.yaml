@@ -1,4 +1,15 @@
 repos:
+  # Secret detection. This is here because the repository shipped a live
+  # Gmail app password and the production JWT signing key in .env.example —
+  # the key that signs every access token, so anyone holding it could mint a
+  # valid token for any user. Both were caught by reading the file, which is
+  # not a control. Neither could be undone by editing: a committed secret
+  # stays in the history and has to be rotated.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:

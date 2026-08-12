@@ -138,12 +138,82 @@ REMEDIATION_SLA: Dict[str, str] = {
 #: scan produced this* is material to interpreting the findings.
 SCAN_POLICY_LABELS: Dict[str, str] = {
     "phase1": "Host discovery",
+    "host_discovery": "Host discovery",
     "phase2": "Asset and service discovery",
+    "asset_discovery": "Asset and service discovery",
     "phase3": "Network vulnerability assessment",
+    "vulnerability_audit": "Network vulnerability assessment",
     "credentialed": "Credentialed configuration audit",
     "web": "Web application assessment",
     "webscan": "Web application assessment",
 }
+
+#: What each policy's report is actually called. A host-discovery scan performs
+#: no vulnerability assessment, so titling its report "Vulnerability Assessment"
+#: misdescribed the document on its own cover — the body and appendix were
+#: already accurate about what did and did not run.
+#: Scan policies that match findings against the CVE feed. Everything else is
+#: discovery or inventory work, where feed age and detection-quality thresholds
+#: describe an analysis that did not run.
+VULN_ANALYSIS_POLICIES = frozenset(
+    {
+        "phase3",
+        "vulnerability_audit",
+        "credentialed",
+        "web",
+        "webscan",
+    }
+)
+
+
+def _performs_vulnerability_analysis(scan_type: object) -> bool:
+    """True when this scan policy matched services against the CVE feed."""
+    return str(scan_type or "").strip().lower() in VULN_ANALYSIS_POLICIES
+
+
+REPORT_TITLE_BY_POLICY: Dict[str, str] = {
+    "phase1": "Network Discovery Report",
+    "host_discovery": "Network Discovery Report",
+    "phase2": "Asset and Service Inventory",
+    "asset_discovery": "Asset and Service Inventory",
+    "phase3": "Vulnerability Assessment",
+    "vulnerability_audit": "Vulnerability Assessment",
+    "credentialed": "Credentialed Configuration Audit",
+    "web": "Web Application Assessment",
+    "webscan": "Web Application Assessment",
+}
+
+#: The one-line description under each title, per policy.
+REPORT_SUBTITLE_BY_POLICY: Dict[str, Dict[str, str]] = {
+    "discovery": {
+        "executive": "Live hosts identified on the target scope, with reachability coverage.",
+        "technical": "Per-host discovery evidence: addressing, hardware identity, and probe results.",
+    },
+    "default": {
+        "executive": "Risk posture, exposure ranking, and prioritised remediation plan.",
+        "technical": "Per-host findings with detection evidence, scoring provenance, and remediation guidance.",
+    },
+}
+
+
+def _report_title(scan_type: str, kind: str) -> str:
+    """Return the cover title for this scan policy ('executive' | 'technical')."""
+    base = REPORT_TITLE_BY_POLICY.get(
+        str(scan_type).lower().strip(), "Vulnerability Assessment"
+    )
+    suffix = "Executive Summary" if kind == "executive" else "Technical Report"
+    return f"{base} — {suffix}"
+
+
+def _report_subtitle(scan_type: str, kind: str) -> str:
+    """Return the standfirst matching the report's actual subject."""
+    key = (
+        "discovery"
+        if str(scan_type).lower().strip() in ("phase1", "host_discovery")
+        else "default"
+    )
+    return REPORT_SUBTITLE_BY_POLICY[key][kind]
+
 
 DISCOVERY_METHOD_LABELS: Dict[str, str] = {
     "adaptive": "Adaptive (service-guided port selection)",
@@ -173,6 +243,32 @@ def _scan_reference_text(meta: Dict[str, Any]) -> str:
     if number is not None:
         return f"#{number}"
     return "Not recorded"
+
+
+def _hosts_reported_text(findings) -> str:
+    """
+    "Hosts reported" counts hosts that answered.
+
+    A target that never responded is kept in the result set so the report can
+    say it was probed, but it is not a host that was found. Counting it made a
+    scan of a dead address state "Hosts reported 1" and print a full host page
+    for a machine that does not exist. When some targets were down the count is
+    qualified inline rather than silently dropped.
+    """
+    reachable = len(findings.reachable_hosts)
+    unreachable = len(findings.unreachable_hosts)
+    if unreachable:
+        return f"{reachable} of {reachable + unreachable} probed"
+    return str(reachable)
+
+
+def _hosts_scanned_text(findings) -> str:
+    """Coverage figure: what was probed, and how much of it answered."""
+    reachable = len(findings.reachable_hosts)
+    unreachable = len(findings.unreachable_hosts)
+    if unreachable:
+        return f"{reachable + unreachable} probed, {reachable} responded"
+    return str(reachable)
 
 
 def _feed_freshness_text(meta: Dict[str, Any]) -> str:
@@ -416,7 +512,7 @@ def _scan_configuration(
         return default
 
     # Counted from the reachable set, the same basis as the port inventory.
-    total_services = sum(len(h.reachable_services) for h in findings.hosts)
+    total_services = sum(len(h.reachable_services) for h in findings.reachable_hosts)
 
     rows = [
         (
@@ -437,22 +533,37 @@ def _scan_configuration(
         ("OS fingerprinting", first("os_detection")),
         ("Timing profile", first("timing_template", "timing", "speed")),
         ("Scanner engine", first("scanner", "engine", "scan_engine")),
-        ("Vulnerability feed", _feed_freshness_text(meta)),
-        ("Hosts scanned", str(len(findings.hosts))),
-        ("Services fingerprinted", str(total_services)),
-        (
-            "Candidate matches evaluated",
-            # The scan records this when it verifies, and that recorded figure
-            # is authoritative: a report rebuilt from the database later reads
-            # back only the findings that survived, so counting what is in hand
-            # would understate what was actually examined.
-            first(
-                "candidates_evaluated",
-                default=str(len(findings.excluded) + len(findings.vulnerabilities)),
-            ),
-        ),
-        ("Reporting QoD threshold", f"{QOD_REPORT_THRESHOLD}%"),
     ]
+
+    # CVE-feed age, candidate counts and the QoD threshold only mean something
+    # for a scan that matched against the vulnerability feed. Discovery and
+    # asset-inventory scans do no such matching, so printing a feed date and a
+    # detection-quality threshold implied an analysis that never ran.
+    is_vuln_scan = _performs_vulnerability_analysis(scan_type)
+    if is_vuln_scan:
+        rows.append(("Vulnerability feed", _feed_freshness_text(meta)))
+
+    rows.append(("Hosts scanned", _hosts_scanned_text(findings)))
+    # "Fingerprinted" overstated this: the figure counts every reachable service
+    # in the inventory, including the ones the report itself marks
+    # "Not fingerprinted".
+    rows.append(("Services inventoried", str(total_services)))
+
+    if is_vuln_scan:
+        rows.append(
+            (
+                "Candidate matches evaluated",
+                # The scan records this when it verifies, and that recorded
+                # figure is authoritative: a report rebuilt from the database
+                # later reads back only the findings that survived, so counting
+                # what is in hand would understate what was actually examined.
+                first(
+                    "candidates_evaluated",
+                    default=str(len(findings.excluded) + len(findings.vulnerabilities)),
+                ),
+            )
+        )
+        rows.append(("Reporting QoD threshold", f"{QOD_REPORT_THRESHOLD}%"))
 
     # Rows a scan that authenticated adds to the above. They are appended only
     # when the scan recorded them: printing "Not recorded" against network
@@ -509,12 +620,12 @@ def _scan_metadata_block(
                 return str(candidate)
         return default
 
-    credentialed_hosts = [h for h in findings.hosts if h.credentialed]
-    if credentialed_hosts and len(credentialed_hosts) == len(findings.hosts):
+    credentialed_hosts = [h for h in findings.reachable_hosts if h.credentialed]
+    if credentialed_hosts and len(credentialed_hosts) == len(findings.reachable_hosts):
         auth_mode = "Authenticated (credentialed audit)"
     elif credentialed_hosts:
         auth_mode = (
-            f"Mixed — {len(credentialed_hosts)} of {len(findings.hosts)} hosts "
+            f"Mixed — {len(credentialed_hosts)} of {len(findings.reachable_hosts)} hosts "
             f"scanned with credentials"
         )
     elif meta.get("is_credentialed") is True:
@@ -564,9 +675,17 @@ def _scan_metadata_block(
             ),
         ),
         ("Authentication mode", auth_mode),
-        ("Hosts reported", str(len(findings.hosts))),
+        # Count hosts that answered. Counting every probed target reported a
+        # host as discovered when the scan had in fact found nothing there.
+        ("Hosts reported", _hosts_reported_text(findings)),
         ("Scan duration", duration_text),
-        ("Vulnerability feed", feed_text),
+        # Only meaningful when the scan actually consulted the CVE feed — see
+        # _performs_vulnerability_analysis().
+        *(
+            [("Vulnerability feed", feed_text)]
+            if _performs_vulnerability_analysis(scan_type)
+            else []
+        ),
         ("Report generated", datetime.now().strftime("%d %b %Y %H:%M:%S")),
         ("Classification", "CONFIDENTIAL / RESTRICTED"),
     ]
@@ -1443,19 +1562,18 @@ class ScanReportGenerator:
         summary = result.get("summary", {}) or {}
         styles = self.styles
 
+        exec_title = _report_title(scan_type, "executive")
         doc = self._doc(
             filename,
-            "Vulnerability Assessment — Executive Summary",
+            exec_title,
             "CCure Audit PRO — Executive Summary",
         )
         story: List[Any] = []
 
-        story.append(
-            _p("Vulnerability Assessment — Executive Summary", styles["title"])
-        )
+        story.append(_p(exec_title, styles["title"]))
         story.append(
             _p(
-                "Risk posture, exposure ranking, and prioritised remediation plan.",
+                _report_subtitle(scan_type, "executive"),
                 styles["subtitle"],
             )
         )
@@ -1476,7 +1594,7 @@ class ScanReportGenerator:
 
         if total_vulns == 0:
             posture = (
-                f"No vulnerabilities were confirmed across {len(findings.hosts)} "
+                f"No vulnerabilities were confirmed across {len(findings.reachable_hosts)} "
                 f"scanned host(s). Open ports discovered during the scan are "
                 f"inventoried in the technical report for attack-surface review."
             )
@@ -1484,7 +1602,7 @@ class ScanReportGenerator:
             posture = (
                 f"{total_vulns} vulnerabilit{'y' if total_vulns == 1 else 'ies'} "
                 f"{'was' if total_vulns == 1 else 'were'} reported across "
-                f"{len(findings.hosts)} host(s), of which "
+                f"{len(findings.reachable_hosts)} host(s), of which "
                 f"<b>{findings.confirmed_count}</b> are version-confirmed and "
                 f"<b>{findings.potential_count}</b> require version verification. "
                 f"<b>{actionable}</b> {'is' if actionable == 1 else 'are'} rated "
@@ -1625,8 +1743,7 @@ class ScanReportGenerator:
         story.append(Spacer(1, 4 * mm))
 
         # ── Host ranking ─────────────────────────────────────────────────────
-        if len(findings.hosts) > 1:
-            story.append(_heading("Most affected hosts", styles["h1"], 0))
+        if len(findings.reachable_hosts) > 1:
             rows = [
                 (
                     h.display_name,
@@ -1635,7 +1752,7 @@ class ScanReportGenerator:
                         for t in SEVERITY_TIERS
                     },
                 )
-                for h in findings.hosts
+                for h in findings.reachable_hosts
             ]
             chart = host_risk_chart(
                 rows,
@@ -1643,16 +1760,20 @@ class ScanReportGenerator:
                 font=styles["fonts"]["regular"],
                 bold_font=styles["fonts"]["bold"],
             )
+            # Build the chart before writing the heading. Emitting the heading
+            # first left a bare "Most affected hosts" title with nothing beneath
+            # it on any scan with no vulnerabilities to rank.
             if chart:
+                story.append(_heading("Most affected hosts", styles["h1"], 0))
                 story.append(chart)
                 story.append(Spacer(1, 1.5 * mm))
                 story.append(chart_legend(vuln_counts, font=styles["fonts"]["regular"]))
-                if len(findings.hosts) > 15:
+                if len(findings.reachable_hosts) > 15:
                     story.append(Spacer(1, 1.5 * mm))
                     story.append(
                         _p(
                             f"Chart shows the 15 most affected hosts. All "
-                            f"{len(findings.hosts)} hosts are listed in the "
+                            f"{len(findings.reachable_hosts)} hosts are listed in the "
                             f"technical report.",
                             styles["small"],
                         )
@@ -1769,9 +1890,15 @@ class ScanReportGenerator:
         # ── Coverage note ────────────────────────────────────────────────────
         story.append(_heading("Assessment coverage", styles["h1"], 0))
         coverage = [
-            f"Hosts assessed: <b>{len(findings.hosts)}</b>.",
+            f"Hosts assessed: <b>{len(findings.reachable_hosts)}</b>"
+            + (
+                f" of {len(findings.hosts)} probed "
+                f"({len(findings.unreachable_hosts)} did not respond)."
+                if findings.unreachable_hosts
+                else "."
+            ),
             f"Open ports inventoried: "
-            f"<b>{sum(len(h.reachable_services) for h in findings.hosts)}</b>.",
+            f"<b>{sum(len(h.reachable_services) for h in findings.reachable_hosts)}</b>.",
             f"Version-confirmed vulnerabilities: <b>{findings.confirmed_count}</b>.",
             f"Findings requiring version verification: <b>{findings.potential_count}</b>.",
         ]
@@ -1820,18 +1947,18 @@ class ScanReportGenerator:
         summary = result.get("summary", {}) or {}
         styles = self.styles
 
+        tech_title = _report_title(scan_type, "technical")
         doc = self._doc(
             filename,
-            "Vulnerability Assessment — Technical Report",
+            tech_title,
             "CCure Audit PRO — Technical Report",
         )
         story: List[Any] = []
 
-        story.append(_p("Vulnerability Assessment — Technical Report", styles["title"]))
+        story.append(_p(tech_title, styles["title"]))
         story.append(
             _p(
-                "Per-host findings with detection evidence, scoring provenance, "
-                "and remediation guidance.",
+                _report_subtitle(scan_type, "technical"),
                 styles["subtitle"],
             )
         )
@@ -1849,7 +1976,7 @@ class ScanReportGenerator:
         # ── Host index ───────────────────────────────────────────────────────
         story.append(_heading("Host index", styles["h1"], 0))
 
-        if findings.hosts:
+        if findings.reachable_hosts:
             rows = [
                 [
                     _p("<b>Host</b>", styles["th"], escape=False),
@@ -1862,7 +1989,7 @@ class ScanReportGenerator:
                     _p("<b>Low</b>", styles["th"], escape=False),
                 ]
             ]
-            for host in findings.hosts:
+            for host in findings.reachable_hosts:
                 # Count severities across vulnerabilities only. Including the
                 # port-inventory entries made the row total 48 while the section
                 # heading below said 38, because those entries are listed in
@@ -1910,14 +2037,53 @@ class ScanReportGenerator:
                 )
             )
         else:
-            story.append(_p("No hosts were reported for this scan.", styles["body"]))
+            story.append(
+                _p(
+                    "No hosts responded to this scan. Every target listed under "
+                    "unreachable targets below was probed and did not answer.",
+                    styles["body"],
+                )
+            )
+
+        # ── Unreachable targets ──────────────────────────────────────────────
+        # Disclosed rather than dropped: a target that did not answer is a real
+        # coverage limit, and the reader needs to know it was attempted. It is
+        # kept out of the host index so it can never be read as a discovery.
+        if findings.unreachable_hosts:
+            story.append(Spacer(1, 5 * mm))
+            story.append(_heading("Targets not reachable", styles["h1"], 0))
+            story.append(
+                _p(
+                    f"{len(findings.unreachable_hosts)} target(s) were probed and "
+                    f"did not respond. They are listed here for coverage, and are "
+                    f"not counted as discovered hosts anywhere in this report. A "
+                    f"target may be offline, firewalled, or filtering the probe "
+                    f"types this scan policy uses.",
+                    styles["body"],
+                )
+            )
+            story.append(Spacer(1, 2 * mm))
+            unreachable_rows = [
+                [
+                    _p("<b>Target</b>", styles["th"], escape=False),
+                    _p("<b>Result</b>", styles["th"], escape=False),
+                ]
+            ]
+            for host in findings.unreachable_hosts:
+                unreachable_rows.append(
+                    [
+                        _p(host.ip, styles["body"]),
+                        _p("No response to any probe", styles["body"]),
+                    ]
+                )
+            story.append(_grid(unreachable_rows, [60 * mm, 101 * mm]))
 
         story.append(Spacer(1, 5 * mm))
 
         # ── Per-host sections ────────────────────────────────────────────────
         cards_rendered = 0
 
-        for host in findings.hosts:
+        for host in findings.reachable_hosts:
             story.append(PageBreak())
             story.append(_heading(f"Host: {host.display_name}", styles["h1"], 0))
 

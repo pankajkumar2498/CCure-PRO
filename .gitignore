@@ -95,3 +95,7 @@ docs/*.pdf
 
 # pre-commit cache
 .pre-commit-cache/
+
+# Database dumps from scripts/backup_db.ps1
+backups/
+.env.bak*

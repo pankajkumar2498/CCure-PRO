@@ -46,6 +46,11 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
+      # Anyone running `docker exec <container> pytest` gets a suite that
+      # TRUNCATEs organizations and users CASCADE. Without this it inherits
+      # DATABASE_URL above and destroys the live database. Pin the scratch
+      # database explicitly so the dangerous default is never reachable.
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
@@ -55,11 +60,20 @@ services:
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Unset falls back to a key hardcoded in the source,
-      # which protects nothing — set this in .env for any real deployment.
+      # scan passwords). Required, and it must be the SAME value the host
+      # scanner worker loads from Backend/.env.
+      #
+      # This was previously `:-` (empty default). The API then encrypted stored
+      # credentials under the fallback key hardcoded in security_crypto.py
+      # while the host worker decrypted with the real key from Backend/.env, so
+      # every credentialed scan failed with "Invalid encrypted payload or
+      # authentication tag" and silently completed as an unauthenticated audit.
+      # Failing to start is better than a scan that quietly loses its
+      # credentials.
+      #
       # Note: changing it makes credentials encrypted under the old key
       # unreadable, so re-enter stored credentials after setting it.
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
@@ -85,6 +99,12 @@ services:
       - ./Backend:/app
       - /app/.venv
       - ./Backend/reports:/app/reports
+      # tests/test_docs_integrity.py reads these to check that every route,
+      # table and permission in the code is documented. Without the mount the
+      # test could not find docs/ at all and failed on three missing files,
+      # which read as documentation drift and hid the one route that really was
+      # undocumented.
+      - ./docs:/docs:ro
 
   # ── Background Worker ────────────────────────────────────────────────────
   worker:
@@ -100,6 +120,11 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
+      # Anyone running `docker exec <container> pytest` gets a suite that
+      # TRUNCATEs organizations and users CASCADE. Without this it inherits
+      # DATABASE_URL above and destroys the live database. Pin the scratch
+      # database explicitly so the dangerous default is never reachable.
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
@@ -109,11 +134,20 @@ services:
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Unset falls back to a key hardcoded in the source,
-      # which protects nothing — set this in .env for any real deployment.
+      # scan passwords). Required, and it must be the SAME value the host
+      # scanner worker loads from Backend/.env.
+      #
+      # This was previously `:-` (empty default). The API then encrypted stored
+      # credentials under the fallback key hardcoded in security_crypto.py
+      # while the host worker decrypted with the real key from Backend/.env, so
+      # every credentialed scan failed with "Invalid encrypted payload or
+      # authentication tag" and silently completed as an unauthenticated audit.
+      # Failing to start is better than a scan that quietly loses its
+      # credentials.
+      #
       # Note: changing it makes credentials encrypted under the old key
       # unreadable, so re-enter stored credentials after setting it.
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
@@ -158,6 +192,11 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
+      # Anyone running `docker exec <container> pytest` gets a suite that
+      # TRUNCATEs organizations and users CASCADE. Without this it inherits
+      # DATABASE_URL above and destroys the live database. Pin the scratch
+      # database explicitly so the dangerous default is never reachable.
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
@@ -167,11 +206,20 @@ services:
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Unset falls back to a key hardcoded in the source,
-      # which protects nothing — set this in .env for any real deployment.
+      # scan passwords). Required, and it must be the SAME value the host
+      # scanner worker loads from Backend/.env.
+      #
+      # This was previously `:-` (empty default). The API then encrypted stored
+      # credentials under the fallback key hardcoded in security_crypto.py
+      # while the host worker decrypted with the real key from Backend/.env, so
+      # every credentialed scan failed with "Invalid encrypted payload or
+      # authentication tag" and silently completed as an unauthenticated audit.
+      # Failing to start is better than a scan that quietly loses its
+      # credentials.
+      #
       # Note: changing it makes credentials encrypted under the old key
       # unreadable, so re-enter stored credentials after setting it.
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:-}
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - APP_ENV=production
       - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}

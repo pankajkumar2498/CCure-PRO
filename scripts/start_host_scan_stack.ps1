@@ -6,6 +6,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Ensure-UnpausedContainers {
+    param(
+        [string[]]$ContainerNames
+    )
+
+    if (-not $ContainerNames) {
+        return
+    }
+
+    $pausedContainers = docker ps -a --filter "status=paused" --format "{{.Names}}" | ForEach-Object { $_.Trim() }
+    $toUnpause = $pausedContainers | Where-Object { $ContainerNames -contains $_ }
+    if ($toUnpause) {
+        Write-Host "Detected paused containers: $($toUnpause -join ', '). Unpausing..."
+        foreach ($container in $toUnpause) {
+            docker unpause $container | Out-Null
+        }
+    }
+}
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $backendDir = Join-Path $repoRoot "Backend"
 $workerScript = Join-Path $backendDir "scripts\scan\start_host_scanner_worker.ps1"
@@ -50,8 +69,38 @@ try {
     if ($Service) {
         $composeArgs += $Service
     } else {
+        # Four services by name, deliberately — NOT a bare `docker compose up -d`.
+        #
+        # Two services in docker-compose.yml must not start here, and neither
+        # exclusion is obvious from reading that file:
+        #
+        #   worker  - the containerised scanner. It consumes the same Celery
+        #             queues as the host worker started in step 2 below
+        #             (scanner, default), so running both means each scan task
+        #             goes to whichever grabs it first. Roughly half would land
+        #             in a container that cannot reach the physical LAN with
+        #             raw sockets, producing empty or wrong results
+        #             intermittently, with nothing in the logs to explain it.
+        #             Running the scanner on the host is the entire reason this
+        #             stack is hybrid.
+        #
+        #   gateway - an optional nginx reverse proxy publishing port 80. The
+        #             API (8000) and frontend (3200) are reachable directly, so
+        #             it is not needed for scanning and only adds a port
+        #             binding that can collide with whatever else uses 80.
+        #
+        # `db` is absent because PostgreSQL runs on the Windows host. It still
+        # starts as an api dependency, which is harmless — the application
+        # connects to the host server, not to that container.
+        #
+        # Before changing this to a bare `up -d`, read the note on `worker`:
+        # it will silently corrupt scan results.
         $composeArgs += @("redis", "api", "frontend", "web-worker")
     }
+
+    $serviceContainers = if ($Service) { @($Service) } else { @("ccure-redis", "ccure-api", "ccure-frontend", "ccure-web-worker") }
+    Ensure-UnpausedContainers -ContainerNames $serviceContainers
+
     docker @composeArgs
 }
 finally {

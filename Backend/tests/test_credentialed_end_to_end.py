@@ -46,8 +46,28 @@ class _FakeSSH:
 
 
 class _FakeMatcher:
-    def match_packages(self, packages):
+    #: Records what the audit passed through, so a test can assert that the
+    #: host's own release reached the matcher — without it OSV advisories are
+    #: matched against every distribution in the database.
+    last_os_id: str = ""
+    last_os_version_id: str = ""
+
+    def match_packages(self, packages, os_id: str = "", os_version_id: str = ""):
+        type(self).last_os_id = os_id
+        type(self).last_os_version_id = os_version_id
+        self._seen = len(packages)
         return list(packages)
+
+    def coverage(self):
+        """Mirror of VulnMatcher.coverage() — how much was assessable."""
+        seen = getattr(self, "_seen", 0)
+        return {
+            "packages_collected": seen,
+            "packages_assessable": seen,
+            "packages_cpe_resolved": seen,
+            "advisory_source": None,
+            "coverage_pct": 100.0 if seen else 0.0,
+        }
 
     def to_report_format(self, findings):
         return [

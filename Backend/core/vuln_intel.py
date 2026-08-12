@@ -352,3 +352,145 @@ def build_sql_or_clauses(
                 params[param_name] = f"%{value}%"
             idx += 1
     return (" OR ".join(clauses)) or "FALSE", params
+
+
+def csaf_advisories_for(cve_ids: Sequence[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Vendor and ICS advisories covering these CVEs, keyed by CVE.
+
+    Enrichment only, and joined on the CVE alone — which is why it is safe.
+    Nothing here decides whether a host is affected; that verdict was already
+    reached by the engine that raised the finding. This attaches what the
+    vendor published about the same CVE: the advisory reference and, more
+    usefully, the vendor's own remediation wording.
+
+    That wording is the part NVD cannot supply. NVD yields a version boundary
+    inferred from a CPE range; Siemens writes "Update to V2606 or later
+    version". For OT products the vendor advisory is frequently the only place
+    a remediation is stated at all.
+
+    Deliberately not attempted here: deciding that an *unfound* CVE applies
+    because a CSAF product name resembles something installed. CSAF product
+    trees express versions in the `vers:` range syntax over nested branches,
+    and matching an installed package against that is how confident false
+    positives are made.
+    """
+    wanted = [str(c).strip().upper() for c in (cve_ids or []) if str(c or "").strip()]
+    if not wanted:
+        return {}
+
+    engine = get_vuln_engine()
+    if engine is None:
+        return {}
+
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    try:
+        with engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                    SELECT c.cve_id,
+                           a.id       AS advisory_id,
+                           a.provider,
+                           a.title,
+                           a.url,
+                           (
+                               SELECT string_agg(DISTINCT f.remediation, ' | ')
+                               FROM csaf_affected f
+                               WHERE f.advisory_id = a.id
+                                 AND f.cve_id = c.cve_id
+                                 AND f.remediation IS NOT NULL
+                           ) AS remediation
+                    FROM csaf_advisory_cve c
+                    JOIN csaf_advisory a ON a.id = c.advisory_id
+                    WHERE c.cve_id = ANY(:cves)
+                    ORDER BY a.updated DESC NULLS LAST
+                    """
+                    ),
+                    {"cves": wanted},
+                )
+                .mappings()
+                .all()
+            )
+    except SQLAlchemyError as exc:
+        # Enrichment is additive: a findings report without vendor advisories
+        # is still correct, so a failure here must not fail the scan.
+        logger.warning("CSAF advisory lookup failed: %s", exc)
+        return {}
+
+    for row in rows:
+        out.setdefault(row["cve_id"], []).append(
+            {
+                "advisory_id": row["advisory_id"],
+                "provider": row["provider"],
+                "title": row["title"],
+                "url": row["url"],
+                "remediation": row["remediation"],
+            }
+        )
+    return out
+
+
+def exploit_intel_for(cve_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    Exploitation evidence for these CVEs, keyed by CVE.
+
+    One lookup rather than three query sites, so the credentialed matcher, the
+    network syncer and the backfill all report the same thing about the same
+    CVE. Divergence between those paths is how a finding came to say different
+    things depending on which engine raised it.
+
+    Returns, per CVE: which corpora reported an exploit, whether one was
+    reproduced, whether it has been seen against a honeypot, and whether it is
+    used in ransomware. `has_exploit` on its own cannot separate a weaponised
+    Metasploit module from an unreproduced proof of concept, and triage turns
+    on exactly that difference.
+    """
+    wanted = [str(c).strip().upper() for c in (cve_ids or []) if str(c or "").strip()]
+    if not wanted:
+        return {}
+
+    engine = get_vuln_engine()
+    if engine is None:
+        return {}
+
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        with engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                    SELECT e.cve_id,
+                           e.exploit_sources,
+                           e.verified_exploit,
+                           COALESCE(v.canary_confirmed, FALSE) AS canary_confirmed,
+                           -- VulnCheck records this as free text ("Known",
+                           -- "Unknown"), so only an explicit "known" counts.
+                           (lower(COALESCE(v.ransomware, '')) = 'known')
+                               AS ransomware_linked
+                    FROM exploits e
+                    LEFT JOIN vulncheck_kev v ON v.cve_id = e.cve_id
+                    WHERE e.cve_id = ANY(:cves) AND e.has_exploit
+                    """
+                    ),
+                    {"cves": wanted},
+                )
+                .mappings()
+                .all()
+            )
+    except SQLAlchemyError as exc:
+        # Additive: a finding without exploit provenance is still a correct
+        # finding, so this must never fail a scan.
+        logger.warning("Exploit intel lookup failed: %s", exc)
+        return {}
+
+    for row in rows:
+        out[row["cve_id"]] = {
+            "exploit_sources": list(row["exploit_sources"] or []),
+            "verified_exploit": bool(row["verified_exploit"]),
+            "canary_confirmed": bool(row["canary_confirmed"]),
+            "ransomware_linked": bool(row["ransomware_linked"]),
+        }
+    return out

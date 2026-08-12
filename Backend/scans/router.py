@@ -30,6 +30,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from scans.legacy_json_builder import build_legacy_scan_results
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger("ccure.scans")
@@ -42,7 +43,17 @@ TERMINAL_PHASE_BY_MODE = {
     "credentialed": 3,
 }
 
-TERMINAL_STATUSES = {"complete", "completed", "failed", "cancelled", "canceled"}
+# 'unreachable' is a terminal outcome Phase 1 sets when every target was down.
+# Leaving it out let /stop overwrite a finished scan's real result with
+# 'cancelled', destroying the record of what the scan actually found.
+TERMINAL_STATUSES = {
+    "complete",
+    "completed",
+    "failed",
+    "cancelled",
+    "canceled",
+    "unreachable",
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -112,7 +123,13 @@ def _scan_to_dict(
         "scan_type": scan.scan_type,
         "phase": scan.phases[-1].phase_order if scan.phases else 1,
         "status": scan.status,
+        # Without this the UI can only say "Failed" — the operator never learns
+        # that, say, the target string was unparseable.
+        "failure_reason": scan.failure_reason or None,
         "scan_duration": scan.duration_seconds,
+        "queued_at": _as_utc_iso(scan.queued_at),
+        "started_at": _as_utc_iso(scan.started_at),
+        "completed_at": _as_utc_iso(scan.completed_at),
         "created_at": _as_utc_iso(scan.created_at),
         "updated_at": _as_utc_iso(scan.updated_at),
         "is_archived": bool(scan.is_archived),
@@ -177,6 +194,10 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     status = (scan.status or "").lower()
     if status in {"complete", "completed"}:
         return 100
+    # An unreachable scan ran to completion — every target simply answered
+    # nothing. That is a finished scan, not a partial one.
+    if status == "unreachable":
+        return 100
 
     terminal_phase = TERMINAL_PHASE_BY_MODE.get(pipeline_mode, 1)
     # Using phases to calculate phase
@@ -186,13 +207,47 @@ def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
 
     if status == "running":
         return max(8, min(96, percentage))
+    # A scan that failed or was cancelled stopped where it stopped. Flooring it
+    # at 8% invented progress that never happened.
     if status in TERMINAL_STATUSES:
-        return max(percentage, 8)
+        return percentage
     return percentage
 
 
+STATUS_FILTER_ALIASES: dict[str, tuple[str, ...]] = {
+    "complete": ("complete", "completed"),
+    "completed": ("complete", "completed"),
+    "failed": ("failed",),
+    "cancelled": ("cancelled", "canceled"),
+    "canceled": ("cancelled", "canceled"),
+    "unreachable": ("unreachable",),
+    "running": ("running", "queued", "pending"),
+}
+
+SORTABLE_COLUMNS = {
+    "created_at": Scan.created_at,
+    "scan_no": Scan.scan_no,
+    "status": Scan.status,
+    "target": Scan.target_str,
+    "duration": Scan.duration_seconds,
+    "active_hosts": Scan.active_hosts,
+    "pipeline_mode": Scan.pipeline_mode,
+}
+
+
 def _build_scans_query(
-    db: Session, user: User, org_id: str, scope: str, created_by: str | None = None
+    db: Session,
+    user: User,
+    org_id: str,
+    scope: str,
+    created_by: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    pipeline_mode: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
 ):
     query = (
         db.query(Scan)
@@ -225,11 +280,60 @@ def _build_scans_query(
             detail="Invalid scope. Use active, archived, deleted, or all.",
         )
 
-    order_by = [Scan.created_at.desc()]
-    if scope == "archived":
-        order_by = [Scan.archived_at.desc(), Scan.created_at.desc()]
-    if scope == "deleted":
-        order_by = [Scan.deleted_at.desc(), Scan.created_at.desc()]
+    # ── Filters applied in SQL, not in the browser ────────────────────────────
+    # These used to be client-side over whatever the first page returned, so a
+    # filter silently searched only the most recent 200 scans.
+    if status and status.lower() != "all":
+        key = status.strip().lower()
+        values = STATUS_FILTER_ALIASES.get(key)
+        if values is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Invalid status. Use one of: "
+                    + ", ".join(sorted(STATUS_FILTER_ALIASES))
+                ),
+            )
+        query = query.filter(func.lower(Scan.status).in_(values))
+
+    if pipeline_mode and pipeline_mode.lower() != "all":
+        query = query.filter(func.lower(Scan.pipeline_mode) == pipeline_mode.lower())
+
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        conditions = [func.lower(Scan.target_str).like(needle)]
+        digits = search.strip().lstrip("#")
+        if digits.isdigit():
+            conditions.append(Scan.scan_no == int(digits))
+        query = query.filter(or_(*conditions))
+
+    if date_from:
+        query = query.filter(Scan.created_at >= date_from)
+    if date_to:
+        query = query.filter(Scan.created_at <= date_to)
+
+    # ── Sorting ───────────────────────────────────────────────────────────────
+    descending = str(sort_dir or "desc").lower() != "asc"
+    if sort_by:
+        column = SORTABLE_COLUMNS.get(sort_by.strip().lower())
+        if column is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid sort_by. Use one of: "
+                + ", ".join(sorted(SORTABLE_COLUMNS)),
+            )
+        # NULLS LAST in both directions. PostgreSQL sorts NULLs first on DESC,
+        # so "longest scans first" led with the failed scans that never recorded
+        # a duration at all.
+        primary = column.desc().nullslast() if descending else column.asc().nullslast()
+        # scan_no breaks ties so pagination stays stable across pages.
+        order_by = [primary, Scan.scan_no.desc()]
+    else:
+        order_by = [Scan.created_at.desc()]
+        if scope == "archived":
+            order_by = [Scan.archived_at.desc(), Scan.created_at.desc()]
+        if scope == "deleted":
+            order_by = [Scan.deleted_at.desc(), Scan.created_at.desc()]
 
     return query, order_by
 
@@ -242,8 +346,28 @@ def _scan_history_snapshot(
     skip: int,
     limit: int,
     created_by: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    pipeline_mode: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
 ) -> dict:
-    query, order_by = _build_scans_query(db, user, org_id, scope, created_by)
+    query, order_by = _build_scans_query(
+        db,
+        user,
+        org_id,
+        scope,
+        created_by,
+        status=status,
+        search=search,
+        pipeline_mode=pipeline_mode,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
     scans = query.order_by(*order_by).offset(skip).limit(limit).all()
     total = query.count()
     rows = [_scan_to_dict(s) for s in scans]
@@ -258,6 +382,8 @@ def _scan_history_snapshot(
     return {
         "scope": scope,
         "total": total,
+        "skip": skip,
+        "limit": limit,
         "scans": rows,
         "version": "|".join(version_parts),
         "emitted_at": _as_utc_iso(utcnow()),
@@ -333,15 +459,48 @@ def list_scans(
     scope: str = Query("active"),
     created_by: str | None = Query(None),
     org_id: str | None = Query(None),
+    status: str | None = Query(
+        None,
+        description="all | running | complete | failed | cancelled | unreachable",
+    ),
+    search: str | None = Query(None, description="Match target text or scan number"),
+    pipeline_mode: str | None = Query(
+        None, description="basic | asset | vulnerability_audit | credentialed"
+    ),
+    date_from: datetime | None = Query(None, description="Created at or after (ISO)"),
+    date_to: datetime | None = Query(None, description="Created at or before (ISO)"),
+    sort_by: str | None = Query(
+        None,
+        description="created_at | scan_no | status | target | duration | active_hosts | pipeline_mode",
+    ),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
+
+    Filtering, search and sorting run in SQL so they cover the whole history
+    rather than whichever page the client happens to be holding.
     Does NOT include full results blob (use GET /scans/{id} for that).
     """
     org = _resolve_org(user, org_id)
-    return _scan_history_snapshot(db, user, org, scope, skip, limit, created_by)
+    return _scan_history_snapshot(
+        db,
+        user,
+        org,
+        scope,
+        skip,
+        limit,
+        created_by,
+        status=status,
+        search=search,
+        pipeline_mode=pipeline_mode,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
 
 
 @router.get("/events")
@@ -353,11 +512,18 @@ async def stream_scan_history(
     interval: float = Query(2.0, ge=0.5, le=15.0),
     created_by: str | None = Query(None),
     org_id: str | None = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    pipeline_mode: str | None = Query(None),
     user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
     Uses adaptive polling based on active running scans.
+
+    The stream honours the same filters as GET /scans. Without that, a live
+    update overwrote the client's filtered list with the unfiltered one, and
+    searching appeared to do nothing.
     """
     if scope not in {"active", "archived", "deleted", "all"}:
         raise HTTPException(
@@ -383,6 +549,9 @@ async def stream_scan_history(
                     skip,
                     limit,
                     created_by,
+                    status,
+                    search,
+                    pipeline_mode,
                 )
             finally:
                 db.close()
@@ -552,14 +721,28 @@ def stop_scan(
         }
 
     # 1. Update DB Status
+    stopped_at = utcnow()
     scan.status = "cancelled"
-    scan.updated_at = utcnow()
+    scan.updated_at = stopped_at
+
+    # Stamp the stop time here rather than relying on the worker to settle it.
+    # The task is revoked immediately below, so it may never reach its own
+    # cancellation checkpoint — which left cancelled scans with a duration but
+    # no completed_at, and nothing to show for "when did this stop?".
+    if not scan.completed_at:
+        scan.completed_at = stopped_at
+    if scan.started_at and scan.duration_seconds is None:
+        scan.duration_seconds = (scan.completed_at - scan.started_at).total_seconds()
 
     # Mark all non-terminal phases as cancelled
     for phase in scan.phases:
         if phase.status not in ("complete", "failed", "skipped", "cancelled"):
             phase.status = "cancelled"
-            phase.completed_at = utcnow()
+            phase.completed_at = stopped_at
+            if phase.started_at and phase.duration_seconds is None:
+                phase.duration_seconds = (
+                    phase.completed_at - phase.started_at
+                ).total_seconds()
 
     # 2. Revoke Celery Task
     if scan.current_task_id:

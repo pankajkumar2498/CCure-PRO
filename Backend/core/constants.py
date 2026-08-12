@@ -478,6 +478,40 @@ PORT_DB: dict[int, dict] = {
         "risk": "High",
         "note": "ActiveMQ broker; default creds",
     },
+    # Out-of-band management. These sit above 1024 and outside Nmap's top-1000,
+    # so a default scan missed them entirely — on a host whose AMT web UI was
+    # wide open. AMT grants pre-boot control independent of the host OS, which
+    # makes it exactly the exposure an asset inventory must not skip.
+    16992: {
+        "service": "Intel-AMT-HTTP",
+        "risk": "Critical",
+        "note": "Intel AMT web UI (cleartext); out-of-band host control",
+    },
+    16993: {
+        "service": "Intel-AMT-HTTPS",
+        "risk": "High",
+        "note": "Intel AMT web UI (TLS); out-of-band host control",
+    },
+    16994: {
+        "service": "Intel-AMT-Redir",
+        "risk": "High",
+        "note": "Intel AMT redirection (SOL/IDE-R), cleartext",
+    },
+    16995: {
+        "service": "Intel-AMT-Redir-TLS",
+        "risk": "Medium",
+        "note": "Intel AMT redirection (SOL/IDE-R) over TLS",
+    },
+    664: {
+        "service": "IPMI-Secure",
+        "risk": "Medium",
+        "note": "ASF/IPMI secure port; BMC management",
+    },
+    7070: {
+        "service": "RealServer/AMT-SOAP",
+        "risk": "Medium",
+        "note": "RTSP/RealServer or AMT SOAP endpoint",
+    },
     # Monitoring / DevOps / Containers
     2375: {
         "service": "Docker-HTTP",

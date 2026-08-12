@@ -7,6 +7,8 @@ and track execution phases natively in the production PostgreSQL schema.
 Automatically runs Identity Resolution (AssetSyncer) internally.
 """
 
+import logging
+from datetime import timedelta
 from typing import Any, List, Optional
 
 from core.audit import log_audit_event
@@ -21,6 +23,8 @@ from scans.asset_syncer import (
 )
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
+
+log = logging.getLogger("ccure.scans.db_helpers")
 
 _UNSAFE_JSONB_CHARS = {
     codepoint: None for codepoint in range(32) if codepoint not in (9, 10, 13)
@@ -228,15 +232,21 @@ def update_scan_phase1(
     scan.total_hosts = total
     scan.active_hosts = active
 
-    # Default terminal status
-    scan.status = "complete" if is_final else "running"
+    # A user cancellation that lands while this phase is being written back must
+    # win: recording 'complete' here would overwrite what the user asked for and
+    # make the Stop button look like it did nothing.
+    was_cancelled = scan.status in ("cancelled", "canceled", "cancelling")
 
-    # ATOMIC UNREACHABLE DETECTION
-    if active == 0 and total > 0:
-        scan.status = "unreachable"
-        scan.completed_at = utcnow()
+    if not was_cancelled:
+        # Default terminal status
+        scan.status = "complete" if is_final else "running"
 
-    if is_final or scan.status == "unreachable":
+        # ATOMIC UNREACHABLE DETECTION
+        if active == 0 and total > 0:
+            scan.status = "unreachable"
+            scan.completed_at = utcnow()
+
+    if was_cancelled or is_final or scan.status == "unreachable":
         scan.completed_at = utcnow()
 
     scan.duration_seconds = duration
@@ -248,17 +258,23 @@ def update_scan_phase1(
     # Full payload embedded in summary
     full_summary = _phase_summary_payload(summary, hosts_data)
 
+    # This row is written after the phase has already run, so utcnow() is the
+    # completion time. Deriving the start from the measured duration keeps
+    # started_at meaningful instead of making every phase look instantaneous.
+    phase_completed_at = utcnow()
+    phase_started_at = phase_completed_at - timedelta(seconds=duration or 0.0)
+
     phase_row = ScanPhase(
         id=gen_scan_phase_id(scan.id, "host_discovery"),
         scan_id=scan.id,
         phase_key="host_discovery",
         phase_order=1,
-        status="complete",
+        status="cancelled" if was_cancelled else "complete",
         duration_seconds=duration,
         hosts_processed=len(hosts_data),
         summary=full_summary,
-        started_at=utcnow(),
-        completed_at=utcnow(),
+        started_at=phase_started_at,
+        completed_at=phase_completed_at,
     )
     db.add(phase_row)
     db.flush()
@@ -375,6 +391,12 @@ def update_scan_phase(
             .first()
         )
         now = utcnow()
+        # This row is written once the phase has finished, so now() is the
+        # completion time. Writing it to started_at as well made every phase
+        # look instantaneous — wall-clock delta 0 against a duration of two
+        # minutes. Derive the start from the measured duration, matching
+        # update_scan_phase1().
+        phase_started_at = now - timedelta(seconds=duration or 0.0)
         if phase_row:
             # Update existing row
             phase_row.phase_order = phase
@@ -384,8 +406,8 @@ def update_scan_phase(
             phase_row.summary = full_summary_payload
             phase_row.completed_at = now
             phase_row.updated_at = now
-            if not phase_row.started_at:
-                phase_row.started_at = now
+            if not phase_row.started_at or phase_row.started_at >= now:
+                phase_row.started_at = phase_started_at
             db.commit()
         else:
             # Try to insert new row
@@ -398,7 +420,7 @@ def update_scan_phase(
                 duration_seconds=duration,
                 hosts_processed=len(hosts_data),
                 summary=full_summary_payload,
-                started_at=now,
+                started_at=phase_started_at,
                 completed_at=now,
             )
             db.add(phase_row)
@@ -419,6 +441,8 @@ def update_scan_phase(
         )
         db.commit()
 
+    findings_synced = False
+
     if is_final:
         from scan_helpers import resolve_pipeline_mode
 
@@ -434,7 +458,7 @@ def update_scan_phase(
             # feed-supplied rating differs from its vector, and counted nothing
             # at all for records that carry a vector but no severity string.
             counted_from_verification = False
-            critical_count = high_count = medium_count = low_count = 0
+            critical_count = high_count = medium_count = low_count = info_count = 0
             for h in hosts_data:
                 counts = h.get("vulnerability_counts")
                 if not isinstance(counts, dict) or not counts:
@@ -444,6 +468,14 @@ def update_scan_phase(
                 high_count += int(counts.get("High") or 0)
                 medium_count += int(counts.get("Medium") or 0)
                 low_count += int(counts.get("Low") or 0)
+                # "None" is a published score of 0.0; "Unscored" is a CVE the
+                # feed carries no score for at all. Both are findings on the
+                # host and both were being dropped from the scan's total, so
+                # `scans.total_vulns` read lower than the number of rows the
+                # same scan wrote — a CVE with no published CVSS is still a CVE.
+                info_count += int(counts.get("None") or 0) + int(
+                    counts.get("Unscored") or 0
+                )
 
             if not counted_from_verification:
                 # Payload from before verification recorded counts, or a scan
@@ -463,18 +495,52 @@ def update_scan_phase(
                 high_count = _tally("high")
                 medium_count = _tally("medium")
                 low_count = _tally("low")
+                info_count = _tally("none") + _tally("unscored") + _tally("info")
 
             scan.critical_count = critical_count
             scan.high_count = high_count
             scan.medium_count = medium_count
             scan.low_count = low_count
-            scan.total_vulns = critical_count + high_count + medium_count + low_count
+            scan.info_count = info_count
+            scan.total_vulns = (
+                critical_count + high_count + medium_count + low_count + info_count
+            )
         else:
             scan.critical_count = 0
             scan.high_count = 0
             scan.medium_count = 0
             scan.low_count = 0
             scan.total_vulns = 0
+
+        # The tally is committed before the sync runs, so a sync failure cannot
+        # roll the counts back out with it.
+        db.commit()
+
+        # ── Persist findings before the scan is called complete ───────────────
+        # The asset sync used to be dispatched asynchronously *after* the status
+        # was committed as "complete". Anything reading on that signal — the
+        # dashboard, the findings API, an integration polling for the terminal
+        # state — saw the previous scan's rows for as long as the sync took,
+        # which on a credentialed scan of a few thousand findings is many
+        # seconds. "Complete" has to mean the results are queryable.
+        #
+        # Placed *after* the severity tally above, and deliberately so: the sync
+        # mutates the host records it is given, and running it first left the
+        # tally reading hosts whose ``vulnerability_counts`` had already been
+        # consumed, so a scan that wrote 2,674 findings reported a total of 0.
+        # The phase row is committed further up, so the foreign-key targets this
+        # needs already exist.
+        if phase >= 3:
+            try:
+                sync_vulnerability_audit(db, str(scan.id), org_id, user_id, hosts_data)
+                findings_synced = True
+            except Exception:
+                db.rollback()
+                log.exception(
+                    "Inline finding sync failed for scan %s; falling back to the "
+                    "asynchronous path",
+                    scan.id,
+                )
 
         # ENTERPRISE FIX: Do not overwrite 'unreachable' status with 'complete'
         if scan.status != "unreachable":
@@ -506,7 +572,9 @@ def update_scan_phase(
         from core.tasks import sync_asset_discovery_task
 
         sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
-    elif phase >= 3:
+    elif phase >= 3 and not findings_synced:
+        # Reached only for a non-final phase-3 update, or when the inline sync
+        # above failed and the work still has to happen.
         from core.tasks import sync_vulnerability_audit_task
 
         sync_vulnerability_audit_task.delay(str(scan.id), org_id, user_id, hosts_data)
@@ -557,6 +625,46 @@ def update_scan_phase(
         except Exception:
             pass
 
+    return scan
+
+
+def mark_scan_cancelled(
+    db: Session,
+    scan_id: str,
+    user_id: str,
+    phase_key: str | None = None,
+) -> Scan | None:
+    """
+    Settle a scan that the user cancelled while it was running.
+
+    The stop endpoint already flipped ``status`` to ``cancelled``; this records
+    when it actually stopped and closes any phase row still marked running, so
+    a cancelled scan does not leave a phase that looks stuck forever.
+    """
+    scan = _get_org_scoped_scan(db, scan_id, user_id)
+    if not scan:
+        return None
+
+    scan.status = "cancelled"
+    if not scan.completed_at:
+        scan.completed_at = utcnow()
+    if scan.started_at and scan.duration_seconds is None:
+        scan.duration_seconds = (scan.completed_at - scan.started_at).total_seconds()
+    scan.updated_at = utcnow()
+
+    for phase in scan.phases:
+        if phase.status not in ("complete", "failed", "skipped", "cancelled"):
+            if phase_key and phase.phase_key != phase_key:
+                continue
+            phase.status = "cancelled"
+            phase.completed_at = utcnow()
+            if phase.started_at and phase.duration_seconds is None:
+                phase.duration_seconds = (
+                    phase.completed_at - phase.started_at
+                ).total_seconds()
+
+    db.commit()
+    db.refresh(scan)
     return scan
 
 

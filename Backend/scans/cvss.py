@@ -37,6 +37,10 @@ __all__ = [
     "CvssData",
     "parse_cvss_vector",
     "severity_from_score",
+    "canonical_severity",
+    "display_severity",
+    "cvss_version_of_vector",
+    "CANONICAL_SEVERITIES",
 ]
 
 
@@ -54,6 +58,84 @@ SEVERITY_RANK: Dict[str, int] = {
     "None": 1,
     "Unscored": 0,
 }
+
+
+#: The only severity spellings that may be written to the database.
+#: Storage is lower-case; presentation is Title case via ``display_severity``.
+#: Two spellings of one severity is not a cosmetic problem: ``GROUP BY severity``
+#: returns "critical" and "Critical" as separate rows, and any dict keyed on the
+#: result silently loses one of them. That defect hid 100 of 146 findings from
+#: the security dashboard, so the convention is enforced by a CHECK constraint.
+CANONICAL_SEVERITIES = ("critical", "high", "medium", "low", "none", "unscored")
+
+_SEVERITY_ALIASES: Dict[str, str] = {
+    "critical": "critical",
+    "crit": "critical",
+    "4": "critical",
+    "high": "high",
+    "3": "high",
+    "medium": "medium",
+    "med": "medium",
+    "moderate": "medium",
+    "2": "medium",
+    "low": "low",
+    "1": "low",
+    "none": "none",
+    "info": "none",
+    "informational": "none",
+    "0": "none",
+    "unscored": "unscored",
+    "": "unscored",
+}
+
+
+def canonical_severity(value) -> str:
+    """
+    Reduce any severity spelling to the one form that may be stored.
+
+    Unrecognised input becomes "unscored" rather than a guess — the same rule
+    ``normalize_severity`` applies, kept identical so a value cannot mean one
+    thing on the way in and another on the way out.
+    """
+    return _SEVERITY_ALIASES.get(str(value or "").strip().lower(), "unscored")
+
+
+def display_severity(value) -> str:
+    """
+    Title-case a stored severity for display.
+
+    The frontend keys its badge classes on "Critical"/"High"/... , so a raw
+    lower-case value from the catalogue renders as unstyled text. Every API
+    response therefore passes severities through here rather than emitting the
+    stored form.
+    """
+    canon = canonical_severity(value)
+    return "Info" if canon == "none" else canon.title()
+
+
+def cvss_version_of_vector(vector: Optional[str]) -> Optional[str]:
+    """
+    Recover the CVSS version a vector string was written in.
+
+    v3 and v4 vectors are self-identifying ("CVSS:3.1/...", "CVSS:4.0/...").
+    A v2 vector carries no prefix and is recognised by ``Au:``, a metric that
+    exists only in v2. Getting this wrong is how 751 v2 scores came to sit in
+    ``cvss_v3_score`` and be reported as v3 figures.
+    """
+    text = str(vector or "").strip()
+    if not text:
+        return None
+    if text.upper().startswith("CVSS:4"):
+        return "4.0"
+    if text.upper().startswith("CVSS:3.1"):
+        return "3.1"
+    if text.upper().startswith("CVSS:3.0"):
+        return "3.0"
+    if text.upper().startswith("CVSS:2"):
+        return "2.0"
+    if "Au:" in text or "AU:" in text.upper():
+        return "2.0"
+    return None
 
 
 def severity_from_score(score: Optional[float]) -> str:

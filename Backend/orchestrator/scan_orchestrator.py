@@ -999,10 +999,18 @@ class ScanOrchestrator:
                 # CRITICAL: Add accurate OS fingerprinting results
                 best_os = result.best_os
                 if best_os and best_os.accuracy >= 75:
-                    host["os_guess"] = best_os.name
-                    host["os_confidence"] = (
-                        "High" if best_os.accuracy >= 90 else "Medium"
-                    )
+                    # An Nmap TCP/IP fingerprint infers a kernel *range* from
+                    # packet behaviour. SNMP sysDescr is the device stating its
+                    # exact build. Where the host has told us directly, that
+                    # wins — overwriting it reported "Linux 5.0 - 5.14" for a
+                    # machine whose own agent said 6.8.0-137-generic.
+                    if host.get("os_evidence") == "snmp_sysdescr":
+                        host.setdefault("os_guess_nmap", best_os.name)
+                    else:
+                        host["os_guess"] = best_os.name
+                        host["os_confidence"] = (
+                            "High" if best_os.accuracy >= 90 else "Medium"
+                        )
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
 
@@ -1214,6 +1222,8 @@ class ScanOrchestrator:
             open_ports=data.get("open_ports", []),
             os_guess=data.get("os_guess", "Unknown"),
             os_confidence=data.get("os_confidence", "Low"),
+            os_version=data.get("os_version"),
+            os_evidence=data.get("os_evidence"),
             confidence=confidence,
             device_category=data.get("device_category", "unknown"),
             snmp_device_type=data.get("snmp_device_type"),
@@ -1245,6 +1255,22 @@ class ScanOrchestrator:
     def _get_host_ip(host: dict) -> str | None:
         return host.get("ip_address") or host.get("ip")
 
+    @staticmethod
+    def _normalize_mac(value) -> str | None:
+        """
+        Render a MAC in one canonical form: lowercase, colon-separated.
+
+        Different probes returned different casing, so the same table could
+        show '2c:58:b9:15:74:70' next to '2C:58:B9:87:0B:B3' — and any caller
+        matching MACs as strings saw two devices where there was one.
+        """
+        if not value:
+            return value
+        text = str(value).strip()
+        if text.upper() in ("N/A", "UNKNOWN", "NONE", ""):
+            return text
+        return text.replace("-", ":").lower()
+
     def _normalize_host_record(self, host: dict) -> dict:
         norm = dict(host)
         ip = self._get_host_ip(norm)
@@ -1255,6 +1281,9 @@ class ScanOrchestrator:
             norm["mac"] = norm["mac_address"]
         if "mac_address" not in norm and "mac" in norm:
             norm["mac_address"] = norm["mac"]
+        for key in ("mac", "mac_address"):
+            if norm.get(key):
+                norm[key] = self._normalize_mac(norm[key])
         if "method" not in norm:
             norm["method"] = (
                 norm.get("scan_method") or norm.get("discovery_method") or "N/A"

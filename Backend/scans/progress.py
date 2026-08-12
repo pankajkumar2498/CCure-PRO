@@ -125,39 +125,58 @@ def finish_progress(db: Session, scan_id: str) -> None:
     db.commit()
 
 
+TERMINAL_SCAN_STATUSES = frozenset(
+    {"complete", "completed", "failed", "cancelled", "canceled", "unreachable"}
+)
+
+
 def read_progress(db: Session, scan_id: str, user_id: str) -> dict:
     """
     Read scan progress from the database.
 
     Returns a dict safe to serialize to JSON for the client:
       - total_ips, discovered, active, status, elapsed_time, percentage
+
+    Visibility follows the same rule as the rest of the scan API: the owner, or
+    anyone whose role grants scans:read_all within the same organisation.
+    Filtering on created_by alone meant a colleague who could open the scan
+    could not watch it run.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id, Scan.created_by == user_id).first()
-    if not scan:
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan or not _can_read_scan(db, scan, user_id):
         return {"status": "not_found", "message": "Scan not found or completed"}
 
     opts = scan.options or {}
     progress = opts.get("progress", {})
 
     total_ips = progress.get("total_ips", scan.total_hosts or 0)
-    discovered = progress.get("discovered", 0)
     active = progress.get("active", scan.active_hosts or 0)
-    status = progress.get("status", scan.status or "unknown")
+    status = scan.status or progress.get("status") or "unknown"
+    is_terminal = str(status).lower() in TERMINAL_SCAN_STATUSES
+
+    # A finished scan probed every target it was given, whether or not the
+    # engine got to write a final counter update before exiting.
+    discovered = progress.get("discovered", 0)
+    if is_terminal:
+        discovered = max(discovered, total_ips)
 
     # Calculate live elapsed if still running
     elapsed = progress.get("elapsed_time", 0)
-    if status == "running":
-        start_str = progress.get("start_time")
-        if start_str:
-            try:
-                started = datetime.fromisoformat(start_str)
-                elapsed = round(
-                    (datetime.now(timezone.utc) - started).total_seconds(), 2
-                )
-            except (ValueError, TypeError):
-                pass
+    start_str = progress.get("start_time")
+    if not is_terminal and start_str:
+        try:
+            started = datetime.fromisoformat(start_str)
+            elapsed = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+        except (ValueError, TypeError):
+            pass
+    if is_terminal and not elapsed:
+        # Fall back to the recorded scan duration rather than reporting 0s for
+        # a scan that plainly took time.
+        elapsed = round(scan.duration_seconds or 0.0, 2)
 
-    percentage = round((discovered / total_ips * 100), 1) if total_ips > 0 else 0
+    percentage = round((discovered / total_ips * 100), 1) if total_ips > 0 else 0.0
+    if is_terminal and total_ips > 0:
+        percentage = 100.0
 
     return {
         "total_ips": total_ips,
@@ -167,3 +186,28 @@ def read_progress(db: Session, scan_id: str, user_id: str) -> dict:
         "elapsed_time": elapsed,
         "percentage": percentage,
     }
+
+
+def _can_read_scan(db: Session, scan: Scan, user_id: str) -> bool:
+    """Owner, superadmin, or a role holding scans:read_all in the same org."""
+    if str(scan.created_by) == str(user_id):
+        return True
+
+    from db.models import Permission, RolePermission, User
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or str(user.org_id) != str(scan.org_id):
+        return False
+    if (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin":
+        return True
+
+    return (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == user.role_id,
+            Permission.resource == "scans",
+            Permission.action == "read_all",
+        )
+        .first()
+    ) is not None

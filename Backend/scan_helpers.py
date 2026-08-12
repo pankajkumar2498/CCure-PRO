@@ -13,15 +13,37 @@ from typing import Dict, List, Optional
 
 from api.host_discovery_api import HostDiscoveryAPI
 from config import AppConfig
+from core.ip_resolver import get_client_ip
 from db.models import Scan
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 log = logging.getLogger("ccure.api")
 
+
+def _rate_limit_key(request) -> str:
+    """
+    Identify the client a rate limit should apply to.
+
+    slowapi's get_remote_address returns the socket peer. Behind the nginx
+    gateway that is always the proxy container, so every user shared a single
+    bucket and one analyst's burst locked scanning for the whole organisation.
+    get_client_ip walks the X-Forwarded-For chain from the nearest hop outward
+    and stops at the first address that is not a trusted proxy, so a client
+    cannot spoof its way into someone else's bucket either.
+    """
+    try:
+        resolved = get_client_ip(request)
+        if resolved:
+            return resolved
+    except Exception:  # never let limiter bookkeeping break a request
+        log.debug("Falling back to socket address for rate limiting", exc_info=True)
+    return get_remote_address(request)
+
+
 # ─── Rate limiter (shared across routers) ────────────────────────────────────
 # Uses the same Redis instance as Celery for persistence
-limiter = Limiter(key_func=get_remote_address, storage_uri=AppConfig.CELERY_BROKER_URL)
+limiter = Limiter(key_func=_rate_limit_key, storage_uri=AppConfig.CELERY_BROKER_URL)
 
 from scans.progress import (
     finish_progress as _db_finish_progress,
@@ -106,16 +128,97 @@ def resolve_pipeline_mode(raw: str | None) -> str:
 # ─── Misc helpers ────────────────────────────────────────────────────────────
 
 
-def validate_total_targets(targets: list[str]) -> None:
+def _is_scannable_address(value: str) -> bool:
+    """A real network destination, as opposed to the scanner's own vantage point."""
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        # Hostnames are resolved upstream by expand_target; anything still
+        # unparseable here is not this function's to reject.
+        return True
+    return not (
+        addr.is_loopback
+        or addr.is_link_local
+        or addr.is_unspecified
+        or addr.is_multicast
+    )
+
+
+def validate_scan_targets(targets: list[str] | None) -> list[str]:
+    """
+    Reject a scan request that can never produce results, before it costs anything.
+
+    An unparseable target used to be accepted with HTTP 200: the API created a
+    scan row, consumed the organisation's quota, and only failed asynchronously
+    seconds later with a reason the API never returned. A typo should come back
+    as an error the operator can fix, not as a scan that quietly dies.
+
+    Returns the cleaned target list.
+    """
     from core.utils import InputValidator
     from fastapi import HTTPException
 
-    total = sum(len(InputValidator.expand_target(t)) for t in targets)
+    cleaned = [str(t).strip() for t in (targets or []) if str(t).strip()]
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail="At least one scan target is required.",
+        )
+
+    invalid: list[str] = []
+    unscannable: list[str] = []
+    total = 0
+    for target in cleaned:
+        expanded = InputValidator.expand_target(target)
+        if not expanded:
+            invalid.append(target)
+            continue
+        # A loopback or link-local target describes the scanner's own vantage
+        # point, not a host on the network. Scanning one produced an
+        # "unreachable" scan at best; at worst it resolved to the same MAC as a
+        # real asset and rewrote that asset's address to 127.0.0.1, detaching
+        # its findings from the address they belong to.
+        if all(not _is_scannable_address(ip) for ip in expanded):
+            unscannable.append(target)
+            continue
+        total += len(expanded)
+
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Not a valid IP address, range, CIDR block or resolvable hostname: "
+                + ", ".join(invalid)
+            ),
+        )
+
+    if unscannable:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Loopback and link-local addresses are not scannable targets: "
+                + ", ".join(unscannable)
+                + ". Use the address the host is reachable on from this network."
+            ),
+        )
+
     if total > InputValidator.MAX_HOSTS:
         raise HTTPException(
             status_code=400,
-            detail=f"Total requested hosts ({total}) exceeds the global limit of {InputValidator.MAX_HOSTS}.",
+            detail=(
+                f"Total requested hosts ({total}) exceeds the global limit of "
+                f"{InputValidator.MAX_HOSTS}."
+            ),
         )
+
+    return cleaned
+
+
+def validate_total_targets(targets: list[str]) -> None:
+    """Backwards-compatible wrapper — prefer validate_scan_targets."""
+    validate_scan_targets(targets)
 
 
 def _safe_json_loads(text: str | None, default):

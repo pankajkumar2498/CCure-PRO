@@ -189,6 +189,14 @@ class CVEDatabase:
                 kev.vuln_name AS kev_vuln_name,
                 COALESCE(exploits.has_exploit, FALSE) AS has_exploit,
                 exploits.exploit_sources,
+                -- Weakness classification. Omitted here originally, so the CWE
+                -- column was empty for every finding in the CSV export and no
+                -- CWE appeared anywhere in the technical report.
+                COALESCE(
+                    array_agg(DISTINCT cwe.cwe_id)
+                        FILTER (WHERE cwe.cwe_id IS NOT NULL),
+                    '{{}}'
+                ) AS cwe_ids,
                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object(
                     'cpe_uri', cpe.cpe_uri,
                     'vendor', cpe.vendor,
@@ -203,6 +211,7 @@ class CVEDatabase:
             LEFT JOIN epss ON epss.cve_id = c.cve_id
             LEFT JOIN kev ON kev.cve_id = c.cve_id
             LEFT JOIN exploits ON exploits.cve_id = c.cve_id
+            LEFT JOIN cwe ON cwe.cve_id = c.cve_id
             JOIN cpe ON cpe.cve_id = c.cve_id
             WHERE ({where_sql})
             GROUP BY
@@ -392,6 +401,7 @@ class CVEDatabase:
             "kev_vuln_name": row.get("kev_vuln_name"),
             "has_exploit": bool(row.get("has_exploit")),
             "exploit_sources": as_list(row.get("exploit_sources")),
+            "cwe_ids": as_list(row.get("cwe_ids")),
         }
         return merge_alias_fields(record)
 

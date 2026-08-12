@@ -24,6 +24,11 @@ from db.models.findings import (
     STATE_OPEN,
 )
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
+from scans.cvss import (
+    canonical_severity,
+    cvss_version_of_vector,
+    severity_from_score,
+)
 from sqlalchemy import case, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -309,6 +314,14 @@ def _upsert_network_service(db: Session, asset_id: str, scan_id: str, p: dict) -
     socket table; the flags it set there (``credentialed_confirmed``,
     ``bind_scope``) describe the host and are preserved — this observation adds
     reachability, it does not replace what the host reported about itself.
+
+    Note on retention: the row id is ``gen_service_id(asset, port, protocol)``,
+    so ``services`` holds the *current* state of each asset's ports — one row
+    per (asset, port, protocol) — and ``scan_id`` names the scan that last
+    observed it. Re-scanning an asset re-points those rows rather than adding a
+    second generation, so this table cannot be queried as per-scan history.
+    Point-in-time results live in ``scan_phases.summary``, which is what the
+    scan-detail API and the reports read back.
     """
     port_num = p.get("port")
     if not port_num:
@@ -434,11 +447,19 @@ def _resolve_ip(host_data: dict) -> str:
 
 
 def _resolve_mac(host_data: dict) -> str | None:
+    """
+    Return a canonical lowercase colon-separated MAC, or None.
+
+    Case matters here. PostgreSQL's ``macaddr`` type stores addresses
+    lowercase, so writing them uppercase made every scan see the stored
+    lowercase value differ from the incoming uppercase one and log a MAC
+    "change" that never happened — on every host, on every scan.
+    """
     mac = host_data.get("mac_address") or host_data.get("mac")
     if not mac:
         return None
-    mac_str = str(mac).strip().upper()
-    if mac_str in ["N/A", "UNKNOWN", "00:00:00:00:00:00", ""]:
+    mac_str = str(mac).strip().replace("-", ":").lower()
+    if mac_str in ("n/a", "unknown", "00:00:00:00:00:00", ""):
         return None
     return mac_str
 
@@ -479,6 +500,58 @@ def _existing_assets_for_hosts(db: Session, org_id: str, hosts: list[dict]):
     )
 
 
+def _is_routable_ip(value) -> bool:
+    """
+    Whether an address identifies a host to anyone but itself.
+
+    Loopback, link-local and the unspecified address describe a vantage point,
+    not a machine: 127.0.0.1 means "wherever this scan ran from". They are
+    therefore never allowed to become an asset's identity.
+    """
+    import ipaddress
+
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        addr = ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return not (
+        addr.is_loopback
+        or addr.is_link_local
+        or addr.is_unspecified
+        or addr.is_multicast
+    )
+
+
+def _may_rebind_ip(current, incoming) -> bool:
+    """
+    Whether an asset's address may be replaced by one just observed.
+
+    An asset is resolved by MAC as well as by address, so a scan of a *second*
+    address belonging to the same physical machine finds the existing record and
+    offers its own address as the new identity. That is correct for DHCP churn
+    (one routable address replacing another) and wrong for anything that is not
+    a routable address.
+
+    Scanning 127.0.0.1 rewrote the identity of a real host from 10.180.6.14 to
+    127.0.0.1: the record was flagged inactive, its 142 findings were detached
+    from the address they belong to, it dropped out of the "top vulnerable
+    assets" ranking, and the dashboard began reporting 127.0.0.0/24 as the
+    highest-risk subnet. Nothing in the product could tell that the asset it was
+    describing had moved.
+    """
+    if not _is_routable_ip(incoming):
+        # Never demote a real address to a vantage-point address.
+        return False
+    if not _is_routable_ip(current):
+        # Anything routable is an improvement on a placeholder.
+        return True
+    # Both routable: a genuine address change (DHCP lease, re-addressing).
+    return True
+
+
 def _should_update(current, incoming) -> bool:
     """Enterprise merge rule: Only update if the new value is non-empty and non-trivial."""
     return _has_value(incoming)
@@ -492,6 +565,41 @@ def _has_value(value) -> bool:
     if value in ([], {}):
         return False
     return True
+
+
+def _subnet_of(ip: str | None) -> str | None:
+    """
+    Derive the containing /24 (or /64 for IPv6) for an address.
+
+    The column existed but nothing ever wrote it, so the registry's subnet
+    filter had nothing to filter on.
+    """
+    if not ip or ip == "0.0.0.0":
+        return None
+    try:
+        import ipaddress
+
+        addr = ipaddress.ip_address(str(ip))
+        prefix = 24 if addr.version == 4 else 64
+        return str(ipaddress.ip_network(f"{addr}/{prefix}", strict=False))
+    except ValueError:
+        return None
+
+
+def _clean(value, max_len: int | None = None):
+    """
+    Return the value, or None when it is a scanner placeholder.
+
+    "Unknown", "unknown", "N/A" and friends mean the scan found nothing. Stored
+    verbatim they read as real observations in the registry and in reports, and
+    they defeat hostname search. NULL is the honest representation of absence.
+    """
+    if not _has_value(value):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text[:max_len] if max_len else text
+    return value
 
 
 def _looks_like_fqdn(value) -> bool:
@@ -685,6 +793,16 @@ def _to_int(value) -> int | None:
         return None
 
 
+def _to_float(value, ndigits: int = 3) -> float | None:
+    """Parse a latency value while keeping sub-millisecond resolution."""
+    if value in (None, ""):
+        return None
+    try:
+        return round(float(value), ndigits)
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalize_source(source: str | None) -> str:
     source = str(source or "legacy").strip().lower()
     return {
@@ -756,6 +874,318 @@ def _set_asset_field(
     return True
 
 
+def _catalog_title(v: dict, cve_id: str, description: str) -> str:
+    """
+    A readable title for a CVE.
+
+    The scanner's own title is used when it carries information. Two kinds did
+    not: a synthesised ``"Vuln CVE-2026-6475"``, and a vendor/product string
+    taken from the first CPE in the affected list — which is how CVE-2024-6387,
+    the OpenSSH regreSSHion flaw, came to be titled "Sonicwall Sma 6200
+    Firmware Vulnerability", and how PostgreSQL CVEs became "Postgresql
+    Postgresql Vulnerability". Falling back to the opening clause of the
+    published description names the actual flaw.
+    """
+    title = str(v.get("title") or "").strip()
+    placeholder = (
+        not title
+        or title.lower().startswith("vuln cve-")
+        or title.lower().endswith(" vulnerability")
+    )
+    if not placeholder:
+        return title[:500]
+
+    summary = str(description or "").strip()
+    if summary:
+        sentence = summary.split(". ")[0].strip().rstrip(".")
+        if 12 <= len(sentence) <= 180:
+            return sentence
+        if summary:
+            return summary[:180].rstrip() + ("…" if len(summary) > 180 else "")
+    return title or f"Vuln {cve_id}"
+
+
+def _detection_fields(v: dict) -> Dict[str, Any]:
+    """
+    The detection and exploit-intelligence columns for one finding.
+
+    Every value here is computed during the scan and printed in the exported
+    reports. None of it used to be stored, so the API answered with hardcoded
+    zeros: the UI could not tell a version-confirmed finding from an unverified
+    guess, and the dashboard showed no known-exploited vulnerabilities while the
+    executive PDF named three from the same scan.
+    """
+
+    def _num(value):
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    kev_due = v.get("kev_due_date")
+    if isinstance(kev_due, str):
+        from datetime import datetime as _dt
+
+        try:
+            kev_due = _dt.fromisoformat(kev_due).date()
+        except ValueError:
+            kev_due = None
+
+    confidence = str(v.get("confidence") or "").strip().lower() or None
+    qod = v.get("qod")
+    try:
+        qod = int(qod) if qod is not None else None
+    except (TypeError, ValueError):
+        qod = None
+
+    return {
+        "confidence": confidence,
+        "qod": qod,
+        "detection_method": str(v.get("detection_method") or "").strip() or None,
+        "detected_version": str(v.get("detected_version") or "").strip()[:160] or None,
+        "cvss_vector": str(v.get("cvss_vector") or "").strip()[:200] or None,
+        "cvss_version": str(v.get("cvss_version") or "").strip()[:8] or None,
+        "attack_surface": str(v.get("attack_surface") or "").strip()[:16] or None,
+        "in_kev": bool(v.get("in_kev")),
+        "kev_due_date": kev_due,
+        "epss_score": _num(v.get("epss_score")),
+        "epss_percentile": _num(v.get("epss_percentile")),
+        "has_exploit": bool(v.get("has_exploit")),
+        # Exploitation provenance and the vendor's advisory.
+        #
+        # This is the syncer the vulnerability_audit pipeline uses — the one
+        # that actually runs — so omitting these here would have left the whole
+        # feed programme invisible on every pipeline scan while appearing to
+        # work on the standalone credentialed path. `has_exploit` alone cannot
+        # separate a weaponised Metasploit module from an unreproduced proof of
+        # concept, which is the distinction triage turns on.
+        "exploit_sources": (list(v.get("exploit_sources") or []) or None),
+        "verified_exploit": bool(v.get("verified_exploit")),
+        "canary_confirmed": bool(v.get("canary_confirmed")),
+        "ransomware_linked": bool(v.get("ransomware_linked")),
+        "vendor_advisory_id": _vendor_advisory_field(v, "advisory_id"),
+        "vendor_advisory_url": _vendor_advisory_field(v, "url"),
+        "vendor_remediation": (str(v.get("vendor_remediation") or "").strip() or None),
+    }
+
+
+def _enrich_findings_with_intel(hosts: List[dict]) -> None:
+    """
+    Attach exploit provenance and vendor advisories to every finding in place.
+
+    One batched lookup for the whole sync. Failure is tolerated and logged:
+    a report without exploit provenance is still a correct report, so a feed
+    being unreachable must not fail the scan that found the vulnerabilities.
+    """
+
+    def _pick(mapping: dict, *keys: str) -> Any:
+        for key in keys:
+            value = mapping.get(key)
+            if value:
+                return value
+        return None
+
+    findings: List[dict] = []
+    for host in hosts or []:
+        if not isinstance(host, dict):
+            continue
+        raw = _pick(host, "cves", "vulnerabilities", "findings") or []
+        if isinstance(raw, list):
+            findings.extend(f for f in raw if isinstance(f, dict))
+
+    cve_ids = [
+        str(_pick(f, "cve_id", "cve", "id") or "").strip().upper() for f in findings
+    ]
+    cve_ids = [c for c in cve_ids if c]
+    if not cve_ids:
+        return
+
+    try:
+        from core.vuln_intel import csaf_advisories_for, exploit_intel_for
+
+        intel = exploit_intel_for(cve_ids)
+        advisories = csaf_advisories_for(cve_ids)
+    except Exception as exc:  # noqa: BLE001 - enrichment must never fail a scan
+        logger.warning("Finding enrichment skipped: %s", exc)
+        return
+
+    exploit_hits = advisory_hits = 0
+    for finding in findings:
+        cve = str(_pick(finding, "cve_id", "cve", "id") or "").strip().upper()
+        if not cve:
+            continue
+
+        entry = intel.get(cve)
+        if entry:
+            finding.update(entry)
+            finding["has_exploit"] = True
+            exploit_hits += 1
+
+        matches = advisories.get(cve)
+        if matches:
+            finding["vendor_advisories"] = matches
+            source = next((m for m in matches if m.get("remediation")), None)
+            if source:
+                # Attributed: the advisory covers this CVE but not necessarily
+                # this product — a Chrome CVE appears in an ICS advisory whose
+                # mitigation is written for the ICS context. Naming the source
+                # keeps that judgement with the reader.
+                finding["vendor_remediation"] = (
+                    f"{source['provider'].upper()} {source['advisory_id']}: "
+                    f"{source['remediation']}"
+                )
+            advisory_hits += 1
+
+    if exploit_hits or advisory_hits:
+        logger.info(
+            "Enriched %d finding(s) with exploit provenance and %d with a "
+            "vendor advisory",
+            exploit_hits,
+            advisory_hits,
+        )
+
+
+def _vendor_advisory_field(v: dict, key: str) -> Optional[str]:
+    """The first vendor advisory's field, when the finding carries any."""
+    advisories = v.get("vendor_advisories") or []
+    if not isinstance(advisories, list):
+        return None
+    for entry in advisories:
+        if isinstance(entry, dict) and entry.get(key):
+            return str(entry[key])[:2000]
+    return None
+
+
+def _finding_component(
+    v: dict, service: Optional[Service]
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    The component a finding is about, and the version observed for it.
+
+    A credentialed finding names its package directly. A network finding names
+    the product fingerprinted on the port. Either way this is what an operator
+    would actually remediate — you upgrade Chrome, not CVE-2026-13782 — so it is
+    the key the UI and the executive report group on.
+    """
+    package = str(v.get("package") or v.get("package_name") or "").strip()
+    if package:
+        version = str(
+            v.get("installed_version") or v.get("detected_version") or ""
+        ).strip()
+        return package[:200], (version[:160] or None)
+
+    if service is not None:
+        name = str(service.service_product or service.service_name or "").strip()
+        if name:
+            version = str(service.service_version or "").strip()
+            return name[:200], (version[:160] or None)
+
+    # A host-level finding (an OS or kernel CVE) is about the platform itself.
+    detected = str(v.get("detected_version") or "").strip()
+    if str(v.get("detection_method") or "") == "os_reported":
+        return "Operating system", (detected[:160] or None)
+
+    return None, (detected[:160] or None)
+
+
+def _finding_fixed_version(v: dict) -> Optional[str]:
+    """
+    The version that resolves this finding, when the source published one.
+
+    Stored beside the component so the grouped view can state the action rather
+    than only the problem. Without it a rolled-up row reads "Google Chrome
+    138.0.7204.184, 1,736 findings" and leaves "upgrade to what?" unanswered —
+    the answer was known at detection time but only ever written into prose.
+
+    Returning None is meaningful: a vulnerability with no published fix is a
+    real state, and it must stay distinguishable from one whose fix simply was
+    not recorded.
+    """
+    for key in ("fixed_ver", "fixed_version", "fixed_in"):
+        value = str(v.get(key) or "").strip()
+        if value and value.lower() not in {"none", "n/a", "unknown", "-"}:
+            return value[:160]
+    return None
+
+
+def _build_finding_evidence(
+    v: dict, service: Optional[Service], host_data: dict, cve_id: str = ""
+) -> str:
+    """
+    Record what the scan observed that caused this finding to be raised.
+
+    An operator reading a finding has to be able to answer "why does the tool
+    think this is here?" without re-running the scan. That means the service
+    that was probed, the version fingerprinted on it, the banner the host
+    returned, and the published range the version was tested against — not the
+    CVE's catalogue description, which says nothing about this host.
+    """
+    lines: List[str] = []
+
+    if service is not None and service.port is not None:
+        lines.append(f"Port/Protocol    : {service.port}/{service.protocol or 'tcp'}")
+        if service.service_name:
+            lines.append(f"Service          : {service.service_name}")
+        product = service.service_product or ""
+        if product:
+            lines.append(f"Product          : {product}")
+        observed = service.service_version or ""
+        lines.append(f"Detected version : {observed or 'not determined by this scan'}")
+        if service.banner:
+            lines.append(f"Service banner   : {str(service.banner)[:400]}")
+    else:
+        # A host-level finding (an OS or kernel CVE) has no listening service
+        # behind it. Saying so is more honest than binding it to a port.
+        lines.append("Scope            : host-level (no listening service implicated)")
+        os_name = host_data.get("os_guess") or host_data.get("os_name") or ""
+        if os_name:
+            lines.append(f"Operating system : {os_name}")
+        detected = str(v.get("detected_version") or "").strip()
+        if detected:
+            lines.append(f"Detected version : {detected}")
+
+    method = str(v.get("detection_method") or "").strip()
+    confidence = str(v.get("confidence") or "").strip()
+    qod = v.get("qod")
+    if method or confidence:
+        detail = " · ".join(
+            part
+            for part in (
+                f"confidence {confidence}" if confidence else "",
+                f"method {method}" if method else "",
+                f"QoD {qod}%" if qod is not None else "",
+            )
+            if part
+        )
+        lines.append(f"Determination    : {detail}")
+
+    fixed = str(v.get("fixed_version") or v.get("fixed_in") or "").strip()
+    if fixed:
+        lines.append(f"Fixed in         : {fixed}")
+
+    matched = v.get("matched_range") or v.get("vulnerable_range")
+    if matched:
+        lines.append(f"Vulnerable range : {str(matched)[:200]}")
+
+    if cve_id:
+        lines.append(f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}")
+
+    # A plugin that captured real probe output (a TLS handshake, an HTTP
+    # response, an SNMP sysDescr) contributes it verbatim underneath.
+    #
+    # Skipped for host-level findings: the upstream block is rendered from the
+    # service the candidate was originally generated against, and appending it
+    # to a finding that has just declared "no listening service implicated"
+    # contradicts the line above it.
+    captured = str(v.get("evidence") or v.get("proof") or "").strip()
+    if service is not None and captured and captured != "Source_Family:network_service":
+        lines.append("")
+        lines.append("Probe output:")
+        lines.append(captured[:2000])
+
+    return "\n".join(lines)
+
+
 def _finding_family(source: str) -> str:
     return FINDING_SOURCE_FAMILY.get(_normalize_source(source), "unknown")
 
@@ -813,12 +1243,18 @@ def _recalculate_asset_risk(db: Session, asset_id: str):
         .group_by(AssetVulnerability.severity)
         .all()
     )
-    sev_map = {str(r.severity).title(): r.cnt for r in sev_rows} if sev_rows else {}
+    # Folded, and accumulated rather than assigned: GROUP BY yields one row per
+    # stored spelling, so keying a dict on the normalised form silently drops a
+    # count whenever two spellings coexist.
+    sev_map: Dict[str, int] = {}
+    for r in sev_rows or []:
+        key = canonical_severity(r.severity)
+        sev_map[key] = sev_map.get(key, 0) + r.cnt
     counts = {
-        "critical": sev_map.get("Critical", 0),
-        "high": sev_map.get("High", 0),
-        "medium": sev_map.get("Medium", 0),
-        "low": sev_map.get("Low", 0),
+        "critical": sev_map.get("critical", 0),
+        "high": sev_map.get("high", 0),
+        "medium": sev_map.get("medium", 0),
+        "low": sev_map.get("low", 0),
     }
     computed = min(
         100,
@@ -842,11 +1278,20 @@ def _recalculate_asset_risk(db: Session, asset_id: str):
     )
 
 
+# Measured values that drift a little on every scan. Logging them as asset
+# "changes" buried the entries that matter — a new OS, a changed MAC — under a
+# steady stream of network jitter. They are still stored on the asset; they just
+# no longer count as a change worth recording.
+_VOLATILE_FIELDS = {"response_time_ms"}
+
+
 def _record_asset_change(
     db: Session, asset_id: str, scan_id: str, field: str, old_val: Any, new_val: Any
 ):
     """Logs a specific field change to the AssetChangeLog."""
     if old_val == new_val or (not old_val and not new_val):
+        return
+    if field in _VOLATILE_FIELDS:
         return
     db.add(
         AssetChangeLog(
@@ -908,7 +1353,7 @@ def sync_host_discovery(
         dns_name, fqdn = _extract_dns_identity(host)
         vendor = host.get("vendor", "Unknown")
         is_active = host.get("is_active") or host.get("state") == "up"
-        response_time = _to_int(
+        response_time = _to_float(
             host.get("response_time_ms") or host.get("response_time")
         )
         os_confidence = _confidence_to_percent(
@@ -919,6 +1364,14 @@ def sync_host_discovery(
         derived_os_family, derived_manufacturer = _derive_os_meta(os_match)
         os_family_val = host.get("os_family") or derived_os_family
         device_category = host.get("device_category")
+
+        # The probe that actually found this host (ARP, ICMP, TCP_CONN, NBNS…).
+        # Storing the literal "discovery" — or worse, the pipeline name — threw
+        # away the one piece of provenance that explains how the host was seen.
+        discovery_technique = _first_text(
+            host.get("discovery_method"),
+            host.get("scan_method"),
+        )
 
         # 3-Tiered Reconciliation
         asset = None
@@ -970,6 +1423,9 @@ def sync_host_discovery(
             )
             _set_asset_field(db, asset, scan_id, "mac_address", mac, "discovery")
             _set_asset_field(
+                db, asset, scan_id, "subnet", _subnet_of(ip), "discovery", max_len=50
+            )
+            _set_asset_field(
                 db, asset, scan_id, "response_time_ms", response_time, "discovery"
             )
             _set_asset_field(
@@ -980,6 +1436,18 @@ def sync_host_discovery(
             )
             _set_asset_field(
                 db, asset, scan_id, "os_family", os_family_val, "discovery", max_len=100
+            )
+            # The column existed but nothing ever wrote it, so the exact build a
+            # probe established (an SNMP sysDescr names the running kernel) was
+            # thrown away and the registry showed only the coarse os_name.
+            _set_asset_field(
+                db,
+                asset,
+                scan_id,
+                "os_version",
+                host.get("os_version"),
+                "discovery",
+                max_len=100,
             )
             _set_asset_field(
                 db,
@@ -995,12 +1463,16 @@ def sync_host_discovery(
                 asset,
                 scan_id,
                 "discovery_method",
-                "discovery",
+                discovery_technique,
                 "discovery",
                 max_len=50,
             )
 
-            if asset.ip_address != ip and ip != "0.0.0.0":
+            if (
+                asset.ip_address != ip
+                and ip != "0.0.0.0"
+                and _may_rebind_ip(asset.ip_address, ip)
+            ):
                 # Release IP from any other asset currently claiming it (IP Hijacking protection)
                 other_asset = existing_by_ip.get(ip)
                 if other_asset and other_asset.id != asset.id:
@@ -1029,25 +1501,36 @@ def sync_host_discovery(
                 existing_by_ip[str(asset.ip_address)] = asset
             existing[asset.id] = asset
         elif is_active:
-            # New Asset
+            # New Asset.
+            #
+            # Every free-text field goes through _clean(): the scanners emit
+            # "Unknown" / "unknown" / "N/A" to mean "nothing was found", and
+            # storing those as if they were observations put the word "Unknown"
+            # in the asset registry, the technical PDF and the CSV export. Worse,
+            # _set_asset_field skips empty incoming values, so a placeholder
+            # written here could never be corrected by a later, better scan.
+            created_at = utcnow()
             new_asset = Asset(
                 id=asset_id,
                 org_id=org_id,
                 ip_address=ip if ip != "0.0.0.0" else None,
                 mac_address=mac,
-                hostname=hostname,
-                vendor=vendor if vendor != "Unknown" else None,
+                subnet=_subnet_of(ip),
+                hostname=_clean(hostname, 255),
+                vendor=_clean(vendor, 255),
                 response_time_ms=response_time,
                 os_confidence=os_confidence,
                 is_active=True,
-                discovery_method="discovery",
+                discovery_method=_clean(discovery_technique, 50) or "discovery",
                 last_scan_id=scan_id,
-                last_seen_at=utcnow(),
-                created_at=utcnow(),
-                updated_at=utcnow(),
-                os_name=os_match,
-                os_family=os_family_val,
-                device_category=device_category,
+                first_seen_at=created_at,
+                last_seen_at=created_at,
+                created_at=created_at,
+                updated_at=created_at,
+                os_name=_clean(os_match, 255),
+                os_family=_clean(os_family_val, 100),
+                os_version=_clean(host.get("os_version"), 100),
+                device_category=_clean(device_category, 100),
             )
             db.add(new_asset)
             if _has_value(hostname):
@@ -1146,7 +1629,16 @@ def sync_asset_discovery(
 
         # Prefer explicitly provided values (e.g. from Nmap -O) over derived ones.
         os_family_val = host.get("os_family") or derived_os_family
-        manufacturer_val = host.get("manufacturer") or derived_manufacturer
+        # `manufacturer` is who made the hardware. The OS lookup only knows who
+        # publishes the operating system, so using it directly labelled an HP
+        # workstation as manufactured by "Microsoft Corporation". The MAC OUI
+        # vendor is the real answer whenever we have it; the OS publisher is a
+        # last resort for hosts with no OUI match (a VM, a spoofed MAC).
+        manufacturer_val = _first_text(
+            host.get("manufacturer"),
+            host.get("vendor"),
+            derived_manufacturer,
+        )
         device_category = host.get("device_category")
 
         # ── Confidence-aware OS field merge ─────────────────────────────────
@@ -1274,6 +1766,18 @@ def sync_asset_discovery(
             "asset_discovery",
             max_len=100,
         )
+        # Phase 2 is where the SNMP probe runs, so this is the pass that knows
+        # the exact build. Writing it only in the Phase 1 syncer left the column
+        # empty for every asset whose kernel was established here.
+        _set_asset_field(
+            db,
+            asset,
+            scan_id,
+            "os_version",
+            host.get("os_version"),
+            "asset_discovery",
+            max_len=100,
+        )
         _set_asset_field(
             db,
             asset,
@@ -1322,6 +1826,16 @@ def sync_vulnerability_audit(
     """
     if not hosts:
         return
+
+    # Annotate every finding with exploitation provenance and the vendor's own
+    # advisory before any of it is written.
+    #
+    # Done here, once, across all hosts: the alternative is a lookup per host
+    # or per finding, and this is the point where every path in the pipeline
+    # converges on the database. Both lookups join on the CVE, so neither can
+    # raise a finding or alter a verdict — they annotate what the engines
+    # already established.
+    _enrich_findings_with_intel(hosts)
 
     existing_assets, existing_by_ip, existing_by_mac = _existing_assets_for_hosts(
         db, org_id, hosts
@@ -1475,14 +1989,16 @@ def sync_vulnerability_audit(
         # the set of valid FK targets is read back rather than assumed. A
         # finding referencing a service row that was never recorded would fail
         # the foreign key and abort the whole insert.
-        synced_service_ids = set()
+        # Keyed by id rather than collected as a bare set: the evidence written
+        # with each finding names the service it was observed on, so the row
+        # itself is needed, not just proof that the FK target exists.
+        service_by_id: Dict[str, Service] = {}
         if vulns:
-            synced_service_ids = {
-                row[0]
-                for row in db.query(Service.id)
-                .filter(Service.asset_id == asset_id)
-                .all()
+            service_by_id = {
+                row.id: row
+                for row in db.query(Service).filter(Service.asset_id == asset_id).all()
             }
+        synced_service_ids = set(service_by_id)
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id:
@@ -1558,21 +2074,39 @@ def sync_vulnerability_audit(
             # feed carried CPE ranges could never acquire them, so its findings
             # would stay permanently unverifiable. Each field falls back to the
             # stored value, so a lookup that returns nothing never erases data.
+            # The score has to be filed under the CVSS revision it was actually
+            # published in. Writing every score to cvss_v3_score put 751 v2
+            # scores in the v3 column, and because v2 has no Critical tier the
+            # two revisions' band tables then disagreed above 9.0 — the same CVE
+            # came out "High" in one code path and "critical" in another.
+            cvss_score_val = float(v.get("cvss") or v.get("cvss_score") or 0.0) or None
+            cvss_ver = str(
+                v.get("cvss_version") or cvss_version_of_vector(cvss_vector) or ""
+            ).strip()
+            score_columns = {
+                "cvss_v2_score": cvss_score_val if cvss_ver.startswith("2") else None,
+                "cvss_v3_score": (
+                    cvss_score_val if cvss_ver.startswith("3") or not cvss_ver else None
+                ),
+                "cvss_v4_score": cvss_score_val if cvss_ver.startswith("4") else None,
+            }
+
             catalog_stmt = insert(VulnerabilityDefinition).values(
                 id=cve_id,
                 cve_id=cve_id,
-                title=v.get("title", f"Vuln {cve_id}"),
+                title=_catalog_title(v, cve_id, description),
                 description=description,
                 cvss_vector=cvss_vector,
+                cvss_version=cvss_ver or None,
                 cwe_ids=cwe_ids,
                 references=references,
                 affected_software=affected_software,
                 published_at=published_at,
-                severity=str(v.get("severity", "Medium")).title(),
-                cvss_v3_score=float(v.get("cvss", 0.0)) or None,
+                severity=severity_from_score(cvss_score_val).lower(),
                 source="scanner",
                 created_at=utcnow(),
                 updated_at=utcnow(),
+                **score_columns,
             )
             db.execute(
                 catalog_stmt.on_conflict_do_update(
@@ -1586,13 +2120,42 @@ def sync_vulnerability_audit(
                             func.nullif(catalog_stmt.excluded.cvss_vector, ""),
                             VulnerabilityDefinition.cvss_vector,
                         ),
+                        "cvss_v2_score": func.coalesce(
+                            catalog_stmt.excluded.cvss_v2_score,
+                            VulnerabilityDefinition.cvss_v2_score,
+                        ),
                         "cvss_v3_score": func.coalesce(
                             catalog_stmt.excluded.cvss_v3_score,
                             VulnerabilityDefinition.cvss_v3_score,
                         ),
+                        "cvss_v4_score": func.coalesce(
+                            catalog_stmt.excluded.cvss_v4_score,
+                            VulnerabilityDefinition.cvss_v4_score,
+                        ),
+                        "cvss_version": func.coalesce(
+                            func.nullif(catalog_stmt.excluded.cvss_version, ""),
+                            VulnerabilityDefinition.cvss_version,
+                        ),
+                        # Severity was previously omitted here, so a row created
+                        # by an earlier import kept whatever spelling and scale
+                        # that import used no matter how often it was re-seen.
+                        "severity": catalog_stmt.excluded.severity,
                         "published_at": func.coalesce(
                             catalog_stmt.excluded.published_at,
                             VulnerabilityDefinition.published_at,
+                        ),
+                        # A real CVE title should replace a synthesised
+                        # placeholder ("Vuln CVE-2026-6475"), but never the
+                        # other way round.
+                        "title": case(
+                            (
+                                catalog_stmt.excluded.title.like("Vuln CVE-%"),
+                                VulnerabilityDefinition.title,
+                            ),
+                            else_=func.coalesce(
+                                func.nullif(catalog_stmt.excluded.title, ""),
+                                VulnerabilityDefinition.title,
+                            ),
                         ),
                         "cwe_ids": func.coalesce(
                             func.nullif(catalog_stmt.excluded.cwe_ids, "[]"),
@@ -1645,11 +2208,37 @@ def sync_vulnerability_audit(
             if finding_service_id and finding_service_id not in synced_service_ids:
                 finding_service_id = None
 
-            # UPSERT Finding
-            proof = f"Source_Family:network_service\n{v.get('proof') or v.get('evidence') or ''}".strip()
+            # An OS-level finding is about the host. The verifier already strips
+            # the port from these, but the upsert below deliberately preserves a
+            # previous binding when the current pass resolves none — which meant
+            # a kernel CVE first recorded against 161/udp kept that port for
+            # ever. Host-level findings clear it instead.
+            is_host_level = str(v.get("detection_method") or "") == "os_reported"
+
+            # ── Evidence ─────────────────────────────────────────────────────
+            # Every finding used to store the identical literal
+            # "Source_Family:network_service" in `proof`, and the CVE's
+            # catalogue description in `plugin_output`. Neither is evidence:
+            # one is a constant, the other is text the scan did not produce, so
+            # nothing recorded why the finding was raised against this host.
+            #
+            # What is recorded now is the observation the match was made on —
+            # the service, the version fingerprinted on it, the banner returned,
+            # and the published range that version was tested against.
+            finding_service = service_by_id.get(finding_service_id)
+            evidence = _build_finding_evidence(v, finding_service, host, cve_id=cve_id)
+            proof = f"Source_Family:{source_family}"
             plugin_output = (
-                v.get("plugin_output") or v.get("description") or v.get("title")
+                v.get("plugin_output") or v.get("description") or v.get("desc") or ""
             )
+
+            detection = _detection_fields(v)
+            finding_cvss = float(v.get("cvss") or v.get("cvss_score") or 0.0) or None
+            finding_severity = severity_from_score(finding_cvss).lower()
+            component, component_version = _finding_component(v, finding_service)
+            detection["component"] = component
+            detection["component_version"] = component_version
+            detection["component_fixed_version"] = _finding_fixed_version(v)
             db.execute(
                 insert(AssetVulnerability)
                 .values(
@@ -1659,17 +2248,20 @@ def sync_vulnerability_audit(
                     asset_id=asset_id,
                     vuln_id=cve_id,
                     service_id=finding_service_id,
-                    severity=str(v.get("severity", "Medium")).title(),
-                    cvss_score=float(v.get("cvss", 0.0)) or None,
+                    severity=finding_severity,
+                    cvss_score=finding_cvss,
                     status="open",
                     proof=proof,
                     plugin_output=plugin_output,
+                    evidence=evidence,
                     source_family=source_family,
                     evidence_source=str(
                         v.get("evidence_source") or "vulnerability_audit"
                     ),
+                    first_scan_id=scan_id,
                     first_found_at=utcnow(),
                     last_found_at=utcnow(),
+                    **detection,
                 )
                 .on_conflict_do_update(
                     index_elements=["id", "org_id"],
@@ -1677,16 +2269,22 @@ def sync_vulnerability_audit(
                         "last_found_at": utcnow(),
                         "scan_id": scan_id,
                         "status": "open",
-                        "severity": str(v.get("severity", "Medium")).title(),
-                        "cvss_score": float(v.get("cvss", 0.0)) or None,
+                        "severity": finding_severity,
+                        "cvss_score": finding_cvss,
                         "source_family": source_family,
                         "evidence_source": str(
                             v.get("evidence_source") or "vulnerability_audit"
                         ),
                         # Keep an existing binding when this pass could not
-                        # resolve one, so a re-scan never loses port context.
-                        "service_id": func.coalesce(
-                            finding_service_id, AssetVulnerability.service_id
+                        # resolve one, so a re-scan never loses port context —
+                        # except for host-level findings, which must not carry
+                        # a port at all.
+                        "service_id": (
+                            None
+                            if is_host_level
+                            else func.coalesce(
+                                finding_service_id, AssetVulnerability.service_id
+                            )
                         ),
                         "proof": func.coalesce(
                             func.nullif(proof, ""), AssetVulnerability.proof
@@ -1695,6 +2293,17 @@ def sync_vulnerability_audit(
                             func.nullif(plugin_output or "", ""),
                             AssetVulnerability.plugin_output,
                         ),
+                        # Re-observed: this scan's evidence is the current one.
+                        "evidence": func.coalesce(
+                            func.nullif(evidence or "", ""),
+                            AssetVulnerability.evidence,
+                        ),
+                        # Written once, so "which findings did scan N report?"
+                        # survives the re-scan that moves scan_id forward.
+                        "first_scan_id": func.coalesce(
+                            AssetVulnerability.first_scan_id, scan_id
+                        ),
+                        **detection,
                     },
                 )
             )

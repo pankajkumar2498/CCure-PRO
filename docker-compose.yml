@@ -3,7 +3,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ccure-redis
-    restart: always
+    restart: "no"
     ports:
       - "127.0.0.1:6379:6379"
     environment:
@@ -18,7 +18,7 @@ services:
   db:
     image: postgres:15-alpine
     container_name: ccure-db
-    restart: always
+    restart: "no"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ccure_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ccure_admin_2026}
@@ -40,16 +40,13 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+    image: ccure-audit-pro-backend:latest
     container_name: ccure-api
-    restart: always
+    restart: "no"
     command: ["sh", "-c", "tr -d '\\r' < /app/start.sh > /tmp/start.sh && chmod +x /tmp/start.sh && /tmp/start.sh"]
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      # Anyone running `docker exec <container> pytest` gets a suite that
-      # TRUNCATEs organizations and users CASCADE. Without this it inherits
-      # DATABASE_URL above and destroys the live database. Pin the scratch
-      # database explicitly so the dangerous default is never reachable.
       - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -59,20 +56,6 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
-      # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Required, and it must be the SAME value the host
-      # scanner worker loads from Backend/.env.
-      #
-      # This was previously `:-` (empty default). The API then encrypted stored
-      # credentials under the fallback key hardcoded in security_crypto.py
-      # while the host worker decrypted with the real key from Backend/.env, so
-      # every credentialed scan failed with "Invalid encrypted payload or
-      # authentication tag" and silently completed as an unauthenticated audit.
-      # Failing to start is better than a scan that quietly loses its
-      # credentials.
-      #
-      # Note: changing it makes credentials encrypted under the old key
-      # unreadable, so re-enter stored credentials after setting it.
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
@@ -97,13 +80,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./Backend:/app
-      - /app/.venv
+      - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
-      # tests/test_docs_integrity.py reads these to check that every route,
-      # table and permission in the code is documented. Without the mount the
-      # test could not find docs/ at all and failed on three missing files,
-      # which read as documentation drift and hid the one route that really was
-      # undocumented.
       - ./docs:/docs:ro
 
   # ── Background Worker ────────────────────────────────────────────────────
@@ -111,8 +89,9 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+    image: ccure-audit-pro-backend:latest
     container_name: ccure-worker
-    restart: always
+    restart: "no"
     profiles: ["container-scanner"]
     # The worker MUST run as root to perform raw-socket scans (Scapy/Nmap)
     user: root
@@ -120,10 +99,6 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      # Anyone running `docker exec <container> pytest` gets a suite that
-      # TRUNCATEs organizations and users CASCADE. Without this it inherits
-      # DATABASE_URL above and destroys the live database. Pin the scratch
-      # database explicitly so the dangerous default is never reachable.
       - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -133,20 +108,6 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
-      # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Required, and it must be the SAME value the host
-      # scanner worker loads from Backend/.env.
-      #
-      # This was previously `:-` (empty default). The API then encrypted stored
-      # credentials under the fallback key hardcoded in security_crypto.py
-      # while the host worker decrypted with the real key from Backend/.env, so
-      # every credentialed scan failed with "Invalid encrypted payload or
-      # authentication tag" and silently completed as an unauthenticated audit.
-      # Failing to start is better than a scan that quietly loses its
-      # credentials.
-      #
-      # Note: changing it makes credentials encrypted under the old key
-      # unreadable, so re-enter stored credentials after setting it.
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       - APP_ENV=production
@@ -171,7 +132,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
-      - /app/.venv
+      - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
 
   # ── Web Application Scan Worker ───────────────────────────────────────────
@@ -179,8 +140,9 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+    image: ccure-audit-pro-backend:latest
     container_name: ccure-web-worker
-    restart: always
+    restart: "no"
     profiles: ["container-scanner"]
     # Run as root for raw socket access and Playwright browser launch
     user: root
@@ -192,10 +154,6 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      # Anyone running `docker exec <container> pytest` gets a suite that
-      # TRUNCATEs organizations and users CASCADE. Without this it inherits
-      # DATABASE_URL above and destroys the live database. Pin the scratch
-      # database explicitly so the dangerous default is never reachable.
       - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -205,20 +163,6 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
-      # Master key for credentials stored at rest (scan logins, credentialed
-      # scan passwords). Required, and it must be the SAME value the host
-      # scanner worker loads from Backend/.env.
-      #
-      # This was previously `:-` (empty default). The API then encrypted stored
-      # credentials under the fallback key hardcoded in security_crypto.py
-      # while the host worker decrypted with the real key from Backend/.env, so
-      # every credentialed scan failed with "Invalid encrypted payload or
-      # authentication tag" and silently completed as an unauthenticated audit.
-      # Failing to start is better than a scan that quietly loses its
-      # credentials.
-      #
-      # Note: changing it makes credentials encrypted under the old key
-      # unreadable, so re-enter stored credentials after setting it.
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - APP_ENV=production
       - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
@@ -241,7 +185,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
-      - /app/.venv
+      - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
 
   # ── Frontend ─────────────────────────────────────────────────────────────
@@ -252,7 +196,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: ccure-frontend
-    restart: always
+    restart: "no"
     ports:
       - "127.0.0.1:3200:80"
     environment:
@@ -267,7 +211,7 @@ services:
   gateway:
     image: nginx:stable-alpine
     container_name: ccure-gateway
-    restart: always
+    restart: "no"
     ports:
       - "${GATEWAY_PORT:-80}:80"
     volumes:
@@ -280,3 +224,4 @@ services:
 
 volumes:
   pgdata:
+  backend_venv:

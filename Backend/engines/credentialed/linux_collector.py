@@ -45,7 +45,18 @@ COMMANDS: dict[str, str] = {
     "dmi_serial": 'ser=$(sudo -n dmidecode -s system-serial-number 2>/dev/null || cat /sys/class/dmi/id/product_serial 2>/dev/null); case "$ser" in ""|[Nn]one|[Tt]o\\ [Bb]e\\ [Ff]illed*|[Dd]efault*|[Nn]ot\\ [Ss]pecified) cat /etc/machine-id 2>/dev/null;; *) echo "$ser";; esac',
     "uptime": "uptime -p 2>/dev/null || uptime 2>/dev/null",
     "packages_deb": "dpkg -l 2>/dev/null",
-    "packages_rpm": "rpm -qa --queryformat '%{NAME} %{VERSION}-%{RELEASE}\\n' 2>/dev/null",
+    # The epoch is part of an RPM version and dominates every other component.
+    #
+    # Omitting it made every package whose advisories carry one compare wrong.
+    # Rocky's openssl is epoch 1; reported as "3.5.5-2.el9_8" it defaults to
+    # epoch 0, and the fix "1:3.0.1-47.el9_1" then outranks it on epoch alone —
+    # so a host running 3.5.5 was reported vulnerable to a flaw fixed in 3.0.1,
+    # four upstream releases earlier. `%|EPOCH?...|` emits 0 when the package
+    # has no epoch, so the field is always present and always comparable.
+    "packages_rpm": (
+        "rpm -qa --queryformat "
+        "'%{NAME} %|EPOCH?{%{EPOCH}}:{0}|:%{VERSION}-%{RELEASE}\\n' 2>/dev/null"
+    ),
     "running_svcs": "systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null",
     "open_ports": "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null",
     "users": "cat /etc/passwd 2>/dev/null",

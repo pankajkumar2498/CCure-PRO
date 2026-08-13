@@ -25,7 +25,7 @@ DESIGN PRINCIPLES (Nessus/Nmap-style):
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -54,7 +54,9 @@ class ConfidenceScore:
 
     score: float = 0.0  # 0.0 to 1.0
     source: DataSource = DataSource.DEFAULT
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     notes: str = ""
 
     def to_dict(self) -> dict:
@@ -129,7 +131,9 @@ class UnifiedAsset:
     hostname: str = "Unknown"
     mac_address: str = "N/A"
     is_active: bool = False
-    discovery_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    discovery_timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     discovery_method: str = "N/A"  # ICMP / ARP / TCP / etc.
     discovery_profile: str = "FAST"  # FAST / BALANCED / AGGRESSIVE
 
@@ -163,7 +167,9 @@ class UnifiedAsset:
 
     # ── Metadata ──────────────────────────────────────────────────────────
     scan_phases_completed: list[int] = field(default_factory=list)  # [1, 2, 3, 4]
-    last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
+    last_updated: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     data_sources: list[str] = field(default_factory=list)  # Audit trail
 
     def to_dict(self) -> dict:
@@ -341,7 +347,7 @@ class AssetCorrelationEngine:
                 asset.scan_phases_completed.append(2)
                 asset.data_sources.append("phase2_port_scan")
 
-            asset.last_updated = datetime.now().isoformat()
+            asset.last_updated = datetime.now(timezone.utc).isoformat()
             log.debug(f"Asset enriched {ip}: {len(asset.open_ports)} ports found")
 
     # ── Phase 3: Vulnerability Scan ────────────────────────────────────────
@@ -404,7 +410,7 @@ class AssetCorrelationEngine:
                 asset.scan_phases_completed.append(3)
                 asset.data_sources.append("phase3_vulnerability")
 
-            asset.last_updated = datetime.now().isoformat()
+            asset.last_updated = datetime.now(timezone.utc).isoformat()
             log.debug(f"Asset enriched {ip}: {len(asset.cves)} CVEs found")
 
     # ── Utility Methods ────────────────────────────────────────────────────

@@ -23,13 +23,14 @@ from core.tasks import (
 from db.base import get_db
 from db.models import Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from scan_helpers import (
+    VALID_PIPELINE_MODES,
     is_phase_in_pipeline,
     limiter,
     log,
     resolve_pipeline_mode,
-    validate_total_targets,
+    validate_scan_targets,
 )
 from scans.db_helpers import (
     create_scan,
@@ -85,6 +86,43 @@ def get_scan_quota(
 
 
 # ── Request models ────────────────────────────────────────────────────────────
+
+
+def _validate_pipeline_mode(value: str | None) -> str | None:
+    """
+    Reject an unknown pipeline_mode instead of silently running something else.
+
+    The resolver downstream falls back to 'basic' for anything it does not
+    recognise, which meant a typo returned HTTP 200, created a scan row holding
+    the bogus value verbatim, and surfaced it in Scan History as the scan's
+    type. A caller that asks for a pipeline that does not exist should be told.
+    """
+    if value is None:
+        return value
+    token = str(value).strip().lower()
+    if not token:
+        return None
+    if token not in VALID_PIPELINE_MODES:
+        allowed = ", ".join(sorted(VALID_PIPELINE_MODES))
+        raise ValueError(
+            f"Unknown pipeline_mode '{value}'. Expected one of: {allowed}."
+        )
+    return token
+
+
+def _validate_intensity(value: str | None) -> str | None:
+    """Reject an unknown intensity rather than quietly substituting 'normal'."""
+    if value is None:
+        return value
+    token = str(value).strip().lower()
+    if not token:
+        return None
+    allowed = ("light", "normal", "deep", "custom")
+    if token not in allowed:
+        raise ValueError(
+            f"Unknown intensity '{value}'. Expected one of: {', '.join(allowed)}."
+        )
+    return token
 
 
 class HostDiscoveryRequest(BaseModel):
@@ -160,6 +198,11 @@ class HostDiscoveryRequest(BaseModel):
         None, description="IPs/subnets to exclude from this scan"
     )
 
+    _check_mode = field_validator("pipeline_mode")(_validate_pipeline_mode)
+    _check_intensity = field_validator("discovery_intensity", "port_scan_intensity")(
+        _validate_intensity
+    )
+
 
 class AssetDiscoveryRequest(BaseModel):
     """
@@ -197,6 +240,9 @@ class AssetDiscoveryRequest(BaseModel):
         None, description="Bypass active scan on hosts already resolved passively"
     )
 
+    _check_mode = field_validator("pipeline_mode")(_validate_pipeline_mode)
+    _check_intensity = field_validator("intensity")(_validate_intensity)
+
 
 class VulnerabilityAuditRequest(BaseModel):
     """
@@ -227,6 +273,8 @@ class VulnerabilityAuditRequest(BaseModel):
         None, description="IPs/subnets to exclude from this scan"
     )
 
+    _check_mode = field_validator("pipeline_mode")(_validate_pipeline_mode)
+
 
 class PhasesRequest(BaseModel):
     """Convenience endpoint — run any combination of phases in one call."""
@@ -238,6 +286,8 @@ class PhasesRequest(BaseModel):
     passive_first: bool | None = Field(None)
     exclude_ot_from_nmap: bool | None = Field(None)
     exclude_ips: str | None = Field(None)
+
+    _check_intensity = field_validator("intensity")(_validate_intensity)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -274,16 +324,19 @@ async def scan_host_discovery(
 
     resolved_org = _resolve_org(user, org_id)
 
+    # ── Target gate — reject unusable input before it costs quota ─────────────
+    targets = validate_scan_targets(req.targets)
+
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
     check_scan_quota(
-        db, org_id=resolved_org, targets=req.targets, custom_ports=req.custom_ports
+        db, org_id=resolved_org, targets=targets, custom_ports=req.custom_ports
     )
 
     scan = create_scan(
         db=db,
         user_id=str(user.id),
-        target=", ".join(req.targets),
-        targets=req.targets,
+        target=", ".join(targets),
+        targets=targets,
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
         org_id=resolved_org,
@@ -313,7 +366,7 @@ async def scan_host_discovery(
     # Dispatch to Celery
     task = run_host_discovery_task.delay(
         user_id=str(user.id),
-        targets=req.targets,
+        targets=targets,
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
         discovery_intensity=discovery_intensity,
@@ -499,10 +552,10 @@ async def scan_phases(
     current_user: User = Depends(require_permission("scans", "execute")),
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""
-    validate_total_targets(req.targets)
+    targets = validate_scan_targets(req.targets)
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),
-        targets=req.targets,
+        targets=targets,
         phases=req.phases,
         scan_type=req.scan_type,
         intensity=req.intensity,

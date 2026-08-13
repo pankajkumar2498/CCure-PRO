@@ -26,6 +26,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -98,7 +99,10 @@ class Asset(Base):
     fqdn = Column(String(512), nullable=True)
     netbios_name = Column(String(255), nullable=True)
     discovery_method = Column(String(50), nullable=True)
-    response_time_ms = Column(Integer, nullable=True)
+    # Float, not Integer: LAN round-trips are routinely under a millisecond, and
+    # an integer column rounded 0.19 ms to 0 and 0.81 ms to 1 — throwing away
+    # essentially all of the signal this column exists to carry.
+    response_time_ms = Column(Float, nullable=True)
 
     # ── Classification ────────────────────────────────────────────────────────
     device_category = Column(String(100), nullable=True, index=True)

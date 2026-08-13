@@ -42,8 +42,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +74,20 @@ OBSERVED_SERVICE_STATES = (STATE_OPEN, STATE_LISTENING)
 #: A service confirmed reachable across the network. Used where the question is
 #: specifically about exposure.
 NETWORK_EXPOSED_STATES = (STATE_OPEN,)
+
+#: The only severity ratings either severity column may hold, lowercase.
+#:
+#: ``scans.cvss.severity_from_score`` returns these title-cased and every write
+#: path lowers them (``scans/asset_syncer.py`` is the sole writer of both
+#: columns, at the catalog upsert and the finding upsert). "unscored" is
+#: deliberately distinct from "none": the first means no score was published,
+#: the second means a published score of 0.0.
+SEVERITY_VALUES = ("critical", "high", "medium", "low", "none", "unscored")
+
+#: Rendered exactly as migration z9e0f1g2h3i4 renders it, so the model and the
+#: migration produce byte-identical CHECK constraints and autogenerate sees no
+#: difference between a bootstrapped and an upgraded database.
+SEVERITY_CANONICAL_SQL = "severity IN %s" % str(SEVERITY_VALUES)
 
 
 class Service(Base):
@@ -279,6 +294,9 @@ class VulnerabilityDefinition(Base):
             postgresql_using="gin",
             postgresql_ops={"title": "gin_trgm_ops"},
         ),
+        # Severity must be one of the six canonical lowercase ratings. Declared
+        # here as well as in migration z9e0f1g2h3i4 — see SEVERITY_CANONICAL_SQL.
+        CheckConstraint(SEVERITY_CANONICAL_SQL, name="ck_vuln_def_severity_canonical"),
         # Integrity constraint for CVSS scores
         CheckConstraint(
             "cvss_v3_score >= 0.0 AND cvss_v3_score <= 10.0", name="ck_vuln_cvss_score"
@@ -297,7 +315,16 @@ class VulnerabilityDefinition(Base):
     cvss_v4_score = Column(Numeric(3, 1), nullable=True)
     cvss_vector = Column(String(255), nullable=True)
 
-    severity = Column(String(20), nullable=False, default="info", index=True)
+    #: Which CVSS revision ``cvss_vector`` and the populated score column were
+    #: published in. Without it a v2 score filed under ``cvss_v3_score`` is
+    #: indistinguishable from a real v3 one, and the two revisions' band tables
+    #: disagree above 9.0 — v2 has no Critical tier.
+    cvss_version = Column(String(8), nullable=True)
+
+    #: Always one of ``scans.cvss.CANONICAL_SEVERITIES`` (lower case). Enforced
+    #: by ck_vuln_def_severity_canonical — two spellings of one severity split
+    #: every GROUP BY in the product and silently dropped rows from the totals.
+    severity = Column(String(20), nullable=False, default="unscored", index=True)
 
     published_at = Column(Date, nullable=True)
     last_modified_at = Column(Date, nullable=True)
@@ -347,6 +374,47 @@ class AssetVulnerability(Base):
         Index("ix_asset_vuln_source_family", "source_family"),
         Index("ix_asset_vuln_evidence_source", "evidence_source"),
         Index("ix_asset_vuln_first_found", "first_found_at"),
+        # Triage sorts on these two, and both are highly selective — a few dozen
+        # rows out of a few thousand — so they are partial indexes covering only
+        # the true case.
+        #
+        # They are declared here as well as in migration c3h4i5j6k7l8 because
+        # this project builds a schema two ways: a fresh install runs
+        # Base.metadata.create_all() and stamps head, while an existing install
+        # runs alembic upgrade head. An index that only the migration knows
+        # about therefore exists on upgraded databases and not on fresh ones —
+        # and c3h4i5j6k7l8.downgrade() then failed on a fresh database because
+        # it dropped an index create_all() had never made.
+        Index(
+            "idx_asset_vuln_verified_exploit",
+            "verified_exploit",
+            postgresql_where=text("verified_exploit"),
+        ),
+        Index(
+            "idx_asset_vuln_canary",
+            "canary_confirmed",
+            postgresql_where=text("canary_confirmed"),
+        ),
+        # Composite indexes the migrations below create, for the same reason as
+        # the two above: a fresh install builds from Base.metadata and never
+        # runs their upgrade(), so an index declared only in a migration exists
+        # on upgraded databases and not on fresh ones.
+        #   ix_asset_vuln_severity_status  — z9e0f1g2h3i4 (every dashboard load)
+        #   ix_asset_vuln_component        — a1f2g3h4i5j6 (per-asset component roll-up)
+        #   idx_asset_vuln_component_fix   — b2g3h4i5j6k7 (the grouped findings view)
+        # z9e0f1g2h3i4 also creates a single-column ix_asset_vuln_in_kev, which
+        # is deliberately not repeated here: `in_kev` already carries
+        # index=True, so the models produce an equivalent index under
+        # SQLAlchemy's own name and a second one would only cost writes.
+        Index("ix_asset_vuln_severity_status", "severity", "status"),
+        Index("ix_asset_vuln_component", "asset_id", "component"),
+        Index("idx_asset_vuln_component_fix", "component", "component_fixed_version"),
+        # Severity must be one of the six canonical lowercase ratings, matching
+        # migration z9e0f1g2h3i4. The column is nullable and a CHECK passes on
+        # NULL, so a finding whose severity was never determined is unaffected.
+        CheckConstraint(
+            SEVERITY_CANONICAL_SQL, name="ck_asset_vuln_severity_canonical"
+        ),
         # {"postgresql_partition_by": "HASH (org_id)"}
     )
 
@@ -394,6 +462,66 @@ class AssetVulnerability(Base):
 
     proof = Column(Text, nullable=True)
     plugin_output = Column(Text, nullable=True)
+
+    # ── What the scan actually observed ──────────────────────────────────────
+    # The vulnerability engine derives all of this while the scan is running and
+    # the reports print it, but until now none of it was stored. The API had to
+    # answer with hardcoded zeros, so the UI could not distinguish a version-
+    # confirmed finding from an unverified guess, and the dashboard reported no
+    # known-exploited vulnerabilities while the PDF named three.
+    confidence = Column(String(16), nullable=True)  # confirmed | potential
+    qod = Column(Integer, nullable=True)  # quality of detection, 0-100
+    detection_method = Column(String(40), nullable=True)
+    detected_version = Column(String(160), nullable=True)
+    cvss_vector = Column(String(200), nullable=True)
+    cvss_version = Column(String(8), nullable=True)
+    attack_surface = Column(String(16), nullable=True)  # remote | local | client
+    in_kev = Column(Boolean, nullable=False, default=False, index=True)
+    kev_due_date = Column(Date, nullable=True)
+    epss_score = Column(Numeric(7, 5), nullable=True)
+    epss_percentile = Column(Numeric(7, 5), nullable=True)
+    has_exploit = Column(Boolean, nullable=False, default=False)
+
+    #: Which corpora reported an exploit — ExploitDB, Metasploit, Nuclei,
+    #: CISA KEV, VulnCheck KEV. `has_exploit` alone cannot tell a weaponised
+    #: Metasploit module from an unreproduced proof of concept, and those
+    #: warrant very different urgency.
+    exploit_sources = Column(ARRAY(Text), nullable=True)
+    #: Someone reproduced the exploit rather than merely publishing it.
+    verified_exploit = Column(Boolean, nullable=False, default=False)
+    #: Observed being exploited against VulnCheck's honeypots — direct
+    #: observation, the strongest exploitation evidence available here.
+    canary_confirmed = Column(Boolean, nullable=False, default=False)
+    ransomware_linked = Column(Boolean, nullable=False, default=False)
+
+    #: The vendor's own advisory for this CVE, and its remediation wording.
+    #: For OT products this is often the only actionable instruction that
+    #: exists: NVD supplies a CPE range, Siemens supplies "Update to V2606 or
+    #: later version".
+    vendor_advisory_id = Column(String(100), nullable=True)
+    vendor_advisory_url = Column(Text, nullable=True)
+    vendor_remediation = Column(Text, nullable=True)
+
+    #: The probe output the finding was raised on, captured at detection time.
+    #: Distinct from ``plugin_output`` (a rendering) and from the catalogue
+    #: description (which is not evidence at all).
+    evidence = Column(Text, nullable=True)
+
+    #: ``scan_id`` is re-pointed to the latest scan on every re-scan, so it
+    #: cannot answer "what did scan N report?". This one is written once.
+    first_scan_id = Column(String(64), nullable=True)
+
+    #: The service or package this finding is about, and the version observed
+    #: for it. The grouping key that lets "one outdated Chrome" be presented as
+    #: one row resolving 1,736 CVEs rather than 1,736 rows.
+    component = Column(String(200), nullable=True)
+    component_version = Column(String(160), nullable=True)
+
+    #: The version that resolves this finding. Without it the grouped view can
+    #: state the problem but not the action — "Chrome 138.0.7204.184, 1,736
+    #: findings" with no answer to "upgrade to what?". NULL means no fix is
+    #: published, which is a real state and not the same as unrecorded.
+    component_fixed_version = Column(String(160), nullable=True)
 
     remediation_notes = Column(Text, nullable=True)
     fixed_at = Column(TIMESTAMPTZ, nullable=True)

@@ -1179,7 +1179,7 @@ def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Ses
         id=cve_id,
         cve_id=cve_id,
         title="Package CVE",
-        severity="High",
+        severity="high",
         cvss_v3_score=8.0,
         source="credentialed",
     )
@@ -1202,7 +1202,7 @@ def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Ses
         scan_id=scan_id,
         asset_id=asset_id,
         vuln_id=cve_id,
-        severity="High",
+        severity="high",
         cvss_score=8.0,
         status="open",
         source_family="credentialed_package",
@@ -1342,6 +1342,26 @@ def test_host_discovery_endpoint(
     mock_orch.run_host_discovery_only.return_value = mock_result
     mock_orch.generate_phase_report.return_value = {"executive_pdf": "/fake/path.pdf"}
 
+    # This test asserts on rows the *task* writes, so the task has to run before
+    # the assertions do. Whether it does was previously decided by the
+    # deployment's CELERY_TASK_ALWAYS_EAGER, which this one sets to False so the
+    # host worker can perform live scans — so the test failed on the developer's
+    # own machine and passed in CI, for reasons that had nothing to do with the
+    # code under test. A test that needs synchronous execution asks for it.
+    from core.celery_app import celery_app
+
+    previous_eager = celery_app.conf.task_always_eager
+    previous_propagate = celery_app.conf.task_eager_propagates
+    celery_app.conf.task_always_eager = True
+    celery_app.conf.task_eager_propagates = True
+    try:
+        _run_host_discovery_assertions(client, auth_headers, db_session, mock_orch)
+    finally:
+        celery_app.conf.task_always_eager = previous_eager
+        celery_app.conf.task_eager_propagates = previous_propagate
+
+
+def _run_host_discovery_assertions(client, auth_headers, db_session, mock_orch):
     with patch("core.tasks._new_orchestrator", return_value=mock_orch):
         response = client.post(
             "/scan/host-discovery",

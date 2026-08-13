@@ -68,10 +68,42 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 
 #: A database may be used by pytest only if its name matches. Keep this narrow.
-TEST_DB_NAME_PATTERN = re.compile(r"(^test_|_test$|_pytest$|_pytest_db$)")
+#
+# '_test$' used to be in here and it cost us a production database: the live
+# application DB is named 'ccure_test', so the guard meant to protect it was the
+# thing that authorised wiping it. "test" in a name says nothing about whether
+# real data lives there. Only '_pytest'-style names — which nobody gives a
+# database they care about — are accepted now.
+TEST_DB_NAME_PATTERN = re.compile(r"(^pytest_|_pytest$|_pytest_db$)")
+
+#: Databases that must never be used by the suite even if renamed into the
+#: pattern above. A belt to the pattern's braces.
+FORBIDDEN_DB_NAMES = frozenset(
+    {
+        "ccure_test",
+        "ccure_db",
+        "ccure_prod",
+        "ccure_app",
+        "ccure_staging",
+        "ccure_dev",
+        "vuln_intel",
+        "postgres",
+        "template0",
+        "template1",
+    }
+)
+
+#: A table the suite creates in any scratch database it owns. Its presence is
+#: the positive proof that a database is disposable. A real database will never
+#: have one, so even a correctly-named database that happens to hold live data
+#: is refused until someone deliberately marks it.
+SENTINEL_TABLE = "_pytest_scratch_marker"
+
+#: Name of the disposable database the suite owns.
+SCRATCH_DB_NAME = "ccure_pytest_db"
 
 DEFAULT_TEST_DATABASE_URL = (
-    "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_pytest_db"
+    f"postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/{SCRATCH_DB_NAME}"
 )
 
 
@@ -79,9 +111,92 @@ def _db_name(url: str) -> str:
     return urlparse(url).path.lstrip("/")
 
 
+def _scratch_url_beside(url: str) -> str:
+    """
+    Point at the scratch database on the *same* server as ``url``.
+
+    Refusing an unsafe target only helps if the safe target is reachable. The
+    hardcoded default assumes 127.0.0.1, which is wrong inside a container — and
+    a safe default that cannot connect just tempts the next person to override
+    it with something dangerous. Reuse the host and credentials we were given
+    and swap only the database name.
+    """
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return DEFAULT_TEST_DATABASE_URL
+    return parsed._replace(path=f"/{SCRATCH_DB_NAME}").geturl()
+
+
 def _is_test_database(url: str) -> bool:
     name = _db_name(url)
-    return bool(name) and bool(TEST_DB_NAME_PATTERN.search(name))
+    if not name or name.lower() in FORBIDDEN_DB_NAMES:
+        return False
+    return bool(TEST_DB_NAME_PATTERN.search(name))
+
+
+#: Tables whose contents prove a database is in real use. Reference data
+#: (CVE feed, compliance catalogue) is excluded — a scratch database legitimately
+#: carries those, and they are never what someone mourns.
+_LIVE_DATA_TABLES = ("users", "scans", "assets", "services")
+
+
+def _assert_database_is_disposable(url: str) -> None:
+    """
+    Refuse to run unless the target database is provably a scratch database.
+
+    Name matching alone is not enough: it is one typo, one rename, or one
+    inherited DATABASE_URL away from truncating something irreplaceable. A
+    database qualifies when it carries the sentinel table, or when it is empty
+    enough that there is nothing to lose — in which case it is marked so the
+    check is cheap next time.
+    """
+    name = _db_name(url)
+    engine = create_engine(url, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as conn:
+            marked = conn.execute(
+                text("SELECT to_regclass(:t)"), {"t": f"public.{SENTINEL_TABLE}"}
+            ).scalar()
+            if marked:
+                return
+
+            populated = {}
+            for table in _LIVE_DATA_TABLES:
+                if not conn.execute(
+                    text("SELECT to_regclass(:t)"), {"t": f"public.{table}"}
+                ).scalar():
+                    continue
+                count = conn.execute(
+                    text(f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed list
+                ).scalar()
+                if count:
+                    populated[table] = count
+
+            if populated:
+                detail = ", ".join(f"{t}={n}" for t, n in sorted(populated.items()))
+                raise RuntimeError(
+                    f"Refusing to run: database '{name}' holds live data ({detail}) "
+                    f"and is not marked as a pytest scratch database.\n"
+                    f"The suite TRUNCATEs organizations and users CASCADE, which "
+                    f"would destroy all of it.\n"
+                    f"If this database really is disposable, mark it explicitly:\n"
+                    f'  psql -d {name} -c "CREATE TABLE {SENTINEL_TABLE} '
+                    f'(marked_at timestamptz DEFAULT now());"'
+                )
+
+            conn.execute(
+                text(
+                    f"CREATE TABLE IF NOT EXISTS {SENTINEL_TABLE} "
+                    f"(marked_at timestamptz DEFAULT now())"
+                )
+            )
+    except (OperationalError, DBAPIError):
+        # The database may not exist yet; creation happens further down and the
+        # sentinel is written on the next pass. Connectivity errors surface there
+        # with a better message than this check could give.
+        pass
+    finally:
+        engine.dispose()
 
 
 # TEST_DATABASE_URL is an explicit choice and is honoured as given; DATABASE_URL
@@ -95,14 +210,33 @@ if _explicit:
     if not _is_test_database(database_url):
         raise RuntimeError(
             f"TEST_DATABASE_URL points at '{_db_name(database_url)}', which is not "
-            f"a recognised pytest database. The suite drops and recreates its "
-            f"schema, so it refuses to run anywhere that is not named to match "
-            f"{TEST_DB_NAME_PATTERN.pattern}."
+            f"a recognised pytest database. The suite TRUNCATEs organizations and "
+            f"users CASCADE, so it refuses to run anywhere that is not named to "
+            f"match {TEST_DB_NAME_PATTERN.pattern} "
+            f"(and is not one of: {', '.join(sorted(FORBIDDEN_DB_NAMES))})."
         )
 elif _inherited and _is_test_database(_inherited):
     database_url = _inherited
 else:
-    database_url = DEFAULT_TEST_DATABASE_URL
+    # DATABASE_URL is inherited from whatever environment pytest happens to run
+    # in — a developer's .env, or the API container, where it points straight at
+    # the live application database. Falling back to the dedicated scratch
+    # database is the safe default; inheriting is the exception, not the rule.
+    # Keep the rejected URL's host and credentials so the fallback is reachable
+    # from wherever the suite is running.
+    database_url = (
+        _scratch_url_beside(_inherited) if _inherited else DEFAULT_TEST_DATABASE_URL
+    )
+    if _inherited:
+        print(
+            f"[conftest] DATABASE_URL points at '{_db_name(_inherited)}', which is "
+            f"not a pytest scratch database. Using '{SCRATCH_DB_NAME}' instead.",
+            file=sys.stderr,
+        )
+
+# Last line of defence, applied to whichever URL won above: a correctly-named
+# database still has to prove it is disposable before anything truncates it.
+_assert_database_is_disposable(database_url)
 
 if not database_url.startswith("postgresql"):
     raise RuntimeError(

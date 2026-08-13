@@ -257,12 +257,35 @@ class DiscoveryEngine:
         )
 
         from core.redis_client import publish_progress
+        from core.scan_control import (
+            make_cancel_check,
+            raise_if_cancelled,
+            record_progress,
+            start_progress,
+        )
 
         total_ips = len(scan_order)
         discovered = 0
 
+        # Cancellation is cooperative: the host scanner worker uses a threads
+        # pool, where Celery's revoke(terminate=True) cannot kill a running
+        # thread. Polling between batches bounds how long a cancelled scan keeps
+        # sending packets to one batch, without adding a check to the hot path.
+        cancel_check = make_cancel_check(scan_id)
+        raise_if_cancelled(scan_id)
+        start_progress(scan_id, total_ips)
+
         # ── Process in batches ─────────────────────────────────────────────
         for i in range(0, len(scan_order), batch_sz):
+            if cancel_check():
+                log.info(
+                    "Scan %s cancelled — stopping discovery after %d/%d IPs",
+                    scan_id,
+                    discovered,
+                    total_ips,
+                )
+                raise_if_cancelled(scan_id)
+
             batch = scan_order[i : i + batch_sz]
 
             monitor_task = None
@@ -326,6 +349,11 @@ class DiscoveryEngine:
                 except asyncio.CancelledError:
                     pass
 
+            # Check again on the way out of the batch. A single-batch scan would
+            # otherwise only ever be tested before any probing began, so a stop
+            # issued a moment later did no work-avoidance at all.
+            raise_if_cancelled(scan_id)
+
             discovered += len(batch)
             # Final batch publish — NBNS has now completed so netbios_names is populated
             active_hosts_snapshot = [
@@ -357,6 +385,15 @@ class DiscoveryEngine:
                         "hosts": active_hosts_snapshot,
                     },
                 )
+                # The WebSocket push above only reaches clients watching live.
+                # Persisting the same counters is what makes the REST progress
+                # endpoint report anything other than 0%.
+                await asyncio.to_thread(
+                    record_progress,
+                    scan_id,
+                    discovered,
+                    len(active_hosts_snapshot),
+                )
 
             # ── Hostile-env auto-escalation ───────────────────────────────
             if (
@@ -370,6 +407,11 @@ class DiscoveryEngine:
                     "Auto-escalating to stealth mode for remaining batches."
                 )
                 self.stealth_mode = True
+
+        # Enrichment (SNMP/mDNS/NetBIOS/PTR) is the longest tail of a discovery
+        # run. Stopping before it starts is the difference between a cancel
+        # taking effect now and taking effect several seconds from now.
+        raise_if_cancelled(scan_id)
 
         # ── Post-scan enrichment (when enrichment enabled in profile) ──────
         if self.profile.enrichment:
@@ -446,6 +488,16 @@ class DiscoveryEngine:
                     "hosts": enriched_snapshot,
                 },
             )
+
+        # Canonicalise MAC casing once, here, rather than leaving each technique's
+        # formatting to surface in the payload. ARP, the ARP cache and NetBIOS all
+        # returned different casing for the same address, which showed up as
+        # '2c:58:…' beside '2C:58:…' in a single results table.
+        for r in results.values():
+            for key in ("mac", "mac_address"):
+                value = r.get(key)
+                if value and str(value).upper() not in ("N/A", "UNKNOWN", "NONE"):
+                    r[key] = str(value).strip().replace("-", ":").lower()
 
         return list(results.values())
 

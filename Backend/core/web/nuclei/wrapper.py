@@ -164,8 +164,19 @@ class NucleiWrapper(ToolWrapper):
         else:
             args = [self.binary, "-u", target_list[0], "-jsonl", "-silent", "-nc"]
 
-        # Severity filter
-        sev = severity or WebScanConfig.NUCLEI_SEVERITY.split(",")
+        # Severity filter.
+        #
+        # Accepts a list or a comma-separated string. The annotation says list,
+        # and a string used to be accepted silently and then joined character
+        # by character — "critical,high" became "c,r,i,t,i,c,a,l,...", which
+        # nuclei rejects with exit code 2 after 0.2s. The failure surfaces as
+        # "nuclei failed", giving no hint that the caller passed the wrong
+        # shape, and a scan that dies in a fifth of a second looks like a
+        # broken binary rather than a bad argument.
+        if isinstance(severity, str):
+            sev = [part.strip() for part in severity.split(",") if part.strip()]
+        else:
+            sev = list(severity or []) or WebScanConfig.NUCLEI_SEVERITY.split(",")
         args.extend(["-severity", ",".join(sev)])
 
         # Rate limiting — reduce when WAF detected

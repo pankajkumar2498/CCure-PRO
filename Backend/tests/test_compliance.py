@@ -775,10 +775,10 @@ def test_vulnerability_evidence_prefers_the_severity_recorded_for_this_host():
             # The feed calls this one Low; the scan recomputed Critical here.
             _FakeFinding(
                 "av1",
-                severity="Critical",
+                severity="critical",
                 cvss_score=9.8,
                 vulnerability=_FakeCatalogueEntry(
-                    "CVE-2024-0001", severity="Low", cvss_v3_score=3.1
+                    "CVE-2024-0001", severity="low", cvss_v3_score=3.1
                 ),
             ),
             # No host-specific severity, so the catalogue's label stands in.
@@ -787,7 +787,7 @@ def test_vulnerability_evidence_prefers_the_severity_recorded_for_this_host():
                 severity=None,
                 cvss_score=None,
                 vulnerability=_FakeCatalogueEntry(
-                    "CVE-2024-0002", severity="High", cvss_v3_score=7.5
+                    "CVE-2024-0002", severity="high", cvss_v3_score=7.5
                 ),
             ),
         ]

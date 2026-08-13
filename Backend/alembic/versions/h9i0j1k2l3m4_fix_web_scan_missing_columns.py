@@ -126,13 +126,29 @@ def downgrade() -> None:
     )
     op.drop_column("web_findings", "last_found_at")
     op.drop_column("web_findings", "first_found_at")
-    op.drop_constraint(
-        "fk_web_findings_web_asset_id", "web_findings", type_="foreignkey"
+    # IF EXISTS, because only the *name* matches on an upgraded database. The
+    # model declares the same foreign key without naming it, so a fresh install
+    # — which builds from Base.metadata and stamps head, never running
+    # upgrade() — has the constraint under PostgreSQL's generated name
+    # (web_findings_web_asset_id_fkey) and not this one. Dropping the column
+    # immediately below removes whichever name it carries either way.
+    op.execute(
+        "ALTER TABLE web_findings "
+        "DROP CONSTRAINT IF EXISTS fk_web_findings_web_asset_id"
     )
     op.drop_column("web_findings", "web_asset_id")
 
     # ── Web Assets ────────────────────────────────────────────────────────────
     op.alter_column("web_assets", "technology", nullable=True, server_default=None)
+    # WebAsset declares Index("idx_web_assets_tech_gin", "technology",
+    # postgresql_using="gin") and no migration creates it, so it exists only on
+    # databases built from Base.metadata. Converting the column back to
+    # VARCHAR forces PostgreSQL to rebuild that index, and there is no GIN
+    # operator class for character varying — the ALTER below failed with
+    # UndefinedObject on exactly those databases. Drop it first; a fresh
+    # install recreates it from the model, and on an upgraded database the
+    # index was never there and this is a no-op.
+    op.execute("DROP INDEX IF EXISTS idx_web_assets_tech_gin")
     op.execute(
         "ALTER TABLE web_assets ALTER COLUMN technology TYPE VARCHAR(100) USING technology::text"
     )

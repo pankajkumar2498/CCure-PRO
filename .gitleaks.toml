@@ -1,0 +1,34 @@
+# gitleaks configuration for CCure-Audit-PRO.
+#
+# The default rules catch high-entropy values — they do flag the JWT signing
+# key that was committed in .env.example. They do NOT flag the Gmail app
+# password that was committed beside it: sixteen lowercase letters carries
+# too little entropy to look like a secret, and it was a live send-as
+# credential for a real account.
+#
+# So the default set is kept and one rule is added for the specific shape
+# both leaks had: a real value assigned to a secret-named variable inside a
+# committed .example file. Those files exist to be read by strangers, which
+# is precisely why nothing real may sit in one.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "env-example-real-secret"
+description = "Non-placeholder secret assigned in a committed .example env file"
+# Key must END in the secret word, so ACCESS_TOKEN_EXPIRES_MINUTES=30 and
+# REFRESH_COOKIE_NAME=... do not match. Value must be 8+ characters, so an
+# intentionally empty assignment does not match either.
+#
+# Horizontal whitespace only around the '=': \s also matches a newline, so an
+# empty DEFAULT_ADMIN_PASSWORD= consumed the line break and matched the next
+# line's value, reporting a leak on a deliberately blank assignment.
+regex = '''(?mi)^[A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY|_KEY)[ \t]*=[ \t]*(\S{8,})[ \t]*$'''
+path = '''\.example$'''
+
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  '''(?i)(change_me|generate_me|your_|placeholder|example\.com|dummy|xxxx|<[^>]+>)''',
+]

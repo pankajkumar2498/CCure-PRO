@@ -38,6 +38,7 @@ from db.models.findings import (
 from db.models.rbac import Organization
 from db.models.scans import Scan
 from fastapi import APIRouter, Depends, Query
+from scans.cvss import canonical_severity, display_severity
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -88,26 +89,45 @@ def get_dashboard_summary(
     w7d = now - timedelta(days=7)
 
     # ── Severity counts ────────────────────────────────────────────────────────
+    # Counted from the finding's own severity, grouped case-insensitively.
+    #
+    # This previously grouped on VulnerabilityDefinition.severity — a column
+    # holding both "critical" and "Critical" — and then built
+    # `{row.severity.lower(): row.count}`. The two spellings arrived as separate
+    # rows and the comprehension collapsed them onto one key, so whichever the
+    # driver yielded last silently replaced the other. The dashboard reported 46
+    # of 146 findings and 1 of 9 criticals while every other surface in the
+    # product reported the true figures.
+    #
+    # Grouping on the folded value makes the collapse happen in SQL, where the
+    # counts are summed rather than overwritten. The CHECK constraint added in
+    # z9e0f1g2h3i4 stops the mixed spellings recurring; this is the second line
+    # of defence, and the one that keeps old rows correct.
+    sev_expr = func.lower(AssetVulnerability.severity)
     sev_rows = (
         db.query(
-            VulnerabilityDefinition.severity,
-            func.count(AssetVulnerability.id).label("cnt"),
-        )
-        .join(
-            VulnerabilityDefinition,
-            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
+            sev_expr.label("severity"), func.count(AssetVulnerability.id).label("cnt")
         )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(Asset.org_id == org, AssetVulnerability.status == "open")
-        .group_by(VulnerabilityDefinition.severity)
+        .group_by(sev_expr)
         .all()
     )
-    sev_map = {r.severity.lower(): r.cnt for r in sev_rows} if sev_rows else {}
+    sev_map: dict[str, int] = {}
+    for r in sev_rows:
+        sev_map[canonical_severity(r.severity)] = (
+            sev_map.get(canonical_severity(r.severity), 0) + r.cnt
+        )
     critical = sev_map.get("critical", 0)
     high = sev_map.get("high", 0)
     medium = sev_map.get("medium", 0)
     low = sev_map.get("low", 0)
-    info = sev_map.get("info", 0)
+    info = sev_map.get("none", 0)
+    # A CVE the feed publishes no score for is still a finding on this host.
+    # Leaving it out of the total made the dashboard read one lower than
+    # GET /findings for the same rows — the same "totals that disagree" defect
+    # this endpoint already carried once, in miniature.
+    unscored = sev_map.get("unscored", 0)
 
     # ── Calculate Deltas from last scan ───────────────────────────────────────
     last_scans = (
@@ -181,18 +201,20 @@ def get_dashboard_summary(
         or 0
     )
 
-    # ── KEV-like count: use source='kev' if available, otherwise CVSS 9+ critical ──
+    # ── Known-exploited count ────────────────────────────────────────────────
+    # Read from the finding's own in_kev flag, set during the scan from the
+    # CISA catalogue. The previous proxy — VulnerabilityDefinition.source ==
+    # 'kev' — matched nothing, because the catalogue is populated with
+    # source 'nvd', 'scanner' or 'credentialed' and never 'kev'. The dashboard
+    # therefore reported zero known-exploited vulnerabilities while the
+    # executive PDF, reading the same scan, named three.
     kev_count = (
         db.query(func.count(AssetVulnerability.id))
-        .join(
-            VulnerabilityDefinition,
-            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-        )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(
             Asset.org_id == org,
             AssetVulnerability.status == "open",
-            VulnerabilityDefinition.source == "kev",
+            AssetVulnerability.in_kev.is_(True),
         )
         .scalar()
         or 0
@@ -226,7 +248,8 @@ def get_dashboard_summary(
             "medium": medium,
             "low": low,
             "info": info,
-            "total": critical + high + medium + low + info,
+            "unscored": unscored,
+            "total": critical + high + medium + low + info + unscored,
             "deltas": sev_deltas,
         },
         "assets": {
@@ -275,33 +298,25 @@ def get_risk_breakdown(
         db.query(func.avg(Asset.risk_score)).filter(Asset.org_id == org).scalar() or 0.0
     )
 
-    # Priority distribution — use CVSS thresholds since no in_kev/epss columns
+    # Priority distribution, from the per-finding scan data.
     p0 = (
         db.query(func.count(AssetVulnerability.id))
-        .join(
-            VulnerabilityDefinition,
-            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-        )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(
             Asset.org_id == org,
             AssetVulnerability.status == "open",
-            VulnerabilityDefinition.source == "kev",
+            AssetVulnerability.in_kev.is_(True),
         )
         .scalar()
         or 0
     )
     p2 = (
         db.query(func.count(AssetVulnerability.id))
-        .join(
-            VulnerabilityDefinition,
-            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-        )
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(
             Asset.org_id == org,
             AssetVulnerability.status == "open",
-            VulnerabilityDefinition.cvss_v3_score >= 9.0,
+            AssetVulnerability.cvss_score >= 9.0,
         )
         .scalar()
         or 0
@@ -488,10 +503,18 @@ def get_top_cves(
 ):
     org = _resolve_org(user, org_id)
 
+    # Aggregated from the findings, so severity, score and exploit intelligence
+    # are the values measured against these hosts rather than the catalogue's
+    # shared defaults.
     q = (
         db.query(
             VulnerabilityDefinition,
             func.count(AssetVulnerability.asset_id.distinct()).label("affected_assets"),
+            func.max(AssetVulnerability.cvss_score).label("cvss"),
+            func.max(func.lower(AssetVulnerability.severity)).label("severity"),
+            func.bool_or(AssetVulnerability.in_kev).label("in_kev"),
+            func.bool_or(AssetVulnerability.has_exploit).label("has_exploit"),
+            func.max(AssetVulnerability.epss_score).label("epss"),
         )
         .join(
             AssetVulnerability, AssetVulnerability.vuln_id == VulnerabilityDefinition.id
@@ -502,12 +525,13 @@ def get_top_cves(
     )
 
     if severity:
-        sev_list = [s.strip().title() for s in severity.split(",")]
-        q = q.filter(VulnerabilityDefinition.severity.in_(sev_list))
+        sev_list = [canonical_severity(s) for s in severity.split(",") if s.strip()]
+        if sev_list:
+            q = q.filter(func.lower(AssetVulnerability.severity).in_(sev_list))
 
     rows = (
         q.order_by(
-            VulnerabilityDefinition.cvss_v3_score.desc(),
+            func.max(AssetVulnerability.cvss_score).desc().nullslast(),
             func.count(AssetVulnerability.asset_id.distinct()).desc(),
         )
         .limit(limit)
@@ -515,23 +539,23 @@ def get_top_cves(
     )
 
     result = []
-    for vuln, affected in rows:
-        # No epss_score/in_kev/has_exploit on this model — safe defaults
+    for vuln, affected, cvss, sev, is_kev, has_exploit, epss in rows:
         ps, pl = compute_priority(
-            cvss_score=float(vuln.cvss_v3_score or 0),
-            epss_score=0.0,
-            in_kev=(vuln.source == "kev"),
-            has_exploit=False,
+            cvss_score=float(cvss or 0),
+            epss_score=float(epss or 0),
+            in_kev=bool(is_kev),
+            has_exploit=bool(has_exploit),
         )
         result.append(
             {
                 "id": vuln.id,
                 "title": vuln.title,
-                "severity": vuln.severity,
-                "cvss_v3_score": float(vuln.cvss_v3_score or 0),
-                "epss_score": 0.0,
-                "in_kev": vuln.source == "kev",
-                "has_exploit": False,
+                "severity": display_severity(sev),
+                "cvss_v3_score": float(cvss or 0),
+                "cvss_version": vuln.cvss_version,
+                "epss_score": float(epss or 0),
+                "in_kev": bool(is_kev),
+                "has_exploit": bool(has_exploit),
                 "priority_score": ps,
                 "priority_label": pl,
                 "affected_assets": affected,
@@ -730,7 +754,7 @@ def get_compliance(
         .filter(
             Asset.org_id == org,
             AssetVulnerability.status == "open",
-            VulnerabilityDefinition.severity == "Critical",
+            func.lower(AssetVulnerability.severity) == "critical",
         )
         .scalar()
         or 0
@@ -1037,7 +1061,7 @@ def get_insights(
                 Asset.org_id == org,
                 AssetVulnerability.status == "open",
                 AssetVulnerability.first_found_at <= now - timedelta(days=30),
-                VulnerabilityDefinition.severity.in_(["Critical", "High"]),
+                func.lower(AssetVulnerability.severity).in_(["critical", "high"]),
             )
             .scalar()
             or 0
@@ -1122,7 +1146,7 @@ def get_insights(
             .filter(
                 Asset.org_id == org,
                 AssetVulnerability.status == "open",
-                VulnerabilityDefinition.severity.in_(["Critical", "High"]),
+                func.lower(AssetVulnerability.severity).in_(["critical", "high"]),
             )
             .group_by(VulnerabilityDefinition.id, VulnerabilityDefinition.title)
             .order_by(func.count(AssetVulnerability.asset_id.distinct()).desc())

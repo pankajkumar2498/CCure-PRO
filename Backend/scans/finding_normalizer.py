@@ -105,6 +105,7 @@ class DetectionMethod(str, Enum):
     BANNER_MATCH = "banner_match"
     VERSION_IMPRECISE = "version_imprecise"
     SERVICE_PRODUCT = "service_product"
+    OS_REPORTED = "os_reported"
     CONFIG_CHECK = "config_check"
     ENGINE_REPORTED = "engine_reported"
     IMPORTED = "imported"
@@ -184,6 +185,15 @@ DETECTION_SEMANTICS: Dict[DetectionMethod, Tuple[Confidence, str]] = {
         "Imported from a third-party scanner result. Detection logic was "
         "supplied by the originating tool and has not been re-verified.",
     ),
+    DetectionMethod.OS_REPORTED: (
+        Confidence.POTENTIAL,
+        "This CVE is published against the operating system rather than any "
+        "listening service, and this host runs that operating system. An "
+        "unauthenticated scan cannot read the exact patch level, so whether "
+        "this specific host is still affected is unconfirmed. It is reported "
+        "against the host, not against a port. Verify with an authenticated "
+        "scan or the local package manager before remediating.",
+    ),
     DetectionMethod.PORT_OBSERVATION: (
         Confidence.INFORMATIONAL,
         "Observed open port. Recorded for attack-surface inventory; this is "
@@ -204,8 +214,30 @@ QOD_BY_METHOD.update(
         DetectionMethod.BANNER_MATCH: 75,  # banner version in range
         DetectionMethod.IMPORTED: 70,  # third-party tool asserted it
         DetectionMethod.PORT_OBSERVATION: 70,  # the port really is open
+        # Deliberately at the reporting threshold, not below it.
+        #
+        # An open-ended fingerprint ("PostgreSQL 9.6.0 or later" — the server
+        # discloses no version before authentication) admits every CVE fixed
+        # above that floor, which on a real host produced 124 findings against
+        # an install actually running 18.3, one of them a 2002 CVE at CVSS
+        # 10.0. Dropping this to 30 would suppress them, and it is tempting.
+        #
+        # It is also wrong. On an *unauthenticated* scan the tool genuinely
+        # cannot rule those out, and suppressing them would convert a visible
+        # "confirm the version" prompt into a silent false negative — the
+        # failure this codebase treats as the worst one. The 124 rows are a
+        # readability problem, and readability is solved by grouping: they roll
+        # up to a single "PostgreSQL DB · 124 findings · no published fix" row
+        # in the component view. What fixes the *accuracy* is credentials, and
+        # `_restate_findings_for_corrected_ports` already applies the
+        # authenticated version when one exists — which is why the latest
+        # credentialed scan of that host reports none of them.
+        #
+        # test_pipeline_contracts.py::test_service_precision_reaches_the_version_comparison
+        # pins this behaviour.
         DetectionMethod.VERSION_IMPRECISE: 70,  # in range, but range-bounded fingerprint
         DetectionMethod.SERVICE_PRODUCT: 30,  # product present, version unknown
+        DetectionMethod.OS_REPORTED: 30,  # right OS, patch level unknown
         DetectionMethod.PACKAGE_PRESENT: 30,  # package present, version unknown
         DetectionMethod.ENGINE_REPORTED: 30,  # asserted, nothing verifiable
         DetectionMethod.UNVERIFIED: 0,  # disproved
@@ -547,6 +579,23 @@ class ScanFindings:
         return out
 
     @property
+    def reachable_hosts(self) -> List[HostReport]:
+        """
+        Hosts that actually answered.
+
+        Reports must count these, not ``hosts``: a target that never responded
+        is still carried in the result set so the scan can say it was probed,
+        but presenting it as a reported or assessed host tells the reader a
+        machine was discovered where none exists.
+        """
+        return [h for h in self.hosts if h.is_active]
+
+    @property
+    def unreachable_hosts(self) -> List[HostReport]:
+        """Targets that were probed and did not respond."""
+        return [h for h in self.hosts if not h.is_active]
+
+    @property
     def vulnerabilities(self) -> List[StandardizedFinding]:
         return [
             f
@@ -611,6 +660,31 @@ def _as_str(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+#: Values the scanners emit to mean "nothing was established". Printed verbatim
+#: in a report they read as observations — a host page headed
+#: "Host: Unknown (10.180.6.45)" states a name that was never resolved.
+_PLACEHOLDER_VALUES = frozenset(
+    {
+        "unknown",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "not determined",
+        "not available",
+        "-",
+        "--",
+        "",
+    }
+)
+
+
+def _as_observed(value: Any) -> str:
+    """Return the value as text, or "" when it is a scanner placeholder."""
+    text = _as_str(value)
+    return "" if text.lower() in _PLACEHOLDER_VALUES else text
 
 
 def _first(mapping: Dict[str, Any], *keys: str) -> Any:
@@ -711,6 +785,10 @@ def clean_hostname(hostname: str, ip: str = "") -> str:
     if not name:
         return ""
     lowered = name.lower()
+    # "Unknown" is the scanner saying it found no name. Treated as a hostname it
+    # produced host pages headed "Host: Unknown (10.180.6.45)".
+    if lowered in _PLACEHOLDER_VALUES:
+        return ""
     if any(lowered.endswith(zone) for zone in _PTR_ZONES):
         return ""
     if ip and lowered == _as_str(ip).strip().lower():
@@ -856,7 +934,23 @@ def version_in_cpe_range(
                 comparison = _version_compare(detected, pinned)
                 if comparison is None:
                     return None
-                return comparison == 0
+                if precision == "exact":
+                    return comparison == 0
+                # An open-ended fingerprint cannot establish *equality*: a CVE
+                # that publishes one pinned CPE per released version carries
+                # dozens of them, and "9.6.0 or later" matched the entry pinned
+                # to exactly 9.6.0 — reporting eight PostgreSQL CVEs as
+                # Confirmed against a server actually running 18.3.
+                #
+                # It can still disprove one, in the direction the bound is
+                # closed. A host that is at least 9.6.0 is definitively not
+                # running the pinned 8.4.1, and saying so keeps those candidates
+                # suppressed instead of promoting them to "potential".
+                if precision == "floor":
+                    return False if comparison > 0 else None
+                if precision == "ceiling":
+                    return False if comparison < 0 else None
+                return None
 
     return None
 
@@ -1087,6 +1181,32 @@ def _cpe_identities_from(value: Any) -> List[Tuple[str, str]]:
     return identities
 
 
+def cpe_part(cpe: Dict[str, Any]) -> str:
+    """
+    The CPE 2.3 part indicator: "a" application, "o" operating system, "h" hardware.
+
+    ``cpe:2.3:o:canonical:ubuntu_linux:*`` describes the platform the host runs,
+    not something listening on a port. The distinction is load-bearing — see
+    ``_cpe_matches_product``.
+    """
+    uri = _as_str(
+        cpe.get("cpe23Uri")
+        or cpe.get("cpe23_uri")
+        or cpe.get("cpe_uri")
+        or cpe.get("criteria")
+    )
+    if uri:
+        parts = uri.split(":")
+        if len(parts) > 2 and parts[2] in ("a", "o", "h"):
+            return parts[2]
+    return _as_str(cpe.get("part")).lower() or ""
+
+
+def is_platform_cpe(cpe: Dict[str, Any]) -> bool:
+    """True when a CPE names an operating system or hardware, not an application."""
+    return cpe_part(cpe) in ("o", "h")
+
+
 def _cpe_matches_product(cpe: Dict[str, Any], service: ServiceRecord) -> bool:
     """
     Check whether a CPE entry refers to the product observed on this port.
@@ -1113,6 +1233,21 @@ def _cpe_matches_product(cpe: Dict[str, Any], service: ServiceRecord) -> bool:
     comparison. It is a protocol label, not a product: including it let
     ``apache:http_server`` match every HTTP port on the network.
     """
+    # An operating-system or hardware CPE never describes a listening service,
+    # so it is not eligible to be matched against one.
+    #
+    # Without this, ``cpe:2.3:o:canonical:ubuntu_linux`` matched the SSH service
+    # on an Ubuntu host — the banner "OpenSSH 9.6p1 Ubuntu 3ubuntu13.18"
+    # contains the token "ubuntu" — and the *service's* version was then tested
+    # against the *operating system's* published range: 9.6 < 20.10, so
+    # CVE-2021-3493 was reported Confirmed at QoD 95 against a host running
+    # Ubuntu 24.04, with the remediation "upgrade Ubuntu to 20.10 or later".
+    # The same path put a Google Chrome CVE on port 22 via its linux_kernel
+    # platform entry. Platform CPEs are evaluated against the host OS instead,
+    # in ``_classify_platform_finding``.
+    if is_platform_cpe(cpe):
+        return False
+
     uri = _as_str(
         cpe.get("cpe23Uri")
         or cpe.get("cpe23_uri")
@@ -1284,6 +1419,92 @@ def classify_attack_surface(text: str, has_open_port: bool) -> Tuple[str, str]:
         )
 
     return "remote", ""
+
+
+#: Version token inside an OS description, e.g. "Ubuntu Linux (kernel 6.8.0-137)"
+#: or "Microsoft Windows 10 1607". Used only to test an OS CPE range against the
+#: platform the host actually runs.
+_OS_VERSION_TOKEN = re.compile(r"(\d+(?:\.\d+){1,3})")
+
+
+def _os_version_from(host_os: str) -> str:
+    """Best-effort version for the host's operating system, or "" if none."""
+    match = _OS_VERSION_TOKEN.search(_as_str(host_os))
+    return match.group(1) if match else ""
+
+
+def _classify_platform_finding(
+    platform_cpes: List[Dict[str, Any]], host_os: str, fixed_hint: str
+) -> Tuple[DetectionMethod, str, str, str]:
+    """
+    Judge an OS-level CVE against the host's operating system.
+
+    A record published only against operating systems (a kernel flaw, a
+    distribution advisory) is genuinely about the host, so it is reported — but
+    the version it is tested against must be the OS's, never a service's, and
+    the product must be the OS the host is actually running.
+
+    An unauthenticated scan rarely establishes a distribution's release number,
+    so most of these end as UNVERIFIED rather than confirmed. That is the honest
+    answer: the alternative was CVE-2021-3493 asserted "Confirmed, QoD 95"
+    against a host two major releases past the fix.
+    """
+    os_text = _as_str(host_os)
+    if not os_text:
+        return DetectionMethod.UNVERIFIED, "", fixed_hint, "os_unknown"
+
+    os_tokens = set(_name_tokens(os_text))
+    os_version = _os_version_from(os_text)
+    named_this_os = False
+    any_in_range = False
+
+    for cpe in platform_cpes:
+        product = _as_str(cpe.get("product")) or ""
+        if not product:
+            uri = _as_str(
+                cpe.get("cpe23Uri") or cpe.get("cpe_uri") or cpe.get("criteria")
+            )
+            parts = uri.split(":")
+            product = parts[4] if len(parts) > 4 else ""
+        tokens = [t for t in _name_tokens(product) if t not in ("linux",)]
+        # "linux_kernel" against a Windows host names a different platform.
+        if tokens and not any(t in os_tokens for t in tokens):
+            continue
+        named_this_os = True
+
+        if os_version and version_in_cpe_range(os_version, cpe) is True:
+            any_in_range = True
+
+    if not named_this_os:
+        return DetectionMethod.UNVERIFIED, "", fixed_hint, "platform_mismatch"
+
+    if os_version and not any_in_range:
+        # Disproof is safe in this direction: a kernel newer than every
+        # published range is genuinely not affected.
+        return (
+            DetectionMethod.UNVERIFIED,
+            os_version,
+            fixed_hint,
+            "version_outside_range",
+        )
+
+    # In range — but that is not a confirmation, and must never be reported as
+    # one.
+    #
+    # Distributions backport security fixes without changing the version a
+    # banner reports: Ubuntu's "6.8.0-137-generic" carries hundreds of patches
+    # that upstream 6.8.0 does not, and the CPE ranges published against
+    # linux_kernel describe upstream releases only. Treating the two as the same
+    # number reported 480 kernel CVEs as "Confirmed, QoD 95" against this host,
+    # every one of them bound to whichever port happened to be open.
+    #
+    # An unauthenticated scan cannot read a distribution's patch level, so the
+    # honest verdict is "this host runs the affected platform and the exposure
+    # is unconfirmed". At QoD 30 these sit below the reporting threshold and are
+    # recorded as suppressed candidates with that reason — which is where an
+    # unauthenticated scanner should leave them. A credentialed scan resolves
+    # them properly from the package manager.
+    return DetectionMethod.OS_REPORTED, os_version, fixed_hint, ""
 
 
 def classify_detection(
@@ -1510,6 +1731,15 @@ def classify_detection(
 
     if product_matched:
         return DetectionMethod.SERVICE_PRODUCT, detected_version, fixed_hint, ""
+
+    # No application CPE matched a service. If the record is published purely
+    # against operating systems, it is a host-level finding and is judged
+    # against the host's own OS version rather than discarded — a real kernel
+    # or distribution vulnerability must still be reported, just not attributed
+    # to whichever port happened to be open.
+    platform_cpes = [c for c in cpes if is_platform_cpe(c)]
+    if platform_cpes and len(platform_cpes) == len(cpes):
+        return _classify_platform_finding(platform_cpes, host_os, fixed_hint)
 
     if platform_conflict:
         # Every CPE that named this product was scoped to a different platform.
@@ -1855,7 +2085,7 @@ def parse_raw_finding(
         or title
     )
 
-    cwe_raw = _first(finding_dict, "cwe_ids", "cwe") or []
+    cwe_raw = _first(finding_dict, "cwe_ids", "cwe", "cwes", "cwe_id") or []
     if isinstance(cwe_raw, str):
         cwe_raw = [cwe_raw]
     cwe_ids = [_as_str(c) for c in cwe_raw if _as_str(c)]
@@ -1911,10 +2141,15 @@ def parse_raw_finding(
         in_kev=bool(finding_dict.get("in_kev") or finding_dict.get("kev")),
         kev_due_date=_as_str(finding_dict.get("kev_due_date")),
         references=references,
-        published_at=_as_str(finding_dict.get("published_at")),
-        last_modified_at=_as_str(finding_dict.get("last_modified_at")),
-        first_found_at=_as_str(finding_dict.get("first_found_at")),
-        last_found_at=_as_str(finding_dict.get("last_found_at")),
+        # The CVE feed names these "published"/"updated_at"; only the report's
+        # own vocabulary was being read, so "CVE Published" and "CVE Age" came
+        # out empty for every row of the CSV export.
+        published_at=_as_str(_first(finding_dict, "published_at", "published")),
+        last_modified_at=_as_str(
+            _first(finding_dict, "last_modified_at", "last_modified", "updated_at")
+        ),
+        first_found_at=_as_str(_first(finding_dict, "first_found_at", "first_seen_at")),
+        last_found_at=_as_str(_first(finding_dict, "last_found_at", "last_seen_at")),
         status=status,
         mitigation_status=mitigation_status,
         url=_first(finding_dict, "url", "target_url"),
@@ -2422,6 +2657,42 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
         )
 
         if finding.is_reportable:
+            # Carry the verdict back onto the record the rest of the pipeline
+            # stores. Everything below was computed here and then thrown away:
+            # the database kept only severity and score, so the API had to
+            # answer with hardcoded zeros and the UI could not distinguish a
+            # version-confirmed finding from an unverified guess. The reports
+            # re-derived it independently, which is why they were right while
+            # every other surface was not.
+            if isinstance(raw, dict):
+                raw.update(
+                    {
+                        "confidence": finding.confidence.value,
+                        "qod": finding.qod,
+                        "detection_method": finding.detection_method.value,
+                        "detected_version": finding.detected_version,
+                        "attack_surface": finding.attack_surface,
+                        "cvss_vector": finding.cvss_vector,
+                        "cvss_version": finding.cvss_version,
+                        "severity": finding.severity,
+                        "epss_score": finding.epss_score,
+                        "epss_percentile": finding.epss_percentile,
+                        "in_kev": finding.in_kev,
+                        "kev_due_date": finding.kev_due_date or None,
+                        "fixed_version": getattr(
+                            finding.remediation, "fixed_version", ""
+                        ),
+                        "evidence": finding.evidence,
+                    }
+                )
+                # An OS-level finding is about the host, not about whatever
+                # port the candidate happened to be generated from. Leaving the
+                # port attached is how a Google Chrome CVE came to be filed
+                # against 22/tcp ssh.
+                if finding.detection_method is DetectionMethod.OS_REPORTED:
+                    raw.pop("port", None)
+                    raw.pop("protocol", None)
+
             verification.verified.append(raw)
             verification.severity_counts[finding.severity] = (
                 verification.severity_counts.get(finding.severity, 0) + 1
@@ -2517,15 +2788,17 @@ def build_scan_report(
             _as_str(_first(host_dict, "hostname", "netbios_name", "fqdn")), ip
         )
         services = _parse_services(host_dict)
-        os_name = _as_str(_first(host_dict, "os_guess", "os_name", "os"))
+        os_name = _as_observed(_first(host_dict, "os_guess", "os_name", "os"))
 
         host_report = HostReport(
             ip=ip,
             hostname=hostname,
-            mac=_as_str(_first(host_dict, "mac_address", "mac")),
-            vendor=_as_str(host_dict.get("vendor")),
+            # MAC casing is normalised so a report never shows the same kind of
+            # identifier two different ways on consecutive pages.
+            mac=_as_observed(_first(host_dict, "mac_address", "mac")).lower(),
+            vendor=_as_observed(host_dict.get("vendor")),
             os_name=os_name,
-            device_category=_as_str(host_dict.get("device_category")),
+            device_category=_as_observed(host_dict.get("device_category")),
             is_active=bool(host_dict.get("is_active", True)),
             services=services,
             credentialed=bool(host_dict.get("credentialed")),

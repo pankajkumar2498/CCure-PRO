@@ -21,6 +21,18 @@ from sqlalchemy.orm import Session
 
 router = APIRouter()
 
+#: Prose for each pipeline mode, keyed as in PIPELINE_PHASES. Kept beside the
+#: router rather than inline in the handler so the two stay visibly paired.
+_PIPELINE_MODE_DESCRIPTIONS = {
+    "basic": "Host Discovery only. Scan is marked complete after Phase 1.",
+    "asset": "Host Discovery then Port Scanning. Marked complete after Phase 2.",
+    "vulnerability_audit": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
+    "credentialed": (
+        "Standalone credentialed audit. Runs Phase 3 only — no host discovery "
+        "and no port scan."
+    ),
+}
+
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -71,11 +83,13 @@ async def pipeline_modes():
             mode: {
                 "phases": phases,
                 "terminal_phase": max(phases),
-                "description": {
-                    "basic": "Host Discovery only. Scan is marked complete after Phase 1.",
-                    "asset": "Host Discovery then Port Scanning. Marked complete after Phase 2.",
-                    "vulnerability_audit": "Full pipeline. Marked complete after Phase 3 (vuln + risk).",
-                }[mode],
+                # Looked up rather than indexed: a mode added to
+                # PIPELINE_PHASES without a description here used to raise
+                # KeyError and return 500 for every mode, not just the new one.
+                # "credentialed" did exactly that.
+                "description": _PIPELINE_MODE_DESCRIPTIONS.get(
+                    mode, "No description recorded for this pipeline mode."
+                ),
             }
             for mode, phases in PIPELINE_PHASES.items()
         }

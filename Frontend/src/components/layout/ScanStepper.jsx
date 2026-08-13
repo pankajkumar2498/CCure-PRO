@@ -41,10 +41,14 @@ export default function ScanStepper({ current }) {
 
   const pipeline = getScanPipeline(pipelineMode || "basic");
 
-  // Phase 4 (topology) is only shown if it's currently active or completed
+  // Phase 4 (topology) is an optional bolt-on, not part of the basic or asset
+  // pipelines. COMPLETE maps to step 5, so testing "> 4" showed a green
+  // "Topology ✓ Complete" on every finished scan — including two-phase Asset
+  // Discovery runs that never mapped anything. Show it only when the pipeline
+  // actually declares it, or while it is genuinely running.
   const showTopology =
-    pipelineState === PIPELINE_STATES.TOPOLOGY_MAP ||
-    (STATE_TO_STEP[pipelineState] || 0) > 4;
+    pipeline.phases.includes(4) ||
+    pipelineState === PIPELINE_STATES.TOPOLOGY_MAP;
 
   const steps = ALL_STEPS.filter((s) => {
     if (s.n === 4) return showTopology; // Only show topology step when relevant

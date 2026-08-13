@@ -1,477 +1,720 @@
-# CCure-Audit-PRO — Frontend Architecture
+# Frontend Architecture
 
-> Sources: `Frontend/src/App.jsx`, `Frontend/src/context/*`, `Frontend/src/api/*`, `Frontend/src/auth/*`, `Frontend/src/components/*`, `Frontend/src/modules/*`, `Frontend/src/pages/*`, `Frontend/package.json`, `Frontend/vite.config.js`.
+**CCure-Audit-PRO** — the React single-page application in `Frontend/`, traced
+from `main.jsx` through routing, state, the API layer and the integration
+contract with the backend.
 
-## 1. Technology Stack
+---
 
-| Technology       | Version | Role                                         |
-| ---------------- | ------- | -------------------------------------------- |
-| React            | 18.3.1  | UI framework (functional components + hooks) |
-| Vite             | 5.2.11  | Build tool + dev server                      |
-| react-router-dom | 6.23.1  | Client-side routing                          |
-| axios            | 1.7.2   | HTTP client with interceptors                |
+## 1. Stack
 
-> **Note:** The frontend uses **no external UI component library, no charting library, and no Tailwind CSS**. All styling is custom CSS (multiple `.css` files under `src/styles/` and `src/modules/web-scanning/styles/`). Charts and UI components are built directly with React + CSS.
+| Concern           | Choice                                               | Version                        |
+| ----------------- | ---------------------------------------------------- | ------------------------------ |
+| UI library        | React                                                | `^18.3.1`                      |
+| Router            | react-router-dom                                     | `^6.23.1`                      |
+| HTTP client       | axios                                                | `^1.7.2`                       |
+| Build tool        | Vite                                                 | `^5.2.11`                      |
+| React plugin      | `@vitejs/plugin-react`                               | `^4.3.0`                       |
+| Test runner       | Vitest + jsdom                                       | `^1.6.0` / `^24.0.0`           |
+| Testing utilities | `@testing-library/react`, `/jest-dom`, `/user-event` | `^15.0.7`, `^6.4.5`, `^14.5.2` |
+| Graph rendering   | vis-network + vis-data                               | `^9.1.9` / `^7.1.9`            |
 
-## 2. Application Entry Point
+`package.json` declares `"type": "module"`, name `ccure-audit-pro-unified`,
+version `2.0.0`.
+
+> **NOTE:** There is **no** TypeScript, no Redux, no React Query, no CSS framework
+> and no component library. State is React Context plus browser storage; styling
+> is 16 hand-written CSS files under `src/styles/` plus one module-scoped sheet.
+
+---
+
+## 2. Directory layout
 
 ```
 Frontend/
-├── src/
-│   ├── App.jsx                    ← Route definitions + PrivateRoute wrapper
-│   ├── main.jsx                   ← React root render (StrictMode)
-│   ├── api/
-│   │   ├── axiosInstance.js       ← HTTP client with auth interceptors
-│   │   ├── authApi.js             ← /auth endpoint calls
-│   │   ├── scanApi.js             ← /scan + /scans endpoint calls
-│   │   ├── assetsApi.js           ← /assets endpoint calls
-│   │   ├── findingsApi.js         ← /findings endpoint calls
-│   │   ├── dashboardApi.js        ← /dashboard endpoint calls
-│   │   ├── adminApi.js            ← /admin/* endpoint calls
-│   │   └── notificationsApi.js    ← /notifications endpoint calls
-│   ├── auth/
-│   │   └── permissions.js         ← Client-side RBAC helpers
-│   ├── context/
-│   │   ├── AuthContext.jsx        ← Session state, login/logout, /auth/me
-│   │   ├── ScanContext.jsx        ← In-progress scan pipeline state
-│   │   └── PreferencesContext.jsx ← Theme, display defaults
-│   ├── components/
-│   │   ├── PrivateRoute.jsx       ← Route guard (auth + RBAC)
-│   │   ├── layout/
-│   │   │   ├── AppLayout.jsx      ← Main shell (sidebar nav, topbar)
-│   │   │   ├── NotificationsPanel.jsx
-│   │   │   ├── ProfileModal.jsx
-│   │   │   ├── ChangePasswordModal.jsx
-│   │   │   ├── SettingsDrawer.jsx
-│   │   │   ├── HelpPanel.jsx
-│   │   │   ├── ScanStepper.jsx
-│   │   │   └── Modal.jsx
-│   │   └── [shared UI components]
-│   ├── modules/
-│   │   └── web-scanning/          ← DAST scanning module (self-contained)
-│   │       ├── WebScanningRoutes.jsx
-│   │       ├── api/webScansApi.js
-│   │       ├── hooks/useScanPolling.js
-│   │       ├── pages/
-│   │       │   ├── WebDashboard.jsx
-│   │       │   ├── NewWebScan.jsx
-│   │       │   ├── ScanList.jsx
-│   │       │   ├── ScanDetail.jsx
-│   │       │   ├── FindingsExplorer.jsx
-│   │       │   └── AssetInventory.jsx
-│   │       └── styles/web-scanning.css
-│   └── pages/
-│       ├── Login.jsx
-│       ├── Register.jsx
-│       ├── ForgotPassword.jsx
-│       ├── ResetPassword.jsx
-│       ├── Dashboard.jsx
-│       ├── SecurityDashboard.jsx
-│       ├── SecurityReports.jsx
-│       ├── VulnerabilityBrowser.jsx
-│       ├── ComplianceWorkspace.jsx
-│       ├── AssetRegistry.jsx
-│       ├── AssetDetail.jsx
-│       ├── ScanHistory.jsx
-│       ├── ArchivedScans.jsx
-│       ├── RecycleBin.jsx
-│       ├── scan/
-│       │   ├── NewScan.jsx
-│       │   ├── Phase1Results.jsx
-│       │   ├── Phase2Results.jsx
-│       │   ├── Phase3Results.jsx
-│       │   ├── CredentialedScan.jsx
-│       │   └── CredentialedResults.jsx
-│       └── admin/
-│           ├── UserManagement.jsx
-│           ├── RoleManagement.jsx
-│           ├── OrganizationManagement.jsx
-│           ├── AuditLogs.jsx
-│           ├── DeletedUsers.jsx
-│           └── AMTIntegration.jsx
+├── index.html                 Vite entry; loads Inter from Google Fonts
+├── vite.config.js             Dev server :3000, 11 proxy prefixes, Vitest config
+├── jsconfig.json              @/* → src/*
+├── .eslintrc.json             eslint:recommended + react + react-hooks
+├── .env.local                 VITE_API_BASE_URL (git-ignored in practice)
+├── Dockerfile                 node:20-slim build → nginx:stable-alpine
+├── nginx.conf                 SPA history fallback
+└── src/
+    ├── main.jsx               Provider composition
+    ├── App.jsx                All route definitions
+    ├── api/                   10 modules — the entire HTTP surface
+    ├── auth/permissions.js    Client-side RBAC evaluation
+    ├── components/            common/ · layout/ · admin/ · scan/ · assets/ · auth/
+    ├── config/scanConfig.js   Pipeline ↔ phase mapping (mirrors the backend)
+    ├── context/               AuthContext · PreferencesContext · ScanContext
+    ├── hooks/useDebounce.js
+    ├── modules/web-scanning/  Self-contained DAST feature module
+    ├── pages/                 15 top-level pages + scan/ (7) + admin/ (6)
+    ├── styles/                16 stylesheets
+    ├── utils/date.js
+    └── __tests__/             Vitest suites
 ```
 
-## 3. Route Definitions (`App.jsx`)
+---
 
-All routes are defined with `react-router-dom v6` `<Routes>` + `<Route>` elements. Protected routes are wrapped in `<PrivateRoute>`.
+## 3. Entry point and provider composition
 
-### Public Routes
-
-| Path               | Component            | Notes                        |
-| ------------------ | -------------------- | ---------------------------- |
-| `/login`           | `Login.jsx`          |                              |
-| `/register`        | `Register.jsx`       |                              |
-| `/forgot-password` | `ForgotPassword.jsx` |                              |
-| `/reset-password`  | `ResetPassword.jsx`  | Token from email query param |
-
-### Protected Routes (authentication required)
-
-All of the routes below are rendered inside the authenticated shell. The top-level `<PrivateRoute>` wrapper is the entry gate; most routes do not carry an additional permission prop in [Frontend/src/App.jsx](Frontend/src/App.jsx), so they are simply protected by authentication. The admin routes below are wrapped in additional permission checks.
-
-| Path                                 | Component                    | Route guard          | Notes                                                 |
-| ------------------------------------ | ---------------------------- | -------------------- | ----------------------------------------------------- |
-| `/`                                  | `SecurityDashboard.jsx`      | auth only            | Default landing page                                  |
-| `/dashboard`                         | `SecurityDashboard.jsx`      | auth only            | Alias for `/`                                         |
-| `/scan`                              | `Dashboard.jsx`              | auth only            | Scan launcher dashboard                               |
-| `/reports`                           | `SecurityReports.jsx`        | auth only            |                                                       |
-| `/vulnerabilities`                   | `VulnerabilityBrowser.jsx`   | auth only            |                                                       |
-| `/assets`                            | `AssetRegistry.jsx`          | auth only            |                                                       |
-| `/assets/:id`                        | `AssetDetail.jsx`            | auth only            |                                                       |
-| `/history`                           | `ScanHistory.jsx`            | auth only            | Primary scan history route                            |
-| `/monitor`                           | `ScanHistory.jsx`            | auth only            | Same page, mode=monitor                               |
-| `/archived`                          | `ArchivedScans.jsx`          | auth only            | Primary archived scans route                          |
-| `/recycle-bin`                       | `RecycleBin.jsx`             | auth only            |                                                       |
-| `/scan/new`                          | `NewScan.jsx`                | auth only            |                                                       |
-| `/scan/host-discovery`               | `Phase1Results.jsx`          | auth only            | Alias for phase 1 results                             |
-| `/scan/asset-discovery`              | `Phase2Results.jsx`          | auth only            | Alias for phase 2 results                             |
-| `/scan/vulnerability-audit`          | `Phase3Results.jsx`          | auth only            | Alias for phase 3 results                             |
-| `/scan/:scanId/phase1`               | `Phase1Results.jsx`          | auth only            | Per-scan phase 1 results                              |
-| `/scan/:scanId/phase2`               | `Phase2Results.jsx`          | auth only            | Per-scan phase 2 results                              |
-| `/scan/:scanId/phase3`               | `Phase3Results.jsx`          | auth only            | Per-scan phase 3 results                              |
-| `/scan/active/:scanId`               | `NewScan.jsx`                | auth only            | Active scan progress view                             |
-| `/scan/credentialed`                 | `CredentialedScan.jsx`       | auth only            |                                                       |
-| `/scan/credentialed/results`         | `CredentialedResults.jsx`    | auth only            |                                                       |
-| `/scan/:scanId/credentialed`         | `CredentialedScan.jsx`       | auth only            | Per-scan credentialed view                            |
-| `/scan/:scanId/credentialed-results` | `CredentialedResults.jsx`    | auth only            |                                                       |
-| `/web-scans/*`                       | `WebScanningRoutes.jsx`      | auth only            | DAST sub-routes (see below)                           |
-| `/compliance`                        | `ComplianceWorkspace.jsx`    | auth only            | No route-level permission gate in the current App.jsx |
-| `/admin/audit-logs`                  | `AuditLogs.jsx`              | `audit:read`         |                                                       |
-| `/admin/amt`                         | `AMTIntegration.jsx`         | `assets:update`      |                                                       |
-| `/admin/users`                       | `UserManagement.jsx`         | `users:read`         |                                                       |
-| `/admin/users/deleted`               | `DeletedUsers.jsx`           | `users:read`         |                                                       |
-| `/admin/roles`                       | `RoleManagement.jsx`         | `roles:read`         |                                                       |
-| `/admin/organizations`               | `OrganizationManagement.jsx` | `organizations:read` | superadmin-only route wrapper                         |
-
-#### Nested Web-Scan Routes
-
-The web-scanning module is mounted under `/web-scans/*` and uses its own nested route tree in [Frontend/src/modules/web-scanning/WebScanningRoutes.jsx](Frontend/src/modules/web-scanning/WebScanningRoutes.jsx).
-
-| Path                      | Component              | Notes                                   |
-| ------------------------- | ---------------------- | --------------------------------------- |
-| `/web-scans/dashboard`    | `WebDashboard.jsx`     | Summary/dashboard experience            |
-| `/web-scans/list`         | `ScanList.jsx`         | Paginated scan list                     |
-| `/web-scans/new`          | `NewWebScan.jsx`       | Multi-step creation wizard              |
-| `/web-scans/:id`          | `ScanDetail.jsx`       | Details + live progress                 |
-| `/web-scans/:id/findings` | `FindingsExplorer.jsx` | Finding explorer for a specific scan    |
-| `/web-scans/:id/assets`   | `AssetInventory.jsx`   | Endpoints/assets discovered by the scan |
-
-Any unknown web-scan path falls back to `/web-scans/dashboard`.
-
-### Redirect Routes (legacy compatibility)
-
-| From                  | To                          |
-| --------------------- | --------------------------- |
-| `/scan-history`       | `/history`                  |
-| `/archived-scans`     | `/archived`                 |
-| `/scan/advanced-scan` | `/scan/vulnerability-audit` |
-| `*` (catch-all)       | `/`                         |
-
-## 4. `<PrivateRoute>` Component
-
-[Frontend/src/components/PrivateRoute.jsx](Frontend/src/components/PrivateRoute.jsx) is the central route guard. It accepts the following props:
-
-| Prop                 | Type                          | Behavior                                             |
-| -------------------- | ----------------------------- | ---------------------------------------------------- |
-| _(no special prop)_  | —                             | Requires authentication only (redirects to `/login`) |
-| `requiredPermission` | `{ resource, action }`        | User must have this single permission                |
-| `requiredAny`        | `Array<{ resource, action }>` | User must have at least one of these permissions     |
-| `requiredAll`        | `Array<{ resource, action }>` | User must have ALL of these permissions              |
-| `superadminOnly`     | `boolean`                     | Only the `superadmin` role can access                |
-
-If the permission check fails but the user is authenticated, the component redirects to one of several fallback routes rather than logging the user out. The current fallback order is `/dashboard`, `/history`, `/reports`, `/admin/users`, `/admin/audit-logs`, and finally `/login`.
-
-Logic outline:
+`src/main.jsx`:
 
 ```jsx
-const authorized =
-  (!superadminOnly || isSuperAdmin(user)) &&
-  (!requiredPermission || canPermission(user, requiredPermission)) &&
-  (!requiredAny || canAny(user, requiredAny)) &&
-  (!requiredAll || canAll(user, requiredAll));
-
-if (!authorized) {
-  return <Navigate to={fallbackPathFor(user, location.pathname)} replace />;
-}
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <PreferencesProvider>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </PreferencesProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+);
 ```
 
-## 5. State Management
+`App.jsx` adds `<ScanProvider>` around `<Routes>`.
 
-CCure-Audit-PRO uses React Context exclusively (no Redux/Zustand). Three top-level contexts wrap the application in `main.jsx`.
-
-### `AuthContext` (`context/AuthContext.jsx`)
-
-The central session state. Access token stored **in memory only** (module-level variable in `src/api/tokenStorage.js` — `let accessToken = null`). Only `activeOrgId` (for superadmin org switching) is persisted in `localStorage`. No tokens are written to `localStorage` or `sessionStorage`.
-
-**State:**
-
-```js
-{
-  user: {
-    id, username, email, full_name, role, org_id,
-    permissions: [{ resource, action }]
-  } | null,
-  loading: boolean,         // true during initial /auth/me fetch
-  isAuthenticated: boolean
-}
+```mermaid
+graph TD
+    M["main.jsx"] --> SM["React.StrictMode"]
+    SM --> BR["BrowserRouter"]
+    BR --> AP["AuthProvider<br/>user · authState · login/logout"]
+    AP --> PP["PreferencesProvider<br/>theme · sidebar"]
+    PP --> EB["ErrorBoundary"]
+    EB --> APP["App.jsx"]
+    APP --> SP["ScanProvider<br/>pipeline state, sessionStorage-backed"]
+    SP --> RT["Routes"]
 ```
 
-**Actions:**
+Ordering is load-bearing: `PreferencesProvider` calls `useAuth()` and only fetches
+preferences once `isAuthenticated` is true, so it must sit inside `AuthProvider`.
 
-- `login(credentials)` — calls `POST /auth/login`, stores tokens, sets `user` state
-- `logout()` — calls `POST /auth/logout`, clears localStorage, resets state
-- `refreshUser()` — re-fetches `GET /auth/me` and updates `user` state (used after admin changes user's role)
+> **NOTE:** `App.jsx`'s header comment states that `BrowserRouter` and
+> `AuthProvider` are already in `main.jsx` and must not be re-wrapped.
 
-On mount, `AuthContext` reads `access_token` from localStorage and calls `GET /auth/me` to validate and hydrate `user`. If `/auth/me` returns 401, the token is cleared and the user is treated as unauthenticated.
+Two distinct `ErrorBoundary` components exist:
+`components/ErrorBoundary.jsx` (app-level, used in `main.jsx`) and
+`components/common/ErrorBoundary.jsx` (used by `WebScanningRoutes`).
 
-### `ScanContext` (`context/ScanContext.jsx`)
+---
 
-Tracks the state of an in-progress network scan pipeline. Used by `NewScan.jsx`, `Phase1Results.jsx`, `Phase2Results.jsx`, `Phase3Results.jsx`, and `ScanStepper.jsx` (sidebar progress indicator).
+## 4. Routing
 
-**State:**
+All routes are declared in `src/App.jsx`. Public routes sit outside the guard;
+everything else is nested under `<Route element={<PrivateRoute />}>`.
 
-```js
-{
-  scanId: string | null,
-  currentPhase: 1 | 2 | 3 | null,
-  phase1Results: object | null,
-  phase2Results: object | null,
-  phase3Results: object | null,
-  isRunning: boolean,
-  pipelineMode: "basic" | "asset" | "vulnerability_audit"
-}
+### Public
+
+| Path               | Component                  |
+| ------------------ | -------------------------- |
+| `/login`           | `pages/Login.jsx`          |
+| `/register`        | `pages/Register.jsx`       |
+| `/forgot-password` | `pages/ForgotPassword.jsx` |
+| `/reset-password`  | `pages/ResetPassword.jsx`  |
+
+### Protected — core
+
+| Path                 | Component                    | Notes                                           |
+| -------------------- | ---------------------------- | ----------------------------------------------- |
+| `/` and `/dashboard` | `SecurityDashboard`          | SOC overview; the application home              |
+| `/scan`              | `Dashboard`                  | Scan-template picker (moved here from `/`)      |
+| `/assets`            | `AssetRegistry`              | `?tab=services` and `?tab=tls` select sub-views |
+| `/assets/:id`        | `AssetDetail`                |                                                 |
+| `/vulnerabilities`   | `VulnerabilityBrowser`       |                                                 |
+| `/monitor`           | `ScanHistory mode="monitor"` | Active scans                                    |
+| `/history`           | `ScanHistory mode="history"` | Full history                                    |
+| `/scan-history`      | → redirect to `/history`     | Legacy alias                                    |
+| `/archived`          | `ArchivedScans`              |                                                 |
+| `/archived-scans`    | → redirect to `/archived`    | Legacy alias                                    |
+| `/recycle-bin`       | `RecycleBin`                 |                                                 |
+| `/reports`           | `SecurityReports`            | `?tab=executive`, `?tab=trends`                 |
+| `/compliance`        | `ComplianceWorkspace`        |                                                 |
+| `/topology`          | `NetworkMap`                 |                                                 |
+| `*`                  | → redirect to `/`            | Catch-all                                       |
+
+### Protected — scan pipeline
+
+| Path                                                   | Component                                           |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| `/scan/new`                                            | `scan/NewScan`                                      |
+| `/scan/active/:scanId`                                 | `scan/NewScan`                                      |
+| `/scan/host-discovery`                                 | `scan/Phase1Results`                                |
+| `/scan/asset-discovery`                                | `scan/Phase2Results`                                |
+| `/scan/vulnerability-audit`                            | `scan/Phase3Results`                                |
+| `/scan/advanced-scan`                                  | → redirect to `/scan/vulnerability-audit`           |
+| `/scan/credentialed`                                   | `scan/CredentialedScan`                             |
+| `/scan/credentialed/results`                           | `scan/CredentialedResults`                          |
+| `/scan/:scanId/phase1` · `/phase2` · `/phase3`         | `Phase1Results` · `Phase2Results` · `Phase3Results` |
+| `/scan/:scanId/credentialed` · `/credentialed-results` | `CredentialedScan` · `CredentialedResults`          |
+| `/scan/topology-map` · `/scan/:scanId/topology-map`    | `scan/NetworkMap`                                   |
+
+### Protected — permission-gated admin
+
+Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`:
+
+| Path                   | Component                      | `requiredPermission` |
+| ---------------------- | ------------------------------ | -------------------- |
+| `/admin/audit-logs`    | `admin/AuditLogs`              | `audit:read`         |
+| `/admin/amt`           | `admin/AMTIntegration`         | `assets:update`      |
+| `/admin/users`         | `admin/UserManagement`         | `users:read`         |
+| `/admin/users/deleted` | `admin/DeletedUsers`           | `users:read`         |
+| `/admin/organizations` | `admin/OrganizationManagement` | `organizations:read` |
+| `/admin/roles`         | `admin/RoleManagement`         | `roles:read`         |
+
+> **IMPORTANT:** The `/admin/amt` guard uses `assets:update`, but the backend
+> endpoint it drives (`POST /assets/import-amt`) requires `settings:update` — and
+> the sidebar item for the same page gates on `settings:update`. A role holding
+> `assets:update` without `settings:update` reaches the page and gets a 403 on
+> upload. The backend is authoritative.
+
+### Feature module
+
+`/web-scans/*` renders `modules/web-scanning/WebScanningRoutes.jsx`, which owns its
+own nested router, its own `ErrorBoundary` and its own stylesheet:
+
+| Sub-path       | Component                 |
+| -------------- | ------------------------- |
+| `dashboard`    | `WebDashboard`            |
+| `list`         | `ScanList`                |
+| `new`          | `NewWebScan`              |
+| `:id`          | `ScanDetail`              |
+| `:id/findings` | `FindingsExplorer`        |
+| `:id/assets`   | `AssetInventory`          |
+| `*`            | → redirect to `dashboard` |
+
+---
+
+## 5. Route guards
+
+`src/components/PrivateRoute.jsx`:
+
+```jsx
+export default function PrivateRoute({ children, requiredPermission,
+                                       requiredAny, requiredAll,
+                                       superadminOnly = false }) { ... }
 ```
-
-**Actions:** `startScan(scanId, pipelineMode)`, `setPhaseResults(phase, results)`, `resetScan()`
-
-### `PreferencesContext` (`context/PreferencesContext.jsx`)
-
-User display preferences synced with `user.preferences` JSONB (persisted via `PUT /user/profile`).
-
-**State:** `{ theme: "dark" | "light", defaultScanType, rowsPerPage, timezone }`
-
-## 6. HTTP Client (`src/api/axiosInstance.js`)
-
-A configured axios instance is the single outbound HTTP client. It is imported by all API modules.
-
-**Base configuration:**
-
-```js
-const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "", // empty = same-origin proxy
-  withCredentials: true, // required for refresh_token cookie
-  headers: { "Content-Type": "application/json" },
-});
-```
-
-### Request Interceptor
-
-Applied to every outgoing request:
-
-1. Reads `access_token` from in-memory `tokenStorage` (`getAccessToken()` — stored as a module-level variable, never in localStorage).
-2. Attaches `Authorization: Bearer <token>` header.
-3. Reads `activeOrgId` from `localStorage`; appends `?org_id=<activeOrgId>` as a query parameter if present (used by superadmin switching org context).
-
-### Response Interceptor (Silent Token Refresh)
-
-Applied to every response:
 
 ```mermaid
 flowchart TD
-    R["Response received"]
-    ok["Status 2xx → return response"]
-    e401["Status 401?"]
-    retry["Has already retried?\n(_retry flag)"]
-    refresh["POST /auth/refresh\n(sends cookie)"]
-    store["Store new access_token\nin memory"]
-    redo["Retry original request\nwith new token"]
-    logout["Clear localStorage\nRedirect to /login"]
-
-    R --> ok
-    R --> e401
-    e401 --> retry
-    retry -->|No| refresh
-    refresh -->|Success| store --> redo
-    refresh -->|Fail| logout
-    retry -->|Yes| logout
+    A["PrivateRoute"] --> B{"loading?"}
+    B -->|"yes"| S["full-height spinner"]
+    B --> C{"user?"}
+    C -->|"no"| L["Navigate /login<br/>state: {from, reason: authState, message: authMessage}"]
+    C --> D{"superadminOnly ⇒ isSuperAdmin?<br/>requiredPermission ⇒ canPermission?<br/>requiredAny ⇒ canAny?<br/>requiredAll ⇒ canAll?"}
+    D -->|"any fails"| F["Navigate fallbackPathFor(user, pathname)"]
+    D --> O["children || Outlet"]
 ```
 
-The `_retry` flag prevents infinite loops (if the retry also returns 401, the user is logged out).
+`fallbackPathFor` walks an ordered candidate list and returns the first path the
+user can actually reach, excluding the one they were denied:
 
-#### Concurrent Request Queuing During Refresh
+| Order    | Path                | Required permission |
+| -------- | ------------------- | ------------------- |
+| 1        | `/dashboard`        | `scans:execute`     |
+| 2        | `/history`          | `scans:read`        |
+| 3        | `/reports`          | `reports:read`      |
+| 4        | `/admin/users`      | `users:read`        |
+| 5        | `/admin/audit-logs` | `audit:read`        |
+| fallback | `/login`            | —                   |
 
-To handle race conditions where multiple parallel requests fail with a `401` simultaneously (e.g., during page initialization), the response interceptor implements a request queuing mechanism:
+A denied user therefore lands somewhere useful rather than on a dead end or a
+redirect loop.
 
-1. The first request to receive a `401` triggers `isRefreshing = true` and dispatches the `/auth/refresh` call.
-2. Subsequent `401` requests are intercepted, their execution is suspended, and they are pushed into a `refreshSubscribers` callback queue.
-3. Once the single refresh call successfully resolves, the new access token is stored in-memory, all queued subscribers are notified with the new token, and their original requests are retried concurrently.
-4. If the refresh call fails, the queue is aborted, the user is logged out, and they are redirected to `/login`.
+`PrivateRoute` is covered by `src/__tests__/components/PrivateRoute.test.jsx`.
 
-### Separate Refresh Client
+---
 
-A **second** axios instance (`refreshClient`) is used exclusively for `POST /auth/refresh`. It does **not** carry the interceptors of the main instance — this prevents recursive refresh loops.
+## 6. Permission evaluation
 
-## 7. RBAC on the Frontend (`src/auth/permissions.js`)
+`src/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
 
-The frontend mirrors the backend permission model with helper functions that read the role permission set embedded in the `/auth/me` response. The current implementation uses `user.role.permissions` rather than a flat `user.permissions` array and treats `superadmin` as an unconditional bypass.
+```javascript
+const normalizeRoleName = (r = "") => String(r||"").trim().toLowerCase().replace(/\s+/g, "_");
 
-```js
-export const isSuperAdmin = (user) =>
-  normalizeRoleName(user?.role?.name) === "superadmin";
+export const isSuperAdmin = (user) => normalizeRoleName(user?.role?.name) === "superadmin";
+export const isOrgAdmin  = (user) => normalizeRoleName(user?.role?.name) === "org_admin";
+export const hasRole     = (user, roleName) => normalizeRoleName(user?.role?.name) === normalizeRoleName(roleName);
+
+export const getPermissionSet = (user) =>
+  new Set((user?.role?.permissions || []).map(permissionKey).filter(Boolean));
 
 export const can = (user, resource, action) => {
   if (isSuperAdmin(user)) return true;
-
-  const normalizedResource = String(resource || "")
-    .trim()
-    .toLowerCase();
-  const key = permissionKey({ resource: normalizedResource, action });
+  const key = permissionKey({ resource, action });
   if (!key) return false;
-
-  const permissionSet = getPermissionSet(user);
-  return (
-    permissionSet.has(key) || permissionSet.has(`${normalizedResource}:manage`)
-  );
+  const set = getPermissionSet(user);
+  return set.has(key) || set.has(`${resource}:manage`);
 };
 
-export const canAny = (user, permissions = []) =>
-  permissions.some((permission) => canPermission(user, permission));
-
-export const canAll = (user, permissions = []) =>
-  permissions.every((permission) => canPermission(user, permission));
+export const canPermission = (user, permission) => { ... };
+export const canAny  = (user, permissions = []) => permissions.some(...);
+export const canAll  = (user, permissions = []) => permissions.every(...);
+export const denyMessage = "You do not have permission to perform this action.";
 ```
 
-These helpers are used by [Frontend/src/components/PrivateRoute.jsx](Frontend/src/components/PrivateRoute.jsx) and by individual pages/components to hide or disable actions that the current role should not see. The backend remains the authoritative enforcement point.
+`permissionKey()` accepts either a `"resource:action"` string or a
+`{resource, action}` object, lowercasing and trimming both parts.
 
-## 8. Real-Time Communication
+Two properties worth stating:
 
-### WebSocket (Scan Progress)
+- **Superadmin bypass** matches the backend exactly.
+- **`resource:manage` wildcard** — `can()` accepts it, but no such atom is seeded
+  server-side (none of the 51 uses a `manage` action). The branch is dead today,
+  and would silently widen every client-side check for a resource if such an atom
+  were ever added.
 
-The scan UI uses the native browser `WebSocket` API for live progress. The network-scan flow still uses the per-scan progress endpoint, while the web-scanning module uses a separate ticket-based socket at `/web-scans/{id}/progress`.
+The permission set comes from `GET /auth/me` → `role.permissions[]`, which is the
+same list `role_permissions` produced server-side.
 
-```js
-const { ticket } = await webScansApi.getProgressTicket();
-const ws = new WebSocket(webScansApi.getProgressSocketUrl(scanId, ticket));
+Covered by `src/__tests__/auth/permissions.test.js`.
 
-ws.onmessage = (event) => {
-  const progress = JSON.parse(event.data);
-  setProgress(progress);
+---
+
+## 7. State management
+
+Three contexts, each with a distinct persistence strategy.
+
+| Context              | Scope                   | Persistence                                                                         | Hook               |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------- | ------------------ |
+| `AuthContext`        | Session and identity    | Access token in memory; refresh in HttpOnly cookie; `activeOrgId` in `localStorage` | `useAuth()`        |
+| `PreferencesContext` | Theme and layout        | Server (`/user/preferences`); `sidebarCollapsed` mirrored to `localStorage`         | `usePreferences()` |
+| `ScanContext`        | In-flight scan pipeline | `sessionStorage` under 27 `cc_*` keys                                               | `useScan()`        |
+
+### `AuthContext`
+
+Exposes `{ user, authState, authMessage, loading, isAuthenticated, login,
+register, logout, refreshUser }`.
+
+`authState` is the state machine described in
+[AUTHENTICATION_AND_AUTHORIZATION.md](AUTHENTICATION_AND_AUTHORIZATION.md) §12:
+`loading` → `authenticated` | `anonymous` | `expired`.
+
+Two background behaviours run only while `authState === "authenticated"`:
+
+- `setInterval(refreshActiveSession, 20 * 60 * 1000)` — a proactive refresh inside
+  the 30-minute access-token lifetime.
+- A `visibilitychange` listener that refreshes when the tab becomes visible and
+  more than 10 minutes have elapsed — the laptop-woke-from-sleep case.
+
+`syncActiveOrgId(user)` writes `localStorage.activeOrgId`: for a superadmin it
+seeds the value only if absent (so a chosen tenant survives a reload); for everyone
+else it is pinned to `user.org_id`, and removed entirely when there is no user.
+
+A `window` listener for the custom `auth:logout` event moves the context to
+`expired` or `anonymous` when the axios interceptor forces a logout.
+
+`login()` returns the raw response so a caller can detect
+`data.status === "mfa_required"` and route to the MFA step **without** the context
+transitioning to `authenticated`.
+
+### `PreferencesContext`
+
+Loads `GET /user/preferences` when authenticated. `applyTheme(theme)` sets or
+removes `data-theme="dark"` on `document.documentElement`, which
+`styles/dark-mode.css` keys off. `sidebar_collapsed` is mirrored into
+`localStorage` as a fallback for the pre-authentication render.
+
+### `ScanContext`
+
+The scan pipeline's client-side state machine, persisted across page refreshes.
+
+```javascript
+export const PIPELINE_STATES = {
+  IDLE,
+  DISCOVERY,
+  PORT_SCAN,
+  VULN_SCAN,
+  TOPOLOGY_MAP,
+  REPORT_READY,
+  COMPLETE,
+  ERROR,
+  CANCELLED,
+  PAUSED,
 };
 ```
 
-The ticket is obtained from `POST /auth/ticket` and appended as the `ticket` query parameter. The backend validates that ticket and sends the initial snapshot plus subsequent Redis Pub/Sub updates. If the socket fails, the UI can fall back to polling `GET /web-scans/{id}` or `GET /scans/{id}` depending on the subsystem.
+Persisted `sessionStorage` keys (`SS_KEYS`, 27 entries): `cc_scanId`, `cc_scanNo`,
+`cc_target`, `cc_scanType`, `cc_pipelineMode`, `cc_phase1Hosts`,
+`cc_phase1Summary`, `cc_phase2Hosts`, `cc_phase2Summary`, `cc_phase2Results`,
+`cc_phase3Results`, `cc_phase3Summary`, `cc_phase3AuditResults`, `cc_saveStatus`,
+`cc_pipelineState`, `cc_pipelineError`, `cc_pipelinePhaseTimings`, `cc_intensity`,
+`cc_osDetection`, `cc_discoveryIntensity`, `cc_portScanIntensity`,
+`cc_autoRunAdvancedSingleTarget`, `cc_portScanMode`, `cc_customPorts`,
+`cc_portProfile`, `cc_excludePorts`, `cc_excludeIps`.
 
-### Server-Sent Events (Scan History)
+`sessionStorage` (not `localStorage`) is the right choice here: a scan in progress
+belongs to one tab, and a second tab should not inherit it. `ssGet`/`ssSet`/`ssClear`
+wrap every access in `try/catch` so storage being unavailable degrades to
+in-memory state rather than crashing.
 
-`ScanHistory.jsx` uses the `EventSource` API to consume `GET /scans/events`:
+`useScan()` throws if used outside `<ScanProvider>`.
 
-```js
-const es = new EventSource(`${API_URL}/scans/events?scope=active`, {
-  withCredentials: true,
+### `config/scanConfig.js`
+
+The client-side mirror of the backend's `PIPELINE_PHASES`:
+
+| Mode                  | `phases`    | Label               | Badge                                      |
+| --------------------- | ----------- | ------------------- | ------------------------------------------ |
+| `basic`               | `[1]`       | Basic Network Scan  | Phase 1 Only                               |
+| `asset`               | `[1, 2]`    | Asset Discovery     | Phase 1 → 2. Carries `alwaysRestart: true` |
+| `vulnerability_audit` | `[1, 2, 3]` | Vulnerability Audit | Full Pipeline                              |
+| `advanced`            | `[1, 2, 3]` | Vulnerability Audit | Alias of the above                         |
+
+`PHASES` maps phase number → `{id, label, route}`: 1 Host Discovery
+`/scan/host-discovery`, 2 Port Scan `/scan/asset-discovery`, 3 Vulnerability Audit
+`/scan/vulnerability-audit`, 4 Network Topology `/scan/topology-map`.
+Helpers: `getScanPipeline(mode)` (throws on unknown), `isPhaseEnabled(mode, phase)`,
+`buildPhasePayload(...)`.
+
+> **NOTE:** The client lists `basic` as `[1]` while the backend's `PIPELINE_PHASES`
+> lists `[1, 4]`. Both are correct for their purpose: Phase 4 (topology) is an
+> optional bolt-on the backend chains only when SNMP credentials are present, and
+> `get_terminal_phase()` excludes it from completion logic.
+
+---
+
+## 8. API integration layer
+
+Ten modules under `src/api/` plus one inside the web-scanning module. Every call
+goes through `axiosInstance` (or, for SSE, `fetch` carrying the same token).
+
+| Module                                    | Covers                                                                                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `axiosInstance.js`                        | The shared client, both interceptors, `authSession`                                                                                                                   |
+| `tokenStorage.js`                         | In-memory access-token custody                                                                                                                                        |
+| `auth.js`                                 | login, verifyMfa, sendEmailOtp, enable/confirm/disableMfa, register, getCurrentUser, refreshSession, logout, checkUsername, checkEmail, forgotPassword, resetPassword |
+| `admin.js`                                | Users, roles, organizations, audit logs                                                                                                                               |
+| `assets.js`                               | Registry, services, certificates, coverage, reconciliation, tags, notes, AMT import                                                                                   |
+| `findings.js`                             | List, grouped, detail, status, notes                                                                                                                                  |
+| `dashboard.js`                            | All 12 network dashboard widgets                                                                                                                                      |
+| `notifications.js`                        | List, summary, read, delete, `streamNotificationEvents`                                                                                                               |
+| `scans.js`                                | History CRUD, quota, report delete, `streamScanEvents`                                                                                                                |
+| `user.js`                                 | Profile, preferences, password, sessions                                                                                                                              |
+| `credentialedScan.js`                     | `parseTargets`, `runCredentialedScan`                                                                                                                                 |
+| `modules/web-scanning/api/webScansApi.js` | `webScansApi` + `webDashboardApi`                                                                                                                                     |
+
+### `axiosInstance`
+
+```javascript
+const baseURL = import.meta.env.VITE_API_BASE_URL || "";
+const axiosInstance = axios.create({
+  baseURL, withCredentials: true,
+  headers: { "Content-Type": "application/json" },
 });
-es.addEventListener("scans", (e) => {
-  setScanList(JSON.parse(e.data).scans);
-});
-es.addEventListener("heartbeat", () => {});
-es.onerror = () => {
-  es.close();
-  // fall back to polling GET /scans
-};
+const refreshClient = axios.create({ baseURL, withCredentials: true, ... });
 ```
 
-### SSE Notifications
+`refreshClient` is a **separate instance with no interceptors**, so a failing
+refresh cannot recurse into the 401 handler.
 
-`AppLayout.jsx` opens `GET /notifications/stream` on login. New notification events update the unread-count badge and inject items into the `NotificationsPanel`.
+**Request interceptor** — attaches `Authorization: Bearer <token>` when a token
+exists, then injects `params.org_id` from `localStorage.activeOrgId` unless the
+caller already set `org_id`. This is why nearly every backend endpoint accepts an
+optional `org_id`.
 
-## 9. AppLayout Shell (`components/layout/AppLayout.jsx`)
+**Response interceptor** — a single-flight 401 refresh:
 
-`AppLayout` is the persistent chrome (sidebar + topbar) that wraps every authenticated page. It is rendered by the route tree via `<Outlet />`.
+```mermaid
+sequenceDiagram
+    participant R1 as Request A
+    participant R2 as Request B
+    participant I as Interceptor
+    participant API
 
-**Responsibilities:**
-
-- Renders the collapsible sidebar navigation (visibility of each item gated by permissions from `AuthContext`)
-- Displays the `ScanStepper` component (active scan pipeline progress indicator) when `ScanContext.isRunning === true`
-- Opens `NotificationsPanel` (slide-in drawer) and subscribes to the notifications SSE stream
-- Opens `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`, `HelpPanel` modals
-- Manages sidebar collapsed/expanded state (stored in `localStorage`)
-- Top org-switcher dropdown (visible only to `superadmin`) sets `localStorage.activeOrgId` and re-fetches `/auth/me` context
-
-## 10. Build Configuration
-
-### `vite.config.js`
-
-```js
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: true,
-    port: 3000,
-    proxy: {
-      "/auth": "http://localhost:8000",
-      "/scan": "http://localhost:8000",
-      "/scans": "http://localhost:8000",
-      "/web-scans": "http://localhost:8000",
-      "/reports": "http://localhost:8000",
-      "/admin": "http://localhost:8000",
-      "/dashboard": "http://localhost:8000",
-      "/assets": "http://localhost:8000",
-      "/findings": "http://localhost:8000",
-      "/notifications": "http://localhost:8000",
-    },
-  },
-});
+    R1->>I: 401
+    I->>I: isRefreshing = true
+    I->>API: POST /auth/refresh (refreshClient)
+    R2->>I: 401 (concurrent)
+    I->>I: subscribeTokenRefresh(cb) — B waits
+    API-->>I: { access_token }
+    I->>I: setAuthTokens(); notify subscribers
+    I->>API: retry A with new token
+    I->>API: retry B with new token
 ```
 
-The dev-server proxy forwards each API path prefix **directly** to FastAPI on `localhost:8000` — there is **no `/api` path prefix rewrite**. The SPA calls `/auth/login`, `/scan/new`, etc. directly. `VITE_API_BASE_URL` defaults to an empty string (same-origin), which makes the proxy transparent. In production, the nginx gateway performs the same direct forwarding.
+Bypassed URLs whose 401 is a real answer rather than expiry: `/auth/login`,
+`/auth/refresh`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`.
+Requests already carrying `_retry` are not retried again.
 
-### Environment Variables (Frontend)
+On refresh failure: subscribers are notified with `null`, then
+`forceLogout("expired")` stashes the current path in
+`sessionStorage.postLoginRedirect`, clears the token and `activeOrgId`, and
+dispatches the `auth:logout` custom event.
 
-Declared in `Frontend/.env.local` (not committed):
+### `tokenStorage`
 
-| Variable            | Default             | Notes                                                                                                                      |
-| ------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_BASE_URL` | `""` (empty string) | Backend API base URL. Empty = same-origin (works with Vite dev proxy + nginx). Set to full URL only if running standalone. |
+The access token lives in one module-scope variable — not `localStorage`, not
+`sessionStorage`, not a JS-readable cookie. It does not survive a reload, which is
+precisely why `AuthContext` calls `refreshSession()` on boot: the HttpOnly refresh
+cookie is the durable half and JavaScript never sees it.
 
-## 11. Key Page Components
+### API call style
 
-### `NewScan.jsx` (`pages/scan/NewScan.jsx`)
+Two conventions coexist and are worth recognising when reading a page:
 
-Step-by-step wizard:
+```javascript
+// api/dashboard.js, api/user.js, api/notifications.js — unwrap in the module
+export const getProfile = () =>
+  axiosInstance.get("/user/profile").then((r) => r.data);
 
-1. **Target entry** — CIDR/IP/range input with validation, pipeline mode selector (`basic` / `asset` / `vulnerability_audit`), intensity selectors (`discovery_intensity`, `port_scan_intensity`)
-2. **Quota check** — calls `GET /scan/quota` before submission; blocks if quota exceeded
-3. **Launch** — calls `POST /scan/host-discovery`; stores `scanId` in `ScanContext`; navigates to `Phase1Results.jsx`
+// api/scans.js, api/assets.js, api/findings.js — return the axios response
+export const getScan = (id) => api.get(`/scans/${id}`);
+```
 
-### `Phase1/2/3Results.jsx`
+---
 
-Each results page:
+## 9. Real-time integration
 
-1. Opens a WebSocket (`/scans/{id}/progress`) and displays a live progress bar
-2. On completion, renders the phase results summary
-3. In `automatic` pipeline mode, the backend auto-chains to the next phase; in `manual` mode, the page shows a "Run Phase 2" / "Run Phase 3" button which calls the appropriate phase endpoint
-4. Updates `ScanContext` with the completed phase results for the `ScanStepper` sidebar indicator
+Three mechanisms, matching the three the backend exposes.
 
-### `NewWebScan.jsx` (`modules/web-scanning/pages/NewWebScan.jsx`)
+### SSE — scan history
 
-Multi-step form:
+`api/scans.js::streamScanEvents({ scope, skip, limit, interval, created_by,
+search, status, signal, onEvent })`.
 
-1. Target URL + scan name
-2. Scope configuration (subdomains, excluded paths, max depth)
-3. Auth configuration (session cookie, HTTP basic, form-based)
-4. Scan options (SQLi/XSS enable, Nuclei severity filter, rate limit)
-5. **Authorization confirmation step** — user must explicitly check "I confirm I am authorized to test this target" (`authorization_confirmed: true` in the request body)
-6. Launch → navigates to `ScanDetail.jsx`
+The browser's native `EventSource` cannot set an `Authorization` header, and the
+backend gates `/scans/events` on `require_permission("scans","read")` — so the
+client uses `fetch()` with `Accept: text/event-stream`, `credentials: "include"`,
+an `AbortSignal`, and a manual `ReadableStream` reader:
 
-### `Dashboard.jsx` / `SecurityDashboard.jsx`
+```javascript
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+while (!signal?.aborted) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const messages = buffer.split(/\r?\n\r?\n/);
+  buffer = messages.pop() || "";
+  messages
+    .filter(Boolean)
+    .map(parseSseMessage)
+    .forEach((p) => onEvent?.(p));
+}
+```
 
-Both pages call multiple `/dashboard/*` endpoints in parallel (`Promise.all`) and render Recharts chart components. `SecurityDashboard` has a more analyst-focused layout emphasising the OWASP scorecard, compliance mapping, and top-CVE table.
+`parseSseMessage` splits `event:` and `data:` lines and `JSON.parse`s the joined
+data. Consumer: `pages/ScanHistory.jsx`.
 
-### `ComplianceWorkspace.jsx` (`pages/ComplianceWorkspace.jsx`)
+### SSE — notifications
 
-The compliance interface is a comprehensive, standalone auditing dashboard:
+`api/notifications.js::streamNotificationEvents({ signal, onEvent })` — identical
+mechanism against `/notifications/stream`. Consumer:
+`components/layout/AppLayout.jsx`, which drives the notification bell badge.
 
-1. **Framework Marketplace**: Allows installing/uninstalling security standards (e.g. ISO 27001) for the tenant.
-2. **Posture Scorecards**: Visualizes compliance scores using custom CSS gauges for simple and risk-weighted percentages across four quadrants (Organizational, People, Physical, Technical).
-3. **Statement of Applicability (SoA) Checklist**: Renders a complete interactive checklist of controls. Analysts can select controls to view technical check rules or record manual attestations.
-4. **Exception Waiver Approvals**: Interface to submit exception waiver requests, complete with compensating control documentation and expiration dates. Compliance officers can approve or reject these waivers.
-5. **Remediation script execution (Maker-Checker queue)**: Analysts can submit request tickets to execute automated remediation scripts. Admins/checkers can view the queue, inspect script contents, verify targets, and approve execution or rollback changes.
-6. **Reports Download**: Provides options to download SoA or executive summaries in PDF or Word (DOCX) formats.
+### WebSocket — scan progress
+
+Four consumers open `WS /scans/{id}/progress` or `WS /web-scans/{id}/progress`:
+
+| File                                           | Purpose                                           |
+| ---------------------------------------------- | ------------------------------------------------- |
+| `pages/scan/NewScan.jsx`                       | Live Phase 1/2 progress during a running pipeline |
+| `pages/scan/Phase3Results.jsx`                 | Live Phase 3 progress (`buildScanProgressUrl`)    |
+| `pages/scan/CredentialedResults.jsx`           | Live credentialed-audit progress                  |
+| `modules/web-scanning/hooks/useScanPolling.js` | Live DAST phase progress                          |
+
+Each first calls `POST /auth/ticket`, then appends `?ticket=<jwt>` to the socket
+URL. `useScanPolling(scanId, intervalMs = 5000)` combines a WebSocket with a
+polling fallback, tracking `liveStatus` (`connecting` / connected / …),
+`liveEvents`, a reconnect timer and a terminal-state flag so polling stops once
+the scan finishes.
+
+---
+
+## 10. Layout and shared components
+
+### `AppLayout`
+
+`components/layout/AppLayout.jsx` is the authenticated shell: sidebar, header,
+notification stream, profile dropdown and modals.
+
+`SIDEBAR_SECTIONS` is a five-section declarative model filtered per user by
+`canSeeNavItem(user, item)` — `item.permission` must pass `canPermission`, and
+`item.requiredAny` must pass `canAny`. Two items carry live badges:
+**Active Scans** (`badgeKey: "runningScans"`, info) and **Vulnerabilities**
+(`badgeKey: "criticalCount"`, danger).
+
+| Section        | Items and gates                                                                                                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview       | Security Dashboard `dashboard:read` · Executive Report `reports:read`                                                                                                                                 |
+| Scanning       | Scan Templates `scans:execute` · Active Scans `scans:read` · Scan History `scans:read` · Archived Scans _any of_ `scans:restore`/`scans:recycle` · Recycle Bin _any of_ `scans:restore`/`scans:purge` |
+| Intelligence   | Vulnerabilities `findings:read` · Asset Registry `assets:read` · Services & Ports `assets:read` · TLS / Certificates `assets:read` · Network Topology `scans:read`                                    |
+| Reports        | Security Reports `reports:read` · Compliance `reports:read` · Risk Trends `reports:read`                                                                                                              |
+| Administration | User Management `users:read` · Deleted Users `users:read` · Organizations `organizations:read` · Roles & Permissions `roles:read` · AMT Integration `settings:update` · Audit Logs `audit:read`       |
+
+> **IMPORTANT:** The Compliance nav item is gated on `reports:read`, but every
+> `/compliance/*` backend endpoint requires `compliance:read`. A role holding one
+> without the other sees a link that 403s.
+
+`AppLayout` also special-cases superadmins (`isSuperAdmin(user)`) for the
+organization switcher that writes `localStorage.activeOrgId`.
+
+### Component inventory
+
+| Directory            | Components                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `components/common/` | `Button`, `CVELink`, `ConfirmDialog`, `EmptyState`, `ErrorBoundary`, `FormField`, `Loader`, `RoleSelector`, `Skeleton`, `Toast` |
+| `components/layout/` | `AppLayout`, `ChangePasswordModal`, `HelpPanel`, `Modal`, `NotificationsPanel`, `ProfileModal`, `ScanStepper`, `SettingsDrawer` |
+| `components/admin/`  | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                             |
+| `components/scan/`   | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                      |
+| `components/assets/` | `AuditTimeline`                                                                                                                 |
+| `components/auth/`   | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                 |
+| `components/` (root) | `ErrorBoundary`, `PrivateRoute`                                                                                                 |
+
+`Skeleton` and `Loader` are the two loading primitives; `EmptyState` covers the
+no-data case; `Toast` and `ConfirmDialog` cover feedback and destructive
+confirmation.
+
+---
+
+## 11. Pages
+
+| Group                         | Pages                                                                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Auth                          | `Login`, `Register`, `ForgotPassword`, `ResetPassword`                                                                |
+| Dashboards                    | `SecurityDashboard`, `Dashboard` (scan launcher)                                                                      |
+| Inventory                     | `AssetRegistry`, `AssetDetail`, `VulnerabilityBrowser`                                                                |
+| Scan lifecycle                | `ScanHistory`, `ArchivedScans`, `RecycleBin`                                                                          |
+| Reporting                     | `SecurityReports`, `ComplianceWorkspace`                                                                              |
+| `pages/scan/`                 | `NewScan`, `Phase1Results`, `Phase2Results`, `Phase3Results`, `CredentialedScan`, `CredentialedResults`, `NetworkMap` |
+| `pages/admin/`                | `UserManagement`, `DeletedUsers`, `OrganizationManagement`, `RoleManagement`, `AuditLogs`, `AMTIntegration`           |
+| `modules/web-scanning/pages/` | `WebDashboard`, `ScanList`, `NewWebScan`, `ScanDetail`, `FindingsExplorer`, `AssetInventory`                          |
+
+`NetworkMap` renders the `/topology/map` graph with **vis-network**, consuming the
+`{nodes, edges}` payload directly — the backend emits vis-network-compatible
+shapes specifically so no translation layer is needed.
+
+---
+
+## 12. Error handling and loading states
+
+| Layer               | Mechanism                                                                                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render errors       | `ErrorBoundary` at the app root and again inside `WebScanningRoutes`                                                                                                       |
+| HTTP 401            | Axios interceptor: single-flight refresh, then forced logout                                                                                                               |
+| Other HTTP errors   | Handled per page; the backend's `{success, error_code, message, request_id}` envelope means `error.response.data.message` is always populated                              |
+| Auth loading        | `PrivateRoute` renders a full-height spinner while `authState === "loading"`                                                                                               |
+| Data loading        | `Loader` and `Skeleton` per page                                                                                                                                           |
+| Empty results       | `EmptyState`                                                                                                                                                               |
+| Destructive actions | `ConfirmDialog`                                                                                                                                                            |
+| Transient feedback  | `Toast`                                                                                                                                                                    |
+| Session expiry      | `authState = "expired"` with the message _"Your session expired. Please sign in again."_, and `sessionStorage.postLoginRedirect` restores the intended page after re-login |
+
+---
+
+## 13. Build and runtime configuration
+
+### Environment variables
+
+| Variable            | Used by            | Effect                                                                                                              |
+| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_BASE_URL` | `axiosInstance.js` | API base URL. **Empty string means same-origin**, which is what makes the Vite dev proxy and the nginx gateway work |
+
+`Frontend/.env.local` sets it for local dev. `docker-compose.yml` passes it both as
+a **build arg** and an environment variable, defaulting to `/api`.
+
+> **CAUTION:** Vite inlines `import.meta.env.*` at build time. Changing
+> `VITE_API_BASE_URL` requires `docker compose build frontend`; restarting the
+> container has no effect.
+
+### Vite dev server
+
+`vite.config.js`: `host: true`, `port: 3000`, and eleven proxy prefixes to
+`http://localhost:8000` — `/auth`, `/scan`, `/scans`, `/web-scans`, `/reports`,
+`/admin`, `/dashboard`, `/assets`, `/findings`, `/notifications`, `/topology`.
+
+> **NOTE:** `/user`, `/compliance` and `/api` are **not** proxied. Profile,
+> preferences, session, compliance and NVD-admin calls therefore need
+> `VITE_API_BASE_URL` pointed at the backend explicitly during local development,
+> or those requests hit the Vite server and 404.
+
+Test configuration lives in the same file: `globals: true`, `environment: "jsdom"`,
+`setupFiles: ["./src/__tests__/setupTests.js"]`.
+
+### Scripts
+
+| Command           | Effect                                          |
+| ----------------- | ----------------------------------------------- |
+| `npm run dev`     | Vite dev server on `:3000` with the proxy above |
+| `npm run build`   | Production bundle into `dist/`                  |
+| `npm run preview` | Serve the built bundle locally                  |
+| `npm test`        | `vitest run`                                    |
+
+There is **no `lint` script** in `package.json`, although `.eslintrc.json` exists
+and both pre-commit and CI invoke ESLint. CI's `npm run lint` step is written as
+`npm run lint || echo "Lint warnings found"`, so the missing script does not fail
+the build.
+
+### Container build
+
+```dockerfile
+FROM node:20-slim AS build
+COPY package*.json ./ && RUN npm install
+COPY . . && ARG VITE_API_BASE_URL=/api && RUN npm run build
+
+FROM nginx:stable-alpine AS runtime
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+```
+
+`nginx.conf` provides the SPA history fallback so a deep link like
+`/scan/:id/phase2` reloads correctly.
+
+---
+
+## 14. Tests
+
+| File                                         | Covers                                                           |
+| -------------------------------------------- | ---------------------------------------------------------------- |
+| `__tests__/auth/permissions.test.js`         | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
+| `__tests__/components/PrivateRoute.test.jsx` | Loading, redirect, permission gating, fallback selection         |
+| `__tests__/pages/scan/NewScan.test.jsx`      | Scan launch form and pipeline wiring                             |
+| `__tests__/pages/scan/NetworkMap.test.jsx`   | Topology graph rendering                                         |
+| `__tests__/setupTests.js`                    | `@testing-library/jest-dom` matchers                             |
+
+Run with `npm test` (`vitest run`).
+
+---
+
+## 15. Backend integration summary
+
+Every frontend API call maps to a registered route, with **one exception**:
+
+| Frontend call                                           | Backend                                                                                        |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `webScansApi.deleteScan(id)` → `DELETE /web-scans/{id}` | **Not implemented** — `/web-scans/{scan_id}` is registered for `GET` only, so this returns 405 |
+
+Backend routes with no frontend consumer: `/scan/host`, `/scan/range`,
+`/scan/subnet`, `/scan/subnets`, `/scan/phases` (the SPA drives the
+phase-selective endpoints instead), `/api/workflow-example`, and
+`/assets/debug-reconcile`.
+
+Contract points where the two sides must stay aligned:
+
+| Contract              | Frontend                                        | Backend                                                            |
+| --------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| Login field name      | `{email, password}`                             | `LoginRequest.email`                                               |
+| Permission list shape | `role.permissions[] = [{resource, action}]`     | `/auth/me` `RoleOut.permissions`                                   |
+| Tenant selector       | `params.org_id` from `localStorage.activeOrgId` | `_resolve_org(user, requested_org)` — honoured for superadmin only |
+| Pipeline modes        | `SCAN_PIPELINES` keys                           | `PIPELINE_PHASES` keys + the `advanced` alias                      |
+| Discovery intensity   | `cc_discoveryIntensity` → `discovery_intensity` | `light` \| `normal` \| `deep`, asset pipeline only                 |
+| Report formats        | `fmt=JSON` / `XML` / `CSV`                      | `_FORMAT_ALIASES`; unknown values now 400                          |
+| Topology graph        | vis-network `{nodes, edges}`                    | `get_topology_graph()` emits exactly that                          |
+| WebSocket auth        | `?ticket=` from `POST /auth/ticket`             | `_get_websocket_user`, 60-second `type="ticket"` JWT               |
+| SSE auth              | `fetch` + `Authorization` header                | `require_permission` / `get_current_user`                          |
+
+---
+
+## 16. Related documents
+
+- [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
+- [BACKEND_API_REFERENCE.md](BACKEND_API_REFERENCE.md)
+- [AUTHENTICATION_AND_AUTHORIZATION.md](AUTHENTICATION_AND_AUTHORIZATION.md)
+- [RBAC_Management_Permissions.md](RBAC_Management_Permissions.md)
+- [DEVELOPER_SETUP_GUIDE.md](DEVELOPER_SETUP_GUIDE.md)

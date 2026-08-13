@@ -6,7 +6,7 @@ No logic here - just typed containers.
 """
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, Optional
 
@@ -151,7 +151,19 @@ class HostResult:
     os_guess: str = "Unknown"
     os_confidence: str = "Low"
     confidence: str = "Low"
-    scan_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    #: Exact build where a probe established one (e.g. an SNMP sysDescr naming
+    #: the running kernel), as opposed to the range os_guess carries.
+    os_version: str | None = None
+    #: What established the OS — "snmp_sysdescr" outranks an Nmap fingerprint,
+    #: which is why later phases need to be able to see where it came from.
+    os_evidence: str | None = None
+    # Timezone-aware UTC. This used to be a naive local-time stamp sitting
+    # beside UTC fields in the same payload, so an export showed a host scanned
+    # at "16:18" next to a scan that completed at "10:48" — same moment, no
+    # offset on either to say so.
+    scan_timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
     # Priority-1 & 2 & 3 Additions
     device_category: str = "unknown"
@@ -202,6 +214,8 @@ class HostResult:
             "response_time_ms": self.response_time_ms,
             "os_guess": self.os_guess,
             "os_confidence": self.os_confidence,
+            "os_version": self.os_version,
+            "os_evidence": self.os_evidence,
             "confidence": self.confidence,
             "device_category": self.device_category,
             "snmp_device_type": self.snmp_device_type,
@@ -230,6 +244,11 @@ class HostResult:
             "device_category": self.device_category,
             "os_guess": self.os_guess,
             "os_confidence": self.os_confidence,
+            # Carried even in the "basic" projection: these are two small scalars
+            # and they are what stops a later phase from replacing a kernel the
+            # host reported about itself with a fingerprint's guessed range.
+            "os_version": self.os_version,
+            "os_evidence": self.os_evidence,
             "_ot_probed": self._ot_probed,
         }
 
@@ -331,7 +350,9 @@ class DiscoverySummary:
     scan_type: str
     scan_duration: float
     target: str
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     critical_hosts: int = 0
     high_risk_hosts: int = 0
 

@@ -155,10 +155,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_web_findings_org_id"), table_name="web_findings")
-    op.drop_index(op.f("ix_web_findings_web_scan_id"), table_name="web_findings")
+    # No explicit op.drop_index() calls: DROP TABLE removes a table's indexes,
+    # so each of these was redundant — and two of them were fragile. This
+    # migration names the web_scan_id indexes ix_web_findings_web_scan_id and
+    # ix_web_assets_web_scan_id, while the models declare the same columns as
+    # ix_web_findings_scan_id and ix_web_assets_scan_id. A fresh install builds
+    # from Base.metadata and stamps head without running upgrade(), so it has
+    # the model's names and not these, and dropping them unconditionally failed
+    # with UndefinedObject.
     op.drop_table("web_findings")
-    op.drop_index(op.f("ix_web_assets_web_scan_id"), table_name="web_assets")
     op.drop_table("web_assets")
-    op.drop_index(op.f("ix_web_scans_org_id"), table_name="web_scans")
     op.drop_table("web_scans")

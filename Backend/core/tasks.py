@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
+from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
     Asset,
@@ -77,10 +78,44 @@ def _run_async(coro):
         return asyncio.run(coro)
 
 
+def _finalize_cancelled(
+    db: SessionLocal, scan_id: str, user_id: str, phase: str
+) -> None:
+    """
+    Settle a scan the user cancelled mid-flight.
+
+    The API has already set status='cancelled'; what is left is to stamp the
+    completion time, close out any phase row still marked running, and push a
+    final progress frame so watching clients stop showing a live scan.
+    """
+    from core.redis_client import publish_progress_sync
+    from scans.db_helpers import mark_scan_cancelled
+
+    try:
+        mark_scan_cancelled(db, scan_id, user_id, phase_key=phase)
+    except Exception:
+        log.exception("Could not finalize cancelled scan %s", scan_id)
+        db.rollback()
+
+    try:
+        publish_progress_sync(scan_id, 1, {"status": "cancelled"})
+    except Exception:
+        log.debug("Could not publish cancellation for %s", scan_id, exc_info=True)
+
+
 def _check_cancelled(db: SessionLocal, scan_id: str) -> bool:
-    """Check if the scan has been marked as cancelled in the DB."""
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
-    return scan and scan.status == "cancelled"
+    """
+    Check if the scan has been marked as cancelled in the DB.
+
+    The ``db`` argument is accepted for call-site compatibility but deliberately
+    unused: reading through the caller's session returns the status from that
+    session's identity map, which is the snapshot taken when the task first
+    loaded the row. That is what made Stop a no-op. ``is_cancelled`` opens its
+    own session so it sees what the API actually committed.
+    """
+    from core.scan_control import is_cancelled
+
+    return is_cancelled(scan_id)
 
 
 def _update_task_id(db: SessionLocal, scan_id: str, task_id: str):
@@ -586,6 +621,17 @@ def _sync_credentialed_services(
     upsert_credentialed_services(db, asset.id, scan_id, ports or [], packages)
 
 
+def _first_advisory(vuln: dict, key: str) -> str | None:
+    """The first vendor advisory's field, when the finding carries any."""
+    advisories = vuln.get("vendor_advisories") or []
+    if not isinstance(advisories, list):
+        return None
+    for entry in advisories:
+        if isinstance(entry, dict) and entry.get(key):
+            return str(entry[key])[:2000]
+    return None
+
+
 def _sync_credentialed_vulnerabilities(
     db,
     asset: Asset,
@@ -601,8 +647,21 @@ def _sync_credentialed_vulnerabilities(
         if not cve_id:
             continue
 
-        severity = _clean_text(vuln.get("severity") or "Medium").title()
         cvss = float(vuln.get("cvss_score", vuln.get("cvss", 0.0)) or 0.0)
+        # Derived from the score and stored in the one canonical (lower) case.
+        #
+        # This wrote `.title()` of whatever the matcher supplied, which is how
+        # "High" and "high" came to coexist in the same column — the split that
+        # made GROUP BY return two rows for one severity and cost the dashboard
+        # 100 of 146 findings. Deriving from the score also stops a feed's
+        # textual rating disagreeing with the vector it published.
+        from scans.cvss import canonical_severity, severity_from_score
+
+        severity = (
+            severity_from_score(cvss).lower()
+            if cvss
+            else canonical_severity(vuln.get("severity"))
+        )
         description = _clean_text(vuln.get("description") or vuln.get("desc"))
         package_name = _clean_text(vuln.get("package"))
         installed_ver = _clean_text(vuln.get("installed_ver"))
@@ -686,6 +745,37 @@ def _sync_credentialed_vulnerabilities(
             evidence_source="credentialed",
             proof=proof,
             plugin_output=plugin_output,
+            # An authenticated package match is the strongest evidence this
+            # product produces: the version came from the host's own package
+            # manager, not from a banner.
+            evidence=(
+                f"Source           : authenticated package query\n"
+                f"Package          : {package_name or 'unknown'}\n"
+                f"Installed version: {installed_ver or 'not reported'}\n"
+                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
+                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+            ),
+            confidence="Confirmed",
+            qod=97,
+            detection_method="credentialed_package",
+            detected_version=installed_ver or None,
+            cvss_vector=_clean_text(cvss_vector) or None,
+            component=(package_name or None),
+            component_version=(installed_ver or None),
+            component_fixed_version=(fixed_ver or None),
+            in_kev=bool(vuln.get("in_kev")),
+            has_exploit=bool(vuln.get("has_exploit")),
+            # Exploitation provenance and the vendor's advisory, both joined on
+            # the CVE upstream. Stored so triage can separate a weaponised
+            # exploit from a proof of concept without re-querying the feeds.
+            exploit_sources=(list(vuln.get("exploit_sources") or []) or None),
+            verified_exploit=bool(vuln.get("verified_exploit")),
+            canary_confirmed=bool(vuln.get("canary_confirmed")),
+            ransomware_linked=bool(vuln.get("ransomware_linked")),
+            vendor_advisory_id=_first_advisory(vuln, "advisory_id"),
+            vendor_advisory_url=_first_advisory(vuln, "url"),
+            vendor_remediation=_clean_text(vuln.get("vendor_remediation")) or None,
+            first_scan_id=scan_id,
             first_found_at=utcnow(),
             last_found_at=utcnow(),
         )
@@ -706,6 +796,29 @@ def _sync_credentialed_vulnerabilities(
                 "plugin_output": func.coalesce(
                     func.nullif(plugin_output, ""), AssetVulnerability.plugin_output
                 ),
+                # What this scan observed, refreshed on every re-scan.
+                #
+                # These were previously written only on first insert, so a
+                # finding that stayed open kept the version from the day it was
+                # first seen: a host upgraded from Chrome 138 to 139 with the
+                # CVE still unfixed went on reporting 138 indefinitely, and the
+                # grouped row would have advised an upgrade already performed.
+                "component": (package_name or None),
+                "component_version": (installed_ver or None),
+                "component_fixed_version": (fixed_ver or None),
+                "detected_version": (installed_ver or None),
+                # Exploit corpora and vendor advisories change between scans:
+                # an exploit gets published, a vendor issues an advisory. A
+                # finding that keeps its first-seen provenance forever would
+                # under-report both.
+                "exploit_sources": (list(vuln.get("exploit_sources") or []) or None),
+                "verified_exploit": bool(vuln.get("verified_exploit")),
+                "canary_confirmed": bool(vuln.get("canary_confirmed")),
+                "ransomware_linked": bool(vuln.get("ransomware_linked")),
+                "vendor_advisory_id": _first_advisory(vuln, "advisory_id"),
+                "vendor_advisory_url": _first_advisory(vuln, "url"),
+                "vendor_remediation": _clean_text(vuln.get("vendor_remediation"))
+                or None,
             },
         )
         db.execute(fnd_upsert)
@@ -820,7 +933,8 @@ def run_host_discovery_task(
         _update_task_id(db, scan_id, self.request.id)
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled before host discovery", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="host_discovery")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         from scans.db_helpers import update_scan_phase1
 
@@ -854,7 +968,8 @@ def run_host_discovery_task(
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after host discovery", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="host_discovery")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(
@@ -997,6 +1112,12 @@ def run_host_discovery_task(
 
         log.info("[TRACE][TASK][%s] run_host_discovery_task finished", ts())
         return {"success": True, "scan_id": scan_id}
+    except ScanCancelled:
+        # A cancelled scan is not a failure: record it as cancelled so the
+        # history shows what the user actually did, not a spurious error.
+        log.info("Host Discovery cancelled by user for scan %s", scan_id)
+        _finalize_cancelled(db, scan_id, user_id, phase="host_discovery")
+        return {"success": False, "cancelled": True, "error": "Scan cancelled"}
     except Exception as exc:
         log.exception("Host Discovery Task Failed")
         mark_scan_failed(db, scan_id, user_id, str(exc))
@@ -1031,7 +1152,8 @@ def run_asset_discovery_task(
         _update_task_id(db, scan_id, self.request.id)
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled before asset discovery", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="port_scan")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         mode = resolve_pipeline_mode(pipeline_mode)
 
@@ -1089,7 +1211,8 @@ def run_asset_discovery_task(
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after asset discovery", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="port_scan")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(
@@ -1215,6 +1338,10 @@ def run_asset_discovery_task(
             _chain_topology_if_needed(db, scan_id, user_id, scan_row=scan_row)
 
         return {"success": True, "scan_id": scan_id}
+    except ScanCancelled:
+        log.info("Asset Discovery cancelled by user for scan %s", scan_id)
+        _finalize_cancelled(db, scan_id, user_id, phase="port_scan")
+        return {"success": False, "cancelled": True, "error": "Scan cancelled"}
     except Exception as exc:
         log.exception("Asset Discovery Task Failed")
         return {"success": False, "error": str(exc)}
@@ -1498,6 +1625,44 @@ def _apply_credentialed_enrichment(
 
     plan = _credentialed_plan_for_scan(db, scan_row)
     if not plan:
+        # Distinguish "no credentials were configured" from "credentials were
+        # configured and none of them could be used".
+        #
+        # Both used to return None, so a scan whose credentials failed to
+        # decrypt completed as an ordinary unauthenticated audit with nothing
+        # anywhere to say the authenticated pass had been skipped — same status,
+        # same counts, no warning in the summary or the report. An operator who
+        # asked for a credentialed audit had no way to tell they had not got
+        # one.
+        requested = (scan_row.options or {}).get("credentials") if scan_row else None
+        if requested:
+            count = len(requested) if isinstance(requested, list) else 1
+            log.error(
+                "Scan %s requested credentialed enrichment with %d credential(s) "
+                "but none could be resolved — continuing as an unauthenticated "
+                "audit. Check that COMPLIANCE_ENCRYPTION_KEY is identical for the "
+                "API and the scanner worker.",
+                getattr(scan_row, "id", "?"),
+                count,
+            )
+            return {
+                "is_credentialed": False,
+                "credentialed_requested": count,
+                "credentialed_hosts": 0,
+                "credentialed_skipped": [
+                    {
+                        "target": "all",
+                        "reason": (
+                            "Configured credentials could not be decrypted or "
+                            "resolved. Results below are unauthenticated."
+                        ),
+                    }
+                ],
+                "credentialed_error": (
+                    "Credentialed enrichment was requested but no credential "
+                    "could be used; these results are unauthenticated."
+                ),
+            }
         return None
 
     scanned_ports = _ports_probed_in_phase2(scan_row)
@@ -1603,6 +1768,9 @@ def _apply_credentialed_enrichment(
                 "collection_errors",
                 "inventory_complete",
                 "coverage",
+                # What share of the collected inventory could be evaluated at
+                # all — see VulnMatcher.coverage().
+                "package_coverage",
                 "exposure_summary",
             )
         }
@@ -1710,7 +1878,8 @@ def run_vulnerability_audit_task(
         _update_task_id(db, scan_id, self.request.id)
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled before vulnerability audit", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="vulnerability_audit")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         mode = resolve_pipeline_mode(pipeline_mode)
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
@@ -1736,7 +1905,8 @@ def run_vulnerability_audit_task(
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after vulnerability audit", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="vulnerability_audit")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
             mark_scan_failed(
@@ -1752,9 +1922,13 @@ def run_vulnerability_audit_task(
             db, scan_row, result["data"], scan_id=scan_id
         )
         if credentialed_summary:
+            # `is_credentialed` comes from the enrichment itself. Forcing it True
+            # here labelled a scan authenticated even when every credential had
+            # failed to resolve and nothing had been authenticated to.
+            authenticated = bool(credentialed_summary.get("credentialed_hosts"))
             result["summary"].update(credentialed_summary)
             result.setdefault("metadata", {}).update(
-                {**credentialed_summary, "is_credentialed": True}
+                {**credentialed_summary, "is_credentialed": authenticated}
             )
             # Re-derive the risk tallies: the enrichment can promote a host's
             # level, and these are what the dashboard and the executive summary
@@ -1776,6 +1950,19 @@ def run_vulnerability_audit_task(
         result.setdefault("metadata", {}).update(context)
 
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
+
+        # Report the whole scan's elapsed time, not this phase's. The executive
+        # PDF read `summary.scan_duration`, which is the vulnerability phase
+        # alone, and printed "83 seconds" for a scan that Scan History and the
+        # scan record both showed as 3m 36s.
+        if scan_row and scan_row.started_at:
+            from db.base import utcnow as _utcnow
+
+            elapsed = (_utcnow() - scan_row.started_at).total_seconds()
+            if elapsed > 0:
+                result["metadata"]["duration_seconds"] = round(elapsed, 2)
+                result["summary"]["total_scan_duration"] = round(elapsed, 2)
+
         if scan_row:
             p1_sum = phase1_summary_from_scan(scan_row)
             if p1_sum:
@@ -1827,8 +2014,20 @@ def run_vulnerability_audit_task(
         _chain_topology_if_needed(db, scan_id, user_id, scan_row=scan_row)
 
         return {"success": True, "scan_id": scan_id}
+    except ScanCancelled:
+        log.info("Vulnerability Audit cancelled by user for scan %s", scan_id)
+        _finalize_cancelled(db, scan_id, user_id, phase="vulnerability_audit")
+        return {"success": False, "cancelled": True, "error": "Scan cancelled"}
     except Exception as exc:
+        # The scan row has to be closed out here. Returning the failure without
+        # marking it left the scan "running" for ever: the UI showed a spinner
+        # with no terminal state, the concurrency slot was never released, and
+        # nothing told the operator the audit had died.
         log.exception("Vulnerability Audit Task Failed")
+        try:
+            mark_scan_failed(db, scan_id, user_id, str(exc))
+        except Exception:
+            log.exception("Could not mark scan %s failed", scan_id)
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -1900,7 +2099,8 @@ def run_topology_mapping_task(
         _update_task_id(db, scan_id, self.request.id)
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled before topology mapping", scan_id)
-            return {"success": False, "error": "Scan cancelled"}
+            _finalize_cancelled(db, scan_id, user_id, phase="topology_mapping")
+            return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
         if not scan_row:
@@ -2322,8 +2522,274 @@ def audit_credentialed_host(
     _emit("Analyzing packages for vulnerabilities...", 70, "analysis")
     packages = system_data.get("packages", [])
     matcher = VulnMatcher()
-    raw_findings = matcher.match_packages(packages)
+    # The host's own /etc/os-release, so OSV advisories are matched against the
+    # release the packages were actually installed from. Without it every
+    # distribution in the database was in scope and a 24.04 host was assessed
+    # against 14.04, Debian and Mageia advisories.
+    # The collectors merge their system-info section into the top level rather
+    # than nesting it, so read there first and fall back to a nested shape.
+    _nested = system_data.get("system_info") or {}
+    _os_id = str(system_data.get("os_id") or _nested.get("os_id") or "")
+    _os_ver = str(
+        system_data.get("os_version_id") or _nested.get("os_version_id") or ""
+    )
+    raw_findings = matcher.match_packages(packages, os_id=_os_id, os_version_id=_os_ver)
+    # How much of the inventory was actually assessable travels with the result.
+    # On a Windows host only the packages carrying a recognised CPE identity can
+    # be evaluated at all — 13 of 192 on the host audited during testing — and a
+    # report that does not say so presents a 7% assessment as a complete one.
+    system_data["package_coverage"] = matcher.coverage()
     cve_list = matcher.to_report_format(raw_findings)
+
+    # Attach the vendor's own advisory where one exists for the same CVE.
+    #
+    # Joined on the CVE alone, so it cannot introduce a finding or change a
+    # verdict — it adds what the vendor wrote about a vulnerability already
+    # established by other means. The gain is remediation quality: NVD offers a
+    # version boundary inferred from a CPE range, while Siemens writes "Update
+    # to V2606 or later version". On OT products the vendor advisory is often
+    # the only place a remediation is stated at all.
+    try:
+        from core.vuln_intel import csaf_advisories_for, exploit_intel_for
+
+        cve_ids = [f.get("cve_id") for f in cve_list]
+
+        # Exploitation provenance. The matcher's own query supplies
+        # `exploit_sources`, but not whether an exploit was reproduced, seen
+        # against a honeypot, or used in ransomware — and those are the
+        # distinctions triage acts on.
+        intel = exploit_intel_for(cve_ids)
+        promoted = 0
+        for finding in cve_list:
+            entry = intel.get(str(finding.get("cve_id") or "").upper())
+            if not entry:
+                continue
+            finding.update(entry)
+            finding["has_exploit"] = True
+            promoted += 1
+        if promoted:
+            log.info("Exploit provenance attached to %d finding(s)", promoted)
+
+        advisories = csaf_advisories_for(cve_ids)
+        enriched = 0
+        for finding in cve_list:
+            matches = advisories.get(str(finding.get("cve_id") or "").upper())
+            if not matches:
+                continue
+            finding["vendor_advisories"] = matches
+            source = next((m for m in matches if m.get("remediation")), None)
+            if source:
+                # Attributed, always. The advisory covers the same CVE but not
+                # necessarily the same product: a Chrome CVE turns up in a CISA
+                # ICS advisory because an ICS product embeds Chrome, and its
+                # mitigation is written for that context — "block access to
+                # untrusted web content from sensitive systems". That is sound
+                # advice about the CVE and misleading if it appears to be the
+                # vendor's guidance for the desktop browser this host runs.
+                # Naming the advisory keeps the reader able to judge which.
+                finding["vendor_remediation"] = (
+                    f"{source['provider'].upper()} {source['advisory_id']}: "
+                    f"{source['remediation']}"
+                )
+            enriched += 1
+        if enriched:
+            log.info("Vendor advisories attached to %d finding(s)", enriched)
+    except Exception as exc:  # noqa: BLE001 - enrichment must never fail a scan
+        log.warning("Vendor advisory enrichment skipped: %s", exc)
+
+    # Vendor advisories for software NVD does not index.
+    #
+    # OT products — TIA Portal, WinCC, SIMATIC — either have no CPE or have one
+    # nobody publishes against, so the CPE path that carries every other
+    # finding sees nothing on an engineering station. The vendor's CSAF
+    # advisory is the only structured source, and on the audited host it
+    # produced 14 findings the rest of the pipeline could not reach.
+    try:
+        from engines.credentialed.csaf_matcher import CsafProductMatcher
+
+        csaf_matcher = CsafProductMatcher()
+        csaf_findings = csaf_matcher.match(packages)
+        system_data["csaf_coverage"] = csaf_matcher.coverage()
+        for finding in csaf_findings:
+            cve_list.append(
+                {
+                    "cve_id": finding["cve_id"],
+                    "cve": finding["cve_id"],
+                    "severity": finding["severity"],
+                    "cvss_score": finding["cvss_score"],
+                    "cvss": finding["cvss_score"],
+                    "description": finding["description"],
+                    "desc": finding["description"],
+                    "package": finding["package_name"],
+                    "installed_ver": finding["installed_ver"],
+                    "fixed_ver": finding["fixed_ver"],
+                    "source": finding["source"],
+                    "matched_by": finding["matched_by"],
+                    "detection_method": "credentialed_package",
+                    "confidence": "Confirmed",
+                    "epss_score": 0.0,
+                    "epss_percentile": 0.0,
+                    "in_kev": False,
+                    "kev_due_date": "",
+                    "has_exploit": False,
+                    "exploit_sources": [],
+                    "cpe_uri": "",
+                    "cvss_version": "",
+                    "cvss_vector": "",
+                    "affected_software": [],
+                    "vendor_advisories": finding["vendor_advisories"],
+                    "vendor_remediation": finding["vendor_remediation"],
+                }
+            )
+        if csaf_findings:
+            log.info(
+                "CSAF vendor advisories produced %d finding(s) for software "
+                "with no CPE identity",
+                len(csaf_findings),
+            )
+    except Exception as exc:  # noqa: BLE001 - must never fail the scan
+        log.warning("CSAF product matching skipped: %s", exc)
+
+    # The operating system itself, which package matching cannot reach.
+    #
+    # Windows is not listed in the uninstall registry, so the inventory pass
+    # never sees it and the largest piece of software on the host went
+    # unassessed while the report still read as a completed audit. Microsoft
+    # publishes the build number that carries each fix; the host reports its
+    # own build; comparing them settles it without inferring anything from a
+    # software name. Linux distributions need none of this — their kernel and
+    # userland are packages, and OSV already covers them.
+    if os_type == "windows":
+        from engines.credentialed.windows_patch import (
+            MicrosoftApplicationMatcher,
+            WindowsPatchMatcher,
+        )
+
+        os_result = WindowsPatchMatcher().match(
+            {
+                "version": _os_ver or system_data.get("kernel_version"),
+                "ubr": system_data.get("os_ubr") or _nested.get("os_ubr"),
+                "architecture": system_data.get("cpu_arch") or _nested.get("cpu_arch"),
+                "caption": system_data.get("os_name") or _nested.get("os_name"),
+            }
+        )
+        system_data["os_patch_coverage"] = os_result.coverage()
+
+        for finding in os_result.findings:
+            cve_list.append(
+                {
+                    "cve_id": finding["cve_id"],
+                    "cve": finding["cve_id"],
+                    "severity": finding["severity"],
+                    "cvss_score": finding["cvss_score"],
+                    "cvss": finding["cvss_score"],
+                    "description": finding["description"],
+                    "desc": finding["description"],
+                    "package": finding["package_name"],
+                    "installed_ver": finding["installed_ver"],
+                    "fixed_ver": finding["fixed_ver"],
+                    "source": finding["source"],
+                    "matched_by": finding["matched_by"],
+                    "epss_score": finding["epss_score"],
+                    "epss_percentile": finding["epss_percentile"],
+                    "in_kev": finding["in_kev"],
+                    "kev_due_date": "",
+                    "has_exploit": False,
+                    "exploit_sources": [],
+                    "priority_score": 0.0,
+                    "priority_level": "P4",
+                    "cpe_uri": "",
+                    "cvss_version": finding["cvss_version"],
+                    "cvss_vector": finding["cvss_vector"],
+                    "affected_software": [],
+                    "remediation": finding["remediation"],
+                    "kb_ids": finding["kb_ids"],
+                }
+            )
+
+        if not os_result.assessed:
+            # Same reasoning as the empty-inventory finding below: an OS that
+            # could not be evaluated must not be indistinguishable from one
+            # that was evaluated and found clean.
+            cve_list.append(
+                {
+                    "cve_id": "MISC-CREDENTIALED-OS-NOT-ASSESSED",
+                    "detection_method": "active_check",
+                    "severity": "Medium",
+                    "title": "Operating system not assessed for missing patches",
+                    "description": (
+                        f"The credentialed session to {ip} succeeded and the "
+                        f"software inventory was assessed, but the Windows "
+                        f"operating system itself was not. {os_result.reason} "
+                        f"Missing operating-system patches would not appear in "
+                        f"this report."
+                    ),
+                }
+            )
+        else:
+            log.info(
+                "Windows OS patch assessment: build %s, %d missing patch(es)",
+                os_result.build,
+                len(os_result.findings),
+            )
+
+        # Microsoft applications — Edge, Office, SQL Server — are numbered in
+        # build space and so are refused by CPE version comparison even when
+        # their identity resolves correctly. MSRC publishes them in the same
+        # space the host reports, so they are assessable here and nowhere else.
+        app_findings, app_coverage = MicrosoftApplicationMatcher().match(packages)
+        system_data["ms_app_coverage"] = app_coverage
+
+        # Fold MSRC-assessed software into the headline coverage figure.
+        #
+        # package_coverage counts only what resolved to a CPE identity, which
+        # understates what the audit actually examined now that MSRC assesses
+        # Microsoft products by build. Edge and its WebView2 runtime are
+        # evaluated against 385 published fixes and were still being counted as
+        # unassessed, because they reach the feed by build line rather than by
+        # CPE. A coverage number that ignores a whole matcher is as misleading
+        # as one that counts software it never looked at.
+        coverage = system_data.get("package_coverage") or {}
+        assessable = coverage.get("packages_assessable_software") or 0
+        if assessable:
+            combined = min(
+                coverage.get("packages_cpe_resolved", 0)
+                + (app_coverage.get("apps_assessed") or 0),
+                assessable,
+            )
+            coverage["packages_assessed_total"] = combined
+            coverage["coverage_pct_assessed"] = round(100.0 * combined / assessable, 1)
+            system_data["package_coverage"] = coverage
+        for finding in app_findings:
+            cve_list.append(
+                {
+                    "cve_id": finding["cve_id"],
+                    "cve": finding["cve_id"],
+                    "severity": finding["severity"],
+                    "cvss_score": finding["cvss_score"],
+                    "cvss": finding["cvss_score"],
+                    "description": finding["description"],
+                    "desc": finding["description"],
+                    "package": finding["package_name"],
+                    "installed_ver": finding["installed_ver"],
+                    "fixed_ver": finding["fixed_ver"],
+                    "source": finding["source"],
+                    "matched_by": finding["matched_by"],
+                    "epss_score": finding["epss_score"],
+                    "epss_percentile": finding["epss_percentile"],
+                    "in_kev": finding["in_kev"],
+                    "kev_due_date": "",
+                    "has_exploit": False,
+                    "exploit_sources": [],
+                    "priority_score": 0.0,
+                    "priority_level": "P4",
+                    "cpe_uri": "",
+                    "cvss_version": finding["cvss_version"],
+                    "cvss_vector": finding["cvss_vector"],
+                    "affected_software": [],
+                    "remediation": finding["remediation"],
+                }
+            )
 
     # A credentialed audit that could not read the software inventory has
     # not assessed the host — it has produced an empty result that looks
@@ -2436,6 +2902,11 @@ def audit_credentialed_host(
         },
         "packages": packages,
         "package_count": len(packages),
+        # How much of that inventory could actually be evaluated. A Windows
+        # audit that resolved 13 of 192 packages has assessed 7% of the host,
+        # and a report carrying only "package_count: 192" presents that as a
+        # complete audit.
+        "package_coverage": system_data.get("package_coverage") or {},
         "running_services": system_data.get("running_services", []),
         "open_ports_credentialed": listeners,
         "users": system_data.get("users", []),

@@ -20,6 +20,7 @@ Called from:
 """
 
 import logging
+import re
 import socket
 import struct
 from typing import Dict, List, Optional
@@ -98,17 +99,37 @@ def _register_open_port(
     banner: str = "",
     version: str = "",
     product: str = "",
+    protocol: str = "tcp",
 ) -> None:
-    """Helper to register an open port / service dynamically on the host result."""
+    """
+    Helper to register an open port / service dynamically on the host result.
+
+    ``protocol`` must match the transport the probe actually spoke. Several
+    enrichment probes here are UDP-only (SNMP, mDNS, NetBIOS-NS); recording
+    those as TCP claimed an open TCP port that is typically filtered, and that
+    claim propagated all the way into the asset registry and the exported
+    reports.
+    """
     if not result.get("_register_ports", True):
         return
 
+    protocol = (protocol or "tcp").lower()
+
+    # port_states is keyed by port alone for TCP (the port engine's convention);
+    # UDP entries are namespaced so a UDP hit never masks the TCP state of the
+    # same port number.
     port_states = result.setdefault("port_states", {})
-    port_states[port] = "open"
-    port_states[str(port)] = "open"
+    if protocol == "tcp":
+        port_states[port] = "open"
+        port_states[str(port)] = "open"
+    else:
+        port_states[f"{port}/{protocol}"] = "open"
 
     open_ports = result.setdefault("open_ports", [])
-    if not any(p.get("port") == port for p in open_ports):
+    if not any(
+        p.get("port") == port and (p.get("protocol") or "tcp").lower() == protocol
+        for p in open_ports
+    ):
         from core.constants import PORT_DB
 
         meta = PORT_DB.get(
@@ -132,7 +153,7 @@ def _register_open_port(
         # and replaces these fields rather than being blocked by them.
         port_dict = {
             "port": port,
-            "protocol": "tcp",
+            "protocol": protocol,
             "service": service or meta.get("service", "unknown"),
             "state": "open",
             "banner": banner[:500] if banner else "",
@@ -353,6 +374,59 @@ def _ot_protocol_probes(ip: str, result: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _parse_snmp_sys_descr(sys_descr: str) -> dict:
+    """
+    Pull hostname and OS identity out of an SNMP sysDescr string.
+
+    A Linux agent reports the uname line, e.g.::
+
+        Linux superusr-HP3 6.8.0-137-generic #137-Ubuntu SMP ... x86_64
+
+    which names the host and the exact running kernel. That is direct evidence
+    from the device itself and outranks an Nmap TCP/IP fingerprint guess, which
+    can only ever offer a kernel *range*. Returns any of ``hostname``,
+    ``os_name``, ``os_family``, ``os_version`` it can establish.
+    """
+    out: dict = {}
+    if not sys_descr:
+        return out
+
+    text = sys_descr.strip()
+
+    m = re.match(
+        r"^Linux\s+(?P<host>[A-Za-z0-9][A-Za-z0-9._-]*)\s+(?P<kernel>\d+\.\d+\.\d+\S*)",
+        text,
+    )
+    if m:
+        out["hostname"] = m.group("host")
+        kernel = m.group("kernel")
+        out["os_family"] = "Linux"
+        out["os_version"] = kernel
+        distro = re.search(
+            r"#\d+\S*[- ](Ubuntu|Debian|SUSE|Red\s?Hat|CentOS|Fedora)", text, re.I
+        )
+        if distro:
+            out["os_name"] = (
+                f"{distro.group(1).replace(' ', '')} Linux (kernel {kernel})"
+            )
+        else:
+            out["os_name"] = f"Linux kernel {kernel}"
+        return out
+
+    if re.search(r"\bWindows\b", text, re.I):
+        out["os_family"] = "Windows"
+        ver = re.search(
+            r"Windows(?:\s+NT)?(?:\s+Version)?\s+(?P<v>\d+(?:\.\d+)*)", text, re.I
+        )
+        if ver:
+            out["os_version"] = ver.group("v")
+            out["os_name"] = f"Microsoft Windows {ver.group('v')}"
+        else:
+            out["os_name"] = "Microsoft Windows"
+
+    return out
+
+
 def _snmp_lightweight_probe(ip: str, result: dict) -> None:
     """
     Query port 161 (SNMP) using community 'public' for system details to identify
@@ -377,6 +451,7 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
             _OID_IF_NUMBER,
             _OID_IP_FORWARD,
             _OID_SYS_DESCR,
+            _OID_SYS_NAME,
             _OID_SYS_OBJ_ID,
             _extract_integer,
             _extract_oid_value,
@@ -417,6 +492,13 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
         if descr_data:
             snmp_info["sys_descr"] = _extract_string(descr_data)
 
+        # sysName is the device's own idea of its hostname. It is authoritative
+        # in a way reverse DNS is not — a host with no PTR record still answers
+        # this — so it is queried here rather than left blank.
+        name_data = _snmp_get_raw(ip, "public", _OID_SYS_NAME, timeout=1.0)
+        if name_data:
+            snmp_info["sys_name"] = _extract_string(name_data) or ""
+
         # Parse sysObjectID to get enterprise ID and vendor/vendor_device
         parts = sys_obj.split(".")
         prefix = ".".join(parts[:6])
@@ -446,12 +528,50 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
             snmp_info["bridge_mib"] = idx != -1 and len(bridge_data) > idx + 2
 
         result["snmp_info"] = snmp_info
+
+        # The agent just told us who it is and what it runs. Use that before
+        # falling back to a fingerprint guess: sysName/sysDescr are first-party
+        # statements from the device, and a host with no PTR record has no
+        # other way to report a hostname at all.
+        placeholders = ("Unknown", "N/A", "", None)
+        identity = _parse_snmp_sys_descr(snmp_info.get("sys_descr", ""))
+
+        snmp_hostname = (snmp_info.get("sys_name") or "").strip() or identity.get(
+            "hostname"
+        )
+        if snmp_hostname and result.get("hostname") in placeholders:
+            result["hostname"] = snmp_hostname
+            result["snmp_sys_name"] = snmp_hostname
+
+        if identity.get("os_name"):
+            # sysDescr outranks a fingerprint regardless of the confidence the
+            # fingerprint claims. This probe runs after the Nmap port scan, so
+            # os_confidence is already "High" from a TCP/IP match — gating on
+            # confidence meant the device's own statement never won, and the
+            # registry kept reporting "Linux 5.0 - 5.14" for a host whose agent
+            # said 6.8.0-137-generic. Only an authenticated read of the host
+            # itself is better evidence than this.
+            if result.get("os_evidence") not in ("credentialed",):
+                nmap_guess = result.get("os_guess")
+                if nmap_guess not in placeholders:
+                    result["os_guess_fingerprint"] = nmap_guess
+                result["os_guess"] = identity["os_name"]
+                result["os_confidence"] = "High"
+                result["os_family"] = identity.get("os_family") or result.get(
+                    "os_family"
+                )
+                result["os_version"] = identity.get("os_version") or result.get(
+                    "os_version"
+                )
+                result["os_evidence"] = "snmp_sysdescr"
+
         _register_open_port(
             result,
             port=161,
             service="snmp",
             banner=snmp_info.get("sys_descr", "")
             or f"SNMPv1/v2c, Community: {snmp_info.get('community')}",
+            protocol="udp",
         )
 
     except Exception as exc:
@@ -495,7 +615,11 @@ def _mdns_query(ip: str, result: dict) -> None:
             if name:
                 result["mdns_name"] = name
                 _register_open_port(
-                    result, port=5353, service="mdns", banner=f"mDNS Name: {name}"
+                    result,
+                    port=5353,
+                    service="mdns",
+                    banner=f"mDNS Name: {name}",
+                    protocol="udp",
                 )
     except Exception as exc:
         log.debug("_mdns_query(%s) error: %s", ip, exc)
@@ -535,6 +659,7 @@ def _mdns_service_query(ip: str, result: dict) -> None:
                 port=5353,
                 service="mdns",
                 banner=f"mDNS Services Discovered: {', '.join(found)}",
+                protocol="udp",
             )
     except Exception as exc:
         log.debug("_mdns_service_query(%s) error: %s", ip, exc)
@@ -602,6 +727,7 @@ def _netbios_query(ip: str, result: dict) -> None:
             port=137,
             service="netbios-ns",
             banner=f"NetBIOS Computer: {computer_name}, Workgroup: {workgroup}",
+            protocol="udp",
         )
 
     # MAC from NetBIOS response (last 6 bytes starting at offset 57 + num_names*18)

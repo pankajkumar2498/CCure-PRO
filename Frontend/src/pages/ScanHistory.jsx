@@ -107,6 +107,24 @@ const normalizeStatus = (status) => {
   return raw;
 };
 
+/**
+ * Render a summary value for display.
+ *
+ * The summary block dumps raw values, so a duration arrived as
+ * "9.252127170562744" next to a header that correctly read "9.3s". Seconds and
+ * percentages are the only keys that need shaping; everything else is passed
+ * through so a new summary field never silently loses precision.
+ */
+const fmtSummaryValue = (key, value) => {
+  if (typeof value !== "number") return String(value);
+  const name = String(key).toLowerCase();
+  if (name.includes("duration") || name.endsWith("_seconds")) {
+    return fmtDur(value);
+  }
+  if (name.includes("percent")) return `${Math.round(value)}%`;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+};
+
 const isCred = (scan) => scan.scan_type === "credentialed";
 const scanLabel = (scan) =>
   `Scan No. ${scan?.scan_no ?? scan?.display_id ?? "-"}`;
@@ -148,10 +166,16 @@ const fmtDate = (iso) =>
     minute: "2-digit",
   });
 
+// When a scan finished is a property of the scan, not of the row's last write.
+// Using updated_at meant anything that touched the record afterwards — a report
+// download, an archive toggle — retroactively changed the date the scan appeared
+// to have run.
 const getScanDisplayDate = (scan) =>
-  ["complete", "failed", "cancelled"].includes(normalizeStatus(scan.status))
-    ? scan.updated_at || scan.created_at
-    : scan.created_at;
+  ["complete", "failed", "cancelled", "unreachable"].includes(
+    normalizeStatus(scan.status),
+  )
+    ? scan.completed_at || scan.started_at || scan.created_at
+    : scan.started_at || scan.created_at;
 
 const fmtDur = (sec) =>
   !sec
@@ -393,7 +417,7 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
 /* ══════════════════════════════════════════════════════════════════════════
    DETAIL MODAL (View button)
    ══════════════════════════════════════════════════════════════════════════ */
-function DetailModal({ scanId, onClose }) {
+function DetailModal({ scanId, onClose, onOpenFullResults }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -474,6 +498,14 @@ function DetailModal({ scanId, onClose }) {
               </div>
             </div>
 
+            {/* Why a scan failed used to live only in the database, so the UI
+                could say "Failed" and nothing more. */}
+            {detail.failure_reason && (
+              <div className="alert alert--error" style={{ margin: "12px 0" }}>
+                {detail.failure_reason}
+              </div>
+            )}
+
             {/* Summary */}
             {summaryEntries.length > 0 && (
               <div className="detail-section">
@@ -509,7 +541,7 @@ function DetailModal({ scanId, onClose }) {
                           fontSize: "0.8rem",
                         }}
                       >
-                        {String(v)}
+                        {fmtSummaryValue(k, v)}
                       </span>
                     </div>
                   ))}
@@ -539,6 +571,20 @@ function DetailModal({ scanId, onClose }) {
                           <code className="ip-code">{h.ip_address}</code>
                           {h.hostname && h.hostname !== "Unknown" && (
                             <span className="muted small"> {h.hostname}</span>
+                          )}
+                          {/* MAC and vendor are the headline result of a LAN
+                              discovery scan; omitting them here meant the only
+                              view reachable from history hid them. */}
+                          {(h.mac_address || h.mac) && (
+                            <code
+                              className="ip-code"
+                              style={{ fontSize: 11, opacity: 0.85 }}
+                            >
+                              {String(h.mac_address || h.mac).toLowerCase()}
+                            </code>
+                          )}
+                          {h.vendor && h.vendor !== "Unknown" && (
+                            <span className="muted small">{h.vendor}</span>
                           )}
                           {h.host_risk_level && (
                             <RiskBadge
@@ -627,6 +673,20 @@ function DetailModal({ scanId, onClose }) {
                   </div>
                 );
               })}
+
+            {/* The modal is a summary. The full results view — sortable host
+                table, Active/All filters, and the JSON/CSV/Copy exports — used
+                to be unreachable for any scan that was not still in session. */}
+            {detail.results?.phase1?.data?.length > 0 && (
+              <div className="detail-section">
+                <button
+                  className="btn btn--primary"
+                  onClick={() => onOpenFullResults(detail)}
+                >
+                  Open full results &amp; exports →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -803,6 +863,11 @@ export default function ScanHistory({ mode = "history" }) {
   );
   const [filterDate, setFilterDate] = useState("all");
   const [page, setPage] = useState(1);
+  // Search input vs. the debounced value actually sent to the API, so typing
+  // does not fire a request per keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sort, setSort] = useState({ key: "scan_no", dir: "desc" });
   const { preferences } = usePreferences();
 
   // Sync filterStatus with query param
@@ -841,7 +906,11 @@ export default function ScanHistory({ mode = "history" }) {
         setError("");
       }
       try {
-        const { data } = await getScans(0, 200, "active", ownerParam);
+        // Search goes to the server so it covers the whole history rather than
+        // whichever rows this page happens to be holding.
+        const { data } = await getScans(0, 200, "active", ownerParam, {
+          search: searchTerm || undefined,
+        });
         applySnapshot(data);
       } catch {
         if (!quiet) setError("Failed to load scan history.");
@@ -850,12 +919,20 @@ export default function ScanHistory({ mode = "history" }) {
         if (!quiet) setRefreshing(false);
       }
     },
-    [applySnapshot, ownerParam],
+    [applySnapshot, ownerParam, searchTerm],
   );
 
   useEffect(() => {
     load({ initial: true });
   }, [load]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
   useEffect(() => {
     let stopped = false;
@@ -880,6 +957,9 @@ export default function ScanHistory({ mode = "history" }) {
             limit: 200,
             interval: 2,
             created_by: ownerParam,
+            // Same filter as the list request, so a live snapshot cannot
+            // replace the filtered view with an unfiltered one.
+            search: searchTerm || undefined,
             signal: controller.signal,
             onEvent: ({ event, data }) => {
               if (stopped) return;
@@ -911,7 +991,7 @@ export default function ScanHistory({ mode = "history" }) {
       stopped = true;
       controller.abort();
     };
-  }, [applySnapshot, load]);
+  }, [applySnapshot, load, searchTerm]);
 
   const handleView = (scan) => {
     if (!canReadScans) {
@@ -1132,9 +1212,43 @@ export default function ScanHistory({ mode = "history" }) {
     return true;
   });
 
+  /* ── Sorting ──
+     Column sorting was missing entirely, so a long history could only be read
+     newest-first. Values are compared by type so numbers do not sort as text. */
+  const SORT_ACCESSORS = {
+    scan_no: (s) => s.scan_no ?? s.display_id ?? 0,
+    target: (s) => String(s.target || "").toLowerCase(),
+    type: (s) => scanTypeLabel(s).toLowerCase(),
+    started_by: (s) => getScanStartedByLabel(s, user).toLowerCase(),
+    status: (s) => normalizeStatus(s.status),
+    active_hosts: (s) => Number(s.summary?.active_hosts ?? 0),
+    duration: (s) => Number(s.scan_duration ?? 0),
+    date: (s) => dateTimeMs(getScanDisplayDate(s)) || 0,
+  };
+
+  const sorted = [...visible].sort((a, b) => {
+    const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.scan_no;
+    const av = accessor(a);
+    const bv = accessor(b);
+    let cmp;
+    if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+    else
+      cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
+    return sort.dir === "asc" ? cmp : -cmp;
+  });
+
+  const toggleSort = (key) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "target" || key === "type" ? "asc" : "desc" },
+    );
+    setPage(1);
+  };
+
   const rowsPerPage = preferences?.default_rows_per_page || 10;
-  const totalPages = Math.ceil(visible.length / rowsPerPage) || 1;
-  const paginated = visible.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const totalPages = Math.ceil(sorted.length / rowsPerPage) || 1;
+  const paginated = sorted.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
   // Reset page when filters or total pages change
   useEffect(() => {
@@ -1192,12 +1306,29 @@ export default function ScanHistory({ mode = "history" }) {
 
         {/* Filters */}
         <div className="filter-bar">
+          {!isMonitor && (
+            <div className="filter-group">
+              <label htmlFor="scan-search">Search</label>
+              <input
+                id="scan-search"
+                type="search"
+                className="input"
+                placeholder="Target IP or scan no…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+            </div>
+          )}
           <div className="filter-group">
             <label>Status</label>
             <div className="filter-tabs">
+              {/* "unreachable" is a real terminal outcome the backend sets when
+                  no target answered. Without a tab for it those scans could
+                  only be found under "All". */}
               {(isMonitor
                 ? ["running"]
-                : ["all", "complete", "failed", "cancelled"]
+                : ["all", "complete", "unreachable", "failed", "cancelled"]
               ).map((s) => (
                 <button
                   key={s}
@@ -1314,14 +1445,41 @@ export default function ScanHistory({ mode = "history" }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Scan No.</th>
-                  <th>Target</th>
-                  <th>Type</th>
-                  <th>Started By</th>
-                  <th>Status</th>
-                  <th>Active Hosts</th>
-                  <th>Duration</th>
-                  <th>Date</th>
+                  {[
+                    ["scan_no", "Scan No."],
+                    ["target", "Target"],
+                    ["type", "Type"],
+                    ["started_by", "Started By"],
+                    ["status", "Status"],
+                    ["active_hosts", "Active Hosts"],
+                    ["duration", "Duration"],
+                    ["date", "Date"],
+                  ].map(([key, label]) => (
+                    <th key={key}>
+                      <button
+                        type="button"
+                        className="th-sort"
+                        onClick={() => toggleSort(key)}
+                        aria-sort={
+                          sort.key === key
+                            ? sort.dir === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                        }
+                        title={`Sort by ${label}`}
+                      >
+                        {label}
+                        <span className="th-sort-icon" aria-hidden="true">
+                          {sort.key === key
+                            ? sort.dir === "asc"
+                              ? "▲"
+                              : "▼"
+                            : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                  ))}
                   <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
@@ -1480,8 +1638,8 @@ export default function ScanHistory({ mode = "history" }) {
                   style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}
                 >
                   Showing {(page - 1) * rowsPerPage + 1} to{" "}
-                  {Math.min(page * rowsPerPage, visible.length)} of{" "}
-                  {visible.length}
+                  {Math.min(page * rowsPerPage, sorted.length)} of{" "}
+                  {sorted.length}
                 </span>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -1516,7 +1674,7 @@ export default function ScanHistory({ mode = "history" }) {
           </div>
         )}
 
-        {visible.length > 0 && visible.length < total && totalPages <= 1 && (
+        {sorted.length > 0 && sorted.length < total && totalPages <= 1 && (
           <p
             className="muted"
             style={{
@@ -1526,14 +1684,21 @@ export default function ScanHistory({ mode = "history" }) {
               fontFamily: "var(--mono)",
             }}
           >
-            Showing {visible.length} of {total} scans
+            Showing {sorted.length} of {total} scans
           </p>
         )}
       </div>
 
       {/* Detail modal */}
       {viewId && (
-        <DetailModal scanId={viewId} onClose={() => setViewId(null)} />
+        <DetailModal
+          scanId={viewId}
+          onClose={() => setViewId(null)}
+          onOpenFullResults={(scan) => {
+            setViewId(null);
+            navigate(`/scan/${scan.id}/phase1`);
+          }}
+        />
       )}
 
       {/* Confirm dialog */}

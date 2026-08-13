@@ -52,6 +52,36 @@ export default function ExportPanel({
     phase1Hosts.length > 0 &&
     phase2Results.length > 0;
 
+  // Scanner placeholders mean "nothing was found". Exporting them verbatim put
+  // the word "Unknown" in spreadsheets as if it were an observed value — and it
+  // disagreed with the on-screen table, which already renders these as "—".
+  const PLACEHOLDERS = new Set([
+    "unknown",
+    "n/a",
+    "none",
+    "not determined",
+    "-",
+    "--",
+  ]);
+  const cell = (value) => {
+    if (value === null || value === undefined) return "";
+    const text = String(value).trim();
+    return PLACEHOLDERS.has(text.toLowerCase()) ? "" : text;
+  };
+
+  // "22/ssh" alone loses the two things a service scan exists to establish:
+  // which transport answered, and what is actually running there. Mirrors the
+  // backend host-inventory exporter so both CSVs describe a port the same way.
+  const portLabel = (p) => {
+    const proto = (p.protocol || "tcp").toLowerCase();
+    let label = `${p.port}/${proto}`;
+    const service = cell(p.service);
+    if (service) label += ` ${service}`;
+    const detail = [cell(p.product), cell(p.version)].filter(Boolean).join(" ");
+    if (detail) label += ` (${detail})`;
+    return label;
+  };
+
   // Resolve descriptive scan type for client-side downloads
   const getDescriptiveScanType = () => {
     if (
@@ -85,24 +115,32 @@ export default function ExportPanel({
       setTimeout(() => setPdfError(""), 3000);
       return;
     }
+    // `results` holds whatever phase this panel is showing. Filing it under
+    // phase3 unconditionally meant a Basic Network Scan exported
+    // `phase1: {hosts: []}` with its hosts hidden under `phase3` — so anything
+    // reading the obvious key for a Phase 1 scan got nothing.
+    const phases = {
+      phase1: { summary: phase1Summary, hosts: phase1Hosts },
+      phase2: { summary: phase2Summary, hosts: phase2Results },
+      phase3: { summary: null, hosts: [] },
+    };
+    const currentKey = isPhase1 ? "phase1" : isPhase2 ? "phase2" : "phase3";
+    phases[currentKey] = {
+      summary: summary ?? phases[currentKey].summary,
+      hosts: results,
+    };
+
     const payload = {
       scan_no: scanNo ?? null,
       target,
       exported_at: new Date().toISOString(),
       pipeline_mode: pipelineMode,
+      // Names the phase these results came from, so a consumer never has to
+      // guess which key to read.
+      result_phase: currentKey,
       summary,
-      phase1: {
-        summary: phase1Summary,
-        hosts: phase1Hosts,
-      },
-      phase2: {
-        summary: phase2Summary,
-        hosts: phase2Results,
-      },
-      phase3: {
-        summary,
-        hosts: results,
-      },
+      hosts: results,
+      ...phases,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -177,9 +215,7 @@ export default function ExportPanel({
             h.hostname || "",
             h.mac_address || "",
             h.vendor || "",
-            (h.open_ports || [])
-              .map((p) => `${p.port}/${p.service}`)
-              .join("; "),
+            (h.open_ports || []).map(portLabel).join("; "),
             h.os_guess || "",
             (h.cves || []).length,
             h.device_category || h.snmp_device_type || "",
@@ -190,15 +226,30 @@ export default function ExportPanel({
         });
     } else if (isPhase1) {
       if (pipelineMode === "basic") {
-        rows = [["IP", "Hostname", "MAC Address", "Vendor", "Status"]];
+        // Same columns as the non-basic discovery branch. Dropping Device
+        // Category here meant the export you got depended on which pipeline
+        // ran, for identical underlying data.
+        rows = [
+          [
+            "IP",
+            "Hostname",
+            "MAC Address",
+            "Vendor",
+            "Device Category",
+            "Discovery Method",
+            "Status",
+          ],
+        ];
         results
           .filter((h) => h.is_active)
           .forEach((h) => {
             rows.push([
               h.ip_address,
-              h.hostname || "",
-              h.mac_address || "",
-              h.vendor || "",
+              cell(h.hostname),
+              cell(h.mac_address),
+              cell(h.vendor),
+              cell(h.device_category || h.snmp_device_type),
+              cell(h.discovery_method || h.scan_method),
               h.is_active ? "Active" : "Inactive",
             ]);
           });
@@ -218,10 +269,10 @@ export default function ExportPanel({
           .forEach((h) => {
             rows.push([
               h.ip_address,
-              h.hostname || "",
-              h.mac_address || "",
-              h.vendor || "",
-              h.device_category || h.snmp_device_type || "",
+              cell(h.hostname),
+              cell(h.mac_address),
+              cell(h.vendor),
+              cell(h.device_category || h.snmp_device_type),
               h.is_active ? "Active" : "Inactive",
             ]);
           });
@@ -248,9 +299,7 @@ export default function ExportPanel({
             h.mac_address || "",
             h.vendor || "",
             h.device_category || h.snmp_device_type || "",
-            (h.open_ports || [])
-              .map((p) => `${p.port}/${p.service}`)
-              .join("; "),
+            (h.open_ports || []).map(portLabel).join("; "),
             (h.open_ports || []).filter((p) => p.risk === "Critical").length,
             h.is_active ? "Active" : "Inactive",
           ]);
@@ -279,9 +328,7 @@ export default function ExportPanel({
             h.hostname || "",
             h.mac_address || "",
             h.vendor || "",
-            (h.open_ports || [])
-              .map((p) => `${p.port}/${p.service}`)
-              .join("; "),
+            (h.open_ports || []).map(portLabel).join("; "),
             h.os_guess || "",
             (h.cves || []).length,
             h.device_category || h.snmp_device_type || "",
@@ -434,9 +481,7 @@ export default function ExportPanel({
               udps.filter((p) => (p.risk || "").toLowerCase() === "high")
                 .length;
             const cveCount = (h.cves || []).length;
-            const portsStr = ports
-              .map((p) => `${p.port}/${p.service}`)
-              .join(", ");
+            const portsStr = ports.map(portLabel).join(", ");
 
             return `${h.ip_address.padEnd(16)} ${(h.device_category || h.snmp_device_type || "Info").padEnd(10)} CVEs: ${cveCount.toString().padEnd(4)} Critical: ${hostCrit.toString().padEnd(2)} High: ${hostHigh.toString().padEnd(2)} Ports: ${portsStr}`;
           }),

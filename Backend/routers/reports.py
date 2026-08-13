@@ -146,6 +146,84 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     return report_paths
 
 
+def _attach_asset_lifecycle_dates(db: Session, scan: Scan, payload: dict) -> None:
+    """
+    Fill each exported host's ``first_seen_at`` / ``last_seen_at`` from the registry.
+
+    The scan payload only knows about this run, so "First Seen" was blank even
+    though the registry has tracked the host since its first sighting — and that
+    is exactly the field that distinguishes a newly-appeared host from a
+    long-known one.
+
+    Both dates are taken from the registry deliberately. Sourcing first-seen
+    from the asset row while last-seen fell back to the probe timestamp meant
+    two different clocks: the asset row is written a couple of seconds after the
+    probe, so a host discovered for the first time exported a First Seen that
+    postdated its Last Seen.
+    """
+    hosts = payload.get("data")
+    if not isinstance(hosts, list) or not hosts:
+        return
+
+    ips = {
+        str(h.get("ip_address") or h.get("ip"))
+        for h in hosts
+        if isinstance(h, dict) and (h.get("ip_address") or h.get("ip"))
+    }
+    if not ips:
+        return
+
+    try:
+        from db.models.assets import Asset
+
+        rows = (
+            db.query(Asset.ip_address, Asset.first_seen_at, Asset.last_seen_at)
+            .filter(Asset.org_id == scan.org_id, Asset.ip_address.in_(ips))
+            .all()
+        )
+        lifecycle = {str(ip): (first, last) for ip, first, last in rows}
+    except Exception as exc:  # an export must not fail over an enrichment
+        log.debug("Could not attach lifecycle dates for scan %s: %s", scan.id, exc)
+        return
+
+    for host in hosts:
+        if not isinstance(host, dict):
+            continue
+        ip = str(host.get("ip_address") or host.get("ip") or "")
+        first, last = lifecycle.get(ip, (None, None))
+        # A host seen for the first time on this scan has first == last; never
+        # let rounding or write ordering print first-seen after last-seen.
+        if first and last and first > last:
+            first = last
+        if first and not host.get("first_seen_at"):
+            host["first_seen_at"] = first.isoformat()
+        if last:
+            host["last_seen_at"] = last.isoformat()
+
+
+def _resolve_report_path(stored: str | None) -> str | None:
+    """
+    Find a stored report on disk regardless of which runtime recorded it.
+
+    The scanner worker runs on the Windows host and writes
+    ``C:\\...\\Backend\\reports\\x.pdf``; the API serves the same directory from
+    a container as ``/app/reports/x.pdf``. A stored path from one is never
+    ``os.path.isfile()`` in the other, so the API treated every worker-generated
+    report as missing and rebuilt it. Both agree on the file *name*, so resolve
+    by basename inside the API's own reports directory before giving up.
+    """
+    if not stored:
+        return None
+    if os.path.isfile(os.path.abspath(stored)):
+        return os.path.abspath(stored)
+
+    basename = os.path.basename(stored.replace("\\", "/"))
+    if not basename:
+        return None
+    candidate = os.path.join(_REPORTS_DIR, basename)
+    return candidate if os.path.isfile(candidate) else None
+
+
 def _require_reports_read(user: User, db: Session) -> None:
     role = getattr(user, "role", None)
     role_name = (getattr(role, "name", "") or "").lower()
@@ -240,6 +318,34 @@ def download_report(
 ):
     _require_reports_read(user, db)
 
+    # `fmt=JSON` returning the executive PDF and `fmt=XML` returning the
+    # technical one is a historical quirk the frontend still relies on. Accept
+    # names that say what they mean, and keep the old ones working.
+    _FORMAT_ALIASES = {
+        "EXECUTIVE": "JSON",
+        "EXECUTIVE_PDF": "JSON",
+        "PDF": "JSON",
+        "JSON": "JSON",
+        "TECHNICAL": "XML",
+        "TECHNICAL_PDF": "XML",
+        "XML": "XML",
+        "CSV": "CSV",
+    }
+    requested_fmt = str(fmt or "").strip().upper()
+    resolved = _FORMAT_ALIASES.get(requested_fmt)
+    if resolved is None:
+        # Anything unrecognised used to fall through to the executive PDF with
+        # HTTP 200, so `?fmt=XLSX` returned a PDF and looked like a successful
+        # Excel export. There is no Excel exporter; say so.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported report format '{fmt}'. Supported formats: "
+                "executive (PDF), technical (PDF), CSV."
+            ),
+        )
+    fmt = resolved
+
     query = db.query(Scan).filter(Scan.id == scan_id)
     if not _is_superadmin(user):
         query = query.filter(Scan.org_id == user.org_id)
@@ -253,21 +359,53 @@ def download_report(
     fmt_upper = fmt.upper()
     type_upper = (type or "").upper()
 
+    # A scan that never produced results has nothing to export. Returning a
+    # 200 with an empty file made a failed scan look like a successful download.
+    if (scan.status or "").lower() in ("failed", "cancelled", "canceled"):
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Scan {scan.scan_no} {scan.status} and produced no results to export."
+                + (f" Reason: {scan.failure_reason}" if scan.failure_reason else "")
+            ),
+        )
+
     # Determine target report format and media type
     if fmt_upper == "CSV" or type_upper == "CSV":
         # CSV Export Generation
         payloads = build_legacy_scan_results(db, str(scan.id))
-        key = (
-            "credentialed"
-            if "credentialed" in payloads
-            else "phase3" if "phase3" in payloads else "phase1"
+        # Prefer the richest phase actually present. phase2 was previously
+        # skipped entirely, so an Asset Discovery scan exported its Phase 1
+        # payload and silently dropped every port and service it had found.
+        key = next(
+            (
+                k
+                for k in ("credentialed", "phase3", "phase2", "phase1")
+                if isinstance(payloads.get(k), dict)
+            ),
+            None,
         )
+        if key is None:
+            raise HTTPException(
+                status_code=404, detail="No results are available for this scan."
+            )
         payload = payloads.get(key, {})
+        _attach_asset_lifecycle_dates(db, scan, payload)
         csv_filename = f"scan_{scan.scan_no}_{scan_id[:8]}.csv"
         csv_path = os.path.join(_REPORTS_DIR, csv_filename)
-        from csv_generator import generate_scan_csv
+        from csv_generator import (
+            generate_host_inventory_csv,
+            generate_scan_csv,
+            scan_has_findings,
+        )
 
-        generate_scan_csv(payload, csv_path, scan_type="network")
+        # Host discovery produces hosts and no findings by design. Running the
+        # findings exporter over it wrote a header row and nothing else, so the
+        # CSV export returned zero of the hosts the scan had just discovered.
+        if scan_has_findings(payload):
+            generate_scan_csv(payload, csv_path, scan_type="network")
+        else:
+            generate_host_inventory_csv(payload, csv_path)
 
         # Record Audit Log
         try:
@@ -286,12 +424,20 @@ def download_report(
 
     # Standard PDF Report Generation (Executive vs Technical Audit)
     is_technical = fmt_upper == "XML" or type_upper in ("TECHNICAL", "XML")
-    report_paths = _load_scan_report_paths(db, scan)
-    pdf_path = report_paths.get("technical_pdf" if is_technical else "executive_pdf")
 
-    if not pdf_path or not os.path.isfile(os.path.abspath(pdf_path)):
-        pdf_path = (
-            scan.report_technical_path if is_technical else scan.report_executive_path
+    # Serve the report the scan already produced. Regenerating unconditionally
+    # rebuilt *both* PDFs on every download, orphaned the previous pair on disk
+    # with no cleanup, and bumped scans.updated_at — which made Scan History
+    # display the download time as the scan date. Generation is now the
+    # fallback it was always documented to be.
+    pdf_path = _resolve_report_path(
+        scan.report_technical_path if is_technical else scan.report_executive_path
+    )
+
+    if not pdf_path:
+        report_paths = _load_scan_report_paths(db, scan)
+        pdf_path = _resolve_report_path(
+            report_paths.get("technical_pdf" if is_technical else "executive_pdf")
         )
 
     if not pdf_path:

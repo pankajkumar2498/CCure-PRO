@@ -145,6 +145,18 @@ def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:
 COMMANDS: dict[str, str] = {
     # OS info
     "os_info": "(Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | ConvertTo-Json)",
+    # The update revision (UBR) and the marketing release ("25H2").
+    #
+    # Win32_OperatingSystem.Version stops at the build — 10.0.26200 — and omits
+    # the revision, which is the only part that moves when a monthly cumulative
+    # update is installed. Matching the OS against Microsoft's published fixes
+    # compares build numbers, so without the UBR every host looks like the
+    # day-zero release of its Windows version and every patch since launch
+    # reads as missing.
+    "os_revision": (
+        "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' "
+        "| Select-Object CurrentBuild, UBR, DisplayVersion, ProductName | ConvertTo-Json)"
+    ),
     "hostname": "hostname",
     "uptime": "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
     # Hardware & Identity
@@ -362,6 +374,27 @@ class WindowsCollector:
         data["cpu_arch"] = os_raw.get("OSArchitecture", "")
         data["os_family"] = "Windows"
         data["os_confidence"] = 100
+
+        # Build revision — see the "os_revision" command for why this matters.
+        # os_version_id is upgraded from 10.0.26200 to 10.0.26200.8973 so the
+        # patch matcher receives a build it can compare; the unrevised value is
+        # kept as os_version_base for anything that was reading the old shape.
+        revision_raw = self._run_json("os_revision")
+        if isinstance(revision_raw, list):
+            revision_raw = revision_raw[0] if revision_raw else {}
+        if isinstance(revision_raw, dict):
+            ubr = str(revision_raw.get("UBR") or "").strip()
+            data["os_ubr"] = ubr
+            data["os_release"] = (revision_raw.get("DisplayVersion") or "").strip()
+            base = str(data.get("os_version_id") or "").strip()
+            data["os_version_base"] = base
+            if ubr.isdigit() and re.match(r"^\d+\.\d+\.\d+$", base):
+                data["os_version_id"] = f"{base}.{ubr}"
+                data["kernel_version"] = data["os_version_id"]
+        else:
+            data["os_ubr"] = ""
+            data["os_release"] = ""
+            data["os_version_base"] = str(data.get("os_version_id") or "")
 
         computer_raw = self._run_json("computer_system")
         if isinstance(computer_raw, list):

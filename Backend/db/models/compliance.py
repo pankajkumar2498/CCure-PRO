@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -495,6 +496,16 @@ class ComplianceFinding(Base):
             "status IN ('pass', 'fail', 'not_applicable', 'manual_review', 'exception', 'remediation_applied', 'pending_reverify')",
             name="ck_finding_status",
         ),
+        # Composite indexes migration k2l3m4n5o6p7 creates. Declared here too
+        # because a fresh install never runs that migration — it builds from
+        # Base.metadata and stamps head — so an index only the migration knows
+        # about is absent on every fresh install and present on every upgraded
+        # one. The single-column indexes that migration also creates are left
+        # out on purpose: `index=True` on the columns below already produces an
+        # equivalent index under SQLAlchemy's own name.
+        Index("ix_compliance_findings_asset", "asset_id", "control_id"),
+        Index("ix_compliance_findings_tenant_status", "tenant_id", "status"),
+        Index("ix_compliance_findings_rule", "rule_id"),
     )
 
     id = Column(String(250), primary_key=True)
@@ -638,6 +649,9 @@ class ComplianceScore(Base):
             "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12', 'DPDP_CN', 'DPDP_PL', 'DPDP_DR', 'DPDP_BN', 'DPDP_PS', 'DPDP_GV', 'GDPR_LT', 'GDPR_PL', 'GDPR_DM', 'GDPR_AY', 'GDPR_SL', 'GDPR_IC', 'GDPR_AC', 'SP53_AC', 'SP53_AT', 'SP53_AU', 'SP53_CA', 'SP53_CM', 'SP53_CP', 'SP53_IA', 'SP53_IR', 'SP53_MA', 'SP53_MP', 'SP53_PE', 'SP53_PL', 'SP53_PM', 'SP53_PS', 'SP53_PT', 'SP53_RA', 'SP53_SA', 'SP53_SC', 'SP53_SI', 'SP53_SR', 'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', 'FR5_RDF', 'FR6_TRE', 'FR7_RA', 'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', 'SP82_SI', 'SP82_RA', 'SP82_SA', 'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', 'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014', 'NIS2_GOV', 'NIS2_INC', 'NIS2_BC', 'NIS2_SUPPLY', 'NIS2_SEC', 'NIS2_AUDIT', 'NIS2_HYGIENE', 'NIS2_CRYPTO', 'NIS2_IAM', 'NIS2_MFA')",
             name="ck_score_theme",
         ),
+        # See the note on ComplianceFinding — migration k2l3m4n5o6p7 creates
+        # this composite index and nothing in the models did.
+        Index("ix_compliance_scores_lookup", "tenant_id", "framework_id", "asset_id"),
     )
 
     id = Column(String(100), primary_key=True)

@@ -19,6 +19,36 @@ def get_redis_client():
     return _sync_redis_client
 
 
+#: Progress publishing is a live-update convenience, not a system of record.
+#:
+#: Every figure these channels carry is already committed to PostgreSQL — phase
+#: rows and their summaries by scans/db_helpers.py, per-IP counters by
+#: scans/progress.py — and GET /scan/progress/{scan_id} reads it back from
+#: there. A subscriber that misses a frame therefore loses nothing permanent;
+#: it refreshes and sees the same state.
+#:
+#: So a Redis outage must not end a scan. It previously did: an unguarded
+#: publish raised ConnectionError out of the engine loop and up through the
+#: Celery task, discarding an audit that had already done its network work.
+#: The scan died for want of a status message about itself.
+#:
+#: publish_notification_sync below has always been written this way. These two
+#: now match it.
+def _publish(channel: str, message: str, label: str) -> None:
+    """Publish, or log why it could not. Never raises at the caller."""
+    logger = logging.getLogger("ccure.redis")
+    try:
+        _sync_redis_client.publish(channel, message)
+    except RedisError as exc:
+        logger.warning(
+            "Realtime progress publish failed on %s (%s): %s — the scan "
+            "continues; state remains readable from the database.",
+            channel,
+            label,
+            exc.__class__.__name__,
+        )
+
+
 async def publish_progress(scan_id: str, phase: int, progress: dict):
     """Async progress publishing for async engines (Discovery, Port)."""
     l = logging.getLogger("ccure.redis")
@@ -32,9 +62,7 @@ async def publish_progress(scan_id: str, phase: int, progress: dict):
     )
     import asyncio
 
-    await asyncio.to_thread(
-        _sync_redis_client.publish, f"scan_progress:{scan_id}", message
-    )
+    await asyncio.to_thread(_publish, f"scan_progress:{scan_id}", message, "async")
 
 
 def publish_progress_sync(scan_id: str, phase: int, progress: dict):
@@ -48,7 +76,7 @@ def publish_progress_sync(scan_id: str, phase: int, progress: dict):
         phase,
         progress.get("status"),
     )
-    _sync_redis_client.publish(f"scan_progress:{scan_id}", message)
+    _publish(f"scan_progress:{scan_id}", message, "sync")
 
 
 def publish_notification_sync(user_id: str, event: dict) -> None:

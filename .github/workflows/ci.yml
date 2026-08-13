@@ -6,6 +6,31 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# The branch filter on `push` is deliberate and must stay. Without it, a push
+# to a branch with an open PR fires `push` *and* `pull_request` for the same
+# commit, and every PR runs the whole pipeline twice in parallel forever.
+#
+# Two runs per change is still expected and is not that bug: the pull_request
+# run tests refs/pull/N/merge — this branch merged into master as master is
+# now — while the push run tests the commit that actually landed. They differ
+# whenever master moves while a PR is open, which is exactly when a merge
+# breaks something neither branch broke alone.
+
+# Nothing in this workflow writes to the repository. The default token grants
+# read/write across it to every third-party action in the graph.
+permissions:
+  contents: read
+
+# One live run per ref. Three quick pushes to a PR used to start three full
+# runs, of which only the last could still matter.
+#
+# Master is exempt on purpose. Cancelling there would leave commits with no
+# recorded conclusion, and that status is what branch protection reads and
+# what tells you which commit last built cleanly.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
 
@@ -13,6 +38,10 @@ jobs:
   backend-validation:
     name: Backend Validation
     runs-on: ubuntu-latest
+    # Without a timeout a hung pytest, or a postgres service that never
+    # reports healthy, runs to GitHub's 6-hour ceiling before anyone is told.
+    # The suite takes about 3 minutes; 30 is generous headroom, not a target.
+    timeout-minutes: 30
     env:
       PGHOST: localhost
       PGPORT: 5432
@@ -52,10 +81,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -78,7 +107,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
           PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "SELECT version();"
-          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;" || true
+          # No `|| true`. The block is already idempotent (IF NOT EXISTS), and
+          # ccure_user owns this throwaway instance, so a failure here means
+          # the roles genuinely were not created — which surfaces later as a
+          # confusing permission error inside a test rather than here.
+          PGPASSWORD=ccure_admin_2026 psql -v ON_ERROR_STOP=1 -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;"
 
       - name: Bootstrap Database Schema & Seeding Validation
         run: |
@@ -105,21 +138,39 @@ jobs:
 
           print(json.dumps(app.openapi(), sort_keys=True, indent=2, ensure_ascii=False))
           PY
-          # Check against baseline schema if it exists
-          if [ -f "openapi.json" ]; then
-            echo "Comparing current schema to tracked baseline..."
-            diff -u openapi.json openapi_new.json || (echo "Error: Breaking OpenAPI changes detected!" && exit 1)
-          else
-            echo "No baseline openapi.json found. Saving current schema as baseline for local checks."
-            cp openapi_new.json openapi.json
+          # A missing baseline fails. It must not be bootstrapped here: the
+          # copy would be written into a runner that is thrown away seconds
+          # later, so deleting openapi.json — or forgetting to commit it —
+          # made this gate pass unconditionally while still looking like it
+          # had run.
+          if [ ! -f "openapi.json" ]; then
+            echo "::error file=Backend/openapi.json::Missing API contract baseline."
+            echo "Backend/openapi.json is tracked and must exist. Regenerate with:"
+            echo "  cd Backend && python -c \"import json;from main import app;print(json.dumps(app.openapi(), sort_keys=True, indent=2, ensure_ascii=False))\" > openapi.json"
+            exit 1
           fi
+
+          echo "Comparing current schema to tracked baseline..."
+          if ! diff -u openapi.json openapi_new.json; then
+            echo "::error file=Backend/openapi.json::API schema changed but the tracked contract was not updated."
+            echo "The routes above differ from Backend/openapi.json. If the change is"
+            echo "intended, regenerate the file and commit it:"
+            echo "  cd Backend && python -c \"import json;from main import app;print(json.dumps(app.openapi(), sort_keys=True, indent=2, ensure_ascii=False))\" > openapi.json"
+            exit 1
+          fi
+          echo "OpenAPI schema matches the tracked contract."
 
       - name: Run Test Suite (with mock profile fallbacks)
         env:
           MOCK_SCANNERS: "true"
         run: |
           cd Backend
-          pytest --cov=. --cov-report=xml -v --reruns 1
+          # --reruns keeps a genuinely flaky runner from failing the build.
+          # -rR is what makes that honest: without it a test that fails and
+          # then passes is recorded as plain green, so the instability is
+          # never seen again. With it, every retried test is named in the
+          # summary and the job still passes.
+          pytest --cov=. --cov-report=xml -v --reruns 1 -rR
 
       - name: Verify Documentation Build & Integrity
         run: |
@@ -130,13 +181,14 @@ jobs:
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: 'npm'

@@ -932,51 +932,34 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop in reverse order
-    op.drop_index(
-        "ix_compliance_notification_rules_tenant",
-        table_name="compliance_notification_rules",
-    )
+    # Drop in reverse order.
+    #
+    # No explicit op.drop_index() calls: every index this migration creates
+    # belongs to a table dropped here, and DROP TABLE removes its indexes.
+    # They were not merely redundant but fragile — a fresh install builds
+    # from Base.metadata and stamps head without running upgrade(), so any
+    # index named only in this file does not exist there, and dropping it
+    # unconditionally failed with UndefinedObject.
     op.drop_table("compliance_notification_rules")
 
-    op.drop_index(
-        "ix_compliance_integration_connectors_tenant",
-        table_name="compliance_integration_connectors",
-    )
     op.drop_table("compliance_integration_connectors")
 
     op.drop_table("compliance_evidence_retention_policies")
 
-    op.drop_index("ix_compliance_scores_lookup", table_name="compliance_scores")
     op.drop_table("compliance_scores")
 
-    op.drop_index("ix_compliance_exceptions_tenant", table_name="compliance_exceptions")
     op.drop_table("compliance_exceptions")
 
-    op.drop_index(
-        "ix_compliance_finding_history_finding", table_name="compliance_finding_history"
-    )
     op.drop_table("compliance_finding_history")
 
-    op.drop_index("ix_compliance_findings_rule", table_name="compliance_findings")
-    op.drop_index(
-        "ix_compliance_findings_tenant_status", table_name="compliance_findings"
-    )
-    op.drop_index("ix_compliance_findings_asset", table_name="compliance_findings")
     op.drop_table("compliance_findings")
 
-    op.drop_index("ix_compliance_scan_runs_tenant", table_name="compliance_scan_runs")
     op.drop_table("compliance_scan_runs")
 
-    op.drop_index(
-        "ix_compliance_scan_schedules_tenant", table_name="compliance_scan_schedules"
-    )
     op.drop_table("compliance_scan_schedules")
 
     op.drop_table("compliance_policy_rules")
 
-    op.drop_index("ix_compliance_policies_tenant", table_name="compliance_policies")
-    op.drop_index("ix_compliance_policies_fw", table_name="compliance_policies")
     op.drop_table("compliance_policies")
 
     # Remove FK from compliance_rules before dropping compliance_remediations
@@ -986,23 +969,10 @@ def downgrade() -> None:
     op.drop_table("compliance_rule_controls")
     op.drop_table("compliance_rule_dependencies")
 
-    op.drop_index("ix_compliance_rules_family", table_name="compliance_rules")
     op.drop_table("compliance_rules")
 
-    op.drop_index("ix_compliance_controls_fw_id", table_name="compliance_controls")
     op.drop_table("compliance_controls")
 
-    op.drop_index(
-        "ix_compliance_tenant_frameworks_framework_id",
-        table_name="compliance_tenant_frameworks",
-    )
-    op.drop_index(
-        "ix_compliance_tenant_frameworks_tenant_id",
-        table_name="compliance_tenant_frameworks",
-    )
     op.drop_table("compliance_tenant_frameworks")
 
-    op.drop_index(
-        "ix_compliance_frameworks_tenant_id", table_name="compliance_frameworks"
-    )
     op.drop_table("compliance_frameworks")

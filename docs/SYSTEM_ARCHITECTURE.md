@@ -443,6 +443,19 @@ that, a live update overwrote the client's filtered list.
 The notification stream degrades safely: if the Redis subscribe fails it falls
 back to a heartbeat-only loop at 25-second intervals rather than erroring.
 
+**Publishing degrades safely too, and this is load-bearing.** All three
+publishers in `core/redis_client.py` — `publish_progress`,
+`publish_progress_sync` and `publish_notification_sync` — catch `RedisError`,
+log a warning and return. A Redis outage must not end a scan: every figure
+these channels carry is already committed to PostgreSQL (`scan_phases` and
+their summaries via `scans/db_helpers.py`, per-IP counters via
+`scans/progress.py`), and `GET /scan/progress/{scan_id}` reads it back from
+there, so a subscriber that misses a frame loses nothing permanent. Before the
+progress publishers were guarded, an unreachable broker raised `ConnectionError`
+out of the engine loop and up through the Celery task, discarding an audit that
+had already completed its network work — the scan died for want of a status
+message about itself.
+
 ---
 
 ## 8. Scan orchestration overview

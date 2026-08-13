@@ -622,7 +622,7 @@ The canonical catalog — one row per unique vulnerability id.
 
 **Indexes:** `ix_vuln_def_severity`, `ix_vuln_def_cvss_v3`,
 `ix_vuln_def_published`, `ix_vuln_def_source`, `idx_vuln_def_title_trgm` (GIN
-trigram). **Constraint:** `ck_vuln_cvss_score` — `cvss_v3_score BETWEEN 0.0 AND 10.0`.
+trigram). **Constraints:** `ck_vuln_cvss_score` — `cvss_v3_score BETWEEN 0.0 AND 10.0`; `ck_vuln_def_severity_canonical` — `severity IN ('critical','high','medium','low','none','unscored')`.
 
 ### `asset_vulnerabilities`
 
@@ -676,20 +676,37 @@ table is declared partitionable by hash on `org_id` in
 
 **Constraints and indexes**
 
-| Name                            | Kind   | Definition                             |
-| ------------------------------- | ------ | -------------------------------------- |
-| `uq_asset_vuln_scan_asset_cve`  | UNIQUE | `(org_id, scan_id, asset_id, vuln_id)` |
-| `ix_asset_vuln_asset_id`        | index  | `(asset_id)`                           |
-| `ix_asset_vuln_vuln_id`         | index  | `(vuln_id)`                            |
-| `ix_asset_vuln_severity`        | index  | `(severity)`                           |
-| `ix_asset_vuln_status`          | index  | `(status)`                             |
-| `ix_asset_vuln_source_family`   | index  | `(source_family)`                      |
-| `ix_asset_vuln_evidence_source` | index  | `(evidence_source)`                    |
-| `ix_asset_vuln_first_found`     | index  | `(first_found_at)`                     |
+| Name                               | Kind          | Definition                                                         |
+| ---------------------------------- | ------------- | ------------------------------------------------------------------ |
+| `uq_asset_vuln_scan_asset_cve`     | UNIQUE        | `(org_id, scan_id, asset_id, vuln_id)`                             |
+| `ix_asset_vuln_asset_id`           | index         | `(asset_id)`                                                       |
+| `ix_asset_vuln_vuln_id`            | index         | `(vuln_id)`                                                        |
+| `ix_asset_vuln_severity`           | index         | `(severity)`                                                       |
+| `ix_asset_vuln_status`             | index         | `(status)`                                                         |
+| `ix_asset_vuln_source_family`      | index         | `(source_family)`                                                  |
+| `ix_asset_vuln_evidence_source`    | index         | `(evidence_source)`                                                |
+| `ix_asset_vuln_first_found`        | index         | `(first_found_at)`                                                 |
+| `ck_asset_vuln_severity_canonical` | CHECK         | `severity IN ('critical','high','medium','low','none','unscored')` |
+| `idx_asset_vuln_verified_exploit`  | partial index | `(verified_exploit) WHERE verified_exploit`                        |
+| `idx_asset_vuln_canary`            | partial index | `(canary_confirmed) WHERE canary_confirmed`                        |
+| `ix_asset_vuln_severity_status`    | index         | `(severity, status)` — every dashboard load                        |
+| `ix_asset_vuln_component`          | index         | `(asset_id, component)`                                            |
+| `idx_asset_vuln_component_fix`     | index         | `(component, component_fixed_version)`                             |
 
 `RESTRICT` on `vuln_id` prevents deleting a catalog entry that findings still
 reference. `SET NULL` on `service_id` keeps the finding when the service
 projection is re-pointed.
+
+The two partial indexes are partial because triage sorts on them and both are
+highly selective — a few dozen rows out of a few thousand.
+
+The last five are declared in **both** the model and a migration
+(`c3h4i5j6k7l8`, `z9e0f1g2h3i4`, `a1f2g3h4i5j6`, `b2g3h4i5j6k7`), which is
+required rather than redundant — see §11, "Bootstrap versus upgrade".
+`z9e0f1g2h3i4` also creates a single-column `ix_asset_vuln_in_kev`, which the
+model deliberately does **not** repeat: `in_kev` already carries `index=True`,
+so the models produce an equivalent index under SQLAlchemy's own name
+(`ix_asset_vulnerabilities_in_kev`) and a second one would only cost writes.
 
 > **IMPORTANT:** `in_kev` means **CISA KEV** and nothing else. VulnCheck KEV lives
 > in its own table in `vuln_intel` precisely so that a compliance report reading
@@ -886,14 +903,14 @@ Rules and policies are **versioned and immutable**: a change creates a new
 
 ### Execution and verdicts
 
-| Table                        | PK                 | Key columns                                                                                                                                                                                                                                                                                                                                                           | Constraints                                                                                                                                                                       |
-| ---------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `compliance_scan_schedules`  | `id`               | `tenant_id`, `framework_id`, `policy_id`, `scope` `JSONB`, `frequency`, `cron_expression`, `notify_on`, `notify_channels`, `is_active`, `next_run_at`, `last_run_at`                                                                                                                                                                                                  | `ck_schedule_frequency` ∈ `daily`/`weekly`/`monthly`/`quarterly`/`continuous`; `ck_schedule_notify_on` ∈ `always`/`on_failure_only`/`on_score_drop`                               |
-| `compliance_scan_runs`       | `id`               | `tenant_id`, `framework_id`, `policy_id`, `schedule_id`, `initiated_by`, `scope` `JSONB`, `status`, `started_at`, `finished_at`, `is_finalized`, `cde_scope`, `sdf_scope`, `privacy_role`                                                                                                                                                                             | `ck_run_status` ∈ `queued`/`running`/`completed`/`failed`                                                                                                                         |
-| `compliance_findings`        | `id` `String(250)` | `scan_run_id` SET NULL, `tenant_id`, `asset_id` FK `assets.id` CASCADE, `control_id` FK **RESTRICT**, `rule_id` FK **RESTRICT**, `source`, `status`, `evidence` `JSONB`, `evidence_file_ids` `JSONB`, `attested_by`, `remediation_applied_by`, `remediation_applied_at`, `first_seen`, `last_seen` (indexed), `reviewed_at`, `cde_scope`, `sdf_scope`, `privacy_role` | `ck_finding_source` ∈ `auto_scan`/`manual_attestation`; `ck_finding_status` ∈ `pass`/`fail`/`not_applicable`/`manual_review`/`exception`/`remediation_applied`/`pending_reverify` |
-| `compliance_finding_history` | `id`               | `finding_id` CASCADE indexed, `status`, `changed_at`, `changed_by`, `source`, `note`                                                                                                                                                                                                                                                                                  | `ck_history_source` adds `remediation`, `exception_granted`, `exception_expired`                                                                                                  |
-| `compliance_exceptions`      | `id`               | `tenant_id`, `control_id` CASCADE, `finding_id` SET NULL, `reason`, `compensating_control`, `requested_by` (**not null**), `approved_by`, `status`, `expires_at` (**not null**)                                                                                                                                                                                       | `ck_exception_status` ∈ `pending`/`approved`/`rejected`/`expired`                                                                                                                 |
-| `compliance_scores`          | `id`               | `tenant_id`, `framework_id`, `scan_run_id`, `asset_id`, `theme`, `total_controls`, `applicable_controls`, `pass_count`, `fail_count`, `na_count`, `pending_count`, `score_pct` `Numeric(5,2)`, `weighted_score_pct`                                                                                                                                                   | `ck_score_theme` — same 127-value theme enum                                                                                                                                      |
+| Table                        | PK                 | Key columns                                                                                                                                                                                                                                                                                                                                                           | Constraints                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compliance_scan_schedules`  | `id`               | `tenant_id`, `framework_id`, `policy_id`, `scope` `JSONB`, `frequency`, `cron_expression`, `notify_on`, `notify_channels`, `is_active`, `next_run_at`, `last_run_at`                                                                                                                                                                                                  | `ck_schedule_frequency` ∈ `daily`/`weekly`/`monthly`/`quarterly`/`continuous`; `ck_schedule_notify_on` ∈ `always`/`on_failure_only`/`on_score_drop`                                                                                                                                                                                                                   |
+| `compliance_scan_runs`       | `id`               | `tenant_id`, `framework_id`, `policy_id`, `schedule_id`, `initiated_by`, `scope` `JSONB`, `status`, `started_at`, `finished_at`, `is_finalized`, `cde_scope`, `sdf_scope`, `privacy_role`                                                                                                                                                                             | `ck_run_status` ∈ `queued`/`running`/`completed`/`failed`                                                                                                                                                                                                                                                                                                             |
+| `compliance_findings`        | `id` `String(250)` | `scan_run_id` SET NULL, `tenant_id`, `asset_id` FK `assets.id` CASCADE, `control_id` FK **RESTRICT**, `rule_id` FK **RESTRICT**, `source`, `status`, `evidence` `JSONB`, `evidence_file_ids` `JSONB`, `attested_by`, `remediation_applied_by`, `remediation_applied_at`, `first_seen`, `last_seen` (indexed), `reviewed_at`, `cde_scope`, `sdf_scope`, `privacy_role` | `ck_finding_source` ∈ `auto_scan`/`manual_attestation`; `ck_finding_status` ∈ `pass`/`fail`/`not_applicable`/`manual_review`/`exception`/`remediation_applied`/`pending_reverify`. Composite indexes `ix_compliance_findings_asset` `(asset_id, control_id)`, `ix_compliance_findings_tenant_status` `(tenant_id, status)`, `ix_compliance_findings_rule` `(rule_id)` |
+| `compliance_finding_history` | `id`               | `finding_id` CASCADE indexed, `status`, `changed_at`, `changed_by`, `source`, `note`                                                                                                                                                                                                                                                                                  | `ck_history_source` adds `remediation`, `exception_granted`, `exception_expired`                                                                                                                                                                                                                                                                                      |
+| `compliance_exceptions`      | `id`               | `tenant_id`, `control_id` CASCADE, `finding_id` SET NULL, `reason`, `compensating_control`, `requested_by` (**not null**), `approved_by`, `status`, `expires_at` (**not null**)                                                                                                                                                                                       | `ck_exception_status` ∈ `pending`/`approved`/`rejected`/`expired`                                                                                                                                                                                                                                                                                                     |
+| `compliance_scores`          | `id`               | `tenant_id`, `framework_id`, `scan_run_id`, `asset_id`, `theme`, `total_controls`, `applicable_controls`, `pass_count`, `fail_count`, `na_count`, `pending_count`, `score_pct` `Numeric(5,2)`, `weighted_score_pct`                                                                                                                                                   | `ck_score_theme` — same 127-value theme enum. Composite index `ix_compliance_scores_lookup` `(tenant_id, framework_id, asset_id)`                                                                                                                                                                                                                                     |
 
 `RESTRICT` on `control_id` and `rule_id` prevents deleting a control or rule that
 verdicts still point at. Waivers are time-bounded by construction: `expires_at`
@@ -969,6 +986,58 @@ the `public` schema has any tables:
 
 CI additionally proves reversibility: `alembic downgrade -1` followed by
 `alembic upgrade head`.
+
+> **IMPORTANT — the failure mode this branch creates.** A migration's `upgrade()`
+> never runs on a fresh install; the schema comes from `Base.metadata` and Alembic
+> is merely stamped. The two paths therefore diverge in both directions, and each
+> direction breaks `downgrade()` in its own way:
+>
+> - **Migration declares it, model does not** → the object is absent on a fresh
+>   install, and an unconditional `op.drop_index` / `op.drop_constraint` fails
+>   with `UndefinedObject`.
+> - **Model declares it, migration does not** → the object is present only on a
+>   fresh install, where it can obstruct a downgrade that alters the column it
+>   covers. `idx_web_assets_tech_gin` is GIN over `web_assets.technology`, and
+>   converting that column back to `VARCHAR` in `h9i0j1k2l3m4` failed with
+>   _"data type character varying has no default operator class for access method
+>   gin"_ until the downgrade learned to drop the index first.
+>
+> This is what broke CI's rollback check on `c3h4i5j6k7l8`, and it was not
+> isolated. A full descent from head to base on a `create_all()` database now
+> succeeds; before, it failed at the first of these:
+>
+> | Migration      | Object                                                               | Resolution                                                                                                                          |
+> | -------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+> | `c3h4i5j6k7l8` | `idx_asset_vuln_verified_exploit`, `idx_asset_vuln_canary`           | Added to the model; drops made `IF EXISTS`                                                                                          |
+> | `z9e0f1g2h3i4` | `ix_asset_vuln_severity_status`                                      | Added to the model; drop made `IF EXISTS`                                                                                           |
+> | `z9e0f1g2h3i4` | `ck_asset_vuln_severity_canonical`, `ck_vuln_def_severity_canonical` | Added to the models via `SEVERITY_CANONICAL_SQL`; drops made `IF EXISTS`                                                            |
+> | `z9e0f1g2h3i4` | `ix_asset_vuln_in_kev`                                               | Drop made `IF EXISTS` only — see below                                                                                              |
+> | `a1f2g3h4i5j6` | `ix_asset_vuln_component`                                            | Added to the model; drop made `IF EXISTS`                                                                                           |
+> | `b2g3h4i5j6k7` | `idx_asset_vuln_component_fix`                                       | Added to the model; drop made `IF EXISTS`                                                                                           |
+> | `k2l3m4n5o6p7` | 17 `ix_compliance_*` indexes                                         | 4 composites added to the models; all 17 `drop_index` calls removed as redundant — the tables are dropped in the same `downgrade()` |
+> | `g8h9i0j1k2l3` | 6 web-scan indexes, incl. `ix_web_findings_web_scan_id`              | All 6 `drop_index` calls removed as redundant                                                                                       |
+> | `h9i0j1k2l3m4` | `fk_web_findings_web_asset_id`, `idx_web_assets_tech_gin`            | Drop made `IF EXISTS`; GIN index dropped before the type change                                                                     |
+>
+> One object is deliberately **not** added to the models:
+>
+> - `ix_asset_vuln_in_kev` — `in_kev` already carries `index=True`, so the models
+>   produce an equivalent index under SQLAlchemy's own name. A second index on the
+>   same column would only cost writes. The same reasoning applies to the eleven
+>   single-column `ix_compliance_*` indexes.
+>
+> The two severity CHECK constraints **were** added, after a data audit
+> established it was safe. `scans/asset_syncer.py` is the sole writer of both
+> columns and applies `severity_from_score(...).lower()` at each of its two write
+> sites; `severity_from_score` can return only six values, and lowercased they are
+> exactly the constraint's allowed set. All 261,193 live rows across both tables
+> already conform. Verified on a bootstrapped database: all six canonical values
+> insert, and `Critical`, `Info`, `HIGH`, `bogus` and `''` are each rejected by
+> the named constraint. `asset_vulnerabilities.severity` is nullable and a CHECK
+> passes on NULL, so a finding whose severity was never determined is unaffected.
+>
+> `tests/test_schema_drift.py` does not catch this class of drift — it checks only
+> the model-ahead-of-database direction and deliberately ignores index and
+> constraint noise.
 
 ### Additive `ensure_*` helpers
 

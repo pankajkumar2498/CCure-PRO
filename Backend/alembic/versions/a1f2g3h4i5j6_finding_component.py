@@ -62,6 +62,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_asset_vuln_component", table_name="asset_vulnerabilities")
+    # IF EXISTS: a fresh install builds from Base.metadata and stamps head
+    # without running upgrade(). The index is now declared on
+    # AssetVulnerability so fresh installs get it, but databases bootstrapped
+    # before that change do not have it.
+    op.execute("DROP INDEX IF EXISTS ix_asset_vuln_component")
     op.drop_column("asset_vulnerabilities", "component_version")
     op.drop_column("asset_vulnerabilities", "component")

@@ -42,6 +42,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
@@ -73,6 +74,20 @@ OBSERVED_SERVICE_STATES = (STATE_OPEN, STATE_LISTENING)
 #: A service confirmed reachable across the network. Used where the question is
 #: specifically about exposure.
 NETWORK_EXPOSED_STATES = (STATE_OPEN,)
+
+#: The only severity ratings either severity column may hold, lowercase.
+#:
+#: ``scans.cvss.severity_from_score`` returns these title-cased and every write
+#: path lowers them (``scans/asset_syncer.py`` is the sole writer of both
+#: columns, at the catalog upsert and the finding upsert). "unscored" is
+#: deliberately distinct from "none": the first means no score was published,
+#: the second means a published score of 0.0.
+SEVERITY_VALUES = ("critical", "high", "medium", "low", "none", "unscored")
+
+#: Rendered exactly as migration z9e0f1g2h3i4 renders it, so the model and the
+#: migration produce byte-identical CHECK constraints and autogenerate sees no
+#: difference between a bootstrapped and an upgraded database.
+SEVERITY_CANONICAL_SQL = "severity IN %s" % str(SEVERITY_VALUES)
 
 
 class Service(Base):
@@ -279,6 +294,9 @@ class VulnerabilityDefinition(Base):
             postgresql_using="gin",
             postgresql_ops={"title": "gin_trgm_ops"},
         ),
+        # Severity must be one of the six canonical lowercase ratings. Declared
+        # here as well as in migration z9e0f1g2h3i4 — see SEVERITY_CANONICAL_SQL.
+        CheckConstraint(SEVERITY_CANONICAL_SQL, name="ck_vuln_def_severity_canonical"),
         # Integrity constraint for CVSS scores
         CheckConstraint(
             "cvss_v3_score >= 0.0 AND cvss_v3_score <= 10.0", name="ck_vuln_cvss_score"
@@ -356,6 +374,47 @@ class AssetVulnerability(Base):
         Index("ix_asset_vuln_source_family", "source_family"),
         Index("ix_asset_vuln_evidence_source", "evidence_source"),
         Index("ix_asset_vuln_first_found", "first_found_at"),
+        # Triage sorts on these two, and both are highly selective — a few dozen
+        # rows out of a few thousand — so they are partial indexes covering only
+        # the true case.
+        #
+        # They are declared here as well as in migration c3h4i5j6k7l8 because
+        # this project builds a schema two ways: a fresh install runs
+        # Base.metadata.create_all() and stamps head, while an existing install
+        # runs alembic upgrade head. An index that only the migration knows
+        # about therefore exists on upgraded databases and not on fresh ones —
+        # and c3h4i5j6k7l8.downgrade() then failed on a fresh database because
+        # it dropped an index create_all() had never made.
+        Index(
+            "idx_asset_vuln_verified_exploit",
+            "verified_exploit",
+            postgresql_where=text("verified_exploit"),
+        ),
+        Index(
+            "idx_asset_vuln_canary",
+            "canary_confirmed",
+            postgresql_where=text("canary_confirmed"),
+        ),
+        # Composite indexes the migrations below create, for the same reason as
+        # the two above: a fresh install builds from Base.metadata and never
+        # runs their upgrade(), so an index declared only in a migration exists
+        # on upgraded databases and not on fresh ones.
+        #   ix_asset_vuln_severity_status  — z9e0f1g2h3i4 (every dashboard load)
+        #   ix_asset_vuln_component        — a1f2g3h4i5j6 (per-asset component roll-up)
+        #   idx_asset_vuln_component_fix   — b2g3h4i5j6k7 (the grouped findings view)
+        # z9e0f1g2h3i4 also creates a single-column ix_asset_vuln_in_kev, which
+        # is deliberately not repeated here: `in_kev` already carries
+        # index=True, so the models produce an equivalent index under
+        # SQLAlchemy's own name and a second one would only cost writes.
+        Index("ix_asset_vuln_severity_status", "severity", "status"),
+        Index("ix_asset_vuln_component", "asset_id", "component"),
+        Index("idx_asset_vuln_component_fix", "component", "component_fixed_version"),
+        # Severity must be one of the six canonical lowercase ratings, matching
+        # migration z9e0f1g2h3i4. The column is nullable and a CHECK passes on
+        # NULL, so a finding whose severity was never determined is unaffected.
+        CheckConstraint(
+            SEVERITY_CANONICAL_SQL, name="ck_asset_vuln_severity_canonical"
+        ),
         # {"postgresql_partition_by": "HASH (org_id)"}
     )
 

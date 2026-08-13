@@ -184,7 +184,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_asset_vuln_in_kev", table_name="asset_vulnerabilities")
+    # IF EXISTS throughout. A fresh install never runs this upgrade(): it builds
+    # from Base.metadata and stamps head, so anything created only here is
+    # absent there and an unconditional drop fails with UndefinedObject.
+    #
+    # ix_asset_vuln_severity_status and both severity CHECK constraints are now
+    # declared on the models too (db/models/findings.py, via
+    # SEVERITY_CANONICAL_SQL, which renders the same string this file does), so
+    # fresh installs get them — but databases bootstrapped before that change
+    # still lack them.
+    #
+    # ix_asset_vuln_in_kev stays off the model on purpose: `in_kev` already
+    # carries index=True, which yields an equivalent index under SQLAlchemy's
+    # own name, so fresh installs have that one and never this one.
+    op.execute("DROP INDEX IF EXISTS ix_asset_vuln_in_kev")
     for name in (
         "first_scan_id",
         "evidence",
@@ -203,11 +216,13 @@ def downgrade() -> None:
     ):
         op.drop_column("asset_vulnerabilities", name)
 
-    op.drop_index("ix_asset_vuln_severity_status", table_name="asset_vulnerabilities")
-    op.drop_constraint(
-        "ck_asset_vuln_severity_canonical", "asset_vulnerabilities", type_="check"
+    op.execute("DROP INDEX IF EXISTS ix_asset_vuln_severity_status")
+    op.execute(
+        "ALTER TABLE asset_vulnerabilities "
+        "DROP CONSTRAINT IF EXISTS ck_asset_vuln_severity_canonical"
     )
-    op.drop_constraint(
-        "ck_vuln_def_severity_canonical", "vulnerability_definitions", type_="check"
+    op.execute(
+        "ALTER TABLE vulnerability_definitions "
+        "DROP CONSTRAINT IF EXISTS ck_vuln_def_severity_canonical"
     )
     op.drop_column("vulnerability_definitions", "cvss_version")

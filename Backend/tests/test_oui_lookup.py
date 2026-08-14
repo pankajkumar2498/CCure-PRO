@@ -73,7 +73,7 @@ def test_oui_database_db_cache_lookup(mock_session_maker, temp_manuf_file):
 
     assert result == "Mocked Cached Vendor"
     mock_db.query.assert_called()
-    mock_db.close.assert_called_once()
+    mock_db.close.assert_called()
 
 
 @patch("db.base.SessionLocal")

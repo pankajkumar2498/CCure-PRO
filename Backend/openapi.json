@@ -522,14 +522,13 @@
       },
       "ForgotPasswordRequest": {
         "properties": {
-          "email": {
-            "format": "email",
-            "title": "Email",
+          "email_or_username": {
+            "title": "Email Or Username",
             "type": "string"
           }
         },
         "required": [
-          "email"
+          "email_or_username"
         ],
         "title": "ForgotPasswordRequest",
         "type": "object"
@@ -823,9 +822,8 @@
       },
       "LoginRequest": {
         "properties": {
-          "email": {
-            "format": "email",
-            "title": "Email",
+          "email_or_username": {
+            "title": "Email Or Username",
             "type": "string"
           },
           "password": {
@@ -834,7 +832,7 @@
           }
         },
         "required": [
-          "email",
+          "email_or_username",
           "password"
         ],
         "title": "LoginRequest",
@@ -1632,9 +1630,18 @@
       },
       "RegisterRequest": {
         "properties": {
+          "agree_to_terms": {
+            "default": true,
+            "title": "Agree To Terms",
+            "type": "boolean"
+          },
           "email": {
             "format": "email",
             "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
             "type": "string"
           },
           "password": {
@@ -1649,7 +1656,8 @@
         "required": [
           "username",
           "email",
-          "password"
+          "password",
+          "full_name"
         ],
         "title": "RegisterRequest",
         "type": "object"
@@ -2198,6 +2206,17 @@
           "email": {
             "title": "Email",
             "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "id": {
             "anyOf": [

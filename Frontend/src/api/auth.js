@@ -6,9 +6,15 @@ const normalizeEmail = (email) =>
     .toLowerCase();
 
 export const login = async (credentials) => {
+  const identifier = String(
+    credentials?.email_or_username ||
+      credentials?.email ||
+      credentials?.username ||
+      "",
+  ).trim();
   const response = await axiosInstance.post("/auth/login", {
     ...credentials,
-    email: normalizeEmail(credentials?.email),
+    email_or_username: identifier,
   });
   if (response.data?.access_token) {
     authSession.setTokens(response.data || {});
@@ -98,9 +104,10 @@ export const checkEmail = async (email) => {
   return response.data;
 };
 
-export const forgotPassword = async (email) => {
+export const forgotPassword = async (identifier) => {
+  const cleaned = String(identifier || "").trim();
   const response = await axiosInstance.post("/auth/forgot-password", {
-    email: normalizeEmail(email),
+    email_or_username: cleaned,
   });
   return response.data;
 };

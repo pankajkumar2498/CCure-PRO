@@ -14,21 +14,35 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from core.vuln_intel import can_connect_vuln_db, get_vuln_engine
+from core.vuln_intel import get_vuln_engine
 from scans.cve_engine.nvd_client import NvdClient
+from scans.cvss import severity_from_score
 
 logger = logging.getLogger(__name__)
 
 # Global sync state tracker for Admin API telemetry
 _SYNC_STATE: Dict[str, Any] = {
-    "status": "IDLE",  # IDLE, SYNCING, SUCCESS, FAILED
+    "status": "IDLE",  # IDLE, SYNCING, SUCCESS, PARTIAL, FAILED
     "last_sync_start": None,
     "last_sync_finish": None,
     "total_cves_synced": 0,
     "cves_added": 0,
     "cves_updated": 0,
+    "cves_skipped": 0,
     "last_error": None,
 }
+
+# Prevents two concurrent callers (e.g. admin API + background loop) from
+# starting a second sync while one is already in progress.
+_SYNC_LOCK: Optional[asyncio.Lock] = None
+
+
+def _get_sync_lock() -> asyncio.Lock:
+    """Return the module-level asyncio.Lock, creating it lazily."""
+    global _SYNC_LOCK
+    if _SYNC_LOCK is None:
+        _SYNC_LOCK = asyncio.Lock()
+    return _SYNC_LOCK
 
 
 def get_nvd_sync_status() -> Dict[str, Any]:
@@ -88,15 +102,18 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
     Fetch live CVE records from NVD 2.0 API and upsert into `vuln_intel` database.
     """
     global _SYNC_STATE
-    if _SYNC_STATE["status"] == "SYNCING":
-        return {
-            "status": "SYNCING",
-            "message": "NVD Sync is already running in background.",
-        }
 
-    _SYNC_STATE["status"] = "SYNCING"
-    _SYNC_STATE["last_sync_start"] = datetime.now(timezone.utc).isoformat()
-    _SYNC_STATE["last_error"] = None
+    # Atomically check and set SYNCING so two concurrent callers cannot both
+    # pass the guard and start duplicate syncs.
+    async with _get_sync_lock():
+        if _SYNC_STATE["status"] == "SYNCING":
+            return {
+                "status": "SYNCING",
+                "message": "NVD Sync is already running in background.",
+            }
+        _SYNC_STATE["status"] = "SYNCING"
+        _SYNC_STATE["last_sync_start"] = datetime.now(timezone.utc).isoformat()
+        _SYNC_STATE["last_error"] = None
 
     client = NvdClient()
     from db.base import engine as primary_engine
@@ -114,36 +131,13 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Ensure vulnerability_definitions and nvd_sync_meta tables exist across all engines
+    # Ensure the lightweight metadata table exists (not managed by Alembic).
+    # vulnerability_definitions is intentionally omitted here — it is owned by
+    # Alembic migrations, which add CHECK constraints that a plain CREATE TABLE
+    # would silently omit, causing constraint violations on upsert.
     for eng in working_engines:
         try:
             with eng.connect() as conn:
-                conn.execute(
-                    text(
-                        """
-                        CREATE TABLE IF NOT EXISTS vulnerability_definitions (
-                            id VARCHAR(30) PRIMARY KEY,
-                            cve_id VARCHAR(30),
-                            cwe_ids JSONB DEFAULT '[]'::jsonb,
-                            title VARCHAR(512) NOT NULL,
-                            description TEXT,
-                            cvss_v2_score NUMERIC(3,1),
-                            cvss_v3_score NUMERIC(3,1),
-                            cvss_v4_score NUMERIC(3,1),
-                            cvss_vector VARCHAR(255),
-                            severity VARCHAR(20) DEFAULT 'info',
-                            published_at DATE,
-                            last_modified_at DATE,
-                            "references" JSONB DEFAULT '[]'::jsonb,
-                            affected_software JSONB DEFAULT '[]'::jsonb,
-                            source VARCHAR(50) DEFAULT 'nvd',
-                            is_custom BOOLEAN DEFAULT FALSE,
-                            created_at TIMESTAMPTZ DEFAULT NOW(),
-                            updated_at TIMESTAMPTZ DEFAULT NOW()
-                        );
-                        """
-                    )
-                )
                 conn.execute(
                     text(
                         """
@@ -157,7 +151,9 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
                 )
                 conn.commit()
         except Exception as e:
-            logger.warning("Could not verify tables on engine %s: %s", eng, e)
+            logger.warning(
+                "Could not verify nvd_sync_meta table on engine %s: %s", eng, e
+            )
 
     # Determine sync starting window
     since = datetime.now(timezone.utc) - timedelta(days=days_back)
@@ -175,7 +171,7 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
         logger.warning("Could not read nvd_sync_meta timestamp: %s", e)
 
     added = 0
-    updated = 0
+    skipped = 0
 
     upsert_sql = text(
         """
@@ -208,23 +204,71 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
         """
     )
 
+    def _flush_batch(
+        batch: list,
+        engines: list,
+        sql,
+    ) -> tuple:
+        """
+        Attempt a bulk upsert of ``batch`` on every engine independently.
+
+        Each engine first tries a single bulk execute.  If the database rejects
+        the batch (e.g. a CHECK constraint violation on a single bad row), that
+        engine falls back to a row-by-row retry so good rows in the same batch
+        are not lost.
+
+        ``bad_ids`` is a set so duplicate engine failures for the same CVE ID
+        are counted only once in the returned skipped count.
+
+        Returns ``(flushed, skipped)``.
+        """
+        if not batch:
+            return 0, 0
+
+        bad_ids: set = set()
+
+        for eng in engines:
+            try:
+                with eng.connect() as conn:
+                    conn.execute(sql, batch)
+                    conn.commit()
+                # Bulk path succeeded for this engine — nothing more to do.
+            except Exception as bulk_err:
+                logger.warning(
+                    "Bulk upsert of %d CVEs failed on engine %s (%s). "
+                    "Falling back to row-by-row.",
+                    len(batch),
+                    eng,
+                    bulk_err,
+                )
+                # Row-by-row retry isolates the bad record(s) for THIS engine
+                # independently of any other engine in the list.
+                for row in batch:
+                    try:
+                        with eng.connect() as conn:
+                            conn.execute(sql, [row])
+                            conn.commit()
+                    except Exception as row_err:
+                        bad_ids.add(row.get("id"))
+                        logger.error(
+                            "Skipping CVE %s — row rejected by database: %s",
+                            row.get("id", "<unknown>"),
+                            row_err,
+                        )
+
+        skipped_in_batch = len(bad_ids)
+        flushed = len(batch) - skipped_in_batch
+        return flushed, skipped_in_batch
+
     try:
         batch = []
         async for cve in client.fetch_modified_since(since=since):
             cpes_json = [c.model_dump() for c in cve.cpe_matches]
             refs_json = [r.url for r in cve.references]
 
-            # Map severity
-            score = cve.cvss.base_score
-            sev = "info"
-            if score >= 9.0:
-                sev = "critical"
-            elif score >= 7.0:
-                sev = "high"
-            elif score >= 4.0:
-                sev = "medium"
-            elif score > 0.0:
-                sev = "low"
+            # Map severity to canonical rating ('critical', 'high', 'medium', 'low', 'none', 'unscored')
+            score = cve.cvss.base_score if cve.cvss else None
+            sev = severity_from_score(score).lower()
 
             params = {
                 "id": cve.cve_id,
@@ -246,48 +290,60 @@ async def sync_nvd_to_vuln_intel(days_back: int = 90) -> Dict[str, Any]:
                 "affected_software": json.dumps(cpes_json),
             }
             batch.append(params)
-            added += 1
 
             if len(batch) >= 100:
-                for eng in working_engines:
-                    with eng.connect() as conn:
-                        conn.execute(upsert_sql, batch)
-                        conn.commit()
+                flushed, s = _flush_batch(batch, working_engines, upsert_sql)
+                added += flushed
+                skipped += s
                 batch.clear()
 
+        # Flush remaining records
         if batch:
-            for eng in working_engines:
-                with eng.connect() as conn:
-                    conn.execute(upsert_sql, batch)
-                    conn.commit()
+            flushed, s = _flush_batch(batch, working_engines, upsert_sql)
+            added += flushed
+            skipped += s
             batch.clear()
-
-        # Update last sync timestamp
-        now_str = datetime.now(timezone.utc).isoformat()
-        for eng in working_engines:
-            with eng.connect() as conn:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO nvd_sync_meta (key, value, updated_at)
-                        VALUES ('last_sync_date', :val, NOW())
-                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
-                        """
-                    ),
-                    {"val": now_str},
-                )
-                conn.commit()
-
-        _SYNC_STATE["status"] = "SUCCESS"
-        _SYNC_STATE["last_sync_finish"] = now_str
-        _SYNC_STATE["cves_added"] = added
-        logger.info(
-            "Live NVD Sync finished successfully. %d CVEs synced to vuln_intel.", added
-        )
 
     except Exception as e:
         _SYNC_STATE["status"] = "FAILED"
         _SYNC_STATE["last_error"] = str(e)
         logger.error("Error during live NVD sync: %s", e)
+
+    finally:
+        # Always advance the sync window so the next run does not re-process
+        # the same CVEs, even if some rows were skipped due to bad data.
+        now_str = datetime.now(timezone.utc).isoformat()
+        for eng in working_engines:
+            try:
+                with eng.connect() as conn:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO nvd_sync_meta (key, value, updated_at)
+                            VALUES ('last_sync_date', :val, NOW())
+                            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+                            """
+                        ),
+                        {"val": now_str},
+                    )
+                    conn.commit()
+            except Exception as meta_err:
+                logger.warning("Could not update nvd_sync_meta timestamp: %s", meta_err)
+
+        status = (
+            "PARTIAL"
+            if skipped > 0 and _SYNC_STATE["status"] != "FAILED"
+            else ("SUCCESS" if _SYNC_STATE["status"] != "FAILED" else "FAILED")
+        )
+        _SYNC_STATE["status"] = status
+        _SYNC_STATE["last_sync_finish"] = now_str
+        _SYNC_STATE["cves_added"] = added
+        _SYNC_STATE["cves_skipped"] = skipped
+        logger.info(
+            "Live NVD Sync finished with status=%s. synced=%d skipped=%d",
+            status,
+            added,
+            skipped,
+        )
 
     return _SYNC_STATE

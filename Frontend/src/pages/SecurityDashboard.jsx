@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { canPermission } from "../auth/permissions";
@@ -1683,7 +1683,17 @@ function useDashboard() {
 
 export default function SecurityDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+
+  const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
+    return !!location.state?.isNewRegistration;
+  });
+
+  const handleCloseWelcomeModal = () => {
+    setShowWelcomeModal(false);
+    navigate("/dashboard", { replace: true, state: {} });
+  };
 
   useEffect(() => {
     if (
@@ -2116,12 +2126,66 @@ export default function SecurityDashboard() {
           </div>
         )}
 
-        {/* ═══════════ AUDIT TAB ═══════════ */}
-        {activeTab === "audit" && canAudit && (
-          <div className="db-section" style={{ marginTop: 16 }}>
-            <div className="db-section-title">Audit Logs & Activity</div>
-            <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
-              <AuditTimeline onNavigate={nav} />
+        {/* ═══════════ WELCOME ONBOARDING MODAL ═══════════ */}
+        {showWelcomeModal && (
+          <div className="modal-backdrop" onClick={handleCloseWelcomeModal}>
+            <div
+              className="modal-panel"
+              style={{
+                maxWidth: "560px",
+                padding: "28px",
+                textAlign: "center",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: "2.5rem", marginBottom: "12px" }}>🛡️</div>
+              <h2
+                className="modal-title"
+                style={{ fontSize: "1.35rem", marginBottom: "8px" }}
+              >
+                Welcome to CCure Audit PRO!
+              </h2>
+              <p
+                style={{
+                  color: "#94a3b8",
+                  fontSize: "0.9rem",
+                  lineHeight: 1.6,
+                  marginBottom: "20px",
+                }}
+              >
+                Your account has been successfully created. You're ready to
+                start auditing, running vulnerability scans, and monitoring
+                enterprise compliance posture.
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  justifyContent: "center",
+                }}
+              >
+                <button
+                  type="button"
+                  className="db-btn db-btn--primary"
+                  onClick={() => {
+                    handleCloseWelcomeModal();
+                    nav("/scan");
+                  }}
+                >
+                  Launch First Scan →
+                </button>
+                <button
+                  type="button"
+                  className="db-btn"
+                  style={{
+                    background: "rgba(255, 255, 255, 0.06)",
+                    color: "#cbd5e1",
+                  }}
+                  onClick={handleCloseWelcomeModal}
+                >
+                  Explore Dashboard
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -35,8 +35,12 @@ export default function Login() {
     return localStorage.getItem("ccure_remember_me") === "true";
   });
 
-  const [email, setEmail] = useState(() => {
-    return localStorage.getItem("ccure_remembered_email") || "";
+  const [emailOrUsername, setEmailOrUsername] = useState(() => {
+    return (
+      localStorage.getItem("ccure_remembered_identity") ||
+      localStorage.getItem("ccure_remembered_email") ||
+      ""
+    );
   });
 
   const [password, setPassword] = useState("");
@@ -94,19 +98,23 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const cleanedIdentifier = emailOrUsername.trim();
 
     // Remember Me persistence
     if (rememberMe) {
       localStorage.setItem("ccure_remember_me", "true");
-      localStorage.setItem("ccure_remembered_email", normalizedEmail);
+      localStorage.setItem("ccure_remembered_identity", cleanedIdentifier);
     } else {
       localStorage.removeItem("ccure_remember_me");
+      localStorage.removeItem("ccure_remembered_identity");
       localStorage.removeItem("ccure_remembered_email");
     }
 
     try {
-      const res = await login({ email: normalizedEmail, password });
+      const res = await login({
+        email_or_username: cleanedIdentifier,
+        password,
+      });
       if (res?.status === "mfa_required") {
         setMfaToken(res.mfa_token);
         setShowMfa(true);
@@ -306,14 +314,14 @@ export default function Login() {
 
               <form onSubmit={handleSubmit} className="auth-form">
                 <div className="field">
-                  <label htmlFor="email">Email</label>
+                  <label htmlFor="emailOrUsername">Email or Username</label>
                   <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
+                    id="emailOrUsername"
+                    type="text"
+                    autoComplete="username"
+                    value={emailOrUsername}
+                    onChange={(e) => setEmailOrUsername(e.target.value)}
+                    placeholder="name@company.com or username"
                     required
                   />
                 </div>

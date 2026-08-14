@@ -32,8 +32,9 @@ from auth.jwt_handler import (
 from db.base import gen_org_id, gen_user_id, get_db
 from db.models import Organization, RefreshTokenSession, Role, User
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 from scan_helpers import limiter
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -53,13 +54,37 @@ class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
+    full_name: str
+    agree_to_terms: bool = True
 
     @field_validator("username")
     @classmethod
     def username_length(cls, v: str) -> str:
-        if len(v.strip()) < 3:
+        cleaned = v.strip()
+        if len(cleaned) < 3:
             raise ValueError("Username must be at least 3 characters")
-        return v.strip()
+        if "@" in cleaned:
+            raise ValueError("Username cannot contain '@' symbol")
+        return cleaned
+
+    @field_validator("full_name")
+    @classmethod
+    def sanitize_full_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Full name is required")
+        cleaned = v.strip()
+        if len(cleaned) > 255:
+            raise ValueError("Full name cannot exceed 255 characters")
+        return cleaned
+
+    @field_validator("agree_to_terms")
+    @classmethod
+    def validate_terms(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError(
+                "You must agree to the Terms of Service and Privacy Policy"
+            )
+        return v
 
     @field_validator("password")
     @classmethod
@@ -68,12 +93,16 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email_or_username: str = Field(
+        validation_alias=AliasChoices("email_or_username", "email")
+    )
     password: str
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    email_or_username: str = Field(
+        validation_alias=AliasChoices("email_or_username", "email")
+    )
 
 
 class ResetPasswordRequest(BaseModel):
@@ -117,6 +146,7 @@ class UserOut(BaseModel):
     org_id: str | UUID | int | None = None
     username: str
     email: str
+    full_name: str | None = None
     created_at: str
     mfa_enabled: bool = False
     role: RoleOut | None = None
@@ -206,9 +236,19 @@ def _resolve_refresh_token(request: Request, token_from_body: str | None) -> str
 @limiter.limit("20/minute")
 def check_username(request: Request, q: str, db: Session = Depends(get_db)):
     """Check if a username is available"""
-    if len(q.strip()) < 3:
+    query_str = q.strip()
+    if len(query_str) < 3 or "@" in query_str:
         return {"available": False}
-    exists = db.query(User).filter(username_matches(User.username, q)).first()
+    exists = (
+        db.query(User)
+        .filter(
+            or_(
+                username_matches(User.username, query_str),
+                email_matches(User.email, query_str),
+            )
+        )
+        .first()
+    )
     return {"available": not bool(exists)}
 
 
@@ -216,9 +256,19 @@ def check_username(request: Request, q: str, db: Session = Depends(get_db)):
 @limiter.limit("20/minute")
 def check_email(request: Request, q: str, db: Session = Depends(get_db)):
     """Check if an email is available"""
-    if not q.strip() or "@" not in q:
+    query_str = q.strip()
+    if not query_str or "@" not in query_str:
         return {"available": False}
-    exists = db.query(User).filter(email_matches(User.email, q)).first()
+    exists = (
+        db.query(User)
+        .filter(
+            or_(
+                email_matches(User.email, query_str),
+                username_matches(User.username, query_str),
+            )
+        )
+        .first()
+    )
     return {"available": not bool(exists)}
 
 
@@ -235,11 +285,29 @@ def register(
     Returns access + refresh tokens immediately so the user is logged in.
     """
     email = normalize_email(req.email)
+    username = req.username.strip()
 
-    if db.query(User).filter(email_matches(User.email, email)).first():
+    if (
+        db.query(User)
+        .filter(
+            or_(
+                email_matches(User.email, email), username_matches(User.username, email)
+            )
+        )
+        .first()
+    ):
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    if db.query(User).filter(username_matches(User.username, req.username)).first():
+    if (
+        db.query(User)
+        .filter(
+            or_(
+                username_matches(User.username, username),
+                email_matches(User.email, username),
+            )
+        )
+        .first()
+    ):
         raise HTTPException(status_code=409, detail="Username already taken")
 
     # For production auto-registration, place new users in the Self-Service Organization with the 'analyst' role.
@@ -269,11 +337,10 @@ def register(
         raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
 
     user = User(
-        id=gen_user_id(
-            self_service_org.slug, req.username.strip()
-        ),  # → usr_sel_pankaj_x9v1
-        username=req.username.strip(),
+        id=gen_user_id(self_service_org.slug, username),  # → usr_sel_pankaj_x9v1
+        username=username,
         email=email,
+        full_name=req.full_name,
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
         role_id=default_role.id,
@@ -303,7 +370,7 @@ def register(
         str(user.id),
         request=request,
         status="success",
-        changes={"source": "self_registration"},
+        changes={"source": "self_registration", "full_name": user.full_name},
     )
     db.commit()
 
@@ -322,6 +389,7 @@ def register(
             "org_id": str(user.org_id),
             "username": user.username,
             "email": user.email,
+            "full_name": user.full_name,
             "created_at": user.created_at.isoformat(),
             "mfa_enabled": user.mfa_enabled,
             "role": (
@@ -364,8 +432,17 @@ def login(
     from core.audit import log_audit_event
     from db.base import utcnow
 
-    email = normalize_email(req.email)
-    user = db.query(User).filter(email_matches(User.email, email)).first()
+    identifier = req.email_or_username.strip()
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                email_matches(User.email, identifier),
+                username_matches(User.username, identifier),
+            )
+        )
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -530,6 +607,7 @@ def login(
             "org_id": str(user.org_id),
             "username": user.username,
             "email": user.email,
+            "full_name": user.full_name,
             "created_at": user.created_at.isoformat(),
             "mfa_enabled": user.mfa_enabled,
             "role": (
@@ -615,6 +693,7 @@ def me(current_user: User = Depends(get_current_user)):
         "org_id": str(current_user.org_id),
         "username": current_user.username,
         "email": current_user.email,
+        "full_name": current_user.full_name,
         "created_at": current_user.created_at.isoformat(),
         "mfa_enabled": current_user.mfa_enabled,
         "role": (
@@ -694,13 +773,22 @@ def forgot_password(
     from core.tasks import send_password_reset_email_task
     from db.models import PasswordResetToken
 
-    email = normalize_email(req.email)
-    logger.info("Forgot password requested for: %s", email)
+    identifier = req.email_or_username.strip()
+    logger.info("Forgot password requested for: %s", identifier)
 
-    user = db.query(User).filter(email_matches(User.email, email)).first()
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                email_matches(User.email, identifier),
+                username_matches(User.username, identifier),
+            )
+        )
+        .first()
+    )
 
     if not user:
-        logger.info("Email '%s' is not registered in the database.", email)
+        logger.info("Identifier '%s' is not registered in the database.", identifier)
     else:
         logger.info("Found registered user: %s (ID: %s)", user.username, user.id)
 

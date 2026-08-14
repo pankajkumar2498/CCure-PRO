@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 def create_admin():
     email = normalize_email("admin@ccurepro.com")
-    username = "admin"
+    username = "superadmin"
     password = "AdminCdac@123"
 
     db: Session = SessionLocal()
@@ -58,7 +58,7 @@ def create_admin():
         )
         db.add(new_user)
         db.commit()
-        print(f"Successfully created admin user: {email}")
+        print(f"Successfully created super admin user: {email}")
 
     except Exception as e:
         db.rollback()

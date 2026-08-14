@@ -10,7 +10,7 @@ import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState("");
+  const [emailOrUsername, setEmailOrUsername] = useState("");
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,10 +22,10 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const res = await forgotPassword(email);
+      const res = await forgotPassword(emailOrUsername.trim());
       setSuccess(
         res.detail ||
-          "If this email is registered, you will receive a reset link shortly.",
+          "If this account is registered, you will receive a reset link shortly.",
       );
     } catch (err) {
       let errMsg = "An error occurred. Please try again.";
@@ -62,7 +62,7 @@ export default function ForgotPassword() {
 
           <h1 className="auth-title">Reset password</h1>
           <p className="auth-sub">
-            Enter your email to receive an encrypted reset link
+            Enter your email or username to receive an encrypted reset link
           </p>
 
           {error && (
@@ -78,14 +78,14 @@ export default function ForgotPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="auth-form">
               <div className="field">
-                <label htmlFor="email">Email</label>
+                <label htmlFor="emailOrUsername">Email or Username</label>
                 <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  id="emailOrUsername"
+                  type="text"
+                  autoComplete="username"
+                  value={emailOrUsername}
+                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  placeholder="name@company.com or username"
                   required
                 />
               </div>

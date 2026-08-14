@@ -3,9 +3,10 @@ NVD 2.0 API client with incremental sync for NIST NVD REST API.
 """
 
 import asyncio
+import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, Dict, List, Optional
 
 import httpx
 
@@ -17,8 +18,17 @@ from .models import (
     ReferenceTag,
 )
 
+logger = logging.getLogger(__name__)
+
 NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 RESULTS_PER_PAGE = 2000
+
+# Transient HTTP status codes that warrant a retry.
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+# Maximum number of retry attempts per page request.
+_MAX_RETRIES = 3
+# Back-off delays (seconds) between successive retry attempts.
+_RETRY_BACKOFF = [5.0, 15.0, 30.0]
 
 
 class NvdClient:
@@ -40,6 +50,10 @@ class NvdClient:
     ) -> AsyncIterator[CveRecord]:
         """
         Pull every CVE modified in [since, until]. NVD caps each window to 120 days.
+
+        Each page request is retried up to _MAX_RETRIES times on transient
+        failures (429, 5xx, timeouts).  Permanent errors (4xx other than 429)
+        stop the iteration and are logged.
         """
         until = until or datetime.now(timezone.utc)
         start_index = 0
@@ -47,19 +61,15 @@ class NvdClient:
         async with httpx.AsyncClient(timeout=30.0) as client:
             while True:
                 await self._throttle()
-                params = {
+                params: Dict[str, object] = {
                     "lastModStartDate": since.isoformat(),
                     "lastModEndDate": until.isoformat(),
                     "resultsPerPage": RESULTS_PER_PAGE,
                     "startIndex": start_index,
                 }
-                try:
-                    resp = await client.get(
-                        NVD_BASE_URL, params=params, headers=self._headers
-                    )
-                    resp.raise_for_status()
-                    payload = resp.json()
-                except Exception as e:
+                payload = await self._fetch_with_retry(client, params)
+                if payload is None:
+                    # Permanent failure or retries exhausted — abort this window.
                     break
 
                 for item in payload.get("vulnerabilities", []):
@@ -71,6 +81,83 @@ class NvdClient:
                 start_index += RESULTS_PER_PAGE
                 if start_index >= total:
                     break
+
+    async def _fetch_with_retry(
+        self, client: httpx.AsyncClient, params: Dict[str, object]
+    ) -> Optional[dict]:
+        """
+        GET the NVD endpoint with automatic retry for transient HTTP errors.
+
+        Retries (up to _MAX_RETRIES) on:
+          - 429 Too Many Requests  (honours ``Retry-After`` header when present)
+          - 5xx server errors
+          - network / timeout exceptions
+
+        Returns the parsed JSON payload on success, or ``None`` on permanent
+        failure so the caller can stop pagination gracefully.
+        """
+        for attempt in range(_MAX_RETRIES):
+            try:
+                resp = await client.get(
+                    NVD_BASE_URL, params=params, headers=self._headers
+                )
+
+                if resp.status_code in _RETRY_STATUSES:
+                    wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+                    if resp.status_code == 429:
+                        # Honour the server's own back-off instruction if present.
+                        retry_after = resp.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                wait = float(retry_after)
+                            except ValueError:
+                                pass
+                    logger.warning(
+                        "NVD API returned HTTP %d — retrying in %.1fs "
+                        "(attempt %d/%d, startIndex=%s).",
+                        resp.status_code,
+                        wait,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        params.get("startIndex"),
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                return resp.json()
+
+            except httpx.TimeoutException as exc:
+                wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+                logger.warning(
+                    "NVD API request timed out — retrying in %.1fs "
+                    "(attempt %d/%d): %s",
+                    wait,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    exc,
+                )
+                await asyncio.sleep(wait)
+
+            except httpx.HTTPStatusError as exc:
+                # Non-retryable 4xx (e.g. 403 bad API key, 400 bad params).
+                logger.error(
+                    "NVD API permanent HTTP error %d: %s",
+                    exc.response.status_code,
+                    exc,
+                )
+                return None
+
+            except Exception as exc:
+                logger.error("NVD API unexpected error: %s", exc)
+                return None
+
+        logger.error(
+            "NVD API failed after %d retries (startIndex=%s).",
+            _MAX_RETRIES,
+            params.get("startIndex"),
+        )
+        return None
 
     def _parse_cve_item(self, cve_json: dict) -> Optional[CveRecord]:
         cve_id = cve_json.get("id")

@@ -47,8 +47,12 @@ def test_login_invalid_credentials(client: TestClient, test_user: User):
     assert "Invalid email or password" in response.json()["detail"]
 
 
-def test_register_user(client: TestClient):
-    """Test user registration endpoint."""
+def test_register_is_disabled_by_default(client: TestClient):
+    """
+    Self-service registration ships off. The route must not merely refuse —
+    it must not acknowledge that it exists, so a scan of a deployment cannot
+    tell "disabled here" from "not a feature".
+    """
     response = client.post(
         "/auth/register",
         json={
@@ -58,14 +62,69 @@ def test_register_user(client: TestClient):
             "password": "StrongP@ssw0rd!",
         },
     )
-    assert response.status_code == 201
-    data = response.json()
-    assert data["user"]["email"] == "newuser@test.com"
-    assert data["user"]["username"] == "newuser"
-    assert data["user"]["full_name"] == "New User"
+    assert response.status_code == 404
 
 
-def test_register_normalizes_email_to_lowercase(client: TestClient):
+def test_register_creates_pending_account_without_tokens(
+    client: TestClient, db_session: Session, self_registration_enabled
+):
+    """
+    Registration must not hand back a session.
+
+    This is the regression guard for the original defect: the endpoint used to
+    return access + refresh tokens for an `analyst` account, which carries
+    scans:execute.
+    """
+    response = client.post(
+        "/auth/register",
+        json={
+            "full_name": "New User",
+            "username": "newuser",
+            "email": "newuser@test.com",
+            "password": "StrongP@ssw0rd!",
+        },
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert "access_token" not in body
+    assert "refresh_token" not in body
+    assert body["status"] == "pending_verification"
+    assert "ccure_refresh_token" not in response.cookies
+
+    user = db_session.query(User).filter(User.email == "newuser@test.com").first()
+    assert user is not None
+    assert user.is_verified is False
+    assert user.is_active is False
+    assert user.approved_at is None
+    # Read-only role, not analyst: approval must not be a rubber stamp on
+    # scan execution that was granted at signup.
+    assert user.role.name == "viewer"
+
+
+def test_register_pending_account_cannot_log_in(
+    client: TestClient, self_registration_enabled
+):
+    """A registered-but-unverified account is refused even with the right password."""
+    client.post(
+        "/auth/register",
+        json={
+            "full_name": "Pending User",
+            "username": "pendinguser",
+            "email": "pending@test.com",
+            "password": "StrongP@ssw0rd!",
+        },
+    )
+    res = client.post(
+        "/auth/login",
+        json={"email": "pending@test.com", "password": "StrongP@ssw0rd!"},
+    )
+    assert res.status_code == 403
+    assert "Verify your email" in res.json()["detail"]
+
+
+def test_register_normalizes_email_to_lowercase(
+    client: TestClient, db_session: Session, self_registration_enabled
+):
     """Registration stores normalized lowercase emails."""
     response = client.post(
         "/auth/register",
@@ -77,11 +136,16 @@ def test_register_normalizes_email_to_lowercase(client: TestClient):
         },
     )
 
-    assert response.status_code == 201
-    assert response.json()["user"]["email"] == "mixedcase@example.com"
+    assert response.status_code == 202
+    # The response no longer echoes the account, so assert against the row.
+    user = db_session.query(User).filter(User.username == "mixedcaseuser").first()
+    assert user is not None
+    assert user.email == "mixedcase@example.com"
 
 
-def test_register_weak_passwords_return_422(client: TestClient):
+def test_register_weak_passwords_return_422(
+    client: TestClient, self_registration_enabled
+):
     """Registration fails with HTTP 422 when password complexity is not met."""
     weak_passwords = [
         "short1!",  # Too short (< 12 chars)
@@ -103,10 +167,18 @@ def test_register_weak_passwords_return_422(client: TestClient):
         assert res.status_code == 422, f"Expected 422 for password: {pw}"
 
 
-def test_register_username_case_insensitive_collision(client: TestClient):
-    """Registration prevents registering duplicate usernames with different casing (e.g., abhilash vs Abhilash)."""
-    # First registration
-    res1 = client.post(
+def test_register_does_not_disclose_collisions(
+    client: TestClient, db_session: Session, self_registration_enabled
+):
+    """
+    A taken username or email must be indistinguishable from a fresh signup.
+
+    Previously these returned 409 with "Username already taken" / "Email
+    already registered", which let anyone confirm whether a given address or
+    username held an account. The collision is still enforced — no second row
+    is created — it is just not reported to the caller.
+    """
+    first = client.post(
         "/auth/register",
         json={
             "full_name": "Abhilash User",
@@ -115,15 +187,10 @@ def test_register_username_case_insensitive_collision(client: TestClient):
             "password": "StrongP@ssw0rd!",
         },
     )
-    assert res1.status_code == 201
+    assert first.status_code == 202
 
-    # Check username endpoint should indicate Abhilash is not available
-    res_check = client.get("/auth/check-username?q=Abhilash")
-    assert res_check.status_code == 200
-    assert res_check.json()["available"] is False
-
-    # Attempt second registration with different casing (Abhilash)
-    res2 = client.post(
+    # Same username, different case, different email.
+    second = client.post(
         "/auth/register",
         json={
             "full_name": "Abhilash User",
@@ -132,8 +199,29 @@ def test_register_username_case_insensitive_collision(client: TestClient):
             "password": "StrongP@ssw0rd!",
         },
     )
-    assert res2.status_code == 409
-    assert "Username already taken" in res2.json()["detail"]
+    assert second.status_code == 202
+    assert second.json() == first.json()
+
+    # ...and no account was actually created for the second attempt.
+    assert (
+        db_session.query(User).filter(User.email == "abhilash2@test.com").first()
+        is None
+    )
+
+
+def test_check_email_is_not_an_existence_oracle(
+    client: TestClient, test_user: User, self_registration_enabled
+):
+    """A registered address must not be reported as unavailable."""
+    res = client.get("/auth/check-email?q=admin@test.com")
+    assert res.status_code == 200
+    assert res.json()["available"] is True
+
+
+def test_check_username_is_gated_when_registration_disabled(client: TestClient):
+    """With self-registration off, the availability oracles are unreachable."""
+    assert client.get("/auth/check-username?q=someone").status_code == 404
+    assert client.get("/auth/check-email?q=someone@test.com").status_code == 404
 
 
 def test_get_current_user(client: TestClient, auth_headers: dict):
@@ -147,7 +235,10 @@ def test_rbac_denies_unauthorized_role(
     client: TestClient, db_session: Session, test_org, test_role_viewer
 ):
     """Test that a viewer role cannot access an admin-only scan endpoint."""
-    # Create a viewer user
+    # Create a viewer user. Verified and approved: this test is about RBAC
+    # refusing the scan endpoint, not about the account gates refusing login.
+    from db.base import utcnow
+
     viewer = User(
         username="viewer",
         email="viewer@test.com",
@@ -155,6 +246,8 @@ def test_rbac_denies_unauthorized_role(
         org_id=test_org.id,
         role_id=test_role_viewer.id,
         is_active=True,
+        is_verified=True,
+        approved_at=utcnow(),
     )
     db_session.add(viewer)
     db_session.commit()
@@ -177,8 +270,10 @@ def test_rbac_denies_unauthorized_role(
     assert "Insufficient privileges" in scan_res.json()["detail"]
 
 
-def test_register_with_full_name(client: TestClient):
-    """Test registration saves and returns full_name."""
+def test_register_with_full_name(
+    client: TestClient, db_session: Session, self_registration_enabled
+):
+    """Test registration saves full_name."""
     res = client.post(
         "/auth/register",
         json={
@@ -189,12 +284,13 @@ def test_register_with_full_name(client: TestClient):
             "agree_to_terms": True,
         },
     )
-    assert res.status_code == 201
-    data = res.json()
-    assert data["user"]["full_name"] == "John Doe"
+    assert res.status_code == 202
+    user = db_session.query(User).filter(User.username == "fullnameuser").first()
+    assert user is not None
+    assert user.full_name == "John Doe"
 
 
-def test_register_must_agree_to_terms(client: TestClient):
+def test_register_must_agree_to_terms(client: TestClient, self_registration_enabled):
     """Test registration fails when agree_to_terms is False."""
     res = client.post(
         "/auth/register",
@@ -220,18 +316,26 @@ def test_login_with_username(client: TestClient, test_user: User):
     assert data["user"]["username"] == test_user.username
 
 
-def test_identity_collision_prevention(client: TestClient, test_user: User):
-    """Test that a username matching an existing email cannot be registered."""
+def test_identity_collision_prevention(
+    client: TestClient, db_session: Session, test_user: User, self_registration_enabled
+):
+    """A username containing '@' is rejected before it can shadow an email."""
     res = client.post(
         "/auth/register",
         json={
             "username": "admin@test.com",
             "email": "anotheradmin@test.com",
             "password": "StrongP@ssw0rd!",
+            "full_name": "Collision Attempt",
         },
     )
-    # Should fail due to @ in username or matching existing email
-    assert res.status_code in (409, 422)
+    # 422 from the username validator — '@' is not allowed in a username, so
+    # this never reaches the uniqueness check. It must not create a row.
+    assert res.status_code == 422
+    assert (
+        db_session.query(User).filter(User.email == "anotheradmin@test.com").first()
+        is None
+    )
 
 
 def test_forgot_password_with_username(client: TestClient, test_user: User):

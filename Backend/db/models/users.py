@@ -94,6 +94,15 @@ class User(Base):
     locked_until = Column(TIMESTAMPTZ, nullable=True)
     deleted_at = Column(TIMESTAMPTZ, nullable=True)
 
+    # A self-registered account proves control of a mailbox and nothing else.
+    # In a product whose "analyst" role executes network scans, that is not a
+    # sufficient basis to issue a session, so a second gate is required: a
+    # human with admin rights stamps approved_at before the account can log in.
+    # Admin-provisioned users are approved at creation, so this is transparent
+    # for every path except self-registration.
+    approved_at = Column(TIMESTAMPTZ, nullable=True)
+    approved_by = Column(String(150), nullable=True)
+
     # ── Profile ───────────────────────────────────────────────────────────────
     avatar_url = Column(String(512), nullable=True)
     preferences = Column(JSONB, nullable=False, default=dict)
@@ -265,6 +274,43 @@ class PasswordResetToken(Base):
         return f"<PasswordResetToken id={self.id} user_id={self.user_id!r}>"
 
 
+class EmailVerificationToken(Base):
+    """
+    Stores SHA-256 hashes of active email-verification tokens.
+
+    Deliberately a separate table from PasswordResetToken rather than a
+    ``purpose`` column on it: the reset flow is the more security-sensitive of
+    the two and already works, and a shared table would let a bug in one flow
+    mint a token the other accepts. Two tables cannot be confused for each
+    other.
+
+    The plaintext token is emailed and never stored, so a database read does
+    not yield a usable verification link. Tokens are single-use, enforced by
+    deleting the row inside the same transaction that flips is_verified.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(
+        String(150),
+        ForeignKey("users.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    # The address the token was issued for. A pending email-change must not be
+    # confirmable onto a different address than the one that received the link.
+    email = Column(String(320), nullable=False)
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    expires_at = Column(TIMESTAMPTZ, nullable=False)
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<EmailVerificationToken id={self.id} user_id={self.user_id!r}>"
+
+
 def ensure_user_schema():
     """
     Additive migration for the users table so existing databases gain the
@@ -369,3 +415,22 @@ def ensure_user_schema():
                 conn.execute(
                     text("ALTER TABLE users ADD COLUMN email_otp_expires_at DATETIME")
                 )
+
+        # Approval gate for self-registration. Existing accounts predate the
+        # gate and were provisioned by an admin, so they are backfilled as
+        # approved — adding this column must not lock out the current userbase.
+        if "approved_at" not in columns:
+            if dialect == "postgresql":
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN approved_at TIMESTAMPTZ")
+                )
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN approved_at DATETIME"))
+            conn.execute(
+                text(
+                    "UPDATE users SET approved_at = created_at WHERE approved_at IS NULL"
+                )
+            )
+
+        if "approved_by" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN approved_by VARCHAR(150)"))

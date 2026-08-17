@@ -46,9 +46,64 @@ from sqlalchemy.dialects.postgresql import insert
 log = logging.getLogger("ccure.tasks")
 
 
-def _new_orchestrator() -> ScanOrchestrator:
-    """Create one orchestrator per task so parallel scans do not share mutable state."""
-    return ScanOrchestrator(silent=False)
+def _new_orchestrator(
+    db=None, scan_id: str | None = None, user_id: str | None = None
+) -> ScanOrchestrator:
+    """
+    Create one orchestrator per task so parallel scans do not share mutable state.
+
+    When `db` plus either `scan_id` or `user_id` are supplied, the orchestrator
+    is bound to the owning organisation's authorised scan scope, so target
+    expansion drops anything outside it. Callers that omit them get an unscoped
+    orchestrator — acceptable only for paths that never expand targets, such as
+    report generation.
+    """
+    orch = ScanOrchestrator(silent=False)
+    if db is not None and (scan_id or user_id):
+        try:
+            _bind_scan_scope(db, orch, scan_id=scan_id, user_id=user_id)
+        except Exception:
+            # A scope that cannot be loaded must not silently become
+            # "unrestricted". Deny-all is the safe failure here: the scan ends
+            # with "no valid targets" rather than scanning whatever it likes.
+            log.exception(
+                "Could not load scan scope for scan=%s user=%s; denying all targets",
+                scan_id,
+                user_id,
+            )
+            orch.scan_scope = []
+    return orch
+
+
+def _bind_scan_scope(
+    db,
+    orch: ScanOrchestrator,
+    scan_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    """
+    Bind an orchestrator to an organisation's authorised scan scope.
+
+    The scan row is the preferred source because it records the org the scan
+    was admitted for. Falling back to the user's current org covers the
+    traditional-scan path, which carries no scan id.
+    """
+    from db.models import Organization, User
+
+    org_id = None
+    if scan_id:
+        scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
+        org_id = getattr(scan_row, "org_id", None) if scan_row is not None else None
+    if not org_id and user_id:
+        user_row = db.query(User).filter(User.id == user_id).first()
+        org_id = getattr(user_row, "org_id", None) if user_row is not None else None
+
+    org = (
+        db.query(Organization).filter(Organization.id == org_id).first()
+        if org_id
+        else None
+    )
+    orch.apply_scan_scope(org)
 
 
 def _run_async(coro):
@@ -951,7 +1006,7 @@ def run_host_discovery_task(
 
         # 1. Run Discovery
         log.info("[TRACE][ENGINE][%s] Calling run_host_discovery_only", ts())
-        orch = _new_orchestrator()
+        orch = _new_orchestrator(db, scan_id=scan_id)
         result = _run_async(
             orch.run_host_discovery_only(
                 targets=targets,
@@ -1193,7 +1248,7 @@ def run_asset_discovery_task(
         if not resolved_exclude_ports and scan_row and scan_row.options:
             resolved_exclude_ports = scan_row.options.get("exclude_ports")
 
-        orch = _new_orchestrator()
+        orch = _new_orchestrator(db, scan_id=scan_id)
         result = _run_async(
             orch.run_asset_discovery_only(
                 hosts=hosts,
@@ -1895,7 +1950,7 @@ def run_vulnerability_audit_task(
             if scan_row and scan_row.options:
                 resolved_exclude_ips = scan_row.options.get("exclude_ips")
 
-        orch = _new_orchestrator()
+        orch = _new_orchestrator(db, scan_id=scan_id)
         result = orch.run_vulnerability_audit_only(
             hosts=hosts,
             scan_id=scan_id,
@@ -2252,7 +2307,7 @@ def run_traditional_scan_task(
     """Traditional Scan Task."""
     db = SessionLocal()
     try:
-        orch = _new_orchestrator()
+        orch = _new_orchestrator(db, user_id=user_id)
         resolved_passive_first = False if passive_first is None else passive_first
         resolved_exclude_ot = (
             True if exclude_ot_from_nmap is None else exclude_ot_from_nmap
@@ -3247,27 +3302,183 @@ def run_credentialed_scan_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.send_password_reset_email", queue="default")
+# ── Outgoing mail ─────────────────────────────────────────────────────────────
+#
+# Every one of these tasks used to wrap its send in `try/except: log.error(...)`.
+# That looked defensive and was the opposite: swallowing the exception told
+# Celery the task had *succeeded*, so a momentary SMTP failure — a dropped
+# connection, a Gmail rate limit, a DNS blip — destroyed the message
+# permanently. A user whose verification email hit a five-second outage simply
+# never received it, and nothing retried.
+#
+# `autoretry_for=(Exception,)` with exponential backoff replaces that. The
+# exception now propagates, Celery retries, and only after the retries are
+# exhausted is the message given up on — at which point `on_failure` records it
+# loudly, because at that point a promise made to a user has definitively been
+# broken.
+#
+# Callers should not use `.delay()` on these directly. Go through
+# `core.mail_dispatch.dispatch_email`, which also handles the case where no
+# worker is consuming the queue at all.
+
+_MAIL_RETRY = dict(
+    autoretry_for=(Exception,),
+    retry_backoff=2,  # 2s, 4s, 8s, 16s …
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=5,
+    queue="default",
+)
+
+
+class _MailTask(celery_app.Task):
+    """Shared failure reporting for the mail tasks."""
+
+    abstract = True
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        # args[0] is the recipient for every sender below. Logged so a
+        # permanently undelivered message is findable, without dumping the body.
+        recipient = args[0] if args else "<unknown>"
+        log.error(
+            "MAIL PERMANENTLY UNDELIVERED after %s retries: task=%s to=%s error=%s",
+            self.max_retries,
+            self.name,
+            recipient,
+            exc,
+        )
+
+
+@celery_app.task(
+    name="ccure.tasks.send_password_reset_email",
+    base=_MailTask,
+    bind=True,
+    **_MAIL_RETRY,
+)
 def send_password_reset_email_task(
-    email_to: str, username: str, reset_link: str
+    self, email_to: str, username: str, reset_link: str
 ) -> None:
-    """Async background task to dispatch password reset emails."""
+    """Dispatch a password-reset link. Retried; see _MAIL_RETRY."""
     from auth.mail_service import send_password_reset_email as _send
 
     _send(email_to, username, reset_link)
 
 
-@celery_app.task(name="ccure.tasks.send_mfa_otp", queue="default")
-def send_mfa_otp_task(email_to: str, username: str, code: str) -> None:
-    """Async background task to dispatch MFA OTP emails."""
-    try:
-        from auth.mail_service import send_mfa_otp_email as _send
+@celery_app.task(
+    name="ccure.tasks.send_mfa_otp",
+    base=_MailTask,
+    bind=True,
+    **{**_MAIL_RETRY, "max_retries": 2, "retry_backoff_max": 20},
+)
+def send_mfa_otp_task(self, email_to: str, username: str, code: str) -> None:
+    """
+    Dispatch a 6-digit MFA code.
 
-        _send(email_to, username, code)
-    except Exception as exc:
-        log.error(
-            f"Failed to dispatch MFA OTP email to {email_to}: {exc}", exc_info=True
+    Fewer, faster retries than the other senders: the code expires in five
+    minutes, so a delivery arriving after a long backoff is useless to the
+    person waiting for it and better replaced by them requesting a new one.
+    """
+    from auth.mail_service import send_mfa_otp_email as _send
+
+    _send(email_to, username, code)
+
+
+@celery_app.task(
+    name="ccure.tasks.send_verification_email", base=_MailTask, bind=True, **_MAIL_RETRY
+)
+def send_verification_email_task(
+    self, email_to: str, username: str, verify_link: str
+) -> None:
+    """Dispatch an email-verification link. Retried; see _MAIL_RETRY."""
+    from auth.mail_service import send_verification_email as _send
+
+    _send(email_to, username, verify_link)
+
+
+@celery_app.task(
+    name="ccure.tasks.send_password_changed_email",
+    base=_MailTask,
+    bind=True,
+    **_MAIL_RETRY,
+)
+def send_password_changed_email_task(
+    self, email_to: str, username: str, when: str, source_ip: str | None = None
+) -> None:
+    """
+    Notify a user that their password changed.
+
+    Worth retrying hard: this is the only signal the real owner gets during an
+    account takeover, and it is useful whenever it arrives.
+    """
+    from auth.mail_service import send_password_changed_email as _send
+
+    _send(email_to, username, when, source_ip)
+
+
+@celery_app.task(
+    name="ccure.tasks.send_account_approved_email",
+    base=_MailTask,
+    bind=True,
+    **_MAIL_RETRY,
+)
+def send_account_approved_email_task(
+    self, email_to: str, username: str, login_url: str, role_name: str | None = None
+) -> None:
+    """
+    Tell a user their account was approved.
+
+    Losing this one strands the user: they cannot see the in-app notification
+    until they log in, which is what this email tells them they may now do.
+    """
+    from auth.mail_service import send_account_approved_email as _send
+
+    _send(email_to, username, login_url, role_name)
+
+
+@celery_app.task(name="ccure.tasks.purge_stale_unverified_accounts", queue="default")
+def purge_stale_unverified_accounts() -> dict:
+    """
+    Delete accounts that were never verified within the configured window.
+
+    An unverified account is personal data being retained for no purpose, and
+    it also holds a username and email address hostage against the person who
+    legitimately wants them. Only rows that are unverified *and* unapproved are
+    touched, so an admin-provisioned account whose owner has not clicked the
+    link yet is never removed by this.
+    """
+    import datetime
+
+    from config import AppConfig
+    from db.models import User
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        days=AppConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
+    )
+    db = SessionLocal()
+    try:
+        stale = (
+            db.query(User)
+            .filter(
+                User.is_verified.is_(False),
+                User.approved_at.is_(None),
+                User.created_at < cutoff,
+            )
+            .all()
         )
+        removed = len(stale)
+        for user in stale:
+            log.info(
+                "Purging unverified account %s (created %s)", user.id, user.created_at
+            )
+            db.delete(user)
+        db.commit()
+        return {"success": True, "purged": removed}
+    except Exception as exc:
+        db.rollback()
+        log.error("Failed to purge unverified accounts: %s", exc, exc_info=True)
+        return {"success": False, "error": str(exc)}
+    finally:
+        db.close()
 
 
 @celery_app.task(name="ccure.tasks.reconcile_amt_inventory_task", queue="scanner")

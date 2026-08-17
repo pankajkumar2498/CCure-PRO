@@ -26,6 +26,58 @@ from fastapi.testclient import TestClient
 from sqlalchemy.dialects.postgresql import CIDR, INET, JSONB, MACADDR, UUID
 from sqlalchemy.types import JSON, BigInteger, Integer, SmallInteger, String
 
+# ── Isolate the test run from production infrastructure ───────────────────────
+#
+# Two things were leaking out of the test suite into the live deployment.
+#
+# 1. Celery. Nothing pointed the broker anywhere else, so `.delay()` in a test
+#    published to the *production* Redis, and the host scanner worker consumed
+#    and executed it. Real verification and MFA emails were sent through the
+#    real Gmail account to fixture addresses (`vera@test.com`,
+#    `admin@test.com`), which burns sending quota and repeatedly delivers to
+#    domains that do not exist — a good way to get an account rate-limited. It
+#    also meant test-dispatched *scan* tasks ran on the production worker; a
+#    stale `run_host_discovery_task` for a deleted test user was still failing
+#    in that worker's log.
+#
+# 2. SMTP. Any code path that sent mail synchronously reached smtp.gmail.com
+#    directly.
+#
+# Both are closed here, before anything imports celery_app or mail_service.
+#
+# The broker is moved to a dedicated Redis *database* on the same server rather
+# than to an in-memory transport: `core/redis_client.py` builds a redis client
+# straight from CELERY_BROKER_URL and rejects any scheme that is not redis://,
+# so `memory://` breaks the import chain at
+# core.nmap.wrapper -> core.redis_client. Database 15 is not consumed by any
+# worker, so a task published from a test goes nowhere and is executed by
+# nothing — while every consumer of the URL still gets a URL it can parse.
+#
+# The host and port are inherited rather than hardcoded, so this follows the
+# deployment instead of assuming localhost.
+#
+# MAIL_INLINE_FALLBACK is turned off so dispatch_email keeps taking the
+# `.delay()` path: tests assert on dispatch by patching `.delay`, and the
+# fallback would otherwise bypass those patches and try to send for real.
+_TEST_REDIS_DB = "15"
+
+
+def _redis_url_on_test_db(url: str) -> str:
+    """Point a redis:// URL at the throwaway test database, keeping host/auth."""
+    if not url or "://" not in url:
+        return f"redis://localhost:6379/{_TEST_REDIS_DB}"
+    scheme, _, remainder = url.partition("://")
+    if scheme not in ("redis", "rediss"):
+        return f"redis://localhost:6379/{_TEST_REDIS_DB}"
+    authority = remainder.split("/", 1)[0]
+    return f"{scheme}://{authority}/{_TEST_REDIS_DB}"
+
+
+_broker = _redis_url_on_test_db(os.getenv("CELERY_BROKER_URL", ""))
+os.environ["CELERY_BROKER_URL"] = _broker
+os.environ["CELERY_RESULT_BACKEND"] = _broker
+os.environ["MAIL_INLINE_FALLBACK"] = "False"
+
 sqlite_base.SQLiteDialect.colspecs.update(
     {
         UUID: String,
@@ -534,8 +586,22 @@ def session_client(seed_system_roles) -> Generator[TestClient, None, None]:
     Nothing in the suite depends on a per-test application instance: no test
     reads app.state and none manipulates dependency_overrides, which the
     function-scoped `client` fixture continues to set per test.
+
+    base_url is https, not the default http://testserver
+    ───────────────────────────────────────────────────
+    The refresh cookie is issued with the Secure attribute (host Nginx
+    terminates TLS and redirects 80 to 443). httpx correctly refuses to store a
+    Secure cookie received over http, so with the default base_url every
+    cookie-based flow silently lost its session — the refresh-after-org-
+    reactivation test failed because `_resolve_refresh_token` found neither a
+    body token nor a cookie.
+
+    Overriding the scheme is the fix rather than relaxing the cookie flag: the
+    suite should exercise the same cookie the deployment actually issues. It
+    also means a future regression that drops the Secure attribute will not be
+    masked here.
     """
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="https://testserver") as test_client:
         # Lifespan has now seeded the default organisation and the compliance
         # catalog. Capture the organisations that exist at this point: they are
         # reference data and must survive the per-test reset.
@@ -730,6 +796,57 @@ def test_org(db_session: Session) -> Organization:
     return org
 
 
+@pytest.fixture(scope="session", autouse=True)
+def block_outbound_smtp():
+    """
+    Make it impossible for the test suite to send real email.
+
+    The broker is already redirected to memory://, so queued mail goes nowhere.
+    This is the second layer, for anything that sends synchronously — a test
+    calling a mail_service function directly, or eager execution enabled by an
+    individual test. Without it the suite delivered to smtp.gmail.com using the
+    production credentials.
+
+    Raising rather than silently succeeding is deliberate: a test that expects
+    mail to be *sent* should patch the dispatch path explicitly, and one that
+    reaches real SMTP by accident should be noisy about it rather than quietly
+    consuming Gmail quota. The mail tasks now retry on failure, so this also
+    exercises their failure handling.
+    """
+    import smtplib
+
+    class _BlockedSMTP:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError(
+                "The test suite attempted a real SMTP connection. Patch the "
+                "mail dispatch (e.g. "
+                "patch('core.tasks.send_verification_email_task.delay')) or "
+                "core.mail_dispatch.dispatch_email instead of sending for real."
+            )
+
+    original_smtp, original_ssl = smtplib.SMTP, smtplib.SMTP_SSL
+    smtplib.SMTP, smtplib.SMTP_SSL = _BlockedSMTP, _BlockedSMTP
+    try:
+        yield
+    finally:
+        smtplib.SMTP, smtplib.SMTP_SSL = original_smtp, original_ssl
+
+
+@pytest.fixture(scope="function")
+def self_registration_enabled(monkeypatch):
+    """
+    Turn on POST /auth/register for one test.
+
+    The feature ships off, so any test exercising self-service signup has to
+    opt in. Keeping the default off in tests too means a test cannot silently
+    depend on production having it enabled.
+    """
+    from config import AppConfig
+
+    monkeypatch.setattr(AppConfig, "ALLOW_SELF_REGISTRATION", True)
+    yield
+
+
 @pytest.fixture(scope="function")
 def test_role_admin(db_session: Session) -> Role:
     return db_session.query(Role).filter(Role.name == "org_admin").first()
@@ -744,8 +861,15 @@ def test_role_viewer(db_session: Session) -> Role:
 def test_user(
     db_session: Session, test_org: Organization, test_role_admin: Role
 ) -> User:
-    """A standard authenticated user with admin rights."""
-    from db.base import gen_user_id
+    """
+    A standard authenticated user with admin rights.
+
+    Verified *and* approved, because that is what an admin-provisioned account
+    looks like and this fixture stands in for one. Login refuses accounts with
+    approved_at IS NULL; a fixture that omitted it would test the pending-user
+    path in every suite that just wants a logged-in user.
+    """
+    from db.base import gen_user_id, utcnow
 
     user = User(
         id=gen_user_id(test_org.slug, "testadmin"),
@@ -757,6 +881,8 @@ def test_user(
         role_id=test_role_admin.id,
         is_active=True,
         is_verified=True,
+        approved_at=utcnow(),
+        approved_by="fixture",
     )
     db_session.add(user)
     db_session.commit()

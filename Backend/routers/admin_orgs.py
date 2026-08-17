@@ -6,7 +6,7 @@ from auth.email_utils import email_matches, normalize_email, username_matches
 from auth.jwt_handler import hash_password
 from auth.rbac import require_permission
 from core.audit import log_audit_event
-from db.base import gen_org_id, gen_user_id, get_db
+from db.base import gen_org_id, gen_user_id, get_db, utcnow
 from db.models import Organization, Role, User
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -196,6 +196,16 @@ def create_organization(
 
         # Create admin user if requested
         if org_data.admin_username and org_data.admin_email and org_data.admin_password:
+            # Verified and approved at creation, for the same reason as
+            # POST /admin/users: a superadmin deliberately provisioning an
+            # organisation's first administrator *is* the approval, and they set
+            # the password out-of-band rather than mailing a link.
+            #
+            # This was missed when the login gates were added, and the result was
+            # an account that appeared to be created successfully and then could
+            # not sign in — "Verify your email address" for an address nobody had
+            # been asked to verify. An organisation whose only administrator is
+            # locked out cannot be administered at all.
             new_admin = User(
                 id=gen_user_id(new_org.slug, org_data.admin_username),
                 username=org_data.admin_username,
@@ -205,6 +215,9 @@ def create_organization(
                 role_id=org_admin_role.id,
                 org_id=new_org.id,
                 is_active=True,
+                is_verified=True,
+                approved_at=utcnow(),
+                approved_by=str(current_user.id),
             )
             db.add(new_admin)
             db.flush()
@@ -404,3 +417,100 @@ def delete_organization(
     db.delete(org)
     db.commit()
     return {"detail": "Organization deleted successfully"}
+
+
+# ── Authorised scan scope ─────────────────────────────────────────────────────
+
+
+class ScanScopeSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # None clears the scope (legacy unrestricted / denied under
+    # REQUIRE_SCAN_SCOPE). [] denies all scanning. Both are meaningful, so the
+    # field distinguishes "absent" from "empty".
+    cidrs: Optional[list[str]] = Field(
+        default=None,
+        description="CIDR blocks this organisation may scan, e.g. ['10.180.6.0/24']",
+    )
+
+
+@router.get("/{org_id}/scan-scope")
+@router.get("/{org_id}/scan-scope/")
+def get_scan_scope(
+    org_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("organizations", "read")),
+):
+    """Return the CIDR blocks this organisation is authorised to scan."""
+    org = _scoped_organization_query(db, org_id, current_user).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    from config import AppConfig
+
+    return {
+        "org_id": str(org.id),
+        "cidrs": org.scan_scope_cidrs,
+        "configured": org.scan_scope_cidrs is not None,
+        "enforcement_required": AppConfig.REQUIRE_SCAN_SCOPE,
+    }
+
+
+@router.put("/{org_id}/scan-scope")
+@router.put("/{org_id}/scan-scope/")
+def set_scan_scope(
+    org_id: str,
+    request: Request,
+    payload: ScanScopeSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Set the CIDR blocks this organisation may scan. **Superadmin only.**
+
+    Gated on the role directly rather than on the `organizations:update`
+    permission, because org_admin holds that permission for its own
+    organisation. Letting an org_admin write this field would mean the subject
+    of a restriction can widen it — which is not a restriction. This is the one
+    org attribute a tenant administrator must not control, and it is why the
+    value lives in its own column instead of the org_admin-writable `settings`
+    bag.
+    """
+    if _role_name(current_user) != "superadmin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only a superadmin may change an organisation's scan scope.",
+        )
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    from core.scan_scope import normalise_scope
+
+    if payload.cidrs is None:
+        new_scope = None
+    else:
+        try:
+            new_scope = normalise_scope(payload.cidrs)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    old_scope = org.scan_scope_cidrs
+    org.scan_scope_cidrs = new_scope
+
+    log_audit_event(
+        db,
+        current_user,
+        "organization.scan_scope_changed",
+        "organization",
+        str(org.id),
+        {"old": old_scope, "new": new_scope},
+        request,
+    )
+    db.commit()
+
+    return {
+        "org_id": str(org.id),
+        "cidrs": new_scope,
+        "detail": "Scan scope updated",
+    }

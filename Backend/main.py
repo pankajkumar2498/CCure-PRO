@@ -454,7 +454,7 @@ async def lifespan(app: FastAPI):
                 from datetime import datetime, timezone
 
                 from db.base import SessionLocal
-                from db.models import PasswordResetToken
+                from db.models import EmailVerificationToken, PasswordResetToken
 
                 db = SessionLocal()
                 try:
@@ -464,20 +464,29 @@ async def lifespan(app: FastAPI):
                         .filter(PasswordResetToken.expires_at <= now)
                         .delete()
                     )
-                    if deleted_count > 0:
+                    # Expired verification tokens are dead weight for the same
+                    # reason: they cannot be redeemed, and an expired-token row
+                    # is a record of an email address kept past its purpose.
+                    verification_count = (
+                        db.query(EmailVerificationToken)
+                        .filter(EmailVerificationToken.expires_at <= now)
+                        .delete()
+                    )
+                    if deleted_count or verification_count:
                         db.commit()
                         log.info(
-                            f"Purged {deleted_count} expired password reset tokens."
+                            "Purged %d expired password reset tokens and %d "
+                            "expired email verification tokens.",
+                            deleted_count,
+                            verification_count,
                         )
                 except Exception as db_exc:
                     db.rollback()
-                    log.error(
-                        "Failed to prune expired password reset tokens: %s", db_exc
-                    )
+                    log.error("Failed to prune expired auth tokens: %s", db_exc)
                 finally:
                     db.close()
             except Exception as e:
-                log.error("Password reset token cleanup failed: %s", e)
+                log.error("Auth token cleanup failed: %s", e)
 
     async def nvd_auto_sync_loop():
         """Option A: Background 24-hour automatic NVD live catalog sync into vuln_intel DB."""
@@ -541,10 +550,27 @@ allow_origins = [
     if origin.strip()
 ]
 
+# `allow_origin_regex="https?://.*"` used to sit here alongside the allow-list.
+#
+# It matches every origin on the web, so the allow-list above was decoration:
+# an OPTIONS preflight carrying `Origin: https://evil.example.com` came back
+# with `Access-Control-Allow-Origin: https://evil.example.com` and
+# `Access-Control-Allow-Credentials: true`. That combination tells the browser
+# it may send the victim's cookies to this API from any site they visit *and*
+# let that site read the response.
+#
+# Two things kept it from being immediately exploitable: the refresh cookie is
+# SameSite=lax, so it is not attached to cross-site fetches, and access tokens
+# live in page memory rather than storage. Neither is a property this line was
+# relying on. Setting REFRESH_COOKIE_SAMESITE=none — which any genuinely
+# cross-origin deployment needs — would have turned it into silent
+# account takeover for every logged-in user who visited a hostile page.
+#
+# CORS_ALLOW_ORIGINS already names every origin this deployment is served from,
+# so the explicit list is sufficient. Add new origins there.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
@@ -577,6 +603,67 @@ def _make_rate_limit_response(request: Request, exc: RateLimitExceeded) -> JSONR
 app.add_exception_handler(RateLimitExceeded, _make_rate_limit_response)
 
 
+# ── Security headers on API responses ────────────────────────────────────────
+#
+# The frontend's nginx sets a full header set for the SPA, but nothing set any
+# on the API, and the API is reached directly by the browser (VITE_API_BASE_URL
+# points at :8000, not through the SPA's server). Two of these matter here in
+# particular:
+#
+#   * nosniff — /reports/download/{scan_id} returns files. A response the
+#     browser is allowed to re-interpret as HTML is a stored-XSS vector on the
+#     API's own origin, which is where the session lives.
+#   * A restrictive CSP on API responses. An API returns JSON and files and
+#     never needs to load anything, so 'none' costs nothing and neutralises any
+#     response that does get rendered as a document.
+#
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ),
+    "Cross-Origin-Resource-Policy": "same-site",
+}
+
+# Strict-Transport-Security is sent only on requests that actually arrived over
+# TLS, decided from the X-Forwarded-Proto that host Nginx sets.
+#
+# Two reasons not to send it unconditionally. A browser ignores the header on a
+# plain-HTTP response, so an unconditional one would be decoration that makes
+# the deployment look protected in a header dump when it is not. And the API is
+# still directly reachable on 127.0.0.1:8000 without TLS for local tooling —
+# claiming HTTPS-only there would be a lie about a listener that has no
+# certificate.
+#
+# max-age is 300 for the rollout, matching Nginx. HSTS is a one-way door: a
+# client that has cached "HTTPS-only" for a year cannot reach a broken
+# deployment to be told why. Raise both to 31536000 together once every client
+# is confirmed working.
+#
+# Note this only has any effect for the *hostname*. RFC 6797 §8.1.1 requires
+# browsers to ignore HSTS when the host is an IP literal, so
+# https://10.180.6.14 gets encryption but never gets pinned. That is why
+# FRONTEND_URL is https://ccure.internal.
+_HSTS_VALUE = "max-age=300"
+
+
+def _is_secure_request(request: Request) -> bool:
+    forwarded = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded.lower() == "https"
+    return request.url.scheme == "https"
+
+
+def _apply_security_headers(response: Response, request: Request) -> None:
+    """Set security headers without clobbering any a handler set deliberately."""
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    if _is_secure_request(request):
+        response.headers.setdefault("Strict-Transport-Security", _HSTS_VALUE)
+
+
 # ── Request-ID correlation middleware ────────────────────────────────────────────
 
 
@@ -585,15 +672,28 @@ async def _request_id_middleware(request: Request, call_next):
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = req_id
 
-    # Handle Private Network Access (PNA) preflight requests
+    # Handle Private Network Access (PNA) preflight requests.
+    #
+    # This handler runs *before* CORSMiddleware and answers the preflight
+    # itself, so it has to apply the same origin policy — it previously
+    # reflected `Origin` verbatim (falling back to "*"), which approved the
+    # preflight for any site on the internet. Approving a preflight is not
+    # nothing even without Allow-Credentials: it is what tells the browser to
+    # go ahead and send the real request, and a state-changing request does its
+    # damage whether or not the caller can read the reply.
     if request.method == "OPTIONS" and request.headers.get(
         "Access-Control-Request-Private-Network"
     ):
+        origin = request.headers.get("Origin")
+        if origin and origin not in allow_origins:
+            log.warning("Rejected PNA preflight from disallowed origin: %s", origin)
+            return Response(status_code=403)
+
         response = Response()
         response.headers["Access-Control-Allow-Private-Network"] = "true"
-        response.headers["Access-Control-Allow-Origin"] = request.headers.get(
-            "Origin", "*"
-        )
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Methods"] = (
             "GET, POST, PUT, DELETE, PATCH, OPTIONS"
         )
@@ -602,6 +702,7 @@ async def _request_id_middleware(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = req_id
+    _apply_security_headers(response, request)
     if response.status_code >= 500:
         log.error(
             "%s %s returned %s", request.method, request.url.path, response.status_code

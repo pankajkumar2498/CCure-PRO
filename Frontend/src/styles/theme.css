@@ -21,7 +21,25 @@
   --border-dark: #334155;
   --bg-panel: var(--bg-white);
 
-  /* Text */
+  /* ── Text tiers ────────────────────────────────────────────────────────────
+   * Ratios are against --bg-white (#ffffff). WCAG AA needs 4.5:1 for body text.
+   *
+   *   --text        #0f172a  17.9:1  headings, primary content
+   *   --text-mid    #1e293b  14.6:1  FORM LABELS — use this one
+   *   --text-muted  #64748b   4.8:1  secondary text, hints; AA floor
+   *   --text-faint  #94a3b8   2.6:1  FAILS AA — placeholders and decoration ONLY
+   *
+   * --text-faint must never colour a form label. Six label rules were using it
+   * (.ns-chips-label, .am-stat-label, .qt-label, .confirm-meta-label, .dm-label,
+   * .app-progress-label--pending) and were moved to --text-muted. It is kept as
+   * a tier because placeholder text is legitimately lower-contrast — a
+   * placeholder is a hint, not a name, and WCAG does not require it to meet the
+   * body-text floor when a visible label exists.
+   *
+   * Never hardcode a light hex for label colour: that is exactly how
+   * .field-label ended up at 1.23:1 on white admin modals. Use the token, and
+   * it follows the theme.
+   */
   --text: #0f172a;
   --text-mid: #1e293b;
   --text-muted: #64748b;

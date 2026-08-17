@@ -86,6 +86,26 @@ test above.
   changing anything under `core/`, `scans/` or `orchestrator/`.
 - **Database** — PostgreSQL 18 on the host, `ccure_test`. The `ccure-db`
   container runs but is unused; both API and worker point at the host server.
+
+  **TLS is required and the server certificate is verified.** `pg_hba.conf` is
+  `hostssl` only, scoped to loopback plus the Docker ranges — `0.0.0.0/0` used to
+  be there, and with `listen_addresses='*'` the only thing keeping the LAN out
+  was a missing firewall rule. Every connection string carries
+  `sslmode=verify-full&sslrootcert=…`; `require` alone would encrypt but accept
+  any certificate. Certificate issued by `scripts/tls/new_postgres_cert.ps1`.
+
+  Three things that will bite:
+
+  - **Backslashes in a libpq URI are escapes.** `sslrootcert=D:\PostgreSQL\…`
+    becomes `D:PostgreSQL…`. Use forward slashes.
+  - **The cert must carry every hostname any client dials** —
+    `host.docker.internal` (containers), `127.0.0.1` (host worker) and
+    `localhost` (vuln_intel scripts). libpq matches the string in the connection
+    URI, not the resolved address.
+  - Enable `ssl`, verify with
+    `SELECT ssl,version,cipher FROM pg_stat_ssl WHERE pid=pg_backend_pid()`,
+    *then* switch to `hostssl`. libpq's default `prefer` silently falls back to
+    plaintext, so "it still works" proves nothing until you check that view.
   The cluster's data directory was moved to **`D:\PostgreSQL\18\data`** on
   11 Aug 2026 (C had 61 GB free and the feeds needed room). The service's
   `ImagePath` in `HKLM:\SYSTEM\CurrentControlSet\Services\postgresql-x64-18`
@@ -96,7 +116,71 @@ test above.
   not re-enable it.
 - **Auth** — `POST /auth/login` takes `{"email": ..., "password": ...}` (the
   field is `email`, not `username`). Access tokens last 30 minutes; the refresh
-  token is an HttpOnly cookie valid 7 days.
+  token is an HttpOnly, **Secure** cookie valid 7 days.
+
+  Login checks account state **after** the password verifies, not before.
+  Checking `is_deleted` / `is_verified` / `approved_at` / `is_active` first made
+  each one an account-existence oracle: any password at all returned a 403 that
+  distinguished "disabled" from "no such account". Only the lockout check
+  precedes the password, because stopping the in-progress brute force is its
+  entire purpose. Do not reorder these.
+
+  Self-registration is **off** by default (`ALLOW_SELF_REGISTRATION`). When on,
+  `POST /auth/register` returns 202 with **no tokens**: the account is created
+  unverified, inactive, unapproved, in the `viewer` role, and needs both a
+  confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
+  working tokens for an `analyst`, which carries `scans:execute`.
+
+- **TLS** — host Nginx terminates TLS on **443** and 301-redirects 80. Reached
+  at **`https://ccurepro.cdacb.in`**; the Docker published ports are bound to
+  127.0.0.1 only, so this is the sole listener on a routable interface and the
+  only hop that needs a certificate.
+
+  Certificates come from a **private CA** — `scripts/tls/new_internal_ca.ps1`.
+  A public CA is impossible here, not merely inconvenient: the app is reached at
+  10.180.6.14 and CA/Browser Forum rules forbid certificates for reserved IP
+  ranges. Clients run `scripts/tls/install_client_trust.ps1` once. See
+  [docs/TLS_SETUP.md](docs/TLS_SETUP.md).
+
+  Two things that look like faults and are not:
+
+  - **`curl` on Windows fails with `CRYPT_E_NO_REVOCATION_CHECK`.** Schannel
+    hard-fails when it cannot check revocation, and a private CA publishes no
+    CRL. Browsers soft-fail this. Use `curl --ssl-no-revoke`, or verify with
+    OpenSSL, which validates the chain properly.
+  - **HSTS is ignored on `https://10.180.6.14`.** RFC 6797 §8.1.1 requires
+    browsers to discard the header when the host is an IP literal. The IP form
+    still gets encryption; only the hostname can be pinned. This is why
+    `FRONTEND_URL` is the hostname.
+
+  `max-age` is **300** in both Nginx and `main.py`. Raise them **together** and
+  only after every client is confirmed working — HSTS is a one-way door, and a
+  client that cached HTTPS-only for a year cannot reach a broken deployment to
+  be told why. `tests/test_cors_and_headers.py` asserts the low value.
+
+- **`add_header` in Nginx does not merge.** A `location` containing any
+  `add_header` replaces the parent's whole set. This silently disabled the SPA's
+  Content-Security-Policy for months: `location = /index.html` declared a
+  `Cache-Control` header, and `location /` resolves through it via `try_files`,
+  so the HTML document — the only response CSP protects — carried none of the
+  server-level headers. Check with:
+
+  ```bash
+  curl -sD - -o /dev/null http://127.0.0.1:3200/ | grep -i content-security
+  ```
+
+  If you add a header at server level in `Frontend/nginx.conf`, add it to the
+  `= /index.html` block too. Where both host Nginx and a container set the same
+  header, host Nginx wins by `proxy_hide_header` — a UA processes only the
+  *first* `Strict-Transport-Security`, so duplicates make ordering decide.
+
+- **CORS** — `main.py` had `allow_origin_regex="https?://.*"` alongside the
+  allow-list, which matched every origin on the web with
+  `allow_credentials=True`; `Frontend/nginx.conf` separately added
+  `Access-Control-Allow-Origin: *` on its `/api/` proxy. Both are gone. The
+  allow-list in `CORS_ALLOW_ORIGINS` is now the only thing that grants an
+  origin, and Nginx adds no CORS headers — it cannot know which origins are
+  legitimate.
 
 ## Scan pipeline
 

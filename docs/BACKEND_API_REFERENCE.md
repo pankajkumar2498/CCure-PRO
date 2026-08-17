@@ -109,9 +109,11 @@ Source: `Backend/auth/router.py` — 15 operations.
 
 | Method | Path                         | Auth                       | Rate limit | Purpose                                  |
 | ------ | ---------------------------- | -------------------------- | ---------- | ---------------------------------------- |
-| GET    | `/auth/check-username`       | public                     | 20/min     | Username availability                    |
-| GET    | `/auth/check-email`          | public                     | 20/min     | Email availability                       |
-| POST   | `/auth/register`             | public                     | 5/min      | Self-registration → tokens               |
+| GET    | `/auth/check-username`       | public\*                   | 10/min     | Username availability                    |
+| GET    | `/auth/check-email`          | public\*                   | 10/min     | Email syntax only — never an oracle      |
+| POST   | `/auth/register`             | public\*                   | 3/min      | Self-registration → **202, no tokens**   |
+| POST   | `/auth/verify-email`         | public                     | 10/min     | Consume verification token               |
+| POST   | `/auth/resend-verification`  | public\*                   | 3/min      | Re-send verification link                |
 | POST   | `/auth/login`                | public                     | 10/min     | Password login → tokens or MFA challenge |
 | POST   | `/auth/logout`               | public (cookie/body token) | —          | Revoke refresh session                   |
 | GET    | `/auth/me`                   | authenticated              | —          | Current user + role + permissions + org  |
@@ -150,12 +152,17 @@ GET /auth/check-username?q=pankaj
 { "available": false }
 ```
 
-**Errors** — `422` when `q` is missing; `429` above 20 requests/minute.
-No authentication is required, which is why the rate limit exists.
+**Errors** — `422` when `q` is missing; `429` above 10 requests/minute;
+**`404` when `ALLOW_SELF_REGISTRATION` is off**.
+
+It matches usernames **only**. It previously also matched `q` against
+`users.email`, which meant an email address could be confirmed from either
+probe.
 
 ### `GET /auth/check-email`
 
-Same contract as above for email addresses.
+Validates email **syntax**. It deliberately does not report whether the address
+is registered.
 
 **Query parameters**
 
@@ -164,43 +171,82 @@ Same contract as above for email addresses.
 | `q`  | string | **yes**  | Candidate email |
 
 **Behaviour** — returns `{"available": false}` when `q` is blank or contains no
-`@`. Otherwise matches with `email_matches(User.email, q)` (case-insensitive).
-The frontend normalises the address with `normalizeEmail()` before sending.
+`@`, and `{"available": true}` otherwise. A taken address and a free one are
+indistinguishable; the collision surfaces at submit time as the same generic
+`202` every other registration outcome returns.
 
-```http
-GET /auth/check-email?q=analyst%40example.com
-```
+**Errors** — `422` missing `q`; `429` above 10/min; `404` when
+`ALLOW_SELF_REGISTRATION` is off.
 
-```json
-{ "available": true }
-```
-
-**Errors** — `422` missing `q`; `429` above 20/min.
-
-> **NOTE:** Both probes are unauthenticated and confirm whether an identifier is
-> registered. The 20/minute limit is the only control on enumeration.
+> Live "already registered" feedback on a signup form is a small convenience for
+> the person typing and a bulk account oracle for everyone else. Only one of
+> those is worth having.
 
 ### `POST /auth/register`
 
-Status `201`, `response_model=TokenResponse`.
+Status **`202`**. Returns **no tokens**. Gated behind `ALLOW_SELF_REGISTRATION`
+(default **off** — `POST /admin/users` is the supported onboarding path);
+returns `404` when disabled.
 
 **Body**
 
 | Field      | Type       | Validation                                                                               |
 | ---------- | ---------- | ---------------------------------------------------------------------------------------- |
-| `username` | string     | ≥ 3 characters after strip                                                               |
+| `username` | string     | ≥ 3 characters after strip, no `@`                                                       |
 | `email`    | `EmailStr` | Normalised via `normalize_email`                                                         |
 | `password` | string     | `validate_password_strength`: ≥ 12 chars, ≥ 1 uppercase, ≥ 1 digit, ≥ 1 non-alphanumeric |
 
-**Behaviour** — 409 if the email or username exists. New users are placed in the
-`self-service` organization (created on demand with `plan="community"`,
-`max_assets=100`, `max_users=50`) and given the **`analyst`** role. A 500 is
-returned if the `analyst` role is missing, i.e. RBAC was never seeded. On success
-it writes a `user.created` audit event, sets the refresh cookie, and returns the
-access token with the full user object.
+**Behaviour** — creates the account in the `self-service` organization with the
+**`viewer`** role and `is_verified=False`, `is_active=False`,
+`approved_at=NULL`, writes a `user.created` audit event, then issues a
+verification token and dispatches `send_verification_email_task`.
 
-**Errors** — `409` duplicate; `400` other integrity error; `422` weak password;
+The response body is **identical** for success, a taken email, and a taken
+username, so the endpoint cannot be used to enumerate accounts:
+
+```json
+{
+  "detail": "If that email address can be registered, a verification link is on its way. New accounts also require administrator approval before sign-in is enabled.",
+  "status": "pending_verification"
+}
+```
+
+**Errors** — `404` feature disabled; `422` weak password / invalid username;
 `429`; `500` RBAC not seeded.
+
+> **This endpoint used to return access + refresh tokens for an `analyst`
+> account.** `analyst` carries `scans:execute`, so anyone who could reach it
+> could issue themselves a credential that runs Nmap, Scapy and Nuclei from a
+> worker holding raw-socket privileges on the host network. Registration now
+> yields nothing usable until both gates are cleared.
+
+### `POST /auth/verify-email`
+
+**Body** `{"token": "..."}` — the token from the emailed link
+`{FRONTEND_URL}/verify-email?token=<token>`.
+
+Looks the token up by SHA-256 hash in `email_verification_tokens`, rejects
+expired tokens (deleting them), checks the token's `email` still matches the
+account's, sets `is_verified=True`, and deletes the row in the same transaction
+(single use). Logs `user.email_verified`.
+
+Returns `{"status": "pending_approval"}` — verification is **not** a login and
+issues no tokens. When `SELF_REGISTRATION_AUTO_APPROVE=True` it also stamps
+`approved_at` and returns `{"status": "verified"}`.
+
+**Errors** — `400` for every invalid case (unknown, expired, already used,
+wrong user, address changed) with an identical message, so the endpoint cannot
+be used to probe which tokens exist; `429` above 10/min.
+
+### `POST /auth/resend-verification`
+
+**Body** `{"email": "..."}`. Always returns `200` with the same body whether the
+address is unknown, already verified, or genuinely pending. Issuing a new token
+deletes any outstanding one for that user, so only one link is ever live.
+
+**Errors** — `404` when `ALLOW_SELF_REGISTRATION` is off; `429` above 3/min.
+The limit matters here because the endpoint sends mail to a caller-chosen
+address, which is a mail-relay primitive if left open.
 
 ### `POST /auth/login`
 
@@ -210,8 +256,23 @@ access token with the full user object.
 `username`.
 
 **Gate order** (each writes an audit event and commits before raising):
-user exists → not `is_deleted` (403) → `is_active` (403) → organization active
-(403) → not locked (403) → password verifies.
+
+1. user exists — if not, a dummy Argon2 verification runs so the timing matches
+   a real account, then `401`
+2. not locked (`403`) — the one state check that must precede the password,
+   because its purpose is to stop the brute-force attempt in progress
+3. **password verifies** — `401` on failure
+4. not `is_deleted` (`403`)
+5. `is_verified` (`403`)
+6. `approved_at IS NOT NULL` (`403`)
+7. `is_active` (`403`)
+8. organization active (`403`)
+
+> Steps 4–8 used to run **before** the password. That made each of them an
+> account oracle: submitting any address with any password returned a 403 that
+> distinguished "deleted", "disabled" and "org deactivated" from the generic
+> 401 — undoing the uniform "Invalid email or password" message entirely.
+> Running them after costs one Argon2 verification and closes the leak.
 
 On failure `failed_login_count` increments; at **5** failures `locked_until` is
 set to now + 15 minutes and a `user.locked` event is logged.
@@ -222,7 +283,9 @@ created**. Otherwise `last_login_at` is stamped, a refresh session row is
 written, the HttpOnly cookie is set, and the body carries `access_token` plus the
 user with `role.permissions`.
 
-**Errors** — `401` invalid credentials; `403` deleted/disabled/org-deactivated/locked; `429`.
+**Errors** — `401` invalid credentials; `403`
+locked/deleted/unverified/unapproved/disabled/org-deactivated (only reachable
+with the correct password, except `locked`); `429`.
 
 ### `POST /auth/logout`
 
@@ -1045,7 +1108,9 @@ Source: `Backend/routers/admin_users.py`.
 | Method | Path                                    | Permission            |
 | ------ | --------------------------------------- | --------------------- |
 | GET    | `/admin/users`                          | `users:read`          |
+| GET    | `/admin/users/pending`                  | `users:read`          |
 | POST   | `/admin/users`                          | `users:create`        |
+| POST   | `/admin/users/{user_id}/approve`        | `users:update`        |
 | PUT    | `/admin/users/{user_id}`                | `users:update`        |
 | PATCH  | `/admin/users/{user_id}/role`           | `users:update`        |
 | PATCH  | `/admin/users/{user_id}/status`         | `users:update`        |
@@ -1058,6 +1123,22 @@ Source: `Backend/routers/admin_users.py`.
 
 `GET /admin/users` parameters: `role_id`, `organization_id`, `is_active`, `q`,
 `scope` (default `"active"`), `skip`, `limit` (default 50).
+
+`GET /admin/users/pending` lists self-registered accounts with
+`approved_at IS NULL`, scoped to the caller's organization unless superadmin.
+These accounts cannot sign in.
+
+`POST /admin/users/{user_id}/approve` stamps `approved_at`/`approved_by`, sets
+`is_active=True` and logs `user.approved`. It returns **`400` if the account's
+email is not yet verified** — approval is not a verification override, because
+that would enable a login for an address nobody has demonstrated control of.
+The account keeps the role it was created with (`viewer` for self-registration);
+granting `scans:execute` stays a separate, explicit act through the role
+endpoint, so approval never silently confers it.
+
+`POST /admin/users` stamps `is_verified=True` and `approved_at` at creation —
+admin provisioning is itself the approval, and without this the gates would lock
+every admin-created account out of its own login.
 
 > **NOTE:** `restore` and `purge` are gated on `users:delete`, not a separate
 > restore permission — the delete atom governs the whole soft-delete lifecycle.
@@ -1077,17 +1158,40 @@ Source: `Backend/routers/admin_rbac.py`. Both require `roles:read`.
 > seeded by `db/migrate_production_schema.py` and cannot be modified through the
 > API.
 
-### Organizations — `/admin/organizations` (5 operations)
+### Organizations — `/admin/organizations` (7 operations)
 
 Source: `Backend/routers/admin_orgs.py`.
 
-| Method | Path                                   | Permission                                               |
-| ------ | -------------------------------------- | -------------------------------------------------------- |
-| GET    | `/admin/organizations`                 | `organizations:read`                                     |
-| POST   | `/admin/organizations`                 | `organizations:create`                                   |
-| PUT    | `/admin/organizations/{org_id}`        | `organizations:update`                                   |
-| PATCH  | `/admin/organizations/{org_id}/status` | `organizations:update`                                   |
-| DELETE | `/admin/organizations/{org_id}`        | `get_current_user` + in-body superadmin check — see note |
+| Method | Path                                       | Permission                                               |
+| ------ | ------------------------------------------ | -------------------------------------------------------- |
+| GET    | `/admin/organizations`                     | `organizations:read`                                     |
+| POST   | `/admin/organizations`                     | `organizations:create`                                   |
+| PUT    | `/admin/organizations/{org_id}`            | `organizations:update`                                   |
+| PATCH  | `/admin/organizations/{org_id}/status`     | `organizations:update`                                   |
+| GET    | `/admin/organizations/{org_id}/scan-scope` | `organizations:read`                                     |
+| PUT    | `/admin/organizations/{org_id}/scan-scope` | `get_current_user` + in-body **superadmin** check        |
+| DELETE | `/admin/organizations/{org_id}`            | `get_current_user` + in-body superadmin check — see note |
+
+#### `GET|PUT /admin/organizations/{org_id}/scan-scope`
+
+The CIDR blocks an organization is authorised to scan. Body:
+`{"cidrs": ["10.180.6.0/24"]}`; `null` clears the scope, `[]` denies all
+scanning. Entries are canonicalised via `core.scan_scope.normalise_scope`, which
+returns `422` on the first unparseable block — the write path rejects typos
+loudly rather than silently narrowing what an admin thought they granted.
+Audited as `organization.scan_scope_changed` with the old and new values.
+
+**Write is superadmin-only, gated on the role rather than on
+`organizations:update`,** because `org_admin` holds that permission for its own
+organization. Letting a tenant administrator widen their own scan authorisation
+is not a restriction. This is also why the value is a dedicated column rather
+than a key in the `org_admin`-writable `settings` bag.
+
+Enforcement happens in two places: `scan_helpers.validate_scan_targets` refuses
+out-of-scope targets at admission with `403`, and
+`ScanOrchestrator._drop_out_of_scope` filters again in the worker against the
+addresses a hostname actually resolved to — which admission cannot know, since
+DNS can change in between.
 
 > **NOTE:** `DELETE /admin/organizations/{org_id}` is the one admin route whose
 > dependency is `Depends(get_current_user)` rather than `require_permission`.

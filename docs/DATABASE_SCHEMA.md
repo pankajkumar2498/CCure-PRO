@@ -143,12 +143,32 @@ The tenant boundary. Every user, asset and scan belongs to exactly one.
 | `max_scans_per_day`    | `Integer`     | yes  | —             | Overrides the plan tier when set                          |
 | `max_concurrent_scans` | `Integer`     | yes  | —             | Overrides the plan tier when set                          |
 | `is_active`            | `Boolean`     | no   | `true`        | **Deactivation blocks login, refresh and every request**  |
-| `settings`             | `JSONB`       | no   | `{}`          | Feature flags                                             |
+| `settings`             | `JSONB`       | no   | `{}`          | Feature flags — **org_admin-writable**                    |
+| `scan_scope_cidrs`     | `JSONB`       | yes  | —             | Authorised scan targets. **Superadmin-only**              |
 | `created_at`           | `TIMESTAMPTZ` | no   | `utcnow`      |                                                           |
 | `updated_at`           | `TIMESTAMPTZ` | no   | `utcnow`      | `onupdate=utcnow`                                         |
 
 **Relationships:** `users`, `assets`, `scans` — all `cascade="all, delete-orphan"`.
 `web_scans`, `web_findings`, `network_links` attach via `backref`.
+
+**`scan_scope_cidrs` is the authorisation boundary on scan targets.** Three
+states, all distinct:
+
+| Value   | Meaning                                                                  |
+| ------- | ------------------------------------------------------------------------ |
+| `NULL`  | Unconfigured. Unrestricted unless `REQUIRE_SCAN_SCOPE=True`, then denied |
+| `[]`    | Explicitly deny all scanning for this org                                |
+| `[...]` | Scanning permitted only inside these CIDR blocks                         |
+
+`NULL` is not `[]`: the first means nobody has decided yet and exists only so
+the migration does not stop every existing organisation from scanning the moment
+it lands; the second means somebody decided "none". Populate every org, then set
+`REQUIRE_SCAN_SCOPE=True` to remove the ambiguity.
+
+It is a dedicated column rather than a key in `settings` because `settings` is
+writable by `org_admin`. Letting a tenant administrator widen their own scan
+authorisation is not a restriction. Only a superadmin may write this field, via
+`PUT /admin/organizations/{org_id}/scan-scope`.
 
 Child FKs use `ondelete="CASCADE", onupdate="CASCADE"`, so renaming an
 organization id propagates through every child row.
@@ -197,34 +217,49 @@ Source: `Backend/db/models/users.py`.
 
 ### `users`
 
-| Column                      | Type           | Null | Default  | Notes                                           |
-| --------------------------- | -------------- | ---- | -------- | ----------------------------------------------- |
-| `id`                        | `String(150)`  | no   | —        | **PK**, `gen_user_id()`                         |
-| `org_id`                    | `String(100)`  | no   | —        | FK `organizations.id` CASCADE/CASCADE, indexed  |
-| `role_id`                   | `SmallInteger` | no   | —        | FK `roles.id` **`ON DELETE RESTRICT`**, indexed |
-| `username`                  | `String(100)`  | no   | —        | **UNIQUE**, indexed — global, not per-org       |
-| `email`                     | `String(320)`  | no   | —        | **UNIQUE**, indexed — global                    |
-| `full_name`                 | `String(255)`  | yes  | —        |                                                 |
-| `password_hash`             | `String(255)`  | no   | —        | argon2 (`$argon2…`) or bcrypt                   |
-| `totp_secret`               | `String(255)`  | yes  | —        | Fernet-encrypted                                |
-| `mfa_enabled`               | `Boolean`      | no   | `false`  |                                                 |
-| `mfa_backup_codes`          | `JSONB`        | no   | `[]`     | List of hashes; entries removed on use          |
-| `email_otp_hash`            | `String(255)`  | yes  | —        | Cleared on every verify attempt                 |
-| `email_otp_expires_at`      | `TIMESTAMPTZ`  | yes  | —        | 5-minute window                                 |
-| `is_active`                 | `Boolean`      | no   | `true`   | `false` → 403 on every request                  |
-| `is_deleted`                | `Boolean`      | no   | `false`  | Soft delete → 401                               |
-| `is_verified`               | `Boolean`      | no   | `false`  |                                                 |
-| `last_login_at`             | `TIMESTAMPTZ`  | yes  | —        |                                                 |
-| `failed_login_count`        | `Integer`      | no   | `0`      | Lockout at 5                                    |
-| `locked_until`              | `TIMESTAMPTZ`  | yes  | —        | now + 15 min on lockout                         |
-| `deleted_at`                | `TIMESTAMPTZ`  | yes  | —        |                                                 |
-| `avatar_url`                | `String(512)`  | yes  | —        |                                                 |
-| `preferences`               | `JSONB`        | no   | `{}`     | Theme, defaults, notification settings          |
-| `created_at` / `updated_at` | `TIMESTAMPTZ`  | no   | `utcnow` |                                                 |
+| Column                      | Type           | Null | Default  | Notes                                             |
+| --------------------------- | -------------- | ---- | -------- | ------------------------------------------------- |
+| `id`                        | `String(150)`  | no   | —        | **PK**, `gen_user_id()`                           |
+| `org_id`                    | `String(100)`  | no   | —        | FK `organizations.id` CASCADE/CASCADE, indexed    |
+| `role_id`                   | `SmallInteger` | no   | —        | FK `roles.id` **`ON DELETE RESTRICT`**, indexed   |
+| `username`                  | `String(100)`  | no   | —        | **UNIQUE**, indexed — global, not per-org         |
+| `email`                     | `String(320)`  | no   | —        | **UNIQUE**, indexed — global                      |
+| `full_name`                 | `String(255)`  | yes  | —        |                                                   |
+| `password_hash`             | `String(255)`  | no   | —        | argon2 (`$argon2…`) or bcrypt                     |
+| `totp_secret`               | `String(255)`  | yes  | —        | Fernet-encrypted                                  |
+| `mfa_enabled`               | `Boolean`      | no   | `false`  |                                                   |
+| `mfa_backup_codes`          | `JSONB`        | no   | `[]`     | List of hashes; entries removed on use            |
+| `email_otp_hash`            | `String(255)`  | yes  | —        | Cleared on every verify attempt                   |
+| `email_otp_expires_at`      | `TIMESTAMPTZ`  | yes  | —        | 5-minute window                                   |
+| `is_active`                 | `Boolean`      | no   | `true`   | `false` → 403 on every request                    |
+| `is_deleted`                | `Boolean`      | no   | `false`  | Soft delete → 401                                 |
+| `is_verified`               | `Boolean`      | no   | `false`  | Mailbox confirmed; login refuses `false`          |
+| `last_login_at`             | `TIMESTAMPTZ`  | yes  | —        |                                                   |
+| `failed_login_count`        | `Integer`      | no   | `0`      | Lockout at 5                                      |
+| `locked_until`              | `TIMESTAMPTZ`  | yes  | —        | now + 15 min on lockout                           |
+| `deleted_at`                | `TIMESTAMPTZ`  | yes  | —        |                                                   |
+| `approved_at`               | `TIMESTAMPTZ`  | yes  | —        | Admin approval; login refuses `NULL`              |
+| `approved_by`               | `String(150)`  | yes  | —        | `users.id` of the approver, or `fixture`/`auto:…` |
+| `avatar_url`                | `String(512)`  | yes  | —        |                                                   |
+| `preferences`               | `JSONB`        | no   | `{}`     | Theme, defaults, notification settings            |
+| `created_at` / `updated_at` | `TIMESTAMPTZ`  | no   | `utcnow` |                                                   |
 
 **Relationships:** `organization`, `role`, `refresh_tokens` (delete-orphan),
 `audit_logs` (`passive_deletes=True`), `scans` (`passive_deletes=True`),
 `asset_notes`, `asset_tags`.
+
+**Two independent gates on sign-in.** `is_verified` records that someone
+controls the mailbox; `approved_at` records that a human with admin rights
+decided the account should exist. Both are required, and neither implies the
+other — which is why `POST /admin/users/{id}/approve` refuses an unverified
+account rather than treating approval as an override. Accounts created through
+`POST /admin/users` are stamped with both at creation, since admin provisioning
+_is_ the approval; only self-registration ever produces a row with
+`approved_at IS NULL`.
+
+Both are checked **after** the password verifies. Checking them first, as an
+earlier version did, made each an account-existence oracle: any password at all
+would return a 403 distinguishing "disabled", "deleted" and "no such account".
 
 `RESTRICT` on `role_id` means a role cannot be deleted while any user holds it —
 which is one reason the RBAC router exposes no delete endpoint.
@@ -260,6 +295,32 @@ hash proves the presented token is the one that was issued.
 
 Single-use: the row is deleted on successful reset. The API lifespan loop purges
 expired rows.
+
+### `email_verification_tokens`
+
+| Column       | Type          | Null | Notes                                    |
+| ------------ | ------------- | ---- | ---------------------------------------- |
+| `id`         | `BigInteger`  | no   | **PK**, autoincrement                    |
+| `user_id`    | `String(150)` | no   | FK `users.id` CASCADE, indexed           |
+| `token_hash` | `String(255)` | no   | **UNIQUE**, indexed — SHA-256            |
+| `email`      | `String(320)` | no   | Address the token was issued for         |
+| `created_at` | `TIMESTAMPTZ` | no   |                                          |
+| `expires_at` | `TIMESTAMPTZ` | no   | Created + `EMAIL_VERIFICATION_TTL_HOURS` |
+
+Deliberately a **separate table** from `password_reset_tokens` rather than a
+`purpose` column on it: reset is the more sensitive of the two flows and already
+works, and a shared table would let a bug in one flow mint a token the other
+accepts.
+
+Single-use: the row is deleted in the same transaction that sets
+`users.is_verified`. Issuing a new token deletes any outstanding ones for the
+same user, so only one link is ever live — two would leave a stale link
+redeemable from a mailbox that may no longer be under the user's control.
+
+`email` is compared against `users.email` at redemption. A link issued for one
+address must not confirm a different one, otherwise changing the address after
+requesting a link would let the old mailbox verify an address it never received
+mail at.
 
 ### `audit_logs`
 

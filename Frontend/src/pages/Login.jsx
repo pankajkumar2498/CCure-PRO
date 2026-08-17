@@ -16,12 +16,32 @@ import {
 import {
   verifyMfa as verifyMfaApi,
   sendEmailOtp as sendEmailOtpApi,
+  isSelfRegistrationEnabled,
 } from "../api/auth";
 
 export default function Login() {
   const { login, refreshUser, authMessage } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Whether this deployment allows self-service signup. The backend is the only
+  // authority: with ALLOW_SELF_REGISTRATION off, /auth/register and the
+  // availability probes all return 404, so a "Register here" link would send
+  // the user to a page that can only tell them they cannot register.
+  //
+  // null while the probe is in flight, so nothing is rendered in that gap
+  // rather than flashing a link that is about to disappear.
+  const [selfRegAllowed, setSelfRegAllowed] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    isSelfRegistrationEnabled().then((allowed) => {
+      if (!cancelled) setSelfRegAllowed(allowed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const fromLocation = location.state?.from;
   const savedRedirect =
     location.state?.reason === "expired"
@@ -390,12 +410,20 @@ export default function Login() {
                 </button>
               </form>
 
-              <p className="auth-switch">
-                No account?{" "}
-                <Link to="/register" className="auth-link">
-                  Register here
-                </Link>
-              </p>
+              {selfRegAllowed === true && (
+                <p className="auth-switch">
+                  No account?{" "}
+                  <Link to="/register" className="auth-link">
+                    Register here
+                  </Link>
+                </p>
+              )}
+              {selfRegAllowed === false && (
+                <p className="auth-switch">
+                  Accounts are created by your administrator. Contact them to
+                  request access.
+                </p>
+              )}
             </>
           )}
 

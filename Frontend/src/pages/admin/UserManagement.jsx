@@ -14,6 +14,8 @@ import {
   moveUserOrganization,
   resetUserPassword,
   resetUserMfa,
+  listPendingUsers,
+  approveUser,
 } from "../../api/admin";
 import Button from "../../components/common/Button";
 import Modal from "../../components/layout/Modal";
@@ -124,6 +126,57 @@ export default function UserManagement() {
       }
     },
     [page, search, selectedOrgId, isSuperadmin],
+  );
+
+  // ── Accounts awaiting approval ────────────────────────────────────────────
+  // Self-registered accounts sit with approved_at NULL and cannot sign in. The
+  // approve endpoint existed with nothing calling it, so the only way to release
+  // an account was curl — which meant in practice that a pending user waited
+  // forever. Surfaced above the user table because it is the only queue here
+  // with someone actually waiting on it.
+  const [pending, setPending] = useState([]);
+  const [approvingId, setApprovingId] = useState(null);
+
+  const loadPending = useCallback(async () => {
+    try {
+      const data = await listPendingUsers();
+      setPending(Array.isArray(data) ? data : []);
+    } catch {
+      // Non-fatal: the rest of the page is still usable, and an admin who
+      // cannot list pending accounts is no worse off than before this existed.
+      setPending([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  const handleApprove = useCallback(
+    async (user) => {
+      setApprovingId(user.id);
+      try {
+        await approveUser(user.id);
+        pushToast(
+          `${user.username} approved. They have been emailed and can now sign in.`,
+          "success",
+        );
+        await Promise.all([loadPending(), loadUsers(true)]);
+      } catch (err) {
+        // The backend refuses to approve an unverified mailbox; surface that
+        // reason rather than a generic failure, because it is actionable —
+        // the user has to click their verification link first.
+        pushToast(
+          err?.response?.data?.detail ||
+            err?.response?.data?.message ||
+            "Could not approve this account.",
+          "error",
+        );
+      } finally {
+        setApprovingId(null);
+      }
+    },
+    [loadPending, loadUsers, pushToast],
   );
 
   // Load roles + orgs once on mount (these rarely change)
@@ -555,6 +608,102 @@ export default function UserManagement() {
               >
                 Next
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Accounts awaiting approval. Only rendered when there are any, so the
+            page is unchanged for deployments with self-registration disabled. */}
+        {canUpdateUsers && pending.length > 0 && (
+          <div
+            style={{
+              border: "1px solid #f59e0b",
+              background: "rgba(245,158,11,0.08)",
+              borderRadius: 10,
+              padding: "16px 18px",
+              marginBottom: 20,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 4,
+              }}
+            >
+              <strong style={{ fontSize: 15 }}>
+                {pending.length} account{pending.length === 1 ? "" : "s"}{" "}
+                awaiting approval
+              </strong>
+            </div>
+            <p style={{ margin: "0 0 14px 0", fontSize: 13, opacity: 0.85 }}>
+              These accounts cannot sign in yet. Approving one enables sign-in
+              and emails the account holder. An account whose email is still
+              unverified cannot be approved &mdash; the owner must click their
+              verification link first.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pending.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    padding: "10px 12px",
+                    background: "rgba(0,0,0,0.04)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {p.username}
+                      <span
+                        style={{
+                          marginLeft: 10,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          background: p.is_verified ? "#dcfce7" : "#fee2e2",
+                          color: p.is_verified ? "#166534" : "#991b1b",
+                        }}
+                      >
+                        {p.is_verified
+                          ? "email verified"
+                          : "email not verified"}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        opacity: 0.75,
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {p.email}
+                      {p.full_name ? ` · ${p.full_name}` : ""}
+                      {p.created_at
+                        ? ` · requested ${new Date(p.created_at).toLocaleString()}`
+                        : ""}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => handleApprove(p)}
+                    disabled={!p.is_verified || approvingId === p.id}
+                    title={
+                      p.is_verified
+                        ? "Approve and enable sign-in"
+                        : "Cannot approve until the email address is verified"
+                    }
+                  >
+                    {approvingId === p.id ? "Approving…" : "Approve"}
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
         )}

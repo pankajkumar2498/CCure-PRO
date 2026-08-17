@@ -5,12 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CCure Audit PRO</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      The Google Fonts stylesheet and its two preconnects were removed.
+
+      They had already stopped working: nginx.conf serves
+      `style-src 'self' 'unsafe-inline'; font-src 'self'`, so the browser was
+      blocking both the fonts.googleapis.com stylesheet and the
+      fonts.gstatic.com font files, and every page was already rendering in the
+      CSS fallback stack. What survived was the cost — a DNS lookup, a TCP
+      connection and the visitor's IP handed to a third party on every single
+      page load of a security-audit tool, including from OT networks where
+      outbound access is meant to be absent.
+
+      If Inter is wanted, self-host the woff2 files under /assets and reference
+      them with @font-face. Do not re-add the CDN links: the CSP comment in
+      Frontend/nginx.conf states that all fonts are self-hosted, and that
+      should stay true.
+    -->
   </head>
   <body>
     <div id="root"></div>

@@ -46,11 +46,16 @@ services:
     command: ["sh", "-c", "tr -d '\\r' < /app/start.sh > /tmp/start.sh && chmod +x /tmp/start.sh && /tmp/start.sh"]
     environment:
       - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      # TLS for the vuln_intel connection, which config.py assembles from
+      # VULN_DB_* rather than from a hardcoded URL — the container and the
+      # host worker need different hosts and different certificate paths.
+      - PGSSLMODE=${PGSSLMODE:-verify-full}
+      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
       - VULN_DB_PORT=5432
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
@@ -58,6 +63,12 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
+      # Set explicitly rather than left to Backend/.env: auth/router.py reads
+      # these with os.getenv at import time, so whether the dotenv load had
+      # already happened depended on import order. A cookie silently losing
+      # its Secure flag is not a failure anyone would notice.
+      - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
+      - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
@@ -80,6 +91,10 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./Backend:/app
+      # Internal root CA, so libpq can verify the PostgreSQL server
+      # certificate (sslmode=verify-full). Read-only: the container has
+      # no reason to alter a trust anchor.
+      - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
       - ./docs:/docs:ro
@@ -98,11 +113,16 @@ services:
     command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner,default,compliance", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
       - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      # TLS for the vuln_intel connection, which config.py assembles from
+      # VULN_DB_* rather than from a hardcoded URL — the container and the
+      # host worker need different hosts and different certificate paths.
+      - PGSSLMODE=${PGSSLMODE:-verify-full}
+      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
       - VULN_DB_PORT=5432
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
@@ -110,6 +130,12 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
+      # Set explicitly rather than left to Backend/.env: auth/router.py reads
+      # these with os.getenv at import time, so whether the dotenv load had
+      # already happened depended on import order. A cookie silently losing
+      # its Secure flag is not a failure anyone would notice.
+      - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
+      - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
       - APP_ENV=production
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
       - SMTP_PORT=${SMTP_PORT:-1025}
@@ -132,6 +158,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
+      # Internal root CA, so libpq can verify the PostgreSQL server
+      # certificate (sslmode=verify-full). Read-only: the container has
+      # no reason to alter a trust anchor.
+      - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
 
@@ -153,11 +183,16 @@ services:
       --prefetch-multiplier=1
     environment:
       - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      # TLS for the vuln_intel connection, which config.py assembles from
+      # VULN_DB_* rather than from a hardcoded URL — the container and the
+      # host worker need different hosts and different certificate paths.
+      - PGSSLMODE=${PGSSLMODE:-verify-full}
+      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
       - VULN_DB_PORT=5432
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
@@ -185,6 +220,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
+      # Internal root CA, so libpq can verify the PostgreSQL server
+      # certificate (sslmode=verify-full). Read-only: the container has
+      # no reason to alter a trust anchor.
+      - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
 

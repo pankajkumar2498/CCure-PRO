@@ -99,3 +99,20 @@ docs/*.pdf
 # Database dumps from scripts/backup_db.ps1
 backups/
 .env.bak*
+
+# ── TLS material ────────────────────────────────────────────────────────────
+# The internal root CA is public and safe to distribute, but it is
+# deployment-specific: each installation runs its own CA, so committing one
+# would ship a trust anchor that is wrong everywhere else. Generate it with
+# scripts/tls/new_internal_ca.ps1 and copy the root here.
+certs/*.crt
+certs/*.key
+# Private keys must never be committed under any name.
+*.key
+*.pem
+
+# Test coverage artefact. CI generates it with `pytest --cov-report=xml`
+# on every run, so a committed copy is stale the moment it lands.
+coverage.xml
+.coverage
+htmlcov/

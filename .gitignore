@@ -82,6 +82,11 @@ Backend/db/test_data/prod_schema.sql
 # Type checking caches
 .pytype/
 .mypy_cache/
+# Ruff writes its own .gitignore inside this directory, so the cache is
+# ignored even without an entry here — until that generated file is not
+# there, at which point thousands of cache files appear as untracked
+# changes. Do not rely on a tool to ignore itself.
+.ruff_cache/
 
 # .md files
 .agent/

@@ -146,7 +146,15 @@ def _is_scannable_address(value: str) -> bool:
     )
 
 
-def validate_scan_targets(targets: list[str] | None) -> list[str]:
+# Distinguishes "this caller does not do scope enforcement" from "this caller
+# enforces scope and the org row could not be loaded". The second must still be
+# denied under REQUIRE_SCAN_SCOPE, so it cannot share a default with the first.
+_SCOPE_NOT_CHECKED = object()
+
+
+def validate_scan_targets(
+    targets: list[str] | None, org=_SCOPE_NOT_CHECKED
+) -> list[str]:
     """
     Reject a scan request that can never produce results, before it costs anything.
 
@@ -154,6 +162,14 @@ def validate_scan_targets(targets: list[str] | None) -> list[str]:
     scan row, consumed the organisation's quota, and only failed asynchronously
     seconds later with a reason the API never returned. A typo should come back
     as an error the operator can fix, not as a scan that quietly dies.
+
+    When `org` is supplied the targets are additionally checked against that
+    organisation's authorised scan scope (see core/scan_scope.py). The two
+    checks are distinct and both belong here: everything above `org` is a
+    usability filter answering "can this scan work?", the scope check is an
+    authorisation boundary answering "is this scan permitted?". Callers that
+    omit `org` get validation only — which is why every scan-creating route
+    passes it.
 
     Returns the cleaned target list.
     """
@@ -212,6 +228,16 @@ def validate_scan_targets(targets: list[str] | None) -> list[str]:
                 f"{InputValidator.MAX_HOSTS}."
             ),
         )
+
+    if org is not _SCOPE_NOT_CHECKED:
+        from core.scan_scope import ScanScopeError, enforce_org_scan_scope
+
+        try:
+            enforce_org_scan_scope(cleaned, org)
+        except ScanScopeError as exc:
+            # 403, not 422: the request is well-formed and the operator is
+            # authenticated. What is missing is authorisation for this target.
+            raise HTTPException(status_code=403, detail=exc.message) from exc
 
     return cleaned
 

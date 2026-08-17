@@ -25,6 +25,35 @@ from scans.db_helpers import create_scan
 router = APIRouter(tags=["Credentialed Scans"])
 
 
+def _enforce_credentialed_scan_scope(
+    hosts: list[str], user: User, org_id: str | None
+) -> None:
+    """
+    Deny hosts outside the organisation's authorised scan scope.
+
+    Mirrors the check scan_helpers.validate_scan_targets applies to network
+    scans. It lives here rather than there because this route expands its own
+    targets and never calls that helper.
+    """
+    from core.scan_scope import ScanScopeError, enforce_org_scan_scope
+    from db.models import Organization
+
+    role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
+    target_org_id = (
+        org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
+    )
+
+    db = SessionLocal()
+    try:
+        org = db.query(Organization).filter(Organization.id == target_org_id).first()
+        try:
+            enforce_org_scan_scope(hosts, org)
+        except ScanScopeError as exc:
+            raise HTTPException(status_code=403, detail=exc.message) from exc
+    finally:
+        db.close()
+
+
 # ── Request model ─────────────────────────────────────────────────────────────
 
 
@@ -228,6 +257,11 @@ async def scan_credentialed(
             status_code=400,
             detail="No valid targets to scan. Check the address, range, or CIDR.",
         )
+
+    # A credentialed audit authenticates to each host, so an out-of-scope
+    # target here is worse than an out-of-scope port scan: it would present
+    # this organisation's stored credentials to a machine it does not own.
+    _enforce_credentialed_scan_scope(hosts, user, org_id)
     if len(hosts) > MAX_CREDENTIALED_TARGETS:
         raise HTTPException(
             status_code=400,

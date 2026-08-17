@@ -55,6 +55,19 @@ def _resolve_org(user: User, requested_org: str | None) -> str:
     return str(user.org_id)
 
 
+def _org_row(db: Session, org_id: str):
+    """
+    Load the Organization that a scan's authorisation scope is read from.
+
+    Returns None if the row is missing, which core.scan_scope treats as "no
+    scope configured" — the same as a NULL scope, so a dangling org_id cannot
+    become a way to scan without a scope under REQUIRE_SCAN_SCOPE.
+    """
+    from db.models import Organization
+
+    return db.query(Organization).filter(Organization.id == org_id).first()
+
+
 # ── Quota status endpoint ─────────────────────────────────────────────────────
 
 
@@ -324,8 +337,9 @@ async def scan_host_discovery(
 
     resolved_org = _resolve_org(user, org_id)
 
-    # ── Target gate — reject unusable input before it costs quota ─────────────
-    targets = validate_scan_targets(req.targets)
+    # ── Target gate — reject unusable input before it costs quota, and
+    #    unauthorised targets before anything touches the network ─────────────
+    targets = validate_scan_targets(req.targets, org=_org_row(db, resolved_org))
 
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
     check_scan_quota(
@@ -550,9 +564,12 @@ async def scan_phases(
     request: Request,
     req: PhasesRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
+    db: Session = Depends(get_db),
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""
-    targets = validate_scan_targets(req.targets)
+    targets = validate_scan_targets(
+        req.targets, org=_org_row(db, str(current_user.org_id))
+    )
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),
         targets=targets,

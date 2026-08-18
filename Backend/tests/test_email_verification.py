@@ -362,6 +362,7 @@ def test_approval_emails_the_account_holder(
     auth_headers: dict,
     test_user: User,
     registered,
+    monkeypatch,
 ):
     """
     Approval must notify the user by email.
@@ -372,6 +373,21 @@ def test_approval_emails_the_account_holder(
     so this is the difference between a working flow and one that appears to
     hang forever.
     """
+    # FRONTEND_URL is pinned here rather than read from the environment.
+    #
+    # This test previously asserted `login_url.startswith("https://")`, which is
+    # a statement about the deployment, not about the code. The CI workflow sets
+    # no FRONTEND_URL, so AppConfig falls back to http://localhost:3000 and the
+    # assertion failed every run — deterministically, not flakily. It passed
+    # locally only because docker-compose exports the production https value.
+    #
+    # What is actually worth asserting is that the link is built from whatever
+    # FRONTEND_URL says, pointing at /login, with the scheme preserved. Set it,
+    # then check the link matches it exactly.
+    from config import AppConfig
+
+    monkeypatch.setattr(AppConfig, "FRONTEND_URL", "https://ccure.example/")
+
     user, token = registered
     client.post("/auth/verify-email", json={"token": token})
 
@@ -381,16 +397,14 @@ def test_approval_emails_the_account_holder(
     with patch("core.tasks.send_account_approved_email_task.delay") as delay:
         res = client.post(f"/admin/users/{user.id}/approve", headers=auth_headers)
     assert res.status_code == 200, res.text
-    assert delay.called, "approval must dispatch an email to the account holder"
+    delay.assert_called_once()
 
     to_addr, username, login_url = delay.call_args[0][:3]
     assert to_addr == "vera@test.com"
     assert username == "verafyer"
-    assert login_url.endswith("/login")
-    assert login_url.startswith("https://"), (
-        "the login link must be https — FRONTEND_URL drives it and a plain-http "
-        "link cannot be HSTS-protected"
-    )
+    # Exact, including the stripped trailing slash — a doubled slash in a link
+    # people click is the kind of thing nobody notices until it is in an email.
+    assert login_url == "https://ccure.example/login"
 
 
 def test_approval_failure_to_email_does_not_undo_the_approval(

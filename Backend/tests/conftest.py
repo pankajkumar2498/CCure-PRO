@@ -801,33 +801,78 @@ def block_outbound_smtp():
     """
     Make it impossible for the test suite to send real email.
 
-    The broker is already redirected to memory://, so queued mail goes nowhere.
-    This is the second layer, for anything that sends synchronously — a test
-    calling a mail_service function directly, or eager execution enabled by an
-    individual test. Without it the suite delivered to smtp.gmail.com using the
-    production credentials.
+    The broker is already redirected to a scratch Redis database, so queued mail
+    goes nowhere. This is the second layer, for anything that sends
+    synchronously — and under CI that is the *normal* path, not an accident:
+    conftest setdefault()s CELERY_TASK_ALWAYS_EAGER to "true", so `.delay()`
+    executes the task in-process and any test that does not patch the sender
+    reaches smtplib for real.
 
-    Raising rather than silently succeeding is deliberate: a test that expects
-    mail to be *sent* should patch the dispatch path explicitly, and one that
-    reaches real SMTP by accident should be noisy about it rather than quietly
-    consuming Gmail quota. The mail tasks now retry on failure, so this also
-    exercises their failure handling.
+    A no-op, not a raiser
+    ─────────────────────
+    This first raised AssertionError to make an accidental send loud. That was
+    wrong once the mail tasks gained `autoretry_for=(Exception,)`: in eager mode
+    the exception propagated into Celery's retry machinery, which retried five
+    times and then logged
+
+        MAIL PERMANENTLY UNDELIVERED after 5 retries: ... error=The test suite
+        attempted a real SMTP connection
+
+    on a run where nothing was actually wrong. That is alarming noise in a CI
+    log, it exercises the retry path pointlessly on every affected test, and it
+    turns a legitimate code path into a failure.
+
+    Substituting a no-op keeps the property that actually matters — no message
+    leaves this machine — while letting eager tasks complete as they would in
+    production. Sends are recorded on the class so a test can assert on them if
+    one ever needs to.
     """
     import smtplib
 
-    class _BlockedSMTP:
+    class _NullSMTP:
+        """Accepts the smtplib API and does nothing with it."""
+
+        sent = []
+
         def __init__(self, *args, **kwargs):
-            raise AssertionError(
-                "The test suite attempted a real SMTP connection. Patch the "
-                "mail dispatch (e.g. "
-                "patch('core.tasks.send_verification_email_task.delay')) or "
-                "core.mail_dispatch.dispatch_email instead of sending for real."
-            )
+            self._host = args[0] if args else kwargs.get("host", "")
+
+        def ehlo(self, *a, **k):
+            return (250, b"OK")
+
+        def has_extn(self, *a, **k):
+            return False
+
+        def starttls(self, *a, **k):
+            return (220, b"OK")
+
+        def login(self, *a, **k):
+            return (235, b"OK")
+
+        def sendmail(self, from_addr, to_addrs, msg, *a, **k):
+            _NullSMTP.sent.append((from_addr, to_addrs))
+            return {}
+
+        def send_message(self, msg, *a, **k):
+            _NullSMTP.sent.append((msg.get("From"), msg.get("To")))
+            return {}
+
+        def quit(self, *a, **k):
+            return (221, b"OK")
+
+        def close(self, *a, **k):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
 
     original_smtp, original_ssl = smtplib.SMTP, smtplib.SMTP_SSL
-    smtplib.SMTP, smtplib.SMTP_SSL = _BlockedSMTP, _BlockedSMTP
+    smtplib.SMTP, smtplib.SMTP_SSL = _NullSMTP, _NullSMTP
     try:
-        yield
+        yield _NullSMTP
     finally:
         smtplib.SMTP, smtplib.SMTP_SSL = original_smtp, original_ssl
 

@@ -19,6 +19,11 @@ PUBLIC_ROUTE_WHITELIST = {
     "/auth/check-email",
     "/auth/reset-password-request",
     "/auth/reset-password",
+    # Necessarily unauthenticated: the caller is proving control of a mailbox
+    # precisely because it cannot yet authenticate. Both are rate-limited and
+    # neither discloses whether an account exists.
+    "/auth/verify-email",
+    "/auth/resend-verification",
     "/docs",
     "/redoc",
     "/openapi.json",

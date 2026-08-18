@@ -232,48 +232,235 @@ def _resolve_refresh_token(request: Request, token_from_body: str | None) -> str
     return token_from_body or request.cookies.get(REFRESH_COOKIE_NAME)
 
 
+# How many verification links may be redeemable for one account at a time.
+#
+# Three covers the realistic case — a user who clicks resend once or twice and
+# then opens whichever email they happen to see first — while bounding how many
+# rows a resend loop can create. See _issue_verification_token for why more than
+# one is safe.
+MAX_LIVE_VERIFICATION_TOKENS = 3
+
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_password_check(password: str) -> None:
+    """
+    Burn roughly one password verification against a throwaway hash.
+
+    Used when no account matched, so that "unknown identifier" and "wrong
+    password" take comparable time. The hash is computed once per process
+    rather than per request — deriving it every call would make the no-account
+    path *slower* than the real one and reintroduce the timing signal with the
+    sign flipped.
+    """
+    global _DUMMY_HASH
+    try:
+        if _DUMMY_HASH is None:
+            import secrets
+
+            _DUMMY_HASH = hash_password(secrets.token_urlsafe(32))
+        verify_password(password, _DUMMY_HASH)
+    except Exception:  # never let the equaliser itself fail a login
+        logger.debug("Dummy password check failed", exc_info=True)
+
+
+def _deny_login(
+    db: Session, user: User, request: Request, reason: str, detail: str
+) -> None:
+    """Audit a post-credential login denial and raise 403. Never returns."""
+    from core.audit import log_audit_event
+
+    log_audit_event(
+        db,
+        user,
+        "user.login_failed",
+        "user",
+        str(user.id),
+        request=request,
+        status="denied",
+        changes={"reason": reason},
+    )
+    db.commit()
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def _issue_verification_token(db: Session, user: User, request: Request | None = None):
+    """
+    Mint a single-use email-verification token and dispatch the link.
+
+    Only the SHA-256 hash is stored, so a database read yields nothing that can
+    be redeemed.
+
+    Several links may be live at once — deliberately
+    ───────────────────────────────────────────────
+    This used to delete every outstanding token on re-issue, on the reasoning
+    that one live link is tidier than two. In practice that made the resend
+    button a trap, and it broke a real registration:
+
+        16:58:32  register  -> token A emailed
+        16:58:54  resend    -> token A DELETED, token B emailed
+        17:00:16  user clicks the link in email A  -> 400 "no longer valid"
+        17:01:07  resend    -> token B DELETED, token C emailed
+        17:01:41  user clicks the link in email B  -> 400 again
+
+    Every resend killed the link the user was about to click, and the failure
+    prompted another resend, so the loop could not be escaped. Two emails in an
+    inbox and only the newest working is not a distinction anyone can see.
+
+    Keeping several live costs nothing that matters here. A verification token
+    proves control of a mailbox and grants no session — it cannot log anyone in,
+    and the account still needs administrator approval. All live tokens for a
+    user point at the same mailbox, so an attacker holding that mailbox gains
+    nothing from there being three rather than one. The controls that carry the
+    weight are unchanged: single **use** (the row is deleted on redemption),
+    a 24-hour expiry, and 3/min rate limiting on resend.
+
+    Password-reset tokens are a different case and keep the one-live rule: they
+    change a credential, so a stale one is worth strictly more to an attacker.
+
+    Older tokens beyond MAX_LIVE_VERIFICATION_TOKENS are pruned, along with any
+    that have expired, so this cannot grow without bound.
+
+    Returns the plaintext token. Callers must not put it in a response body;
+    it is returned so tests can exercise redemption without parsing an email.
+    """
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta, timezone
+
+    from config import AppConfig
+    from core.mail_dispatch import dispatch_email
+    from db.models import EmailVerificationToken
+
+    now = datetime.now(timezone.utc)
+
+    # Drop anything already expired for this user — it is unusable and is a
+    # retained record of an email address with no purpose.
+    db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.expires_at <= now,
+    ).delete(synchronize_session=False)
+
+    # Keep only the newest few, so a user hammering resend cannot accumulate
+    # rows indefinitely. One slot is freed for the token about to be added.
+    keep = max(1, MAX_LIVE_VERIFICATION_TOKENS - 1)
+    surplus = (
+        db.query(EmailVerificationToken.id)
+        .filter(EmailVerificationToken.user_id == user.id)
+        .order_by(EmailVerificationToken.created_at.desc())
+        .offset(keep)
+        .all()
+    )
+    if surplus:
+        db.query(EmailVerificationToken).filter(
+            EmailVerificationToken.id.in_([row.id for row in surplus])
+        ).delete(synchronize_session=False)
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        hours=AppConfig.EMAIL_VERIFICATION_TTL_HOURS
+    )
+
+    db.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            email=user.email,
+            expires_at=expires_at,
+        )
+    )
+
+    from core.audit import log_audit_event
+
+    log_audit_event(
+        db,
+        user,
+        "user.verification_token_issued",
+        "user",
+        str(user.id),
+        request=request,
+        status="success",
+    )
+    db.commit()
+
+    verify_link = f"{AppConfig.FRONTEND_URL.rstrip('/')}/verify-email?token={token}"
+    # dispatch_email, not .delay: with no worker consuming the queue, .delay
+    # succeeded and the link was never sent — the account existed, the token
+    # was committed, and the user got silence.
+    dispatch_email("verification", user.email, user.username, verify_link)
+    return token
+
+
+def _require_self_registration_enabled() -> None:
+    """
+    Gate every self-service signup route behind ALLOW_SELF_REGISTRATION.
+
+    404 rather than 403: when the feature is off, the endpoint should not
+    advertise that it exists and is merely disabled here.
+    """
+    from config import AppConfig
+
+    if not AppConfig.ALLOW_SELF_REGISTRATION:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 @router.get("/check-username")
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 def check_username(request: Request, q: str, db: Session = Depends(get_db)):
-    """Check if a username is available"""
+    """
+    Check whether a username is free.
+
+    This is an existence oracle, so it is only reachable while self-service
+    registration is enabled — the signup form is the sole legitimate caller.
+    It answers about usernames only. It previously also matched the query
+    against the *email* column, which let anyone confirm whether a given email
+    address held an account by passing it here, and confirm it from the
+    username endpoint too. Usernames are semi-public within a tenant; email
+    addresses are not.
+    """
+    _require_self_registration_enabled()
     query_str = q.strip()
     if len(query_str) < 3 or "@" in query_str:
         return {"available": False}
-    exists = (
-        db.query(User)
-        .filter(
-            or_(
-                username_matches(User.username, query_str),
-                email_matches(User.email, query_str),
-            )
-        )
-        .first()
-    )
+    exists = db.query(User).filter(username_matches(User.username, query_str)).first()
     return {"available": not bool(exists)}
 
 
 @router.get("/check-email")
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 def check_email(request: Request, q: str, db: Session = Depends(get_db)):
-    """Check if an email is available"""
+    """
+    Report whether an email address can be used to register.
+
+    Deliberately does *not* answer "does this account exist". A taken address
+    and a free one both return available=true, and the collision surfaces at
+    submit time as a generic failure. Live "already registered" feedback on a
+    signup form is a convenience for the person typing and a bulk account
+    oracle for everyone else, and only one of those two is worth having.
+
+    The endpoint is kept so the frontend contract does not break, and it still
+    rejects syntactically invalid input, which is what the field actually needs
+    in order to give useful feedback.
+    """
+    _require_self_registration_enabled()
     query_str = q.strip()
     if not query_str or "@" not in query_str:
         return {"available": False}
-    exists = (
-        db.query(User)
-        .filter(
-            or_(
-                email_matches(User.email, query_str),
-                username_matches(User.username, query_str),
-            )
-        )
-        .first()
-    )
-    return {"available": not bool(exists)}
+    return {"available": True}
 
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
-@limiter.limit("5/minute")
+# The gate is a route dependency as well as a call inside the handler.
+# Dependencies are resolved before request-body validation errors are raised,
+# so without this a disabled deployment answered POST /auth/register with a 422
+# listing the fields it expects — confirming the route exists, which is the one
+# thing the 404 is meant to avoid now that /openapi.json and /docs are closed.
+@router.post(
+    "/register",
+    status_code=202,
+    dependencies=[Depends(_require_self_registration_enabled)],
+)
+@limiter.limit("3/minute")
 def register(
     req: RegisterRequest,
     request: Request,
@@ -281,34 +468,60 @@ def register(
     db: Session = Depends(get_db),
 ):
     """
-    Create a new user account.
-    Returns access + refresh tokens immediately so the user is logged in.
+    Create a new, inert account and email a verification link.
+
+    What changed and why
+    ────────────────────
+    This endpoint used to create the account and return access + refresh
+    tokens in the same response, placing the user in a self-service
+    organisation with the `analyst` role. In this product `analyst` carries
+    scans:execute — so anyone who could reach this route could issue
+    themselves a working credential and point Nmap, Scapy and Nuclei at the
+    network from a worker running with raw-socket privileges on the host.
+
+    Registration now yields nothing usable:
+
+      * the route only exists when ALLOW_SELF_REGISTRATION is on (default off,
+        because POST /admin/users is the supported onboarding path),
+      * no tokens are returned — 202, not 201, because the account is pending,
+      * the account is created is_verified=False, is_active=False,
+        approved_at=NULL and cannot log in until *both* the mailbox is
+        confirmed and an administrator approves it.
+
+    The response body is identical whether or not the address was already
+    registered, so this route cannot be used to enumerate accounts.
     """
+    _require_self_registration_enabled()
+
     email = normalize_email(req.email)
     username = req.username.strip()
 
-    if (
-        db.query(User)
-        .filter(
-            or_(
-                email_matches(User.email, email), username_matches(User.username, email)
-            )
-        )
-        .first()
-    ):
-        raise HTTPException(status_code=409, detail="Email already registered")
+    # Uniform response for every outcome below. Returned on success, on an
+    # already-registered email, and on a taken username, so none of the three
+    # can be told apart by an unauthenticated caller.
+    pending_response = {
+        "detail": (
+            "If that email address can be registered, a verification link is "
+            "on its way. New accounts also require administrator approval "
+            "before sign-in is enabled."
+        ),
+        "status": "pending_verification",
+    }
 
-    if (
-        db.query(User)
-        .filter(
-            or_(
-                username_matches(User.username, username),
-                email_matches(User.email, username),
-            )
+    email_taken = bool(db.query(User).filter(email_matches(User.email, email)).first())
+    username_taken = bool(
+        db.query(User).filter(username_matches(User.username, username)).first()
+    )
+
+    if email_taken or username_taken:
+        # Logged server-side so the collision is visible to operators, and
+        # deliberately not signalled to the caller.
+        logger.info(
+            "Registration collision (email_taken=%s username_taken=%s)",
+            email_taken,
+            username_taken,
         )
-        .first()
-    ):
-        raise HTTPException(status_code=409, detail="Username already taken")
+        return pending_response
 
     # For production auto-registration, place new users in the Self-Service Organization with the 'analyst' role.
     # This organization can be managed by superadmins and org_admins
@@ -331,7 +544,11 @@ def register(
         db.add(self_service_org)
         db.flush()
 
-    default_role = db.query(Role).filter(Role.name == "analyst").first()
+    # A self-registered account lands on `viewer`, not `analyst`. Even once
+    # verified and approved it is read-only until an administrator deliberately
+    # raises it, so the approval step is a decision about access rather than a
+    # rubber stamp on scan execution that has already been granted.
+    default_role = db.query(Role).filter(Role.name == "viewer").first()
 
     if not default_role:
         raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
@@ -344,20 +561,22 @@ def register(
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
         role_id=default_role.id,
+        # Inert on all three axes until each is satisfied deliberately.
+        is_verified=False,
+        is_active=False,
+        approved_at=None,
     )
     db.add(user)
     try:
         db.commit()
-    except IntegrityError as exc:
+    except IntegrityError:
+        # Lost the race against a concurrent registration for the same email or
+        # username. The pre-checks above are advisory; the unique indexes are
+        # what actually enforce this. Return the same body as every other
+        # outcome rather than reporting which column collided.
         db.rollback()
-        error_text = str(exc).lower()
-        if "email" in error_text:
-            raise HTTPException(status_code=409, detail="Email already registered")
-        if "username" in error_text:
-            raise HTTPException(status_code=409, detail="Username already taken")
-        raise HTTPException(
-            status_code=400, detail="Registration failed: duplicate entry"
-        )
+        logger.info("Registration lost a uniqueness race; returning pending response")
+        return pending_response
 
     db.refresh(user)
     from core.audit import log_audit_event
@@ -370,44 +589,164 @@ def register(
         str(user.id),
         request=request,
         status="success",
-        changes={"source": "self_registration", "full_name": user.full_name},
+        changes={
+            "source": "self_registration",
+            "full_name": user.full_name,
+            "state": "pending_verification",
+        },
     )
     db.commit()
 
-    refresh_token = create_refresh_token(user.id, db, request=request)
-    _set_refresh_cookie(response, refresh_token)
+    _issue_verification_token(db, user, request=request)
 
+    return pending_response
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@router.post("/verify-email")
+@limiter.limit("10/minute")
+def verify_email(
+    req: VerifyEmailRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Redeem an email-verification token.
+
+    Verification proves control of the mailbox at this moment. It proves
+    nothing about identity and, on its own, grants no access: the account
+    still needs `approved_at` before login succeeds (unless
+    SELF_REGISTRATION_AUTO_APPROVE is deliberately enabled).
+
+    Failures are uniform — expired, already-used, never-existed and
+    wrong-user tokens all return the same 400 — so the endpoint cannot be used
+    to probe which tokens exist.
+    """
+    import hashlib
+    from datetime import datetime, timezone
+
+    from config import AppConfig
+    from core.audit import log_audit_event
+    from db.base import utcnow
+    from db.models import EmailVerificationToken
+
+    invalid = HTTPException(
+        status_code=400,
+        detail="This verification link is invalid or has expired. Request a new one.",
+    )
+
+    token_hash = hashlib.sha256(req.token.encode("utf-8")).hexdigest()
+    record = (
+        db.query(EmailVerificationToken)
+        .filter(EmailVerificationToken.token_hash == token_hash)
+        .first()
+    )
+    if not record:
+        raise invalid
+
+    if record.expires_at <= datetime.now(timezone.utc):
+        db.delete(record)
+        db.commit()
+        raise invalid
+
+    user = db.query(User).filter(User.id == record.user_id).first()
+    if not user or user.is_deleted:
+        db.delete(record)
+        db.commit()
+        raise invalid
+
+    # The token was issued for a specific address. If the account's email has
+    # since changed, this link must not confirm the new one — otherwise
+    # changing the address after requesting a link would let an old mailbox
+    # verify an address it never received mail at.
+    if normalize_email(record.email) != normalize_email(user.email):
+        db.delete(record)
+        db.commit()
+        raise invalid
+
+    user.is_verified = True
+
+    auto_approved = AppConfig.SELF_REGISTRATION_AUTO_APPROVE
+    if auto_approved:
+        user.approved_at = utcnow()
+        user.approved_by = "auto:SELF_REGISTRATION_AUTO_APPROVE"
+        user.is_active = True
+
+    # Single-use: the row is deleted in the same transaction that flips the flag.
+    db.delete(record)
+
+    log_audit_event(
+        db,
+        user,
+        "user.email_verified",
+        "user",
+        str(user.id),
+        request=request,
+        status="success",
+        changes={"auto_approved": auto_approved},
+    )
+    db.commit()
+
+    if auto_approved:
+        return {
+            "detail": "Email verified. You can now sign in.",
+            "status": "verified",
+        }
     return {
-        "access_token": create_access_token(
-            str(user.id),
-            user.username,
-            role=getattr(user.role, "name", None),
-            org_id=user.org_id,
+        "detail": (
+            "Email verified. Your account is awaiting administrator approval; "
+            "you will be able to sign in once it is approved."
         ),
-        "user": {
-            "id": str(user.id),
-            "org_id": str(user.org_id),
-            "username": user.username,
-            "email": user.email,
-            "full_name": user.full_name,
-            "created_at": user.created_at.isoformat(),
-            "mfa_enabled": user.mfa_enabled,
-            "role": (
-                {
-                    "name": user.role.name,
-                    "permissions": [
-                        {
-                            "resource": rp.permission.resource,
-                            "action": rp.permission.action,
-                        }
-                        for rp in user.role.permissions
-                    ],
-                }
-                if user.role
-                else None
-            ),
-        },
+        "status": "pending_approval",
     }
+
+
+@router.post(
+    "/resend-verification",
+    dependencies=[Depends(_require_self_registration_enabled)],
+)
+@limiter.limit("3/minute")
+def resend_verification(
+    req: ResendVerificationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Re-send a verification link.
+
+    Always returns 200 with the same body, whether the address is unknown,
+    already verified, or genuinely pending — the response must not reveal
+    which. Rate-limited per client because this endpoint sends mail to an
+    address the caller chose, which makes it usable as a mail relay against a
+    third party if left open.
+    """
+    _require_self_registration_enabled()
+
+    generic = {
+        "detail": (
+            "If that address has an account awaiting verification, a new link "
+            "is on its way."
+        )
+    }
+
+    email = normalize_email(req.email.strip())
+    user = db.query(User).filter(email_matches(User.email, email)).first()
+
+    if not user or user.is_deleted or user.is_verified:
+        # Nothing to do. Logged without the address so the log does not become
+        # the enumeration oracle the response refuses to be.
+        logger.info("Verification resend requested for a non-pending account")
+        return generic
+
+    _issue_verification_token(db, user, request=request)
+    return generic
 
 
 @router.post("/login", response_model=Union[TokenResponse, MfaChallengeResponse])
@@ -444,66 +783,22 @@ def login(
         .first()
     )
     if not user:
+        # Spend comparable time on an unknown identifier as on a known one.
+        # Without this the endpoint answers "no such account" measurably faster
+        # than "wrong password", which is the same enumeration leak the uniform
+        # error message exists to prevent — just delivered by a stopwatch.
+        _dummy_password_check(req.password)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    if getattr(user, "is_deleted", False):
-        log_audit_event(
-            db,
-            user,
-            "user.login_failed",
-            "user",
-            str(user.id),
-            request=request,
-            status="denied",
-            changes={"reason": "account deleted"},
-        )
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account deleted",
-        )
-
-    if not user.is_active:
-        log_audit_event(
-            db,
-            user,
-            "user.login_failed",
-            "user",
-            str(user.id),
-            request=request,
-            status="denied",
-            changes={"reason": "account disabled"},
-        )
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account disabled",
-        )
-
-    # ─ Organization Status Check ────────────────────────────────────────────
-    # Prevent login for users whose organization has been deactivated.
-    # User statuses remain unchanged for reversibility.
-    organization = db.query(Organization).filter(Organization.id == user.org_id).first()
-    if organization and not organization.is_active:
-        log_audit_event(
-            db,
-            user,
-            "user.login_failed",
-            "user",
-            str(user.id),
-            request=request,
-            status="denied",
-            changes={"reason": "organization deactivated"},
-        )
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your organization has been deactivated. Please contact support.",
-        )
-
+    # ── Lockout is checked before the password, deliberately ─────────────────
+    # It is the one pre-credential check that must stay: its whole purpose is
+    # to stop the brute-force attempt that is being made right now, and
+    # verifying the password first would defeat it. It leaks only that *some*
+    # account matched the identifier and is currently locked — which an
+    # attacker who just caused the lockout already knows.
     if user.locked_until and user.locked_until > utcnow():
         log_audit_event(
             db,
@@ -524,9 +819,12 @@ def login(
     try:
         is_valid = verify_password(req.password, user.password_hash)
     except Exception as exc:
+        # `identifier`, not `email` — there is no `email` local in this
+        # function, so this handler raised NameError instead of logging, and a
+        # malformed stored hash surfaced as a 500 rather than a failed login.
         logger.warning(
-            "Password verification failed for login attempt on email=%s: %s",
-            email,
+            "Password verification failed for login attempt on identifier=%s: %s",
+            identifier,
             exc.__class__.__name__,
         )
         is_valid = False
@@ -561,9 +859,58 @@ def login(
             detail="Invalid email or password",
         )
 
-    # Success
+    # ── Password is correct. Only now may account state be disclosed ─────────
+    #
+    # These four checks used to run *before* the password was verified, which
+    # made each of them an account oracle: anyone could learn that an address
+    # was registered — and whether it was deleted, disabled or in a suspended
+    # organisation — by submitting it with any password at all and reading the
+    # 403. The uniform "Invalid email or password" above was undone by the
+    # branches that preceded it.
+    #
+    # Running them here costs one Argon2 verification against a known-bad
+    # password and closes the leak: a caller who does not hold the credential
+    # cannot reach any of these messages.
     user.failed_login_count = 0
     user.locked_until = None
+
+    if getattr(user, "is_deleted", False):
+        _deny_login(db, user, request, "account deleted", "Account deleted")
+
+    if not user.is_verified:
+        _deny_login(
+            db,
+            user,
+            request,
+            "email not verified",
+            "Verify your email address before signing in. "
+            "Use the link we sent you, or request a new one.",
+        )
+
+    if user.approved_at is None:
+        _deny_login(
+            db,
+            user,
+            request,
+            "awaiting administrator approval",
+            "Your account is awaiting administrator approval.",
+        )
+
+    if not user.is_active:
+        _deny_login(db, user, request, "account disabled", "Account disabled")
+
+    # ─ Organization Status Check ────────────────────────────────────────────
+    # Prevent login for users whose organization has been deactivated.
+    # User statuses remain unchanged for reversibility.
+    organization = db.query(Organization).filter(Organization.id == user.org_id).first()
+    if organization and not organization.is_active:
+        _deny_login(
+            db,
+            user,
+            request,
+            "organization deactivated",
+            "Your organization has been deactivated. Please contact support.",
+        )
 
     if user.mfa_enabled:
         from auth.jwt_handler import create_mfa_challenge_token
@@ -770,11 +1117,10 @@ def forgot_password(
 
     from config import AppConfig
     from core.audit import log_audit_event
-    from core.tasks import send_password_reset_email_task
+    from core.mail_dispatch import dispatch_email
     from db.models import PasswordResetToken
 
     identifier = req.email_or_username.strip()
-    logger.info("Forgot password requested for: %s", identifier)
 
     user = (
         db.query(User)
@@ -787,10 +1133,16 @@ def forgot_password(
         .first()
     )
 
-    if not user:
-        logger.info("Identifier '%s' is not registered in the database.", identifier)
+    # The submitted identifier is deliberately not logged, and neither is
+    # whether it matched. This endpoint refuses to disclose account existence
+    # over HTTP by always returning the same 200; writing "not registered in
+    # the database" beside the address to a log file simply moves the oracle
+    # somewhere with a wider audience and a longer retention period. The user
+    # id is safe to record once matched, and is enough to reconstruct events.
+    if user:
+        logger.info("Password reset requested for user id=%s", user.id)
     else:
-        logger.info("Found registered user: %s (ID: %s)", user.username, user.id)
+        logger.info("Password reset requested for an unrecognised identifier")
 
     if user:
         # Generate token
@@ -824,7 +1176,7 @@ def forgot_password(
         )
 
         # Trigger background task
-        send_password_reset_email_task.delay(user.email, user.username, reset_link)
+        dispatch_email("password_reset", user.email, user.username, reset_link)
 
     return {
         "detail": "If this email is registered, you will receive a reset link shortly."
@@ -907,6 +1259,30 @@ def reset_password_endpoint(
 
     db.commit()
 
+    # Tell the account owner out-of-band that their password changed. If the
+    # reset was an attacker completing a takeover, this notice is the only
+    # signal the real owner gets, and it reaches a channel the attacker had to
+    # compromise to get this far. Dispatched via Celery and never awaited: a
+    # broken SMTP server must not turn a completed reset into a 500 that
+    # invites the user to try again with a token that no longer exists.
+    try:
+        from core.ip_resolver import get_client_ip
+        from core.mail_dispatch import dispatch_email
+
+        dispatch_email(
+            "password_changed",
+            user.email,
+            user.username,
+            datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC"),
+            get_client_ip(request),
+        )
+    except Exception:
+        logger.warning(
+            "Could not queue password-change notification for user id=%s",
+            user.id,
+            exc_info=True,
+        )
+
     return {"detail": "Your password has been reset successfully."}
 
 
@@ -946,7 +1322,7 @@ def send_email_otp(
     import secrets
     from datetime import timedelta
 
-    from core.tasks import send_mfa_otp_task
+    from core.mail_dispatch import dispatch_email
     from db.base import utcnow
 
     payload = decode_token(req.mfa_token)
@@ -973,7 +1349,7 @@ def send_email_otp(
     db.commit()
 
     # Dispatch Celery task to send email
-    send_mfa_otp_task.delay(user.email, user.username, code)
+    dispatch_email("mfa_otp", user.email, user.username, code)
 
     return {"success": True}
 

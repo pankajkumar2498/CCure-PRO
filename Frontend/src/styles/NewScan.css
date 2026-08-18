@@ -538,7 +538,7 @@
 .ns-chips-label {
   font-size: 0.73rem;
   font-weight: 600;
-  color: var(--text-faint);
+  color: var(--text-muted);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   flex-shrink: 0;
@@ -1596,7 +1596,7 @@
 .am-stat-label {
   font-size: 0.68rem;
   font-weight: 600;
-  color: var(--text-faint);
+  color: var(--text-muted);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   margin-top: 3px;

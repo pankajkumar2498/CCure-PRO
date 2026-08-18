@@ -768,6 +768,29 @@ class NmapScanner:
         import tempfile
 
         t0 = time.time()
+
+        # Nmap parses options anywhere in argv, including after the target, and
+        # it has no "--" end-of-options separator. A target beginning with "-"
+        # is therefore an option, not a host: "-iL" would read a target list
+        # from a file of the attacker's choosing, "-oN" would write output to a
+        # path of their choosing.
+        #
+        # Callers reach here through validate_scan_targets and resolve_target,
+        # both of which already reject such values, so this is the last line
+        # rather than the only one. It is here because this is the point where
+        # a string becomes part of a command, and that is where the assumption
+        # should be checked rather than assumed to have been checked upstream.
+        if target.startswith("-"):
+            log.error(
+                "Refusing nmap target that would be parsed as an option: %r", target
+            )
+            return NmapScanResult(
+                ip=target,
+                state="error",
+                error_message="Invalid target: must not begin with '-'.",
+                scan_duration=0.0,
+            )
+
         with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
             xml_out = tmp.name
         cmd = ["nmap", "-oX", xml_out] + args.split() + [target]

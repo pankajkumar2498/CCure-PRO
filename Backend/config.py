@@ -163,10 +163,40 @@ class VulnIntelConfig:
         "VULN_DB_PASSWORD", os.getenv("PGPASSWORD", "ccure_admin_2026")
     )
 
+    # TLS settings for the assembled URL.
+    #
+    # These exist so TLS can be applied without hardcoding a host, which is the
+    # mistake that broke this: an explicit
+    # VULNERABILITY_INTEL_DATABASE_URL=…@127.0.0.1… was added to Backend/.env to
+    # carry sslmode. That file is read by the host worker *and* by the API
+    # container, and inside the container 127.0.0.1 is the container — so the
+    # connection was refused and `core.cve_lookup` fell back to a stale bundled
+    # SQLite file. Vulnerability data silently degraded with only an INFO line
+    # to show it.
+    #
+    # Assembling the URL from VULN_DB_HOST instead means each side uses the
+    # address that is correct for it (host.docker.internal in the container,
+    # localhost on the host) and both still get verified TLS.
+    SSLMODE: str = os.getenv("VULN_DB_SSLMODE", os.getenv("PGSSLMODE", ""))
+    SSLROOTCERT: str = os.getenv("VULN_DB_SSLROOTCERT", os.getenv("PGSSLROOTCERT", ""))
+
     @staticmethod
     def is_explicitly_configured() -> bool:
         """True when the deployment names a dedicated CVE database."""
         return any(os.getenv(key) for key in _VULN_DB_ENV_KEYS)
+
+    @staticmethod
+    def _tls_query() -> str:
+        """`?sslmode=…&sslrootcert=…`, or empty when TLS is not configured."""
+        params = []
+        if VulnIntelConfig.SSLMODE:
+            params.append(f"sslmode={VulnIntelConfig.SSLMODE}")
+        if VulnIntelConfig.SSLROOTCERT:
+            # Forward slashes only: libpq treats a backslash as an escape inside
+            # a connection URI, so C:\path\root.crt silently becomes C:pathroot.crt.
+            cert = VulnIntelConfig.SSLROOTCERT.replace("\\", "/")
+            params.append(f"sslrootcert={cert}")
+        return ("?" + "&".join(params)) if params else ""
 
     @staticmethod
     def database_url() -> str:
@@ -178,7 +208,7 @@ class VulnIntelConfig:
             return (
                 f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
                 f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}"
-                f"/{VulnIntelConfig.DATABASE}"
+                f"/{VulnIntelConfig.DATABASE}{VulnIntelConfig._tls_query()}"
             )
 
         shared_url = os.getenv("DATABASE_URL")
@@ -188,6 +218,7 @@ class VulnIntelConfig:
         return (
             f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
             f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}/{VulnIntelConfig.DATABASE}"
+            f"{VulnIntelConfig._tls_query()}"
         )
 
 
@@ -279,6 +310,54 @@ class EmailConfig:
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 
+class AccountSecurityConfig:
+    """
+    Gates on the account lifecycle.
+
+    Both defaults are the restrictive ones. A deployment that wants open
+    self-service has to say so out loud in its environment, because the failure
+    mode of the permissive default is silent: registration keeps working and
+    nobody notices that strangers can execute network scans.
+    """
+
+    # Master switch for POST /auth/register. Off by default: admin-provisioned
+    # accounts (POST /admin/users) are the supported onboarding path.
+    ALLOW_SELF_REGISTRATION: bool = (
+        os.getenv("ALLOW_SELF_REGISTRATION", "False").lower() == "true"
+    )
+
+    # When self-registration is on, may a verified account log in before an
+    # admin approves it? Off means email verification alone never yields a
+    # session.
+    SELF_REGISTRATION_AUTO_APPROVE: bool = (
+        os.getenv("SELF_REGISTRATION_AUTO_APPROVE", "False").lower() == "true"
+    )
+
+    # Long enough to survive greylisting and a night's sleep; short enough that
+    # a link leaked from a mailbox archive is usually already dead.
+    EMAIL_VERIFICATION_TTL_HOURS: int = int(
+        os.getenv("EMAIL_VERIFICATION_TTL_HOURS", "24")
+    )
+
+    # Unverified accounts are personal data with no purpose. Purged after this
+    # many days by ccure.tasks.purge_stale_unverified_accounts.
+    UNVERIFIED_ACCOUNT_TTL_DAYS: int = int(
+        os.getenv("UNVERIFIED_ACCOUNT_TTL_DAYS", "7")
+    )
+
+    # When no Celery worker is consuming the mail queue, send the message from
+    # the web process instead of publishing it to a queue nobody is reading.
+    #
+    # On by default because the alternative is a silent hole: `.delay()`
+    # succeeds whenever Redis is up, so with the host worker stopped
+    # registration returned 202, committed the token, and sent nothing. Turn it
+    # off only to reproduce that older behaviour — the test suite does, so that
+    # dispatch stays assertable via `.delay`.
+    MAIL_INLINE_FALLBACK: bool = (
+        os.getenv("MAIL_INLINE_FALLBACK", "True").lower() == "true"
+    )
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -361,6 +440,23 @@ class AppConfig:
     SMTP_SECURE = EmailConfig.SMTP_SECURE
     SMTP_FROM_EMAIL = EmailConfig.SMTP_FROM_EMAIL
     FRONTEND_URL = EmailConfig.FRONTEND_URL
+
+    # Account lifecycle gates
+    ALLOW_SELF_REGISTRATION = AccountSecurityConfig.ALLOW_SELF_REGISTRATION
+    SELF_REGISTRATION_AUTO_APPROVE = (
+        AccountSecurityConfig.SELF_REGISTRATION_AUTO_APPROVE
+    )
+    EMAIL_VERIFICATION_TTL_HOURS = AccountSecurityConfig.EMAIL_VERIFICATION_TTL_HOURS
+    UNVERIFIED_ACCOUNT_TTL_DAYS = AccountSecurityConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
+    MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
+
+    # Scan authorisation. When True an organisation with no configured scope
+    # (scan_scope_cidrs IS NULL) cannot scan at all, rather than falling back
+    # to unrestricted. Left False so this ships without breaking existing orgs;
+    # set it True once every org has a scope. See core/scan_scope.py.
+    REQUIRE_SCAN_SCOPE: bool = (
+        os.getenv("REQUIRE_SCAN_SCOPE", "False").lower() == "true"
+    )
 
     @staticmethod
     def is_sqlite() -> bool:

@@ -1,7 +1,17 @@
 /**
  * src/pages/Register.jsx
  * Dark-themed registration form matching CAST design.
- * API: POST /auth/register → { access_token, refresh_token, user }
+ *
+ * API: POST /auth/register → 202 { detail, status: "pending_verification" }
+ *
+ * Registration returns no tokens and does not sign the user in. The account is
+ * created unverified, inactive and unapproved, and needs both a confirmed
+ * mailbox and an administrator approval before it can log in. On success this
+ * page shows a "check your email" panel rather than navigating to /dashboard.
+ *
+ * The whole route is also feature-gated: when a deployment has
+ * ALLOW_SELF_REGISTRATION off (the default) every self-service endpoint returns
+ * 404, and the page says so instead of presenting a form that cannot succeed.
  */
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -13,7 +23,11 @@ import {
   EyeIcon,
   EyeOffIcon,
 } from "../components/auth/AuthIcons";
-import { checkUsername, checkEmail } from "../api/auth";
+import {
+  checkUsername,
+  isSelfRegistrationEnabled,
+  resendVerification,
+} from "../api/auth";
 import { useDebounce } from "../hooks/useDebounce";
 
 function validate(fullName, username, email, password, confirm, agreeToTerms) {
@@ -73,11 +87,29 @@ export default function Register() {
 
   const [usernameTaken, setUsernameTaken] = useState(false);
   const [usernameChecked, setUsernameChecked] = useState(false);
-  const [emailTaken, setEmailTaken] = useState(false);
-  const [emailChecked, setEmailChecked] = useState(false);
+
+  // Set once registration succeeds; swaps the form for the "check your email"
+  // panel. Registration no longer produces a session, so there is nothing to
+  // navigate to.
+  const [submitted, setSubmitted] = useState(false);
+  const [resendState, setResendState] = useState("");
+
+  // null = still probing, true/false = known. Rendering the form before this
+  // resolves would flash a signup form at users of a deployment that does not
+  // allow signup.
+  const [selfRegAllowed, setSelfRegAllowed] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    isSelfRegistrationEnabled().then((allowed) => {
+      if (!cancelled) setSelfRegAllowed(allowed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const debouncedUsername = useDebounce(username, 500);
-  const debouncedEmail = useDebounce(email, 500);
 
   useEffect(() => {
     if (debouncedUsername.length >= 3 && !debouncedUsername.includes("@")) {
@@ -95,21 +127,14 @@ export default function Register() {
     }
   }, [debouncedUsername]);
 
-  useEffect(() => {
-    if (/\S+@\S+\.\S+/.test(debouncedEmail)) {
-      checkEmail(debouncedEmail)
-        .then((res) => {
-          setEmailTaken(!res.available);
-          setEmailChecked(true);
-        })
-        .catch(() => {
-          setEmailChecked(false);
-        });
-    } else {
-      setEmailTaken(false);
-      setEmailChecked(false);
-    }
-  }, [debouncedEmail]);
+  // The live "this email is already registered" check is gone deliberately.
+  //
+  // /auth/check-email now validates syntax only and always reports an address
+  // as available: answering truthfully made it an unauthenticated oracle for
+  // testing whether any given address held an account, one request at a time.
+  // A collision is still enforced server-side — it just surfaces as the same
+  // generic 202 as every other outcome, so the attacker learns nothing and the
+  // legitimate user gets told by email.
 
   const strength = strengthOf(password);
 
@@ -146,11 +171,15 @@ export default function Register() {
         full_name: fullName.trim() || undefined,
         agree_to_terms: agreeToTerms,
       });
-      navigate("/dashboard", {
-        replace: true,
-        state: { isNewRegistration: true },
-      });
+      // No tokens come back and the account cannot log in yet, so there is
+      // nowhere to navigate. Show the pending panel instead.
+      setSubmitted(true);
     } catch (err) {
+      // 404 means the deployment has self-registration disabled.
+      if (err.response?.status === 404) {
+        setSelfRegAllowed(false);
+        return;
+      }
       let errMsg = "Registration failed. Please try again.";
       if (err.response?.data?.details) {
         errMsg = err.response.data.details
@@ -176,6 +205,112 @@ export default function Register() {
     }
   };
 
+  const handleResend = async () => {
+    setResendState("sending");
+    try {
+      await resendVerification(email.trim().toLowerCase());
+      setResendState("sent");
+    } catch {
+      // The endpoint answers identically for every address, so there is no
+      // failure state worth distinguishing for the user.
+      setResendState("sent");
+    }
+  };
+
+  const brandHeader = (
+    <div className="auth-brand">
+      <ShieldLogoIcon size={24} />
+      <div className="auth-brand-text">
+        <span className="auth-brand-name">CCure Audit</span>
+        <span className="auth-brand-badge">PRO</span>
+      </div>
+    </div>
+  );
+
+  // ── Self-registration disabled for this deployment ───────────────────────
+  if (selfRegAllowed === false) {
+    return (
+      <div className="auth-split-wrapper">
+        <AuthHeroPanel pageType="register" />
+        <div className="auth-form-panel">
+          <div className="auth-card">
+            {brandHeader}
+            <h1 className="auth-title">
+              Accounts are created by an administrator
+            </h1>
+            <p className="auth-sub">
+              Self-service sign-up is turned off on this installation. CCure
+              Audit PRO runs network scans against your infrastructure, so
+              accounts are provisioned deliberately rather than opened on
+              request.
+            </p>
+            <p className="auth-sub">
+              Ask your CCure administrator to create an account for you. If you
+              already have one, sign in below.
+            </p>
+            <Link
+              to="/login"
+              className="auth-btn"
+              style={{ textDecoration: "none" }}
+            >
+              Back to sign in
+            </Link>
+            <AuthTrustFooter />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Registered, awaiting mailbox confirmation ────────────────────────────
+  if (submitted) {
+    return (
+      <div className="auth-split-wrapper">
+        <AuthHeroPanel pageType="register" />
+        <div className="auth-form-panel">
+          <div className="auth-card">
+            {brandHeader}
+            <h1 className="auth-title">Check your email</h1>
+            <p className="auth-sub">
+              If that address can be registered, we have sent a verification
+              link to <strong>{email.trim().toLowerCase()}</strong>. The link is
+              valid for 24 hours and can be used once.
+            </p>
+            <div
+              className="auth-error"
+              role="status"
+              style={{
+                background: "rgba(245,158,11,0.12)",
+                borderColor: "#f59e0b",
+                color: "#b45309",
+              }}
+            >
+              <span>ℹ</span> Confirming your email does not by itself grant
+              access. An administrator reviews and approves new accounts before
+              sign-in is enabled, and you will be notified once that happens.
+            </div>
+            <button
+              type="button"
+              className="auth-btn"
+              onClick={handleResend}
+              disabled={resendState === "sending" || resendState === "sent"}
+            >
+              {resendState === "sent"
+                ? "Verification email re-sent"
+                : resendState === "sending"
+                  ? "Sending…"
+                  : "Resend verification email"}
+            </button>
+            <p className="auth-sub" style={{ marginTop: 16 }}>
+              <Link to="/login">Back to sign in</Link>
+            </p>
+            <AuthTrustFooter />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-split-wrapper">
       {/* Left Enterprise Showcase Panel */}
@@ -185,13 +320,7 @@ export default function Register() {
       <div className="auth-form-panel">
         <div className="auth-card">
           {/* Mobile Brand Header */}
-          <div className="auth-brand">
-            <ShieldLogoIcon size={24} />
-            <div className="auth-brand-text">
-              <span className="auth-brand-name">CCure Audit</span>
-              <span className="auth-brand-badge">PRO</span>
-            </div>
-          </div>
+          {brandHeader}
 
           <h1 className="auth-title">Create account</h1>
           <p className="auth-sub">
@@ -266,16 +395,13 @@ export default function Register() {
                 placeholder="name@company.com"
                 required
               />
-              {emailTaken && (
-                <span className="field-hint field-hint--error">
-                  This email is already registered.
-                </span>
-              )}
-              {emailChecked && !emailTaken && (
-                <span className="field-hint field-hint--ok">
-                  ✓ Email available
-                </span>
-              )}
+              {/* No availability hint here by design — see the note beside the
+                  removed checkEmail effect above. The server cannot tell us
+                  whether an address is taken without telling everyone else
+                  too. */}
+              <span className="field-hint">
+                We will send a verification link to this address.
+              </span>
             </div>
 
             <div className="field">

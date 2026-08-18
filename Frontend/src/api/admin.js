@@ -14,6 +14,22 @@ export const listUsers = async (params) => {
   return response.data;
 };
 
+// Self-registered accounts awaiting approval (approved_at IS NULL). These
+// cannot sign in until approveUser runs, so nothing here is a live account yet.
+export const listPendingUsers = async () => {
+  const response = await axiosInstance.get("/admin/users/pending");
+  return response.data;
+};
+
+// Enables sign-in. The backend refuses if the account's email is not verified —
+// approving an unverified address would activate a login for a mailbox nobody
+// has demonstrated control of. It also emails the user, since they cannot see
+// an in-app notification until they can log in.
+export const approveUser = async (userId) => {
+  const response = await axiosInstance.post(`/admin/users/${userId}/approve`);
+  return response.data;
+};
+
 export const createUser = async (userData) => {
   const response = await axiosInstance.post(
     "/admin/users/",

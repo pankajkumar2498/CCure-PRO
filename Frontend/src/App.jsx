@@ -30,6 +30,7 @@ import ComplianceWorkspace from "./pages/ComplianceWorkspace";
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
@@ -64,6 +65,9 @@ export default function App() {
         {/* ── Public ── */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        {/* Target of the emailed verification link. Public by necessity: the
+            whole point is that the visitor cannot authenticate yet. */}
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 

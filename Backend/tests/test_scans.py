@@ -1515,6 +1515,8 @@ def test_scan_progress_requires_scan_read_permission(
     db_session.commit()
     db_session.refresh(role)
 
+    from db.base import utcnow
+
     user = User(
         username="limiteduser",
         email="limited@example.com",
@@ -1524,6 +1526,9 @@ def test_scan_progress_requires_scan_read_permission(
         role_id=role.id,
         is_active=True,
         is_verified=True,
+        # This test is about RBAC refusing scans:read, not about the account
+        # gates refusing login, so the account is approved.
+        approved_at=utcnow(),
     )
     db_session.add(user)
     db_session.commit()

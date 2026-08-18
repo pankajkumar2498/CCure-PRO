@@ -1716,6 +1716,19 @@
         "title": "RemediationRequest",
         "type": "object"
       },
+      "ResendVerificationRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ResendVerificationRequest",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "password": {
@@ -1808,6 +1821,28 @@
           "severity_weight"
         ],
         "title": "RuleUpdatePayload",
+        "type": "object"
+      },
+      "ScanScopeSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cidrs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CIDR blocks this organisation may scan, e.g. ['10.180.6.0/24']",
+            "title": "Cidrs"
+          }
+        },
+        "title": "ScanScopeSchema",
         "type": "object"
       },
       "ScanTrigger": {
@@ -2533,6 +2568,19 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest",
         "type": "object"
       },
       "VulnerabilityAuditRequest": {
@@ -3463,6 +3511,206 @@
         ]
       }
     },
+    "/admin/organizations/{org_id}/scan-scope": {
+      "get": {
+        "description": "Return the CIDR blocks this organisation is authorised to scan.",
+        "operationId": "get_scan_scope_admin_organizations__org_id__scan_scope_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Scan Scope",
+        "tags": [
+          "Organization Management"
+        ]
+      },
+      "put": {
+        "description": "Set the CIDR blocks this organisation may scan. **Superadmin only.**\n\nGated on the role directly rather than on the `organizations:update`\npermission, because org_admin holds that permission for its own\norganisation. Letting an org_admin write this field would mean the subject\nof a restriction can widen it — which is not a restriction. This is the one\norg attribute a tenant administrator must not control, and it is why the\nvalue lives in its own column instead of the org_admin-writable `settings`\nbag.",
+        "operationId": "set_scan_scope_admin_organizations__org_id__scan_scope_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanScopeSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Scan Scope",
+        "tags": [
+          "Organization Management"
+        ]
+      }
+    },
+    "/admin/organizations/{org_id}/scan-scope/": {
+      "get": {
+        "description": "Return the CIDR blocks this organisation is authorised to scan.",
+        "operationId": "get_scan_scope_admin_organizations__org_id__scan_scope__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Scan Scope",
+        "tags": [
+          "Organization Management"
+        ]
+      },
+      "put": {
+        "description": "Set the CIDR blocks this organisation may scan. **Superadmin only.**\n\nGated on the role directly rather than on the `organizations:update`\npermission, because org_admin holds that permission for its own\norganisation. Letting an org_admin write this field would mean the subject\nof a restriction can widen it — which is not a restriction. This is the one\norg attribute a tenant administrator must not control, and it is why the\nvalue lives in its own column instead of the org_admin-writable `settings`\nbag.",
+        "operationId": "set_scan_scope_admin_organizations__org_id__scan_scope__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanScopeSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Scan Scope",
+        "tags": [
+          "Organization Management"
+        ]
+      }
+    },
     "/admin/organizations/{org_id}/status": {
       "patch": {
         "description": "Update organization's active/inactive status.\n\nProduction Deactivation Flow:\n─────────────────────────────────────────────────────────────────────────────\n\nDEACTIVATION (is_active: false):\n  • All users in the organization lose access IMMEDIATELY\n  • Existing sessions/tokens become invalid on next request\n  • New login attempts are rejected with HTTP 403\n  • Token refresh fails with HTTP 401\n  • Individual user statuses remain UNCHANGED\n  • Audit trail logs the deactivation event\n\nREACTIVATION (is_active: true):\n  • Users regain access without modification\n  • No need to re-enable individual users\n  • Existing tokens remain valid (if not expired)\n  • Full reversal of deactivation state\n\nBenefits:\n  ✓ Instant access revocation without manual user modifications\n  ✓ Reversible state - no data loss or extra cleanup\n  ✓ Scalable - handles thousands of users in deactivated orgs\n  ✓ Clean audit trail - org status change is primary audit event\n  ✓ No token invalidation needed - checked on every request\n\nReturns:\n  Organization object with updated status",
@@ -4057,6 +4305,56 @@
         ]
       }
     },
+    "/admin/users/pending": {
+      "get": {
+        "description": "Self-registered accounts awaiting approval, scoped to what the caller\nadministers. These accounts cannot sign in until approve_user runs.",
+        "operationId": "list_pending_users_admin_users_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Pending Users",
+        "tags": [
+          "User Management"
+        ]
+      }
+    },
+    "/admin/users/pending/": {
+      "get": {
+        "description": "Self-registered accounts awaiting approval, scoped to what the caller\nadministers. These accounts cannot sign in until approve_user runs.",
+        "operationId": "list_pending_users_admin_users_pending__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Pending Users",
+        "tags": [
+          "User Management"
+        ]
+      }
+    },
     "/admin/users/{user_id}": {
       "delete": {
         "operationId": "delete_user_admin_users__user_id__delete",
@@ -4248,6 +4546,98 @@
           }
         ],
         "summary": "Update User",
+        "tags": [
+          "User Management"
+        ]
+      }
+    },
+    "/admin/users/{user_id}/approve": {
+      "post": {
+        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.",
+        "operationId": "approve_user_admin_users__user_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve User",
+        "tags": [
+          "User Management"
+        ]
+      }
+    },
+    "/admin/users/{user_id}/approve/": {
+      "post": {
+        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.",
+        "operationId": "approve_user_admin_users__user_id__approve__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve User",
         "tags": [
           "User Management"
         ]
@@ -6863,7 +7253,7 @@
     },
     "/auth/check-email": {
       "get": {
-        "description": "Check if an email is available",
+        "description": "Report whether an email address can be used to register.\n\nDeliberately does *not* answer \"does this account exist\". A taken address\nand a free one both return available=true, and the collision surfaces at\nsubmit time as a generic failure. Live \"already registered\" feedback on a\nsignup form is a convenience for the person typing and a bulk account\noracle for everyone else, and only one of those two is worth having.\n\nThe endpoint is kept so the frontend contract does not break, and it still\nrejects syntactically invalid input, which is what the field actually needs\nin order to give useful feedback.",
         "operationId": "check_email_auth_check_email_get",
         "parameters": [
           {
@@ -6904,7 +7294,7 @@
     },
     "/auth/check-username": {
       "get": {
-        "description": "Check if a username is available",
+        "description": "Check whether a username is free.\n\nThis is an existence oracle, so it is only reachable while self-service\nregistration is enabled — the signup form is the sole legitimate caller.\nIt answers about usernames only. It previously also matched the query\nagainst the *email* column, which let anyone confirm whether a given email\naddress held an account by passing it here, and confirm it from the\nusername endpoint too. Usernames are semi-public within a tenant; email\naddresses are not.",
         "operationId": "check_username_auth_check_username_get",
         "parameters": [
           {
@@ -7355,7 +7745,7 @@
     },
     "/auth/register": {
       "post": {
-        "description": "Create a new user account.\nReturns access + refresh tokens immediately so the user is logged in.",
+        "description": "Create a new, inert account and email a verification link.\n\nWhat changed and why\n────────────────────\nThis endpoint used to create the account and return access + refresh\ntokens in the same response, placing the user in a self-service\norganisation with the `analyst` role. In this product `analyst` carries\nscans:execute — so anyone who could reach this route could issue\nthemselves a working credential and point Nmap, Scapy and Nuclei at the\nnetwork from a worker running with raw-socket privileges on the host.\n\nRegistration now yields nothing usable:\n\n  * the route only exists when ALLOW_SELF_REGISTRATION is on (default off,\n    because POST /admin/users is the supported onboarding path),\n  * no tokens are returned — 202, not 201, because the account is pending,\n  * the account is created is_verified=False, is_active=False,\n    approved_at=NULL and cannot log in until *both* the mailbox is\n    confirmed and an administrator approves it.\n\nThe response body is identical whether or not the address was already\nregistered, so this route cannot be used to enumerate accounts.",
         "operationId": "register_auth_register_post",
         "requestBody": {
           "content": {
@@ -7368,12 +7758,10 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TokenResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -7390,6 +7778,46 @@
           }
         },
         "summary": "Register",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "description": "Re-send a verification link.\n\nAlways returns 200 with the same body, whether the address is unknown,\nalready verified, or genuinely pending — the response must not reveal\nwhich. Rate-limited per client because this endpoint sends mail to an\naddress the caller chose, which makes it usable as a mail relay against a\nthird party if left open.",
+        "operationId": "resend_verification_auth_resend_verification_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Verification",
         "tags": [
           "Authentication"
         ]
@@ -7455,6 +7883,46 @@
           }
         ],
         "summary": "Generate Ws Download Ticket",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "description": "Redeem an email-verification token.\n\nVerification proves control of the mailbox at this moment. It proves\nnothing about identity and, on its own, grants no access: the account\nstill needs `approved_at` before login succeeds (unless\nSELF_REGISTRATION_AUTO_APPROVE is deliberately enabled).\n\nFailures are uniform — expired, already-used, never-existed and\nwrong-user tokens all return the same 400 — so the endpoint cannot be used\nto probe which tokens exist.",
+        "operationId": "verify_email_auth_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Email",
         "tags": [
           "Authentication"
         ]
@@ -9596,7 +10064,7 @@
     },
     "/compliance/rules/{id}": {
       "put": {
-        "description": "Update a compliance rule's verification parameters and severity levels.",
+        "description": "Update a compliance rule's verification parameters and severity levels.\n\n**Superadmin only, despite the `compliance:manage_rules` dependency.**\n\n`compliance_rules` has no `tenant_id`: it is a single global catalogue that\nevery tenant on the installation is scored against. `manage_rules` is held\nby `org_admin` as well as `superadmin`, so before this check an\nadministrator of one tenant could rewrite `check_definition`, `severity` or\n`severity_weight` on any of the catalogue's rules and silently change the\ncompliance posture reported to every other tenant — weakening a control so\ntheir own org passes, or skewing everyone's score through the weights.\n\nThat is a cross-tenant integrity flaw rather than a data leak, which is why\nit survived the org-scoping review: there is no `org_id` to filter on. The\nfix is to gate the writer, not the query.\n\nThe role is checked here rather than by swapping the dependency so that\n`manage_rules` keeps working for the tenant-scoped compliance routes that\nlegitimately use it.",
         "operationId": "update_compliance_rule_compliance_rules__id__put",
         "parameters": [
           {

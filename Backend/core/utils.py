@@ -60,7 +60,21 @@ class PrivilegeManager:
 
 
 class InputValidator:
-    _SAFE_RE = re.compile(r"^[\w.\-:/\[\]]+$")
+    # The leading character is deliberately excluded from the dash class.
+    #
+    # The previous pattern, ^[\w.\-:/\[\]]+$, accepted "-oN", "-sS", "-iL/etc/
+    # passwd" and "--iflist": every scanner this product drives is executed as
+    # an argv list, and a value beginning with "-" lands in that list as an
+    # *option* rather than a target. is_safe() is the primitive whose name
+    # asserts a value is safe to pass onward, so it must not approve a string
+    # that changes the command being run.
+    #
+    # No exploit path went through it today — resolve_target() also requires the
+    # value to parse as an IP, CIDR, range or resolvable hostname, and none of
+    # those start with a dash, so these were rejected a step later with HTTP
+    # 422. That is one layer, in a different function, on every current caller.
+    # This is the layer that belongs here.
+    _SAFE_RE = re.compile(r"^[\w.:/\[\]][\w.\-:/\[\]]*$")
     MAX_HOSTS = 4096
 
     @staticmethod

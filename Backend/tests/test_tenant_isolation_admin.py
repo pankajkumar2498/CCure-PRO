@@ -670,23 +670,39 @@ def test_deleted_user_cannot_log_in(client, db_session):
     db_session.add(org)
     db_session.flush()
 
+    from auth.jwt_handler import hash_password
+    from db.base import utcnow
+
     deleted_user = User(
         username="deleted-login-user",
         email="deleted-login-user@test.com",
-        password_hash="hash",
+        password_hash=hash_password("CorrectHorse1!"),
         org_id=org.id,
         role_id=role.id,
         is_active=False,
         is_deleted=True,
         is_verified=True,
+        approved_at=utcnow(),
     )
     db_session.add(deleted_user)
     db_session.commit()
 
-    response = client.post(
+    # A wrong password gets the generic 401 and learns nothing. This assertion
+    # replaces an earlier one expecting 403 "Account deleted" here: disclosing
+    # account state before the credential is verified let anyone confirm that
+    # an address was registered — and that it had been deleted — by submitting
+    # it with any password at all.
+    wrong = client.post(
         "/auth/login",
         json={"email": "deleted-login-user@test.com", "password": "wrong-password"},
     )
+    assert wrong.status_code == 401
+    assert wrong.json()["detail"] == "Invalid email or password"
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Account deleted"
+    # The correct password still cannot produce a session for a deleted account.
+    correct = client.post(
+        "/auth/login",
+        json={"email": "deleted-login-user@test.com", "password": "CorrectHorse1!"},
+    )
+    assert correct.status_code == 403
+    assert correct.json()["detail"] == "Account deleted"

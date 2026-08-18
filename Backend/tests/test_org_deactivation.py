@@ -49,8 +49,10 @@ def setup_org_and_users(db_session):
     db_session.add(org)
     db_session.flush()
 
-    # Create test users
+    # Create test users. Approved as well as verified: these stand in for
+    # admin-provisioned accounts, and login refuses approved_at IS NULL.
     from auth.jwt_handler import hash_password
+    from db.base import utcnow
 
     user1 = User(
         username="testuser1",
@@ -60,6 +62,7 @@ def setup_org_and_users(db_session):
         role_id=test_role.id,
         is_active=True,
         is_verified=True,
+        approved_at=utcnow(),
     )
     user2 = User(
         username="testuser2",
@@ -69,6 +72,7 @@ def setup_org_and_users(db_session):
         role_id=test_role.id,
         is_active=True,
         is_verified=True,
+        approved_at=utcnow(),
     )
     db_session.add(user1)
     db_session.add(user2)

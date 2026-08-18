@@ -50,19 +50,61 @@ def _resolve_key() -> bytes:
 
     _using_fallback = not raw
     if not raw:
-        # Logged at ERROR, not WARNING: every credential written by this process
-        # is encrypted under a key published in this file, so it protects
-        # nothing — and any process holding the real key cannot read what this
-        # one wrote.
+        # In production this is fatal, not a warning.
+        #
+        # The fallback is a constant published in this file, in a repository
+        # that is shared. Credentials encrypted under it — SSH, WinRM and SNMP
+        # secrets for the customer hosts this product authenticates to — are
+        # protected by nothing at all, and the failure is invisible: encryption
+        # "works", the UI shows a saved credential, and the ciphertext is
+        # decryptable by anyone who can read this source file.
+        #
+        # An operator who misses one ERROR line in a startup log ends up with a
+        # credential store that looks encrypted and is not. Refusing to start is
+        # the only outcome that cannot be overlooked.
+        env = (
+            (
+                os.environ.get("APP_ENV")
+                or os.environ.get("ENVIRONMENT")
+                or os.environ.get("ENV")
+                or "development"
+            )
+            .strip()
+            .lower()
+        )
+
+        if env in {"production", "prod", "staging"}:
+            log.critical(
+                "COMPLIANCE_ENCRYPTION_KEY is not set and APP_ENV=%s. Refusing "
+                "to encrypt credentials with the built-in fallback key.",
+                env,
+            )
+            raise RuntimeError(
+                "COMPLIANCE_ENCRYPTION_KEY is not set. Refusing to fall back to "
+                "the key hardcoded in security_crypto.py, which is published in "
+                "this repository and protects nothing. Set "
+                "COMPLIANCE_ENCRYPTION_KEY to the same value on the API, every "
+                "worker, and in Backend/.env."
+            )
+
+        # Development only: keep working, but say so loudly.
         log.error(
             "COMPLIANCE_ENCRYPTION_KEY is not set — falling back to the key "
             "hardcoded in security_crypto.py. Stored credentials are NOT "
             "protected, and any other process holding the real key will be "
             "unable to decrypt them. Set COMPLIANCE_ENCRYPTION_KEY to the same "
-            "value everywhere (API, workers, and Backend/.env)."
+            "value everywhere (API, workers, and Backend/.env). "
+            "This fallback is refused outright when APP_ENV=production."
         )
         raw = _FALLBACK_KEY
 
+    # NOTE ON KEY DERIVATION
+    # ──────────────────────
+    # A single SHA-256 over the configured value is correct only while that
+    # value is high-entropy (e.g. `openssl rand -base64 32`). It is not a
+    # password-based KDF: there is no salt and no work factor, so a
+    # human-memorable passphrase here is brute-forceable offline by anyone who
+    # obtains the ciphertexts. Generate the key randomly; do not choose one.
     _key_digest = hashlib.sha256(raw.encode("utf-8")).digest()
     return _key_digest
 

@@ -72,6 +72,17 @@ class ScanOrchestrator:
         self.platform = PrivilegeManager.get_platform()
         self.has_priv = PrivilegeManager.is_admin()
 
+        # Authorised scan scope for the organisation this run belongs to, as a
+        # list of ip_network objects, or None for unrestricted. Set by the
+        # Celery task via apply_scan_scope() once the scan row is loaded.
+        #
+        # The API already refuses out-of-scope targets at admission. This is the
+        # second layer, and the load-bearing one: it applies to the addresses a
+        # hostname actually resolved to at scan time, which admission could not
+        # know. Without it a name that resolved in-scope during admission could
+        # point somewhere else by the time the scanner connects.
+        self.scan_scope = None
+
         # ── NEW: Unified asset correlation engine for data consistency ────────
         self.asset_engine = AssetCorrelationEngine()
 
@@ -265,7 +276,9 @@ class ScanOrchestrator:
             else:
                 profile = profile_for_pipeline(pipeline_mode)
 
-            all_ips = self._expand_targets(targets, custom_exclude)
+            all_ips = self._drop_out_of_scope(
+                self._expand_targets(targets, custom_exclude)
+            )
             if not all_ips:
                 return self._err("No valid targets to scan.")
 
@@ -369,7 +382,7 @@ class ScanOrchestrator:
             }
 
         # ── Asset Discovery — intensity-aware orchestration ───────────────────
-        all_ips = self._expand_targets(targets, custom_exclude)
+        all_ips = self._drop_out_of_scope(self._expand_targets(targets, custom_exclude))
         if not all_ips:
             return self._err("No valid targets to scan.")
 
@@ -1072,6 +1085,35 @@ class ScanOrchestrator:
                 except ValueError:
                     pass
         return networks
+
+    def apply_scan_scope(self, org) -> None:
+        """Bind this run to an organisation's authorised scan scope."""
+        from core.scan_scope import scope_for_org
+
+        self.scan_scope = scope_for_org(org)
+
+    def _drop_out_of_scope(self, ips: list[str]) -> list[str]:
+        """
+        Remove addresses outside the bound scope.
+
+        Silent trimming is correct *here* and wrong at the API: admission
+        rejected the request outright so the operator saw an error, whereas by
+        this point the only alternative to trimming is failing a scan that is
+        mostly legitimate because one name resolved somewhere unexpected. The
+        drop is logged so it is visible after the fact.
+        """
+        if self.scan_scope is None:
+            return ips
+        from core.scan_scope import filter_to_scope
+
+        allowed, denied = filter_to_scope(ips, self.scan_scope)
+        if denied:
+            self._log(
+                f"Dropped {len(denied)} address(es) outside the organisation's "
+                f"authorised scan scope: {', '.join(denied[:10])}"
+                + (" …" if len(denied) > 10 else "")
+            )
+        return allowed
 
     @staticmethod
     def _is_blacklisted(ip: str, custom_exclude_list: list | None = None) -> bool:

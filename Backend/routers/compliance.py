@@ -33,7 +33,15 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
@@ -473,17 +481,79 @@ class RuleUpdatePayload(BaseModel):
 def update_compliance_rule(
     id: str,
     payload: RuleUpdatePayload,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "manage_rules")),
 ):
-    """Update a compliance rule's verification parameters and severity levels."""
+    """
+    Update a compliance rule's verification parameters and severity levels.
+
+    **Superadmin only, despite the `compliance:manage_rules` dependency.**
+
+    `compliance_rules` has no `tenant_id`: it is a single global catalogue that
+    every tenant on the installation is scored against. `manage_rules` is held
+    by `org_admin` as well as `superadmin`, so before this check an
+    administrator of one tenant could rewrite `check_definition`, `severity` or
+    `severity_weight` on any of the catalogue's rules and silently change the
+    compliance posture reported to every other tenant — weakening a control so
+    their own org passes, or skewing everyone's score through the weights.
+
+    That is a cross-tenant integrity flaw rather than a data leak, which is why
+    it survived the org-scoping review: there is no `org_id` to filter on. The
+    fix is to gate the writer, not the query.
+
+    The role is checked here rather than by swapping the dependency so that
+    `manage_rules` keeps working for the tenant-scoped compliance routes that
+    legitimately use it.
+    """
+    if (getattr(getattr(user, "role", None), "name", "") or "").lower() != "superadmin":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Compliance rules are a shared catalogue used by every "
+                "organisation on this installation; only a superadmin may "
+                "change them."
+            ),
+        )
+
     rule = db.query(ComplianceRule).filter(ComplianceRule.id == id).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
 
+    # Capture the previous definition before overwriting it. The model treats
+    # rules as versioned and immutable (`rule_family_code` + `version_number`,
+    # `superseded_by_rule_id`), so an in-place edit rewrites the basis on which
+    # every historical finding for this rule was raised. Recording the old
+    # values keeps that change reconstructible instead of invisible.
+    before = {
+        "check_definition": rule.check_definition,
+        "severity": rule.severity,
+        "severity_weight": rule.severity_weight,
+    }
+
     rule.check_definition = payload.check_definition
     rule.severity = payload.severity.lower()
     rule.severity_weight = payload.severity_weight
+
+    log_audit_event(
+        db,
+        user,
+        "compliance.rule_updated",
+        "compliance_rule",
+        str(rule.id),
+        {
+            "rule_family_code": rule.rule_family_code,
+            "version_number": rule.version_number,
+            "status": rule.status,
+            "before": before,
+            "after": {
+                "check_definition": rule.check_definition,
+                "severity": rule.severity,
+                "severity_weight": rule.severity_weight,
+            },
+        },
+        request,
+    )
     db.commit()
     return {"message": "Rule updated successfully"}
 

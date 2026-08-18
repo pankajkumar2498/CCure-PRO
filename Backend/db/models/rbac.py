@@ -71,6 +71,18 @@ class Organization(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     settings = Column(JSONB, nullable=False, default=dict)
 
+    # ── Authorised scan scope ─────────────────────────────────────────────────
+    # The CIDR blocks this organisation is permitted to scan. Deliberately its
+    # own column rather than a key in `settings`, because `settings` is
+    # writable by org_admin and this must not be: an org widening its own scan
+    # authorisation is exactly the escalation the control exists to stop.
+    # Only a superadmin may write it.
+    #
+    #   NULL  → legacy, unrestricted (see AppConfig.REQUIRE_SCAN_SCOPE)
+    #   []    → deny all scanning for this org
+    #   [...] → scanning permitted only inside these blocks
+    scan_scope_cidrs = Column(JSONB, nullable=True)
+
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 

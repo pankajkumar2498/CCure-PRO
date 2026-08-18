@@ -52,4 +52,11 @@ celery_app.conf.beat_schedule = {
         "task": "compliance.run_scheduled_scans",
         "schedule": 60.0,
     },
+    # An account that was registered and never verified is personal data held
+    # for no purpose, and it also keeps a username and email address reserved
+    # against whoever legitimately wants them.
+    "purge-stale-unverified-accounts-daily": {
+        "task": "ccure.tasks.purge_stale_unverified_accounts",
+        "schedule": crontab(hour=3, minute=30),
+    },
 }

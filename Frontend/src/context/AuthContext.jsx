@@ -162,16 +162,17 @@ export const AuthProvider = ({ children }) => {
     return data;
   }, []);
 
+  // Registration does not sign anyone in. The backend returns 202 with
+  // {detail, status: "pending_verification"} and no tokens: the account is
+  // created unverified, inactive and unapproved, and cannot log in until the
+  // mailbox is confirmed and an administrator approves it.
+  //
+  // This previously set authState to "authenticated" from the register
+  // response, which is why it must not simply be left alone — with no tokens
+  // in the response the app would have believed it held a session it did not
+  // have, and every subsequent request would 401.
   const register = useCallback(async (payload) => {
-    const data = await registerRequest(payload);
-    if (data.user) {
-      syncActiveOrgId(data.user);
-    }
-    setUser(data.user || null);
-    setAuthState("authenticated");
-    setAuthMessage("");
-    lastSessionRefreshRef.current = Date.now();
-    return data;
+    return registerRequest(payload);
   }, []);
 
   const logout = useCallback(async () => {

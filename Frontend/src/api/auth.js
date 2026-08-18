@@ -59,13 +59,43 @@ export const disableMfa = async (password) => {
   return response.data;
 };
 
+// Registration no longer returns a session. The backend replies 202 with
+// {detail, status: "pending_verification"} and the account stays inert until
+// the mailbox is confirmed and an administrator approves it, so calling
+// authSession.setTokens() here would store an empty token set and leave the
+// app believing it was signed in.
 export const register = async (userData) => {
   const response = await axiosInstance.post("/auth/register", {
     ...userData,
     email: normalizeEmail(userData?.email),
   });
-  authSession.setTokens(response.data || {});
   return response.data;
+};
+
+export const verifyEmail = async (token) => {
+  const response = await axiosInstance.post("/auth/verify-email", { token });
+  return response.data;
+};
+
+export const resendVerification = async (email) => {
+  const response = await axiosInstance.post("/auth/resend-verification", {
+    email: normalizeEmail(email),
+  });
+  return response.data;
+};
+
+// True when the deployment has ALLOW_SELF_REGISTRATION enabled. The backend
+// returns 404 for every self-service route when it does not, so the signup
+// page can hide itself rather than presenting a form that cannot succeed.
+export const isSelfRegistrationEnabled = async () => {
+  try {
+    await axiosInstance.get("/auth/check-email?q=probe@example.com");
+    return true;
+  } catch (err) {
+    if (err?.response?.status === 404) return false;
+    // Any other failure (network, 429) is not evidence the feature is off.
+    return true;
+  }
 };
 
 export const getCurrentUser = async () => {

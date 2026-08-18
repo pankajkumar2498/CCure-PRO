@@ -273,6 +273,10 @@ def create_user(
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
     org_slug = org.slug if org else target_org_id
 
+    # Admin provisioning is itself the approval, and the admin sets the
+    # password out-of-band, so both gates that self-registration must clear are
+    # already satisfied here. Without this, adding the gates would have locked
+    # every admin-created account out of its own login.
     new_user = User(
         id=gen_user_id(org_slug, user_data.username),  # e.g. usr_acm_alice_x9v1
         username=user_data.username,
@@ -282,6 +286,9 @@ def create_user(
         org_id=target_org_id,
         password_hash=hash_password(user_data.password),
         is_active=True,
+        is_verified=True,
+        approved_at=utcnow(),
+        approved_by=str(current_user.id),
     )
     db.add(new_user)
     db.flush()
@@ -549,6 +556,138 @@ def change_status(
             )
 
     return {"detail": "User status updated successfully"}
+
+
+@router.get("/pending")
+@router.get("/pending/")
+def list_pending_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "read")),
+):
+    """
+    Self-registered accounts awaiting approval, scoped to what the caller
+    administers. These accounts cannot sign in until approve_user runs.
+    """
+    pending = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.approved_at.is_(None))
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(u.id),
+            "username": u.username,
+            "email": u.email,
+            "full_name": u.full_name,
+            "organization_id": str(u.org_id),
+            "is_verified": u.is_verified,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in pending
+    ]
+
+
+@router.post("/{user_id}/approve")
+@router.post("/{user_id}/approve/")
+def approve_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users", "update")),
+):
+    """
+    Approve a pending account, allowing it to sign in.
+
+    Requires the mailbox to have been verified first. Approving an unverified
+    account would activate a login for an address nobody has demonstrated
+    control of, which is the whole failure this gate exists to prevent — so it
+    is refused rather than treated as an override.
+
+    The approved account keeps whatever role it was created with (`viewer` for
+    self-registration). Granting scan execution stays a separate, explicit act
+    through the role endpoint, so approval never silently confers it.
+    """
+    user = (
+        _scoped_users_query(db, current_user, scope="active")
+        .filter(User.id == user_id)
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.approved_at is not None:
+        return {"detail": "User is already approved"}
+
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This account's email address has not been verified yet. "
+                "It cannot be approved until the owner confirms the mailbox."
+            ),
+        )
+
+    user.approved_at = utcnow()
+    user.approved_by = str(current_user.id)
+    user.is_active = True
+    user.updated_at = utcnow()
+
+    log_audit_event(
+        db,
+        current_user,
+        "user.approved",
+        "user",
+        str(user.id),
+        {"approved_by": str(current_user.id), "role": getattr(user.role, "name", None)},
+        request,
+    )
+    db.commit()
+
+    _notify_user_admin_action(
+        db=db,
+        current_user=current_user,
+        target_user=user,
+        action_title="User Approved",
+        action_message=f"Account approved and sign-in enabled: {user.username}",
+        fan_out_message=(
+            f"Admin {current_user.username} approved account: {user.username}"
+        ),
+    )
+
+    # Tell the account holder by email.
+    #
+    # The in-app notification above is only visible after a successful login,
+    # which is precisely what this user could not do until a moment ago — so on
+    # its own it tells them nothing. Without an email their only option is to
+    # retry the login page until it stops refusing them.
+    #
+    # Dispatched through Celery and never awaited: the approval is already
+    # committed, and a broken SMTP server must not turn an administrator's
+    # decision into a 500.
+    try:
+        from config import AppConfig
+        from core.mail_dispatch import dispatch_email
+
+        dispatch_email(
+            "account_approved",
+            user.email,
+            user.username,
+            f"{AppConfig.FRONTEND_URL.rstrip('/')}/login",
+            getattr(user.role, "name", None),
+        )
+    except Exception:
+        # `log`, not `logger` — this module names it `log`. Getting that wrong
+        # made the handler itself raise NameError, converting a mail-dispatch
+        # hiccup into a 500 on an approval that had already been committed:
+        # the account was live but the admin was told the operation failed.
+        log.warning(
+            "Could not queue account-approved email for user id=%s",
+            user.id,
+            exc_info=True,
+        )
+
+    return {"detail": "User approved", "id": str(user.id)}
 
 
 @router.delete("/{user_id}")

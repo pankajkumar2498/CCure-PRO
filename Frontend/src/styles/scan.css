@@ -1394,7 +1394,7 @@
 
 .qt-label {
   font-size: 0.76rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .qt-chip {
@@ -2162,7 +2162,7 @@
 
 .confirm-meta-label {
   font-weight: 600;
-  color: var(--text-faint);
+  color: var(--text-muted);
   text-transform: uppercase;
   font-size: 0.7rem;
   letter-spacing: 0.06em;
@@ -2443,7 +2443,7 @@
 .dm-label {
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--text-faint);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3214,7 +3214,7 @@
 }
 
 .app-progress-label--pending {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -25,8 +25,21 @@ export const listPendingUsers = async () => {
 // approving an unverified address would activate a login for a mailbox nobody
 // has demonstrated control of. It also emails the user, since they cannot see
 // an in-app notification until they can log in.
-export const approveUser = async (userId) => {
-  const response = await axiosInstance.post(`/admin/users/${userId}/approve`);
+//
+// `allowlistDomain` is a second, much wider decision and defaults to false:
+// approving the account clears that one account, while allowlisting adds its
+// email domain to the platform-wide ALLOW list for everyone, permanently. They
+// are separate arguments because they are separate judgements — an admin
+// admitting one colleague whose employer a blocklist got wrong must not
+// accidentally open the door to a throwaway mail service.
+export const approveUser = async (
+  userId,
+  { allowlistDomain = false, reason } = {},
+) => {
+  const response = await axiosInstance.post(`/admin/users/${userId}/approve`, {
+    allowlist_domain: allowlistDomain,
+    reason: reason ?? null,
+  });
   return response.data;
 };
 

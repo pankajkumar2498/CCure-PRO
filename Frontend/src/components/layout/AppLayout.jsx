@@ -82,6 +82,9 @@ const IcoOrg = () => (
 const IcoShieldKey = () => (
   <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM8 11h8M8 15h6" />
 );
+const IcoMail = () => (
+  <Icon d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6" />
+);
 const IcoList = () => (
   <Icon d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
 );
@@ -288,6 +291,15 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "users", action: "read" },
       },
       {
+        id: "email-domains",
+        label: "Email Domain Rules",
+        Icon: IcoMail,
+        route: "/admin/email-domains",
+        // No `permission`: these rules are platform-wide, so the gate is the
+        // superadmin role rather than a permission an org_admin also holds.
+        superadminOnly: true,
+      },
+      {
         id: "organizations",
         label: "Organizations",
         Icon: IcoOrg,
@@ -321,6 +333,11 @@ const SIDEBAR_SECTIONS = [
 
 const hasPermission = (user, permission) => canPermission(user, permission);
 const canSeeNavItem = (user, item) => {
+  // Role gate, not a permission gate. Superadmin holds every permission, so
+  // permission checks alone cannot express "superadmin only" — any permission
+  // an org_admin also has would let them through. Used for platform-wide
+  // settings whose blast radius crosses tenants.
+  if (item.superadminOnly && !isSuperAdmin(user)) return false;
   if (item.permission && !hasPermission(user, item.permission)) return false;
   if (item.requiredAny && !canAny(user, item.requiredAny)) return false;
   return true;
@@ -622,6 +639,7 @@ export default function AppLayout({
     if (pathname.startsWith("/assets")) return "asset-registry";
     if (pathname.startsWith("/vulnerabilities")) return "vulnerabilities";
     if (pathname.startsWith("/scan")) return "scan-templates";
+    if (pathname.startsWith("/admin/email-domains")) return "email-domains";
     if (pathname.startsWith("/admin/users/deleted")) return "deleted-users";
     if (pathname.startsWith("/admin/users")) return "user-management";
     if (pathname.startsWith("/admin/roles")) return "roles-perms";

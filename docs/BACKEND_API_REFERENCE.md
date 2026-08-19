@@ -170,10 +170,25 @@ is registered.
 | ---- | ------ | -------- | --------------- |
 | `q`  | string | **yes**  | Candidate email |
 
-**Behaviour** — returns `{"available": false}` when `q` is blank or contains no
-`@`, and `{"available": true}` otherwise. A taken address and a free one are
-indistinguishable; the collision surfaces at submit time as the same generic
+**Behaviour** — returns `{"available": false, "reason": "invalid"}` when `q` is
+blank or contains no `@`. Otherwise the address is screened by the email domain
+guard and the response carries the verdict:
+
+```json
+{ "available": false, "reason": "disposable", "detail": "Disposable and temporary email addresses can't be used to register…" }
+{ "available": true,  "reason": "ok" }
+```
+
+A taken address and a free one remain **indistinguishable** — both return
+`available: true`. The collision surfaces at submit time as the same generic
 `202` every other registration outcome returns.
+
+Reporting the _domain_ verdict is safe where reporting account existence is not:
+"this is a disposable mail service" is identical for every caller and reveals
+nothing about any account. It saves the person filling in the form from
+completing a signup that would be refused at submit.
+
+`reason` is one of `ok`, `allowlisted`, `disposable`, `denylisted`, `invalid`.
 
 **Errors** — `422` missing `q`; `429` above 10/min; `404` when
 `ALLOW_SELF_REGISTRATION` is off.
@@ -211,8 +226,25 @@ username, so the endpoint cannot be used to enumerate accounts:
 }
 ```
 
-**Errors** — `404` feature disabled; `422` weak password / invalid username;
-`429`; `500` RBAC not seeded.
+A taken _mailbox_ counts as a taken email: `email_canonical` is compared as well
+as `email`, so `pkumar+ccure@gmail.com` collides with an existing
+`p.kumar@gmail.com` and receives the same generic `202`.
+
+**Email domain screening.** The address is checked against the domain guard
+before anything is written. A confirmed disposable or explicitly denied domain
+returns **`400` with a reason**, which deliberately breaks the uniform-`202`
+contract above — and is safe to, because the response describes the _domain_,
+not whether an account exists. When `EMAIL_DOMAIN_GUARD_MODE=flag` the account
+is created and flagged for the approval queue instead of refused.
+
+Accounts that pass are still screened asynchronously (MX presence, RDAP domain
+age) by `ccure.tasks.enrich_email_risk`; those signals only ever raise
+`users.is_email_flagged`, never refuse a registration.
+
+**Errors** — `400` disposable/denied email domain; `404` feature disabled; `422`
+weak password / invalid username; `429` above 3/min **or** past
+`REGISTRATION_DAILY_IP_LIMIT` for the day; `503` when pending approvals exceed
+`PENDING_APPROVAL_QUEUE_LIMIT`; `500` RBAC not seeded.
 
 > **This endpoint used to return access + refresh tokens for an `analyst`
 > account.** `analyst` carries `scans:execute`, so anyone who could reach it
@@ -1126,15 +1158,105 @@ Source: `Backend/routers/admin_users.py`.
 
 `GET /admin/users/pending` lists self-registered accounts with
 `approved_at IS NULL`, scoped to the caller's organization unless superadmin.
-These accounts cannot sign in.
+These accounts cannot sign in. Each entry also carries `is_email_flagged` and
+`email_risk`, so the reviewer can see the domain verdict beside the address —
+an "email verified" badge on its own is misleading, because a throwaway inbox
+receives and clicks the verification link perfectly well.
 
 `POST /admin/users/{user_id}/approve` stamps `approved_at`/`approved_by`, sets
-`is_active=True` and logs `user.approved`. It returns **`400` if the account's
-email is not yet verified** — approval is not a verification override, because
-that would enable a login for an address nobody has demonstrated control of.
-The account keeps the role it was created with (`viewer` for self-registration);
-granting `scans:execute` stays a separate, explicit act through the role
-endpoint, so approval never silently confers it.
+`is_active=True`, clears `is_email_flagged` and logs `user.approved`. It returns
+**`400` if the account's email is not yet verified** — approval is not a
+verification override, because that would enable a login for an address nobody
+has demonstrated control of. The account keeps the role it was created with
+(`viewer` for self-registration); granting `scans:execute` stays a separate,
+explicit act through the role endpoint, so approval never silently confers it.
+
+**Body** (optional):
+
+| Field              | Type      | Default | Notes                                      |
+| ------------------ | --------- | ------- | ------------------------------------------ |
+| `allowlist_domain` | `boolean` | `false` | Also ALLOW this email domain platform-wide |
+| `reason`           | `string`  | `null`  | Recorded on the rule                       |
+
+`allowlist_domain` is a second and much wider decision, which is why it is a
+separate field defaulting to `false`. Approving clears one account; allowlisting
+adds its domain to `email_domain_rules` for every organisation, permanently.
+An administrator admitting one colleague whose employer an upstream blocklist
+got wrong must not be able to open the door to a throwaway mail service by
+clicking the same button. When set, it also writes an
+`admin.email_domain_allowlisted` audit event and invalidates the guard's cache
+so the change takes effect immediately.
+
+`POST /admin/users` screens the supplied address the same way and returns `400`
+for a disposable or denied domain, and for a canonical-mailbox collision.
+
+---
+
+## Email Domain Rules — `/admin/email-domains`
+
+Manage the platform-wide ALLOW / DENY rules the email domain guard reads.
+
+| Method | Path                             | Access         |
+| ------ | -------------------------------- | -------------- |
+| GET    | `/admin/email-domains`           | **superadmin** |
+| GET    | `/admin/email-domains/stats`     | **superadmin** |
+| GET    | `/admin/email-domains/lookup`    | **superadmin** |
+| POST   | `/admin/email-domains`           | **superadmin** |
+| PATCH  | `/admin/email-domains/{rule_id}` | **superadmin** |
+| DELETE | `/admin/email-domains/{rule_id}` | **superadmin** |
+
+**Gated by role, not by permission, and that is a tenant-isolation decision.**
+These rules are platform-wide: one row changes what every organisation on the
+deployment can register with. An org_admin who denied a domain would be blocking
+a different tenant's customers; one who allowed a throwaway service would open
+the door for all of them. Nothing in the table is org-scoped, so nothing here is
+reachable by a role that is. A permission check could not express this either —
+superadmin holds every permission, so any permission an org_admin also has would
+let them through.
+
+Note the deliberate asymmetry with `POST /admin/users/{id}/approve`, which _can_
+create an ALLOW rule under `users:update`. That path is much narrower: it only
+ever allows, only the domain of an account already in front of the reviewer, and
+it is the escape hatch that makes enforcement safe to leave on.
+
+`GET /admin/email-domains` — `q` (matches domain or reason), `verdict`,
+`source`, `skip`, `limit` (default 50, max 500). Returns `{total, skip, limit,
+rules[], counts:{allow, deny}}`.
+
+`GET /admin/email-domains/stats` — `{mode, corpus_size, corpus_healthy,
+corpus_last_synced, allow_rules, deny_rules, flagged_users}`. Worth surfacing
+because the guard **fails open** on an empty corpus: registration keeps working
+and nothing is screened, silently. `corpus_healthy` is where that becomes
+visible.
+
+`GET /admin/email-domains/lookup?q=` — runs an address or a bare domain through
+the live guard and returns `{domain, blocked, reason, detail, matched_domain,
+matched_source, flags, would_block_registration}`. Answers "why can't my
+customer register" in one request by naming the rule or list that matched.
+`blocked` is the verdict; `would_block_registration` is what actually happens —
+they differ in `flag` mode.
+
+`POST /admin/email-domains` — `{domain, verdict, reason?}`. `verdict` is `allow`
+or `deny`. The domain is normalised: a pasted address, URL, trailing dot or
+mixed case are accepted and reduced to the registrable form. **`409` if a rule
+for that domain already exists** rather than a silent overwrite — flipping a
+seeded rule should not be possible by filling in the _add_ form. `422` for a
+malformed domain, because storing junk creates a rule that matches nothing and
+looks like it works.
+
+`PATCH /admin/email-domains/{rule_id}` — `{verdict?, reason?}`. Editing a
+`seed` rule re-attributes it to `admin`: once a human has changed it, it is no
+longer what the application shipped.
+
+`DELETE /admin/email-domains/{rule_id}` — returns `{detail, domain,
+removed_verdict, now:{blocked, reason, matched_source}}`. `now` is the point:
+removing an ALLOW does **not** return a domain to neutral if the blocklist
+corpus also lists it — it starts blocking. `test.com` is a live example.
+
+All three mutating endpoints invalidate the guard's in-process cache, so a
+change applies immediately rather than after `EMAIL_DOMAIN_CACHE_TTL_SECONDS`.
+Each writes an audit event: `admin.email_domain_rule_created`,
+`…_updated`, `…_deleted`.
 
 `POST /admin/users` stamps `is_verified=True` and `approved_at` at creation —
 admin provisioning is itself the approval, and without this the gates would lock

@@ -269,11 +269,75 @@ def _deliver(
         server.sendmail(sender, [email_to], msg.as_string())
         server.quit()
         logger.info("Successfully sent %s to %s", purpose, email_to)
+    except (
+        smtplib.SMTPRecipientsRefused,
+        smtplib.SMTPSenderRefused,
+    ) as exc:
+        # A hard refusal at RCPT TO is the strongest signal this system has
+        # about an email address: the receiving server states the mailbox does
+        # not exist. Every other check here — blocklists, domain age, MX shape —
+        # infers; this one observes.
+        #
+        # Caught separately because the generic handler below cannot tell it
+        # apart from "the SMTP server is down", and those mean opposite things:
+        # one says the address is fake, the other says nothing about the address
+        # at all. Conflating them is why this signal was previously unavailable.
+        logger.warning(
+            "Recipient refused for %s to %s: %s — flagging the address",
+            purpose,
+            email_to,
+            exc.__class__.__name__,
+        )
+        _record_hard_bounce(email_to, str(exc))
+        raise
     except Exception as exc:
         logger.error(
             "Failed to send %s to %s: %s", purpose, email_to, exc, exc_info=True
         )
         raise
+
+
+def _record_hard_bounce(email_to: str, detail: str) -> None:
+    """
+    Flag the account whose mailbox was refused.
+
+    Flag, never delete or deactivate. A 550 can also be produced by a
+    misconfigured relay, a greylisting appliance answering too eagerly, or a
+    receiving domain that blocks this sender specifically — so it belongs in
+    front of the administrator who approves the account, not wired directly to
+    an irreversible action.
+
+    Swallows every error: this runs inside a failing mail send, and a problem
+    recording the flag must not replace the SMTP error the caller needs to see.
+    """
+    try:
+        from auth.email_domain_guard import FLAG_HARD_BOUNCE
+        from auth.email_utils import normalize_email
+        from db.base import SessionLocal, utcnow
+        from db.models import User
+
+        db = SessionLocal()
+        try:
+            user = (
+                db.query(User).filter(User.email == normalize_email(email_to)).first()
+            )
+            if not user:
+                return
+            risk = dict(user.email_risk or {})
+            flags = sorted(set(risk.get("flags") or []) | {FLAG_HARD_BOUNCE})
+            risk["flags"] = flags
+            signals = dict(risk.get("signals") or {})
+            signals["smtp_refusal"] = detail[:300]
+            risk["signals"] = signals
+            user.email_risk = risk
+            if not user.is_email_flagged:
+                user.is_email_flagged = True
+                user.flagged_at = utcnow()
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        logger.debug("Could not record hard bounce for %s", email_to, exc_info=True)
 
 
 def _shell(title: str, body_html: str) -> str:

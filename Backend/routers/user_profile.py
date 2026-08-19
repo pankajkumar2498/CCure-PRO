@@ -19,10 +19,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from auth.dependencies import get_current_user
-from auth.email_utils import email_matches, normalize_email
+from auth.email_domain_guard import assert_email_allowed
+from auth.email_utils import canonicalize_email, email_matches, normalize_email
 from auth.jwt_handler import hash_password, verify_password
 from core.audit import log_audit_event
-from db.base import get_db
+from db.base import get_db, utcnow
 from db.models import RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, field_validator
@@ -255,8 +256,40 @@ def update_profile(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Email address is already in use by another account",
                 )
+
+            # The same mailbox spelled differently is the same mailbox.
+            canonical = canonicalize_email(email)
+            if canonical:
+                clash = (
+                    db.query(User)
+                    .filter(
+                        User.email_canonical == canonical,
+                        User.id != current_user.id,
+                    )
+                    .first()
+                )
+                if clash:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email address is already in use by another account",
+                    )
+
+            # Screened, because this is a new address entering the system — the
+            # same event as a registration, just from an account that already
+            # exists. Leaving it unscreened would make profile-edit the obvious
+            # way around the check: register with a real address, then move to a
+            # throwaway one.
+            verdict = assert_email_allowed(
+                db, email, request=request, actor=current_user
+            )
+
             changes["email"] = f"{current_user.email} -> {email}"
             current_user.email = email
+            current_user.email_canonical = canonical or None
+            current_user.email_risk = verdict.as_risk_payload()
+            if verdict.flagged or verdict.blocked:
+                current_user.is_email_flagged = True
+                current_user.flagged_at = utcnow()
 
     if changes:
         log_audit_event(

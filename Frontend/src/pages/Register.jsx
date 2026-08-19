@@ -24,6 +24,7 @@ import {
   EyeOffIcon,
 } from "../components/auth/AuthIcons";
 import {
+  checkEmail,
   checkUsername,
   isSelfRegistrationEnabled,
   resendVerification,
@@ -129,12 +130,41 @@ export default function Register() {
 
   // The live "this email is already registered" check is gone deliberately.
   //
-  // /auth/check-email now validates syntax only and always reports an address
-  // as available: answering truthfully made it an unauthenticated oracle for
-  // testing whether any given address held an account, one request at a time.
-  // A collision is still enforced server-side — it just surfaces as the same
-  // generic 202 as every other outcome, so the attacker learns nothing and the
-  // legitimate user gets told by email.
+  // /auth/check-email does not answer that question and never will: answering
+  // truthfully made it an unauthenticated oracle for testing whether any given
+  // address held an account, one request at a time. A collision is still
+  // enforced server-side — it surfaces as the same generic 202 as every other
+  // outcome, so the attacker learns nothing and the legitimate user is told by
+  // email.
+  //
+  // It does now answer about the *domain*, which is a different kind of fact:
+  // "this is a disposable mail service" is true for every caller and reveals
+  // nothing about any account. Surfacing it here saves someone from filling in
+  // the whole form only to be refused at submit.
+  const debouncedEmail = useDebounce(email, 600);
+  const [domainWarning, setDomainWarning] = useState("");
+
+  useEffect(() => {
+    const candidate = debouncedEmail.trim().toLowerCase();
+    if (!/\S+@\S+\.\S+/.test(candidate)) {
+      setDomainWarning("");
+      return;
+    }
+    let cancelled = false;
+    checkEmail(candidate)
+      .then((res) => {
+        if (cancelled) return;
+        setDomainWarning(res?.available === false ? res.detail || "" : "");
+      })
+      .catch(() => {
+        // Advisory only. A failed probe must not stop anyone signing up; the
+        // authoritative check runs at submit.
+        if (!cancelled) setDomainWarning("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedEmail]);
 
   const strength = strengthOf(password);
 
@@ -395,13 +425,22 @@ export default function Register() {
                 placeholder="name@company.com"
                 required
               />
-              {/* No availability hint here by design — see the note beside the
-                  removed checkEmail effect above. The server cannot tell us
-                  whether an address is taken without telling everyone else
-                  too. */}
-              <span className="field-hint">
-                We will send a verification link to this address.
-              </span>
+              {/* Still no "already registered" hint, by design — see the note
+                  beside the checkEmail effect above. The domain verdict below
+                  is a different fact and safe to show. */}
+              {domainWarning ? (
+                <span
+                  className="field-hint field-hint--error"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {domainWarning}
+                </span>
+              ) : (
+                <span className="field-hint">
+                  We will send a verification link to this address.
+                </span>
+              )}
             </div>
 
             <div className="field">

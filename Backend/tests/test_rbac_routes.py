@@ -37,9 +37,26 @@ PUBLIC_ROUTE_WHITELIST = {
 
 
 def _get_all_callables(dependant) -> list:
-    """Recursively extracts all dependency callable functions from a FastAPI Dependant object."""
+    """
+    Recursively extract every dependency callable reachable from `dependant`.
+
+    Accepts either a FastAPI ``Dependant`` or a bare callable, because the two
+    callers below supply different things: ``route.dependant`` is a Dependant,
+    while ``dep.dependency`` (from ``route.dependencies``) is the raw function.
+
+    That second case used to raise ``AttributeError: 'function' object has no
+    attribute 'call'``. It went unnoticed because no *non-whitelisted* route had
+    ever used router- or route-level ``dependencies=[Depends(...)]`` — the only
+    route that did, ``/auth/register``, is in PUBLIC_ROUTE_WHITELIST and is
+    skipped before reaching here. The first route to protect itself that way
+    crashed the scan instead of being checked, which is the worst outcome for a
+    test whose whole job is to notice unprotected routes.
+    """
     if not dependant:
         return []
+    if not hasattr(dependant, "dependencies"):
+        # A bare callable, e.g. Depends(require_role("superadmin")).dependency
+        return [dependant]
     callables = [dependant.call] if dependant.call else []
     for sub in dependant.dependencies:
         callables.extend(_get_all_callables(sub))

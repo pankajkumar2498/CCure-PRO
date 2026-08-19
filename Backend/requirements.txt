@@ -64,6 +64,16 @@ paramiko==4.0.0    # SSH credentialed scan (Linux targets)
 celery[redis]>=5.4.0
 redis>=5.0.0
 
+# ── Email domain screening ─────────────────────────────────────────────────────
+# MX lookups in auth/email_risk_signals.py.
+#
+# Declared explicitly even though it already arrives transitively, via
+# email-validator via pydantic[email]. Relying on that was a silent
+# single-signal outage waiting to happen: the import is wrapped in
+# try/ImportError and degrades to "unassessed", so if the transitive path ever
+# changed the MX check would stop running and nothing would say so.
+dnspython>=2.6.0
+
 # ── Dev / test ────────────────────────────────────────────────────────────────
 requests==2.33.1
 urllib3==2.6.3

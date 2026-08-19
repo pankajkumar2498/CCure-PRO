@@ -52,6 +52,7 @@ import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 
 // Admin pages
 import AuditLogs from "./pages/admin/AuditLogs";
+import EmailDomainRules from "./pages/admin/EmailDomainRules";
 import UserManagement from "./pages/admin/UserManagement";
 import OrganizationManagement from "./pages/admin/OrganizationManagement";
 import RoleManagement from "./pages/admin/RoleManagement";
@@ -168,6 +169,12 @@ export default function App() {
           >
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/admin/users/deleted" element={<DeletedUsers />} />
+          </Route>
+          {/* Superadmin only, matching require_role("superadmin") on the
+              router. These rules are platform-wide: an org_admin denying a
+              domain would be blocking another tenant's customers. */}
+          <Route element={<PrivateRoute superadminOnly />}>
+            <Route path="/admin/email-domains" element={<EmailDomainRules />} />
           </Route>
           <Route
             element={

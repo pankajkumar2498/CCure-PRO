@@ -14,6 +14,7 @@ celery_app = Celery(
         "core.tasks",  # Network scan background jobs
         "core.web.tasks",  # Web application scan background jobs
         "core.compliance_tasks",  # Compliance scan background jobs
+        "core.email_security_tasks",  # Email domain screening and account hygiene
     ],
 )
 
@@ -58,5 +59,20 @@ celery_app.conf.beat_schedule = {
     "purge-stale-unverified-accounts-daily": {
         "task": "ccure.tasks.purge_stale_unverified_accounts",
         "schedule": crontab(hour=3, minute=30),
+    },
+    # A *verified* account nobody ever approved is not covered by the task
+    # above — that one filters on is_verified=False, and a throwaway-inbox
+    # registrant does click the verification link. Without this second sweep the
+    # approval queue only ever grows.
+    "purge-stale-unapproved-accounts-daily": {
+        "task": "ccure.tasks.purge_stale_unapproved_accounts",
+        "schedule": crontab(hour=3, minute=45),
+    },
+    # New disposable-mail providers appear constantly, so a corpus frozen at
+    # deploy time decays into uselessness. Weekly, off-hours; the sync merges
+    # and never replaces, so a failed run leaves the previous data intact.
+    "sync-disposable-email-domains-weekly": {
+        "task": "ccure.tasks.sync_disposable_domains",
+        "schedule": crontab(hour=4, minute=15, day_of_week="mon"),
     },
 }

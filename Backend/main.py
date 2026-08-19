@@ -27,6 +27,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from routers.admin_email_domains import router as admin_email_domains_router
 from routers.admin_nvd import router as admin_nvd_router
 from routers.admin_orgs import router as admin_orgs_router
 from routers.admin_rbac import router as admin_rbac_router
@@ -113,13 +114,19 @@ async def lifespan(app: FastAPI):
             ensure_scan_schema()
 
             from db.models.assets import ensure_mac_vendor_schema
+            from db.models.email_security import ensure_email_security_schema
             from db.models.topology import ensure_topology_schema
 
             ensure_topology_schema()
             ensure_mac_vendor_schema()
+            # Creates the domain rule tables and seeds the never-block floor.
+            # Idempotent, and it must run before the first registration is
+            # served — a guard with no allowlist rows would refuse Gmail.
+            ensure_email_security_schema()
 
             log.info(
-                "User, scan, topology, and mac vendor schemas verified and migrated"
+                "User, scan, topology, mac vendor and email security schemas "
+                "verified and migrated"
             )
         except Exception as e:
             log.error(f"Failed to execute additive schema updates: {e}")
@@ -806,6 +813,7 @@ app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
+app.include_router(admin_email_domains_router)
 app.include_router(admin_rbac_router)
 app.include_router(admin_orgs_router)
 app.include_router(admin_nvd_router)

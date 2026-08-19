@@ -121,3 +121,14 @@ certs/*.key
 coverage.xml
 .coverage
 htmlcov/
+
+# Celery beat scheduler state. Beat's default is a shelve file in its working
+# directory, which is the bind-mounted repo — so without this it shows up as an
+# untracked binary and gets committed by accident. The compose service writes it
+# to a named volume; this covers anyone running beat by hand.
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
+
+# Staged blocklist and vulnerability feed downloads. Regenerable, and large.
+Backend/data/feeds/

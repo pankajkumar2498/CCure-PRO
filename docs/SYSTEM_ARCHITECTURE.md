@@ -282,12 +282,30 @@ Configuration (`celery_app.conf`): JSON serialiser only, UTC, `task_track_starte
 `task_time_limit = NMAP_TIMEOUT + 60`, and `task_always_eager` driven by
 `CELERY_TASK_ALWAYS_EAGER`.
 
-**Celery Beat schedule** (`celery_app.conf.beat_schedule`) — two entries:
+**Celery Beat schedule** (`celery_app.conf.beat_schedule`):
 
-| Schedule name                                 | Task                                | Cadence                                        |
-| --------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
-| `prune-compliance-remediation-logs-weekly`    | `compliance.prune_remediation_logs` | `crontab(hour=0, minute=0, day_of_week="sun")` |
-| `run-scheduled-compliance-scans-every-minute` | `compliance.run_scheduled_scans`    | every 60 s                                     |
+| Schedule name                                 | Task                                          | Cadence                                         |
+| --------------------------------------------- | --------------------------------------------- | ----------------------------------------------- |
+| `prune-compliance-remediation-logs-weekly`    | `compliance.prune_remediation_logs`           | `crontab(hour=0, minute=0, day_of_week="sun")`  |
+| `run-scheduled-compliance-scans-every-minute` | `compliance.run_scheduled_scans`              | every 60 s                                      |
+| `purge-stale-unverified-accounts-daily`       | `ccure.tasks.purge_stale_unverified_accounts` | `crontab(hour=3, minute=30)`                    |
+| `purge-stale-unapproved-accounts-daily`       | `ccure.tasks.purge_stale_unapproved_accounts` | `crontab(hour=3, minute=45)`                    |
+| `sync-disposable-email-domains-weekly`        | `ccure.tasks.sync_disposable_domains`         | `crontab(hour=4, minute=15, day_of_week="mon")` |
+
+**Beat runs as its own container** (`ccure-beat`, `docker-compose.yml`). It did
+not, until 18 Aug 2026 — the schedule above was defined and no process published
+it, so compliance scheduling and the account purges were configured, registered
+with Celery, and silently dead. The command appeared only as a copy-paste line
+in `DEVELOPER_SETUP_GUIDE.md`.
+
+The service is deliberately **not** behind the `container-scanner` profile: that
+profile exists to keep raw-socket scan workers out of the default `up`, and
+applying it here would leave the scheduler off by default all over again.
+
+Beat only _publishes_; the tasks execute on whichever worker consumes the queue,
+which for `default` is the host scanner worker (`--queues=scanner,default`).
+**Exactly one beat process may run at a time** — two schedulers publish every
+task twice, and a second "purge stale accounts" is not harmless.
 
 ### Task inventory
 

@@ -131,6 +131,96 @@ test above.
   confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
   working tokens for an `analyst`, which carries `scans:execute`.
 
+- **Email domain screening** — `auth/email_domain_guard.py`. Two halves, and the
+  split is not a performance decision.
+
+  The **inline** half decides the request from memory: normalize → registrable
+  domain → ALLOW rule → DENY rule → merged blocklist corpus → canonical-mailbox
+  collision. The **deferred** half (`ccure.tasks.enrich_email_risk`) does MX and
+  RDAP lookups on a worker and can only ever raise a flag. `/auth/register`
+  accepts a domain chosen by an unauthenticated caller, so resolving it in-request
+  would let a stranger aim DNS and HTTPS lookups from this host at a target of
+  their choosing and time them.
+
+  **Enforced at**: `/auth/register`, `POST /admin/users`, email change,
+  `/auth/check-email` (advisory). **Deliberately not at login, forgot-password,
+  resend-verification or reset-password** — login resolves
+  `or_(email_matches, username_matches)`, so a check there is bypassed by typing
+  a username, and when it does fire it locks out an existing customer whose
+  domain landed on a list after they joined, with no self-service recovery.
+
+  Four things measured on 18 Aug 2026, each of which changes the design:
+
+  - **One blocklist is not enough.** Of the two temp-mail domains that reached
+    the approval queue, the canonical `disposable-email-domains` list (8,310
+    entries) contained **neither**. Merging three lists (75,170 unique) catches
+    `hutdot.com` and still misses `radiant-flow.org`.
+  - **`radiant-flow.org` must be accepted.** Valid MX, Cloudflare nameservers,
+    registered 2025-03-23 — 17 months old, so a domain-age rule passes it too.
+    Nothing separates it from a small real company except human judgement, which
+    is why the load-bearing deliverable is the **risk badge in the approval
+    queue**, not the blocklist. Both suites assert this direction; a guard that
+    refuses unfamiliar domains passes the "blocks disposables" test and costs
+    real customers.
+  - **`test.com` is on a real published blocklist** and 106 test registrations
+    use it. `tests/conftest.py` seeds it as ALLOW *and* leaves it in the test
+    corpus, so ALLOW-beats-corpus stays continuously proven.
+  - **The per-IP daily cap will break the suite** if left on: every request comes
+    from one TestClient address and the counter lives in Redis for 48 hours, so
+    the third `pytest` of the day starts returning 429. `conftest` sets
+    `REGISTRATION_DAILY_IP_LIMIT = 0` for the session.
+
+  `EMAIL_DOMAIN_GUARD_MODE` is `off | flag | enforce` (default `enforce`).
+  `flag` computes and records the same verdict without refusing anything, which
+  is the staged-rollout path. **Everything fails open** — an unreachable rules
+  table or an empty corpus lets registration through and logs loudly, because
+  refusing every signup over a blocklist that did not load is a worse outage
+  than the abuse it prevents.
+
+  Two tables, and they must stay separate: `email_domain_rules` (~100 rows, each
+  a human decision, ALLOW always wins) and `disposable_domains` (~75k rows,
+  rebuilt weekly). Merged, a sync would be writing to the rows an administrator
+  edits.
+
+  Managed at **`/admin/email-domains`** (`routers/admin_email_domains.py`,
+  `Frontend/src/pages/admin/EmailDomainRules.jsx`) — list, add, flip, remove,
+  plus a lookup that runs an address through the live guard and names the rule
+  or list that matched. **Superadmin only, via `require_role`, not a
+  permission.** The rules are platform-wide, so an org_admin reaching them could
+  block another tenant's customers; and a permission check cannot express this
+  anyway, because superadmin holds every permission and any permission an
+  org_admin also has would let them through. `AppLayout`'s `canSeeNavItem` grew
+  a `superadminOnly` flag for the same reason.
+
+  `POST /admin/users/{id}/approve` is the deliberate exception: it can create an
+  ALLOW rule under `users:update`, but only ever allows, and only the domain of
+  an account already in front of the reviewer.
+
+  `scripts/security/sync_disposable_domains.py` **merges, never replaces**. A
+  source below `DISPOSABLE_SYNC_MIN_ROWS_PER_SOURCE` is rejected outright: an
+  error page parses to zero domains and would silently empty the corpus, which
+  reads as a clean run — the same failure shape as the Siemens 403 below.
+
+  `email_canonical` (UNIQUE on `users`) closes the one hole no blocklist can:
+  `p.kumar+1@gmail.com` and `pkumar@gmail.com` are one mailbox. Dots are folded
+  **only** for Gmail and subaddressing **only** for providers that document it —
+  folding `sales+web@acme.com` into `sales@acme.com` would collide two unrelated
+  colleagues at a company whose mail system has no subaddressing, and the user
+  has no way to work around a false "already registered".
+
+- **Celery beat** — `celery_app.conf.beat_schedule` had defined periodic tasks
+  since before this feature and **nothing ran them**. No service started a beat
+  process; the command existed only as a line in `DEVELOPER_SETUP_GUIDE.md`.
+  Compliance scheduling and the stale-account purge were silently dead. There is
+  now a `beat` service in `docker-compose.yml`, deliberately *not* behind the
+  `container-scanner` profile. Exactly one beat process may run at a time —
+  two schedulers publish every task twice.
+
+  Note that `purge_stale_unverified_accounts` filters `is_verified=False` and so
+  can never reach a throwaway account: temp-mail users *do* click the
+  verification link. `purge_stale_unapproved_accounts` covers verified-but-never-
+  approved accounts on a separate, longer TTL.
+
 - **TLS** — host Nginx terminates TLS on **443** and 301-redirects 80. Reached
   at **`https://ccurepro.cdacb.in`**; the Docker published ports are bound to
   127.0.0.1 only, so this is the sole listener on a routable interface and the

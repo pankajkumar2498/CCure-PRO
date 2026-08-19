@@ -93,12 +93,25 @@ try {
         # starts as an api dependency, which is harmless — the application
         # connects to the host server, not to that container.
         #
+        # `beat` IS included. It is the Celery scheduler, and it is the reason
+        # the periodic tasks in celery_app.conf.beat_schedule now actually run —
+        # for months nothing started one, so compliance scheduling and the
+        # stale-account purges were registered, configured and silently dead.
+        # It only publishes messages; the host worker started in step 2 executes
+        # them. Starting it here rather than leaving it on a restart policy is
+        # deliberate: if beat came up alone after a reboot with no worker
+        # consuming, the every-60s compliance task would pile up in Redis and
+        # then fire hundreds of times at once when a worker finally started.
+        #
+        # Exactly one beat process may run at a time — two publish every task
+        # twice.
+        #
         # Before changing this to a bare `up -d`, read the note on `worker`:
         # it will silently corrupt scan results.
-        $composeArgs += @("redis", "api", "frontend", "web-worker")
+        $composeArgs += @("redis", "api", "frontend", "web-worker", "beat")
     }
 
-    $serviceContainers = if ($Service) { @($Service) } else { @("ccure-redis", "ccure-api", "ccure-frontend", "ccure-web-worker") }
+    $serviceContainers = if ($Service) { @($Service) } else { @("ccure-redis", "ccure-api", "ccure-frontend", "ccure-web-worker", "ccure-beat") }
     Ensure-UnpausedContainers -ContainerNames $serviceContainers
 
     docker @composeArgs

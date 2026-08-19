@@ -16,7 +16,17 @@ from typing import List, Optional, Union
 from uuid import UUID
 
 from auth.dependencies import get_current_user
-from auth.email_utils import email_matches, normalize_email, username_matches
+from auth.email_domain_guard import (
+    assert_email_allowed,
+    current_mode as current_guard_mode,
+    evaluate_email,
+)
+from auth.email_utils import (
+    canonicalize_email,
+    email_matches,
+    normalize_email,
+    username_matches,
+)
 from auth.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
@@ -29,7 +39,8 @@ from auth.jwt_handler import (
     validate_password_strength,
     verify_password,
 )
-from db.base import gen_org_id, gen_user_id, get_db
+from auth.registration_limits import daily_ip_quota_exceeded, pending_queue_full
+from db.base import gen_org_id, gen_user_id, get_db, utcnow
 from db.models import Organization, RefreshTokenSession, Role, User
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
@@ -442,12 +453,26 @@ def check_email(request: Request, q: str, db: Session = Depends(get_db)):
     The endpoint is kept so the frontend contract does not break, and it still
     rejects syntactically invalid input, which is what the field actually needs
     in order to give useful feedback.
+
+    It *does* now answer about the domain. A verdict of "this is a disposable
+    mail service" says nothing about whether an account exists — it is a fact
+    about the domain, identical for every caller — so surfacing it costs no
+    privacy and saves the person filling in the form from completing a signup
+    that is going to be refused at submit.
     """
     _require_self_registration_enabled()
     query_str = q.strip()
     if not query_str or "@" not in query_str:
-        return {"available": False}
-    return {"available": True}
+        return {"available": False, "reason": "invalid"}
+
+    verdict = evaluate_email(db, query_str)
+    if verdict.blocked and current_guard_mode() == "enforce":
+        return {
+            "available": False,
+            "reason": verdict.reason,
+            "detail": verdict.detail,
+        }
+    return {"available": True, "reason": verdict.reason}
 
 
 # The gate is a route dependency as well as a call inside the handler.
@@ -496,6 +521,38 @@ def register(
     email = normalize_email(req.email)
     username = req.username.strip()
 
+    # ── Volume ceilings ──────────────────────────────────────────────────────
+    # Checked before anything is written. Both fail open; see
+    # auth/registration_limits.py for why that is the right direction.
+    if daily_ip_quota_exceeded(request):
+        logger.warning("Registration refused: daily per-IP quota exhausted")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many registrations from this network today. Try again tomorrow.",
+        )
+
+    if pending_queue_full(db):
+        logger.error(
+            "Registration refused: the approval queue is at its configured "
+            "ceiling. An administrator needs to triage it."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "New registrations are paused while pending accounts are "
+                "reviewed. Please try again later."
+            ),
+        )
+
+    # ── Email domain screening ───────────────────────────────────────────────
+    # Raises 400 with a reason when the domain is a known throwaway service and
+    # the guard is in enforce mode. This deliberately breaks the uniform-202
+    # contract below, and it is safe to: the response says something about the
+    # *domain*, which the caller already knew, and nothing about whether an
+    # account exists. Telling someone their temp-mail was refused beats
+    # accepting it and spending an administrator's time on it later.
+    verdict = assert_email_allowed(db, email, request=request)
+
     # Uniform response for every outcome below. Returned on success, on an
     # already-registered email, and on a taken username, so none of the three
     # can be told apart by an unauthenticated caller.
@@ -508,7 +565,18 @@ def register(
         "status": "pending_verification",
     }
 
+    # The mailbox this address actually delivers to. `p.kumar+1@gmail.com` and
+    # `pkumar@gmail.com` are one inbox and two distinct values of users.email,
+    # so without this a single Gmail account registers unlimited users through a
+    # domain nobody would ever blocklist. Falls back to the literal address when
+    # no canonical form applies, so the uniqueness check never silently weakens.
+    canonical = canonicalize_email(email)
+
     email_taken = bool(db.query(User).filter(email_matches(User.email, email)).first())
+    if not email_taken and canonical:
+        email_taken = bool(
+            db.query(User).filter(User.email_canonical == canonical).first()
+        )
     username_taken = bool(
         db.query(User).filter(username_matches(User.username, username)).first()
     )
@@ -557,6 +625,7 @@ def register(
         id=gen_user_id(self_service_org.slug, username),  # → usr_sel_pankaj_x9v1
         username=username,
         email=email,
+        email_canonical=canonical or None,
         full_name=req.full_name,
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
@@ -565,6 +634,11 @@ def register(
         is_verified=False,
         is_active=False,
         approved_at=None,
+        # Advisory only. In flag mode a blocked verdict lands here instead of
+        # refusing the request, which is what makes a staged rollout possible.
+        is_email_flagged=verdict.flagged or verdict.blocked,
+        email_risk=verdict.as_risk_payload(),
+        flagged_at=utcnow() if (verdict.flagged or verdict.blocked) else None,
     )
     db.add(user)
     try:
@@ -593,13 +667,47 @@ def register(
             "source": "self_registration",
             "full_name": user.full_name,
             "state": "pending_verification",
+            "email_domain": verdict.domain,
+            "email_flags": verdict.flags,
         },
     )
     db.commit()
 
     _issue_verification_token(db, user, request=request)
 
+    # The network half of the screening — MX presence and RDAP domain age —
+    # runs here, after the response is decided and the row is committed.
+    #
+    # Never inline. This endpoint takes a domain chosen by an unauthenticated
+    # caller, so resolving it in-request would let a stranger direct outbound
+    # lookups from this host at a target of their choosing and time the result.
+    # The signals it produces were only ever allowed to raise a flag, so nothing
+    # is lost by learning them a few seconds later.
+    _queue_email_risk_enrichment(user.id)
+
     return pending_response
+
+
+def _queue_email_risk_enrichment(user_id: str) -> None:
+    """Ask a worker to add the network-derived risk signals for one account."""
+    from config import AppConfig
+
+    if not AppConfig.EMAIL_RISK_ENRICHMENT_ENABLED:
+        return
+    try:
+        from core.email_security_tasks import enrich_email_risk
+
+        enrich_email_risk.delay(user_id)
+    except Exception as exc:
+        # An unavailable enrichment path is a coverage gap, not an error: the
+        # account is already screened against the blocklist and already queued
+        # for a human. Log it and move on rather than failing a registration
+        # that has otherwise succeeded.
+        logger.warning(
+            "Could not queue email risk enrichment for %s: %s",
+            user_id,
+            exc.__class__.__name__,
+        )
 
 
 class VerifyEmailRequest(BaseModel):

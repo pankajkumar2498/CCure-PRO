@@ -77,6 +77,20 @@ class User(Base):
     # ── Identity ──────────────────────────────────────────────────────────────
     username = Column(String(100), nullable=False, unique=True, index=True)
     email = Column(String(320), nullable=False, unique=True, index=True)
+
+    # The same mailbox, written the one way it can be compared.
+    #
+    # `email` is unique on the literal string, which means `p.kumar+1@gmail.com`,
+    # `pkumar+2@gmail.com` and `p.k.u.m.a.r@gmail.com` are three accounts and one
+    # mailbox. That is unlimited account farming through a provider nobody would
+    # ever blocklist, and no amount of disposable-domain screening touches it.
+    #
+    # Nullable because the column is added to a live table and backfilled; the
+    # unique index tolerates NULLs, so rows that predate the backfill do not
+    # collide with each other. See auth/email_utils.canonicalize_email for what
+    # is folded and — more importantly — what is not.
+    email_canonical = Column(String(320), nullable=True, unique=True, index=True)
+
     full_name = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=False)
     totp_secret = Column(String(255), nullable=True)
@@ -102,6 +116,20 @@ class User(Base):
     # for every path except self-registration.
     approved_at = Column(TIMESTAMPTZ, nullable=True)
     approved_by = Column(String(150), nullable=True)
+
+    # ── Email risk ────────────────────────────────────────────────────────────
+    # Set by the email domain guard. `is_email_flagged` drives a badge in the
+    # pending-approval queue; `email_risk` carries the signals behind it so the
+    # administrator reading that queue is told *why*, not just that something is
+    # off.
+    #
+    # A flag never blocks anything. It exists precisely for the signals that are
+    # too weak to refuse an account over — domain age, MX shape, a name that
+    # looks throwaway — where being wrong costs an admin four seconds instead of
+    # costing a customer their signup.
+    is_email_flagged = Column(Boolean, nullable=False, default=False)
+    email_risk = Column(JSONB, nullable=False, default=dict)
+    flagged_at = Column(TIMESTAMPTZ, nullable=True)
 
     # ── Profile ───────────────────────────────────────────────────────────────
     avatar_url = Column(String(512), nullable=True)
@@ -434,3 +462,115 @@ def ensure_user_schema():
 
         if "approved_by" not in columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN approved_by VARCHAR(150)"))
+
+        # ── Email risk columns ────────────────────────────────────────────
+        if "is_email_flagged" not in columns:
+            if dialect == "postgresql":
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN is_email_flagged "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN is_email_flagged "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_users_is_email_flagged "
+                    "ON users (is_email_flagged)"
+                )
+            )
+
+        if "email_risk" not in columns:
+            if dialect == "postgresql":
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN email_risk "
+                        "JSONB NOT NULL DEFAULT '{}'::jsonb"
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN email_risk "
+                        "TEXT NOT NULL DEFAULT '{}'"
+                    )
+                )
+
+        if "flagged_at" not in columns:
+            if dialect == "postgresql":
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN flagged_at TIMESTAMPTZ")
+                )
+            else:
+                conn.execute(text("ALTER TABLE users ADD COLUMN flagged_at DATETIME"))
+
+        if "email_canonical" not in columns:
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN email_canonical VARCHAR(320)")
+            )
+            _backfill_email_canonical(conn)
+
+
+def _backfill_email_canonical(conn) -> None:
+    """
+    Populate `users.email_canonical`, then add the unique index.
+
+    Order matters and so does the collision handling. Two existing accounts can
+    legitimately canonicalize to the same mailbox — that is exactly the abuse
+    this column exists to detect, and on a live database some of those pairs are
+    already there. Creating the unique index first, or backfilling blindly,
+    would abort the migration and leave the deployment unable to start.
+
+    So: compute every canonical form in Python (the Gmail dot rule is not
+    expressible in portable SQL), write only the ones that are unique, and leave
+    the losers of a collision NULL. NULLs do not collide under a unique index in
+    either PostgreSQL or SQLite, so the index still goes on cleanly and future
+    registrations are protected. The pre-existing duplicates stay reachable and
+    are surfaced by the retro-scan instead of being deleted here — a migration
+    is the wrong place to decide which of two real accounts is the impostor.
+    """
+    import logging
+
+    from auth.email_utils import canonicalize_email
+
+    log = logging.getLogger(__name__)
+
+    rows = conn.execute(text("SELECT id, email FROM users")).fetchall()
+
+    seen: dict[str, str] = {}
+    collisions: list[tuple[str, str]] = []
+    for user_id, email in rows:
+        canonical = canonicalize_email(email)
+        if not canonical:
+            continue
+        if canonical in seen:
+            collisions.append((user_id, canonical))
+            continue
+        seen[canonical] = user_id
+
+    for canonical, user_id in seen.items():
+        conn.execute(
+            text("UPDATE users SET email_canonical = :c WHERE id = :i"),
+            {"c": canonical, "i": user_id},
+        )
+
+    if collisions:
+        log.warning(
+            "email_canonical backfill: %d existing account(s) share a mailbox "
+            "with an earlier account and were left NULL: %s",
+            len(collisions),
+            ", ".join(user_id for user_id, _ in collisions),
+        )
+
+    conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email_canonical "
+            "ON users (email_canonical)"
+        )
+    )

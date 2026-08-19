@@ -2,7 +2,13 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from auth.email_utils import email_matches, normalize_email, username_matches
+from auth.email_domain_guard import assert_email_allowed, invalidate_cache
+from auth.email_utils import (
+    canonicalize_email,
+    email_matches,
+    normalize_email,
+    username_matches,
+)
 from auth.jwt_handler import hash_password, validate_password_strength
 from auth.rbac import require_permission
 from core.audit import log_audit_event
@@ -47,6 +53,15 @@ def _serialize_user(user: User) -> dict:
         "deleted_at": getattr(user, "deleted_at", None),
         "created_at": user.created_at,
         "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
+        # The email-risk verdict, so the administrator deciding whether to
+        # approve this account can see *why* it was flagged rather than only
+        # that it was. This is the half of disposable-email defence that the
+        # blocklist cannot do: `radiant-flow.org` is on no list anywhere, and
+        # a human looking at "domain registered 4 months ago, no web presence"
+        # makes the call the automation cannot.
+        "is_email_flagged": bool(getattr(user, "is_email_flagged", False)),
+        "email_risk": getattr(user, "email_risk", None) or {},
+        "flagged_at": getattr(user, "flagged_at", None),
     }
 
 
@@ -261,6 +276,19 @@ def create_user(
     if db.query(User).filter(email_matches(User.email, email)).first():
         raise HTTPException(status_code=400, detail="Email already exists")
 
+    # Same mailbox, different spelling. `p.kumar+ops@gmail.com` and
+    # `pkumar@gmail.com` deliver to one inbox, so treating them as two accounts
+    # would let the farming hole reopen through the admin path.
+    canonical = canonicalize_email(email)
+    if canonical and db.query(User).filter(User.email_canonical == canonical).first():
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    # Screened like any other new address. An administrator provisioning an
+    # account is trusted, but a typo or a contractor handing over a throwaway
+    # address is not a trust question — and if the domain really is wanted, the
+    # remedy is one ALLOW rule rather than a hole in the check.
+    verdict = assert_email_allowed(db, email, request=request, actor=current_user)
+
     role = db.query(Role).filter(Role.id == user_data.role_id).first()
     if not role:
         raise HTTPException(status_code=400, detail="Invalid role_id")
@@ -281,6 +309,7 @@ def create_user(
         id=gen_user_id(org_slug, user_data.username),  # e.g. usr_acm_alice_x9v1
         username=user_data.username,
         email=email,
+        email_canonical=canonical or None,
         full_name=user_data.full_name,
         role_id=user_data.role_id,
         org_id=target_org_id,
@@ -289,6 +318,9 @@ def create_user(
         is_verified=True,
         approved_at=utcnow(),
         approved_by=str(current_user.id),
+        is_email_flagged=verdict.flagged or verdict.blocked,
+        email_risk=verdict.as_risk_payload(),
+        flagged_at=utcnow() if (verdict.flagged or verdict.blocked) else None,
     )
     db.add(new_user)
     db.flush()
@@ -583,9 +615,70 @@ def list_pending_users(
             "organization_id": str(u.org_id),
             "is_verified": u.is_verified,
             "created_at": u.created_at.isoformat() if u.created_at else None,
+            # Everything the reviewer needs to judge the address, alongside the
+            # address itself. Without this the queue shows `safan76549@hutdot.com`
+            # and a real user identically.
+            "is_email_flagged": bool(getattr(u, "is_email_flagged", False)),
+            "email_risk": getattr(u, "email_risk", None) or {},
         }
         for u in pending
     ]
+
+
+def _allowlist_email_domain(db: Session, *, user: User, actor: User, reason=None):
+    """
+    Add this account's email domain to the platform-wide ALLOW list.
+
+    Returns the domain that was allowed, or None if there was nothing to do.
+
+    An existing rule is updated rather than duplicated, because `domain` is
+    unique and a second INSERT would abort the approval transaction — the
+    administrator would see a 500 on an action that was otherwise valid.
+    """
+    from auth.email_domain_guard import extract_domain
+    from db.models.email_security import VERDICT_ALLOW, EmailDomainRule
+
+    domain = extract_domain(user.email or "")
+    if not domain:
+        return None
+
+    existing = (
+        db.query(EmailDomainRule).filter(EmailDomainRule.domain == domain).first()
+    )
+    note = reason or (f"Allowed while approving {user.username} ({user.id}).")
+
+    if existing:
+        existing.verdict = VERDICT_ALLOW
+        existing.source = "approval"
+        existing.reason = note
+        existing.created_by = str(actor.id)
+        existing.updated_at = utcnow()
+    else:
+        db.add(
+            EmailDomainRule(
+                domain=domain,
+                verdict=VERDICT_ALLOW,
+                source="approval",
+                reason=note,
+                created_by=str(actor.id),
+            )
+        )
+    return domain
+
+
+class ApproveUserSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Two different decisions, kept separate on purpose.
+    #
+    # "This person is fine" and "this domain is fine for everyone, forever" are
+    # not the same judgement, and an approval screen that conflates them invites
+    # an administrator who meant the first to accidentally make the second.
+    # Allowlisting a throwaway domain platform-wide is not something anyone
+    # should be able to do by clicking the same button they use to admit one
+    # colleague.
+    allowlist_domain: bool = False
+    reason: Optional[str] = None
 
 
 @router.post("/{user_id}/approve")
@@ -593,6 +686,7 @@ def list_pending_users(
 def approve_user(
     user_id: str,
     request: Request,
+    payload: ApproveUserSchema | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users", "update")),
 ):
@@ -607,6 +701,12 @@ def approve_user(
     The approved account keeps whatever role it was created with (`viewer` for
     self-registration). Granting scan execution stays a separate, explicit act
     through the role endpoint, so approval never silently confers it.
+
+    `allowlist_domain` is the second, wider decision and defaults to False.
+    Without it, approving a flagged account clears that one account and leaves
+    the domain exactly as it was — so admitting a colleague whose employer got
+    caught by an over-eager blocklist does not quietly open the door to every
+    address at a throwaway service.
     """
     user = (
         _scoped_users_query(db, current_user, scope="active")
@@ -633,16 +733,55 @@ def approve_user(
     user.is_active = True
     user.updated_at = utcnow()
 
+    # Approving the account clears its flag. The administrator has looked at the
+    # address and decided; leaving a red badge on an account they just admitted
+    # trains everyone to ignore badges.
+    allowlisted_domain = None
+    if user.is_email_flagged:
+        user.is_email_flagged = False
+        risk = dict(user.email_risk or {})
+        risk["cleared_by"] = str(current_user.id)
+        risk["cleared_at"] = utcnow().isoformat()
+        user.email_risk = risk
+
+    if payload is not None and payload.allowlist_domain:
+        allowlisted_domain = _allowlist_email_domain(
+            db,
+            user=user,
+            actor=current_user,
+            reason=payload.reason,
+        )
+
     log_audit_event(
         db,
         current_user,
         "user.approved",
         "user",
         str(user.id),
-        {"approved_by": str(current_user.id), "role": getattr(user.role, "name", None)},
+        {
+            "approved_by": str(current_user.id),
+            "role": getattr(user.role, "name", None),
+            "allowlisted_domain": allowlisted_domain,
+        },
         request,
     )
+    if allowlisted_domain:
+        log_audit_event(
+            db,
+            current_user,
+            "admin.email_domain_allowlisted",
+            "email_domain",
+            allowlisted_domain,
+            {"granted_via": "user_approval", "user_id": str(user.id)},
+            request,
+        )
     db.commit()
+
+    if allowlisted_domain:
+        # The guard keeps the rule set in a process-local cache with a TTL. An
+        # administrator who just unblocked a domain should not have to wait it
+        # out, and neither should the person trying to register.
+        invalidate_cache()
 
     _notify_user_admin_action(
         db=db,

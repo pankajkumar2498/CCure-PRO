@@ -224,6 +224,7 @@ Source: `Backend/db/models/users.py`.
 | `role_id`                   | `SmallInteger` | no   | —        | FK `roles.id` **`ON DELETE RESTRICT`**, indexed   |
 | `username`                  | `String(100)`  | no   | —        | **UNIQUE**, indexed — global, not per-org         |
 | `email`                     | `String(320)`  | no   | —        | **UNIQUE**, indexed — global                      |
+| `email_canonical`           | `String(320)`  | yes  | —        | **UNIQUE**, indexed — the mailbox `email` reaches |
 | `full_name`                 | `String(255)`  | yes  | —        |                                                   |
 | `password_hash`             | `String(255)`  | no   | —        | argon2 (`$argon2…`) or bcrypt                     |
 | `totp_secret`               | `String(255)`  | yes  | —        | Fernet-encrypted                                  |
@@ -240,6 +241,9 @@ Source: `Backend/db/models/users.py`.
 | `deleted_at`                | `TIMESTAMPTZ`  | yes  | —        |                                                   |
 | `approved_at`               | `TIMESTAMPTZ`  | yes  | —        | Admin approval; login refuses `NULL`              |
 | `approved_by`               | `String(150)`  | yes  | —        | `users.id` of the approver, or `fixture`/`auto:…` |
+| `is_email_flagged`          | `Boolean`      | no   | `false`  | Indexed — drives the approval-queue badge         |
+| `email_risk`                | `JSONB`        | no   | `{}`     | Verdict, flags and signals from the domain guard  |
+| `flagged_at`                | `TIMESTAMPTZ`  | yes  | —        | When the flag was first raised                    |
 | `avatar_url`                | `String(512)`  | yes  | —        |                                                   |
 | `preferences`               | `JSONB`        | no   | `{}`     | Theme, defaults, notification settings            |
 | `created_at` / `updated_at` | `TIMESTAMPTZ`  | no   | `utcnow` |                                                   |
@@ -321,6 +325,66 @@ redeemable from a mailbox that may no longer be under the user's control.
 address must not confirm a different one, otherwise changing the address after
 requesting a link would let the old mailbox verify an address it never received
 mail at.
+
+### `email_domain_rules`
+
+Explicit platform-wide ALLOW / DENY decisions about email domains.
+
+| Column                      | Type          | Null | Default  | Notes                                             |
+| --------------------------- | ------------- | ---- | -------- | ------------------------------------------------- |
+| `id`                        | `BigInteger`  | no   | —        | **PK**, autoincrement                             |
+| `domain`                    | `String(255)` | no   | —        | **UNIQUE**, indexed — registrable form, lowercase |
+| `verdict`                   | `String(10)`  | no   | —        | `allow` or `deny`, indexed                        |
+| `source`                    | `String(40)`  | no   | `admin`  | `seed`, `admin`, or `approval`                    |
+| `reason`                    | `Text`        | yes  | —        | Why this rule exists                              |
+| `created_by`                | `String(150)` | yes  | —        | `users.id`, **not** a FK — see below              |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | no   | `utcnow` |                                                   |
+
+**ALLOW always wins**, and that ordering is the reason the table exists. The
+blocklist corpus below is maintained by strangers on a schedule nobody here
+controls, and it does get things wrong — `qq.com` and Apple Private Relay have
+both been listed. One row here overrides any upstream list permanently, which is
+what makes enforcement safe to turn on at all.
+
+Seeded with a never-block floor: the major consumer providers, the alias and
+forwarding services (allowed on purpose — they forward to a permanent mailbox
+somebody actually reads), and this deployment's own domains.
+
+`created_by` is deliberately **not** a foreign key. A rule must outlive the
+administrator who wrote it; deleting a leaver's account must never cascade into
+re-blocking a customer's email domain.
+
+Rules also match **parent suffixes**, so a rule on `example.co.uk` covers
+`mail.example.co.uk` without a second row.
+
+### `disposable_domains`
+
+The merged upstream blocklist corpus. Rebuilt by
+`scripts/security/sync_disposable_domains.py`.
+
+| Column          | Type          | Null | Default  | Notes                                      |
+| --------------- | ------------- | ---- | -------- | ------------------------------------------ |
+| `id`            | `BigInteger`  | no   | —        | **PK**, autoincrement                      |
+| `domain`        | `String(255)` | no   | —        | **UNIQUE**, indexed                        |
+| `sources`       | `JSONB`       | no   | `[]`     | Which lists named it, for provenance       |
+| `first_seen_at` | `TIMESTAMPTZ` | no   | `utcnow` |                                            |
+| `last_seen_at`  | `TIMESTAMPTZ` | no   | `utcnow` | Indexed                                    |
+| `miss_count`    | `Integer`     | no   | `0`      | Consecutive syncs with no source naming it |
+
+**Kept separate from `email_domain_rules` on purpose.** One holds ~93,000 rows
+rebuilt weekly from other people's data; the other holds ~100 rows each
+representing a decision somebody made. Merged into one table a sync would be
+writing to the rows an administrator edits, and one bad upstream entry could
+overwrite a deliberate allow. Kept apart, a sync cannot reach a human decision.
+
+`miss_count` exists because a source returning an error page parses to zero
+domains, which is indistinguishable from "this list is now empty". A domain is
+retired only after `DISPOSABLE_RETIRE_AFTER_MISSES` consecutive **successful**
+syncs without it, and a source below `DISPOSABLE_SYNC_MIN_ROWS_PER_SOURCE` is
+rejected outright rather than merged.
+
+Both tables are platform-wide, not org-scoped: a throwaway domain is a throwaway
+domain for every tenant, and scoping would mean 93,000 rows per organisation.
 
 ### `audit_logs`
 

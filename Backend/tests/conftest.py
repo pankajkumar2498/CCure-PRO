@@ -116,6 +116,8 @@ os.environ.setdefault("CELERY_TASK_EAGER_PROPAGATES", "true")
 import re
 from urllib.parse import urlparse
 
+from datetime import datetime, timezone
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 
@@ -572,8 +574,130 @@ def seed_system_roles():
         conn.execute(text("TRUNCATE TABLE users CASCADE"))
 
 
+#: Domains the test suite registers with. `test.com` alone accounts for 106
+#: registrations across the auth, admin, RBAC and tenant-isolation suites.
+_TEST_ALLOW_DOMAINS = (
+    "test.com",
+    "example.com",
+    "testorg.com",
+    "ccurepro.com",
+    "b.test",
+    "nowhere.test",
+    "acme.com",
+)
+
+#: A deliberately tiny corpus. The production snapshot has 75,170 entries and
+#: loading it here would make every session slower for no extra coverage — the
+#: guard's behaviour depends on whether a domain is in the set, not how large
+#: the set is.
+_TEST_DISPOSABLE_DOMAINS = (
+    "mailinator.com",
+    "hutdot.com",
+    "temp-mail.org",
+    "guerrillamail.com",
+    "10minutemail.com",
+    # Present in BOTH lists on purpose. `test.com` really is on a published
+    # disposable blocklist, so the whole suite depends on ALLOW beating the
+    # corpus — this keeps that precedence continuously proven rather than
+    # assumed, and reproduces production, where a false-positive listing is
+    # exactly what the allow rule exists to override.
+    "test.com",
+)
+
+
 @pytest.fixture(scope="session", autouse=True)
-def session_client(seed_system_roles) -> Generator[TestClient, None, None]:
+def seed_email_domain_rules(seed_system_roles):
+    """
+    Give the email domain guard a deterministic rule set for the whole session.
+
+    Without this the suite fails wholesale the moment enforcement is on:
+    `test.com` is on a real maintained blocklist, and 106 registrations across
+    four suites use it. That is not a reason to weaken the guard — it is why the
+    ALLOW override exists, and seeding it here is what a real deployment does
+    for its own domains.
+    """
+    from db.models.email_security import (
+        VERDICT_ALLOW,
+        DisposableDomain,
+        EmailDomainRule,
+        seed_domain_rules,
+    )
+
+    with engine.begin() as conn:
+        # The shipped floor (gmail, outlook, …) plus this suite's own domains.
+        seed_domain_rules(conn)
+
+        existing = {
+            row[0]
+            for row in conn.execute(text("SELECT domain FROM email_domain_rules"))
+        }
+        rows = [
+            {
+                "domain": domain,
+                "verdict": VERDICT_ALLOW,
+                "source": "seed",
+                "reason": "pytest fixture domain",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+            for domain in _TEST_ALLOW_DOMAINS
+            if domain not in existing
+        ]
+        if rows:
+            conn.execute(EmailDomainRule.__table__.insert(), rows)
+
+        present = {
+            row[0]
+            for row in conn.execute(text("SELECT domain FROM disposable_domains"))
+        }
+        corpus = [
+            {
+                "domain": domain,
+                "sources": ["pytest"],
+                "first_seen_at": datetime.now(timezone.utc),
+                "last_seen_at": datetime.now(timezone.utc),
+                "miss_count": 0,
+            }
+            for domain in _TEST_DISPOSABLE_DOMAINS
+            if domain not in present
+        ]
+        if corpus:
+            conn.execute(DisposableDomain.__table__.insert(), corpus)
+
+    # The guard caches the rule set per process on a TTL; the fixture has just
+    # changed it underneath a cache that may already be warm.
+    from auth.email_domain_guard import invalidate_cache
+
+    invalidate_cache()
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def relax_registration_volume_limits():
+    """
+    Switch off the per-IP daily registration cap for the suite.
+
+    Every request the suite makes arrives from one TestClient address, and the
+    counter lives in Redis with a 48-hour expiry — so the cap is shared by all
+    ~110 registrations across the auth, admin, RBAC and tenant-isolation suites
+    *and* survives between runs. Left on, the third consecutive `pytest` of the
+    day starts returning 429 for tests that have nothing to do with rate
+    limiting, which reads as a broken registration endpoint.
+
+    Set directly rather than through monkeypatch because it has to hold for the
+    whole session. A test that wants to exercise the cap monkeypatches it back
+    to a real number for its own duration.
+    """
+    from config import AppConfig
+
+    previous = AppConfig.REGISTRATION_DAILY_IP_LIMIT
+    AppConfig.REGISTRATION_DAILY_IP_LIMIT = 0
+    yield
+    AppConfig.REGISTRATION_DAILY_IP_LIMIT = previous
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_client(seed_email_domain_rules) -> Generator[TestClient, None, None]:
     """
     One TestClient — and therefore one application startup — per session.
 

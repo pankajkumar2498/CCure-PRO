@@ -35,6 +35,11 @@ from .compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
+from .email_security import (
+    DisposableDomain,
+    EmailDomainRule,
+    ensure_email_security_schema,
+)
 from .findings import (
     AssetVulnerability,
     HttpSecurityDetail,
@@ -68,6 +73,10 @@ __all__ = [
     "AuditLog",
     "PasswordResetToken",
     "EmailVerificationToken",
+    # Email domain screening
+    "EmailDomainRule",
+    "DisposableDomain",
+    "ensure_email_security_schema",
     # Assets
     "Asset",
     "AssetTag",

@@ -165,6 +165,102 @@ services:
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
 
+  # ── Celery Beat (scheduler) ───────────────────────────────────────────────
+  #
+  # `celery_app.conf.beat_schedule` has always defined periodic tasks, and until
+  # now nothing ran them. No service started a beat process, and the only place
+  # the command appeared was as a copy-paste line in DEVELOPER_SETUP_GUIDE.md.
+  # Compliance scheduling and the stale-account purge were both silently dead:
+  # they looked configured, they were registered with Celery, and they never
+  # fired.
+  #
+  # Beat only *publishes* — the tasks are executed by whichever worker consumes
+  # the queue, which on this deployment is the host scanner worker
+  # (--queues=scanner,default). So this container is small and holds no scanning
+  # privileges.
+  #
+  # Deliberately NOT behind the `container-scanner` profile. The profile exists
+  # to keep raw-socket scan workers out of the default `up`, and applying it
+  # here is what would leave the scheduler off again by default.
+  #
+  # Exactly one beat process may run at a time. Two schedulers publish every
+  # task twice, and the second copy of "purge stale accounts" is not harmless.
+  beat:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    image: ccure-audit-pro-backend:latest
+    container_name: ccure-beat
+    # `no`, matching every other service here — not `unless-stopped`.
+    #
+    # This stack is deliberately manual-start. A scheduler that came back on its
+    # own after a host reboot would publish into a broker with no worker
+    # consuming it: the every-60s compliance task alone would queue hundreds of
+    # messages that all fire at once whenever someone next starts the host
+    # worker. Beat starts and stops with the rest of the stack, from
+    # scripts/start_host_scan_stack.ps1.
+    restart: "no"
+    # --schedule is not cosmetic. Beat's default is a `celerybeat-schedule`
+    # shelve file in the working directory, and the working directory is /app,
+    # which is the bind-mounted repository — so the scheduler's state file
+    # appears as an untracked binary in the working tree and gets committed by
+    # accident. It lives in a named volume instead, which also means last-run
+    # times survive a container rebuild.
+    #
+    # The chown is required and cannot be dropped: Docker creates a named
+    # volume's mountpoint owned by root, the image runs as uid 1000 (ccure), and
+    # beat then dies with EACCES on its own state file. Starting as root to fix
+    # the ownership and immediately dropping back with setpriv keeps the
+    # scheduler itself unprivileged — it publishes messages and needs nothing
+    # else.
+    user: root
+    command:
+      - sh
+      - -c
+      - >-
+        chown ccure:ccure /var/lib/ccure-beat &&
+        exec setpriv --reuid=ccure --regid=ccure --init-groups
+        celery -A core.celery_app beat --loglevel=info
+        --schedule=/var/lib/ccure-beat/celerybeat-schedule
+    environment:
+      - TZ=Asia/Kolkata
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PGSSLMODE=${PGSSLMODE:-verify-full}
+      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
+      - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      - VULN_DB_PORT=5432
+      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
+      - VULN_DB_USER=${VULN_DB_USER:-admin}
+      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
+      - APP_ENV=production
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-False}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      # Beat must never run tasks in-process. Eager mode would execute every
+      # scheduled job inside the scheduler, serially, with no worker involved.
+      - CELERY_TASK_ALWAYS_EAGER=False
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Backend:/app
+      - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
+      - backend_venv:/app/.venv
+      - beat_state:/var/lib/ccure-beat
+
   # ── Web Application Scan Worker ───────────────────────────────────────────
   web-worker:
     build:
@@ -264,3 +360,4 @@ services:
 volumes:
   pgdata:
   backend_venv:
+  beat_state:

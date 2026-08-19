@@ -358,6 +358,80 @@ class AccountSecurityConfig:
     )
 
 
+class EmailDomainGuardConfig:
+    """
+    Disposable / throwaway email domain screening.
+
+    Measured before this was written: of the two temp-mail domains that reached
+    the approval queue on 18 Aug 2026, the canonical `disposable-email-domains`
+    list contained *neither*, and merging three lists (93k domains) still only
+    caught one. A blocklist is therefore necessary and roughly half the answer;
+    the other half is a risk verdict rendered to the human who approves the
+    account. That is why `flag` is a first-class mode and not a debug setting.
+    """
+
+    # off     — the guard does nothing, and no verdict is computed.
+    # flag    — verdicts are computed and recorded, nothing is ever refused.
+    # enforce — a confirmed-disposable domain is refused at account creation.
+    #
+    # `enforce` is the default because refusing a known throwaway domain is the
+    # point of the feature. `flag` exists for a staged rollout: run it for a
+    # week, read the audit log, then flip. Both modes write the same verdict, so
+    # the only difference is whether registration stops.
+    MODE: str = os.getenv("EMAIL_DOMAIN_GUARD_MODE", "enforce").strip().lower()
+
+    # How long a loaded rule set / corpus is trusted before the next request
+    # re-reads it. The corpus is ~93k rows; re-reading it per request would put
+    # a table scan on the login path for no benefit.
+    CACHE_TTL_SECONDS: int = int(os.getenv("EMAIL_DOMAIN_CACHE_TTL_SECONDS", "300"))
+
+    # The deferred half of the pipeline: MX presence and RDAP domain age. These
+    # are network calls against a domain the *caller* chose, so they never run
+    # inline — see auth/email_domain_guard.py. Turn off in an air-gapped
+    # deployment; the blocklist half keeps working.
+    ENRICHMENT_ENABLED: bool = (
+        os.getenv("EMAIL_RISK_ENRICHMENT_ENABLED", "True").lower() == "true"
+    )
+    DNS_TIMEOUT_SECONDS: float = float(os.getenv("EMAIL_RISK_DNS_TIMEOUT", "3"))
+    RDAP_TIMEOUT_SECONDS: float = float(os.getenv("EMAIL_RISK_RDAP_TIMEOUT", "5"))
+
+    # A domain younger than this is *flagged*, never blocked. Deliberately not a
+    # block rule: radiant-flow.org was 17 months old and still a throwaway, and
+    # plenty of legitimate companies register a domain the week they incorporate.
+    MIN_DOMAIN_AGE_DAYS: int = int(os.getenv("EMAIL_RISK_MIN_DOMAIN_AGE_DAYS", "90"))
+
+    # Volume controls. The per-minute limiter (3/minute, slowapi) stops a burst;
+    # these stop a patient bot. /auth/register also sends mail to an address the
+    # caller chose, so the daily cap bounds the relay surface too.
+    REGISTRATION_DAILY_IP_LIMIT: int = int(
+        os.getenv("REGISTRATION_DAILY_IP_LIMIT", "10")
+    )
+
+    # The approval queue is an administrator's attention budget and it is
+    # finite. Past this many pending accounts, registration is refused until
+    # someone drains it. 0 disables the ceiling.
+    PENDING_QUEUE_LIMIT: int = int(os.getenv("PENDING_APPROVAL_QUEUE_LIMIT", "200"))
+
+    # A *verified* account that no admin ever approved is not covered by
+    # UNVERIFIED_ACCOUNT_TTL_DAYS — purge_stale_unverified_accounts filters on
+    # is_verified=False, and temp-mail users do click the verification link.
+    # Without this TTL the queue only ever grows.
+    UNAPPROVED_ACCOUNT_TTL_DAYS: int = int(
+        os.getenv("UNAPPROVED_ACCOUNT_TTL_DAYS", "30")
+    )
+
+    # Sync safety. A source returning an empty body or an error page must not be
+    # able to empty the corpus — that failure reads exactly like a clean run.
+    SYNC_MIN_ROWS_PER_SOURCE: int = int(
+        os.getenv("DISPOSABLE_SYNC_MIN_ROWS_PER_SOURCE", "500")
+    )
+    # A domain is retired only after being absent from every source across this
+    # many consecutive successful syncs.
+    SYNC_RETIRE_AFTER_MISSES: int = int(
+        os.getenv("DISPOSABLE_RETIRE_AFTER_MISSES", "3")
+    )
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -449,6 +523,21 @@ class AppConfig:
     EMAIL_VERIFICATION_TTL_HOURS = AccountSecurityConfig.EMAIL_VERIFICATION_TTL_HOURS
     UNVERIFIED_ACCOUNT_TTL_DAYS = AccountSecurityConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
     MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
+
+    # Disposable / throwaway email domain screening
+    EMAIL_DOMAIN_GUARD_MODE = EmailDomainGuardConfig.MODE
+    EMAIL_DOMAIN_CACHE_TTL_SECONDS = EmailDomainGuardConfig.CACHE_TTL_SECONDS
+    EMAIL_RISK_ENRICHMENT_ENABLED = EmailDomainGuardConfig.ENRICHMENT_ENABLED
+    EMAIL_RISK_DNS_TIMEOUT_SECONDS = EmailDomainGuardConfig.DNS_TIMEOUT_SECONDS
+    EMAIL_RISK_RDAP_TIMEOUT_SECONDS = EmailDomainGuardConfig.RDAP_TIMEOUT_SECONDS
+    EMAIL_RISK_MIN_DOMAIN_AGE_DAYS = EmailDomainGuardConfig.MIN_DOMAIN_AGE_DAYS
+    REGISTRATION_DAILY_IP_LIMIT = EmailDomainGuardConfig.REGISTRATION_DAILY_IP_LIMIT
+    PENDING_APPROVAL_QUEUE_LIMIT = EmailDomainGuardConfig.PENDING_QUEUE_LIMIT
+    UNAPPROVED_ACCOUNT_TTL_DAYS = EmailDomainGuardConfig.UNAPPROVED_ACCOUNT_TTL_DAYS
+    DISPOSABLE_SYNC_MIN_ROWS_PER_SOURCE = (
+        EmailDomainGuardConfig.SYNC_MIN_ROWS_PER_SOURCE
+    )
+    DISPOSABLE_RETIRE_AFTER_MISSES = EmailDomainGuardConfig.SYNC_RETIRE_AFTER_MISSES
 
     # Scan authorisation. When True an organisation with no configured scope
     # (scan_scope_cidrs IS NULL) cannot scan at all, rather than falling back

@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "ApproveUserSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "allowlist_domain": {
+            "default": false,
+            "title": "Allowlist Domain",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveUserSchema",
+        "type": "object"
+      },
       "AssetDiscoveryRequest": {
         "description": "Asset Discovery — Phase 2.\n\nMust include the same `pipeline_mode` used in the Host Discovery request so the\nbackend can decide whether this is the terminal phase (asset) or not (vulnerability_audit).",
         "properties": {
@@ -1800,6 +1823,67 @@
         "title": "RollbackRequest",
         "type": "object"
       },
+      "RuleCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "verdict"
+        ],
+        "title": "RuleCreate",
+        "type": "object"
+      },
+      "RuleUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "title": "RuleUpdate",
+        "type": "object"
+      },
       "RuleUpdatePayload": {
         "properties": {
           "check_definition": {
@@ -3183,6 +3267,650 @@
         ]
       }
     },
+    "/admin/email-domains": {
+      "get": {
+        "description": "List the ALLOW / DENY rules, newest first.",
+        "operationId": "list_rules_admin_email_domains_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Rules",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      },
+      "post": {
+        "description": "Create an ALLOW or DENY rule.\n\nA domain already carrying a rule is rejected with 409 rather than silently\noverwritten: `domain` is unique, and quietly flipping an existing verdict —\npossibly one seeded as part of the never-block floor — is not something\nanyone should be able to do by filling in an add form. Editing goes through\nPATCH, where the intent is explicit.",
+        "operationId": "create_rule_admin_email_domains_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/": {
+      "get": {
+        "description": "List the ALLOW / DENY rules, newest first.",
+        "operationId": "list_rules_admin_email_domains__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Rules",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      },
+      "post": {
+        "description": "Create an ALLOW or DENY rule.\n\nA domain already carrying a rule is rejected with 409 rather than silently\noverwritten: `domain` is unique, and quietly flipping an existing verdict —\npossibly one seeded as part of the never-block floor — is not something\nanyone should be able to do by filling in an add form. Editing goes through\nPATCH, where the intent is explicit.",
+        "operationId": "create_rule_admin_email_domains__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/lookup": {
+      "get": {
+        "description": "Run an address or domain through the live guard and show the verdict.\n\nWorth having for one reason: when somebody reports \"my customer cannot\nregister\", this answers *why* in one request — which rule or list matched,\nand at what level — instead of leaving an administrator to guess whether the\naddress, the domain, a parent suffix or the corpus is responsible.",
+        "operationId": "lookup_admin_email_domains_lookup_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/lookup/": {
+      "get": {
+        "description": "Run an address or domain through the live guard and show the verdict.\n\nWorth having for one reason: when somebody reports \"my customer cannot\nregister\", this answers *why* in one request — which rule or list matched,\nand at what level — instead of leaving an administrator to guess whether the\naddress, the domain, a parent suffix or the corpus is responsible.",
+        "operationId": "lookup_admin_email_domains_lookup__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/stats": {
+      "get": {
+        "description": "Corpus health.\n\n`corpus_size` is the number that matters operationally. The guard fails open\non an empty corpus — deliberately, because refusing every signup over a\nblocklist that did not load is a worse outage than the abuse it prevents —\nwhich means an empty corpus is silent. This is where that becomes visible.",
+        "operationId": "rule_stats_admin_email_domains_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rule Stats",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/stats/": {
+      "get": {
+        "description": "Corpus health.\n\n`corpus_size` is the number that matters operationally. The guard fails open\non an empty corpus — deliberately, because refusing every signup over a\nblocklist that did not load is a worse outage than the abuse it prevents —\nwhich means an empty corpus is silent. This is where that becomes visible.",
+        "operationId": "rule_stats_admin_email_domains_stats__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rule Stats",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/{rule_id}": {
+      "delete": {
+        "description": "Remove a rule.\n\nThe response says what the domain's verdict becomes *without* the rule,\nbecause that is the question the administrator actually has and it is not\nobvious: deleting an ALLOW on a domain that also sits in the blocklist\ncorpus does not return it to neutral, it starts blocking it. `test.com` is\na live example — it is on a published disposable list.",
+        "operationId": "delete_rule_admin_email_domains__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      },
+      "patch": {
+        "description": "Flip a verdict or edit the note explaining a rule.",
+        "operationId": "update_rule_admin_email_domains__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
+    "/admin/email-domains/{rule_id}/": {
+      "delete": {
+        "description": "Remove a rule.\n\nThe response says what the domain's verdict becomes *without* the rule,\nbecause that is the question the administrator actually has and it is not\nobvious: deleting an ALLOW on a domain that also sits in the blocklist\ncorpus does not return it to neutral, it starts blocking it. `test.com` is\na live example — it is on a published disposable list.",
+        "operationId": "delete_rule_admin_email_domains__rule_id___delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      },
+      "patch": {
+        "description": "Flip a verdict or edit the note explaining a rule.",
+        "operationId": "update_rule_admin_email_domains__rule_id___patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Rule",
+        "tags": [
+          "Admin: Email Domains"
+        ]
+      }
+    },
     "/admin/organizations": {
       "get": {
         "operationId": "list_organizations_admin_organizations_get",
@@ -4553,7 +5281,7 @@
     },
     "/admin/users/{user_id}/approve": {
       "post": {
-        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.",
+        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.\n\n`allowlist_domain` is the second, wider decision and defaults to False.\nWithout it, approving a flagged account clears that one account and leaves\nthe domain exactly as it was — so admitting a colleague whose employer got\ncaught by an over-eager blocklist does not quietly open the door to every\naddress at a throwaway service.",
         "operationId": "approve_user_admin_users__user_id__approve_post",
         "parameters": [
           {
@@ -4566,6 +5294,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveUserSchema"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -4599,7 +5344,7 @@
     },
     "/admin/users/{user_id}/approve/": {
       "post": {
-        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.",
+        "description": "Approve a pending account, allowing it to sign in.\n\nRequires the mailbox to have been verified first. Approving an unverified\naccount would activate a login for an address nobody has demonstrated\ncontrol of, which is the whole failure this gate exists to prevent — so it\nis refused rather than treated as an override.\n\nThe approved account keeps whatever role it was created with (`viewer` for\nself-registration). Granting scan execution stays a separate, explicit act\nthrough the role endpoint, so approval never silently confers it.\n\n`allowlist_domain` is the second, wider decision and defaults to False.\nWithout it, approving a flagged account clears that one account and leaves\nthe domain exactly as it was — so admitting a colleague whose employer got\ncaught by an over-eager blocklist does not quietly open the door to every\naddress at a throwaway service.",
         "operationId": "approve_user_admin_users__user_id__approve__post",
         "parameters": [
           {
@@ -4612,6 +5357,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveUserSchema"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -7253,7 +8015,7 @@
     },
     "/auth/check-email": {
       "get": {
-        "description": "Report whether an email address can be used to register.\n\nDeliberately does *not* answer \"does this account exist\". A taken address\nand a free one both return available=true, and the collision surfaces at\nsubmit time as a generic failure. Live \"already registered\" feedback on a\nsignup form is a convenience for the person typing and a bulk account\noracle for everyone else, and only one of those two is worth having.\n\nThe endpoint is kept so the frontend contract does not break, and it still\nrejects syntactically invalid input, which is what the field actually needs\nin order to give useful feedback.",
+        "description": "Report whether an email address can be used to register.\n\nDeliberately does *not* answer \"does this account exist\". A taken address\nand a free one both return available=true, and the collision surfaces at\nsubmit time as a generic failure. Live \"already registered\" feedback on a\nsignup form is a convenience for the person typing and a bulk account\noracle for everyone else, and only one of those two is worth having.\n\nThe endpoint is kept so the frontend contract does not break, and it still\nrejects syntactically invalid input, which is what the field actually needs\nin order to give useful feedback.\n\nIt *does* now answer about the domain. A verdict of \"this is a disposable\nmail service\" says nothing about whether an account exists — it is a fact\nabout the domain, identical for every caller — so surfacing it costs no\nprivacy and saves the person filling in the form from completing a signup\nthat is going to be refused at submit.",
         "operationId": "check_email_auth_check_email_get",
         "parameters": [
           {

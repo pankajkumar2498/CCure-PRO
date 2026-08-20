@@ -17,7 +17,7 @@ from scripts.seed_compliance import seed_framework_and_controls
 
 
 def test_nist_800_82_r3_framework_end_to_end(
-    client, db_session, test_user, auth_headers
+    client, db_session, test_user, auth_headers, activate_frameworks
 ):
     """
     Verifies full lifecycle for NIST SP 800-82 Rev. 3 (OT Security):
@@ -31,6 +31,7 @@ def test_nist_800_82_r3_framework_end_to_end(
     8. Gap analysis calculation endpoint (ISO 27001 -> NIST SP 800-82 Rev. 3)
     9. Executive Dashboard compliance posture check (/dashboard/compliance)
     """
+    activate_frameworks("cfw_nist_800_82_r3")
     # 1. Seed NIST SP 800-82 Rev. 3 controls
     scripts_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"

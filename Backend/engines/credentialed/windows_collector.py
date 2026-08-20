@@ -73,6 +73,69 @@ _SERVICE_PID_CMD = (
 _HOST_PROCESSES = {"svchost", "dllhost", "taskhostw", "rundll32", "system", "services"}
 
 
+# `net accounts` labels, matched case-insensitively against the start of each
+# line. Deliberately label-based rather than positional: an earlier positional
+# version keyed off the order of the numeric lines, and a single missing or
+# extra line shifted every value — silently reporting one policy setting's
+# number as another's. In a compliance product a silently wrong value is worse
+# than no value, so an unrecognised layout yields nothing and the engine reports
+# the control as not assessed.
+_NET_ACCOUNTS_LABELS = (
+    ("max_age_days", "maximum password age"),
+    ("min_age_days", "minimum password age"),
+    ("min_length", "minimum password length"),
+    ("history_length", "length of password history"),
+    ("lockout_threshold", "lockout threshold"),
+    ("lockout_duration_minutes", "lockout duration"),
+)
+
+
+def _parse_net_accounts(raw: str) -> dict:
+    """Extracts the local password policy from `net accounts` output.
+
+    Returns only the keys it could actually read. A key that is absent means
+    "not collected", which the compliance engine renders as not assessed —
+    inventing a value here is what the previous hard-coded password policy did
+    on every host in the estate.
+
+    Non-English Windows installs localise these labels and will parse to an
+    empty dict. That is the intended outcome: the control is then reported as
+    unassessed rather than assessed from a guess.
+    """
+    if not raw:
+        return {}
+
+    policy: dict = {}
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        label, _, tail = line.partition(":")
+        label = label.strip().lower()
+        tail = tail.strip()
+        if not tail:
+            continue
+
+        for key, prefix in _NET_ACCOUNTS_LABELS:
+            if not label.startswith(prefix):
+                continue
+            token = tail.split()[0]
+            if token.isdigit():
+                policy[key] = int(token)
+            else:
+                # "Never" / "Unlimited" — the setting exists but imposes no
+                # limit, which for an age or a threshold means "not enforced".
+                policy[key] = 0
+            break
+
+    if "min_length" in policy:
+        # `net accounts` has no complexity line. A non-zero minimum length is
+        # the closest observable proxy, and it is reported as exactly that
+        # rather than as a guarantee that complexity rules are enabled.
+        policy["complexity"] = policy["min_length"] > 0
+
+    return policy
+
+
 def _clean_output(raw: str) -> str:
     """Strip BOM, ANSI escape sequences, and leading non-printable garbage."""
     # Remove UTF-8 BOM
@@ -194,6 +257,12 @@ COMMANDS: dict[str, str] = {
     "firewall": "(Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | ConvertTo-Json)",
     "shares": "(Get-SmbShare | Select-Object Name, Path, Description | ConvertTo-Json)",
     "audit_policy": "auditpol /get /category:* 2>&1",
+    # `net accounts` is the one password-policy source available without RSAT
+    # or a domain query, and it reports the effective local policy. Output is
+    # locale-dependent label text, so the parser matches on the numeric tail of
+    # each line rather than the label. Compliance controls that read password
+    # policy used to be answered from a hard-coded constant; this collects it.
+    "password_policy": "net accounts",
     # NOTE: Get-ItemProperty | ConvertTo-Json serialises the full RegistryKey
     # PSObject (including .NET provider metadata). Use Get-ItemPropertyValue to
     # get just the DWORD, then build a clean PSCustomObject.
@@ -724,6 +793,10 @@ class WindowsCollector:
         tasks_raw = self._run_json("scheduled_tasks")
         if isinstance(tasks_raw, list):
             data["suspicious_scheduled_tasks"] = tasks_raw
+
+        pwd_policy = _parse_net_accounts(self._run("password_policy"))
+        if pwd_policy:
+            data["password_policy"] = pwd_policy
 
         # Safe Protocol Hardening Checks
         smb1_raw = self._run_json("smbv1_status")

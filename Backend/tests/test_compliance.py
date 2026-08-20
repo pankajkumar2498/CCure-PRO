@@ -74,7 +74,10 @@ def test_api_schemas():
     assert res.status_code in (401, 403)
 
 
-def test_marketplace_workflow(client, db_session, test_user, auth_headers):
+def test_marketplace_workflow(
+    client, db_session, test_user, auth_headers, activate_frameworks
+):
+    activate_frameworks("cfw_test_framework")
     from db.models.compliance import (
         ComplianceFramework,
         CompliancePolicy,
@@ -144,7 +147,10 @@ def test_marketplace_workflow(client, db_session, test_user, auth_headers):
     db_session.commit()
 
 
-def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
+def test_cis_v8_1_integration(
+    client, db_session, test_user, auth_headers, activate_frameworks
+):
+    activate_frameworks("cfw_cis_v8_1")
     import os
 
     from db.models.compliance import (
@@ -216,9 +222,10 @@ def test_cis_v8_1_integration(client, db_session, test_user, auth_headers):
 
 
 def test_soc2_type2_framework_seeding_and_reports(
-    db_session, test_user, auth_headers, client
+    db_session, test_user, auth_headers, client, activate_frameworks
 ):
     """Test SOC 2 Type II controls seeding, theme tags, tenant installation, score recalculation, and audit report generation."""
+    activate_frameworks("cfw_soc2_type2")
     import os
 
     from db.models.compliance import (
@@ -301,9 +308,10 @@ def test_soc2_type2_framework_seeding_and_reports(
 
 
 def test_cert_in_2022_framework_integration(
-    client, test_user, auth_headers, db_session
+    client, test_user, auth_headers, db_session, activate_frameworks
 ):
     """Test CERT-In 2022 framework seeding, control crosswalks, rule evaluation operators, and report routes."""
+    activate_frameworks("cfw_cert_in_2022")
     import os
     from datetime import datetime, timezone
 
@@ -407,8 +415,11 @@ def test_cert_in_2022_framework_integration(
         db_session.commit()
 
 
-def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_session):
+def test_pci_dss_v4_framework_integration(
+    client, test_user, auth_headers, db_session, activate_frameworks
+):
     """Test PCI-DSS v4.0 framework seeding, SAQ profiles, CDE scope filtering, evidence evaluation, and report routes."""
+    activate_frameworks("cfw_pci_dss_v4")
     import os
     from datetime import datetime, timezone
 
@@ -507,8 +518,11 @@ def test_pci_dss_v4_framework_integration(client, test_user, auth_headers, db_se
         db_session.commit()
 
 
-def test_dpdp_2023_framework_integration(client, test_user, auth_headers, db_session):
+def test_dpdp_2023_framework_integration(
+    client, test_user, auth_headers, db_session, activate_frameworks
+):
     """Test DPDP Act 2023 framework seeding, SDF scoping, web evidence adapter, gap analysis prefix stripping, and report endpoints."""
+    activate_frameworks("cfw_dpdp_2023")
     import os
     from datetime import datetime, timezone
 
@@ -607,8 +621,11 @@ def test_dpdp_2023_framework_integration(client, test_user, auth_headers, db_ses
         db_session.commit()
 
 
-def test_gdpr_framework_integration(client, test_user, auth_headers, db_session):
+def test_gdpr_framework_integration(
+    client, test_user, auth_headers, db_session, activate_frameworks
+):
     """Test EU GDPR framework seeding, privacy_role scoping, web evidence mapping, and report endpoints."""
+    activate_frameworks("cfw_gdpr")
     import os
     from datetime import datetime, timezone
 

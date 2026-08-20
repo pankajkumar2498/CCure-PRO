@@ -14,10 +14,13 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.compliance_tasks import run_scan_task
+from core.compliance_frameworks import is_active as is_active_framework
+from core.nist_csf import FUNCTION_NAMES
 from db.base import SessionLocal
 from db.models import Asset, User
 from db.models.compliance import (
     ComplianceControl,
+    ComplianceFinding,
     ComplianceFramework,
     CompliancePolicy,
     CompliancePolicyRule,
@@ -28,6 +31,24 @@ from db.models.compliance import (
     ComplianceTenantFramework,
 )
 from db.models.rbac import Organization
+
+
+def _drop_rule_from_control(db, control_id: str, rule_id: str) -> None:
+    """Unlinks a rule from a control and removes the findings it produced.
+
+    Leaving the findings behind makes the unlink cosmetic: `roll_up_statuses`
+    reads every finding on the control, so a revoked rule's verdict keeps
+    deciding the control long after the rule stopped applying to it. The rule
+    itself is left alone — it is shared across frameworks.
+    """
+    db.query(ComplianceFinding).filter(
+        ComplianceFinding.control_id == control_id,
+        ComplianceFinding.rule_id == rule_id,
+    ).delete(synchronize_session=False)
+    db.query(ComplianceRuleControl).filter(
+        ComplianceRuleControl.rule_id == rule_id,
+        ComplianceRuleControl.control_id == control_id,
+    ).delete(synchronize_session=False)
 
 
 def seed_and_evaluate(target_ip: Optional[str] = None):
@@ -846,12 +867,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-MODBUS-502",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 502,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 502,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -864,12 +885,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SIEMENS-S7-102",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 102,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 102,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -882,12 +903,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-ETHERNET-IP-44818",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 44818,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 44818,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -900,12 +921,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-BACNET-47808",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 47808,
-                    "protocol": "udp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 47808,
                 },
                 "severity": "medium",
                 "severity_weight": 6,
@@ -918,12 +939,13 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-JUMP-HOST-MFA",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
-                    "key": "mfa_enabled",
-                    "operator": "equals",
-                    "expected": True,
+                    "attestation_criteria": {
+                        "requirement": "Multi-factor authentication is enforced on the OT jump host.",
+                        "verify": "Screenshot or configuration export of the jump host MFA policy.",
+                    }
                 },
                 "severity": "critical",
                 "severity_weight": 10,
@@ -936,12 +958,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SP82-MODBUS-502",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 502,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 502,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -954,12 +976,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SP82-S7-102",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 102,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 102,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -972,12 +994,12 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SP82-CIP-44818",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "services_ports",
                 "target_platform": "any",
                 "check_definition": {
-                    "port": 44818,
-                    "protocol": "tcp",
-                    "expected_state": "closed_or_firewalled",
+                    "key": "open_ports",
+                    "operator": "not_contains",
+                    "expected": 44818,
                 },
                 "severity": "high",
                 "severity_weight": 8,
@@ -990,12 +1012,13 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SP82-SIS-ISOLATION",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
-                    "key": "sis_network_isolated",
-                    "operator": "equals",
-                    "expected": True,
+                    "attestation_criteria": {
+                        "requirement": "The Safety Instrumented System network is isolated from the process control network.",
+                        "verify": "Network diagram and firewall rule export showing the SIS boundary.",
+                    }
                 },
                 "severity": "critical",
                 "severity_weight": 10,
@@ -1008,12 +1031,13 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "OT-SP82-JUMP-HOST-MFA",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
-                    "key": "mfa_enabled",
-                    "operator": "equals",
-                    "expected": True,
+                    "attestation_criteria": {
+                        "requirement": "Multi-factor authentication is enforced on the OT jump host.",
+                        "verify": "Screenshot or configuration export of the jump host MFA policy.",
+                    }
                 },
                 "severity": "critical",
                 "severity_weight": 10,
@@ -1026,7 +1050,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-005-ESP",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "network_device",
                 "check_definition": {
                     "eacms_enabled": True,
@@ -1043,7 +1067,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-005-MFA",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "jump_host_mfa": True,
@@ -1060,7 +1084,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-006-PACS",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "pacs_alarm_monitoring": True,
@@ -1077,7 +1101,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-007-PORTS",
                 "version_number": 1,
                 "check_type": "port_state",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "unused_ports_disabled": True,
@@ -1094,7 +1118,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-007-PATCH",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "patch_evaluation_max_days": 35,
@@ -1110,7 +1134,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-007-MALWARE",
                 "version_number": 1,
                 "check_type": "service_status",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "antimalware_active": True,
@@ -1127,7 +1151,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-007-LOGS",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "log_retention_days": 90,
@@ -1144,7 +1168,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-010-BASELINE",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "baseline_monitoring_max_days": 35,
@@ -1161,7 +1185,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-011-BCSI",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "encryption_algorithm": "AES-256",
@@ -1178,7 +1202,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NERC-CIP-012-LINK",
                 "version_number": 1,
                 "check_type": "tls_config",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "network_device",
                 "check_definition": {
                     "tunnel_protocol": "IPsec_TLS",
@@ -1195,7 +1219,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-GOV-RISK",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "board_approval_required": True,
@@ -1212,7 +1236,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-INC-24H",
                 "version_number": 1,
                 "check_type": "service_status",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "linux",
                 "check_definition": {
                     "csirt_warning_sla_hours": 24,
@@ -1229,7 +1253,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-INC-LOGS",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "linux",
                 "check_definition": {
                     "syslog_active": True,
@@ -1246,7 +1270,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-BC-BACKUP",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "windows",
                 "check_definition": {
                     "backup_immutable": True,
@@ -1263,7 +1287,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-SEC-VULN",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "max_critical_vuln_age_days": 7,
@@ -1280,7 +1304,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-CRYPTO-TLS",
                 "version_number": 1,
                 "check_type": "tls_config",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "network_device",
                 "check_definition": {
                     "min_tls_version": "TLSv1.2",
@@ -1297,7 +1321,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-IAM-RBAC",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "windows",
                 "check_definition": {
                     "disable_inactive_days": 90,
@@ -1314,7 +1338,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-MFA-ENFORCE",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "mfa_enforced_all_users": True,
@@ -1331,7 +1355,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-SUPPLY-SBOM",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "sbom_generation_active": True,
@@ -1349,7 +1373,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-SEC-CVD",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "security_txt_rfc9116_valid": True,
@@ -1367,7 +1391,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-BC-DR-TEST",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "dr_test_frequency_days": 90,
@@ -1385,7 +1409,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-HYGIENE-PWD",
                 "version_number": 1,
                 "check_type": "registry",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "windows",
                 "check_definition": {
                     "min_password_length": 14,
@@ -1404,7 +1428,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-CRYPTO-REST",
                 "version_number": 1,
                 "check_type": "command_output",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "data_at_rest_encryption": "AES-256",
@@ -1422,7 +1446,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-IAM-PAM",
                 "version_number": 1,
                 "check_type": "file_content",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "linux",
                 "check_definition": {
                     "sudoers_strict_audit": True,
@@ -1440,7 +1464,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "rule_family_code": "NIS2-MFA-FIDO2",
                 "version_number": 1,
                 "check_type": "api_response",
-                "evidence_source": "auto_scan",
+                "evidence_source": "manual",
                 "target_platform": "any",
                 "check_definition": {
                     "hardware_token_fido2_required": True,
@@ -1455,8 +1479,438 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
             },
         ]
 
-        # Compile a set of controls already mapped to custom rules
-        mapped_control_ids = {r["control_id"] for r in rules_data}
+        # ─────────────────────────────────────────────────────────────────
+        # ISO/IEC 27001:2022 — real technical rules for the Annex A controls
+        # whose catalogue scannability promises automation.
+        #
+        # Before this block, all fourteen `auto` controls were covered only by
+        # a generated placeholder pointing at an evidence source with no
+        # adapter, so every one of them reported `manual_review` forever. Each
+        # rule below reads a key an adapter genuinely emits — the wiring test
+        # in tests/test_compliance_rule_wiring.py enforces that.
+        #
+        # A.8.19 and A.8.22 are deliberately absent: neither can be verified
+        # from the evidence this product collects (an approved software
+        # allow-list, and the intended segmentation design), and both have been
+        # downgraded to semi_auto in the catalogue rather than given a rule
+        # that would answer a question it cannot actually see.
+        # ─────────────────────────────────────────────────────────────────
+        rules_data.extend(
+            [
+                # A.8.1 User endpoint devices
+                {
+                    "id": "crl_iso_endpoint_uac_v1",
+                    "rule_family_code": "ISO-ENDPOINT-UAC",
+                    "version_number": 1,
+                    "check_type": "registry",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "windows",
+                    "check_definition": {
+                        "key": "uac_enabled",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_endpoint_uac_v1",
+                    "control_id": "cct_iso27001_2022_8.1",
+                    "recommendation_text": "Enable User Account Control so that privilege elevation on user endpoint devices requires explicit consent.",
+                },
+                {
+                    "id": "crl_iso_endpoint_disk_enc_v1",
+                    "rule_family_code": "ISO-ENDPOINT-DISKENC",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "disk_encryption_enabled",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_endpoint_disk_enc_v1",
+                    "control_id": "cct_iso27001_2022_8.1",
+                    "recommendation_text": "Enable full-disk encryption (BitLocker or LUKS) on user endpoint devices so information remains protected if a device is lost.",
+                },
+                # A.8.2 Privileged access rights
+                {
+                    "id": "crl_iso_priv_lockout_v1",
+                    "rule_family_code": "ISO-PRIV-LOCKOUT",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "credential_validation",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "account_lockout_threshold",
+                        "operator": "gte",
+                        "expected": 1,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_priv_lockout_v1",
+                    "control_id": "cct_iso27001_2022_8.2",
+                    "recommendation_text": "Configure an account lockout threshold so repeated failed authentication against privileged accounts is stopped rather than allowed to continue indefinitely.",
+                },
+                {
+                    "id": "crl_iso_priv_mfa_v1",
+                    "rule_family_code": "ISO-PRIV-MFA",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "mfa_enforced_admin",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "critical",
+                    "severity_weight": 10,
+                    "remediation_id_target": "rem_iso_priv_mfa_v1",
+                    "control_id": "cct_iso27001_2022_8.2",
+                    "recommendation_text": "Require multi-factor authentication for all privileged and administrative access.",
+                },
+                # A.8.5 Secure authentication
+                {
+                    "id": "crl_iso_auth_min_length_v1",
+                    "rule_family_code": "ISO-AUTH-MINLEN",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "credential_validation",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "minimum_password_length",
+                        "operator": "gte",
+                        "expected": 12,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_auth_min_length_v1",
+                    "control_id": "cct_iso27001_2022_8.5",
+                    "recommendation_text": "Enforce a minimum password length of at least 12 characters in the local or domain password policy.",
+                },
+                {
+                    "id": "crl_iso_auth_complexity_v1",
+                    "rule_family_code": "ISO-AUTH-COMPLEXITY",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "credential_validation",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "password_complexity_configured",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_auth_complexity_v1",
+                    "control_id": "cct_iso27001_2022_8.5",
+                    "recommendation_text": "Enable password complexity enforcement (pam_pwquality on Linux, password policy on Windows).",
+                },
+                # A.8.9 Configuration management — the baseline hardening set
+                {
+                    "id": "crl_iso_config_firewall_v1",
+                    "rule_family_code": "ISO-CONFIG-FIREWALL",
+                    "version_number": 1,
+                    "check_type": "service_status",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "firewall_profile_active",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_config_firewall_v1",
+                    "control_id": "cct_iso27001_2022_8.9",
+                    "recommendation_text": "Enable the host firewall so the configured baseline is enforced at the network boundary of each host.",
+                },
+                {
+                    "id": "crl_iso_config_smbv1_v1",
+                    "rule_family_code": "ISO-CONFIG-SMBV1",
+                    "version_number": 1,
+                    "check_type": "registry",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "smbv1_disabled",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_config_smbv1_v1",
+                    "control_id": "cct_iso27001_2022_8.9",
+                    "recommendation_text": "Disable the legacy SMBv1 protocol as part of the secure configuration baseline.",
+                },
+                {
+                    "id": "crl_iso_config_telnet_v1",
+                    "rule_family_code": "ISO-CONFIG-TELNET",
+                    "version_number": 1,
+                    "check_type": "service_status",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "telnet_disabled",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_config_telnet_v1",
+                    "control_id": "cct_iso27001_2022_8.9",
+                    "recommendation_text": "Remove or disable Telnet; it transmits credentials in clear text and has no place in a secure baseline.",
+                },
+                # A.8.15 Logging
+                {
+                    "id": "crl_iso_log_audit_policy_v1",
+                    "rule_family_code": "ISO-LOG-AUDITPOLICY",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "audit_policy_configured",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_log_audit_policy_v1",
+                    "control_id": "cct_iso27001_2022_8.15",
+                    "recommendation_text": "Configure the host audit policy so security-relevant events are recorded (auditpol on Windows, auditd on Linux).",
+                },
+                {
+                    "id": "crl_iso_log_retention_v1",
+                    "rule_family_code": "ISO-LOG-RETENTION",
+                    "version_number": 1,
+                    "check_type": "file_content",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "retention_days",
+                        "operator": "gte",
+                        "expected": 180,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_log_retention_v1",
+                    "control_id": "cct_iso27001_2022_8.15",
+                    "recommendation_text": "Retain security logs for at least 180 days so an investigation can reach back beyond the typical dwell time of an intrusion.",
+                },
+                # ── Controls the collectors could already answer ────────
+                #
+                # Eighteen Annex A controls carried `semi_auto` while having no
+                # automated rule at all. Fourteen genuinely cannot be decided by
+                # a scan and are now `manual`. These four can: the evidence was
+                # already being collected by `_adapt_offline_configuration` and
+                # simply was not wired to the control it answers.
+                {
+                    "id": "crl_iso_access_review_v1",
+                    "rule_family_code": "ISO-ACCESS-REVIEW",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "account_review_completed",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_access_review_v1",
+                    "control_id": "cct_iso27001_2022_5.18",
+                    "recommendation_text": "Review the accounts on this host and remove or disable those no longer required. A.8.5 checks how strong a credential must be; this checks that the account should still exist at all, which is the failure mode that leaves a leaver's access live.",
+                },
+                {
+                    "id": "crl_iso_backup_frequency_v1",
+                    "rule_family_code": "ISO-BACKUP-FREQ",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "backup_frequency_days",
+                        "operator": "lte",
+                        "expected": 7,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_backup_frequency_v1",
+                    "control_id": "cct_iso27001_2022_8.13",
+                    "recommendation_text": "Back this host up at least weekly. The interval is the data loss the organisation has accepted in advance, so a backup job that has not run inside its own window is an accepted loss nobody agreed to. Restore testing remains an attestation.",
+                },
+                {
+                    "id": "crl_iso_priv_utility_uac_v1",
+                    "rule_family_code": "ISO-PRIV-UTILITY",
+                    "version_number": 1,
+                    "check_type": "registry",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "windows",
+                    "check_definition": {
+                        "key": "uac_enabled",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_priv_utility_uac_v1",
+                    "control_id": "cct_iso27001_2022_8.18",
+                    "recommendation_text": "Enable User Account Control so utility programs capable of overriding system and application controls cannot run elevated without an explicit decision.",
+                },
+                {
+                    "id": "crl_iso_session_timeout_v1",
+                    "rule_family_code": "ISO-SESSION-TIMEOUT",
+                    "version_number": 1,
+                    "check_type": "registry",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "session_timeout_minutes",
+                        "operator": "lte",
+                        "expected": 15,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_session_timeout_v1",
+                    "control_id": "cct_iso27001_2022_8.1",
+                    "recommendation_text": "Lock the session after at most 15 minutes idle. An unattended unlocked endpoint defeats every authentication control in front of it.",
+                },
+                # A.8.16 Monitoring activities
+                {
+                    "id": "crl_iso_monitor_agent_v1",
+                    "rule_family_code": "ISO-MONITOR-AGENT",
+                    "version_number": 1,
+                    "check_type": "service_status",
+                    "evidence_source": "malware_scan",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "anti_malware_agents_active",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_monitor_agent_v1",
+                    "control_id": "cct_iso27001_2022_8.16",
+                    "recommendation_text": "Deploy and run an endpoint monitoring agent so anomalous behaviour on this host is observed rather than inferred after the fact.",
+                },
+                {
+                    "id": "crl_iso_monitor_ids_v1",
+                    "rule_family_code": "ISO-MONITOR-IDS",
+                    "version_number": 1,
+                    "check_type": "service_status",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "ids_ips_active",
+                        "operator": "equals",
+                        "expected": True,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_monitor_ids_v1",
+                    "control_id": "cct_iso27001_2022_8.16",
+                    "recommendation_text": "Enable intrusion detection or prevention covering this host so network-level anomalies are detected.",
+                },
+                # A.8.17 Clock synchronization
+                {
+                    "id": "crl_iso_clock_ntp_v1",
+                    "rule_family_code": "ISO-CLOCK-NTP",
+                    "version_number": 1,
+                    "check_type": "command_output",
+                    "evidence_source": "offline_configuration",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "ntp_servers",
+                        "operator": "not_empty",
+                        "expected": None,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_clock_ntp_v1",
+                    "control_id": "cct_iso27001_2022_8.17",
+                    "recommendation_text": "Configure at least one approved NTP time source so log timestamps can be correlated across systems during an investigation.",
+                },
+                # A.8.24 Use of cryptography — this is what the TLS evidence
+                # adapter was built for. Until now A.8.24 was answered solely by
+                # a registry flag, and the adapter's expired-certificate,
+                # weak-cipher and self-signed counts were consumed by nothing.
+                {
+                    "id": "crl_iso_crypto_weak_ciphers_v1",
+                    "rule_family_code": "ISO-CRYPTO-WEAKCIPHER",
+                    "version_number": 1,
+                    "check_type": "tls_config",
+                    "evidence_source": "tls_certificates",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "weak_ciphers_count",
+                        "operator": "equals",
+                        "expected": 0,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_crypto_weak_ciphers_v1",
+                    "control_id": "cct_iso27001_2022_8.24",
+                    "recommendation_text": "Remove weak cipher suites from the TLS configuration of every listening service on this host.",
+                },
+                {
+                    "id": "crl_iso_crypto_expired_cert_v1",
+                    "rule_family_code": "ISO-CRYPTO-EXPIREDCERT",
+                    "version_number": 1,
+                    "check_type": "tls_config",
+                    "evidence_source": "tls_certificates",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "expired_certificates_count",
+                        "operator": "equals",
+                        "expected": 0,
+                    },
+                    "severity": "high",
+                    "severity_weight": 8,
+                    "remediation_id_target": "rem_iso_crypto_expired_cert_v1",
+                    "control_id": "cct_iso27001_2022_8.24",
+                    "recommendation_text": "Renew or replace expired certificates; an expired certificate provides no assurance of identity.",
+                },
+                {
+                    "id": "crl_iso_crypto_self_signed_v1",
+                    "rule_family_code": "ISO-CRYPTO-SELFSIGNED",
+                    "version_number": 1,
+                    "check_type": "tls_config",
+                    "evidence_source": "tls_certificates",
+                    "target_platform": "any",
+                    "check_definition": {
+                        "key": "self_signed_count",
+                        "operator": "equals",
+                        "expected": 0,
+                    },
+                    "severity": "medium",
+                    "severity_weight": 5,
+                    "remediation_id_target": "rem_iso_crypto_self_signed_v1",
+                    "control_id": "cct_iso27001_2022_8.24",
+                    "recommendation_text": "Replace self-signed certificates with certificates issued by a trusted certificate authority, internal or public.",
+                },
+            ]
+        )
+
+        # Compile a set of controls already mapped to custom rules.
+        #
+        # Normalised, because `rules_data` writes control ids in dotted form
+        # (`cct_iso27001_2022_8.20`) while the seeder generates them with
+        # underscores (`cct_iso27001_2022_8_20`). The membership test below
+        # therefore never matched, and *every* control — including the twelve
+        # ISO controls that carry real automated rules — also received a manual
+        # attestation placeholder. That placeholder is an org-level
+        # `manual_review` finding, which outranks `pass` in the score rollup, so
+        # a control whose twelve automated checks all passed still reported as
+        # awaiting review.
+        def _normalize_ctrl_id(value: str) -> str:
+            return str(value).replace(".", "_").replace("-", "_")
+
+        mapped_control_ids = {_normalize_ctrl_id(r["control_id"]) for r in rules_data}
 
         # Dynamically generate rules for all remaining controls in db
         controls_in_db = (
@@ -1465,7 +1919,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
             .all()
         )
         for ctrl in controls_in_db:
-            if ctrl.id not in mapped_control_ids:
+            if _normalize_ctrl_id(ctrl.id) not in mapped_control_ids:
                 # Extract clean control number suffix (e.g. 5_1, 8_34, gv_oc_01)
                 raw_num = ctrl.id.replace("cct_iso27001_2022_", "").replace(
                     "cct_nist_csf_v2_", ""
@@ -1478,17 +1932,23 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                         "rule_family_code": f"RULE-{raw_num.replace('_', '.')}",
                         "version_number": 1,
                         "check_type": "api_response",
-                        "evidence_source": (
-                            "auto_scan"
-                            if getattr(ctrl, "scannability", "auto") == "auto"
-                            else "manual"
-                        ),
+                        # Always `manual`. This branch runs precisely for
+                        # controls that have *no* explicit rule, so there is by
+                        # definition nothing to evaluate. It used to emit
+                        # `auto_scan` for controls whose catalogue scannability
+                        # said `auto` — a source with no adapter, checking a key
+                        # ("status") no adapter emits, against an expected value
+                        # ("PASS") that is not an evidence value at all. Every
+                        # one of the 14 ISO controls marked `auto` got one of
+                        # these and reported `manual_review` forever, which read
+                        # in the dashboard as coverage the product did not have.
+                        #
+                        # A control that genuinely can be scanned gets a real
+                        # rule above, in `rules_data`, wired to a real adapter
+                        # key. Anything reaching this branch is attestation work.
+                        "evidence_source": "manual",
                         "target_platform": "any",
-                        "check_definition": {
-                            "key": "status",
-                            "operator": "==",
-                            "expected": "PASS",
-                        },
+                        "check_definition": {},
                         "severity": "medium",
                         "severity_weight": 5,
                         "remediation_id_target": f"rem_auto_gen_{raw_num.replace('.', '_')}",
@@ -1959,6 +2419,23 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
             else:
                 existing_rule.check_definition = rule["check_definition"]
                 existing_rule.evidence_source = rule["evidence_source"]
+                # `run_scan_task` evaluates `active` rules only, which is right:
+                # a draft is unpublished and an archived version has been
+                # replaced. But an archived rule that supersedes nothing and
+                # names no successor is not a lifecycle state — it is a check
+                # switched off by accident, and it makes its control silently
+                # unassessable. 24 of ISO's 93 controls were in exactly that
+                # position, their single placeholder archived, so they produced
+                # no finding on any run and sat at "not assessed" with nothing
+                # in the UI able to say why. A seeder that only ever inserts
+                # cannot repair this; converging the row is the point of
+                # re-seeding.
+                if (
+                    existing_rule.status == "archived"
+                    and not existing_rule.superseded_by_rule_id
+                ):
+                    existing_rule.status = "active"
+                    print(f"  ~ Reactivated orphaned archived rule: {rule['id']}")
 
             db.flush()
 
@@ -2021,6 +2498,47 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 db.add(new_link)
                 print(f"    - Mapped rule {rule['id']} to control {control_id}")
 
+        # An Annex A control that has gained a real check must not keep the
+        # attestation placeholder it was given when it had none. A
+        # `manual_review` finding outranks `pass` in `roll_up_statuses`, so the
+        # placeholder silently suppresses the verdict the new check produces —
+        # the control's automated rules can all pass and it still reports as
+        # awaiting review. A.8.13 and A.8.18 landed in exactly that state the
+        # moment they were wired up.
+        #
+        # The dynamic generator above only skips *creating* a placeholder for a
+        # control that is mapped; it cannot remove one an earlier run created.
+        iso_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == framework_id)
+            .all()
+        )
+        for ctrl in iso_controls:
+            links = (
+                db.query(ComplianceRuleControl, ComplianceRule)
+                .join(
+                    ComplianceRule, ComplianceRule.id == ComplianceRuleControl.rule_id
+                )
+                .filter(ComplianceRuleControl.control_id == ctrl.id)
+                .all()
+            )
+            has_automation = any(
+                r.status == "active"
+                and r.evidence_source
+                and r.evidence_source != "manual"
+                for _, r in links
+            )
+            if not has_automation:
+                continue
+            for _link, rule_row in links:
+                if not rule_row.id.startswith("crl_auto_gen_"):
+                    continue
+                _drop_rule_from_control(db, ctrl.id, rule_row.id)
+                print(
+                    f"    - Removed redundant placeholder {rule_row.id} from "
+                    f"{ctrl.control_number} (it now has automated checks)"
+                )
+
         db.commit()
 
         # Also map rules to NIST CSF 2.0 controls via crosswalk references and auto-generate NIST rules
@@ -2035,36 +2553,100 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
                 .all()
             )
-            for nist_ctrl in nist_controls:
-                # 1. Check crosswalk for ISO controls mapped to existing rules
-                mapped = False
-                if nist_ctrl.crosswalk:
-                    for iso_num in nist_ctrl.crosswalk:
-                        iso_ctrl_id = f"cct_iso27001_2022_{iso_num.lower().replace('a.', '').replace('.', '_')}"
-                        linked_rules = (
-                            db.query(ComplianceRuleControl)
-                            .filter(ComplianceRuleControl.control_id == iso_ctrl_id)
-                            .all()
-                        )
-                        for r_link in linked_rules:
-                            n_link = (
-                                db.query(ComplianceRuleControl)
-                                .filter(
-                                    ComplianceRuleControl.rule_id == r_link.rule_id,
-                                    ComplianceRuleControl.control_id == nist_ctrl.id,
-                                )
-                                .first()
-                            )
-                            if not n_link:
-                                db.add(
-                                    ComplianceRuleControl(
-                                        rule_id=r_link.rule_id,
-                                        control_id=nist_ctrl.id,
-                                    )
-                                )
-                                mapped = True
+            # Only rules that can actually produce a verdict are inherited
+            # across the crosswalk. Inheriting ISO's *manual* placeholders too
+            # did two things wrong: it satisfied the "is this control mapped?"
+            # test with a rule that evaluates nothing, and it put ISO's own
+            # control title into the remediation text a NIST reviewer reads.
+            # NIST gets its own placeholder, with its own wording, below.
+            inheritable_rule_ids = {
+                r_id
+                for (r_id,) in db.query(ComplianceRule.id).filter(
+                    ComplianceRule.evidence_source.isnot(None),
+                    ComplianceRule.evidence_source != "manual",
+                )
+            }
 
-                # 2. Auto-generate manual rule for unmapped NIST controls
+            for nist_ctrl in nist_controls:
+                # 1. Inherit automated rules from the ISO controls this
+                #    Subcategory crosswalks to.
+                #
+                #    `mapped` is computed from the links that *exist* after this
+                #    step, not from the ones this run happened to insert. It
+                #    used to be set inside `if not n_link:`, so on any second
+                #    run every link already existed, nothing set the flag, and
+                #    all 106 Subcategories were handed an attestation
+                #    placeholder — including the 27 with real automated checks.
+                #    A `manual_review` finding outranks `pass` in the rollup, so
+                #    a Subcategory whose checks all passed still reported as
+                #    awaiting review, and the framework could never score above
+                #    zero no matter what the scan found. This is the same defect
+                #    the ISO seeder was fixed for; it survived here because the
+                #    NIST branch decides "mapped" differently.
+                inherited: set = set()
+                for iso_num in nist_ctrl.crosswalk or []:
+                    # Tolerate both the bare `A.5.1` form this catalogue uses
+                    # and the `ISO27001:A.5.1` form the other seeds use.
+                    ref = str(iso_num).split(":")[-1].strip()
+                    if ref.upper().startswith("A."):
+                        ref = ref[2:]
+                    iso_ctrl_id = f"cct_iso27001_2022_{ref.lower().replace('.', '_')}"
+                    for (rule_id_,) in db.query(ComplianceRuleControl.rule_id).filter(
+                        ComplianceRuleControl.control_id == iso_ctrl_id
+                    ):
+                        if rule_id_ in inheritable_rule_ids:
+                            inherited.add(rule_id_)
+
+                existing_links = {
+                    r_id
+                    for (r_id,) in db.query(ComplianceRuleControl.rule_id).filter(
+                        ComplianceRuleControl.control_id == nist_ctrl.id
+                    )
+                }
+                for rule_id_ in sorted(inherited - existing_links):
+                    db.add(
+                        ComplianceRuleControl(rule_id=rule_id_, control_id=nist_ctrl.id)
+                    )
+
+                # Inheritance has to be revocable, not just additive. When a
+                # crosswalk is corrected the rules it used to carry are still
+                # linked, and their findings still count: ID.AM-07,
+                # "inventories of data are maintained", was answering with
+                # A.8.8's critical-vulnerability count because an earlier
+                # catalogue crosswalked it there. Drop the link and the
+                # findings behind it, or the correction has no effect on any
+                # verdict.
+                revoked = (existing_links & inheritable_rule_ids) - inherited
+
+                # A Subcategory's only permitted manual rule is its own
+                # placeholder. Earlier runs inherited ISO's manual placeholders
+                # across the crosswalk too, so a NIST Subcategory could carry
+                # `crl_auto_gen_5_1` — whose remediation text names ISO A.5.1 —
+                # and, because those ISO placeholders are shared, one archived
+                # rule could be the only rule on several Subcategories at once.
+                # That is how GV.OC-01, GV.OV-01, GV.PO-01, GV.PO-02 and
+                # ID.RA-03 ended up producing no finding on any run.
+                own_placeholder = (
+                    "crl_nist_auto_gen_"
+                    + nist_ctrl.control_number.lower()
+                    .replace(".", "_")
+                    .replace("-", "_")
+                )
+                revoked |= {
+                    r_id
+                    for r_id in existing_links
+                    if r_id not in inheritable_rule_ids and r_id != own_placeholder
+                }
+
+                for rule_id_ in sorted(revoked):
+                    _drop_rule_from_control(db, nist_ctrl.id, rule_id_)
+                existing_links -= revoked
+
+                mapped = bool(inherited)
+
+                # 2. Attestation placeholder, but only where there is nothing to
+                #    evaluate. A Subcategory carrying real automated checks must
+                #    not also carry one of these.
                 if not mapped:
                     raw_id = (
                         nist_ctrl.control_number.lower()
@@ -2078,7 +2660,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                         .first()
                     )
                     if not rule_exists:
-                        n_rule = ComplianceRule(
+                        rule_exists = ComplianceRule(
                             id=rule_id,
                             rule_family_code=f"RULE-NIST-{nist_ctrl.control_number}",
                             version_number=1,
@@ -2090,23 +2672,79 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                             severity_weight=5,
                             status="active",
                         )
-                        db.add(n_rule)
+                        db.add(rule_exists)
                         db.flush()
+                    elif (
+                        rule_exists.status == "archived"
+                        and not rule_exists.superseded_by_rule_id
+                    ):
+                        # `run_scan_task` evaluates `active` rules only, which is
+                        # correct — a draft is unpublished and an archived
+                        # version has been replaced. But an archived rule that
+                        # supersedes nothing and names no successor is not a
+                        # lifecycle state, it is a control switched off by
+                        # accident, and the placeholder is the *only* rule on an
+                        # attestation-only Subcategory. Five of the 79 were in
+                        # that state, so GV.OC-01, GV.OV-01, GV.PO-01, GV.PO-02
+                        # and ID.RA-03 produced no finding on any run and sat at
+                        # "not assessed" forever with no way for the UI to say
+                        # why. A seeder that only ever inserts cannot repair
+                        # this; converging the row is the point of re-seeding.
+                        rule_exists.status = "active"
 
-                    n_link = (
-                        db.query(ComplianceRuleControl)
-                        .filter(
-                            ComplianceRuleControl.rule_id == rule_id,
-                            ComplianceRuleControl.control_id == nist_ctrl.id,
-                        )
+                    # These 79 placeholders shipped with no remediation record
+                    # at all, so the attestation queue offered the reviewer a
+                    # Subcategory number and no statement of what to gather.
+                    # The evidence checklist is on the control; the
+                    # recommendation names the outcome being attested to.
+                    rem_id = f"rem_nist_auto_gen_{raw_id}"
+                    rem = (
+                        db.query(ComplianceRemediation)
+                        .filter(ComplianceRemediation.id == rem_id)
                         .first()
                     )
-                    if not n_link:
+                    rem_text = (
+                        f"Attest {nist_ctrl.control_number} "
+                        f"({FUNCTION_NAMES.get(nist_ctrl.theme, nist_ctrl.theme)}): "
+                        f"{nist_ctrl.title}. Attach the evidence listed on the "
+                        "Subcategory and record the reviewer, date and "
+                        "justification."
+                    )
+                    if not rem:
+                        db.add(
+                            ComplianceRemediation(
+                                id=rem_id,
+                                rule_id=rule_id,
+                                recommendation_text=rem_text,
+                                fix_type="manual",
+                            )
+                        )
+                        db.flush()
+                    else:
+                        rem.rule_id = rule_id
+                        rem.recommendation_text = rem_text
+                        rem.fix_type = "manual"
+                    rule_exists.remediation_id = rem_id
+
+                    if rule_id not in existing_links:
                         db.add(
                             ComplianceRuleControl(
                                 rule_id=rule_id, control_id=nist_ctrl.id
                             )
                         )
+                else:
+                    # A Subcategory that gained automation since the last run
+                    # still carries the placeholder from when it had none.
+                    # Leaving it there re-creates the suppressed-`pass` bug one
+                    # control at a time.
+                    stale_id = (
+                        "crl_nist_auto_gen_"
+                        + nist_ctrl.control_number.lower()
+                        .replace(".", "_")
+                        .replace("-", "_")
+                    )
+                    if stale_id in existing_links:
+                        _drop_rule_from_control(db, nist_ctrl.id, stale_id)
 
             db.commit()
             print("  - Successfully mapped rules and controls for NIST CSF v2.0")
@@ -3052,12 +3690,25 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                             target_ctrl_ids = [f"cct_cis_v8_1_{cis_ref}"]
 
                         if target_ctrl_ids:
+                            # Only rules that evaluate something are inherited.
+                            # Copying another framework's attestation
+                            # placeholders across pulled 20 NIST CSF
+                            # placeholders onto NIS 2 controls, where their
+                            # remediation text told the reviewer to attest a
+                            # NIST Subcategory — and duplicated the NIS 2
+                            # placeholder generated a few lines below.
                             linked_rules = (
                                 db.query(ComplianceRuleControl)
+                                .join(
+                                    ComplianceRule,
+                                    ComplianceRule.id == ComplianceRuleControl.rule_id,
+                                )
                                 .filter(
                                     ComplianceRuleControl.control_id.in_(
                                         target_ctrl_ids
-                                    )
+                                    ),
+                                    ComplianceRule.evidence_source.isnot(None),
+                                    ComplianceRule.evidence_source != "manual",
                                 )
                                 .all()
                             )
@@ -3170,11 +3821,22 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 )
 
                 if not tenant_fw:
+                    # A parked catalogue is still seeded, still crosswalked and
+                    # still installed — it is simply not enabled. Creating it
+                    # enabled and relying on someone to turn it off afterwards
+                    # meant a fresh deployment came up offering all thirteen,
+                    # which is the state this parking exists to avoid.
+                    #
+                    # An *existing* row is deliberately left alone: an operator
+                    # who enabled a framework by hand should not have it
+                    # switched back by the next seeder run. `--apply` on
+                    # `scripts/set_active_frameworks.py` is the explicit way to
+                    # realign them.
                     tenant_fw = ComplianceTenantFramework(
                         id=f"ctf_{org.id}_{fw_code_id}",
                         tenant_id=org.id,
                         framework_id=fw_code_id,
-                        is_enabled=True,
+                        is_enabled=is_active_framework(fw_code_id),
                         enabled_by=user.id if user else None,
                         enabled_at=now,
                     )

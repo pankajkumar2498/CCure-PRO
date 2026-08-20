@@ -5,7 +5,8 @@ Translates raw scans and asset findings into normalized payloads for rule check 
 
 import json
 import logging
-from typing import Any, Dict
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from core.redis_client import get_redis_client
 from db.models.assets import Asset
@@ -23,7 +24,42 @@ from sqlalchemy.orm import Session
 log = logging.getLogger("ccure.compliance.evidence")
 redis = get_redis_client()
 
+
+def _days_since(value) -> Optional[int]:
+    """Whole days between an ISO-8601 timestamp and now, or None."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).days
+
+
 EPL_CACHE_TTL = 300  # 5 minutes cache
+
+# The complete set of evidence sources a rule may declare. This is the single
+# source of truth: `_fetch_and_translate` dispatches on it, cache invalidation
+# iterates it, and `tests/test_compliance_rule_wiring.py` asserts that every
+# active rule names one of these and reads a key the adapter actually emits.
+#
+# `manual` is included because it is a legitimate rule declaration — the scan
+# loop skips those rules and produces an org-level attestation placeholder
+# instead — but it has no adapter and never reaches `_fetch_and_translate`.
+EVIDENCE_SOURCES: tuple[str, ...] = (
+    "vulnerability_audit",
+    "malware_scan",
+    "services_ports",
+    "tls_certificates",
+    "network_topology",
+    "credential_validation",
+    "offline_configuration",
+    "web_vulnerability_audit",
+)
+
+VALID_RULE_EVIDENCE_SOURCES: frozenset = frozenset(EVIDENCE_SOURCES) | {"manual"}
 
 
 class ComplianceEvidenceProvider:
@@ -39,15 +75,14 @@ class ComplianceEvidenceProvider:
         if not redis or not asset_ids:
             return
 
-        known_sources = sources or [
-            "active_services",
-            "tls_ssl_configuration",
-            "vulnerability_audit",
-            "offline_configuration",
-            "malware_scan",
-            "network_link_topology",
-            "web_vulnerability_audit",
-        ]
+        # These must be the names `_fetch_and_translate` dispatches on, because
+        # that is what `get_cache_key` uses to build the key. Three of the
+        # names here used to be inventions — `active_services`,
+        # `tls_ssl_configuration` and `network_link_topology` are not evidence
+        # sources — so the flush deleted keys that never existed and left the
+        # real ones in place. A scan that had just re-collected a host's ports
+        # then evaluated against evidence up to five minutes old.
+        known_sources = sources or list(EVIDENCE_SOURCES)
 
         try:
             pipe = redis.pipeline()
@@ -293,17 +328,32 @@ class ComplianceEvidenceProvider:
             else "unknown"
         )
 
-        # Check if auth/password configuration baselines are checked in custom_attributes
         pwd_attrs = (
-            (asset.custom_attributes or {}).get("password_policy", {}) if asset else {}
+            (asset.custom_attributes or {}).get("password_policy") or {}
+            if asset
+            else {}
         )
 
-        return {
+        # Only `credentialed_scan_successful` is always known — it is a fact
+        # about this scanner, not about the host. The password-policy keys used
+        # to carry defaults (`False`, `0`, `8`) that were indistinguishable
+        # from a collected value, so an uncollected policy was reported as a
+        # measured failure.
+        payload: dict[str, Any] = {
             "credentialed_scan_successful": creds_status == "success",
-            "password_complexity_configured": pwd_attrs.get("complexity", False),
-            "password_history_length": pwd_attrs.get("history_length", 0),
-            "minimum_password_length": pwd_attrs.get("min_length", 8),
+            "password_complexity_configured": pwd_attrs.get("complexity"),
+            "password_history_length": pwd_attrs.get("history_length"),
+            "minimum_password_length": pwd_attrs.get("min_length"),
+            "password_max_age_days": pwd_attrs.get("max_age_days"),
+            "account_lockout_threshold": pwd_attrs.get("lockout_threshold"),
         }
+
+        # Every key this adapter can serve is named in the literal above so the
+        # catalogue guard in tests/test_compliance_rule_wiring.py can read the
+        # adapter's key surface statically. Uncollected keys are then dropped,
+        # which routes the rule to `manual_review` rather than to a `fail`
+        # computed from a value nobody measured.
+        return {k: v for k, v in payload.items() if v is not None}
 
     # ── 7. Offline Configuration Scan Mapping ─────────────────────────────────
     @staticmethod
@@ -336,8 +386,6 @@ class ComplianceEvidenceProvider:
         asv_last_passing_scan_date = custom_attrs.get("asv_last_passing_scan_date")
         asv_scan_fresh = False
         if asv_last_passing_scan_date:
-            from datetime import datetime, timezone
-
             try:
                 last_scan = datetime.fromisoformat(
                     asv_last_passing_scan_date.replace("Z", "+00:00")
@@ -354,8 +402,6 @@ class ComplianceEvidenceProvider:
         ir_last_test_date = custom_attrs.get("ir_last_test_date")
         ir_test_fresh_365d = False
         if ir_last_test_date:
-            from datetime import datetime, timezone
-
             try:
                 last_test = datetime.fromisoformat(
                     ir_last_test_date.replace("Z", "+00:00")
@@ -386,7 +432,20 @@ class ComplianceEvidenceProvider:
             "log_retention_days"
         )
 
-        return {
+        # --- NIST 800-53 / CERT-In operational hygiene ---
+        # These were referenced by seeded rules and emitted by nothing, so the
+        # rules could only ever report "not assessed".
+        last_scan_days_ago = _days_since(custom_attrs.get("last_vuln_scan_at"))
+        disk_encryption_enabled = registry_attrs.get(
+            "disk_encryption_enabled"
+        ) or custom_attrs.get("disk_encryption_enabled")
+        password_complexity_enforced = (
+            (custom_attrs.get("password_policy") or {}).get("complexity")
+            if isinstance(custom_attrs.get("password_policy"), dict)
+            else None
+        )
+
+        payload = {
             "uac_enabled": registry_attrs.get("uac_enabled", False),
             "firewall_profile_active": registry_attrs.get("firewall_active", False),
             "remote_desktop_disabled": rdp_disabled,
@@ -409,18 +468,55 @@ class ComplianceEvidenceProvider:
             or custom_attrs.get("incident_reporting_sla_hours"),
             "vpn_log_retention_years": registry_attrs.get("vpn_log_retention_years")
             or custom_attrs.get("vpn_log_retention_years"),
+            # --- PCI-DSS v4.0 ---
+            # Every one of these was computed above and then dropped on the
+            # floor: the return statement simply did not include them, so the
+            # five PCI rules that read them reported "not assessed" forever
+            # while the adapter did the work each time.
+            "fim_active": fim_active,
+            "fim_monitored_dirs": fim_monitored_dirs,
+            "pam_mfa_enforced": pam_mfa_enforced,
+            "pam_mfa_modules": pam_mfa_modules,
+            "asv_scan_fresh": asv_scan_fresh,
+            "pci_log_daily_reviewed": pci_log_daily_reviewed,
+            "ir_test_fresh_365d": ir_test_fresh_365d,
+            "session_timeout_minutes": session_timeout_minutes,
+            "account_lockout_threshold": account_lockout_threshold,
+            "waf_active": waf_active,
+            "ids_ips_active": ids_ips_active,
+            "log_retention_days": log_retention_days,
+            # --- NIST SP 800-53 Rev. 5 ---
+            "last_scan_days_ago": last_scan_days_ago,
+            "disk_encryption_enabled": disk_encryption_enabled,
+            "password_complexity_enforced": password_complexity_enforced,
+            "mfa_enforced_admin": custom_attrs.get("mfa_enforced_admin"),
+            "account_review_completed": custom_attrs.get("account_review_completed"),
+            "log_review_frequency_days": custom_attrs.get("log_review_frequency_days"),
+            "backup_frequency_days": custom_attrs.get("backup_frequency_days"),
+            "scrm_plan_documented": custom_attrs.get("scrm_plan_documented"),
             # --- DPDP Act 2023 & GDPR Technical Checks ---
-            "pii_encryption_enabled": custom_attrs.get("pii_encryption_enabled", True),
-            "dpo_designated": custom_attrs.get("dpo_designated", True),
-            "dpia_conducted": custom_attrs.get("dpia_conducted", True),
+            # These used to default to True — an organisation that had never
+            # recorded whether it encrypts personal data, appointed a DPO or
+            # ran a DPIA was reported as compliant with all three. A privacy
+            # control nobody has answered is unassessed, not satisfied, and the
+            # engine already renders a missing key as `manual_review`. Absent
+            # keys are therefore stripped below rather than invented here.
+            "pii_encryption_enabled": custom_attrs.get("pii_encryption_enabled"),
+            "dpo_designated": custom_attrs.get("dpo_designated"),
+            "dpia_conducted": custom_attrs.get("dpia_conducted"),
             "breach_notification_sla_hours": custom_attrs.get(
-                "breach_notification_sla_hours", 72
+                "breach_notification_sla_hours"
             ),
-            "consent_management_active": custom_attrs.get(
-                "consent_management_active", True
-            ),
-            "pii_retention_days": custom_attrs.get("pii_retention_days", 365),
+            "consent_management_active": custom_attrs.get("consent_management_active"),
+            "pii_retention_days": custom_attrs.get("pii_retention_days"),
         }
+
+        # A key whose value is None was not collected. Leaving it present makes
+        # the engine evaluate it — and `_evaluate_operator` returns False for a
+        # None actual, which records a *failure* against a control nobody
+        # measured. Dropping the key routes it to `manual_review` instead,
+        # which is the distinction the whole engine is built around.
+        return {k: v for k, v in payload.items() if v is not None}
 
     # ── 8. Web Vulnerability Audit Mapping ─────────────────────────────────────────
     @staticmethod

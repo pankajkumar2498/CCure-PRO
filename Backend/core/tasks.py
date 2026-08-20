@@ -519,11 +519,34 @@ def _sync_credentialed_asset_identity(
     # Compliance Engine Evidence Mappings
     attrs["credentialed_status"] = "success"
 
-    attrs["password_policy"] = {
-        "complexity": True,
-        "history_length": 24,
-        "min_length": 14,
+    # Password policy is *collected*, never assumed. This used to be a
+    # hard-coded {complexity: True, history_length: 24, min_length: 14}
+    # regardless of the host, so every rule reading it passed unconditionally
+    # on every machine — a fabricated value presented to an auditor as
+    # evidence. Keys the collector could not determine are omitted entirely,
+    # which the compliance engine renders as "not assessed" rather than as a
+    # pass or a fail.
+    collected_pwd = system_data.get("password_policy") or {}
+    password_policy = {
+        k: v
+        for k, v in {
+            "complexity": collected_pwd.get("complexity"),
+            "history_length": collected_pwd.get("history_length"),
+            "min_length": collected_pwd.get("min_length"),
+            "max_age_days": collected_pwd.get("max_age_days"),
+            "lockout_threshold": collected_pwd.get("lockout_threshold"),
+        }.items()
+        if v is not None
     }
+    if password_policy:
+        attrs["password_policy"] = password_policy
+    else:
+        attrs.pop("password_policy", None)
+        log.info(
+            "No password policy collected for asset=%s; compliance controls "
+            "depending on it will report as not assessed.",
+            asset.id,
+        )
 
     # Registry Hardening / Firewall / RDP status
     issues = system_data.get("security_issues") or []

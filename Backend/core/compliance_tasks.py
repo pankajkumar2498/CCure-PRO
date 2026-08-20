@@ -3,14 +3,17 @@ core/compliance_tasks.py
 Celery background worker tasks for the Policy Compliance Engine.
 """
 
+import hashlib
 import logging
 import re
 import socket
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from core.celery_app import celery_app
 from core.compliance_evidence import ComplianceEvidenceProvider
+from core.compliance_frameworks import is_active as is_active_framework
 from db.base import SessionLocal
 from db.models import Asset, Service
 from db.models.compliance import (
@@ -27,10 +30,193 @@ from db.models.compliance import (
     ComplianceRuleDependency,
     ComplianceScanRun,
     ComplianceScore,
+    ComplianceTenantFramework,
 )
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance.tasks")
+
+# Risk weights used by the weighted score. Shared so the scorer and any caller
+# reporting "why is this control weighted like that" agree.
+SEVERITY_WEIGHTS: dict[str, float] = {
+    "critical": 10.0,
+    "high": 8.0,
+    "medium": 5.0,
+    "low": 2.0,
+    "info": 0.0,
+}
+
+# Evidence sources that can only be collected by authenticating to the host.
+# A rule reading one of these on a host with no working credentials has not
+# been assessed; it has not failed.
+CREDENTIALED_EVIDENCE_SOURCES: frozenset = frozenset(
+    {
+        "offline_configuration",
+        "malware_scan",
+        "vulnerability_audit",
+        "credential_validation",
+    }
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Identity Helpers
+#
+# Finding and score ids used to be built by slicing the tail off each component
+# (`control_id[-8:]`, `rule_id[-8:]`, `framework_id[-8:]`). Two controls whose
+# ids agree in their last eight characters — which is common once a framework
+# numbers its controls `..._8_15` / `..._8_16` — collapsed onto one row, and the
+# second finding silently overwrote the first. Ids are hashed instead: the
+# components are joined with a separator that cannot appear inside them and
+# digested, so distinct inputs cannot collide and the id stays inside the
+# column width.
+# ─────────────────────────────────────────────────────────────────────────────
+
+ORG_LEVEL_SENTINEL = "__org__"
+
+
+def _stable_id(prefix: str, *parts: Optional[str]) -> str:
+    """Builds a collision-free, deterministic id from its components."""
+    joined = "\x1f".join("" if p is None else str(p) for p in parts)
+    digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
+    return f"{prefix}_{digest}"
+
+
+def finding_id_for(
+    org_id: str, asset_id: Optional[str], control_id: str, rule_id: Optional[str]
+) -> str:
+    """Deterministic id for an auto-scan finding.
+
+    Callers outside this module (the attestation endpoint) rely on this being
+    the *only* way an org-level finding id is derived, so a human attestation
+    and the scan's placeholder for the same control resolve to one row rather
+    than two rows whose statuses then fight each other in the rollup.
+    """
+    return _stable_id(
+        "cfnd",
+        org_id,
+        asset_id or ORG_LEVEL_SENTINEL,
+        control_id,
+        rule_id or "",
+    )
+
+
+def org_finding_id_for(org_id: str, control_id: str) -> str:
+    """Deterministic id for the single org-level finding of a manual control."""
+    return _stable_id("cfnd", org_id, ORG_LEVEL_SENTINEL, control_id, "")
+
+
+def _history_id() -> str:
+    """History rows are append-only, so they need uniqueness, not determinism."""
+    return f"cfh_{uuid.uuid4().hex[:24]}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Status Rollup
+#
+# One shared precedence table. Four call sites used to roll findings up and
+# only one of them did it correctly: the other three built
+# `{f.control_id: f for f in findings}`, an unordered dict comprehension in
+# which the last row the database happened to return decided the control. A
+# host with SSH closed and SMB open could therefore score `pass` on a control
+# covering both. Everything rolls up through here now.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Worst-first. A control is only as compliant as its weakest evidence, with one
+# deliberate exception: an explicit human attestation outranks the engine's own
+# "not yet assessed" placeholder, because a reviewed control is more
+# authoritative than an unreviewed one, not less. `manual_review` therefore
+# sits *below* `pass` and `not_applicable` rather than above them.
+_STATUS_PRECEDENCE = (
+    "fail",
+    "pending_reverify",
+    "remediation_applied",
+    "manual_review",
+    "exception",
+    "pass",
+    "not_applicable",
+)
+
+# Statuses a human recorded deliberately. When any of these is present for a
+# control, the engine's unreviewed placeholders are discarded before the
+# precedence table is applied.
+_ATTESTED_STATUSES = frozenset({"pass", "fail", "not_applicable", "exception"})
+
+
+def _worst_rule_id(db: Session, findings: list) -> Optional[str]:
+    """Picks the most severe rule among a control's findings, for weighting."""
+    rule_ids = [f.rule_id for f in findings if f.rule_id]
+    if not rule_ids:
+        return None
+    rules = db.query(ComplianceRule).filter(ComplianceRule.id.in_(rule_ids)).all()
+    if not rules:
+        return None
+    return max(
+        rules,
+        key=lambda r: SEVERITY_WEIGHTS.get((r.severity or "medium").lower(), 5.0),
+    ).id
+
+
+def roll_up_statuses(entries: list) -> Optional[str]:
+    """Collapses every finding on one control into a single verdict.
+
+    `entries` is a list of (status, source) pairs. Returns None when there is
+    nothing to roll up, which the scorer reads as "not assessed".
+    """
+    if not entries:
+        return None
+
+    attested = [
+        status
+        for status, source in entries
+        if source == "manual_attestation" and status in _ATTESTED_STATUSES
+    ]
+    considered = attested if attested else [status for status, _ in entries]
+
+    for candidate in _STATUS_PRECEDENCE:
+        if candidate in considered:
+            return candidate
+    return considered[0] if considered else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule → Control Resolution
+#
+# A rule is deliberately crosswalked to controls in many frameworks, so asking
+# for "the" control of a rule has no answer without naming the framework. The
+# previous `.first()` with no ORDER BY and no framework filter returned an
+# arbitrary row: measured on the live catalogue, 57 of the 114 rules in the ISO
+# default policy resolved to a control belonging to a *different* standard, so
+# an ISO scan wrote half its findings onto DPDP, GDPR and IEC 62443 controls
+# and ISO itself scored as unassessed. Postgres is also free to return a
+# different row each time, so the same scan could score differently twice.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def resolve_controls_for_rule(
+    db: Session, rule_id: str, framework_id: str
+) -> list[str]:
+    """Returns every control this rule covers *within one framework*, ordered.
+
+    Ordering is explicit so the result is reproducible across runs. An empty
+    list means the rule contributes nothing to this framework and the caller
+    must skip it rather than guess a control.
+    """
+    rows = (
+        db.query(ComplianceControl.id)
+        .join(
+            ComplianceRuleControl,
+            ComplianceRuleControl.control_id == ComplianceControl.id,
+        )
+        .filter(
+            ComplianceRuleControl.rule_id == rule_id,
+            ComplianceControl.framework_id == framework_id,
+        )
+        .order_by(ComplianceControl.control_number, ComplianceControl.id)
+        .all()
+    )
+    return [r[0] for r in rows]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,6 +226,19 @@ log = logging.getLogger("ccure.compliance.tasks")
 
 def _evaluate_operator(operator: str, actual: Any, expected: Any) -> bool:
     """Applies criteria operators to normalize evidence values."""
+    # Emptiness is a verdict in its own right and has to be decided before the
+    # None guard: "this host lists no NTP server" (A.8.17) and "this host was
+    # never asked about NTP" are different findings, and only the caller's
+    # missing-key check can tell them apart. By the time a key is present, an
+    # empty list is an observation.
+    if operator in ("not_empty", "is_empty"):
+        empty = actual is None or (
+            len(actual) == 0
+            if isinstance(actual, (list, tuple, set, dict, str))
+            else False
+        )
+        return empty if operator == "is_empty" else not empty
+
     if actual is None:
         return False
 
@@ -112,12 +311,15 @@ def _check_prerequisites(
     db: Session, asset: Asset, rule: ComplianceRule, org_id: str
 ) -> bool:
     """Verifies rule dependency prerequisites and credentialed scan status."""
-    # 1. Verify credential status for credential-dependent rules
-    if rule.evidence_source in (
-        "offline_configuration",
-        "malware_scan",
-        "vulnerability_audit",
-    ):
+    # 1. Verify credential status for credential-dependent rules.
+    #
+    # `credential_validation` belongs on this list and was missing from it. Its
+    # own evidence key is "did the credentialed scan succeed", so on a host
+    # that was never authenticated the rule evaluated to a *failure* rather
+    # than routing to manual_review like the other three credentialed sources —
+    # reporting a control as breached when the only fact established was that
+    # the scanner had no credentials for that host.
+    if rule.evidence_source in CREDENTIALED_EVIDENCE_SOURCES:
         creds_status = (asset.custom_attributes or {}).get(
             "credentialed_status", "unknown"
         )
@@ -157,6 +359,7 @@ def _check_prerequisites(
 def run_scan_task(scan_run_id: str, org_id: str) -> dict:
     """Evaluates rules mapping against asset scope configurations."""
     db = SessionLocal()
+    run = None
     try:
         run = (
             db.query(ComplianceScanRun)
@@ -168,7 +371,10 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
             return {"success": False, "error": "Scan run not found"}
 
         run.status = "running"
+        run.started_at = run.started_at or datetime.now(timezone.utc)
         db.commit()
+
+        framework_id = run.framework_id
 
         # 1. Resolve Asset Scope
         scope = run.scope or {}
@@ -179,6 +385,23 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         if asset_ids:
             asset_query = asset_query.filter(Asset.id.in_(asset_ids))
         assets = asset_query.all()
+
+        # Tag scoping was accepted by the API, stored on the run, and then
+        # never applied — a scan the operator scoped to "cde" silently
+        # assessed every asset in the organisation. Matching is
+        # case-insensitive against both the asset's tag list and the
+        # `tags` key some collectors write into custom_attributes.
+        if asset_tags:
+            wanted = {str(t).strip().lower() for t in asset_tags if str(t).strip()}
+            scoped = []
+            for asset in assets:
+                have = {str(t).strip().lower() for t in (asset.tags or [])}
+                extra = (asset.custom_attributes or {}).get("tags") or []
+                if isinstance(extra, (list, tuple)):
+                    have |= {str(t).strip().lower() for t in extra}
+                if wanted & have:
+                    scoped.append(asset)
+            assets = scoped
 
         # Apply CDE scope filter if run has cde_scope defined
         if run.cde_scope:
@@ -209,18 +432,55 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         ComplianceEvidenceProvider.invalidate_asset_evidence_cache(resolved_asset_ids)
 
         # 2. Resolve Policy Rules
+        #
+        # Only `active` rules are evaluated. The documented lifecycle is
+        # draft -> active -> archived, where a draft is still being authored and
+        # an archived version has been superseded; evaluating either produces
+        # findings against a check the organisation has not published or has
+        # already replaced. Ordering keeps the evaluation sequence — and so the
+        # evidence timestamps — reproducible between runs.
         policy_rules = (
             db.query(CompliancePolicyRule)
             .filter(CompliancePolicyRule.policy_id == run.policy_id)
             .all()
         )
         rule_ids = [pr.rule_id for pr in policy_rules]
-        rules = db.query(ComplianceRule).filter(ComplianceRule.id.in_(rule_ids)).all()
+        rules = (
+            db.query(ComplianceRule)
+            .filter(
+                ComplianceRule.id.in_(rule_ids),
+                ComplianceRule.status == "active",
+            )
+            .order_by(ComplianceRule.rule_family_code, ComplianceRule.version_number)
+            .all()
+        )
+
+        # Resolve each rule to the controls it covers *in this run's framework*,
+        # once, up front. A rule that maps to no control here belongs to another
+        # standard and is skipped: writing its verdict onto an arbitrary control
+        # is what made an ISO scan populate DPDP and IEC 62443 instead.
+        controls_for_rule: dict[str, list[str]] = {
+            rule.id: resolve_controls_for_rule(db, rule.id, framework_id)
+            for rule in rules
+        }
+        skipped_foreign = [r.id for r in rules if not controls_for_rule[r.id]]
+        if skipped_foreign:
+            log.info(
+                "Scan run %s: %d of %d policy rules map to no control in %s and "
+                "were skipped.",
+                scan_run_id,
+                len(skipped_foreign),
+                len(rules),
+                framework_id,
+            )
+        rules = [r for r in rules if controls_for_rule[r.id]]
 
         # 3. Evaluation Loop
         now = datetime.now(timezone.utc)
         for asset in assets:
             for rule in rules:
+                control_ids = controls_for_rule[rule.id]
+
                 # 3.1. Prerequisite verification
                 if not _check_prerequisites(db, asset, rule, org_id):
                     _save_finding(
@@ -228,43 +488,35 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                         org_id,
                         asset.id,
                         rule,
+                        control_ids,
                         run_id=scan_run_id,
                         status="manual_review",
-                        evidence={"message": "Prerequisite check failed."},
+                        evidence={
+                            "message": (
+                                "This check needs a successful credentialed scan of "
+                                "the host, or a prerequisite check that has not "
+                                "passed. The control has not been assessed."
+                            ),
+                            "evidence_source": rule.evidence_source,
+                        },
                     )
                     continue
 
                 # 3.1.5 Platform compatibility check
-                if rule.target_platform and rule.target_platform.lower() != "any":
-                    asset_os = (asset.os_family or asset.os_name or "").lower()
-                    if not asset_os:
-                        _save_finding(
-                            db,
-                            org_id,
-                            asset.id,
-                            rule,
-                            run_id=scan_run_id,
-                            status="manual_review",
-                            evidence={
-                                "message": "OS fingerprint missing. Cannot evaluate platform-dependent rule."
-                            },
-                        )
-                        continue
-
-                    rule_plat = rule.target_platform.lower()
-                    if rule_plat not in asset_os:
-                        _save_finding(
-                            db,
-                            org_id,
-                            asset.id,
-                            rule,
-                            run_id=scan_run_id,
-                            status="not_applicable",
-                            evidence={
-                                "message": f"Rule target platform is {rule.target_platform}, but host platform is {asset.os_family or asset.os_name}."
-                            },
-                        )
-                        continue
+                platform_verdict = _platform_applicability(asset, rule)
+                if platform_verdict is not None:
+                    status, message = platform_verdict
+                    _save_finding(
+                        db,
+                        org_id,
+                        asset.id,
+                        rule,
+                        control_ids,
+                        run_id=scan_run_id,
+                        status=status,
+                        evidence={"message": message},
+                    )
+                    continue
 
                 # 3.2. Check if rule is a manual check (skip per-asset findings to avoid org score deadlock)
                 if rule.evidence_source == "manual":
@@ -299,6 +551,7 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                         org_id,
                         asset.id,
                         rule,
+                        control_ids,
                         run_id=scan_run_id,
                         status="manual_review",
                         evidence={
@@ -332,50 +585,56 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                     org_id,
                     asset.id,
                     rule,
+                    control_ids,
                     run_id=scan_run_id,
                     status=status,
                     evidence=evidence,
                 )
 
             # 3.4. Calculate Asset Compliance Score
-            _calculate_compliance_score(
-                db, org_id, run.framework_id, asset.id, scan_run_id
-            )
+            _calculate_compliance_score(db, org_id, framework_id, asset.id, scan_run_id)
 
         # 3.4.5 Process manual governance rules at organization level (asset_id = None)
+        #
+        # One org-level finding per control, at a deterministic id, refreshed on
+        # every run. It used to be written once and never again — and under an id
+        # that could not collide with the one the attestation endpoint derives,
+        # so attesting a control produced a *second* org-level row whose `pass`
+        # then lost the rollup to the stale placeholder's `manual_review`. For
+        # ISO, where 63 of 93 controls are attestation-only, that made two thirds
+        # of the framework impossible to comply with.
         manual_rules = [r for r in rules if r.evidence_source == "manual"]
         for m_rule in manual_rules:
-            link = (
-                db.query(ComplianceRuleControl)
-                .filter(ComplianceRuleControl.rule_id == m_rule.id)
-                .first()
-            )
-            control_id = link.control_id if link else None
-            if control_id:
-                existing_org_finding = (
+            for control_id in controls_for_rule[m_rule.id]:
+                existing = (
                     db.query(ComplianceFinding)
                     .filter(
-                        ComplianceFinding.tenant_id == org_id,
-                        ComplianceFinding.control_id == control_id,
-                        ComplianceFinding.asset_id.is_(None),
+                        ComplianceFinding.id == org_finding_id_for(org_id, control_id)
                     )
                     .first()
                 )
-                if not existing_org_finding:
-                    _save_finding(
-                        db,
-                        org_id,
-                        None,
-                        m_rule,
-                        run_id=scan_run_id,
-                        status="manual_review",
-                        evidence={
-                            "message": "This control requires manual attestation of administrative policies."
-                        },
-                    )
+                # Never overwrite a human's attestation with a placeholder.
+                if existing and existing.source == "manual_attestation":
+                    continue
+                _save_finding(
+                    db,
+                    org_id,
+                    None,
+                    m_rule,
+                    [control_id],
+                    run_id=scan_run_id,
+                    status="manual_review",
+                    evidence={
+                        "message": (
+                            "This control is governance, process or physical in "
+                            "nature and cannot be verified by a scan. Record a "
+                            "manual attestation with supporting evidence."
+                        )
+                    },
+                )
 
         # 3.5. Calculate Org Compliance Score (asset_id = None)
-        _calculate_compliance_score(db, org_id, run.framework_id, None, scan_run_id)
+        _calculate_compliance_score(db, org_id, framework_id, None, scan_run_id)
 
         # 4. Conclude scan run
         run.status = "completed"
@@ -388,36 +647,164 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
     except Exception as exc:
         db.rollback()
         log.exception(f"Compliance scan run {scan_run_id} failed.")
-        if run:
-            run.status = "failed"
-            db.commit()
+        # `run` is re-read after the rollback: the object from before the
+        # rollback is detached, and writing through it raises a second
+        # exception that hides the first. The message is persisted so the
+        # operator sees why the run failed instead of a progress spinner that
+        # simply stops.
+        try:
+            failed_run = (
+                db.query(ComplianceScanRun)
+                .filter(ComplianceScanRun.id == scan_run_id)
+                .first()
+            )
+            if failed_run:
+                failed_run.status = "failed"
+                failed_run.finished_at = datetime.now(timezone.utc)
+                failed_run.error_message = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            log.exception("Could not record failure state for run %s", scan_run_id)
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
 
 
+def _platform_applicability(asset: Asset, rule: ComplianceRule):
+    """Decides whether a platform-scoped rule applies to this host.
+
+    Returns None when the rule should be evaluated, or a (status, message)
+    pair when it should not. Matching used to be a bare substring test against
+    `os_family or os_name`, so a Linux host whose family had not been
+    fingerprinted but whose `os_name` read "Ubuntu 24.04.4 LTS" contained
+    neither "linux" nor "windows" and had every platform rule marked
+    not_applicable — a silent, total loss of coverage that reads in the UI as
+    "this control does not apply here".
+    """
+    target = (rule.target_platform or "any").lower()
+    if target == "any":
+        return None
+
+    haystack = " ".join(
+        part.lower() for part in (asset.os_family, asset.os_name) if part
+    )
+    if not haystack:
+        return (
+            "manual_review",
+            "The operating system of this host has not been fingerprinted, so a "
+            "platform-specific control could not be evaluated. Run a credentialed "
+            "or OS-detection scan first.",
+        )
+
+    aliases = _PLATFORM_ALIASES.get(target, (target,))
+    if any(alias in haystack for alias in aliases):
+        return None
+
+    return (
+        "not_applicable",
+        f"This control applies to {rule.target_platform} hosts. "
+        f"This host is {asset.os_family or asset.os_name}.",
+    )
+
+
+# Distribution and edition names that identify a platform without ever
+# containing the platform's own word.
+_PLATFORM_ALIASES: dict[str, tuple[str, ...]] = {
+    "linux": (
+        "linux",
+        "ubuntu",
+        "debian",
+        "rocky",
+        "alma",
+        "centos",
+        "rhel",
+        "red hat",
+        "fedora",
+        "suse",
+        "opensuse",
+        "amazon linux",
+        "oracle linux",
+        "alpine",
+        "arch",
+        "gentoo",
+        "raspbian",
+        "kali",
+        "mint",
+    ),
+    "windows": ("windows", "win32", "win64", "microsoft windows"),
+    "network_device": (
+        "network_device",
+        "ios",
+        "ios-xe",
+        "nx-os",
+        "junos",
+        "fortios",
+        "pan-os",
+        "routeros",
+        "switch",
+        "router",
+        "firewall",
+    ),
+    "cloud": ("cloud", "aws", "azure", "gcp"),
+    "database": ("database", "mysql", "postgres", "oracle", "mssql", "mongodb"),
+}
+
+
 def _save_finding(
     db: Session,
     org_id: str,
-    asset_id: str,
+    asset_id: Optional[str],
     rule: ComplianceRule,
-    run_id: str,
+    control_ids: list,
+    run_id: Optional[str],
     status: str,
     evidence: dict,
 ):
-    """Saves or updates a compliance finding, recording the timeline transition."""
-    # Find matching control mapping
-    link = (
-        db.query(ComplianceRuleControl)
-        .filter(ComplianceRuleControl.rule_id == rule.id)
-        .first()
-    )
-    control_id = (
-        link.control_id if link else "cct_iso27001_2022_8.9"
-    )  # Default fallback configuration control
+    """Records this rule's verdict against every control it covers.
 
-    asset_suffix = asset_id[-8:] if asset_id else "orglevel"
-    finding_id = f"cfnd_{org_id[:4]}_{asset_suffix}_{control_id[-8:]}_{rule.id[-8:]}"
+    `control_ids` is resolved by the caller from the scan run's own framework.
+    It is a list, not a single id, because a rule can legitimately satisfy
+    several controls of one standard, and each of those controls needs its own
+    finding — the score is computed per control, so folding them into one row
+    loses the others.
+
+    There is deliberately no fallback control. The previous default pointed at
+    `cct_iso27001_2022_8.9`, an id that has never existed (the real one uses
+    underscores), so a rule with no mapping produced a foreign-key violation on
+    a RESTRICT column rather than the intended graceful degradation.
+    """
+    if not control_ids:
+        log.warning(
+            "Rule %s resolved to no control in this run's framework; skipping.",
+            rule.id,
+        )
+        return
+
+    for control_id in control_ids:
+        _save_finding_for_control(
+            db, org_id, asset_id, rule, control_id, run_id, status, evidence
+        )
+
+
+def _save_finding_for_control(
+    db: Session,
+    org_id: str,
+    asset_id: Optional[str],
+    rule: ComplianceRule,
+    control_id: str,
+    run_id: Optional[str],
+    status: str,
+    evidence: dict,
+):
+    """Saves or updates one compliance finding, recording the timeline transition."""
+    from sqlalchemy.exc import IntegrityError
+
+    # Org-level findings for manual controls share one id per control so that a
+    # later human attestation lands on the same row rather than beside it.
+    if asset_id is None and rule.evidence_source == "manual":
+        finding_id = org_finding_id_for(org_id, control_id)
+    else:
+        finding_id = finding_id_for(org_id, asset_id, control_id, rule.id)
 
     finding = (
         db.query(ComplianceFinding).filter(ComplianceFinding.id == finding_id).first()
@@ -452,87 +839,117 @@ def _save_finding(
     ctrl_obj = (
         db.query(ComplianceControl).filter(ComplianceControl.id == control_id).first()
     )
-    if ctrl_obj:
-        if not sdf_scope and ctrl_obj.sdf_scope:
-            sdf_scope = ctrl_obj.sdf_scope
-        if not privacy_role and ctrl_obj.privacy_role:
-            privacy_role = ctrl_obj.privacy_role
-
-    from sqlalchemy.exc import IntegrityError
+    if not ctrl_obj:
+        log.warning(
+            "Control %s referenced by rule %s does not exist; finding not written.",
+            control_id,
+            rule.id,
+        )
+        return
+    if not sdf_scope and ctrl_obj.sdf_scope:
+        sdf_scope = ctrl_obj.sdf_scope
+    if not privacy_role and ctrl_obj.privacy_role:
+        privacy_role = ctrl_obj.privacy_role
 
     had_transition = False
     old_status = None
 
     try:
-        with db.begin_nested():
-            if not finding:
-                finding = ComplianceFinding(
-                    id=finding_id,
-                    scan_run_id=run_id,
-                    tenant_id=org_id,
-                    asset_id=asset_id,
-                    control_id=control_id,
-                    rule_id=rule.id,
-                    source="auto_scan",
-                    status=target_status,
-                    evidence=evidence,
-                    first_seen=now,
-                    last_seen=now,
-                    cde_scope=cde_scope,
-                    sdf_scope=sdf_scope,
-                    privacy_role=privacy_role,
-                )
-                db.add(finding)
-                had_transition = True
-                old_status = "new"
-            else:
-                # Keep track of status shifts
-                if finding.status != target_status:
-                    old_status = finding.status
-                    finding.status = target_status
+        # A SAVEPOINT, and the failure handling below rolls back to *it*. The
+        # previous handler called db.rollback(), which unwinds the whole
+        # session — and run_scan_task commits only at the start and the end, so
+        # a single constraint violation anywhere in the loop silently discarded
+        # every finding the run had produced so far.
+        with db.begin_nested() as nested:
+            try:
+                if not finding:
+                    finding = ComplianceFinding(
+                        id=finding_id,
+                        scan_run_id=run_id,
+                        tenant_id=org_id,
+                        asset_id=asset_id,
+                        control_id=control_id,
+                        rule_id=rule.id,
+                        source="auto_scan",
+                        status=target_status,
+                        evidence=evidence,
+                        first_seen=now,
+                        last_seen=now,
+                        cde_scope=cde_scope,
+                        sdf_scope=sdf_scope,
+                        privacy_role=privacy_role,
+                    )
+                    db.add(finding)
                     had_transition = True
-                finding.scan_run_id = run_id
-                finding.last_seen = now
-                finding.evidence = evidence
-                finding.cde_scope = cde_scope
-                finding.sdf_scope = sdf_scope
-                finding.privacy_role = privacy_role
+                    old_status = "new"
+                else:
+                    if finding.status != target_status:
+                        old_status = finding.status
+                        finding.status = target_status
+                        had_transition = True
+                    finding.scan_run_id = run_id
+                    finding.rule_id = rule.id
+                    finding.source = "auto_scan"
+                    finding.last_seen = now
+                    finding.evidence = evidence
+                    finding.cde_scope = cde_scope
+                    finding.sdf_scope = sdf_scope
+                    finding.privacy_role = privacy_role
 
-            if had_transition:
-                history = ComplianceFindingHistory(
-                    id=f"cfh_{org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
-                    finding_id=finding_id,
-                    status=target_status,
-                    source="auto_scan",
-                    note=f"Status transitioned from {old_status} to {target_status} during scan run {run_id}",
-                )
-                db.add(history)
-            db.flush()
+                if had_transition:
+                    db.add(
+                        ComplianceFindingHistory(
+                            id=_history_id(),
+                            finding_id=finding_id,
+                            status=target_status,
+                            source="auto_scan",
+                            note=(
+                                f"Status transitioned from {old_status} to "
+                                f"{target_status} during scan run {run_id}"
+                            ),
+                        )
+                    )
+                db.flush()
+            except IntegrityError:
+                nested.rollback()
+                raise
     except IntegrityError:
-        # Concurrently inserted or updated by another task running in parallel
-        db.rollback()
+        # Another worker inserted this finding between our read and our write.
+        # Re-read and update in place; only this savepoint was discarded, so
+        # everything the run wrote before now is intact.
+        log.info("Finding %s was written concurrently; merging.", finding_id)
         finding = (
             db.query(ComplianceFinding)
             .filter(ComplianceFinding.id == finding_id)
             .first()
         )
-        if finding:
-            finding.scan_run_id = run_id
-            finding.last_seen = now
-            finding.evidence = evidence
-            finding.cde_scope = cde_scope
-            if finding.status != target_status:
-                old_status = finding.status
-                finding.status = target_status
-                history = ComplianceFindingHistory(
-                    id=f"cfh_{org_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+        if not finding:
+            log.warning(
+                "Finding %s could not be written or re-read; skipping.", finding_id
+            )
+            return
+        finding.scan_run_id = run_id
+        finding.last_seen = now
+        finding.evidence = evidence
+        finding.cde_scope = cde_scope
+        finding.sdf_scope = sdf_scope
+        finding.privacy_role = privacy_role
+        if finding.status != target_status:
+            old_status = finding.status
+            finding.status = target_status
+            db.add(
+                ComplianceFindingHistory(
+                    id=_history_id(),
                     finding_id=finding_id,
                     status=target_status,
                     source="auto_scan",
-                    note=f"Status transitioned from {old_status} to {target_status} during scan run {run_id}",
+                    note=(
+                        f"Status transitioned from {old_status} to "
+                        f"{target_status} during scan run {run_id}"
+                    ),
                 )
-                db.add(history)
-            db.flush()
+            )
+        db.flush()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -596,42 +1013,37 @@ def _calculate_compliance_score(
             ComplianceFinding.control_id.in_(control_ids),
         )
         if asset_id:
-            finding_query = finding_query.filter(ComplianceFinding.asset_id == asset_id)
-            findings = finding_query.all()
-            finding_map = {f.control_id: f for f in findings}
-        else:
-            # Rollup across all assets for the organization
-            findings = finding_query.all()
-            control_findings = {}
-            for f in findings:
-                control_findings.setdefault(f.control_id, []).append(f)
+            # Org-level attestations (asset_id IS NULL) still apply to a
+            # per-asset view of a manual control — the human attested the
+            # control for the organisation, which covers this host too.
+            finding_query = finding_query.filter(
+                or_(
+                    ComplianceFinding.asset_id == asset_id,
+                    ComplianceFinding.asset_id.is_(None),
+                )
+            )
+        findings = finding_query.all()
 
-            finding_map = {}
-            for c_id, f_list in control_findings.items():
-                statuses = [f.status for f in f_list]
-                if "fail" in statuses:
-                    rolled_status = "fail"
-                elif "pending_reverify" in statuses:
-                    rolled_status = "pending_reverify"
-                elif "remediation_applied" in statuses:
-                    rolled_status = "remediation_applied"
-                elif "manual_review" in statuses:
-                    rolled_status = "manual_review"
-                elif "exception" in statuses:
-                    rolled_status = "exception"
-                elif "pass" in statuses:
-                    rolled_status = "pass"
-                else:
-                    rolled_status = "not_applicable"
+        # One rolled-up verdict per control, through the shared precedence
+        # table. The asset branch used to build `{f.control_id: f}`, an
+        # unordered dict comprehension in which the last row won — so a control
+        # carrying twelve rules reported whichever of the twelve the database
+        # returned last, and the asset score disagreed with the org score.
+        by_control: dict[str, list] = {}
+        for f in findings:
+            by_control.setdefault(f.control_id, []).append(f)
 
-                rule_id = next((f.rule_id for f in f_list if f.rule_id), None)
-
-                class RolledUpFinding:
-                    def __init__(self, status, rule_id):
-                        self.status = status
-                        self.rule_id = rule_id
-
-                finding_map[c_id] = RolledUpFinding(rolled_status, rule_id)
+        rolled: dict[str, str] = {}
+        rule_for_control: dict[str, Optional[str]] = {}
+        for c_id, f_list in by_control.items():
+            verdict = roll_up_statuses([(f.status, f.source) for f in f_list])
+            if verdict is None:
+                continue
+            rolled[c_id] = verdict
+            # Weight the control by its most severe *contributing* rule rather
+            # than an arbitrary one, so a control carrying both a critical and
+            # an informational check is not weighted as informational.
+            rule_for_control[c_id] = _worst_rule_id(db, f_list)
 
         total = len(controls)
         applicable = 0
@@ -644,55 +1056,67 @@ def _calculate_compliance_score(
         weighted_total = 0.0
         weighted_passed = 0.0
 
-        severity_weights = {
-            "critical": 10.0,
-            "high": 8.0,
-            "medium": 5.0,
-            "low": 2.0,
-            "info": 0.0,
-        }
-
         for c in controls:
-            f = finding_map.get(c.id)
-            if not f:
+            verdict = rolled.get(c.id)
+            if verdict is None:
                 pending += 1
                 applicable += 1
+                weighted_total += SEVERITY_WEIGHTS["medium"]
                 continue
 
-            weight = 5.0  # Default weight
-            if f.rule_id:
+            weight = SEVERITY_WEIGHTS["medium"]
+            rule_id = rule_for_control.get(c.id)
+            if rule_id:
                 rule = (
                     db.query(ComplianceRule)
-                    .filter(ComplianceRule.id == f.rule_id)
+                    .filter(ComplianceRule.id == rule_id)
                     .first()
                 )
                 if rule:
-                    weight = float(severity_weights.get(rule.severity.lower(), 5.0))
+                    weight = float(
+                        SEVERITY_WEIGHTS.get(
+                            (rule.severity or "medium").lower(),
+                            SEVERITY_WEIGHTS["medium"],
+                        )
+                    )
 
-            if f.status in ("pass", "exception"):
+            if verdict in ("pass", "exception"):
                 passed += 1
                 applicable += 1
                 weighted_passed += weight
                 weighted_total += weight
-            elif f.status in ("fail", "pending_reverify"):
+            elif verdict in ("fail", "pending_reverify"):
                 failed += 1
                 applicable += 1
                 weighted_total += weight
-            elif f.status == "not_applicable":
+            elif verdict == "not_applicable":
                 na += 1
-            elif f.status in ("manual_review", "remediation_applied"):
+            else:  # manual_review, remediation_applied
                 pending += 1
                 applicable += 1
                 weighted_total += weight
 
+        # `applicable` counts assessed *and* unassessed controls, so score_pct
+        # alone cannot distinguish "we checked and failed" from "we never
+        # checked". `assessed_pct` below is the conformity figure over controls
+        # that actually reached a verdict; both are reported.
         score_pct = (passed / applicable) * 100 if applicable > 0 else 0.0
         weighted_score = (
             (weighted_passed / weighted_total) * 100 if weighted_total > 0 else 0.0
         )
 
-        # Unique ID per org, framework, theme, asset, and optional SAQ profile
-        suffix = f"_{saq_profile.lower()}" if saq_profile else ""
-        score_id = f"csc_{org_id[:4]}_{framework_id[-8:]}_{theme.lower() if theme else 'overall'}_{asset_id[-8:] if asset_id else 'summary'}{suffix}"
+        # Unique ID per org, framework, theme, asset, and optional SAQ profile.
+        # Hashed — the previous form sliced the tail off framework, theme and
+        # asset ids, so two frameworks whose ids agreed in their last eight
+        # characters shared one score row.
+        score_id = _stable_id(
+            "csc",
+            org_id,
+            framework_id,
+            theme or "overall",
+            asset_id or "summary",
+            (saq_profile or "").lower(),
+        )
         score_rec = (
             db.query(ComplianceScore).filter(ComplianceScore.id == score_id).first()
         )
@@ -1134,7 +1558,7 @@ def _finalize_successful_remediation(
             db.add(asset)
 
     history = ComplianceFindingHistory(
-        id=f"cfh_{finding.tenant_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+        id=_history_id(),
         finding_id=finding.id,
         status="remediation_applied",
         changed_by=user_id,
@@ -1282,7 +1706,7 @@ def run_reremediation_task(
         if is_rollback:
             finding.status = "fail"
             history = ComplianceFindingHistory(
-                id=f"cfh_{finding.tenant_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+                id=_history_id(),
                 finding_id=finding.id,
                 status="fail",
                 changed_by=user_id,
@@ -1360,6 +1784,66 @@ def run_reverify_evaluation(finding_id: str) -> dict:
         if not finding:
             return {"success": False, "error": "Finding not found"}
 
+        # Defence in depth. Nothing can currently deliver a parked framework's
+        # finding here — this task is reachable only from
+        # `run_reremediation_task`, which is reachable only from the two
+        # remediation endpoints, and both refuse a framework the tenant does
+        # not have enabled. But that is an inherited property of the call
+        # chain, not a property of this function: it takes a finding id and
+        # writes a verdict, and a caller added later would rewrite a parked
+        # framework's finding with no check anywhere in between.
+        #
+        # Both layers are checked, for the same reason the request paths check
+        # both: the installation-wide list decides what this deployment offers,
+        # and the tenant flag decides what this organisation installed.
+        control = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.id == finding.control_id)
+            .first()
+        )
+        if not control:
+            return {"success": False, "error": "Control not found"}
+
+        if not is_active_framework(control.framework_id):
+            log.info(
+                "Re-verification refused for finding %s: framework %s is not "
+                "enabled on this installation.",
+                finding_id,
+                control.framework_id,
+            )
+            return {
+                "success": False,
+                "error": (
+                    f"Framework {control.framework_id} is not enabled on this "
+                    "installation."
+                ),
+            }
+
+        installed = (
+            db.query(ComplianceTenantFramework)
+            .filter(
+                ComplianceTenantFramework.tenant_id == finding.tenant_id,
+                ComplianceTenantFramework.framework_id == control.framework_id,
+                ComplianceTenantFramework.is_enabled == True,  # noqa: E712
+            )
+            .first()
+        )
+        if not installed:
+            log.info(
+                "Re-verification refused for finding %s: tenant %s does not have "
+                "%s installed.",
+                finding_id,
+                finding.tenant_id,
+                control.framework_id,
+            )
+            return {
+                "success": False,
+                "error": (
+                    f"Framework {control.framework_id} is not installed for this "
+                    "organisation."
+                ),
+            }
+
         rule = (
             db.query(ComplianceRule)
             .filter(ComplianceRule.id == finding.rule_id)
@@ -1375,25 +1859,45 @@ def run_reverify_evaluation(finding_id: str) -> dict:
 
         check_def = rule.check_definition or {}
         key = check_def.get("key")
-        actual_val = evidence.get(key) if key else None
 
-        passed = _evaluate_operator(
-            operator=check_def.get("operator", "equals"),
-            actual=actual_val,
-            expected=check_def.get("expected"),
-        )
+        # Re-verification has to make the same unassessed-vs-failed distinction
+        # the main scan makes. Without it, a remediation whose evidence source
+        # had not been re-collected was reported as having failed to fix
+        # anything, which is worse than saying nothing.
+        if (
+            not evidence
+            or evidence.get("_evidence_available") is False
+            or (key and key not in evidence)
+        ):
+            target_status = "manual_review"
+            note = (
+                "Re-verification could not complete: no fresh "
+                f"'{rule.evidence_source}' evidence is available for this asset."
+            )
+            finding.evidence = {
+                "message": note,
+                "evidence_source": rule.evidence_source,
+                "required_key": key,
+            }
+        else:
+            passed = _evaluate_operator(
+                operator=check_def.get("operator", "equals"),
+                actual=evidence.get(key) if key else None,
+                expected=check_def.get("expected"),
+            )
+            target_status = "pass" if passed else "fail"
+            note = f"Reverification completed. Check result: {target_status.upper()}"
+            finding.evidence = evidence
 
-        target_status = "pass" if passed else "fail"
         finding.status = target_status
         finding.last_seen = datetime.now(timezone.utc)
-        finding.evidence = evidence
 
         history = ComplianceFindingHistory(
-            id=f"cfh_{finding.tenant_id[:4]}_{datetime.now().strftime('%M%S%f')}",
+            id=_history_id(),
             finding_id=finding.id,
             status=target_status,
             source="remediation",
-            note=f"Reverification completed. Check result: {target_status.upper()}",
+            note=note,
         )
         db.add(history)
         db.commit()
@@ -1406,6 +1910,18 @@ def run_reverify_evaluation(finding_id: str) -> dict:
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
+
+
+# `continuous` is deliberately hourly rather than "every beat tick": the beat
+# entry fires this task once a minute, and a schedule that re-armed instantly
+# would queue a full compliance scan every 60 seconds per tenant.
+_SCHEDULE_INTERVALS: dict[str, timedelta] = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+    "monthly": timedelta(days=30),
+    "quarterly": timedelta(days=90),
+    "continuous": timedelta(hours=1),
+}
 
 
 @celery_app.task(name="compliance.run_scheduled_scans", queue="compliance")
@@ -1431,7 +1947,56 @@ def run_scheduled_scans() -> dict:
             .all()
         )
 
+        if not schedules:
+            log.debug("No compliance scan schedules are due — nothing to do.")
+            return {"success": True, "triggered_count": 0}
+
         for sched in schedules:
+            # A schedule with no policy has nothing to evaluate: run_scan_task
+            # would resolve an empty rule set and report a clean, meaningless
+            # "completed". Skip it loudly instead.
+            if not sched.policy_id:
+                log.warning(
+                    "Compliance schedule %s has no policy attached; skipping.",
+                    sched.id,
+                )
+                continue
+
+            # This is the only path that starts a compliance scan without a
+            # request, and it checked neither of the two things every
+            # request-driven path checks. `POST /compliance/schedules` requires
+            # the framework to be enabled *at the moment the schedule is
+            # created*; nothing re-checked it afterwards, so a framework
+            # uninstalled or parked later kept being scanned on beat — writing
+            # findings and scores for a framework the workspace does not show.
+            if not is_active_framework(sched.framework_id):
+                log.info(
+                    "Compliance schedule %s targets %s, which is not enabled on "
+                    "this installation; skipping.",
+                    sched.id,
+                    sched.framework_id,
+                )
+                continue
+
+            installed = (
+                db.query(ComplianceTenantFramework)
+                .filter(
+                    ComplianceTenantFramework.tenant_id == sched.tenant_id,
+                    ComplianceTenantFramework.framework_id == sched.framework_id,
+                    ComplianceTenantFramework.is_enabled == True,  # noqa: E712
+                )
+                .first()
+            )
+            if not installed:
+                log.info(
+                    "Compliance schedule %s targets %s, which tenant %s does not "
+                    "have installed; skipping.",
+                    sched.id,
+                    sched.framework_id,
+                    sched.tenant_id,
+                )
+                continue
+
             scan_run_id = gen_compliance_scan_run_id(sched.tenant_id)
             scan_run = ComplianceScanRun(
                 id=scan_run_id,
@@ -1441,6 +2006,12 @@ def run_scheduled_scans() -> dict:
                 schedule_id=sched.id,
                 scope=sched.scope or {},
                 status="queued",
+                # `created_at` used to be passed here and there is no such
+                # column on this model, so every invocation of this task raised
+                # TypeError, was swallowed by the except below, and reported
+                # `{"success": False}` — scheduled compliance scanning had never
+                # once run. The run's creation time is `created_at` on the row
+                # now; see migration a1b2c3d4e5f6.
                 created_at=now,
             )
             db.add(scan_run)
@@ -1448,16 +2019,7 @@ def run_scheduled_scans() -> dict:
 
             # Calculate next run timestamp based on frequency
             freq = (sched.frequency or "weekly").lower()
-            if freq == "daily":
-                delta = timedelta(days=1)
-            elif freq == "weekly":
-                delta = timedelta(weeks=1)
-            elif freq == "monthly":
-                delta = timedelta(days=30)
-            elif freq == "quarterly":
-                delta = timedelta(days=90)
-            else:
-                delta = timedelta(days=1)
+            delta = _SCHEDULE_INTERVALS.get(freq, timedelta(days=1))
 
             sched.last_run_at = now
             sched.next_run_at = now + delta
@@ -1466,6 +2028,9 @@ def run_scheduled_scans() -> dict:
             # Dispatch background scan execution
             run_scan_task.delay(scan_run_id, sched.tenant_id)
             triggered += 1
+
+        if triggered:
+            log.info("Scheduled compliance scans: triggered %d scan(s).", triggered)
 
         return {"success": True, "triggered_count": triggered}
     except Exception as exc:

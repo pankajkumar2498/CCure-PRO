@@ -16,7 +16,9 @@ from db.models.compliance import (
 from scripts.seed_compliance import seed_framework_and_controls
 
 
-def test_iec_62443_framework_end_to_end(client, db_session, test_user, auth_headers):
+def test_iec_62443_framework_end_to_end(
+    client, db_session, test_user, auth_headers, activate_frameworks
+):
     """
     Verifies full lifecycle for IEC 62443 (OT/ICS):
     1. Seeding framework & controls (~60+ controls)
@@ -29,6 +31,7 @@ def test_iec_62443_framework_end_to_end(client, db_session, test_user, auth_head
     8. Gap analysis calculation endpoint (ISO 27001 -> IEC 62443)
     9. Executive Dashboard compliance posture check (/dashboard/compliance)
     """
+    activate_frameworks("cfw_iec_62443")
     # 1. Seed IEC 62443 controls
     scripts_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"

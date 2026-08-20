@@ -292,6 +292,22 @@ def gen_compliance_remediation_request_id(org_slug: str) -> str:
     return f"crrq_{org_part}_{_rand()}"
 
 
+def gen_compliance_scan_run_id(org_slug: str) -> str:
+    """
+    Generate a readable Compliance Scan Run ID.
+    Example: csr_defa_1a2b3c4d_x9v1
+
+    `compliance.run_scheduled_scans` has imported this since it was written and
+    it did not exist, so every beat tick raised ImportError inside the task's
+    bare `except` and reported `{"success": False}`. That was the *first* of two
+    independent breaks in that task — the second was a `created_at` keyword the
+    model had no column for — and between them no scheduled compliance scan had
+    ever run.
+    """
+    org_part = gen_org_token(org_slug)
+    return f"csr_{org_part}_{_rand()}"
+
+
 def utcnow() -> datetime:
     """Return the current UTC datetime (timezone-aware)."""
     return datetime.now(timezone.utc)

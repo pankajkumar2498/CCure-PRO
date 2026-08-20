@@ -17,7 +17,7 @@ from scripts.seed_compliance import seed_framework_and_controls
 
 
 def test_nist_800_53_r5_framework_end_to_end(
-    client, db_session, test_user, auth_headers
+    client, db_session, test_user, auth_headers, activate_frameworks
 ):
     """
     Verifies full lifecycle for NIST SP 800-53 Rev. 5:
@@ -30,6 +30,7 @@ def test_nist_800_53_r5_framework_end_to_end(
     7. PDF & DOCX report generation endpoints
     8. Gap analysis calculation endpoint
     """
+    activate_frameworks("cfw_nist_800_53_r5")
     # 1. Seed NIST SP 800-53 Rev. 5 controls
     scripts_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"

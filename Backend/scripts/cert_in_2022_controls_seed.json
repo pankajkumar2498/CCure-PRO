@@ -14,7 +14,7 @@
       "description": "Any service provider, intermediary, data center, body corporate, and government organization must report cyber security incidents to CERT-In within 6 hours of notice.",
       "scannability": "semi_auto",
       "scan_module_hint": "incident_audit",
-      "crosswalk": ["ISO27001:A.5.24", "NIST:RS.MA-01", "SOC2:CC7.3", "CIS:17.1"],
+      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF_V2:RS.MA-01", "SOC2:CC7.3", "CIS:17.1"],
       "evidence_checklist": [
         "CERT-In Incident Escalation Workflow Policy Document",
         "Designated Point of Contact (PoC) Details submitted to CERT-In",
@@ -30,7 +30,7 @@
       "description": "Organizations must designate a specialized Point of Contact to communicate with CERT-In and provide technical evidence during cyber security incidents.",
       "scannability": "manual",
       "scan_module_hint": null,
-      "crosswalk": ["ISO27001:A.5.4", "NIST:GV.RR-01", "SOC2:CC2.1", "CIS:17.2"],
+      "crosswalk": ["ISO27001:A.5.4", "NIST_CSF_V2:GV.RR-01", "SOC2:CC2.1", "CIS:17.2"],
       "evidence_checklist": [
         "Designated CISO / Security Officer Appointment Letter",
         "CERT-In Portal Registration and Communication History"
@@ -45,7 +45,7 @@
       "description": "All ICT systems, servers, firewalls, and application workloads must maintain immutable system logs for a rolling period of 180 days within the Indian jurisdiction.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.15", "NIST:PR.PT-01", "SOC2:CC7.2", "CIS:8.2"],
+      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF_V2:PR.PS-04", "SOC2:CC7.2", "CIS:8.2"],
       "evidence_checklist": [
         "Centralized Syslog / SIEM Server Configuration",
         "Log Storage Volume Retention Settings (>= 180 Days)",
@@ -61,7 +61,7 @@
       "description": "All ICT infrastructure clocks must synchronize time with standard National Physical Laboratory (NPL) or National Informatics Centre (NIC) NTP servers.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.17", "NIST:PR.PT-01", "SOC2:CC7.2", "CIS:8.4"],
+      "crosswalk": ["ISO27001:A.8.17", "NIST_CSF_V2:PR.PS-04", "SOC2:CC7.2", "CIS:8.4"],
       "evidence_checklist": [
         "NTP Client Configuration File (/etc/ntp.conf or chrony.conf / w32tm)",
         "NTP Synchronization Status Audit Log (samay.nplindia.in or nic.in)"
@@ -76,7 +76,7 @@
       "description": "Virtual Private Network (VPN) service providers and enterprise infrastructure must retain validated customer/subscriber logs and IP allocation history for 5 years.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.20", "NIST:PR.AC-03", "SOC2:CC6.1", "CIS:12.1"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.AA-05", "SOC2:CC6.1", "CIS:12.1"],
       "evidence_checklist": [
         "VPN Gateway Access Log Retention Configuration (>= 5 Years)",
         "User Identity / IP Address Allocation Audit Ledger"
@@ -91,7 +91,7 @@
       "description": "Maintain an up-to-date inventory of all network endpoints, cloud resources, servers, and validated subscriber/user identities.",
       "scannability": "auto",
       "scan_module_hint": "active_services",
-      "crosswalk": ["ISO27001:A.5.9", "NIST:ID.AM-01", "SOC2:CC6.1", "CIS:1.1"],
+      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF_V2:ID.AM-01", "SOC2:CC6.1", "CIS:1.1"],
       "evidence_checklist": [
         "Automated Asset Discovery Inventory Log",
         "Identity & Access Management (IAM) User Database Audit"
@@ -106,7 +106,7 @@
       "description": "Conduct periodic vulnerability assessments, penetration testing (VAPT), and security posture audits by CERT-In empanelled auditors.",
       "scannability": "auto",
       "scan_module_hint": "vulnerability_audit",
-      "crosswalk": ["ISO27001:A.8.8", "NIST:ID.RA-01", "SOC2:CC7.1", "CIS:7.1"],
+      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF_V2:ID.RA-01", "SOC2:CC7.1", "CIS:7.1"],
       "evidence_checklist": [
         "VAPT Audit Report from CERT-In Empannelled Auditor",
         "Vulnerability Remediation Tracking Ledger",
@@ -122,7 +122,7 @@
       "description": "Formulate, approve, and routinely drill a Cyber Crisis Management Plan (CCMP) addressing critical infrastructure cyber threats and recovery.",
       "scannability": "manual",
       "scan_module_hint": null,
-      "crosswalk": ["ISO27001:A.5.30", "NIST:RS.RP-01", "SOC2:A1.2", "CIS:17.4"],
+      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF_V2:RS.MA-01", "SOC2:A1.2", "CIS:17.4"],
       "evidence_checklist": [
         "Board-Approved Cyber Crisis Management Plan (CCMP) Document",
         "Annual Cyber Drill & Simulation Minutes of Meeting"
@@ -137,7 +137,7 @@
       "description": "Enforce Multi-Factor Authentication (MFA) across all administrative access points, root portals, remote desktop, and SSH bastion servers.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.5", "NIST:PR.AA-01", "SOC2:CC6.1", "CIS:6.3"],
+      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-01", "SOC2:CC6.1", "CIS:6.3"],
       "evidence_checklist": [
         "MFA Policy Enforcement Log on Bastion / Admin Portals",
         "PAM (Privileged Access Management) Audit Log"
@@ -152,7 +152,7 @@
       "description": "Protect operational data, system backups, and sensitive communications using strong cryptographic protocols (TLS 1.2+, AES-256).",
       "scannability": "auto",
       "scan_module_hint": "tls_ssl_configuration",
-      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-01", "SOC2:C1.1", "CIS:3.11"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "SOC2:C1.1", "CIS:3.11"],
       "evidence_checklist": [
         "TLS Certificate Audit Log (No deprecated TLS 1.0/1.1)",
         "Disk & Storage Encryption Status Report"

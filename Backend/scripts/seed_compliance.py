@@ -5,6 +5,7 @@ Usage:   python -m scripts.seed_compliance [--seed-file PATH]
 """
 
 import argparse
+import glob
 import json
 import os
 
@@ -163,7 +164,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
     )
 
 
-if __name__ == "__main__":
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Seed compliance controls standard catalog."
     )
@@ -180,39 +181,28 @@ if __name__ == "__main__":
         base_dir = os.path.dirname(os.path.abspath(__file__))
         if args.seed_file:
             seed_framework_and_controls(db, args.seed_file)
-        else:
-            iso_path = os.path.join(base_dir, "iso27001_2022_controls_seed.json")
-            nist_path = os.path.join(base_dir, "nist_csf_v2_controls_seed.json")
-            cis_path = os.path.join(base_dir, "cis_v8_1_controls_seed.json")
-            soc2_path = os.path.join(base_dir, "soc2_type2_controls_seed.json")
-            certin_path = os.path.join(base_dir, "cert_in_2022_controls_seed.json")
-            pci_path = os.path.join(base_dir, "pci_dss_v4_controls_seed.json")
-            dpdp_path = os.path.join(base_dir, "dpdp_2023_controls_seed.json")
-            gdpr_path = os.path.join(base_dir, "gdpr_controls_seed.json")
-            if os.path.exists(iso_path):
-                seed_framework_and_controls(db, iso_path)
-            if os.path.exists(nist_path):
-                seed_framework_and_controls(db, nist_path)
-            if os.path.exists(cis_path):
-                seed_framework_and_controls(db, cis_path)
-            if os.path.exists(soc2_path):
-                seed_framework_and_controls(db, soc2_path)
-            if os.path.exists(certin_path):
-                seed_framework_and_controls(db, certin_path)
-            if os.path.exists(pci_path):
-                seed_framework_and_controls(db, pci_path)
-            if os.path.exists(dpdp_path):
-                seed_framework_and_controls(db, dpdp_path)
-            if os.path.exists(gdpr_path):
-                seed_framework_and_controls(db, gdpr_path)
-            nist82_path = os.path.join(base_dir, "nist_800_82_r3_controls_seed.json")
-            if os.path.exists(nist82_path):
-                seed_framework_and_controls(db, nist82_path)
-            nerc_cip_path = os.path.join(base_dir, "nerc_cip_controls_seed.json")
-            if os.path.exists(nerc_cip_path):
-                seed_framework_and_controls(db, nerc_cip_path)
-            nis2_path = os.path.join(base_dir, "nis2_controls_seed.json")
-            if os.path.exists(nis2_path):
-                seed_framework_and_controls(db, nis2_path)
+            return 0
+
+        # Every *_controls_seed.json in this directory is seeded. The list
+        # used to be hand-maintained and had drifted: `iec_62443` and
+        # `nist_800_53_r5` seed files existed, were referenced by the router's
+        # report endpoints and by seeded rules, and were never loaded — so
+        # those two frameworks were present in code and absent from any
+        # database built by running this script. Globbing removes the failure
+        # mode entirely: adding a framework is adding its file.
+        seed_files = sorted(glob.glob(os.path.join(base_dir, "*_controls_seed.json")))
+        if not seed_files:
+            print(f"No *_controls_seed.json files found in {base_dir}")
+            return 1
+
+        for path in seed_files:
+            seed_framework_and_controls(db, path)
+
+        print(f"\nSeeded {len(seed_files)} framework catalogues.")
+        return 0
     finally:
         db.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

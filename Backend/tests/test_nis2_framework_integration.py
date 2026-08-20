@@ -129,8 +129,11 @@ def test_nis2_crosswalk_rule_inheritance(db_session):
     ), "cct_nis2_gov_01 should have inherited rule links from crosswalk"
 
 
-def test_nis2_endpoints_and_report(client, db_session, test_user, auth_headers):
+def test_nis2_endpoints_and_report(
+    client, db_session, test_user, auth_headers, activate_frameworks
+):
     """Verify summary, findings, and executive report endpoints for NIS 2 Directive."""
+    activate_frameworks("cfw_nis2")
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     seed_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
     seed_framework_and_controls(db_session, seed_json)

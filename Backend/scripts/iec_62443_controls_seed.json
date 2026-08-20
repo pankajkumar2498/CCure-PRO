@@ -32,7 +32,7 @@
       "zone_types": ["Enterprise_DMZ", "OT_DMZ"],
       "scannability": "manual",
       "scan_module_hint": "Policy Governance Audit",
-      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF:GV.PO-01", "NIST_800_53:PM-1"],
+      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF_V2:GV.PO-01", "NIST_800_53:PM-1"],
       "evidence_checklist": ["OT Information Security Policy Document", "Board approval records", "Annual policy review log"]
     },
     {
@@ -46,7 +46,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "manual",
       "scan_module_hint": "Risk Management Audit",
-      "crosswalk": ["ISO27001:A.5.7", "NIST_CSF:ID.RA-01", "NIST_800_53:RA-3"],
+      "crosswalk": ["ISO27001:A.5.7", "NIST_CSF_V2:ID.RA-01", "NIST_800_53:RA-3"],
       "evidence_checklist": ["OT Cyber Risk Assessment Report", "Threat matrix for physical safety impacts", "Risk mitigation plan"]
     },
     {
@@ -60,7 +60,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "semi_auto",
       "scan_module_hint": "Asset Registry Integration / Passive Discovery",
-      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF:ID.AM-01", "NIST_800_53:CM-8"],
+      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF_V2:ID.AM-01", "NIST_800_53:CM-8"],
       "evidence_checklist": ["OT Asset Inventory Register", "MAC/IP address mapping to Purdue level", "PLC firmware inventory log"]
     },
     {
@@ -74,7 +74,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "HR Training Compliance Check",
-      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF:PR.AT-01", "NIST_800_53:AT-2"],
+      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF_V2:PR.AT-01", "NIST_800_53:AT-2"],
       "evidence_checklist": ["OT security training curriculum", "Attendance records for field engineers", "Social engineering drill logs"]
     },
     {
@@ -88,7 +88,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "BC/DR Readiness Audit",
-      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF:RC.RP-01", "NIST_800_53:CP-2"],
+      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF_V2:RC.RP-01", "NIST_800_53:CP-2"],
       "evidence_checklist": ["OT Disaster Recovery Plan", "PLC logic backup restoration test logs", "RTO/RPO validation records"]
     },
     {
@@ -102,7 +102,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "manual",
       "scan_module_hint": "Incident Response Audit",
-      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF:RS.MA-01", "NIST_800_53:IR-4"],
+      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF_V2:RS.MA-01", "NIST_800_53:IR-4"],
       "evidence_checklist": ["OT Incident Response Playbook", "CERT/CSIRT contact roster", "Tabletop drill records for SCADA ransomware"]
     },
     {
@@ -116,7 +116,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Physical Access Security Audit",
-      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-3"],
+      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-3"],
       "evidence_checklist": ["Keycard access logs for Control Rooms", "Cabinet key audit logs", "CCTV coverage diagram for PLC cabinets"]
     },
     {
@@ -130,7 +130,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "manual",
       "scan_module_hint": "Governance Audit",
-      "crosswalk": ["ISO27001:A.5.35", "NIST_CSF:GV.OV-01", "NIST_800_53:CA-2"],
+      "crosswalk": ["ISO27001:A.5.35", "NIST_CSF_V2:GV.OV-01", "NIST_800_53:CA-2"],
       "evidence_checklist": ["Third-party OT security assessment report", "Executive remediation tracking log"]
     },
 
@@ -145,7 +145,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "OT Patch Management Audit",
-      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF:PR.PS-02", "NIST_800_53:SI-2"],
+      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF_V2:PR.PS-02", "NIST_800_53:SI-2"],
       "evidence_checklist": ["OEM patch compatibility bulletin", "Patch staging test sign-off sheet"]
     },
     {
@@ -159,7 +159,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Operational Change Control Audit",
-      "crosswalk": ["ISO27001:A.8.32", "NIST_CSF:PR.IR-03", "NIST_800_53:CM-3"],
+      "crosswalk": ["ISO27001:A.8.32", "NIST_CSF_V2:PR.IR-03", "NIST_800_53:CM-3"],
       "evidence_checklist": ["Plant outage window schedule", "Approved Change Request for OT patching"]
     },
     {
@@ -173,7 +173,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Firmware Hash Integrity Check",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-01", "NIST_800_53:SI-7"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SI-7"],
       "evidence_checklist": ["Firmware SHA-256 validation log", "OEM GPG signature verification record"]
     },
     {
@@ -187,7 +187,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "semi_auto",
       "scan_module_hint": "Compensating Control Review",
-      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF:RS.CO-03", "NIST_800_53:RA-5"],
+      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF_V2:RS.CO-03", "NIST_800_53:RA-5"],
       "evidence_checklist": ["Compensating control risk waiver", "UFW/Firewall rule blocking vulnerable port"]
     },
     {
@@ -201,7 +201,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Conduit Rule Verification",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7(21)"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7(21)"],
       "evidence_checklist": ["Unidirectional data diode spec sheet", "Legacy asset isolation firewall ACL export"]
     },
 
@@ -216,7 +216,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "OT Jump Host / RDP Config Check",
-      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-17"],
+      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-17"],
       "evidence_checklist": ["Remote Access Approval Log", "MFA enforcement policy on OT Jump Box"]
     },
     {
@@ -230,7 +230,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Media Sanitization Kiosk Audit",
-      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF:PR.DS-01", "NIST_800_53:MP-6"],
+      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:MP-6"],
       "evidence_checklist": ["USB Scanning Kiosk log export", "Vendor equipment inspection checklist"]
     },
     {
@@ -244,7 +244,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "FAT Security Acceptance Audit",
-      "crosswalk": ["ISO27001:A.5.19", "NIST_CSF:ID.SC-04", "NIST_800_53:SA-11"],
+      "crosswalk": ["ISO27001:A.5.19", "NIST_CSF_V2:GV.SC-07", "NIST_800_53:SA-11"],
       "evidence_checklist": ["Signed FAT Security Checklist", "Pre-commissioning port scan report"]
     },
     {
@@ -258,7 +258,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "SAT Commissioning Audit",
-      "crosswalk": ["ISO27001:A.8.29", "NIST_CSF:PR.PS-01", "NIST_800_53:SA-15"],
+      "crosswalk": ["ISO27001:A.8.29", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:SA-15"],
       "evidence_checklist": ["Signed SAT Cybersecurity Certificate", "Final configuration baseline audit"]
     },
     {
@@ -272,7 +272,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Supply Chain Audit",
-      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF:ID.SC-02", "NIST_800_53:SR-4"],
+      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF_V2:GV.SC-04", "NIST_800_53:SR-4"],
       "evidence_checklist": ["CycloneDX/SPDX SBOM file", "Vendor hardware supply chain declaration"]
     },
     {
@@ -286,7 +286,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "semi_auto",
       "scan_module_hint": "Active Directory / Radius Offboarding Audit",
-      "crosswalk": ["ISO27001:A.6.5", "NIST_CSF:PR.AA-01", "NIST_800_53:PS-4"],
+      "crosswalk": ["ISO27001:A.6.5", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:PS-4"],
       "evidence_checklist": ["Contractor offboarding ticket log", "AD disabled accounts report"]
     },
 
@@ -301,7 +301,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "semi_auto",
       "scan_module_hint": "Active Directory / Local User Account Scan",
-      "crosswalk": ["ISO27001:A.5.16", "NIST_CSF:PR.AA-01", "NIST_800_53:IA-2"],
+      "crosswalk": ["ISO27001:A.5.16", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:IA-2"],
       "evidence_checklist": ["HMI user account list", "Password complexity policy settings"]
     },
     {
@@ -316,7 +316,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Generic Account Audit",
-      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF:PR.AA-02", "NIST_800_53:IA-2(1)"],
+      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF_V2:PR.AA-02", "NIST_800_53:IA-2(1)"],
       "evidence_checklist": ["SCADA user roster without generic accounts", "Individual operator login logs"]
     },
     {
@@ -331,7 +331,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "OT Jump Host MFA Policy Check",
-      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF:PR.AA-03", "NIST_800_53:IA-2(2)"],
+      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-03", "NIST_800_53:IA-2(2)"],
       "evidence_checklist": ["DUO/Radius MFA policy export for OT DMZ", "RDP/SSH gateway config"]
     },
     {
@@ -345,7 +345,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Service Account / Certificate Audit",
-      "crosswalk": ["ISO27001:A.8.2", "NIST_CSF:PR.AA-04", "NIST_800_53:IA-3"],
+      "crosswalk": ["ISO27001:A.8.2", "NIST_CSF_V2:PR.AA-04", "NIST_800_53:IA-3"],
       "evidence_checklist": ["Service account inventory", "X.509 device certificate list for OPC UA"]
     },
     {
@@ -359,7 +359,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "semi_auto",
       "scan_module_hint": "Active Directory Account Review",
-      "crosswalk": ["ISO27001:A.5.18", "NIST_CSF:PR.AA-01", "NIST_800_53:AC-2"],
+      "crosswalk": ["ISO27001:A.5.18", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:AC-2"],
       "evidence_checklist": ["Disabled accounts audit report", "Inactive user account report (>30 days)"]
     },
     {
@@ -373,7 +373,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Credential Hashing Policy Check",
-      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF:PR.AA-03", "NIST_800_53:IA-5"],
+      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF_V2:PR.AA-03", "NIST_800_53:IA-5"],
       "evidence_checklist": ["OS SAM / Shadow file password hash config", "SCADA database credential encryption settings"]
     },
     {
@@ -387,7 +387,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Password Policy Audit",
-      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF:PR.AA-03", "NIST_800_53:IA-5(1)"],
+      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF_V2:PR.AA-03", "NIST_800_53:IA-5(1)"],
       "evidence_checklist": ["Group Policy Password Policy export", "Local security policy export"]
     },
     {
@@ -401,7 +401,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Account Lockout Policy Check",
-      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF:PR.AA-02", "NIST_800_53:AC-7"],
+      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-02", "NIST_800_53:AC-7"],
       "evidence_checklist": ["Account Lockout Policy threshold config (e.g. 5 failed attempts)"]
     },
 
@@ -416,7 +416,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "semi_auto",
       "scan_module_hint": "RBAC Audit",
-      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-3"],
+      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-3"],
       "evidence_checklist": ["SCADA Role Matrix", "HMI permission group export"]
     },
     {
@@ -431,7 +431,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Dual Control Override Audit",
-      "crosswalk": ["ISO27001:A.5.3", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-3(2)"],
+      "crosswalk": ["ISO27001:A.5.3", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-3(2)"],
       "evidence_checklist": ["Dual authorization log for safety interlock bypass", "SCADA dual-key config"]
     },
     {
@@ -445,7 +445,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Cleartext Protocol Scan (Telnet/HTTP/Modbus)",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-02", "NIST_800_53:SC-8"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-02", "NIST_800_53:SC-8"],
       "evidence_checklist": ["Nmap/Netstat cleartext service audit", "Firewall protocol rule export"]
     },
     {
@@ -459,7 +459,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "AppLocker / Script Policy Check",
-      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF:PR.PS-01", "NIST_800_53:SC-18"],
+      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:SC-18"],
       "evidence_checklist": ["PowerShell ExecutionPolicy settings", "AppLocker rule script policy"]
     },
     {
@@ -473,7 +473,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "RDP / SSH Session Limit Check",
-      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF:PR.AA-02", "NIST_800_53:AC-10"],
+      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-02", "NIST_800_53:AC-10"],
       "evidence_checklist": ["Group Policy Max Concurrent RDP Sessions config"]
     },
     {
@@ -487,7 +487,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Screen Saver / Session Lock Audit",
-      "crosswalk": ["ISO27001:A.8.1", "NIST_CSF:PR.AA-02", "NIST_800_53:AC-11"],
+      "crosswalk": ["ISO27001:A.8.1", "NIST_CSF_V2:PR.AA-02", "NIST_800_53:AC-11"],
       "evidence_checklist": ["Group Policy Screen Saver Lock settings", "SCADA HMI idle timeout config"]
     },
     {
@@ -501,7 +501,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Remote Gateway Timeout Check",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-12"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-12"],
       "evidence_checklist": ["VPN session timeout setting (e.g. 60 min max)"]
     },
     {
@@ -515,7 +515,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Break-Glass Account Audit",
-      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-2(10)"],
+      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-2(10)"],
       "evidence_checklist": ["Sealed envelope break-glass key vault log", "Break-glass activation procedure"]
     },
 
@@ -530,7 +530,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "OT Protocol Encryption / Integrity Check",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.DS-02", "NIST_800_53:SC-8"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:SC-8"],
       "evidence_checklist": ["OPC UA Security Policy (SignAndEncrypt) config", "DNP3 Secure Authentication v5 config"]
     },
     {
@@ -544,7 +544,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Antivirus / EDR Agent Status Check",
-      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF:DE.CM-04", "NIST_800_53:SI-3"],
+      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF_V2:DE.CM-09", "NIST_800_53:SI-3"],
       "evidence_checklist": ["Defender/ClamAV/CrowdStrike service status report", "Signature update recency log (<7 days)"]
     },
     {
@@ -558,7 +558,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "PLC Health Check / Syslog Verification",
-      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF:DE.CM-01", "NIST_800_53:SI-6"],
+      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF_V2:DE.CM-01", "NIST_800_53:SI-6"],
       "evidence_checklist": ["PLC self-diagnostic log export", "Safety Instrument System (SIS) health status"]
     },
     {
@@ -572,7 +572,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "File Integrity Monitoring (FIM) Audit",
-      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF:PR.DS-01", "NIST_800_53:SI-7"],
+      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SI-7"],
       "evidence_checklist": ["Tripwire/Wazuh FIM policy rules for SCADA project dir"]
     },
     {
@@ -586,7 +586,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Input Validation & Buffer Check",
-      "crosswalk": ["ISO27001:A.8.28", "NIST_CSF:PR.PS-01", "NIST_800_53:SI-10"],
+      "crosswalk": ["ISO27001:A.8.28", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:SI-10"],
       "evidence_checklist": ["HMI input bounds verification spec", "SCADA tag range check configuration"]
     },
     {
@@ -600,7 +600,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "AppLocker Whitelisting Audit",
-      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF:PR.PS-01", "NIST_800_53:CM-7(5)"],
+      "crosswalk": ["ISO27001:A.8.19", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:CM-7(5)"],
       "evidence_checklist": ["AppLocker rule XML export in Enforce Mode"]
     },
     {
@@ -614,7 +614,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Audit Log Configuration & Forwarding Check",
-      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF:DE.CM-01", "NIST_800_53:AU-2"],
+      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF_V2:DE.CM-01", "NIST_800_53:AU-2"],
       "evidence_checklist": ["Syslog forwarding configuration to OT SIEM", "Windows Event Log Audit Policy export"]
     },
 
@@ -629,7 +629,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "TLS/IPsec Tunnel Verification",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-02", "NIST_800_53:SC-8(1)"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:SC-8(1)"],
       "evidence_checklist": ["IPsec/VPN tunnel status report", "TLS 1.2+ configuration export"]
     },
     {
@@ -643,7 +643,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "BitLocker / Disk Encryption Check",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-01", "NIST_800_53:SC-28"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SC-28"],
       "evidence_checklist": ["BitLocker / LUKS status export on Historian", "Encrypted backup drive log"]
     },
     {
@@ -657,7 +657,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Cipher Suite / SSL Audit",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-02", "NIST_800_53:SC-13"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:SC-13"],
       "evidence_checklist": ["SCHANNEL protocol registry settings", "OpenSSL cipher suite export"]
     },
     {
@@ -671,7 +671,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "PKI Certificate Expiry Check",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-02", "NIST_800_53:SC-12"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:SC-12"],
       "evidence_checklist": ["Internal OT PKI Certificate Authority inventory", "Certificate expiration tracking report"]
     },
     {
@@ -685,7 +685,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Media Sanitization Audit",
-      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF:PR.DS-01", "NIST_800_53:MP-6"],
+      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:MP-6"],
       "evidence_checklist": ["Certificate of Physical Destruction", "DOD 5220.22-M disk wipe logs"]
     },
 
@@ -700,7 +700,7 @@
       "zone_types": ["OT_DMZ", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Firewall Rule Parser / Purdue Model Boundary Check",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7"],
       "evidence_checklist": ["Purdue Model network topology diagram", "OT Firewall rulebase export (Level 3 to Level 2 DMZ filtering)"]
     },
     {
@@ -715,7 +715,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Stateful Firewall Inspection Audit",
-      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7(5)"],
+      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7(5)"],
       "evidence_checklist": ["Firewall stateful inspection policy settings"]
     },
     {
@@ -729,7 +729,7 @@
       "zone_types": ["OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "IT/OT Dual-Homed NIC Audit",
-      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7(7)"],
+      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7(7)"],
       "evidence_checklist": ["Dual-homed network interface inspection", "Routing table audit"]
     },
     {
@@ -743,7 +743,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Corporate Network Isolation Check",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7(18)"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7(18)"],
       "evidence_checklist": ["VLAN segregation audit", "Prohibited outbound internet traffic ACL"]
     },
     {
@@ -757,7 +757,7 @@
       "zone_types": ["Safety_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Data Diode Verification",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-01", "NIST_800_53:SC-7(21)"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7(21)"],
       "evidence_checklist": ["Unidirectional data diode hardware certificate", "Safety Zone egress topology"]
     },
 
@@ -772,7 +772,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "auto",
       "scan_module_hint": "Passive OT IDS Integration Audit",
-      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF:DE.CM-01", "NIST_800_53:SI-4"],
+      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF_V2:DE.CM-01", "NIST_800_53:SI-4"],
       "evidence_checklist": ["OT IDS sensor deployment map", "SPAN port / network TAP config export"]
     },
     {
@@ -786,7 +786,7 @@
       "zone_types": ["Control_Zone", "OT_DMZ"],
       "scannability": "manual",
       "scan_module_hint": "OT SOC Operational Audit",
-      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF:DE.DP-01", "NIST_800_53:AU-6"],
+      "crosswalk": ["ISO27001:A.8.16", "NIST_CSF_V2:GV.RR-02", "NIST_800_53:AU-6"],
       "evidence_checklist": ["24/7 OT SOC SLA contract", "SCADA alert escalation workflow"]
     },
     {
@@ -800,7 +800,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "NTP Time Sync Verification",
-      "crosswalk": ["ISO27001:A.8.17", "NIST_CSF:DE.CM-01", "NIST_800_53:AU-8"],
+      "crosswalk": ["ISO27001:A.8.17", "NIST_CSF_V2:DE.CM-01", "NIST_800_53:AU-8"],
       "evidence_checklist": ["NTP status export (w32tm / ntpq output)", "GPS master clock spec sheet"]
     },
     {
@@ -814,7 +814,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Forensic Acquisition Readiness Audit",
-      "crosswalk": ["ISO27001:A.5.28", "NIST_CSF:RS.AN-03", "NIST_800_53:IR-5"],
+      "crosswalk": ["ISO27001:A.5.28", "NIST_CSF_V2:RS.AN-03", "NIST_800_53:IR-5"],
       "evidence_checklist": ["OT Forensic acquisition toolkit inventory", "Chain of custody forms"]
     },
     {
@@ -828,7 +828,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "SCADA Alarm Escalation Check",
-      "crosswalk": ["ISO27001:A.5.25", "NIST_CSF:RS.CO-02", "NIST_800_53:IR-6"],
+      "crosswalk": ["ISO27001:A.5.25", "NIST_CSF_V2:RS.CO-02", "NIST_800_53:IR-6"],
       "evidence_checklist": ["SCADA alarm notification configuration (SMS/Email)"]
     },
 
@@ -843,7 +843,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Broadcast Storm Control Audit",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-04", "NIST_800_53:SC-5"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-04", "NIST_800_53:SC-5"],
       "evidence_checklist": ["OT Switch Storm Control ACL settings", "Rate limiting configuration"]
     },
     {
@@ -857,7 +857,7 @@
       "zone_types": ["Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "CPU / Memory Utilization Check",
-      "crosswalk": ["ISO27001:A.8.6", "NIST_CSF:PR.DS-01", "NIST_800_53:SC-6"],
+      "crosswalk": ["ISO27001:A.8.6", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SC-6"],
       "evidence_checklist": ["Historian RAM/Disk threshold alerts (<80% usage)"]
     },
     {
@@ -871,7 +871,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "OT Backup Validation Check",
-      "crosswalk": ["ISO27001:A.8.13", "NIST_CSF:PR.DS-11", "NIST_800_53:CP-9"],
+      "crosswalk": ["ISO27001:A.8.13", "NIST_CSF_V2:PR.DS-11", "NIST_800_53:CP-9"],
       "evidence_checklist": ["Veeam/MDT AutoSave OT Backup report", "Offline tape/air-gapped backup log"]
     },
     {
@@ -885,7 +885,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "auto",
       "scan_module_hint": "Redundancy / RSTP / Dual Power Audit",
-      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF:PR.IR-04", "NIST_800_53:CP-7"],
+      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF_V2:PR.IR-04", "NIST_800_53:CP-7"],
       "evidence_checklist": ["Parallel Redundancy Protocol (PRP) switch config", "Dual UPS telemetry log"]
     },
     {
@@ -899,7 +899,7 @@
       "zone_types": ["Safety_Zone", "Control_Zone"],
       "scannability": "manual",
       "scan_module_hint": "Fail-Safe Mode Audit",
-      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF:PR.DS-01", "NIST_800_53:CP-12"],
+      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:CP-12"],
       "evidence_checklist": ["PLC Fail-Safe configuration spec sheet", "Safety Instrumented Function (SIF) proof test certificate"]
     }
   ]

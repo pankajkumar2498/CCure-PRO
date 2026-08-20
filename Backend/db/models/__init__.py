@@ -16,6 +16,7 @@ from .assets import (
 from .compliance import (
     ComplianceControl,
     ComplianceCredential,
+    ComplianceEvidenceFile,
     ComplianceEvidenceRetentionPolicy,
     ComplianceException,
     ComplianceFinding,
@@ -120,6 +121,7 @@ __all__ = [
     "ComplianceFindingHistory",
     "ComplianceException",
     "ComplianceScore",
+    "ComplianceEvidenceFile",
     "ComplianceEvidenceRetentionPolicy",
     "ComplianceNotificationRule",
     "ComplianceIntegrationConnector",

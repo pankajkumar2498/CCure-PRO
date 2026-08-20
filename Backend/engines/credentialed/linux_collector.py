@@ -26,7 +26,67 @@ from engines.credentialed.ssh_scanner import SSHScanner
 
 log = logging.getLogger("ccure.linux_collector")
 
+
 # ---------------------------------------------------------------------------
+def _parse_linux_password_policy(raw: str) -> dict:
+    """Extracts the password policy from login.defs, pwquality and the PAM stack.
+
+    Returns only what it could read. An absent key means "not collected", which
+    the compliance engine renders as not assessed — the alternative, defaulting
+    to a value, is what made every host report a password policy it did not
+    have.
+    """
+    if not raw:
+        return {}
+
+    policy: dict = {}
+
+    # login.defs: `PASS_MAX_DAYS 90`, `PASS_MIN_LEN 8`
+    for key, field in (
+        ("PASS_MAX_DAYS", "max_age_days"),
+        ("PASS_MIN_LEN", "min_length"),
+    ):
+        m = re.search(rf"^\s*{key}\s+(\d+)", raw, re.MULTILINE)
+        if m:
+            policy[field] = int(m.group(1))
+
+    # pwquality.conf: `minlen = 12`, and any of the *credit knobs being
+    # negative means that class of character is required.
+    m = re.search(r"^\s*minlen\s*=\s*(\d+)", raw, re.MULTILINE | re.IGNORECASE)
+    if m:
+        policy["min_length"] = int(m.group(1))
+
+    credits = re.findall(
+        r"^\s*(dcredit|ucredit|lcredit|ocredit)\s*=\s*(-?\d+)",
+        raw,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if credits:
+        policy["complexity"] = any(int(v) < 0 for _, v in credits)
+
+    # PAM one-liners: `password requisite pam_pwquality.so ... minlen=12 dcredit=-1`
+    m = re.search(r"pam_(?:pwquality|cracklib)\.so[^\n]*?\bminlen=(\d+)", raw)
+    if m:
+        policy["min_length"] = int(m.group(1))
+    inline_credits = re.findall(
+        r"pam_(?:pwquality|cracklib)\.so[^\n]*?\b([duloe]credit)=(-?\d+)", raw
+    )
+    if inline_credits:
+        policy["complexity"] = any(int(v) < 0 for _, v in inline_credits)
+
+    # `pam_unix.so ... remember=5` is the password-history depth.
+    m = re.search(r"pam_unix\.so[^\n]*?\bremember=(\d+)", raw)
+    if m:
+        policy["history_length"] = int(m.group(1))
+
+    # The presence of a pwquality/cracklib module at all implies some
+    # complexity enforcement, even when no credit knob is set explicitly.
+    if "complexity" not in policy and re.search(r"pam_(?:pwquality|cracklib)\.so", raw):
+        policy["complexity"] = True
+
+    return policy
+
+
 # All commands executed on the remote host
 # ---------------------------------------------------------------------------
 # Performance optimization: reduced timeouts for slow commands
@@ -82,6 +142,19 @@ COMMANDS: dict[str, str] = {
     "nmbd_status": "systemctl is-active nmbd 2>/dev/null || systemctl is-active nmb 2>/dev/null",
     "openssl_config": "cat /etc/ssl/openssl.cnf /etc/pki/tls/openssl.cnf 2>/dev/null",
     "telnet_status": "systemctl is-active telnet.socket 2>/dev/null || systemctl is-active telnetd 2>/dev/null || which telnetd 2>/dev/null",
+    # Password policy. login.defs carries age and length on every distribution;
+    # pwquality.conf (RHEL family) and pam_pwquality/pam_cracklib lines in the
+    # PAM stack (Debian family) carry complexity. Both are read because neither
+    # alone covers the field. Missing files produce no output, which the parser
+    # reports as "not collected" rather than as a policy of zero.
+    "password_policy": (
+        "cat /etc/login.defs 2>/dev/null; "
+        "echo '---PWQUALITY---'; "
+        "cat /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null; "
+        "echo '---PAM---'; "
+        "grep -h -E 'pam_(pwquality|cracklib|unix)\\.so' /etc/pam.d/common-password "
+        "/etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null"
+    ),
 }
 
 
@@ -428,6 +501,11 @@ class LinuxCollector:
 
         # 5. RDP NLA is a Windows-only configuration, default to True on Linux
         data["rdp_nla_enforced"] = True
+
+        # 6. Password policy
+        pwd_policy = _parse_linux_password_policy(self._run("password_policy"))
+        if pwd_policy:
+            data["password_policy"] = pwd_policy
 
         data["security_issues"] = issues
         return data

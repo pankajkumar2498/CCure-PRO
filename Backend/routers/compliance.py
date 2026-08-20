@@ -4,10 +4,13 @@ Base routers for the CCure Audit PRO Policy Compliance Engine.
 """
 
 import logging
-from datetime import datetime, timezone
+import re
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from auth.rbac import require_permission
+from core import compliance_frameworks, nist_csf
 from core.audit import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import (
@@ -19,6 +22,7 @@ from db.models import Asset, User
 from db.models.compliance import (
     ComplianceControl,
     ComplianceCredential,
+    ComplianceEvidenceFile,
     ComplianceException,
     ComplianceFinding,
     ComplianceFindingHistory,
@@ -30,6 +34,7 @@ from db.models.compliance import (
     ComplianceRule,
     ComplianceRuleControl,
     ComplianceScanRun,
+    ComplianceScanSchedule,
     ComplianceScore,
     ComplianceTenantFramework,
 )
@@ -37,12 +42,15 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    File,
     HTTPException,
     Query,
     Request,
+    UploadFile,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
@@ -86,6 +94,26 @@ class AttestationRequest(BaseModel):
     status: str = Field(..., pattern="^(pass|fail|not_applicable)$")
     note: str | None = None
     evidence_file_ids: list[str] | None = None
+    # ISO/IEC 27001:2022 clause 6.1.3(d) requires the SoA to justify both the
+    # inclusion of every applicable control and the exclusion of every
+    # inapplicable one. `not_applicable` without a reason is not an exclusion
+    # an auditor can accept.
+    justification: str | None = Field(None, max_length=2000)
+    owner: str | None = None
+    next_review_at: datetime | None = None
+
+    # A model validator, not a field validator: Pydantic v2 does not run a
+    # field validator when the field is absent from the payload, which is
+    # exactly the case this rule exists to reject — an exclusion submitted with
+    # no justification key at all.
+    @model_validator(mode="after")
+    def _require_justification_for_exclusion(self):
+        if self.status == "not_applicable" and not (self.justification or "").strip():
+            raise ValueError(
+                "A justification is required when a control is excluded as not "
+                "applicable (ISO/IEC 27001:2022 clause 6.1.3 d)."
+            )
+        return self
 
 
 class JITCredentials(BaseModel):
@@ -134,14 +162,250 @@ class RemediationApprovalPayload(BaseModel):
     status: str = Field(..., pattern="^(approved|rejected)$")
 
 
+class ScheduleCreate(BaseModel):
+    framework_id: str
+    policy_id: str
+    frequency: str = Field(..., pattern="^(daily|weekly|monthly|quarterly|continuous)$")
+    asset_ids: list[str] | None = None
+    asset_tags: list[str] | None = None
+    notify_on: str = Field("always", pattern="^(always|on_failure_only|on_score_drop)$")
+    notify_channels: list[str] | None = None
+    first_run_at: datetime | None = None
+
+
+class ScheduleUpdate(BaseModel):
+    is_active: bool | None = None
+    frequency: str | None = Field(
+        None, pattern="^(daily|weekly|monthly|quarterly|continuous)$"
+    )
+    notify_on: str | None = Field(
+        None, pattern="^(always|on_failure_only|on_score_drop)$"
+    )
+    notify_channels: list[str] | None = None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper Methods
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def require_active_framework(framework_id: str) -> None:
+    """Refuses a framework this installation has parked.
+
+    Eleven of the thirteen seeded catalogues are parked while ISO 27001 and
+    NIST CSF are being finished (see `core.compliance_frameworks`). The
+    per-tenant `is_enabled` flag already gates the register, scans, findings,
+    attestation, evidence, schedules and the dashboard — but every one of the
+    thirteen report endpoints checked nothing at all, so
+    `/compliance/reports/nis2` would render a full PDF for a framework the
+    workspace does not list and no tenant has installed. This is the guard
+    those endpoints were missing.
+
+    A parked framework answers 403 rather than 404: the catalogue exists, its
+    controls are seeded and its crosswalks are live, and telling the caller it
+    does not exist would be false.
+    """
+    if compliance_frameworks.is_active(framework_id):
+        return
+
+    if compliance_frameworks.is_known(framework_id):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Framework {framework_id} is not enabled on this installation. "
+                "Active frameworks: "
+                + ", ".join(compliance_frameworks.active_framework_ids())
+                + "."
+            ),
+        )
+
+    raise HTTPException(status_code=404, detail=f"Unknown framework {framework_id}")
+
+
 def _is_admin(user: User) -> bool:
     role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     return role_name in ("admin", "superadmin", "compliance_officer")
+
+
+def _latest_run_id(db: Session, org_id: str, framework_id: str) -> str | None:
+    """Most recent completed scan run for this tenant and framework."""
+    row = (
+        db.query(ComplianceScanRun.id)
+        .filter(
+            ComplianceScanRun.tenant_id == org_id,
+            ComplianceScanRun.framework_id == framework_id,
+            ComplianceScanRun.status == "completed",
+        )
+        .order_by(ComplianceScanRun.finished_at.desc().nullslast())
+        .first()
+    )
+    return row[0] if row else None
+
+
+# Theme families whose published order is not the alphabetical one.
+_THEME_ORDER: tuple = tuple(nist_csf.FUNCTION_ORDER) + ("ORG", "PPL", "PHY", "TECH")
+
+
+def _ordered_themes(themes) -> list:
+    """Theme codes in a stable, framework-meaningful order.
+
+    `quadrant_scores` is a JSON object and the dashboard renders it in key
+    order, so the order the backend builds it in is what the user sees. Both
+    branches of `/summary` used to build it from a `set` or from a `DISTINCT`
+    with no `ORDER BY`, which meant the NIST CSF "Core Functions Breakdown"
+    panel came out in whatever order Postgres returned — and could differ
+    between two loads of the same page.
+
+    Families whose published order is not alphabetical are listed in
+    `_THEME_ORDER` and emitted in it — CSF's GV, ID, PR, DE, RS, RC and ISO's
+    ORG, PPL, PHY, TECH (Annex A clauses 5 to 8). Everything else sorts
+    alphabetically, which is at least deterministic.
+    """
+    unique = {t for t in themes if t}
+    known = [t for t in _THEME_ORDER if t in unique]
+    rest = sorted(unique - set(known))
+    return known + rest
+
+
+def control_sort_key(control_number: str) -> tuple:
+    """Orders control numbers numerically rather than lexicographically.
+
+    `ORDER BY control_number` is a string sort, so an ISO Statement of
+    Applicability came out as A.5.1, A.5.10, A.5.11 … A.5.2 — immediately
+    visible to an auditor and wrong in every framework whose controls are
+    numbered with dots. Splitting on the separators and comparing the numeric
+    segments as integers restores A.5.1 < A.5.2 < A.5.10.
+
+    NIST CSF 2.0 is handled separately because its order is *not* derivable
+    from the identifier. Sorting `GV.OC-01` as text gives the Functions in the
+    order DE, GV, ID, PR, RC, RS and the Govern Categories as OC, OV, PO, RM,
+    RR, SC — where NIST publishes GV, ID, PR, DE, RS, RC and OC, RM, RR, PO,
+    OV, SC. Both orders carry meaning to an assessor, and neither is
+    alphabetical, so `core.nist_csf` holds the published sequence and this
+    consults it first. It returns keys of the same `(int, int, str)` shape as
+    the generic path below, so the two compose in one sorted list.
+
+    Non-numeric segments in other frameworks sort as text after any numeric
+    segment at the same position, which keeps them grouped and stable.
+    """
+    if not control_number:
+        return ()
+
+    csf_key = nist_csf.sort_key(control_number)
+    if csf_key is not None:
+        return csf_key
+
+    cleaned = str(control_number).lstrip("A.").strip()
+    parts = re.split(r"[.\-_]", cleaned)
+    key: list = []
+    for part in parts:
+        if part.isdigit():
+            key.append((0, int(part), ""))
+        else:
+            key.append((1, 0, part.lower()))
+    return tuple(key)
+
+
+class RolledFinding:
+    """A control's single verdict, standing in for the findings behind it.
+
+    Report generators read `.status` off whatever the finding map holds. They
+    used to hold an arbitrary one of the control's findings — with twelve rules
+    on ISO A.8.20 that meant eleven verdicts were discarded and whichever row
+    the database returned last decided what the report said. This carries the
+    rolled-up verdict instead while keeping the attribute surface the
+    generators already use, and additionally exposes the reviewer's own inputs,
+    which a Statement of Applicability has to print.
+    """
+
+    __slots__ = (
+        "status",
+        "rule_id",
+        "evidence",
+        "source",
+        "justification",
+        "owner",
+        "attested_by",
+        "reviewed_at",
+        "contributing",
+    )
+
+    def __init__(self, status: str, findings: list):
+        self.status = status
+        self.contributing = findings
+        attested = next((f for f in findings if f.source == "manual_attestation"), None)
+        representative = attested or (findings[0] if findings else None)
+        self.rule_id = next((f.rule_id for f in findings if f.rule_id), None)
+        self.evidence = getattr(representative, "evidence", {}) or {}
+        self.source = getattr(representative, "source", "auto_scan")
+        self.justification = getattr(attested, "justification", None)
+        self.owner = getattr(attested, "owner", None)
+        self.attested_by = getattr(attested, "attested_by", None)
+        self.reviewed_at = getattr(attested, "reviewed_at", None)
+
+
+def rolled_up_control_findings(db: Session, org_id: str, control_ids: list) -> dict:
+    """`{control_id: RolledFinding}` for every control that has any finding."""
+    from core.compliance_tasks import roll_up_statuses
+
+    if not control_ids:
+        return {}
+
+    grouped: dict = {}
+    rows = (
+        db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+    for f in rows:
+        grouped.setdefault(f.control_id, []).append(f)
+
+    out: dict = {}
+    for control_id, findings in grouped.items():
+        verdict = roll_up_statuses([(f.status, f.source) for f in findings])
+        if verdict is not None:
+            out[control_id] = RolledFinding(verdict, findings)
+    return out
+
+
+def rolled_up_control_status(db: Session, org_id: str, control_ids: list) -> dict:
+    """One verdict per control, using the engine's own precedence rules.
+
+    Every consumer that summarises findings by control — the dashboard, the
+    SoA, the gap analysis — used to build `{f.control_id: f for f in findings}`
+    and let the last row of an unordered query decide. They all call this now,
+    so a control reports the same verdict wherever it is displayed.
+    """
+    from core.compliance_tasks import roll_up_statuses
+
+    if not control_ids:
+        return {}
+
+    rows = (
+        db.query(
+            ComplianceFinding.control_id,
+            ComplianceFinding.status,
+            ComplianceFinding.source,
+        )
+        .filter(
+            ComplianceFinding.tenant_id == org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+        )
+        .all()
+    )
+
+    grouped: dict = {}
+    for control_id, finding_status, source in rows:
+        grouped.setdefault(control_id, []).append((finding_status, source))
+
+    return {
+        control_id: roll_up_statuses(entries)
+        for control_id, entries in grouped.items()
+        if roll_up_statuses(entries) is not None
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,8 +440,21 @@ def get_marketplace_frameworks(
     )
     installed_ids = {inst.framework_id for inst in installed}
 
+    # Parked catalogues are not offered. They stay seeded — ISO's and NIST's
+    # crosswalks resolve into them and `main.py`'s bootstrap treats a missing
+    # one as damage to repair — but the marketplace is the one place a tenant
+    # admin could turn a parked framework back on, so it lists only the active
+    # ones. `active_framework_ids()` fixes the display order too; the query
+    # above has no ORDER BY, so the card grid was in whatever order Postgres
+    # returned.
+    active_ids = compliance_frameworks.active_framework_ids()
+    by_id = {fw.id: fw for fw in frameworks}
+
     results = []
-    for fw in frameworks:
+    for framework_id in active_ids:
+        fw = by_id.get(framework_id)
+        if not fw:
+            continue
         controls_count = (
             db.query(ComplianceControl)
             .filter(ComplianceControl.framework_id == fw.id)
@@ -194,7 +471,14 @@ def get_marketplace_frameworks(
             }
         )
 
-    return {"data": results}
+    return {
+        "data": results,
+        # The frontend builds its framework selectors from this rather than
+        # from a hardcoded list of thirteen ids, so enabling a framework later
+        # is a backend change alone.
+        "active_framework_ids": list(active_ids),
+        "parked_framework_ids": list(compliance_frameworks.parked_framework_ids()),
+    }
 
 
 @router.post("/marketplace/{framework_id}/install", status_code=status.HTTP_201_CREATED)
@@ -204,6 +488,12 @@ def install_marketplace_framework(
     user: User = Depends(require_permission("compliance", "manage_frameworks")),
 ):
     """Install/enable a framework for the organization."""
+    # A parked framework cannot be installed, or a tenant admin could bring one
+    # back through the marketplace and then scan against a catalogue that is
+    # not finished. Refused before the existence check so the answer is the
+    # same whether or not the row happens to be seeded.
+    require_active_framework(framework_id)
+
     # Check framework exists
     fw = (
         db.query(ComplianceFramework)
@@ -289,31 +579,40 @@ def install_marketplace_framework(
         db.add(default_policy)
         db.flush()
 
-    # Query and link all rules for this framework if not already linked
-    rules_linked = (
-        db.query(CompliancePolicyRule)
+    # Link every active rule that covers a control of this framework, adding
+    # any that are missing. The previous `if rules_linked == 0` guard meant the
+    # baseline was populated exactly once: a framework that later gained rules
+    # — as ISO 27001 just did for its twelve genuinely scannable controls —
+    # never picked them up in an organisation that had already installed it.
+    already_linked = {
+        row[0]
+        for row in db.query(CompliancePolicyRule.rule_id)
         .filter(CompliancePolicyRule.policy_id == default_policy.id)
-        .count()
-    )
-    if rules_linked == 0:
-        rules = (
-            db.query(ComplianceRule)
-            .join(
-                ComplianceRuleControl,
-                ComplianceRuleControl.rule_id == ComplianceRule.id,
-            )
-            .join(
-                ComplianceControl,
-                ComplianceControl.id == ComplianceRuleControl.control_id,
-            )
-            .filter(ComplianceControl.framework_id == framework_id)
-            .all()
-        )
+        .all()
+    }
 
-        if rules:
-            for r in rules:
-                link = CompliancePolicyRule(policy_id=default_policy.id, rule_id=r.id)
-                db.add(link)
+    framework_rules = (
+        db.query(ComplianceRule)
+        .join(
+            ComplianceRuleControl,
+            ComplianceRuleControl.rule_id == ComplianceRule.id,
+        )
+        .join(
+            ComplianceControl,
+            ComplianceControl.id == ComplianceRuleControl.control_id,
+        )
+        .filter(
+            ComplianceControl.framework_id == framework_id,
+            ComplianceRule.status == "active",
+        )
+        .distinct()
+        .all()
+    )
+
+    for r in framework_rules:
+        if r.id not in already_linked:
+            db.add(CompliancePolicyRule(policy_id=default_policy.id, rule_id=r.id))
+            already_linked.add(r.id)
 
     db.commit()
     log_audit_event(db, user, "install_framework", "framework", framework_id, "success")
@@ -586,6 +885,35 @@ def create_policy_baseline(
             status_code=400, detail="One or more selected rules do not exist"
         )
 
+    # Every rule must map to a control *in this policy's framework*, or it
+    # contributes nothing and the scan silently skips it. 495 rules in the
+    # shipped catalogue have no control mapping at all; before this check a
+    # policy built from one of them produced a foreign-key violation mid-scan,
+    # which the finding writer then handled by rolling back the whole session
+    # and discarding every finding the run had produced.
+    unmapped = [
+        r.id
+        for r in rules
+        if not db.query(ComplianceRuleControl.rule_id)
+        .join(
+            ComplianceControl,
+            ComplianceControl.id == ComplianceRuleControl.control_id,
+        )
+        .filter(
+            ComplianceRuleControl.rule_id == r.id,
+            ComplianceControl.framework_id == payload.framework_id,
+        )
+        .first()
+    ]
+    if unmapped:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "These rules are not mapped to any control in the selected "
+                "framework and would never be evaluated: " + ", ".join(unmapped)
+            ),
+        )
+
     policy_family = f"POL-{user.org_id.upper().replace('.', '_')}-{payload.name.replace(' ', '-').upper()[:15]}"
     policy_id = f"cpl_{user.org_id}_{policy_family.lower()}_v1"
 
@@ -658,12 +986,10 @@ def trigger_compliance_scan(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy baseline not found")
 
-    # Add random UUID suffix to prevent primary key collisions when triggered concurrently
-    import uuid
-
     rand_suffix = uuid.uuid4().hex[:4]
     run_id = f"csr_{user.org_id[:4]}_{datetime.now().strftime('%d%b%y_%H%M%S')}_{rand_suffix}"
 
+    now = datetime.now(timezone.utc)
     new_run = ComplianceScanRun(
         id=run_id,
         tenant_id=user.org_id,
@@ -675,18 +1001,46 @@ def trigger_compliance_scan(
             "asset_tags": payload.asset_tags or [],
         },
         status="queued",
-        started_at=datetime.now(timezone.utc),
+        # `created_at` is when the operator asked; `started_at` is set by the
+        # worker when it picks the run up. Stamping started_at here made every
+        # queued run look like it had already begun, which is also why a run
+        # that died before starting had no usable timestamp at all.
+        created_at=now,
     )
     db.add(new_run)
     db.commit()
 
-    # Route scan evaluation task directly through local BackgroundTasks for immediate updates
+    # Dispatch to the Celery `compliance` queue. This used to go through
+    # FastAPI's BackgroundTasks, which runs the evaluation inside the API
+    # process: a scan over a large estate occupied an API worker for its whole
+    # duration, had no retry, no visibility, and was lost outright if the
+    # container restarted mid-run. The queue and a worker consuming it already
+    # existed.
+    #
+    # If the broker is unreachable, fall back to in-process execution rather
+    # than refusing the scan — a single-container deployment with no worker is
+    # a supported way to run this product, and failing closed here would make
+    # compliance scanning unavailable rather than merely slower.
     from core.compliance_tasks import run_scan_task
 
-    background_tasks.add_task(run_scan_task, run_id, user.org_id)
+    dispatch = "celery"
+    try:
+        run_scan_task.delay(run_id, user.org_id)
+    except Exception as exc:  # broker down, not configured, etc.
+        log.warning(
+            "Could not queue compliance scan %s (%s); running in-process.",
+            run_id,
+            exc,
+        )
+        background_tasks.add_task(run_scan_task, run_id, user.org_id)
+        dispatch = "in_process"
 
     log_audit_event(db, user, "trigger_scan", "scan_run", run_id, "success")
-    return {"message": "Scan run triggered successfully", "scan_run_id": run_id}
+    return {
+        "message": "Scan run triggered successfully",
+        "scan_run_id": run_id,
+        "dispatch": dispatch,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -718,6 +1072,9 @@ def list_findings(
     user: User = Depends(require_permission("compliance", "read")),
 ):
     """List compliance findings for the organization with control and rule details."""
+    if framework_id and framework_id != "all":
+        require_active_framework(framework_id)
+
     # Filter only findings belonging to active/enabled frameworks for this tenant
     enabled_fws = (
         db.query(ComplianceTenantFramework.framework_id)
@@ -729,14 +1086,26 @@ def list_findings(
     )
     enabled_fw_ids = [r[0] for r in enabled_fws]
 
-    # Subquery to fetch the latest finding ID per unique (asset_id, control_id) pair
+    # One row per *check*, not one row per control.
+    #
+    # The distinct key used to be (asset_id, control_id), which collapsed every
+    # rule mapped to a control down to whichever finding was seen last. A.8.20
+    # carries twelve rules, so eleven failures per host were invisible in the
+    # UI — un-remediable, un-waivable, un-exportable — while still counting
+    # against the score. Adding rule_id keeps the original intent (one row per
+    # check rather than one per historical scan run) and surfaces all of them.
     subq = (
         db.query(ComplianceFinding.id)
         .filter(ComplianceFinding.tenant_id == user.org_id)
-        .distinct(ComplianceFinding.asset_id, ComplianceFinding.control_id)
+        .distinct(
+            ComplianceFinding.asset_id,
+            ComplianceFinding.control_id,
+            ComplianceFinding.rule_id,
+        )
         .order_by(
             ComplianceFinding.asset_id,
             ComplianceFinding.control_id,
+            ComplianceFinding.rule_id,
             ComplianceFinding.last_seen.desc(),
         )
         .subquery()
@@ -832,8 +1201,11 @@ def list_findings(
             {
                 "id": f.id,
                 "control_id": f.control_id,
+                "control_number": control.control_number if control else None,
                 "control_title": control.title if control else "Unknown Control",
+                "control_description": control.description if control else None,
                 "control_tags": control.tags if control else [],
+                "framework_id": control.framework_id if control else None,
                 "rule_id": f.rule_id,
                 "rule_name": rule.rule_family_code if rule else "Manual Check",
                 "severity": (rule.severity.upper() if rule else "MEDIUM"),
@@ -845,6 +1217,19 @@ def list_findings(
                 "source": f.source,
                 "status": f.status,
                 "evidence": f.evidence,
+                # The engine writes a plain-English reason into the evidence
+                # payload whenever a control could not be assessed ("No
+                # 'offline_configuration' evidence has been collected for this
+                # asset"). It was never surfaced, so `manual_review` reached the
+                # operator with no explanation of what to do about it.
+                "status_reason": (
+                    f.evidence.get("message") if isinstance(f.evidence, dict) else None
+                ),
+                "justification": f.justification,
+                "evidence_file_ids": f.evidence_file_ids or [],
+                "next_review_at": (
+                    f.next_review_at.isoformat() if f.next_review_at else None
+                ),
                 "control_evidence_checklist": (
                     control.evidence_checklist if control else []
                 ),
@@ -883,12 +1268,52 @@ def attest_manual_control(
             detail="Cannot attest controls for disabled or uninstalled frameworks.",
         )
 
-    finding_id = f"cfnd_{user.org_id}_manual_{control_id}"
+    # The *same* id the scan derives for this control's org-level placeholder.
+    # These used to be two different ids, so attesting a control produced a
+    # second org-level row rather than updating the placeholder, and the two
+    # then competed in the score rollup — where `manual_review` outranked
+    # `pass`, so the attestation was silently discarded. For ISO, where 63 of
+    # 93 controls are attestation-only, that made most of the framework
+    # impossible to comply with.
+    from core.compliance_tasks import org_finding_id_for
+
+    finding_id = org_finding_id_for(user.org_id, control_id)
 
     finding = (
         db.query(ComplianceFinding).filter(ComplianceFinding.id == finding_id).first()
     )
     now = datetime.now(timezone.utc)
+
+    # Evidence files must belong to this tenant and this control. Without the
+    # check a caller could attach another organisation's evidence to their own
+    # attestation by guessing an id.
+    file_ids = list(payload.evidence_file_ids or [])
+    if file_ids:
+        owned = {
+            row[0]
+            for row in db.query(ComplianceEvidenceFile.id)
+            .filter(
+                ComplianceEvidenceFile.id.in_(file_ids),
+                ComplianceEvidenceFile.tenant_id == user.org_id,
+                ComplianceEvidenceFile.control_id == control_id,
+            )
+            .all()
+        }
+        unknown = [fid for fid in file_ids if fid not in owned]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Evidence files not found for this control: " + ", ".join(unknown)
+                ),
+            )
+
+    evidence_payload = {
+        "note": payload.note or "",
+        "justification": payload.justification or "",
+        "attested_at": now.isoformat(),
+        "attested_by": user.id,
+    }
 
     if not finding:
         finding = ComplianceFinding(
@@ -897,23 +1322,39 @@ def attest_manual_control(
             control_id=control_id,
             source="manual_attestation",
             status=payload.status,
-            evidence={"note": payload.note or ""},
-            evidence_file_ids=payload.evidence_file_ids or [],
+            evidence=evidence_payload,
+            evidence_file_ids=file_ids,
+            justification=payload.justification,
+            owner=payload.owner or user.id,
+            next_review_at=payload.next_review_at,
             attested_by=user.id,
+            reviewed_at=now,
             first_seen=now,
             last_seen=now,
         )
         db.add(finding)
     else:
+        finding.source = "manual_attestation"
         finding.status = payload.status
-        finding.evidence = {"note": payload.note or ""}
-        finding.evidence_file_ids = payload.evidence_file_ids or []
+        finding.evidence = evidence_payload
+        finding.evidence_file_ids = file_ids
+        finding.justification = payload.justification
+        finding.owner = payload.owner or finding.owner or user.id
+        finding.next_review_at = payload.next_review_at or finding.next_review_at
         finding.attested_by = user.id
+        finding.reviewed_at = now
         finding.last_seen = now
+
+    # Bind the uploaded files to the finding they now support.
+    if file_ids:
+        db.query(ComplianceEvidenceFile).filter(
+            ComplianceEvidenceFile.id.in_(file_ids),
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+        ).update({"finding_id": finding_id}, synchronize_session=False)
 
     # Log history trail
     history = ComplianceFindingHistory(
-        id=f"cfh_{user.org_id}_{datetime.now().strftime('%M%S%f')}",
+        id=f"cfh_{uuid.uuid4().hex[:24]}",
         finding_id=finding_id,
         status=payload.status,
         changed_by=user.id,
@@ -923,14 +1364,648 @@ def attest_manual_control(
     db.add(history)
     db.commit()
 
-    # Recalculate cached framework score immediately upon attestation update
+    # Recalculate cached framework score immediately upon attestation update.
+    # The run id is carried over from the score row rather than nulled: passing
+    # None used to overwrite `scan_run_id` with NULL, so an attestation erased
+    # the score's link to the scan that produced the rest of it.
     from core.compliance_tasks import _calculate_compliance_score
 
-    _calculate_compliance_score(db, user.org_id, ctrl.framework_id, None, None)
+    _calculate_compliance_score(
+        db,
+        user.org_id,
+        ctrl.framework_id,
+        None,
+        _latest_run_id(db, user.org_id, ctrl.framework_id),
+    )
     db.commit()
 
     log_audit_event(db, user, "attest_control", "finding", finding_id, "success")
-    return {"message": "Attestation recorded successfully"}
+    return {"message": "Attestation recorded successfully", "finding_id": finding_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4.2. Control Register
+#
+# The workspace could only reach a control through a *finding*, and only a
+# finding whose status happened to be `manual_review`. A control that had never
+# been scanned was therefore unreachable — for ISO 27001 that meant the
+# reviewer could not see, let alone attest, most of Annex A, and the
+# applicability decision that clause 6.1.3 is built around had no route through
+# the product at all.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/frameworks/{framework_id}/controls")
+def list_framework_controls(
+    framework_id: str,
+    status: str | None = Query(None),
+    theme: str | None = Query(None),
+    scannability: str | None = Query(None),
+    search: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Every control of a framework with its current rolled-up verdict."""
+    require_active_framework(framework_id)
+
+    tf = (
+        db.query(ComplianceTenantFramework)
+        .filter_by(tenant_id=user.org_id, framework_id=framework_id, is_enabled=True)
+        .first()
+    )
+    if not tf:
+        raise HTTPException(
+            status_code=404, detail="Framework is not installed for this organization."
+        )
+
+    query = db.query(ComplianceControl).filter(
+        ComplianceControl.framework_id == framework_id
+    )
+    if theme and theme != "all":
+        query = query.filter(ComplianceControl.theme == theme)
+    if scannability and scannability != "all":
+        query = query.filter(ComplianceControl.scannability == scannability)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                ComplianceControl.title.ilike(pattern),
+                ComplianceControl.control_number.ilike(pattern),
+                ComplianceControl.description.ilike(pattern),
+            )
+        )
+
+    controls = query.all()
+    control_ids = [c.id for c in controls]
+    verdicts = rolled_up_control_status(db, user.org_id, control_ids)
+
+    # The org-level attestation row carries the reviewer's own inputs —
+    # justification, owner, review date, attached evidence — which the rolled-up
+    # verdict deliberately does not.
+    attestations = {
+        f.control_id: f
+        for f in db.query(ComplianceFinding)
+        .filter(
+            ComplianceFinding.tenant_id == user.org_id,
+            ComplianceFinding.control_id.in_(control_ids),
+            ComplianceFinding.asset_id.is_(None),
+        )
+        .all()
+    }
+
+    evidence_counts = dict(
+        db.query(
+            ComplianceEvidenceFile.control_id, func.count(ComplianceEvidenceFile.id)
+        )
+        .filter(
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+            ComplianceEvidenceFile.control_id.in_(control_ids),
+        )
+        .group_by(ComplianceEvidenceFile.control_id)
+        .all()
+    )
+
+    rows = []
+    for c in controls:
+        verdict = verdicts.get(c.id) or "not_assessed"
+        if status and status != "all" and verdict != status:
+            continue
+        att = attestations.get(c.id)
+        rows.append(
+            {
+                "control_id": c.id,
+                "control_number": c.control_number,
+                "title": c.title,
+                "description": c.description,
+                "theme": c.theme,
+                # NIST CSF's hierarchy is Function ▸ Category ▸ Subcategory, and
+                # `theme` alone carries only the two-letter Function code. The
+                # register printed a bare "GV" against every Govern row, which
+                # tells a reviewer neither which Function nor which Category
+                # they are attesting within. Derived from the identifier rather
+                # than stored, so it is correct for any framework whose controls
+                # are CSF Subcategories and null everywhere else.
+                "function": nist_csf.function_name_for(c.control_number),
+                "category": (
+                    c.control_number.partition("-")[0]
+                    if nist_csf.is_csf_subcategory(c.control_number)
+                    else None
+                ),
+                "category_name": nist_csf.category_name_for(c.control_number),
+                "scannability": c.scannability,
+                "scan_module_hint": c.scan_module_hint,
+                "evidence_checklist": c.evidence_checklist or [],
+                "crosswalk": c.crosswalk or [],
+                "tags": c.tags or [],
+                "status": verdict,
+                "justification": att.justification if att else None,
+                "owner": att.owner if att else None,
+                "attested_by": att.attested_by if att else None,
+                "reviewed_at": (
+                    att.reviewed_at.isoformat() if att and att.reviewed_at else None
+                ),
+                "next_review_at": (
+                    att.next_review_at.isoformat()
+                    if att and att.next_review_at
+                    else None
+                ),
+                "evidence_file_count": evidence_counts.get(c.id, 0),
+            }
+        )
+
+    rows.sort(key=lambda r: control_sort_key(r["control_number"]))
+
+    # Readiness, not a single percentage. "62% compliant" cannot distinguish a
+    # framework nobody has looked at from one that was assessed and failed, and
+    # for a certification workflow the actionable number is how many controls
+    # still need a human.
+    tally: dict = {}
+    for r in rows:
+        tally[r["status"]] = tally.get(r["status"], 0) + 1
+
+    return {
+        "framework_id": framework_id,
+        "total": len(rows),
+        "summary": {
+            "passed": tally.get("pass", 0),
+            "failed": tally.get("fail", 0),
+            "not_applicable": tally.get("not_applicable", 0),
+            "exception": tally.get("exception", 0),
+            "awaiting_review": tally.get("manual_review", 0),
+            "not_assessed": tally.get("not_assessed", 0),
+        },
+        "data": rows,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4.3. Attestation Evidence Files
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Deliberately conservative. Evidence is policy documents, screenshots, signed
+# records and exported reports; nothing here needs to be executable, and an
+# archive would let a caller smuggle content past the type check.
+_ALLOWED_EVIDENCE_TYPES = {
+    "application/pdf": ".pdf",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "text/plain": ".txt",
+    "text/csv": ".csv",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+}
+_MAX_EVIDENCE_BYTES = 25 * 1024 * 1024
+
+
+def _evidence_root() -> str:
+    """Base directory for stored evidence, configurable per deployment."""
+    import os
+
+    return os.environ.get(
+        "COMPLIANCE_EVIDENCE_DIR", os.path.join("/app", "data", "compliance_evidence")
+    )
+
+
+@router.post("/controls/{control_id}/evidence", status_code=status.HTTP_201_CREATED)
+async def upload_control_evidence(
+    control_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "attest")),
+):
+    """Attach an audit evidence document to a control."""
+    import hashlib
+    import os
+
+    ctrl = (
+        db.query(ComplianceControl).filter(ComplianceControl.id == control_id).first()
+    )
+    if not ctrl:
+        raise HTTPException(status_code=404, detail="Control not found")
+
+    tf = (
+        db.query(ComplianceTenantFramework)
+        .filter_by(
+            tenant_id=user.org_id, framework_id=ctrl.framework_id, is_enabled=True
+        )
+        .first()
+    )
+    if not tf:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot attach evidence for a disabled or uninstalled framework.",
+        )
+
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in _ALLOWED_EVIDENCE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'{content_type or 'unknown'}' is not an accepted evidence type. "
+                "Upload a PDF, image, text, CSV, Word or Excel document."
+            ),
+        )
+
+    # Read with a cap rather than trusting a declared length: the size is only
+    # known once the bytes are in hand, and an unbounded read is how an upload
+    # endpoint becomes a memory exhaustion primitive.
+    payload = await file.read(_MAX_EVIDENCE_BYTES + 1)
+    if len(payload) > _MAX_EVIDENCE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Evidence files are limited to {_MAX_EVIDENCE_BYTES // (1024 * 1024)} MB.",
+        )
+    if not payload:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+    file_id = f"cef_{uuid.uuid4().hex[:24]}"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    # The stored name is derived entirely from the generated id and the
+    # extension implied by the accepted content type — never from the
+    # user-supplied filename, which is attacker-controlled and would otherwise
+    # let `../` escape the tenant directory.
+    extension = _ALLOWED_EVIDENCE_TYPES[content_type]
+    tenant_dir = os.path.join(_evidence_root(), user.org_id)
+    os.makedirs(tenant_dir, exist_ok=True)
+    storage_path = os.path.join(tenant_dir, f"{file_id}{extension}")
+    with open(storage_path, "wb") as fh:
+        fh.write(payload)
+
+    record = ComplianceEvidenceFile(
+        id=file_id,
+        tenant_id=user.org_id,
+        control_id=control_id,
+        filename=os.path.basename(file.filename or f"evidence{extension}")[:255],
+        content_type=content_type,
+        size_bytes=len(payload),
+        sha256=digest,
+        storage_path=storage_path,
+        uploaded_by=user.id,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db.add(record)
+    db.commit()
+
+    log_audit_event(db, user, "upload_evidence", "evidence", file_id, "success")
+    return {
+        "id": file_id,
+        "filename": record.filename,
+        "content_type": content_type,
+        "size_bytes": record.size_bytes,
+        "sha256": digest,
+        "uploaded_at": record.uploaded_at.isoformat(),
+    }
+
+
+@router.get("/controls/{control_id}/evidence")
+def list_control_evidence(
+    control_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """List the evidence documents attached to a control."""
+    files = (
+        db.query(ComplianceEvidenceFile)
+        .filter(
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+            ComplianceEvidenceFile.control_id == control_id,
+        )
+        .order_by(ComplianceEvidenceFile.uploaded_at.desc())
+        .all()
+    )
+    return {
+        "data": [
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "content_type": f.content_type,
+                "size_bytes": f.size_bytes,
+                "sha256": f.sha256,
+                "uploaded_by": f.uploaded_by,
+                "uploaded_at": f.uploaded_at.isoformat(),
+            }
+            for f in files
+        ]
+    }
+
+
+@router.get("/evidence/{file_id}/download")
+def download_control_evidence(
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Download one evidence document."""
+    import os
+
+    record = (
+        db.query(ComplianceEvidenceFile)
+        .filter(
+            ComplianceEvidenceFile.id == file_id,
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+        )
+        .first()
+    )
+    if not record or not os.path.exists(record.storage_path):
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+
+    with open(record.storage_path, "rb") as fh:
+        content = fh.read()
+
+    return Response(
+        content=content,
+        media_type=record.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{record.filename}"',
+            "X-Evidence-SHA256": record.sha256,
+        },
+    )
+
+
+@router.delete("/evidence/{file_id}", status_code=status.HTTP_200_OK)
+def delete_control_evidence(
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "attest")),
+):
+    """Remove an evidence document."""
+    import os
+
+    record = (
+        db.query(ComplianceEvidenceFile)
+        .filter(
+            ComplianceEvidenceFile.id == file_id,
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+
+    try:
+        if os.path.exists(record.storage_path):
+            os.remove(record.storage_path)
+    except OSError:
+        log.warning("Could not remove evidence file from disk: %s", record.storage_path)
+
+    db.delete(record)
+    db.commit()
+    log_audit_event(db, user, "delete_evidence", "evidence", file_id, "success")
+    return {"message": "Evidence file removed"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4.4. Scan Run Status & History
+#
+# There was no way to ask how a scan was going. The workspace polled a blind
+# thirty-second timer and then stopped, so a run that ended `failed` was
+# indistinguishable from one still in progress, and nothing ever surfaced the
+# reason.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/scans")
+def list_scan_runs(
+    framework_id: str | None = Query(None),
+    limit: int = Query(25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Compliance scan history, most recent first."""
+    if framework_id and framework_id != "all":
+        require_active_framework(framework_id)
+
+    query = db.query(ComplianceScanRun).filter(
+        ComplianceScanRun.tenant_id == user.org_id
+    )
+    if framework_id and framework_id != "all":
+        query = query.filter(ComplianceScanRun.framework_id == framework_id)
+    else:
+        # Historical runs for a framework that has since been parked would
+        # otherwise still be listed, and each row carries a framework name and
+        # a score the workspace can no longer open. Scoped to the frameworks
+        # this installation offers, like every other listing here.
+        query = query.filter(
+            ComplianceScanRun.framework_id.in_(
+                compliance_frameworks.active_framework_ids()
+            )
+        )
+
+    runs = query.order_by(ComplianceScanRun.created_at.desc()).limit(limit).all()
+    return {"data": [_serialize_run(db, r) for r in runs]}
+
+
+@router.get("/scans/{run_id}")
+def get_scan_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """Status of one compliance scan run."""
+    run = (
+        db.query(ComplianceScanRun)
+        .filter(
+            ComplianceScanRun.id == run_id,
+            ComplianceScanRun.tenant_id == user.org_id,
+        )
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    # A run belonging to a framework this installation has parked is history
+    # the workspace can no longer act on; the same guard the rest of the module
+    # applies.
+    require_active_framework(run.framework_id)
+    return _serialize_run(db, run)
+
+
+def _serialize_run(db: Session, run: ComplianceScanRun) -> dict:
+    findings = (
+        db.query(ComplianceFinding.status, func.count(ComplianceFinding.id))
+        .filter(ComplianceFinding.scan_run_id == run.id)
+        .group_by(ComplianceFinding.status)
+        .all()
+    )
+    return {
+        "id": run.id,
+        "framework_id": run.framework_id,
+        "policy_id": run.policy_id,
+        "schedule_id": run.schedule_id,
+        "status": run.status,
+        "initiated_by": run.initiated_by,
+        "scope": run.scope,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "error_message": run.error_message,
+        "finding_counts": {status: count for status, count in findings},
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4.6. Scan Schedules
+#
+# `compliance_scan_schedules` has existed since the first compliance migration,
+# Celery beat has polled it every sixty seconds, and `manage_schedules` has been
+# a granted permission — with no endpoint that could create a row. Continuous
+# assessment was unreachable end to end.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/schedules", status_code=status.HTTP_201_CREATED)
+def create_scan_schedule(
+    payload: ScheduleCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "manage_schedules")),
+):
+    """Create a recurring compliance scan."""
+    tf = (
+        db.query(ComplianceTenantFramework)
+        .filter_by(
+            tenant_id=user.org_id, framework_id=payload.framework_id, is_enabled=True
+        )
+        .first()
+    )
+    if not tf:
+        raise HTTPException(
+            status_code=400, detail="Associated framework must be installed and active."
+        )
+
+    policy = (
+        db.query(CompliancePolicy)
+        .filter(
+            CompliancePolicy.id == payload.policy_id,
+            or_(
+                CompliancePolicy.tenant_id == None,  # noqa: E711
+                CompliancePolicy.tenant_id == user.org_id,
+            ),
+        )
+        .first()
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy baseline not found")
+
+    schedule_id = f"csh_{uuid.uuid4().hex[:24]}"
+    schedule = ComplianceScanSchedule(
+        id=schedule_id,
+        tenant_id=user.org_id,
+        framework_id=payload.framework_id,
+        policy_id=payload.policy_id,
+        scope={
+            "asset_ids": payload.asset_ids or [],
+            "asset_tags": payload.asset_tags or [],
+        },
+        frequency=payload.frequency,
+        notify_on=payload.notify_on,
+        notify_channels=payload.notify_channels or [],
+        is_active=True,
+        # Due immediately on the next beat tick unless the caller says
+        # otherwise, so a new schedule visibly does something.
+        next_run_at=payload.first_run_at or datetime.now(timezone.utc),
+    )
+    db.add(schedule)
+    db.commit()
+    log_audit_event(db, user, "create_schedule", "schedule", schedule_id, "success")
+    return {"message": "Schedule created", "schedule_id": schedule_id}
+
+
+@router.get("/schedules")
+def list_scan_schedules(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "read")),
+):
+    """List this organization's compliance scan schedules."""
+    # A schedule survives its framework being parked. `run_scheduled_scans`
+    # now skips it, so listing it would offer an edit button on something that
+    # will never fire.
+    rows = (
+        db.query(ComplianceScanSchedule)
+        .filter(
+            ComplianceScanSchedule.tenant_id == user.org_id,
+            ComplianceScanSchedule.framework_id.in_(
+                compliance_frameworks.active_framework_ids()
+            ),
+        )
+        .all()
+    )
+    return {
+        "data": [
+            {
+                "id": s.id,
+                "framework_id": s.framework_id,
+                "policy_id": s.policy_id,
+                "scope": s.scope,
+                "frequency": s.frequency,
+                "notify_on": s.notify_on,
+                "notify_channels": s.notify_channels,
+                "is_active": s.is_active,
+                "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+                "next_run_at": s.next_run_at.isoformat() if s.next_run_at else None,
+            }
+            for s in rows
+        ]
+    }
+
+
+@router.patch("/schedules/{schedule_id}")
+def update_scan_schedule(
+    schedule_id: str,
+    payload: ScheduleUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "manage_schedules")),
+):
+    """Pause, resume or re-time a compliance scan schedule."""
+    schedule = (
+        db.query(ComplianceScanSchedule)
+        .filter(
+            ComplianceScanSchedule.id == schedule_id,
+            ComplianceScanSchedule.tenant_id == user.org_id,
+        )
+        .first()
+    )
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    if payload.is_active is not None:
+        schedule.is_active = payload.is_active
+    if payload.frequency is not None:
+        schedule.frequency = payload.frequency
+    if payload.notify_on is not None:
+        schedule.notify_on = payload.notify_on
+    if payload.notify_channels is not None:
+        schedule.notify_channels = payload.notify_channels
+
+    db.commit()
+    log_audit_event(db, user, "update_schedule", "schedule", schedule_id, "success")
+    return {"message": "Schedule updated"}
+
+
+@router.delete("/schedules/{schedule_id}", status_code=status.HTTP_200_OK)
+def delete_scan_schedule(
+    schedule_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "manage_schedules")),
+):
+    """Remove a compliance scan schedule."""
+    schedule = (
+        db.query(ComplianceScanSchedule)
+        .filter(
+            ComplianceScanSchedule.id == schedule_id,
+            ComplianceScanSchedule.tenant_id == user.org_id,
+        )
+        .first()
+    )
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    db.delete(schedule)
+    db.commit()
+    log_audit_event(db, user, "delete_schedule", "schedule", schedule_id, "success")
+    return {"message": "Schedule removed"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1772,6 +2847,13 @@ def get_dashboard_summary(
     user: User = Depends(require_permission("compliance", "read")),
 ):
     """Retrieve compliance summary statistics and quadrant metrics."""
+    # An explicit framework must be one this installation offers. Left
+    # unguarded, `?framework_id=cfw_nis2` returned a scored dashboard for a
+    # parked catalogue. `None` and "all" fall through to the tenant's enabled
+    # set below, which is already the active pair.
+    if framework_id and framework_id != "all":
+        require_active_framework(framework_id)
+
     # Filter scores by enabled frameworks
     enabled_fw_subquery = (
         db.query(ComplianceTenantFramework.framework_id)
@@ -1880,20 +2962,14 @@ def get_dashboard_summary(
 
         control_ids = [c.id for c in controls]
 
-        subq = (
-            db.query(ComplianceFinding.id)
-            .filter(ComplianceFinding.tenant_id == user.org_id)
-            .distinct(ComplianceFinding.asset_id, ComplianceFinding.control_id)
-            .order_by(
-                ComplianceFinding.asset_id,
-                ComplianceFinding.control_id,
-                ComplianceFinding.last_seen.desc(),
-            )
-            .subquery()
-        )
+        # One rolled-up verdict per control, through the shared precedence
+        # table — the previous last-wins dict let whichever finding the
+        # database returned last decide the control, so a filtered dashboard
+        # could disagree with the unfiltered one about the same control.
+        from core.compliance_tasks import roll_up_statuses
 
         finding_query = db.query(ComplianceFinding).filter(
-            ComplianceFinding.id.in_(subq),
+            ComplianceFinding.tenant_id == user.org_id,
             ComplianceFinding.control_id.in_(control_ids),
         )
 
@@ -1906,64 +2982,52 @@ def get_dashboard_summary(
                 ComplianceFinding.cde_scope.isnot(None)
             )
 
-        findings = finding_query.all()
-        finding_map = {f.control_id: f for f in findings}
+        grouped: dict = {}
+        for f in finding_query.all():
+            grouped.setdefault(f.control_id, []).append((f.status, f.source))
+        verdicts = {cid: roll_up_statuses(entries) for cid, entries in grouped.items()}
+
+        def _verdicts_for(subset):
+            return [verdicts.get(c.id) for c in subset]
+
+        def _score(subset):
+            vs = _verdicts_for(subset)
+            p = sum(1 for v in vs if v in ("pass", "exception"))
+            applicable_n = sum(1 for v in vs if v != "not_applicable")
+            return (round((p / applicable_n) * 100, 2) if applicable_n else 0.0), p
 
         total = len(controls)
-        passed = sum(
-            1
-            for c in controls
-            if finding_map.get(c.id)
-            and finding_map[c.id].status in ("pass", "exception")
-        )
-        failed = sum(
-            1
-            for c in controls
-            if finding_map.get(c.id)
-            and finding_map[c.id].status in ("fail", "pending_reverify")
-        )
-        exceptions = sum(
-            1
-            for c in controls
-            if finding_map.get(c.id) and finding_map[c.id].status == "exception"
-        )
-        applicable = sum(
-            1
-            for c in controls
-            if not finding_map.get(c.id) or finding_map[c.id].status != "not_applicable"
+        all_verdicts = _verdicts_for(controls)
+        score_pct, passed = _score(controls)
+        failed = sum(1 for v in all_verdicts if v in ("fail", "pending_reverify"))
+        exceptions = sum(1 for v in all_verdicts if v == "exception")
+        assessed = sum(
+            1 for v in all_verdicts if v is not None and v != "manual_review"
         )
 
-        score_pct = round((passed / applicable) * 100, 2) if applicable > 0 else 0.0
-
-        distinct_themes = list({c.theme for c in controls if c.theme})
         quadrants = {}
-        for theme in distinct_themes:
-            theme_controls = [c for c in controls if c.theme == theme]
-            t_passed = sum(
-                1
-                for c in theme_controls
-                if finding_map.get(c.id)
-                and finding_map[c.id].status in ("pass", "exception")
-            )
-            t_applicable = sum(
-                1
-                for c in theme_controls
-                if not finding_map.get(c.id)
-                or finding_map[c.id].status != "not_applicable"
-            )
-            quadrants[theme] = (
-                round((t_passed / t_applicable) * 100, 2) if t_applicable > 0 else 0.0
-            )
+        for theme in _ordered_themes({c.theme for c in controls if c.theme}):
+            quadrants[theme] = _score([c for c in controls if c.theme == theme])[0]
 
         return {
             "score_pct": score_pct,
+            # Reported as equal to the unweighted score and labelled as such.
+            # This branch has no per-rule severity in hand, and returning the
+            # unweighted number under the name "weighted" silently claimed a
+            # risk weighting that had not been applied.
             "weighted_score_pct": score_pct,
+            "weighted_available": False,
             "quadrant_scores": quadrants,
             "kpis": {
                 "total": total,
                 "passed": passed,
                 "failed": failed,
                 "exceptions": exceptions,
+                # Coverage and conformity are different questions and a single
+                # percentage cannot answer both: an unscanned framework and a
+                # badly-failing one both read as a low score.
+                "assessed": assessed,
+                "not_assessed": total - assessed,
             },
         }
 
@@ -1980,7 +3044,7 @@ def get_dashboard_summary(
         .distinct()
         .all()
     )
-    default_themes = [t[0] for t in ctrl_themes_rows if t[0]]
+    default_themes = _ordered_themes([t[0] for t in ctrl_themes_rows if t[0]])
     if not default_themes:
         default_themes = ["ORG", "PPL", "PHY", "TECH"]
 
@@ -2003,17 +3067,24 @@ def get_dashboard_summary(
         .all()
     )
 
-    # Default baseline if no scores are populated yet for target framework
+    # Default baseline if no scores are populated yet for target framework.
+    # Every control is *unassessed*, not failed — the KPI keys have to say so,
+    # or a newly installed framework is indistinguishable from one that was
+    # scanned and failed outright.
     if not scores:
         return {
             "score_pct": 0.00,
             "weighted_score_pct": 0.00,
+            "weighted_available": False,
             "quadrant_scores": {t: 0.0 for t in default_themes},
             "kpis": {
                 "total": total_controls_count,
                 "passed": 0,
                 "failed": 0,
                 "exceptions": 0,
+                "not_applicable": 0,
+                "assessed": 0,
+                "not_assessed": total_controls_count,
             },
         }
 
@@ -2033,9 +3104,9 @@ def get_dashboard_summary(
         .distinct()
         .all()
     )
-    theme_codes = [t[0] for t in active_themes if t[0]]
+    theme_codes = _ordered_themes([t[0] for t in active_themes if t[0]])
     if not theme_codes:
-        theme_codes = default_themes
+        theme_codes = _ordered_themes(default_themes)
 
     quadrants = {q_code: 0.0 for q_code in theme_codes}
     for q_code in theme_codes:
@@ -2058,6 +3129,18 @@ def get_dashboard_summary(
     total = sum(s.total_controls for s in scores)
     passed = sum(s.pass_count for s in scores)
     failed = sum(s.fail_count for s in scores)
+    # `pending_count` is controls that reached no verdict plus those awaiting a
+    # human. Reporting it is not cosmetic: on a freshly installed framework
+    # total/passed/failed reads 106/0/0 at 0%, which is indistinguishable from
+    # a framework that was assessed and failed everything. NIST CSF makes that
+    # acute — 79 of its 106 Subcategories are attestation-only, so an untouched
+    # installation is *expected* to sit at 0% until a reviewer works through
+    # them, and the dashboard has to be able to say so. The filtered branch
+    # above already returns these two keys; this one did not, so the same
+    # framework reported a different KPI shape depending on whether a filter
+    # happened to be applied.
+    pending = sum(s.pending_count or 0 for s in scores)
+    not_applicable = sum(s.na_count or 0 for s in scores)
 
     # Filter exceptions to only count active ones linked to enabled frameworks
     exceptions = (
@@ -2083,12 +3166,16 @@ def get_dashboard_summary(
     return {
         "score_pct": round(avg_score, 2),
         "weighted_score_pct": round(avg_weighted, 2),
+        "weighted_available": True,
         "quadrant_scores": quadrants,
         "kpis": {
             "total": total,
             "passed": passed,
             "failed": failed,
             "exceptions": exceptions,
+            "not_applicable": not_applicable,
+            "assessed": max(total - pending, 0),
+            "not_assessed": pending,
         },
     }
 
@@ -2099,9 +3186,8 @@ def get_dashboard_summary(
 
 import io
 
-from fastapi.responses import Response, StreamingResponse
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -2112,6 +3198,351 @@ try:
 except ImportError:
     docx = None
     Document = None
+
+
+def _verdict_of(findings_map: dict, control_id: str) -> str:
+    """Reads a control's verdict from either a status map or a finding map.
+
+    Twelve report endpoints built `{f.control_id: f for f in findings}` and let
+    the last row of an unordered query decide the control. They now pass the
+    rolled-up status map from `rolled_up_control_status`, but the accessor
+    tolerates the old shape so a caller that has not been converted still
+    renders rather than raising.
+    """
+    value = findings_map.get(control_id)
+    if value is None:
+        return "PENDING"
+    if isinstance(value, str):
+        return value.upper()
+    return str(getattr(value, "status", "PENDING")).upper()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Statement of Applicability
+#
+# ISO/IEC 27001:2022 clause 6.1.3(d) requires the SoA to state, for every
+# control: whether it is applicable, the justification for including it, whether
+# it is implemented, and the justification for excluding it if it is not. The
+# previous export carried none of the four — it was a five-column control status
+# table (id, name, category, scan mode, verdict) labelled "SoA", which is not an
+# artefact a certification body can accept. It also had no organisation name, no
+# generation date and no approver.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# How a rolled-up verdict maps onto the two columns an SoA actually asks for.
+# `not_applicable` is the only status that makes a control excluded; everything
+# else means the organisation has decided the control applies, and the question
+# is then whether it is implemented yet.
+_SOA_APPLICABILITY = {
+    "not_applicable": ("No", "Excluded"),
+    "pass": ("Yes", "Implemented"),
+    "exception": ("Yes", "Implemented (compensating control)"),
+    "fail": ("Yes", "Not implemented"),
+    "pending_reverify": ("Yes", "Remediation in progress"),
+    "remediation_applied": ("Yes", "Remediation applied, awaiting verification"),
+    "manual_review": ("Yes", "Awaiting review"),
+}
+
+
+def _soa_row(control, rolled) -> dict:
+    """Builds the SoA columns for one control."""
+    verdict = getattr(rolled, "status", None) or "not_assessed"
+    applicable, implementation = _SOA_APPLICABILITY.get(
+        verdict, ("Yes", "Not assessed")
+    )
+
+    justification = getattr(rolled, "justification", None)
+    if not justification:
+        if verdict == "not_applicable":
+            # An exclusion with no recorded reason is a finding in its own
+            # right, and saying so in the document is more useful than leaving
+            # the cell blank for the auditor to discover.
+            justification = (
+                "NOT RECORDED — an exclusion requires a documented justification."
+            )
+        else:
+            # For an included control the standard's own requirement is a
+            # reason for inclusion; the control's objective is that reason
+            # unless the organisation has written a more specific one.
+            justification = control.description or control.title
+
+    return {
+        "number": control.control_number or control.id,
+        "title": control.title or "",
+        "theme": control.theme or "",
+        "applicable": applicable,
+        "justification": justification,
+        "implementation": implementation,
+        "verdict": verdict.replace("_", " ").upper(),
+        "owner": getattr(rolled, "owner", None) or "",
+        "reviewed_at": (
+            getattr(rolled, "reviewed_at", None).strftime("%d %b %Y")
+            if getattr(rolled, "reviewed_at", None)
+            else ""
+        ),
+    }
+
+
+def _generate_soa_detailed_pdf(
+    controls: list, findings_map: dict, meta: dict
+) -> io.BytesIO:
+    """Renders a certification-grade Statement of Applicability as PDF."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=12 * mm,
+        leftMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=14 * mm,
+        title=f"Statement of Applicability — {meta['framework_name']}",
+        author="CCure Audit PRO",
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "SoATitle",
+        parent=styles["Title"],
+        fontSize=17,
+        textColor=colors.HexColor("#003366"),
+        spaceAfter=4,
+    )
+    meta_style = ParagraphStyle("SoAMeta", parent=styles["Normal"], fontSize=9)
+    cell = ParagraphStyle("SoACell", parent=styles["Normal"], fontSize=7, leading=9)
+    head = ParagraphStyle(
+        "SoAHead",
+        parent=styles["Normal"],
+        fontSize=7,
+        leading=9,
+        textColor=colors.white,
+    )
+
+    rows = [_soa_row(c, findings_map.get(c.id)) for c in controls]
+    counts: dict = {}
+    for r in rows:
+        counts[r["applicable"]] = counts.get(r["applicable"], 0) + 1
+    implemented = sum(1 for r in rows if r["implementation"].startswith("Implemented"))
+
+    story = [
+        Paragraph("Statement of Applicability", title_style),
+        Paragraph(
+            f"{meta['framework_name']} ({meta['framework_version']})",
+            styles["Heading3"],
+        ),
+        Spacer(1, 3 * mm),
+        Paragraph(f"<b>Organization:</b> {meta['organization']}", meta_style),
+        Paragraph(
+            f"<b>Generated:</b> {meta['generated_at'].strftime('%d %b %Y %H:%M UTC')}"
+            f" &nbsp;&nbsp; <b>By:</b> {meta['generated_by']}",
+            meta_style,
+        ),
+        Paragraph(
+            f"<b>Controls:</b> {len(rows)} total &nbsp;|&nbsp; "
+            f"{counts.get('Yes', 0)} applicable &nbsp;|&nbsp; "
+            f"{counts.get('No', 0)} excluded &nbsp;|&nbsp; "
+            f"{implemented} implemented",
+            meta_style,
+        ),
+        Paragraph(
+            f"<b>Source scan run:</b> {meta.get('last_run_id') or 'None — no completed scan'}",
+            meta_style,
+        ),
+        Spacer(1, 5 * mm),
+    ]
+
+    table_data = [
+        [
+            Paragraph("<b>Ref</b>", head),
+            Paragraph("<b>Control</b>", head),
+            Paragraph("<b>Applicable</b>", head),
+            Paragraph("<b>Justification</b>", head),
+            Paragraph("<b>Implementation status</b>", head),
+            Paragraph("<b>Owner</b>", head),
+            Paragraph("<b>Reviewed</b>", head),
+        ]
+    ]
+    evidence_counts = meta.get("evidence_counts") or {}
+    for control, r in zip(controls, rows):
+        n_files = evidence_counts.get(control.id, 0)
+        impl = r["implementation"]
+        if n_files:
+            impl = f"{impl}<br/><font size='6' color='#4A5568'>{n_files} evidence file(s)</font>"
+        table_data.append(
+            [
+                Paragraph(r["number"], cell),
+                Paragraph(r["title"], cell),
+                Paragraph(r["applicable"], cell),
+                Paragraph(r["justification"], cell),
+                Paragraph(impl, cell),
+                Paragraph(r["owner"], cell),
+                Paragraph(r["reviewed_at"], cell),
+            ]
+        )
+
+    tbl = Table(
+        table_data,
+        colWidths=[18 * mm, 62 * mm, 20 * mm, 92 * mm, 44 * mm, 190 / 5 * mm, 20 * mm],
+        repeatRows=1,
+    )
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003366")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E0")),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#F7FAFC")],
+                ),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(tbl)
+
+    story.append(Spacer(1, 8 * mm))
+    story.append(Paragraph("<b>Approval</b>", styles["Heading3"]))
+    story.append(
+        Paragraph(
+            "This Statement of Applicability was reviewed and approved by:",
+            meta_style,
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+    approval = Table(
+        [
+            [
+                Paragraph("Name", cell),
+                Paragraph("Role", cell),
+                Paragraph("Signature", cell),
+                Paragraph("Date", cell),
+            ],
+            [
+                Paragraph("", cell),
+                Paragraph("", cell),
+                Paragraph("", cell),
+                Paragraph("", cell),
+            ],
+        ],
+        colWidths=[65 * mm, 65 * mm, 75 * mm, 40 * mm],
+        rowHeights=[7 * mm, 16 * mm],
+    )
+    approval.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E0")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EDF2F7")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(approval)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_soa_detailed_docx(
+    controls: list, findings_map: dict, meta: dict
+) -> io.BytesIO:
+    """Renders a certification-grade Statement of Applicability as a Word document."""
+    try:
+        from docx import Document as _Document
+        from docx.enum.section import WD_ORIENT
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        from docx.shared import Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
+    doc = _Document()
+    section = doc.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width, section.page_height = section.page_height, section.page_width
+
+    heading = doc.add_paragraph()
+    run = heading.add_run("Statement of Applicability")
+    run.font.size = Pt(18)
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(0, 51, 102)
+
+    sub = doc.add_paragraph()
+    sub_run = sub.add_run(f"{meta['framework_name']} ({meta['framework_version']})")
+    sub_run.font.size = Pt(11)
+    sub_run.font.italic = True
+
+    rows = [_soa_row(c, findings_map.get(c.id)) for c in controls]
+    applicable = sum(1 for r in rows if r["applicable"] == "Yes")
+    excluded = len(rows) - applicable
+    implemented = sum(1 for r in rows if r["implementation"].startswith("Implemented"))
+
+    for line in (
+        f"Organization: {meta['organization']}",
+        f"Generated: {meta['generated_at'].strftime('%d %b %Y %H:%M UTC')} by {meta['generated_by']}",
+        f"Controls: {len(rows)} total | {applicable} applicable | {excluded} excluded | {implemented} implemented",
+        f"Source scan run: {meta.get('last_run_id') or 'None — no completed scan'}",
+    ):
+        p = doc.add_paragraph()
+        p.add_run(line).font.size = Pt(9)
+
+    table = doc.add_table(rows=1, cols=7)
+    table.style = "Table Grid"
+    headers = [
+        "Ref",
+        "Control",
+        "Applicable",
+        "Justification",
+        "Implementation status",
+        "Owner",
+        "Reviewed",
+    ]
+    for idx, name in enumerate(headers):
+        cell = table.rows[0].cells[idx]
+        cell.text = name
+        cell._tc.get_or_add_tcPr().append(
+            parse_xml(f'<w:shd {nsdecls("w")} w:fill="003366"/>')
+        )
+        for para in cell.paragraphs:
+            for r in para.runs:
+                r.font.bold = True
+                r.font.size = Pt(8)
+                r.font.color.rgb = RGBColor(255, 255, 255)
+
+    for r in rows:
+        cells = table.add_row().cells
+        for idx, key in enumerate(
+            (
+                "number",
+                "title",
+                "applicable",
+                "justification",
+                "implementation",
+                "owner",
+                "reviewed_at",
+            )
+        ):
+            cells[idx].text = str(r[key])
+            for para in cells[idx].paragraphs:
+                for run_ in para.runs:
+                    run_.font.size = Pt(7)
+
+    doc.add_paragraph()
+    approval_heading = doc.add_paragraph()
+    approval_heading.add_run("Approval").font.bold = True
+    doc.add_paragraph("This Statement of Applicability was reviewed and approved by:")
+    approval = doc.add_table(rows=2, cols=4)
+    approval.style = "Table Grid"
+    for idx, label in enumerate(("Name", "Role", "Signature", "Date")):
+        approval.rows[0].cells[idx].text = label
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
 def _generate_soa_docx(
@@ -2160,8 +3591,7 @@ def _generate_soa_docx(
         row_cells[2].text = str(c.theme or "N/A")
         row_cells[3].text = str(c.scannability or "manual").upper()
 
-        f = findings_map.get(c.id)
-        row_cells[4].text = str(f.status).upper() if f else "PENDING"
+        row_cells[4].text = _verdict_of(findings_map, c.id)
 
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -2212,8 +3642,7 @@ def _generate_soa_pdf(
     ]
 
     for c in controls:
-        f = findings_map.get(c.id)
-        status_text = f.status.upper() if f else "PENDING"
+        status_text = _verdict_of(findings_map, c.id)
         table_data.append(
             [
                 Paragraph(c.control_number or c.id, cell_style),
@@ -2256,78 +3685,102 @@ def _generate_soa_pdf(
 @router.get("/reports/soa")
 def download_statement_of_applicability(
     fmt: str = "pdf",
+    framework_id: str = Query("cfw_iso27001_2022"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
-    """Generates and downloads the organization Statement of Applicability."""
-    # Filter controls to only active frameworks
+    """Statement of Applicability for one framework.
+
+    A Statement of Applicability is an ISO/IEC 27001 artefact covering one
+    standard's control set. This used to emit the controls of *every* installed
+    framework, so an organisation with all twelve installed received an
+    800-row multi-standard dump labelled "ISO 27001 SoA". It is now scoped to a
+    single framework, defaulting to ISO 27001:2022.
+    """
+    require_active_framework(framework_id)
+
+    fw = (
+        db.query(ComplianceFramework)
+        .filter(ComplianceFramework.id == framework_id)
+        .first()
+    )
+    if not fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+
+    tf = (
+        db.query(ComplianceTenantFramework)
+        .filter_by(tenant_id=user.org_id, framework_id=framework_id, is_enabled=True)
+        .first()
+    )
+    if not tf:
+        raise HTTPException(
+            status_code=400,
+            detail="Framework is not installed for this organization.",
+        )
+
     controls = (
         db.query(ComplianceControl)
-        .join(
-            ComplianceTenantFramework,
-            and_(
-                ComplianceTenantFramework.framework_id
-                == ComplianceControl.framework_id,
-                ComplianceTenantFramework.tenant_id == user.org_id,
-                ComplianceTenantFramework.is_enabled == True,
-            ),
-        )
-        .order_by(ComplianceControl.control_number)
+        .filter(ComplianceControl.framework_id == framework_id)
         .all()
     )
+    # Numeric ordering. `ORDER BY control_number` is a string sort, so the SoA
+    # came out A.5.1, A.5.10, A.5.11 … A.5.2 — the first thing an auditor
+    # notices.
+    controls.sort(key=lambda c: control_sort_key(c.control_number))
     control_ids = [c.id for c in controls]
 
-    # Resolve latest scan runs per enabled framework
-    enabled_fws = (
-        db.query(ComplianceTenantFramework.framework_id)
-        .filter(
-            ComplianceTenantFramework.tenant_id == user.org_id,
-            ComplianceTenantFramework.is_enabled == True,
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
+
+    org = getattr(user, "organization", None)
+    org_name = getattr(org, "name", None) or user.org_id
+
+    evidence_counts = dict(
+        db.query(
+            ComplianceEvidenceFile.control_id, func.count(ComplianceEvidenceFile.id)
         )
+        .filter(
+            ComplianceEvidenceFile.tenant_id == user.org_id,
+            ComplianceEvidenceFile.control_id.in_(control_ids),
+        )
+        .group_by(ComplianceEvidenceFile.control_id)
         .all()
     )
-    enabled_fw_ids = [r[0] for r in enabled_fws]
 
-    latest_run_ids = []
-    for fw_id in enabled_fw_ids:
-        latest = (
-            db.query(ComplianceScanRun)
-            .filter(
-                ComplianceScanRun.tenant_id == user.org_id,
-                ComplianceScanRun.framework_id == fw_id,
-                ComplianceScanRun.status == "completed",
+    meta = {
+        "framework_name": fw.name,
+        "framework_version": fw.version,
+        "organization": org_name,
+        "generated_at": datetime.now(timezone.utc),
+        "generated_by": getattr(user, "email", None) or user.id,
+        "last_run_id": _latest_run_id(db, user.org_id, framework_id),
+        "evidence_counts": evidence_counts,
+    }
+
+    slug = fw.code.lower()
+    if fmt.lower() == "docx":
+        # Say so rather than quietly handing back a PDF. python-docx was not a
+        # declared dependency, so every DOCX request in this module fell
+        # through to the PDF branch — the caller asked for one format and
+        # received another with no indication why.
+        if Document is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "DOCX export is unavailable because python-docx is not "
+                    "installed on this deployment. Request fmt=pdf instead."
+                ),
             )
-            .order_by(ComplianceScanRun.finished_at.desc())
-            .first()
-        )
-        if latest:
-            latest_run_ids.append(latest.id)
-
-    findings = (
-        db.query(ComplianceFinding)
-        .filter(
-            ComplianceFinding.tenant_id == user.org_id,
-            ComplianceFinding.control_id.in_(control_ids),
-            or_(
-                ComplianceFinding.scan_run_id.in_(latest_run_ids),
-                ComplianceFinding.source == "manual_attestation",
-            ),
-        )
-        .all()
-    )
-    findings_map = {f.control_id: f for f in findings}
-
-    if fmt.lower() == "docx" and Document is not None:
-        buffer = _generate_soa_docx(controls, findings_map)
+        buffer = _generate_soa_detailed_docx(controls, findings_map, meta)
         media = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        filename = f"soa_{user.org_id}.docx"
+        filename = f"soa_{slug}_{user.org_id}.docx"
     else:
-        buffer = _generate_soa_pdf(controls, findings_map)
+        buffer = _generate_soa_detailed_pdf(controls, findings_map, meta)
         media = "application/pdf"
-        filename = f"soa_{user.org_id}.pdf"
+        filename = f"soa_{slug}_{user.org_id}.pdf"
 
+    log_audit_event(db, user, "export_soa", "framework", framework_id, "success")
     return StreamingResponse(
         buffer,
         media_type=media,
@@ -2338,7 +3791,7 @@ def download_statement_of_applicability(
 @router.get("/reports/executive")
 def download_executive_compliance_report(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates the executive management compliance posture report PDF."""
     # Filter scores by enabled frameworks
@@ -2491,6 +3944,9 @@ def get_compliance_gap_analysis(
     user: User = Depends(require_permission("compliance", "read")),
 ):
     """Calculates estimated compliance posture for target framework based on source framework crosswalk mappings."""
+    require_active_framework(source_framework_id)
+    require_active_framework(target_framework_id)
+
     target_fw = (
         db.query(ComplianceFramework)
         .filter(ComplianceFramework.id == target_framework_id)
@@ -2528,12 +3984,12 @@ def get_compliance_gap_analysis(
 
     source_num_to_id = {normalize(c.control_number): c.id for c in source_controls}
 
-    source_findings = (
-        db.query(ComplianceFinding)
-        .filter(ComplianceFinding.tenant_id == user.org_id)
-        .all()
+    # Rolled up through the shared precedence table and scoped to the source
+    # framework. This used to read every finding the tenant had, across all
+    # frameworks, into a last-wins dict.
+    source_findings_map = rolled_up_control_status(
+        db, user.org_id, [c.id for c in source_controls]
     )
-    source_findings_map = {f.control_id: f.status for f in source_findings}
 
     total_target = len(target_controls)
     estimated_pass = 0
@@ -2571,12 +4027,17 @@ def get_compliance_gap_analysis(
                 elif found_status in ("fail", "pending_reverify"):
                     has_fail = True
 
-            if has_pass:
-                status_eval = "pass"
-                estimated_pass += 1
-            elif has_fail:
+            # Fail wins. A target control that crosswalks to three source
+            # controls, one passing and two failing, is not "covered" — the
+            # previous order checked has_pass first and rounded the gap
+            # analysis up, which is the one direction a gap analysis must never
+            # round.
+            if has_fail:
                 status_eval = "fail"
                 estimated_fail += 1
+            elif has_pass:
+                status_eval = "pass"
+                estimated_pass += 1
             else:
                 pending_manual += 1
         else:
@@ -2620,6 +4081,471 @@ def get_compliance_gap_analysis(
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NIST CSF 2.0 Organizational Profile
+#
+# The CSF report used the generic Statement of Applicability generator, which
+# is an ISO artefact: five columns headed "Control ID / Name / Category / Scan
+# Mode / Verdict", with `Category` printing the raw Function code. Nothing in
+# it named a Function, nothing grouped by Category, and there was no per-
+# Function score — so the one thing every CSF reader looks for, which Function
+# is weakest, could not be read off it. NIST calls this artefact a Current
+# Profile, and it is organised Function ▸ Category ▸ Subcategory.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Verdict -> (label, hex colour). `not_assessed` and `manual_review` are kept
+# apart on purpose: "nobody has looked at this" and "a human still has to sign
+# it off" are different states, and collapsing them is what lets an unscanned
+# framework read as a failing one.
+_CSF_VERDICT_DISPLAY = {
+    "pass": ("Compliant", "#16A34A"),
+    "exception": ("Compliant (exception)", "#0891B2"),
+    "fail": ("Non-compliant", "#DC2626"),
+    "pending_reverify": ("Non-compliant (re-verify)", "#EA580C"),
+    "remediation_applied": ("Partially compliant", "#CA8A04"),
+    "manual_review": ("Awaiting review", "#7C3AED"),
+    "not_applicable": ("Not applicable", "#64748B"),
+    "not_assessed": ("Not assessed", "#94A3B8"),
+}
+
+
+def _csf_verdict(findings_map: dict, control_id: str) -> str:
+    value = findings_map.get(control_id)
+    if value is None:
+        return "not_assessed"
+    if isinstance(value, str):
+        return value
+    return str(getattr(value, "status", "not_assessed"))
+
+
+def _csf_group(controls: list, findings_map: dict) -> list:
+    """`[(function_code, function_name, score, [(category, name, [rows])])]`.
+
+    Ordered by `core.nist_csf`, which is NIST's published order rather than the
+    alphabetical one.
+    """
+    by_function: dict = {}
+    for c in controls:
+        number = c.control_number or ""
+        category = (
+            number.partition("-")[0] if nist_csf.is_csf_subcategory(number) else "—"
+        )
+        function = c.theme or (category.split(".")[0] if "." in category else "—")
+        by_function.setdefault(function, {}).setdefault(category, []).append(c)
+
+    def _score(subset: list) -> tuple:
+        verdicts = [_csf_verdict(findings_map, c.id) for c in subset]
+        applicable = [v for v in verdicts if v != "not_applicable"]
+        passed = sum(1 for v in applicable if v in ("pass", "exception"))
+        assessed = sum(
+            1 for v in applicable if v not in ("not_assessed", "manual_review")
+        )
+        pct = round(passed / len(applicable) * 100, 1) if applicable else 0.0
+        return pct, passed, len(applicable), assessed
+
+    out: list = []
+    for function in nist_csf.FUNCTION_ORDER:
+        if function not in by_function:
+            continue
+        categories = by_function[function]
+        ordered_categories = [
+            (code, nist_csf.CATEGORY_ORDER[code][1], categories[code])
+            for code in nist_csf.CATEGORY_ORDER
+            if code in categories
+        ]
+        # Anything that is not a recognised Category still has to appear;
+        # dropping rows out of an audit artefact is worse than an odd heading.
+        ordered_categories += [
+            (code, code, rows)
+            for code, rows in categories.items()
+            if code not in nist_csf.CATEGORY_ORDER
+        ]
+        flat = [c for _, _, rows in ordered_categories for c in rows]
+        for _, _, rows in ordered_categories:
+            rows.sort(key=lambda c: control_sort_key(c.control_number))
+        out.append(
+            (
+                function,
+                nist_csf.FUNCTION_NAMES.get(function, function),
+                _score(flat),
+                ordered_categories,
+            )
+        )
+
+    for function, categories in by_function.items():
+        if function in nist_csf.FUNCTION_ORDER:
+            continue
+        ordered_categories = [(code, code, rows) for code, rows in categories.items()]
+        flat = [c for _, _, rows in ordered_categories for c in rows]
+        out.append((function, function, _score(flat), ordered_categories))
+
+    return out
+
+
+def _generate_nist_csf_pdf(
+    controls: list, findings_map: dict, meta: dict
+) -> io.BytesIO:
+    """NIST CSF 2.0 Current Profile, grouped Function ▸ Category ▸ Subcategory."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=12 * mm,
+        leftMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title="NIST CSF 2.0 Current Profile",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CSFTitle",
+        parent=styles["Heading1"],
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0A2E5C"),
+    )
+    sub_style = ParagraphStyle(
+        "CSFSub",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=9.5,
+        textColor=colors.HexColor("#475569"),
+    )
+    fn_style = ParagraphStyle(
+        "CSFFunction",
+        parent=styles["Heading2"],
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#0A2E5C"),
+    )
+    cat_style = ParagraphStyle(
+        "CSFCategory",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9.5,
+        textColor=colors.HexColor("#1E293B"),
+    )
+    cell = ParagraphStyle("CSFCell", parent=styles["Normal"], fontSize=7.5, leading=9.5)
+    hdr = ParagraphStyle(
+        "CSFHdr",
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+    )
+    kpi = ParagraphStyle(
+        "CSFKpi",
+        fontSize=8,
+        leading=11,
+        alignment=1,
+        textColor=colors.HexColor("#334155"),
+    )
+
+    grouped = _csf_group(controls, findings_map)
+
+    story: list = [
+        Paragraph("NIST Cybersecurity Framework 2.0 — Current Profile", title_style),
+        Paragraph(
+            f"{meta.get('organization', 'Organisation')} · "
+            f"Generated {meta.get('generated_at', '')}"
+            + (f" · Scope: {meta['scope']}" if meta.get("scope") else ""),
+            sub_style,
+        ),
+        Spacer(1, 4 * mm),
+        Paragraph(
+            "Scores are computed over applicable Subcategories only. A Subcategory "
+            "marked Not applicable is excluded from its Function's denominator; one "
+            "that is Not assessed or Awaiting review remains in the denominator and "
+            "counts against the score, because coverage is part of the posture.",
+            sub_style,
+        ),
+        Spacer(1, 5 * mm),
+    ]
+
+    # Function summary — the headline a CSF reader is looking for.
+    summary_rows = [
+        [
+            Paragraph("Function", hdr),
+            Paragraph("Categories", hdr),
+            Paragraph("Subcategories", hdr),
+            Paragraph("Applicable", hdr),
+            Paragraph("Assessed", hdr),
+            Paragraph("Compliant", hdr),
+            Paragraph("Score", hdr),
+        ]
+    ]
+    for code, name, (pct, passed, applicable, assessed), categories in grouped:
+        subcount = sum(len(rows) for _, _, rows in categories)
+        summary_rows.append(
+            [
+                Paragraph(f"<b>{code}</b> {name}", cell),
+                Paragraph(str(len(categories)), cell),
+                Paragraph(str(subcount), cell),
+                Paragraph(str(applicable), cell),
+                Paragraph(str(assessed), cell),
+                Paragraph(str(passed), cell),
+                Paragraph(f"<b>{pct}%</b>", cell),
+            ]
+        )
+    summary = Table(
+        summary_rows,
+        colWidths=[95 * mm, 22 * mm, 26 * mm, 22 * mm, 21 * mm, 22 * mm, 20 * mm],
+        repeatRows=1,
+    )
+    summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0A2E5C")),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#F8FAFC")],
+                ),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(summary)
+
+    total = len(controls)
+    all_verdicts = [_csf_verdict(findings_map, c.id) for c in controls]
+    applicable_all = [v for v in all_verdicts if v != "not_applicable"]
+    passed_all = sum(1 for v in applicable_all if v in ("pass", "exception"))
+    overall = (
+        round(passed_all / len(applicable_all) * 100, 1) if applicable_all else 0.0
+    )
+    story.append(Spacer(1, 4 * mm))
+    story.append(
+        Table(
+            [
+                [
+                    Paragraph(
+                        f"SUBCATEGORIES<br/><font size=13><b>{total}</b></font>", kpi
+                    ),
+                    Paragraph(
+                        "COMPLIANT<br/>"
+                        f"<font size=13 color='#16A34A'><b>{passed_all}</b></font>",
+                        kpi,
+                    ),
+                    Paragraph(
+                        "NON-COMPLIANT<br/><font size=13 color='#DC2626'><b>"
+                        f"{sum(1 for v in all_verdicts if v in ('fail', 'pending_reverify'))}"
+                        "</b></font>",
+                        kpi,
+                    ),
+                    Paragraph(
+                        "AWAITING REVIEW<br/><font size=13 color='#7C3AED'><b>"
+                        f"{sum(1 for v in all_verdicts if v == 'manual_review')}"
+                        "</b></font>",
+                        kpi,
+                    ),
+                    Paragraph(
+                        "NOT ASSESSED<br/><font size=13 color='#94A3B8'><b>"
+                        f"{sum(1 for v in all_verdicts if v == 'not_assessed')}"
+                        "</b></font>",
+                        kpi,
+                    ),
+                    Paragraph(
+                        "NOT APPLICABLE<br/><font size=13 color='#64748B'><b>"
+                        f"{sum(1 for v in all_verdicts if v == 'not_applicable')}"
+                        "</b></font>",
+                        kpi,
+                    ),
+                    Paragraph(
+                        f"OVERALL<br/><font size=13 color='#0A2E5C'><b>{overall}%</b></font>",
+                        kpi,
+                    ),
+                ]
+            ],
+            colWidths=[38 * mm] * 6 + [38 * mm],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                    ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#CBD5E1")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            ),
+        )
+    )
+
+    for code, name, (pct, passed, applicable, assessed), categories in grouped:
+        story.append(Spacer(1, 7 * mm))
+        story.append(
+            Paragraph(
+                f"{code} — {name} &nbsp;·&nbsp; {pct}% "
+                f"({passed}/{applicable} applicable Subcategories compliant)",
+                fn_style,
+            )
+        )
+        for cat_code, cat_name, rows in categories:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph(f"{cat_code} · {cat_name}", cat_style))
+            data = [
+                [
+                    Paragraph("Subcategory", hdr),
+                    Paragraph("Outcome", hdr),
+                    Paragraph("Assessment", hdr),
+                    Paragraph("Status", hdr),
+                    Paragraph("Owner / Reviewed", hdr),
+                ]
+            ]
+            for c in rows:
+                verdict = _csf_verdict(findings_map, c.id)
+                label, colour = _CSF_VERDICT_DISPLAY.get(
+                    verdict, (verdict.replace("_", " ").title(), "#334155")
+                )
+                rolled = findings_map.get(c.id)
+                owner = getattr(rolled, "owner", None) or ""
+                reviewed = getattr(rolled, "reviewed_at", None)
+                data.append(
+                    [
+                        Paragraph(f"<b>{c.control_number}</b>", cell),
+                        Paragraph(c.title or "", cell),
+                        Paragraph(
+                            (
+                                "Automated"
+                                if (c.scannability or "manual") == "auto"
+                                else "Attestation"
+                            ),
+                            cell,
+                        ),
+                        Paragraph(
+                            f"<font color='{colour}'><b>{label}</b></font>", cell
+                        ),
+                        Paragraph(
+                            f"{owner}<br/>{reviewed.strftime('%d %b %Y') if reviewed else ''}",
+                            cell,
+                        ),
+                    ]
+                )
+            tbl = Table(
+                data,
+                colWidths=[22 * mm, 128 * mm, 24 * mm, 40 * mm, 34 * mm],
+                repeatRows=1,
+            )
+            tbl.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
+                        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.white, colors.HexColor("#F8FAFC")],
+                        ),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ]
+                )
+            )
+            story.append(tbl)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_nist_csf_docx(
+    controls: list, findings_map: dict, meta: dict
+) -> io.BytesIO:
+    """The same Current Profile as a Word document."""
+    try:
+        from docx import Document as _Document
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Pt, RGBColor
+    except ImportError:
+        return io.BytesIO(b"python-docx is not installed.")
+
+    document = _Document()
+    heading = document.add_paragraph()
+    run = heading.add_run("NIST Cybersecurity Framework 2.0 — Current Profile")
+    run.font.size = Pt(18)
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(10, 46, 92)
+
+    meta_p = document.add_paragraph()
+    meta_run = meta_p.add_run(
+        f"{meta.get('organization', 'Organisation')} · "
+        f"Generated {meta.get('generated_at', '')}"
+        + (f" · Scope: {meta['scope']}" if meta.get("scope") else "")
+    )
+    meta_run.font.italic = True
+    meta_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    grouped = _csf_group(controls, findings_map)
+
+    document.add_paragraph("Function summary").runs[0].bold = True
+    summary = document.add_table(rows=1, cols=5)
+    summary.style = "Table Grid"
+    for i, name in enumerate(
+        ["Function", "Subcategories", "Applicable", "Compliant", "Score"]
+    ):
+        summary.rows[0].cells[i].text = name
+        for p in summary.rows[0].cells[i].paragraphs:
+            for r in p.runs:
+                r.font.bold = True
+    for code, name, (pct, passed, applicable, _assessed), categories in grouped:
+        cells = summary.add_row().cells
+        cells[0].text = f"{code} — {name}"
+        cells[1].text = str(sum(len(rows) for _, _, rows in categories))
+        cells[2].text = str(applicable)
+        cells[3].text = str(passed)
+        cells[4].text = f"{pct}%"
+
+    for code, name, (pct, passed, applicable, _assessed), categories in grouped:
+        document.add_paragraph()
+        fn_p = document.add_paragraph()
+        fn_run = fn_p.add_run(
+            f"{code} — {name} · {pct}% ({passed}/{applicable} applicable compliant)"
+        )
+        fn_run.font.size = Pt(13)
+        fn_run.font.bold = True
+        fn_run.font.color.rgb = RGBColor(10, 46, 92)
+
+        for cat_code, cat_name, rows in categories:
+            cat_p = document.add_paragraph()
+            cat_run = cat_p.add_run(f"{cat_code} · {cat_name}")
+            cat_run.font.bold = True
+
+            table = document.add_table(rows=1, cols=4)
+            table.style = "Table Grid"
+            for i, name_ in enumerate(
+                ["Subcategory", "Outcome", "Assessment", "Status"]
+            ):
+                table.rows[0].cells[i].text = name_
+                for p in table.rows[0].cells[i].paragraphs:
+                    for r in p.runs:
+                        r.font.bold = True
+            for c in rows:
+                verdict = _csf_verdict(findings_map, c.id)
+                label = _CSF_VERDICT_DISPLAY.get(
+                    verdict, (verdict.replace("_", " ").title(), "")
+                )[0]
+                cells = table.add_row().cells
+                cells[0].text = str(c.control_number or "")
+                cells[1].text = str(c.title or "")
+                cells[2].text = (
+                    "Automated"
+                    if (c.scannability or "manual") == "auto"
+                    else "Attestation"
+                )
+                cells[3].text = label
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 @router.get("/reports/nist_csf")
 def download_nist_csf_report(
     fmt: str = "pdf",
@@ -2627,52 +4553,63 @@ def download_nist_csf_report(
         None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
-    """Generates and downloads the NIST CSF v2.0 Compliance Assessment Report."""
-    fw_id = "cfw_nist_csf_v2"
+    """Generates and downloads the NIST CSF v2.0 Current Profile report."""
+    fw_id = nist_csf.FRAMEWORK_ID
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
+    scope_label = None
     if functions:
         fn_list = [f.strip().upper() for f in functions.split(",") if f.strip()]
+        unknown = [f for f in fn_list if f not in nist_csf.FUNCTION_ORDER]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unknown CSF Function(s): {', '.join(unknown)}. "
+                    f"Valid values are {', '.join(nist_csf.FUNCTION_ORDER)}."
+                ),
+            )
         if fn_list:
             query = query.filter(ComplianceControl.theme.in_(fn_list))
+            # Report the Functions in NIST's order regardless of how the caller
+            # listed them, so "RC,GV" is not printed back as a scope of
+            # "Recover, Govern".
+            scope_label = ", ".join(
+                f"{f} {nist_csf.FUNCTION_NAMES[f]}"
+                for f in nist_csf.FUNCTION_ORDER
+                if f in fn_list
+            )
 
-    controls = query.order_by(
-        ComplianceControl.theme, ComplianceControl.control_number
-    ).all()
+    # Ordered in Python, not SQL: `ORDER BY theme, control_number` is a string
+    # sort and CSF's order is not alphabetical in either column.
+    controls = sorted(query.all(), key=lambda c: control_sort_key(c.control_number))
     control_ids = [c.id for c in controls]
 
-    findings = (
-        db.query(ComplianceFinding)
-        .filter(
-            ComplianceFinding.tenant_id == user.org_id,
-            ComplianceFinding.control_id.in_(control_ids),
-        )
-        .all()
-    )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per Subcategory (see RolledFinding). A separate,
+    # unused `ComplianceFinding` query used to run here as well and its result
+    # was discarded.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
+
+    org = getattr(user, "organization", None)
+    meta = {
+        "organization": getattr(org, "name", None) or user.org_id,
+        "generated_at": datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC"),
+        "scope": scope_label,
+    }
 
     if fmt.lower() == "docx" and Document is not None:
-        buffer = _generate_soa_docx(
-            controls,
-            findings_map,
-            title="NIST Cybersecurity Framework v2.0 Audit Ledger",
-            subtitle="NIST CSF v2.0 Controls Compliance Status Report",
-        )
+        buffer = _generate_nist_csf_docx(controls, findings_map, meta)
         media = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        filename = f"nist_csf_report_{user.org_id[:4]}.docx"
+        filename = f"nist_csf_current_profile_{user.org_id[:4]}.docx"
     else:
-        buffer = _generate_soa_pdf(
-            controls,
-            findings_map,
-            title="NIST Cybersecurity Framework v2.0 Audit Ledger",
-            subtitle="NIST CSF v2.0 Controls Compliance Status Report",
-        )
+        buffer = _generate_nist_csf_pdf(controls, findings_map, meta)
         media = "application/pdf"
-        filename = f"nist_csf_report_{user.org_id[:4]}.pdf"
+        filename = f"nist_csf_current_profile_{user.org_id[:4]}.pdf"
 
     return StreamingResponse(
         buffer,
@@ -2688,10 +4625,11 @@ def download_cis_v8_1_report(
         None, description="Implementation Group filter: ig1, ig2, ig3"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the CIS Controls v8.1 Compliance Assessment Report."""
     fw_id = "cfw_cis_v8_1"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if ig:
@@ -2711,7 +4649,9 @@ def download_cis_v8_1_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "CIS Critical Security Controls v8.1 Executive Report"
     report_sub = f"CIS Controls v8.1 Assessment Ledger (Tenant: {user.org_id[:8]})"
@@ -2748,10 +4688,11 @@ def download_soc2_type2_report(
         90, ge=30, le=365, description="SOC 2 Type II Observation Period in Days"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the SOC 2 Type II (AICPA Trust Services Criteria) Compliance Audit Report."""
     fw_id = "cfw_soc2_type2"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if tsc:
@@ -2771,11 +4712,11 @@ def download_soc2_type2_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     # Time-Series Historical Deviation check for SOC 2 Type II observation window
-    from datetime import timedelta
-
     window_start = datetime.now(timezone.utc) - timedelta(days=audit_period_days)
     history_deviations = (
         db.query(ComplianceFindingHistory.finding_id)
@@ -2836,10 +4777,11 @@ def download_cert_in_2022_report(
         description="CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the CERT-In Cyber Security Directions 2022 & CCMP Compliance Report."""
     fw_id = "cfw_cert_in_2022"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if theme:
@@ -2858,7 +4800,9 @@ def download_cert_in_2022_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "CERT-In Directions 2022 & CCMP Security Compliance Audit Report"
     report_sub = f"Indian Cyber Security Directions & Cyber Crisis Management Plan Ledger (Tenant: {user.org_id[:8]})"
@@ -3006,8 +4950,7 @@ def _generate_pci_dss_pdf(
     ]
 
     for c in controls:
-        f = findings_map.get(c.id)
-        status_text = f.status.upper() if f else "PENDING"
+        status_text = _verdict_of(findings_map, c.id)
 
         saq_str = ", ".join(c.saq_profiles) if c.saq_profiles else "All"
         is_mand = (
@@ -3074,10 +5017,11 @@ def download_pci_dss_v4_report(
         False, description="Filter only by CDE scope tagged controls/findings"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the PCI-DSS v4.0 Compliance Assessment Report."""
     fw_id = "cfw_pci_dss_v4"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if saq_profile:
@@ -3100,7 +5044,9 @@ def download_pci_dss_v4_report(
         finding_query = finding_query.filter(ComplianceFinding.cde_scope.isnot(None))
 
     findings = finding_query.all()
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "PCI-DSS v4.0 Compliance Audit Assessment Report"
     report_sub = f"PCI-DSS v4.0 Assessment Ledger (Tenant: {user.org_id[:8]}"
@@ -3186,8 +5132,7 @@ def _generate_privacy_docx(
         row_cells[1].text = str(c.title)
         row_cells[2].text = str(c.theme)
         row_cells[3].text = str(c.scannability).upper()
-        f = findings_map.get(c.id)
-        row_cells[4].text = str(f.status).upper() if f else "PENDING"
+        row_cells[4].text = _verdict_of(findings_map, c.id)
 
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -3242,8 +5187,7 @@ def _generate_privacy_pdf(
     ]
 
     for c in controls:
-        f = findings_map.get(c.id)
-        status_text = f.status.upper() if f else "PENDING"
+        status_text = _verdict_of(findings_map, c.id)
         table_data.append(
             [
                 Paragraph(str(c.control_number or c.id), cell_style),
@@ -3282,10 +5226,11 @@ def download_dpdp_2023_report(
         None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the DPDP Act 2023 Compliance Assessment Report."""
     fw_id = "cfw_dpdp_2023"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if sdf_scope and sdf_scope != "all":
@@ -3304,7 +5249,9 @@ def download_dpdp_2023_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "DPDP Act 2023 Digital Personal Data Protection Audit Report"
     report_sub = (
@@ -3350,10 +5297,11 @@ def download_gdpr_report(
         None, description="Filter by Privacy Role: controller, processor, both"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the EU GDPR Compliance Assessment Report."""
     fw_id = "cfw_gdpr"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if privacy_role and privacy_role != "all":
@@ -3372,7 +5320,9 @@ def download_gdpr_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "EU GDPR 2016/679 Compliance Assessment Audit Report"
     report_sub = (
@@ -3699,10 +5649,11 @@ def download_nist_800_53_r5_report(
     control_family: str | None = Query(None, description="SP53_AC | SP53_AU | etc"),
     zero_trust_only: bool = Query(False),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report."""
     fw_id = "cfw_nist_800_53_r5"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if impact_level and impact_level != "all":
@@ -3729,7 +5680,9 @@ def download_nist_800_53_r5_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "NIST SP 800-53 Rev. 5 Federal Security Assessment Report"
     report_sub = (
@@ -4060,10 +6013,11 @@ def download_iec_62443_report(
     component_type: str | None = Query(None, description="NDD | EDR | HDR | SW"),
     sl_level: str | None = Query(None, description="SL1 | SL2 | SL3 | SL4"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the IEC 62443 Industrial Cybersecurity Assessment Report."""
     fw_id = "cfw_iec_62443"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if purdue_level and purdue_level != "all":
@@ -4088,7 +6042,9 @@ def download_iec_62443_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "IEC 62443 Industrial Cybersecurity Audit Report"
     report_sub = f"OT/ICS System Security Ledger (Tenant: {user.org_id[:8]})"
@@ -4378,10 +6334,11 @@ def download_nist_800_82_report(
         None, description="PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the NIST SP 800-82 Rev. 3 OT Security Assessment Report."""
     fw_id = "cfw_nist_800_82_r3"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if purdue_level and purdue_level != "all":
@@ -4403,7 +6360,9 @@ def download_nist_800_82_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "NIST SP 800-82 Rev. 3 OT Security Assessment Report"
     report_sub = (
@@ -4674,8 +6633,6 @@ def _generate_nerc_cip_docx(
     impact_set = {"High", "Medium", "Low"}
 
     for c in controls:
-        f = findings_map.get(c.id)
-        verdict = f.status.upper() if f else "UNTESTED"
         tags = c.tags or []
         purdue_str = ", ".join([t for t in tags if t in purdue_set]) or "L0-L5"
         impact_str = ", ".join([t.upper() for t in tags if t in impact_set]) or "ALL"
@@ -4686,6 +6643,17 @@ def _generate_nerc_cip_docx(
         row_cells[2].text = c.theme or "N/A"
         row_cells[3].text = impact_str
         row_cells[4].text = purdue_str
+        # The verdict column was declared in the header and never filled, and
+        # the function never returned its buffer at all — it built a document
+        # and dropped it. Nothing caught this because no route reached the
+        # generator: the workspace offered NERC CIP in its report menu and
+        # `/compliance/reports/nerc_cip` was not registered.
+        row_cells[5].text = _verdict_of(findings_map, c.id)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
 def _generate_nis2_pdf(
@@ -5011,6 +6979,68 @@ def _generate_nis2_docx(
     return buffer
 
 
+@router.get("/reports/nerc_cip")
+def download_nerc_cip_report(
+    fmt: str = Query("pdf", description="pdf | docx"),
+    bes_impact_level: str | None = Query(None, description="High | Medium | Low"),
+    standard_number: str | None = Query(None, description="CIP-002 … CIP-014"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("compliance", "export_report")),
+):
+    """NERC CIP Critical Infrastructure Protection audit report.
+
+    Both generators below have existed since the framework was added and no
+    route ever reached them, while the workspace's report menu offered "NERC
+    CIP Critical Infrastructure" as an option — so selecting it returned 404.
+    """
+    fw_id = "cfw_nerc_cip"
+    require_active_framework(fw_id)
+    query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
+
+    if bes_impact_level and bes_impact_level != "all":
+        query = query.filter(
+            ComplianceControl.tags.contains([bes_impact_level.capitalize()])
+        )
+    if standard_number and standard_number != "all":
+        query = query.filter(ComplianceControl.tags.contains([standard_number.upper()]))
+
+    controls = query.all()
+    controls.sort(key=lambda c: control_sort_key(c.control_number))
+    control_ids = [c.id for c in controls]
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
+
+    scope_parts = []
+    if bes_impact_level and bes_impact_level != "all":
+        scope_parts.append(f"BES Impact: {bes_impact_level.capitalize()}")
+    if standard_number and standard_number != "all":
+        scope_parts.append(f"Standard: {standard_number.upper()}")
+    scope_label = (
+        ", ".join(scope_parts)
+        if scope_parts
+        else "All BES Cyber Systems & Impact Baselines"
+    )
+
+    if fmt.lower() == "docx":
+        buffer = _generate_nerc_cip_docx(
+            controls, findings_map, scope_label=scope_label
+        )
+        media = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        filename = f"nerc_cip_report_{user.org_id[:4]}.docx"
+    else:
+        buffer = _generate_nerc_cip_pdf(controls, findings_map, scope_label=scope_label)
+        media = "application/pdf"
+        filename = f"nerc_cip_report_{user.org_id[:4]}.pdf"
+
+    log_audit_event(db, user, "export_report", "framework", fw_id, "success")
+    return StreamingResponse(
+        buffer,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/reports/nis2")
 def download_nis2_report(
     fmt: str = Query("pdf", description="pdf | docx"),
@@ -5022,10 +7052,11 @@ def download_nis2_report(
         None, description="all | DE | FR | IT | NL | BE | ES | SE | PL | IE"
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("compliance", "read")),
+    user: User = Depends(require_permission("compliance", "export_report")),
 ):
     """Generates and downloads the EU NIS 2 Directive Regulatory Audit Report."""
     fw_id = "cfw_nis2"
+    require_active_framework(fw_id)
     query = db.query(ComplianceControl).filter(ComplianceControl.framework_id == fw_id)
 
     if nis2_entity_type and nis2_entity_type != "all":
@@ -5051,7 +7082,9 @@ def download_nis2_report(
         )
         .all()
     )
-    findings_map = {f.control_id: f for f in findings}
+    # One rolled-up verdict per control (see RolledFinding): the previous
+    # dict comprehension let the last row of an unordered query decide.
+    findings_map = rolled_up_control_findings(db, user.org_id, control_ids)
 
     report_title = "EU NIS 2 Directive Regulatory Compliance Audit Report"
     report_sub = f"European Union Directive (EU) 2022/2555 Security Assessment Ledger (Tenant: {user.org_id[:8]})"

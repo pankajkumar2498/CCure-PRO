@@ -342,8 +342,18 @@ async def lifespan(app: FastAPI):
                 or not nerc_cip_fw
                 or not nis2_fw
                 or ctrl_count < 93
-                or nist_ctrl_count < 20
-                or soc2_ctrl_count < 61
+                # NIST CSF 2.0 defines exactly 106 Subcategories. The threshold
+                # here was 20 — every other framework's is its real control
+                # count — so a NIST catalogue truncated to any size above 20
+                # satisfied the self-heal check and was never re-seeded.
+                or nist_ctrl_count < 106
+                # 61 against a catalogue of 55: this condition was true on every
+                # start, so the whole seeder ran on every container start. That
+                # is what turned the NIST rule-wiring bug below into a
+                # progressive one — each restart handed another set of
+                # Subcategories an attestation placeholder that suppressed their
+                # automated verdicts.
+                or soc2_ctrl_count < 55
                 or certin_ctrl_count < 10
                 or dpdp_ctrl_count < 16
                 or gdpr_ctrl_count < 18

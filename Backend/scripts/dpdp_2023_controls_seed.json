@@ -13,7 +13,7 @@
       "description": "Data Fiduciaries must give clear, itemized notice in plain language (and scheduled languages) detailing personal data collected and specified purpose before or at consent request.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.OC-01", "CIS:17.1"],
+      "crosswalk": ["ISO27001:A.5.34", "NIST_CSF_V2:GV.OC-01", "CIS:17.1"],
       "evidence_checklist": ["Itemized Privacy Notice Document", "Multi-Language Support Log", "Consent UI Screenshot"],
       "tags": ["DPDP_CN", "Consent_Notice", "general_fiduciary"]
     },
@@ -46,7 +46,7 @@
       "description": "Personal data collection must be restricted strictly to data necessary for specified and lawful purposes.",
       "scannability": "auto",
       "scan_module_hint": "web_vulnerability_audit",
-      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-01", "CIS:13.1"],
+      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF_V2:PR.DS-01", "CIS:13.1"],
       "evidence_checklist": ["Form Data Schema Audits", "Data Flow Inventory"],
       "tags": ["DPDP_PL", "Data_Minimization", "general_fiduciary"]
     },
@@ -57,7 +57,7 @@
       "description": "Data Fiduciaries must erase personal data as soon as consent is withdrawn or specified purpose is served, unless retention is mandated by law.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.10", "NIST:PR.DS-02", "CIS:13.2"],
+      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF_V2:PR.DS-02", "CIS:13.2"],
       "evidence_checklist": ["Automated DB Purge Job Logs", "Data Retention Policy Schedule"],
       "tags": ["DPDP_PL", "Data_Erasure", "general_fiduciary"]
     },
@@ -90,7 +90,7 @@
       "description": "Data Fiduciaries must establish an accessible grievance redressal mechanism with published contact details and defined resolution timelines.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.OC-01"],
+      "crosswalk": ["ISO27001:A.5.34", "NIST_CSF_V2:GV.OC-01"],
       "evidence_checklist": ["Grievance Ticketing System SLA Reports", "Published DPO/Grievance Officer Contact Details"],
       "tags": ["DPDP_DR", "Grievance_Redressal", "general_fiduciary"]
     },
@@ -101,7 +101,7 @@
       "description": "In the event of a personal data breach, Data Fiduciaries must notify the Data Protection Board of India (DPBI) and affected Data Principals without delay.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.24", "NIST:RS.MA-01", "CIS:17.1"],
+      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF_V2:RS.MA-01", "CIS:17.1"],
       "evidence_checklist": ["DPBI Incident Escalation Playbook", "Breach Notification System Templates"],
       "tags": ["DPDP_BN", "Breach_Notification", "general_fiduciary"]
     },
@@ -112,7 +112,7 @@
       "description": "Technical and organizational measures must enforce AES-256 encryption for PII stored at rest and TLS 1.2+ for PII transmitted over networks.",
       "scannability": "auto",
       "scan_module_hint": "web_vulnerability_audit",
-      "crosswalk": ["ISO27001:A.8.24", "NIST:PR.DS-01", "CIS:3.11"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "CIS:3.11"],
       "evidence_checklist": ["KMS Master Encryption Policy", "TLS Network Cipher Audit Report"],
       "tags": ["DPDP_PS", "PII_Encryption", "general_fiduciary"]
     },
@@ -123,7 +123,7 @@
       "description": "Access to databases and cloud storage containing PII must be restricted strictly via Role-Based Access Control (RBAC) and Multi-Factor Authentication (MFA).",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.15", "NIST:PR.AC-01", "CIS:6.1"],
+      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF_V2:PR.AA-01", "CIS:6.1"],
       "evidence_checklist": ["IAM Role Policy Dump", "MFA Enforcement Logs"],
       "tags": ["DPDP_PS", "PII_Access_Control", "general_fiduciary"]
     },
@@ -134,7 +134,7 @@
       "description": "All access, modification, and deletion events involving personal data must generate tamper-evident audit logs preserved for a minimum retention window.",
       "scannability": "auto",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.8.15", "NIST:DE.CM-01", "CIS:8.2"],
+      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF_V2:DE.CM-01", "CIS:8.2"],
       "evidence_checklist": ["SIEM Central Audit Configuration", "Log Integrity Check Hash Logs"],
       "tags": ["DPDP_PS", "Audit_Logging", "general_fiduciary"]
     },
@@ -145,7 +145,7 @@
       "description": "Significant Data Fiduciaries must appoint a resident Data Protection Officer based in India who reports directly to executive management.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.2", "NIST:GV.PO-01"],
+      "crosswalk": ["ISO27001:A.5.2", "NIST_CSF_V2:GV.PO-01"],
       "evidence_checklist": ["DPO Appointment Letter", "Board Oversight Privacy Minutes"],
       "tags": ["DPDP_GV", "DPO_Designation", "sdf_mandatory"],
       "sdf_scope": "sdf_mandatory"
@@ -157,7 +157,7 @@
       "description": "Significant Data Fiduciaries must undergo independent periodic data protection audits by certified privacy auditors.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.35", "NIST:GV.OV-01"],
+      "crosswalk": ["ISO27001:A.5.35", "NIST_CSF_V2:GV.OV-01"],
       "evidence_checklist": ["Third-Party Privacy Audit Report", "Management Remediation Action Plan"],
       "tags": ["DPDP_GV", "SDF_Audit", "sdf_mandatory"],
       "sdf_scope": "sdf_mandatory"
@@ -169,7 +169,7 @@
       "description": "Significant Data Fiduciaries must carry out DPIA before deploying high-risk data processing activities or algorithm modifications.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.34", "NIST:GV.RA-01"],
+      "crosswalk": ["ISO27001:A.5.34", "NIST_CSF_V2:ID.RA-04"],
       "evidence_checklist": ["DPIA Assessment Artifacts", "Risk Mitigation Sign-off Ledger"],
       "tags": ["DPDP_GV", "DPIA", "sdf_mandatory"],
       "sdf_scope": "sdf_mandatory"
@@ -181,7 +181,7 @@
       "description": "Personal data sharing with third-party Data Processors must occur solely under valid Data Processing Agreements (DPA) enforcing security safeguards.",
       "scannability": "manual",
       "scan_module_hint": "offline_configuration",
-      "crosswalk": ["ISO27001:A.5.19", "NIST:GV.SC-01", "CIS:15.1"],
+      "crosswalk": ["ISO27001:A.5.19", "NIST_CSF_V2:GV.SC-01", "CIS:15.1"],
       "evidence_checklist": ["Vendor DPA Repository", "Processor Security Assessment Records"],
       "tags": ["DPDP_GV", "Processor_DPA", "general_fiduciary"]
     }

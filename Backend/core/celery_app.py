@@ -49,9 +49,9 @@ celery_app.conf.beat_schedule = {
         "task": "compliance.prune_remediation_logs",
         "schedule": crontab(hour=0, minute=0, day_of_week="sun"),
     },
-    "run-scheduled-compliance-scans-every-minute": {
+    "run-scheduled-compliance-scans-every-5-min": {
         "task": "compliance.run_scheduled_scans",
-        "schedule": 60.0,
+        "schedule": crontab(minute="*/5"),
     },
     # An account that was registered and never verified is personal data held
     # for no purpose, and it also keeps a username and email address reserved

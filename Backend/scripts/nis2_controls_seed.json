@@ -18,8 +18,8 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "ISO27001:A.5.4",
-        "NIST_CSF:GV.PO-01",
-        "NIST_CSF:GV.OV-01",
+        "NIST_CSF_V2:GV.PO-01",
+        "NIST_CSF_V2:GV.OV-01",
         "CIS:12.1",
         "IEC_62443:SR 7.6"
       ],
@@ -44,7 +44,7 @@
       "scan_module_hint": "hr_training",
       "crosswalk": [
         "ISO27001:A.6.3",
-        "NIST_CSF:PR.AT-01",
+        "NIST_CSF_V2:PR.AT-01",
         "CIS:14.1",
         "IEC_62443:SR 7.6"
       ],
@@ -69,7 +69,7 @@
       "scan_module_hint": "policy_compliance",
       "crosswalk": [
         "ISO27001:A.5.1",
-        "NIST_CSF:GV.PO-02",
+        "NIST_CSF_V2:GV.PO-02",
         "CIS:12.1",
         "IEC_62443:SR 7.6"
       ],
@@ -99,7 +99,7 @@
       "scan_module_hint": "policy_compliance",
       "crosswalk": [
         "ISO27001:A.5.5",
-        "NIST_CSF:ID.RA-01",
+        "NIST_CSF_V2:ID.RA-01",
         "CIS:1.1",
         "IEC_62443:SR 7.6"
       ],
@@ -125,8 +125,8 @@
       "crosswalk": [
         "ISO27001:A.5.9",
         "ISO27001:A.5.10",
-        "NIST_CSF:ID.AM-01",
-        "NIST_CSF:ID.AM-02",
+        "NIST_CSF_V2:ID.AM-01",
+        "NIST_CSF_V2:ID.AM-02",
         "CIS:1.1",
         "CIS:2.1",
         "IEC_62443:SR 7.8"
@@ -152,7 +152,7 @@
       "scan_module_hint": "entity_classification",
       "crosswalk": [
         "ISO27001:A.5.31",
-        "NIST_CSF:GV.OC-01",
+        "NIST_CSF_V2:GV.OC-01",
         "CIS:12.1",
         "IEC_62443:SR 7.6"
       ],
@@ -178,7 +178,7 @@
       "crosswalk": [
         "ISO27001:A.5.24",
         "ISO27001:A.5.25",
-        "NIST_CSF:RS.MA-01",
+        "NIST_CSF_V2:RS.MA-01",
         "CIS:17.1",
         "IEC_62443:SR 6.1"
       ],
@@ -203,7 +203,7 @@
       "scan_module_hint": "audit_logs",
       "crosswalk": [
         "ISO27001:A.5.24",
-        "NIST_CSF:RS.CO-02",
+        "NIST_CSF_V2:RS.CO-02",
         "CIS:17.2",
         "IEC_62443:SR 6.1"
       ],
@@ -228,7 +228,7 @@
       "scan_module_hint": "incident_management",
       "crosswalk": [
         "ISO27001:A.5.26",
-        "NIST_CSF:RS.AN-01",
+        "NIST_CSF_V2:RS.CO-02",
         "CIS:17.3",
         "IEC_62443:SR 6.2"
       ],
@@ -253,7 +253,7 @@
       "scan_module_hint": "incident_management",
       "crosswalk": [
         "ISO27001:A.5.27",
-        "NIST_CSF:RS.CO-03",
+        "NIST_CSF_V2:RS.CO-03",
         "CIS:17.3",
         "IEC_62443:SR 6.2"
       ],
@@ -278,7 +278,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.8.15",
-        "NIST_CSF:DE.CM-01",
+        "NIST_CSF_V2:DE.CM-01",
         "CIS:8.2",
         "CIS:8.3",
         "IEC_62443:SR 2.8"
@@ -304,7 +304,7 @@
       "scan_module_hint": "credentialed_windows",
       "crosswalk": [
         "ISO27001:A.8.13",
-        "NIST_CSF:PR.IP-04",
+        "NIST_CSF_V2:PR.DS-11",
         "CIS:11.1",
         "IEC_62443:SR 7.3"
       ],
@@ -329,7 +329,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.8.14",
-        "NIST_CSF:RC.RP-01",
+        "NIST_CSF_V2:RC.RP-01",
         "CIS:11.2",
         "IEC_62443:SR 7.3"
       ],
@@ -355,7 +355,7 @@
       "crosswalk": [
         "ISO27001:A.5.29",
         "ISO27001:A.5.30",
-        "NIST_CSF:ID.BE-05",
+        "NIST_CSF_V2:PR.IR-03",
         "CIS:11.4",
         "IEC_62443:SR 7.4"
       ],
@@ -380,7 +380,7 @@
       "scan_module_hint": "cloud_config",
       "crosswalk": [
         "ISO27001:A.8.14",
-        "NIST_CSF:PR.PT-05",
+        "NIST_CSF_V2:PR.IR-03",
         "CIS:11.3",
         "IEC_62443:SR 7.3"
       ],
@@ -406,7 +406,7 @@
       "crosswalk": [
         "ISO27001:A.5.19",
         "ISO27001:A.5.20",
-        "NIST_CSF:ID.SC-01",
+        "NIST_CSF_V2:GV.SC-01",
         "CIS:15.1",
         "IEC_62443:SR 7.6"
       ],
@@ -431,7 +431,7 @@
       "scan_module_hint": "sbom_scanner",
       "crosswalk": [
         "ISO27001:A.8.30",
-        "NIST_CSF:ID.SC-04",
+        "NIST_CSF_V2:GV.SC-07",
         "CIS:15.3",
         "IEC_62443:SR 7.7"
       ],
@@ -457,7 +457,7 @@
       "crosswalk": [
         "ISO27001:A.5.21",
         "ISO27001:A.5.22",
-        "NIST_CSF:ID.SC-03",
+        "NIST_CSF_V2:GV.SC-05",
         "CIS:15.2",
         "IEC_62443:SR 7.7"
       ],
@@ -482,7 +482,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.5.23",
-        "NIST_CSF:PR.AC-03",
+        "NIST_CSF_V2:PR.AA-05",
         "CIS:15.7",
         "IEC_62443:SR 1.13"
       ],
@@ -507,7 +507,7 @@
       "scan_module_hint": "vulnerability_scan",
       "crosswalk": [
         "ISO27001:A.8.8",
-        "NIST_CSF:ID.RA-01",
+        "NIST_CSF_V2:ID.RA-01",
         "CIS:7.1",
         "CIS:7.2",
         "IEC_62443:SR 2.3"
@@ -533,7 +533,7 @@
       "scan_module_hint": "web_scan",
       "crosswalk": [
         "ISO27001:A.8.8",
-        "NIST_CSF:RS.AN-05",
+        "NIST_CSF_V2:ID.RA-08",
         "CIS:7.7",
         "IEC_62443:SR 2.3"
       ],
@@ -559,7 +559,7 @@
       "crosswalk": [
         "ISO27001:A.8.20",
         "ISO27001:A.8.22",
-        "NIST_CSF:PR.AC-05",
+        "NIST_CSF_V2:PR.IR-01",
         "CIS:12.1",
         "IEC_62443:SR 5.1"
       ],
@@ -585,7 +585,7 @@
       "crosswalk": [
         "ISO27001:A.8.25",
         "ISO27001:A.8.28",
-        "NIST_CSF:PR.IP-02",
+        "NIST_CSF_V2:PR.PS-06",
         "CIS:16.1",
         "IEC_62443:SR 2.4"
       ],
@@ -611,7 +611,7 @@
       "crosswalk": [
         "ISO27001:A.5.35",
         "ISO27001:A.8.8",
-        "NIST_CSF:ID.RA-03",
+        "NIST_CSF_V2:ID.RA-03",
         "CIS:18.1",
         "IEC_62443:SR 7.6"
       ],
@@ -636,7 +636,7 @@
       "scan_module_hint": "compliance_engine",
       "crosswalk": [
         "ISO27001:A.5.36",
-        "NIST_CSF:PR.IP-01",
+        "NIST_CSF_V2:PR.PS-01",
         "CIS:4.1",
         "IEC_62443:SR 7.6"
       ],
@@ -661,7 +661,7 @@
       "scan_module_hint": "regulatory_reporting",
       "crosswalk": [
         "ISO27001:A.5.31",
-        "NIST_CSF:GV.PO-01",
+        "NIST_CSF_V2:GV.PO-01",
         "CIS:12.1",
         "IEC_62443:SR 7.6"
       ],
@@ -686,7 +686,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.8.9",
-        "NIST_CSF:PR.IP-01",
+        "NIST_CSF_V2:PR.PS-01",
         "CIS:4.1",
         "IEC_62443:SR 2.4"
       ],
@@ -711,7 +711,7 @@
       "scan_module_hint": "credentialed_windows",
       "crosswalk": [
         "ISO27001:A.5.17",
-        "NIST_CSF:PR.AC-01",
+        "NIST_CSF_V2:PR.AA-01",
         "CIS:5.2",
         "IEC_62443:SR 1.5"
       ],
@@ -736,7 +736,7 @@
       "scan_module_hint": "hr_training",
       "crosswalk": [
         "ISO27001:A.6.3",
-        "NIST_CSF:PR.AT-01",
+        "NIST_CSF_V2:PR.AT-01",
         "CIS:14.1",
         "IEC_62443:SR 7.6"
       ],
@@ -761,7 +761,7 @@
       "scan_module_hint": "zero_trust",
       "crosswalk": [
         "ISO27001:A.8.20",
-        "NIST_CSF:PR.AC-04",
+        "NIST_CSF_V2:PR.AA-05",
         "CIS:6.1",
         "IEC_62443:SR 1.1"
       ],
@@ -786,7 +786,7 @@
       "scan_module_hint": "web_scan",
       "crosswalk": [
         "ISO27001:A.8.24",
-        "NIST_CSF:PR.DS-02",
+        "NIST_CSF_V2:PR.DS-02",
         "CIS:3.10",
         "IEC_62443:SR 4.1"
       ],
@@ -811,7 +811,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.8.24",
-        "NIST_CSF:PR.DS-01",
+        "NIST_CSF_V2:PR.DS-01",
         "CIS:3.11",
         "IEC_62443:SR 4.2"
       ],
@@ -836,7 +836,7 @@
       "scan_module_hint": "kms_config",
       "crosswalk": [
         "ISO27001:A.8.24",
-        "NIST_CSF:PR.DS-01",
+        "NIST_CSF_V2:PR.DS-01",
         "CIS:3.11",
         "IEC_62443:SR 4.2"
       ],
@@ -861,7 +861,7 @@
       "scan_module_hint": "credentialed_linux",
       "crosswalk": [
         "ISO27001:A.8.24",
-        "NIST_CSF:PR.AC-01",
+        "NIST_CSF_V2:PR.AA-01",
         "CIS:5.2",
         "IEC_62443:SR 1.5"
       ],
@@ -887,7 +887,7 @@
       "crosswalk": [
         "ISO27001:A.5.15",
         "ISO27001:A.8.2",
-        "NIST_CSF:PR.AC-01",
+        "NIST_CSF_V2:PR.AA-01",
         "CIS:6.1",
         "IEC_62443:SR 1.1"
       ],
@@ -913,7 +913,7 @@
       "crosswalk": [
         "ISO27001:A.8.5",
         "ISO27001:A.8.7",
-        "NIST_CSF:PR.AC-06",
+        "NIST_CSF_V2:PR.AA-02",
         "CIS:6.8",
         "IEC_62443:SR 1.3"
       ],
@@ -939,7 +939,7 @@
       "crosswalk": [
         "ISO27001:A.6.1",
         "ISO27001:A.6.5",
-        "NIST_CSF:PR.AC-01",
+        "NIST_CSF_V2:PR.AA-01",
         "CIS:6.2",
         "IEC_62443:SR 1.2"
       ],
@@ -964,7 +964,7 @@
       "scan_module_hint": "sso_config",
       "crosswalk": [
         "ISO27001:A.5.16",
-        "NIST_CSF:PR.AC-07",
+        "NIST_CSF_V2:PR.AA-03",
         "CIS:6.3",
         "IEC_62443:SR 1.4"
       ],
@@ -989,7 +989,7 @@
       "scan_module_hint": "identity_provider",
       "crosswalk": [
         "ISO27001:A.8.5",
-        "NIST_CSF:PR.AC-07",
+        "NIST_CSF_V2:PR.AA-03",
         "CIS:6.3",
         "CIS:6.4",
         "IEC_62443:SR 1.4"
@@ -1015,7 +1015,7 @@
       "scan_module_hint": "identity_provider",
       "crosswalk": [
         "ISO27001:A.8.5",
-        "NIST_CSF:PR.AC-07",
+        "NIST_CSF_V2:PR.AA-03",
         "CIS:6.5",
         "IEC_62443:SR 1.4"
       ],
@@ -1040,7 +1040,7 @@
       "scan_module_hint": "emergency_comms",
       "crosswalk": [
         "ISO27001:A.8.23",
-        "NIST_CSF:RS.CO-05",
+        "NIST_CSF_V2:RS.CO-03",
         "CIS:17.4",
         "IEC_62443:SR 4.3"
       ],
@@ -1065,7 +1065,7 @@
       "scan_module_hint": "emergency_comms",
       "crosswalk": [
         "ISO27001:A.8.23",
-        "NIST_CSF:RS.CO-05",
+        "NIST_CSF_V2:RS.CO-03",
         "CIS:17.4",
         "IEC_62443:SR 4.3"
       ],

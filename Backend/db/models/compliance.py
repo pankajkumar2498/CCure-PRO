@@ -433,6 +433,11 @@ class ComplianceScanRun(Base):
             "status IN ('queued', 'running', 'completed', 'failed')",
             name="ck_run_status",
         ),
+        # Scan history is always read as "this tenant's runs, newest first"
+        # (`/compliance/scans`). Declared here as well as in migration
+        # d3e4f5a6b7c8 so a `create_all` schema and a migrated one carry the
+        # same indexes.
+        Index("ix_compliance_scan_runs_tenant_created", "tenant_id", "created_at"),
     )
 
     id = Column(String(100), primary_key=True)
@@ -463,9 +468,19 @@ class ComplianceScanRun(Base):
     )
     scope = Column(JSONB, nullable=False)
     status = Column(String(50), nullable=False, default="queued")
+    # When the run was requested, as opposed to when the worker picked it up.
+    # A run that fails before it starts has no `started_at`, so without this
+    # column a failed run had no timestamp at all and could not be ordered in
+    # scan history. `run_scheduled_scans` also passed this keyword to the
+    # constructor while the column did not exist, which made every scheduled
+    # compliance scan raise TypeError.
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     started_at = Column(TIMESTAMPTZ, nullable=True)
     finished_at = Column(TIMESTAMPTZ, nullable=True)
     is_finalized = Column(Boolean, nullable=False, default=False)
+    # Populated when a run ends in `failed`, so the operator sees why rather
+    # than a silently stalled progress spinner.
+    error_message = Column(Text, nullable=True)
     cde_scope = Column(String(50), nullable=True)  # PCI-DSS CDE scoping filter
     sdf_scope = Column(String(50), nullable=True)  # DPDP Act 2023 SDF scoping filter
     privacy_role = Column(
@@ -540,6 +555,23 @@ class ComplianceFinding(Base):
     status = Column(String(50), nullable=False)
     evidence = Column(JSONB, nullable=False, default=dict)
     evidence_file_ids = Column(JSONB, nullable=False, default=list)
+    # ISO/IEC 27001:2022 clause 6.1.3(d) requires the Statement of
+    # Applicability to record, per control, the justification for including it
+    # and the justification for excluding it. Neither had anywhere to live, so
+    # the SoA this product exported could not be used for certification.
+    justification = Column(Text, nullable=True)
+    # Who owns the control and when it is next due for review — the two fields
+    # an ISMS manager needs in order to run an attestation cycle at all.
+    owner = Column(
+        String(150),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+            name="fk_compliance_findings_owner",
+        ),
+        nullable=True,
+    )
+    next_review_at = Column(TIMESTAMPTZ, nullable=True)
     attested_by = Column(
         String(150), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -892,3 +924,66 @@ class ComplianceRemediationRequest(Base):
     auth_method = Column(String(50), nullable=True)
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     reviewed_at = Column(TIMESTAMPTZ, nullable=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Attestation Evidence Files
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ComplianceEvidenceFile(Base):
+    """Uploaded audit evidence backing a manual attestation.
+
+    `ComplianceFinding.evidence_file_ids` has referenced this concept since the
+    first migration and nothing implemented it: no table, no upload route, no
+    file input. For ISO 27001, where 63 of 93 Annex A controls can only be
+    satisfied by attestation, the evidence document *is* the audit trail — a
+    control attested with no attached policy, screenshot or signed record is
+    not evidence an auditor can accept.
+
+    Bytes live on disk under a tenant-scoped directory rather than in the
+    database: evidence is routinely tens of megabytes of scanned PDF, and the
+    retention policy already contemplates archiving it.
+    """
+
+    __tablename__ = "compliance_evidence_files"
+    __table_args__ = (
+        Index("ix_compliance_evidence_files_control", "tenant_id", "control_id"),
+        # Named explicitly rather than left to `index=True` on the column.
+        # SQLAlchemy would auto-name that one `ix_compliance_evidence_files_
+        # tenant_id`, while migration d3e4f5a6b7c8 creates and drops
+        # `ix_compliance_evidence_files_tenant` — so the two schema paths
+        # disagreed. A database built by `db/migrate_production_schema.py`
+        # (`create_all` from these models, which is what CI builds) then could
+        # not be downgraded: `alembic downgrade -1` tried to drop an index that
+        # existed under the other name. One name, declared once.
+        Index("ix_compliance_evidence_files_tenant", "tenant_id"),
+    )
+
+    id = Column(String(100), primary_key=True)
+    tenant_id = Column(
+        String(100),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    control_id = Column(
+        String(100),
+        ForeignKey("compliance_controls.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    finding_id = Column(
+        String(250),
+        ForeignKey("compliance_findings.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(120), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    # SHA-256 of the stored bytes. An auditor's question about an evidence file
+    # is whether it is the same file that was reviewed; a digest answers it.
+    sha256 = Column(String(64), nullable=False)
+    storage_path = Column(String(1024), nullable=False)
+    uploaded_by = Column(
+        String(150), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)

@@ -35,7 +35,7 @@
       "standard_number": "CIP-002",
       "scannability": "semi_auto",
       "scan_module_hint": "BES Cyber System Scoping Audit",
-      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF:ID.AM-01", "NIST_800_53:RA-2", "IEC_62443:FR7_RA"],
+      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF_V2:ID.AM-01", "NIST_800_53:RA-2", "IEC_62443:FR7_RA"],
       "evidence_checklist": ["High Impact BES System Inventory", "CIP Senior Manager Approval Letter", "Annual Categorization Review Minutes"]
     },
     {
@@ -49,7 +49,7 @@
       "standard_number": "CIP-002",
       "scannability": "semi_auto",
       "scan_module_hint": "BES Impact Assessment Audit",
-      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF:ID.AM-02", "NIST_800_53:RA-3", "IEC_62443:FR7_RA"],
+      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF_V2:ID.AM-02", "NIST_800_53:RA-3", "IEC_62443:FR7_RA"],
       "evidence_checklist": ["Medium Impact Asset Roster", "Substation Voltage Criteria Verification", "Asset Owner Approval Document"]
     },
     {
@@ -63,7 +63,7 @@
       "standard_number": "CIP-002",
       "scannability": "auto",
       "scan_module_hint": "Low Impact Asset Inventory Audit",
-      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF:ID.AM-03", "NIST_800_53:CM-8", "IEC_62443:FR7_RA"],
+      "crosswalk": ["ISO27001:A.5.9", "NIST_CSF_V2:ID.AM-03", "NIST_800_53:CM-8", "IEC_62443:FR7_RA"],
       "evidence_checklist": ["Low Impact Cyber Asset List", "Site Diagram Mappings", "Periodic Review Records"]
     },
     {
@@ -77,7 +77,7 @@
       "standard_number": "CIP-002",
       "scannability": "auto",
       "scan_module_hint": "PCA and EACMS Connection Audit",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.IR-01", "NIST_800_53:AC-4", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:AC-4", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["PCA Network Connectivity Diagram", "EACMS Firewall Port Matrix", "PACS Controller Register"]
     },
     {
@@ -91,7 +91,7 @@
       "standard_number": "CIP-003",
       "scannability": "manual",
       "scan_module_hint": "CIP Governance Policy Review",
-      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF:GV.PO-01", "NIST_800_53:PL-1", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF_V2:GV.PO-01", "NIST_800_53:PL-1", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["13 Mandatory Policy Documents", "CIP Senior Manager Written Approval", "Annual Policy Audit Log"]
     },
     {
@@ -105,7 +105,7 @@
       "standard_number": "CIP-003",
       "scannability": "manual",
       "scan_module_hint": "Governance Authorization Audit",
-      "crosswalk": ["ISO27001:A.5.2", "NIST_CSF:GV.OC-01", "NIST_800_53:PM-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.2", "NIST_CSF_V2:GV.OC-01", "NIST_800_53:PM-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Delegation Letter Signed by CIP Senior Manager", "Delegate Role Descriptions", "Authorization Matrix"]
     },
     {
@@ -119,7 +119,7 @@
       "standard_number": "CIP-003",
       "scannability": "semi_auto",
       "scan_module_hint": "Low Impact Plan Audit",
-      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF:PR.AA-01", "NIST_800_53:SA-9", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.1", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:SA-9", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Low Impact Security Plan", "Substation Physical Enclosure Policy", "USB Scanning Protocol"]
     },
     {
@@ -133,7 +133,7 @@
       "standard_number": "CIP-003",
       "scannability": "auto",
       "scan_module_hint": "Transient Asset Malware Check",
-      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF:PR.PS-01", "NIST_800_53:MP-7", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:MP-7", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["USB Scanning Station Logs", "Transient Laptop Authorization List", "Malware Inspection Certificates"]
     },
     {
@@ -147,7 +147,7 @@
       "standard_number": "CIP-004",
       "scannability": "manual",
       "scan_module_hint": "Security Awareness Audit",
-      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF:PR.AT-01", "NIST_800_53:AT-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF_V2:PR.AT-01", "NIST_800_53:AT-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Quarterly Awareness Bulletins", "LMS Completion Records", "Phishing Test Results"]
     },
     {
@@ -161,7 +161,7 @@
       "standard_number": "CIP-004",
       "scannability": "semi_auto",
       "scan_module_hint": "Personnel Training Compliance Audit",
-      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF:PR.AT-02", "NIST_800_53:AT-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.6.3", "NIST_CSF_V2:PR.AT-02", "NIST_800_53:AT-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Training Curriculum Materials", "Training Attendance Roster", "Annual Refresher Log"]
     },
     {
@@ -175,7 +175,7 @@
       "standard_number": "CIP-004",
       "scannability": "manual",
       "scan_module_hint": "Background Check Audit",
-      "crosswalk": ["ISO27001:A.6.1", "NIST_CSF:PR.AA-01", "NIST_800_53:PS-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.6.1", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:PS-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Background Check Verification Certificates", "HR Clearance Logs", "7-Year Re-Screening Schedule"]
     },
     {
@@ -189,7 +189,7 @@
       "standard_number": "CIP-004",
       "scannability": "auto",
       "scan_module_hint": "Access Revocation Audit",
-      "crosswalk": ["ISO27001:A.5.18", "NIST_CSF:PR.AA-04", "NIST_800_53:PS-4", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.5.18", "NIST_CSF_V2:PR.AA-04", "NIST_800_53:PS-4", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["Termination Notification Timestamps", "Active Directory / PACS Revocation Logs", "24h SLA Audit Report"]
     },
     {
@@ -203,7 +203,7 @@
       "standard_number": "CIP-005",
       "scannability": "auto",
       "scan_module_hint": "ESP Firewall & EACMS Audit",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.AC-05", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["ESP Network Topology Diagram", "Firewall Rulebase Configuration Export", "Deny-All Default Policy Verification"]
     },
     {
@@ -217,7 +217,7 @@
       "standard_number": "CIP-005",
       "scannability": "auto",
       "scan_module_hint": "Remote Access MFA Audit",
-      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF:PR.AA-05", "NIST_800_53:AC-17", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-17", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["MFA Configuration Verification", "Jump Host Radius/TACACS+ Logs", "Remote Access Session Logs"]
     },
     {
@@ -231,7 +231,7 @@
       "standard_number": "CIP-005",
       "scannability": "auto",
       "scan_module_hint": "Vendor Remote Session Audit",
-      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF:ID.SD-04", "NIST_800_53:AC-20", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF_V2:PR.AA-05", "NIST_800_53:AC-20", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["Vendor Remote Access Log", "Session Recording Repository", "Time-Bound Access Enablement Approvals"]
     },
     {
@@ -245,7 +245,7 @@
       "standard_number": "CIP-005",
       "scannability": "auto",
       "scan_module_hint": "ESP Traffic Filter Audit",
-      "crosswalk": ["ISO27001:A.8.21", "NIST_CSF:PR.PT-04", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.21", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["EACMS Access Control Lists (ACLs)", "Port Authorization Matrix", "Firewall Ingress/Egress Audit"]
     },
     {
@@ -259,7 +259,7 @@
       "standard_number": "CIP-005",
       "scannability": "semi_auto",
       "scan_module_hint": "OT DMZ Architecture Audit",
-      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF:PR.AC-05", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.22", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:SC-7", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["Network Segmentation Diagram", "DMZ Dual-Homed Server Configurations", "No-Direct-IT-to-OT Route Proof"]
     },
     {
@@ -273,7 +273,7 @@
       "standard_number": "CIP-006",
       "scannability": "manual",
       "scan_module_hint": "Physical Security Plan Audit",
-      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Physical Security Plan Document", "Control Room PSP Boundary Blueprints", "Annual Physical Security Assessment"]
     },
     {
@@ -287,7 +287,7 @@
       "standard_number": "CIP-006",
       "scannability": "auto",
       "scan_module_hint": "PACS Controller Audit",
-      "crosswalk": ["ISO27001:A.7.2", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.2", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["PACS Controller Database Export", "Door Sensor Alarm Logs", "Intrusion Detection Test Logs"]
     },
     {
@@ -301,7 +301,7 @@
       "standard_number": "CIP-006",
       "scannability": "manual",
       "scan_module_hint": "Visitor Log Audit",
-      "crosswalk": ["ISO27001:A.7.2", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.2", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["90-Day Visitor Sign-In Logs", "Escort Badging Records", "Quarterly Visitor Log Audits"]
     },
     {
@@ -315,7 +315,7 @@
       "standard_number": "CIP-006",
       "scannability": "semi_auto",
       "scan_module_hint": "Physical Log Retention Audit",
-      "crosswalk": ["ISO27001:A.7.3", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-6", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.3", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-6", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["PACS 90-Day Retention Proof", "Quarterly Access Review Sign-Off", "Unauthorized Physical Attempt Reports"]
     },
     {
@@ -329,7 +329,7 @@
       "standard_number": "CIP-007",
       "scannability": "auto",
       "scan_module_hint": "Port & Service Audit",
-      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF:PR.PT-03", "NIST_800_53:CM-7", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:CM-7", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["Nmap/Port Audit Report", "Open Port Justification Register", "USB Port Disabling GPO Verification"]
     },
     {
@@ -343,7 +343,7 @@
       "standard_number": "CIP-007",
       "scannability": "auto",
       "scan_module_hint": "Patch Evaluation Audit",
-      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF:ID.RA-01", "NIST_800_53:SI-2", "IEC_62443:IEC_2_3"],
+      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF_V2:ID.RA-01", "NIST_800_53:SI-2", "IEC_62443:IEC_2_3"],
       "evidence_checklist": ["35-Day Patch Evaluation Matrix", "Patch Deployment Logs", "Approved Patch Mitigation Plans"]
     },
     {
@@ -357,7 +357,7 @@
       "standard_number": "CIP-007",
       "scannability": "auto",
       "scan_module_hint": "Anti-Malware Freshness Audit",
-      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF:PR.DS-01", "NIST_800_53:SI-3", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SI-3", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["Antivirus Central Console Report", "AppLocker Policy Verification", "Definition Update Frequency Log"]
     },
     {
@@ -371,7 +371,7 @@
       "standard_number": "CIP-007",
       "scannability": "auto",
       "scan_module_hint": "Audit Log Retention Check",
-      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF:DE.AE-01", "NIST_800_53:AU-12", "IEC_62443:FR6_TRE"],
+      "crosswalk": ["ISO27001:A.8.15", "NIST_CSF_V2:ID.AM-03", "NIST_800_53:AU-12", "IEC_62443:FR6_TRE"],
       "evidence_checklist": ["Syslog Server Retention Proof", "90-Day Log Archive Audit", "Monthly Log Review Sign-Off Sheet"]
     },
     {
@@ -385,7 +385,7 @@
       "standard_number": "CIP-007",
       "scannability": "auto",
       "scan_module_hint": "Password Policy Audit",
-      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF:PR.AA-01", "NIST_800_53:IA-5", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.5.17", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:IA-5", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["Group Policy Password Settings Export", "PAM Password Policy Audit", "Inactivity Lock Screen Test Log"]
     },
     {
@@ -399,7 +399,7 @@
       "standard_number": "CIP-007",
       "scannability": "semi_auto",
       "scan_module_hint": "Default Password Audit",
-      "crosswalk": ["ISO27001:A.5.16", "NIST_CSF:PR.AA-02", "NIST_800_53:IA-2", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.5.16", "NIST_CSF_V2:PR.AA-02", "NIST_800_53:IA-2", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["Vendor Default Password Change Attestation", "Shared Account Inventory", "PAM Privileged Account Log"]
     },
     {
@@ -413,7 +413,7 @@
       "standard_number": "CIP-008",
       "scannability": "manual",
       "scan_module_hint": "CSIRP Governance Audit",
-      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF:RS.MA-01", "NIST_800_53:IR-4", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.24", "NIST_CSF_V2:RS.MA-01", "NIST_800_53:IR-4", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Approved CSIRP Document", "Incident Classification Matrix", "On-Call Incident Team Roster"]
     },
     {
@@ -427,7 +427,7 @@
       "standard_number": "CIP-008",
       "scannability": "auto",
       "scan_module_hint": "E-ISAC Notification Log Audit",
-      "crosswalk": ["ISO27001:A.5.25", "NIST_CSF:RS.CO-02", "NIST_800_53:IR-6", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.25", "NIST_CSF_V2:RS.CO-02", "NIST_800_53:IR-6", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["E-ISAC Reporting Portal Credentials", "1-Hour Notification SLA Log", "CISA Incident Notification Forms"]
     },
     {
@@ -441,7 +441,7 @@
       "standard_number": "CIP-008",
       "scannability": "semi_auto",
       "scan_module_hint": "CSIRP Exercise Audit",
-      "crosswalk": ["ISO27001:A.5.26", "NIST_CSF:RS.CO-03", "NIST_800_53:IR-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.26", "NIST_CSF_V2:RS.CO-03", "NIST_800_53:IR-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Tabletop Drill After-Action Report", "15-Month Exercise Records", "Participant Attendance Sheet"]
     },
     {
@@ -455,7 +455,7 @@
       "standard_number": "CIP-008",
       "scannability": "manual",
       "scan_module_hint": "Lessons Learned Review Audit",
-      "crosswalk": ["ISO27001:A.5.28", "NIST_CSF:RS.CO-03", "NIST_800_53:IR-7", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.28", "NIST_CSF_V2:RS.CO-03", "NIST_800_53:IR-7", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Lessons Learned Meeting Minutes", "CSIRP Revision History Log", "60-Day SLA Verification"]
     },
     {
@@ -469,7 +469,7 @@
       "standard_number": "CIP-009",
       "scannability": "manual",
       "scan_module_hint": "CSDRP Governance Audit",
-      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF:RC.RP-01", "NIST_800_53:CP-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF_V2:RC.RP-01", "NIST_800_53:CP-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Approved CSDRP Document", "RTO/RPO Target Matrix", "Backup Infrastructure Topology"]
     },
     {
@@ -483,7 +483,7 @@
       "standard_number": "CIP-009",
       "scannability": "semi_auto",
       "scan_module_hint": "Recovery Drill Verification",
-      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF:RC.RP-02", "NIST_800_53:CP-4", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF_V2:RC.RP-02", "NIST_800_53:CP-4", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["DR Restoration Exercise Log", "System Recovery Timestamps", "After-Action Exercise Evaluation"]
     },
     {
@@ -497,7 +497,7 @@
       "standard_number": "CIP-009",
       "scannability": "manual",
       "scan_module_hint": "Recovery Plan Review Audit",
-      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF:RC.RP-03", "NIST_800_53:CP-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.5.30", "NIST_CSF_V2:RC.RP-03", "NIST_800_53:CP-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["CSDRP Change Log", "Annual Review Minutes", "60-Day SLA Completion Proof"]
     },
     {
@@ -511,7 +511,7 @@
       "standard_number": "CIP-009",
       "scannability": "auto",
       "scan_module_hint": "Backup Integrity Audit",
-      "crosswalk": ["ISO27001:A.8.13", "NIST_CSF:PR.DS-02", "NIST_800_53:CP-9", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.13", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:CP-9", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["Backup Hash Comparison Log", "Restoration Integrity Audit", "Offsite Tape Encryption Proof"]
     },
     {
@@ -525,7 +525,7 @@
       "standard_number": "CIP-010",
       "scannability": "auto",
       "scan_module_hint": "Baseline Integrity Check",
-      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF:PR.PS-01", "NIST_800_53:CM-2", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:CM-2", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["Baseline Document Export", "Software Package Hash Inventory", "Pre-Deployment Verification Sign-Off"]
     },
     {
@@ -539,7 +539,7 @@
       "standard_number": "CIP-010",
       "scannability": "auto",
       "scan_module_hint": "Baseline Drift Audit",
-      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF:DE.CM-01", "NIST_800_53:CM-3", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.9", "NIST_CSF_V2:DE.CM-01", "NIST_800_53:CM-3", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["35-Day Baseline Scan Log", "Configuration Drift Alert Records", "Unauthorized Change Incident Forms"]
     },
     {
@@ -553,7 +553,7 @@
       "standard_number": "CIP-010",
       "scannability": "auto",
       "scan_module_hint": "OT Vulnerability Assessment Audit",
-      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF:ID.RA-01", "NIST_800_53:RA-5", "IEC_62443:FR7_RA"],
+      "crosswalk": ["ISO27001:A.8.8", "NIST_CSF_V2:ID.RA-01", "NIST_800_53:RA-5", "IEC_62443:FR7_RA"],
       "evidence_checklist": ["15-Month Vulnerability Scan Report", "Remediation Action Plan", "Vulnerability Assessment Scope Document"]
     },
     {
@@ -567,7 +567,7 @@
       "standard_number": "CIP-010",
       "scannability": "auto",
       "scan_module_hint": "TCA Malware Scan Check",
-      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF:PR.PS-01", "NIST_800_53:SI-3", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.7", "NIST_CSF_V2:PR.PS-01", "NIST_800_53:SI-3", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["TCA Inspection Log", "USB Kiosk Scan Certificates", "Antivirus Scan Reports"]
     },
     {
@@ -581,7 +581,7 @@
       "standard_number": "CIP-010",
       "scannability": "semi_auto",
       "scan_module_hint": "Pre-Deployment Test Audit",
-      "crosswalk": ["ISO27001:A.8.29", "NIST_CSF:PR.PS-02", "NIST_800_53:CM-4", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.29", "NIST_CSF_V2:PR.PS-02", "NIST_800_53:CM-4", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["Test Environment Test Results", "Pre-Deployment Verification Sign-Off", "Rollback Plan Document"]
     },
     {
@@ -595,7 +595,7 @@
       "standard_number": "CIP-011",
       "scannability": "auto",
       "scan_module_hint": "BCSI Encryption Check",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-01", "NIST_800_53:SC-28", "IEC_62443:FR4_DC"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SC-28", "IEC_62443:FR4_DC"],
       "evidence_checklist": ["BCSI Classification Register", "BitLocker / LUKS Encryption Verification", "TLS 1.3 Transit Encryption Logs"]
     },
     {
@@ -609,7 +609,7 @@
       "standard_number": "CIP-011",
       "scannability": "manual",
       "scan_module_hint": "Media Sanitization Audit",
-      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF:PR.DS-03", "NIST_800_53:MP-6", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.8.10", "NIST_CSF_V2:ID.AM-08", "NIST_800_53:MP-6", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Certificates of Physical Destruction", "NIST 800-88 Wiping Logs", "Degaussing / Shredding Vendor Receipts"]
     },
     {
@@ -623,7 +623,7 @@
       "standard_number": "CIP-011",
       "scannability": "semi_auto",
       "scan_module_hint": "BCSI Access Review Audit",
-      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF:PR.AA-01", "NIST_800_53:AC-3", "IEC_62443:FR1_IAC"],
+      "crosswalk": ["ISO27001:A.5.15", "NIST_CSF_V2:PR.AA-01", "NIST_800_53:AC-3", "IEC_62443:FR1_IAC"],
       "evidence_checklist": ["Quarterly BCSI Access Review Sign-Off", "SharePoint / Share Permission Lists", "Access Revocation Tickets"]
     },
     {
@@ -637,7 +637,7 @@
       "standard_number": "CIP-012",
       "scannability": "auto",
       "scan_module_hint": "Control Center Link Encryption Audit",
-      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF:PR.DS-02", "NIST_800_53:SC-8", "IEC_62443:FR4_DC"],
+      "crosswalk": ["ISO27001:A.8.20", "NIST_CSF_V2:PR.DS-02", "NIST_800_53:SC-8", "IEC_62443:FR4_DC"],
       "evidence_checklist": ["IPsec Tunnel Configuration Export", "TLS 1.3 Certificate Status", "ICCP Protocol Encryption Verification"]
     },
     {
@@ -651,7 +651,7 @@
       "standard_number": "CIP-012",
       "scannability": "auto",
       "scan_module_hint": "ICCP Integrity Check",
-      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF:PR.DS-01", "NIST_800_53:SC-8", "IEC_62443:FR3_SI"],
+      "crosswalk": ["ISO27001:A.8.24", "NIST_CSF_V2:PR.DS-01", "NIST_800_53:SC-8", "IEC_62443:FR3_SI"],
       "evidence_checklist": ["ICCP HMAC Configuration Logs", "Data Integrity Error Reports", "Packet Inspection Logs"]
     },
     {
@@ -665,7 +665,7 @@
       "standard_number": "CIP-012",
       "scannability": "semi_auto",
       "scan_module_hint": "Link Failover Audit",
-      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF:PR.PT-04", "NIST_800_53:CP-8", "IEC_62443:FR5_RDF"],
+      "crosswalk": ["ISO27001:A.8.14", "NIST_CSF_V2:PR.IR-01", "NIST_800_53:CP-8", "IEC_62443:FR5_RDF"],
       "evidence_checklist": ["Redundant Path Routing Table", "Annual Failover Test Logs", "BGP / BFD Failover Test Reports"]
     },
     {
@@ -679,7 +679,7 @@
       "standard_number": "CIP-013",
       "scannability": "manual",
       "scan_module_hint": "Supply Chain Plan Audit",
-      "crosswalk": ["ISO27001:A.5.19", "NIST_CSF:ID.SC-01", "NIST_800_53:SR-2", "IEC_62443:IEC_2_4"],
+      "crosswalk": ["ISO27001:A.5.19", "NIST_CSF_V2:GV.SC-01", "NIST_800_53:SR-2", "IEC_62443:IEC_2_4"],
       "evidence_checklist": ["Approved Supply Chain Risk Plan", "Procurement Contract Security Clauses", "Vendor Risk Scoring Matrix"]
     },
     {
@@ -693,7 +693,7 @@
       "standard_number": "CIP-013",
       "scannability": "auto",
       "scan_module_hint": "Vendor Code Integrity Check",
-      "crosswalk": ["ISO27001:A.8.28", "NIST_CSF:ID.SC-04", "NIST_800_53:SR-3", "IEC_62443:IEC_2_4"],
+      "crosswalk": ["ISO27001:A.8.28", "NIST_CSF_V2:GV.SC-07", "NIST_800_53:SR-3", "IEC_62443:IEC_2_4"],
       "evidence_checklist": ["SHA-256 Checksum Verification Logs", "Code Signing Certificate Validation", "Vendor Release Notes"]
     },
     {
@@ -707,7 +707,7 @@
       "standard_number": "CIP-013",
       "scannability": "semi_auto",
       "scan_module_hint": "Vendor Incident SLA Audit",
-      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF:ID.SC-05", "NIST_800_53:SR-5", "IEC_62443:IEC_2_4"],
+      "crosswalk": ["ISO27001:A.5.21", "NIST_CSF_V2:GV.SC-08", "NIST_800_53:SR-5", "IEC_62443:IEC_2_4"],
       "evidence_checklist": ["Vendor Contract SLA Agreements", "Vendor Incident Notification Portal", "Vendor Contact Escalation List"]
     },
     {
@@ -721,7 +721,7 @@
       "standard_number": "CIP-014",
       "scannability": "manual",
       "scan_module_hint": "Substation Physical Risk Audit",
-      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF:ID.RA-01", "NIST_800_53:PE-2", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF_V2:ID.RA-01", "NIST_800_53:PE-2", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Critical Substation Roster", "Power Flow Instability Simulations", "CIP Senior Manager Sign-Off"]
     },
     {
@@ -735,7 +735,7 @@
       "standard_number": "CIP-014",
       "scannability": "manual",
       "scan_module_hint": "Third-Party Physical Audit",
-      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF:ID.RA-01", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF_V2:ID.RA-01", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Third-Party Physical Review Report", "Assessor Qualification Verification", "Third-Party Recommendation Matrix"]
     },
     {
@@ -749,7 +749,7 @@
       "standard_number": "CIP-014",
       "scannability": "semi_auto",
       "scan_module_hint": "Substation Physical Barrier Check",
-      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
+      "crosswalk": ["ISO27001:A.7.1", "NIST_CSF_V2:PR.AA-06", "NIST_800_53:PE-3", "IEC_62443:IEC_2_1"],
       "evidence_checklist": ["Ballistic Wall Installation Drawings", "Perimeter Radar / CCTV Coverage Map", "Armed Response Agreement"]
     }
   ]

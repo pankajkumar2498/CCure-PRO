@@ -299,21 +299,116 @@ const THEME_LABELS = {
   NIS2_MFA: "Multi-Factor Authentication & Comms (Art. 21.2j)",
 };
 
-const GAP_FRAMEWORK_OPTIONS = [
-  { id: "cfw_iso27001_2022", name: "ISO 27001:2022 (Information Security)" },
-  { id: "cfw_nist_csf_v2", name: "NIST CSF 2.0 (Cybersecurity Framework)" },
-  { id: "cfw_soc2_type2", name: "SOC 2 Type II (Trust Services)" },
-  { id: "cfw_cis_v8_1", name: "CIS Controls v8.1 (Critical Controls)" },
-  { id: "cfw_cert_in_2022", name: "CERT-In 2022 (Cyber Incident Directives)" },
-  { id: "cfw_pci_dss_v4", name: "PCI-DSS v4.0 (Payment Card Security)" },
-  { id: "cfw_dpdp_2023", name: "DPDP Act 2023 (Data Protection)" },
-  { id: "cfw_gdpr", name: "EU GDPR (General Data Protection)" },
-  { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5 (Federal & Defense)" },
-  { id: "cfw_iec_62443", name: "IEC 62443 (Industrial & OT/ICS)" },
-  { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT Security)" },
-  { id: "cfw_nerc_cip", name: "NERC CIP (Power Grid Critical Infra)" },
-  { id: "cfw_nis2", name: "EU NIS 2 Directive (Directive 2022/2555)" },
+// One catalogue for every framework selector in this workspace.
+//
+// The same thirteen frameworks were previously listed in four separate places
+// — the framework dropdown, the gap-analysis pair, the cross-framework score
+// chart and the report menu — each with its own labels and its own order, so a
+// framework could appear in one and not another and nothing kept them in step.
+// `reportSlug` is the `/compliance/reports/<slug>` path where one exists;
+// ISO 27001's report is the Statement of Applicability, which is addressed by
+// `framework_id` instead and so carries no slug.
+const FRAMEWORK_CATALOGUE = [
+  {
+    id: "cfw_iso27001_2022",
+    name: "ISO/IEC 27001:2022",
+    longName: "ISO 27001:2022 (Information Security)",
+    reportSlug: "soa",
+    reportLabel: "Statement of Applicability (SoA — ISO 27001)",
+  },
+  {
+    id: "cfw_nist_csf_v2",
+    name: "NIST CSF v2.0",
+    longName: "NIST CSF 2.0 (Cybersecurity Framework)",
+    reportSlug: "nist_csf",
+    reportLabel: "NIST CSF v2.0 Current Profile",
+  },
+  {
+    id: "cfw_cis_v8_1",
+    name: "CIS Controls v8.1",
+    longName: "CIS Controls v8.1 (Critical Controls)",
+    reportSlug: "cis_v8_1",
+    reportLabel: "CIS Controls v8.1 Executive Report",
+  },
+  {
+    id: "cfw_soc2_type2",
+    name: "SOC 2 Type II (Trust Services Criteria)",
+    longName: "SOC 2 Type II (Trust Services)",
+    reportSlug: "soc2_type2",
+    reportLabel: "SOC 2 Type II Trust Services Report",
+  },
+  {
+    id: "cfw_cert_in_2022",
+    name: "CERT-In Directions 2022 & CCMP",
+    longName: "CERT-In 2022 (Cyber Incident Directives)",
+    reportSlug: "cert_in_2022",
+    reportLabel: "CERT-In 2022 Cyber Incident Directive",
+  },
+  {
+    id: "cfw_pci_dss_v4",
+    name: "PCI-DSS v4.0 (Cardholder Data Security)",
+    longName: "PCI-DSS v4.0 (Payment Card Security)",
+    reportSlug: "pci_dss_v4",
+    reportLabel: "PCI-DSS v4.0 Assessment Ledger",
+  },
+  {
+    id: "cfw_dpdp_2023",
+    name: "DPDP Act 2023 (Digital Personal Data Protection)",
+    longName: "DPDP Act 2023 (Data Protection)",
+    reportSlug: "dpdp_2023",
+    reportLabel: "DPDP Act 2023 Compliance Report",
+  },
+  {
+    id: "cfw_gdpr",
+    name: "GDPR (EU General Data Protection Regulation)",
+    longName: "EU GDPR (General Data Protection)",
+    reportSlug: "gdpr",
+    reportLabel: "EU GDPR 2016/679 Privacy Report",
+  },
+  {
+    id: "cfw_nist_800_53_r5",
+    name: "NIST SP 800-53 Rev. 5 (U.S. Federal & Defense)",
+    longName: "NIST SP 800-53 R5 (Federal & Defense)",
+    reportSlug: "nist_800_53_r5",
+    reportLabel: "NIST SP 800-53 Rev. 5 Federal Audit",
+  },
+  {
+    id: "cfw_iec_62443",
+    name: "IEC 62443 (Industrial Communication Networks & OT/ICS)",
+    longName: "IEC 62443 (Industrial & OT/ICS)",
+    reportSlug: "iec_62443",
+    reportLabel: "IEC 62443 Industrial Cybersecurity",
+  },
+  {
+    id: "cfw_nist_800_82_r3",
+    name: "NIST SP 800-82 Rev. 3 (OT/ICS Security Guide)",
+    longName: "NIST SP 800-82 R3 (OT Security)",
+    reportSlug: "nist_800_82",
+    reportLabel: "NIST SP 800-82 Rev. 3 OT Security",
+  },
+  {
+    id: "cfw_nerc_cip",
+    name: "NERC CIP (Critical Infrastructure Protection - Power Grid)",
+    longName: "NERC CIP (Power Grid Critical Infra)",
+    reportSlug: "nerc_cip",
+    reportLabel: "NERC CIP Critical Infrastructure",
+  },
+  {
+    id: "cfw_nis2",
+    name: "EU NIS 2 Directive (Directive (EU) 2022/2555)",
+    longName: "EU NIS 2 Directive (Directive 2022/2555)",
+    reportSlug: "nis2",
+    reportLabel: "EU NIS 2 Directive Audit Report",
+  },
 ];
+
+// Which of them this installation offers is a backend decision
+// (`core.compliance_frameworks`), read from `/compliance/marketplace`. This
+// constant is only the fallback for the first render and for a failed request:
+// it fails *closed* to the two finished frameworks rather than open to all
+// thirteen, because showing a framework the API will refuse is worse than
+// showing one fewer for a moment.
+const FALLBACK_ACTIVE_FRAMEWORK_IDS = ["cfw_iso27001_2022", "cfw_nist_csf_v2"];
 
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
@@ -329,6 +424,12 @@ export default function ComplianceWorkspace() {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [marketplace, setMarketplace] = useState([]);
+  // Which frameworks this installation offers. Owned by the backend so that
+  // enabling one later is a server-side change and every selector in this file
+  // follows automatically.
+  const [activeFrameworkIds, setActiveFrameworkIds] = useState(
+    FALLBACK_ACTIVE_FRAMEWORK_IDS,
+  );
   const [policies, setPolicies] = useState([]);
   const [findings, setFindings] = useState([]);
   const [exceptions, setExceptions] = useState([]);
@@ -358,6 +459,18 @@ export default function ComplianceWorkspace() {
   const [emergencyBypass, setEmergencyBypass] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanPollCount, setScanPollCount] = useState(0); // Active framework filter & gap analysis states
+  // Scan progress is read from the run itself rather than guessed from a
+  // timer. The previous implementation stopped polling after six ticks
+  // regardless of what the run was doing, so a failed run looked identical to
+  // a slow one and its error was never shown.
+  const [activeScanRunId, setActiveScanRunId] = useState(null);
+  const [scanRunStatus, setScanRunStatus] = useState(null);
+  // Controls register
+  const [controlsData, setControlsData] = useState(null);
+  const [controlsStatusFilter, setControlsStatusFilter] = useState("all");
+  const [controlsSearch, setControlsSearch] = useState("");
+  const [controlEvidence, setControlEvidence] = useState([]);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [selectedFrameworkId, setSelectedFrameworkId] = useState("all");
   const [saqProfileFilter, setSaqProfileFilter] = useState("all");
   const [cdeScopeFilter, setCdeScopeFilter] = useState(false);
@@ -381,6 +494,63 @@ export default function ComplianceWorkspace() {
   const [gapTargetFramework, setGapTargetFramework] = useState("cfw_nis2");
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
+
+  // The catalogue entries this installation actually offers, in the order the
+  // backend lists them. Every framework selector, the cross-framework score
+  // chart and the report menu are built from this, so a framework enabled
+  // server-side appears everywhere at once and one that is parked disappears
+  // everywhere at once.
+  const activeFrameworks = useMemo(
+    () =>
+      activeFrameworkIds
+        .map((id) => FRAMEWORK_CATALOGUE.find((fw) => fw.id === id))
+        .filter(Boolean),
+    [activeFrameworkIds],
+  );
+
+  // Fetched once on mount rather than with the marketplace tab: the framework
+  // dropdown is on screen from the first render, on every tab.
+  useEffect(() => {
+    let cancelled = false;
+    axiosInstance
+      .get("/compliance/marketplace")
+      .then((res) => {
+        const ids = res.data?.active_framework_ids;
+        if (!cancelled && Array.isArray(ids) && ids.length) {
+          setActiveFrameworkIds(ids);
+        }
+      })
+      .catch(() => {
+        // Keep the fallback pair. Failing open to all thirteen would offer
+        // frameworks the API now refuses with 403.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A framework that is parked while it is selected — because the backend list
+  // changed, or a stale tab — would otherwise keep querying a 403 endpoint.
+  useEffect(() => {
+    if (
+      selectedFrameworkId &&
+      selectedFrameworkId !== "all" &&
+      !activeFrameworkIds.includes(selectedFrameworkId)
+    ) {
+      setSelectedFrameworkId("all");
+    }
+  }, [activeFrameworkIds, selectedFrameworkId]);
+
+  // Same for the report menu: a stale `reportFw` would download a 403.
+  useEffect(() => {
+    const available = new Set(
+      activeFrameworks.filter((fw) => fw.reportSlug).map((fw) => fw.reportSlug),
+    );
+    available.add("executive");
+    if (!available.has(reportFw)) {
+      setReportFw(activeFrameworks[0]?.reportSlug || "executive");
+    }
+  }, [activeFrameworks, reportFw]);
 
   // Reset scoping filters when switching frameworks
   useEffect(() => {
@@ -415,6 +585,8 @@ export default function ComplianceWorkspace() {
   const [newPolicyRules, setNewPolicyRules] = useState([]);
   const [attestStatus, setAttestStatus] = useState("pass");
   const [attestNote, setAttestNote] = useState("");
+  const [attestJustification, setAttestJustification] = useState("");
+  const [attestNextReview, setAttestNextReview] = useState("");
   const [exceptionReason, setExceptionReason] = useState("");
   const [exceptionExpiry, setExceptionExpiry] = useState("");
   const [editRuleSeverity, setEditRuleSeverity] = useState("MEDIUM");
@@ -530,10 +702,61 @@ export default function ComplianceWorkspace() {
     fetchTabData(false);
   }, [activeTab]);
 
+  // Poll the run itself. `scanPollCount` remains only as a safety valve for a
+  // run the server never resolves — the authoritative signal is the run's own
+  // status, so a failed scan now reports its reason instead of silently
+  // ending the spinner.
   useEffect(() => {
-    if (isScanning && scanPollCount >= 6) {
+    if (!isScanning || !activeScanRunId) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await axiosInstance.get(
+          `/compliance/scans/${activeScanRunId}`,
+        );
+        if (cancelled) return;
+        setScanRunStatus(res.data);
+        if (res.data.status === "completed") {
+          setIsScanning(false);
+          setActiveScanRunId(null);
+          pushToast("Compliance scan completed.", "success");
+          fetchTabData(true);
+        } else if (res.data.status === "failed") {
+          setIsScanning(false);
+          setActiveScanRunId(null);
+          pushToast(
+            `Compliance scan failed: ${
+              res.data.error_message || "no reason reported"
+            }`,
+            "error",
+          );
+        }
+      } catch (e) {
+        if (!cancelled) console.error("Failed to poll scan run", e);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isScanning, activeScanRunId]);
+
+  // Safety valve: a run stuck in `queued` or `running` for ten minutes has
+  // almost certainly lost its worker. Stop spinning and say so rather than
+  // leaving the operator watching an indicator forever.
+  useEffect(() => {
+    if (isScanning && scanPollCount >= 150) {
       setIsScanning(false);
       setScanPollCount(0);
+      setActiveScanRunId(null);
+      pushToast(
+        "The compliance scan has not reported progress for 10 minutes. Check that a worker is consuming the compliance queue.",
+        "error",
+      );
     }
   }, [scanPollCount, isScanning]);
 
@@ -690,21 +913,7 @@ export default function ComplianceWorkspace() {
         // When All Frameworks is selected, also fetch per-framework scores for
         // the cross-framework comparison bar chart (industry-standard GRC view).
         if (!selectedFrameworkId || selectedFrameworkId === "all") {
-          const FW_LIST = [
-            { id: "cfw_iso27001_2022", name: "ISO 27001:2022" },
-            { id: "cfw_nist_csf_v2", name: "NIST CSF 2.0" },
-            { id: "cfw_soc2_type2", name: "SOC 2 Type II" },
-            { id: "cfw_cis_v8_1", name: "CIS Controls v8.1" },
-            { id: "cfw_cert_in_2022", name: "CERT-In 2022" },
-            { id: "cfw_pci_dss_v4", name: "PCI-DSS v4.0" },
-            { id: "cfw_dpdp_2023", name: "DPDP Act 2023" },
-            { id: "cfw_gdpr", name: "EU GDPR" },
-            { id: "cfw_nist_800_53_r5", name: "NIST SP 800-53 R5" },
-            { id: "cfw_iec_62443", name: "IEC 62443 (OT/ICS)" },
-            { id: "cfw_nist_800_82_r3", name: "NIST SP 800-82 R3 (OT)" },
-            { id: "cfw_nerc_cip", name: "NERC CIP (Power Grid)" },
-            { id: "cfw_nis2", name: "EU NIS 2 Directive" },
-          ];
+          const FW_LIST = activeFrameworks;
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
               axiosInstance
@@ -725,6 +934,23 @@ export default function ComplianceWorkspace() {
         } else {
           setPerFrameworkScores([]);
         }
+      } else if (activeTab === "controls") {
+        // The register needs a single framework; "all" has no control set.
+        const fwId =
+          selectedFrameworkId && selectedFrameworkId !== "all"
+            ? selectedFrameworkId
+            : "cfw_iso27001_2022";
+        const cParams = [];
+        if (controlsStatusFilter !== "all")
+          cParams.push(`status=${controlsStatusFilter}`);
+        if (controlsSearch.trim())
+          cParams.push(`search=${encodeURIComponent(controlsSearch.trim())}`);
+        const res = await axiosInstance.get(
+          `/compliance/frameworks/${fwId}/controls${
+            cParams.length ? `?${cParams.join("&")}` : ""
+          }`,
+        );
+        setControlsData(res.data);
       } else if (activeTab === "marketplace") {
         const res = await axiosInstance.get("/compliance/marketplace");
         setMarketplace(res.data.data || []);
@@ -829,16 +1055,33 @@ export default function ComplianceWorkspace() {
   const handleSubmitAttestation = async (e) => {
     e.preventDefault();
     if (!selectedControl) return;
+
+    // ISO/IEC 27001:2022 clause 6.1.3(d) requires a justification for every
+    // exclusion. Caught here as well as server-side so the reviewer sees it
+    // before losing the form.
+    if (attestStatus === "not_applicable" && !attestJustification.trim()) {
+      pushToast(
+        "Excluding a control requires a justification — it is a mandatory part of the Statement of Applicability.",
+        "error",
+      );
+      return;
+    }
+
     try {
       await axiosInstance.post(
         `/compliance/controls/${selectedControl.id}/attest`,
         {
           status: attestStatus,
           note: attestNote,
+          justification: attestJustification || null,
+          next_review_at: attestNextReview
+            ? new Date(attestNextReview).toISOString()
+            : null,
+          evidence_file_ids: controlEvidence.map((f) => f.id),
         },
       );
       setModalOpen(false);
-      pushToast("Attestation submitted successfully.", "success");
+      pushToast("Attestation recorded.", "success");
       fetchTabData();
     } catch (e) {
       pushToast(
@@ -847,6 +1090,75 @@ export default function ComplianceWorkspace() {
         "error",
       );
     }
+  };
+
+  const loadControlEvidence = async (controlId) => {
+    try {
+      const res = await axiosInstance.get(
+        `/compliance/controls/${controlId}/evidence`,
+      );
+      setControlEvidence(res.data.data || []);
+    } catch (e) {
+      console.error("Failed to load control evidence", e);
+      setControlEvidence([]);
+    }
+  };
+
+  const handleUploadEvidence = async (controlId, file) => {
+    if (!file) return;
+    setUploadingEvidence(true);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      await axiosInstance.post(
+        `/compliance/controls/${controlId}/evidence`,
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      pushToast(`Attached ${file.name}.`, "success");
+      await loadControlEvidence(controlId);
+    } catch (e) {
+      pushToast(
+        "Could not attach evidence: " + (e.response?.data?.detail || e.message),
+        "error",
+      );
+    } finally {
+      setUploadingEvidence(false);
+    }
+  };
+
+  const handleDeleteEvidence = async (fileId, controlId) => {
+    try {
+      await axiosInstance.delete(`/compliance/evidence/${fileId}`);
+      await loadControlEvidence(controlId);
+      pushToast("Evidence removed.", "success");
+    } catch (e) {
+      pushToast(
+        "Could not remove evidence: " + (e.response?.data?.detail || e.message),
+        "error",
+      );
+    }
+  };
+
+  const openAttestModal = (control) => {
+    setSelectedControl({
+      id: control.control_id || control.id,
+      control_number: control.control_number,
+      title: control.title || control.control_title,
+      description: control.description || control.control_description,
+      evidence_checklist:
+        control.evidence_checklist || control.control_evidence_checklist || [],
+    });
+    setAttestStatus(
+      control.status === "not_applicable" ? "not_applicable" : "pass",
+    );
+    setAttestNote("");
+    setAttestJustification(control.justification || "");
+    setAttestNextReview("");
+    setControlEvidence([]);
+    loadControlEvidence(control.control_id || control.id);
+    setModalType("attest");
+    setModalOpen(true);
   };
 
   const handleSubmitException = async (e) => {
@@ -961,14 +1273,18 @@ export default function ComplianceWorkspace() {
         targetPolicies.length > 0 ? targetPolicies : fetchedPolicies;
 
       // Stagger requests sequentially to prevent DB concurrency locks/deadlocks in Celery workers
+      let lastRunId = null;
       for (const policy of policiesToRun) {
         try {
-          await axiosInstance.post("/compliance/scans", {
+          const runRes = await axiosInstance.post("/compliance/scans", {
             framework_id: policy.framework_id,
             policy_id: policy.id,
             asset_ids: [],
             asset_tags: [],
           });
+          // Track the run so progress can be read from the server rather than
+          // inferred from a fixed-length timer.
+          lastRunId = runRes.data?.scan_run_id || lastRunId;
           triggeredAny = true;
         } catch (err) {
           failedSome = true;
@@ -995,6 +1311,8 @@ export default function ComplianceWorkspace() {
         }
         setIsScanning(true);
         setScanPollCount(0);
+        setActiveScanRunId(lastRunId);
+        setScanRunStatus(null);
       } else {
         throw lastError || new Error("Failed to trigger scan for any policy.");
       }
@@ -1245,39 +1563,11 @@ export default function ComplianceWorkspace() {
                 }}
               >
                 <option value="all">All Frameworks</option>
-                <option value="cfw_iso27001_2022">ISO/IEC 27001:2022</option>
-                <option value="cfw_nist_csf_v2">NIST CSF v2.0</option>
-                <option value="cfw_cis_v8_1">CIS Controls v8.1</option>
-                <option value="cfw_soc2_type2">
-                  SOC 2 Type II (Trust Services Criteria)
-                </option>
-                <option value="cfw_cert_in_2022">
-                  CERT-In Directions 2022 & CCMP
-                </option>
-                <option value="cfw_pci_dss_v4">
-                  PCI-DSS v4.0 (Cardholder Data Security)
-                </option>
-                <option value="cfw_dpdp_2023">
-                  DPDP Act 2023 (Digital Personal Data Protection)
-                </option>
-                <option value="cfw_gdpr">
-                  GDPR (EU General Data Protection Regulation)
-                </option>
-                <option value="cfw_nist_800_53_r5">
-                  NIST SP 800-53 Rev. 5 (U.S. Federal & Defense)
-                </option>
-                <option value="cfw_iec_62443">
-                  IEC 62443 (Industrial Communication Networks & OT/ICS)
-                </option>
-                <option value="cfw_nist_800_82_r3">
-                  NIST SP 800-82 Rev. 3 (OT/ICS Security Guide)
-                </option>
-                <option value="cfw_nerc_cip">
-                  NERC CIP (Critical Infrastructure Protection - Power Grid)
-                </option>
-                <option value="cfw_nis2">
-                  EU NIS 2 Directive (Directive (EU) 2022/2555)
-                </option>
+                {activeFrameworks.map((fw) => (
+                  <option key={`fw_sel_${fw.id}`} value={fw.id}>
+                    {fw.name}
+                  </option>
+                ))}
               </select>
             </div>
             {(selectedFrameworkId === "cfw_iec_62443" ||
@@ -2001,9 +2291,9 @@ export default function ComplianceWorkspace() {
                   fontWeight: 600,
                 }}
               >
-                {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                {activeFrameworks.map((fw) => (
                   <option key={`tb_src_${fw.id}`} value={fw.id}>
-                    {fw.name}
+                    {fw.longName}
                   </option>
                 ))}
               </select>
@@ -2062,6 +2352,11 @@ export default function ComplianceWorkspace() {
             { id: "dashboard", label: "Dashboard" },
             { id: "marketplace", label: "Marketplace" },
             { id: "policies", label: "Policies" },
+            // The control register. Attestation used to be reachable only from
+            // a findings row whose status happened to be manual_review, so a
+            // control that had never been scanned could not be attested at all
+            // — for ISO 27001 that put most of Annex A out of reach.
+            { id: "controls", label: "Controls" },
             { id: "findings", label: "Findings" },
             { id: "exceptions", label: "Exceptions" },
             { id: "credentials", label: "Credentials Manager" },
@@ -2236,45 +2531,13 @@ export default function ComplianceWorkspace() {
                         border: "1px solid #CBD5E1",
                       }}
                     >
-                      <option value="soa">
-                        Statement of Applicability (SoA - ISO 27001)
-                      </option>
-                      <option value="nist_csf">
-                        NIST CSF v2.0 Audit Ledger
-                      </option>
-                      <option value="cis_v8_1">
-                        CIS Controls v8.1 Executive Report
-                      </option>
-                      <option value="soc2_type2">
-                        SOC 2 Type II Trust Services Report
-                      </option>
-                      <option value="cert_in_2022">
-                        CERT-In 2022 Cyber Incident Directive
-                      </option>
-                      <option value="pci_dss_v4">
-                        PCI-DSS v4.0 Assessment Ledger
-                      </option>
-                      <option value="dpdp_2023">
-                        DPDP Act 2023 Compliance Report
-                      </option>
-                      <option value="gdpr">
-                        EU GDPR 2016/679 Privacy Report
-                      </option>
-                      <option value="nist_800_53_r5">
-                        NIST SP 800-53 Rev. 5 Federal Audit
-                      </option>
-                      <option value="iec_62443">
-                        IEC 62443 Industrial Cybersecurity
-                      </option>
-                      <option value="nist_800_82">
-                        NIST SP 800-82 Rev. 3 OT Security
-                      </option>
-                      <option value="nerc_cip">
-                        NERC CIP Critical Infrastructure
-                      </option>
-                      <option value="nis2">
-                        EU NIS 2 Directive Audit Report
-                      </option>
+                      {activeFrameworks
+                        .filter((fw) => fw.reportSlug)
+                        .map((fw) => (
+                          <option key={`rep_${fw.id}`} value={fw.reportSlug}>
+                            {fw.reportLabel}
+                          </option>
+                        ))}
                       <option value="executive">
                         Multi-Framework Executive Briefing
                       </option>
@@ -2334,6 +2597,17 @@ export default function ComplianceWorkspace() {
                       onClick={() => {
                         let ep = `/compliance/reports/${reportFw}?fmt=${reportFmt}`;
                         let fname = `${reportFw}_report.${reportFmt}`;
+                        if (reportFw === "soa") {
+                          // A Statement of Applicability covers one standard.
+                          // Without this the export emitted the controls of
+                          // every installed framework under an ISO 27001 title.
+                          const soaFw =
+                            selectedFrameworkId && selectedFrameworkId !== "all"
+                              ? selectedFrameworkId
+                              : "cfw_iso27001_2022";
+                          ep += `&framework_id=${soaFw}`;
+                          fname = `soa_${soaFw}.${reportFmt}`;
+                        }
                         if (reportFw === "pci_dss_v4") {
                           if (saqProfileFilter !== "all")
                             ep += `&saq_profile=${saqProfileFilter}`;
@@ -3118,19 +3392,22 @@ export default function ComplianceWorkspace() {
                                               }}
                                             >
                                               {(() => {
+                                                // `String.replace` with a
+                                                // string pattern swaps only the
+                                                // first match, so a NIST CSF id
+                                                // like PR_AA_05 rendered as
+                                                // "PR.AA_05". The framework
+                                                // prefix is stripped generically
+                                                // and every separator replaced.
                                                 const rawNum =
                                                   r.control_number ||
                                                   (r.control_id
                                                     ? r.control_id
                                                         .replace(
-                                                          "cct_iso27001_2022_",
+                                                          /^cct_[a-z0-9]+(?:_[a-z0-9]+)*?_(?=\d|[a-z]{2}_)/i,
                                                           "",
                                                         )
-                                                        .replace(
-                                                          "cct_nist_csf_v2_",
-                                                          "",
-                                                        )
-                                                        .replace("_", ".")
+                                                        .replace(/_/g, ".")
                                                     : "");
                                                 if (
                                                   rawNum.startsWith("A.") ||
@@ -3253,6 +3530,262 @@ export default function ComplianceWorkspace() {
                         )}
                       </React.Fragment>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "controls" && (
+            <div className="db-card" style={{ padding: "1.25rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginBottom: "1rem",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1rem" }}>
+                    Control Register
+                  </h3>
+                  <div
+                    style={{
+                      fontSize: "0.78rem",
+                      color: "var(--text-muted)",
+                      marginTop: "2px",
+                    }}
+                  >
+                    Every control of the selected framework, with its current
+                    verdict and attestation state.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="search"
+                    placeholder="Search controls…"
+                    value={controlsSearch}
+                    onChange={(e) => setControlsSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") fetchTabData();
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      fontSize: "0.82rem",
+                      minWidth: "200px",
+                    }}
+                  />
+                  <select
+                    className="cw-pagination-select"
+                    value={controlsStatusFilter}
+                    onChange={(e) => {
+                      setControlsStatusFilter(e.target.value);
+                      setTimeout(fetchTabData, 0);
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      fontSize: "0.82rem",
+                    }}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="pass">Implemented</option>
+                    <option value="fail">Not implemented</option>
+                    <option value="manual_review">Awaiting review</option>
+                    <option value="not_assessed">Not assessed</option>
+                    <option value="not_applicable">Excluded</option>
+                    <option value="exception">Exception</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Readiness, not a single percentage. "62% compliant" cannot
+                  distinguish a framework nobody has assessed from one that was
+                  assessed and failed. */}
+              {controlsData?.summary && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: "8px",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  {[
+                    ["Implemented", controlsData.summary.passed, "#2c6f52"],
+                    ["Not implemented", controlsData.summary.failed, "#9d2f2a"],
+                    [
+                      "Awaiting review",
+                      controlsData.summary.awaiting_review,
+                      "#8a6210",
+                    ],
+                    [
+                      "Not assessed",
+                      controlsData.summary.not_assessed,
+                      "#6b7583",
+                    ],
+                    [
+                      "Excluded",
+                      controlsData.summary.not_applicable,
+                      "#6b7583",
+                    ],
+                  ].map(([label, value, color]) => (
+                    <div
+                      key={label}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: "6px",
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "1.4rem",
+                          fontWeight: 700,
+                          color,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {value}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.7rem",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "var(--text-muted)",
+                          marginTop: "4px",
+                        }}
+                      >
+                        {label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ overflowX: "auto" }}>
+                <table className="db-table" style={{ fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr>
+                      <th>Ref</th>
+                      <th>Control</th>
+                      <th>Theme</th>
+                      <th>Mode</th>
+                      <th>Status</th>
+                      <th>Evidence</th>
+                      <th>Reviewed</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(controlsData?.data || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: "center" }}>
+                          {loading
+                            ? "Loading controls…"
+                            : "No controls match the current filter."}
+                        </td>
+                      </tr>
+                    ) : (
+                      controlsData.data.map((c) => (
+                        <tr key={c.control_id}>
+                          <td className="mono" style={{ fontWeight: 600 }}>
+                            {c.control_number}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{c.title}</div>
+                            {c.description && (
+                              <div
+                                style={{
+                                  fontSize: "0.72rem",
+                                  color: "var(--text-muted)",
+                                  marginTop: "2px",
+                                  maxWidth: "420px",
+                                }}
+                              >
+                                {c.description}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            {/* NIST CSF is Function ▸ Category ▸ Subcategory.
+                                Printing the bare `theme` code showed "GV"
+                                against all 31 Govern rows and named neither
+                                level. The API derives both from the
+                                Subcategory id and returns null for frameworks
+                                that are not CSF, so this falls back cleanly. */}
+                            <div style={{ fontWeight: 600 }}>
+                              {c.function || THEME_LABELS[c.theme] || c.theme}
+                            </div>
+                            {c.category && (
+                              <div
+                                style={{
+                                  fontSize: "0.7rem",
+                                  color: "var(--text-muted)",
+                                  marginTop: "2px",
+                                }}
+                              >
+                                {c.category} · {c.category_name}
+                              </div>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              textTransform: "uppercase",
+                              fontSize: "0.7rem",
+                            }}
+                          >
+                            {c.scannability}
+                          </td>
+                          <td>
+                            <span
+                              className={`db-status-badge db-status-badge--${
+                                c.status === "pass"
+                                  ? "success"
+                                  : c.status === "fail"
+                                    ? "danger"
+                                    : c.status === "not_applicable"
+                                      ? "neutral"
+                                      : "warning"
+                              }`}
+                            >
+                              {c.status === "not_assessed"
+                                ? "NOT ASSESSED"
+                                : c.status.replace(/_/g, " ").toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            {c.evidence_file_count > 0
+                              ? `📎 ${c.evidence_file_count}`
+                              : "—"}
+                          </td>
+                          <td>
+                            {c.reviewed_at
+                              ? new Date(c.reviewed_at).toLocaleDateString()
+                              : "—"}
+                          </td>
+                          <td>
+                            <button
+                              className="db-btn db-btn--primary"
+                              style={{
+                                padding: "4px 8px",
+                                fontSize: "0.72rem",
+                              }}
+                              onClick={() => openAttestModal(c)}
+                            >
+                              Attest
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3700,6 +4233,26 @@ export default function ComplianceWorkspace() {
                                   >
                                     {f.status}
                                   </span>
+                                  {/* The engine already writes a plain-English
+                                      reason into the evidence payload whenever
+                                      a control could not be assessed. It was
+                                      never displayed, so `manual_review`
+                                      reached the operator with no indication of
+                                      what to do about it. */}
+                                  {f.status === "manual_review" &&
+                                    f.status_reason && (
+                                      <div
+                                        style={{
+                                          fontSize: "0.7rem",
+                                          color: "var(--text-muted)",
+                                          marginTop: "4px",
+                                          maxWidth: "260px",
+                                          lineHeight: 1.4,
+                                        }}
+                                      >
+                                        {f.status_reason}
+                                      </div>
+                                    )}
                                 </td>
                                 <td className="actions-cell">
                                   {f.status === "fail" && (
@@ -3741,15 +4294,7 @@ export default function ComplianceWorkspace() {
                                         padding: "4px 8px",
                                         fontSize: "0.72rem",
                                       }}
-                                      onClick={() => {
-                                        setSelectedControl({
-                                          id: f.control_id,
-                                          evidence_checklist:
-                                            f.control_evidence_checklist || [],
-                                        });
-                                        setModalType("attest");
-                                        setModalOpen(true);
-                                      }}
+                                      onClick={() => openAttestModal(f)}
                                     >
                                       Verify
                                     </button>
@@ -4456,18 +5001,81 @@ export default function ComplianceWorkspace() {
 
         {modalType === "attest" && (
           <form onSubmit={handleSubmitAttestation} className="compliance-form">
-            <label>Select Status</label>
+            {selectedControl?.control_number && (
+              <div
+                style={{
+                  background: "rgba(0,0,0,0.03)",
+                  padding: "10px 12px",
+                  borderRadius: "6px",
+                  marginBottom: "1rem",
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+                  {selectedControl.control_number} — {selectedControl.title}
+                </div>
+                {selectedControl.description && (
+                  <div
+                    style={{
+                      fontSize: "0.78rem",
+                      color: "var(--text-muted)",
+                      marginTop: "4px",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {selectedControl.description}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <label>Applicability &amp; Status</label>
             <select
               value={attestStatus}
               onChange={(e) => setAttestStatus(e.target.value)}
             >
-              <option value="pass">Pass</option>
-              <option value="fail">Fail</option>
+              <option value="pass">Applicable — implemented</option>
+              <option value="fail">Applicable — not implemented</option>
+              {/* Declaring a control inapplicable, with justification, is the
+                  central act of an ISO 27001 Statement of Applicability. The
+                  API has always accepted it; this menu only offered pass and
+                  fail, so the decision had no route through the product. */}
+              <option value="not_applicable">
+                Not applicable — excluded from scope
+              </option>
             </select>
+
+            <label style={{ marginTop: "1rem" }}>
+              {attestStatus === "not_applicable"
+                ? "Justification for exclusion (required)"
+                : "Justification for inclusion"}
+            </label>
+            <textarea
+              value={attestJustification}
+              onChange={(e) => setAttestJustification(e.target.value)}
+              required={attestStatus === "not_applicable"}
+              placeholder={
+                attestStatus === "not_applicable"
+                  ? "Why this control does not apply to the organization's ISMS scope."
+                  : "Why this control is applicable — defaults to the control objective if left blank."
+              }
+              style={{ minHeight: "70px" }}
+            />
+            {attestStatus === "not_applicable" && (
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  marginTop: "4px",
+                }}
+              >
+                ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to
+                carry a documented justification.
+              </div>
+            )}
 
             {selectedControl?.evidence_checklist &&
               selectedControl.evidence_checklist.length > 0 && (
-                <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+                <div style={{ marginTop: "1rem" }}>
                   <label
                     style={{
                       fontWeight: 600,
@@ -4475,38 +5083,101 @@ export default function ComplianceWorkspace() {
                       marginBottom: "6px",
                     }}
                   >
-                    Required Audit Evidence Checklist:
+                    Audit evidence expected for this control
                   </label>
-                  <div
+                  <ul
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "6px",
                       background: "rgba(0,0,0,0.03)",
-                      padding: "10px",
+                      padding: "10px 10px 10px 26px",
                       borderRadius: "6px",
+                      fontSize: "0.8rem",
+                      margin: 0,
+                      lineHeight: 1.5,
                     }}
                   >
                     {selectedControl.evidence_checklist.map((item, idx) => (
-                      <label
-                        key={idx}
-                        style={{
-                          fontSize: "0.8rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input type="checkbox" defaultChecked />
-                        <span>{item}</span>
-                      </label>
+                      <li key={idx}>{item}</li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
 
-            <label>Attestation Note</label>
+            {/* Real evidence attachment. `evidence_file_ids` has been on the
+                finding model since the first migration with no upload path
+                behind it, and the checklist above used to be pre-ticked
+                checkboxes that were never read or submitted. */}
+            <div style={{ marginTop: "1rem" }}>
+              <label style={{ fontWeight: 600, display: "block" }}>
+                Attached evidence
+              </label>
+              <input
+                type="file"
+                disabled={uploadingEvidence}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUploadEvidence(selectedControl.id, f);
+                  e.target.value = "";
+                }}
+                style={{ marginTop: "6px", fontSize: "0.8rem" }}
+              />
+              {uploadingEvidence && (
+                <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>
+                  Uploading…
+                </div>
+              )}
+              {controlEvidence.length > 0 && (
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: "8px 0 0",
+                    fontSize: "0.78rem",
+                  }}
+                >
+                  {controlEvidence.map((f) => (
+                    <li
+                      key={f.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                        padding: "4px 8px",
+                        background: "rgba(0,0,0,0.03)",
+                        borderRadius: "4px",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      <span>
+                        📎 {f.filename}{" "}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          ({Math.round(f.size_bytes / 1024)} KB)
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="db-btn db-btn--ghost"
+                        style={{ padding: "2px 6px", fontSize: "0.7rem" }}
+                        onClick={() =>
+                          handleDeleteEvidence(f.id, selectedControl.id)
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <label style={{ marginTop: "1rem" }}>Next review date</label>
+            <input
+              type="date"
+              value={attestNextReview}
+              onChange={(e) => setAttestNextReview(e.target.value)}
+            />
+
+            <label style={{ marginTop: "1rem" }}>Reviewer note</label>
             <textarea
               value={attestNote}
               onChange={(e) => setAttestNote(e.target.value)}
@@ -4662,9 +5333,9 @@ export default function ComplianceWorkspace() {
                       background: "#ffffff",
                     }}
                   >
-                    {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                    {activeFrameworks.map((fw) => (
                       <option key={`modal_src_${fw.id}`} value={fw.id}>
-                        {fw.name}
+                        {fw.longName}
                       </option>
                     ))}
                   </select>
@@ -4696,9 +5367,9 @@ export default function ComplianceWorkspace() {
                       background: "#ffffff",
                     }}
                   >
-                    {GAP_FRAMEWORK_OPTIONS.map((fw) => (
+                    {activeFrameworks.map((fw) => (
                       <option key={`modal_tgt_${fw.id}`} value={fw.id}>
-                        {fw.name}
+                        {fw.longName}
                       </option>
                     ))}
                   </select>

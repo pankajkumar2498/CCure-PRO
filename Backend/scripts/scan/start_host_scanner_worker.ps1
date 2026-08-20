@@ -83,7 +83,15 @@ try {
     $logFile = Join-Path $logDir "host_scanner_worker.log"
     Write-Host "Logging to $logFile"
 
-    & $venvPython -m celery -A core.celery_app worker --loglevel=info --queues=scanner,default --pool=threads --concurrency=$env:SCANNER_WORKER_CONCURRENCY --prefetch-multiplier=1 --hostname="host-scanner@%h" --logfile="$logFile"
+    # `compliance` is on this list deliberately. The only container that
+    # subscribed to it sits behind the `container-scanner` profile and is not
+    # started in this deployment, while Celery beat publishes
+    # `compliance.run_scheduled_scans` into that queue every sixty seconds — so
+    # the queue grew by 1,440 messages a day with nothing consuming it, and the
+    # backlog would all fire at once whenever a worker did appear. Compliance
+    # evaluation is database work with no raw-socket requirement, so it is safe
+    # on the host worker alongside the scanner queues.
+    & $venvPython -m celery -A core.celery_app worker --loglevel=info --queues=scanner,default,compliance --pool=threads --concurrency=$env:SCANNER_WORKER_CONCURRENCY --prefetch-multiplier=1 --hostname="host-scanner@%h" --logfile="$logFile"
 }
 finally {
     Pop-Location

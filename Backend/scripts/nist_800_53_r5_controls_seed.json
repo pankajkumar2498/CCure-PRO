@@ -17,7 +17,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Policy Document"
@@ -43,7 +43,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Account Inventory",
@@ -71,7 +71,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ACL Rules",
@@ -99,7 +99,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Firewall ACL Export"
@@ -125,7 +125,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SoD Matrix"
@@ -150,7 +150,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Sudoers File",
@@ -177,7 +177,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Lockout Policy Export"
@@ -203,7 +203,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Logon Banner Config"
@@ -229,7 +229,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Screen Saver Policy"
@@ -254,7 +254,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Session Timeout Config"
@@ -279,7 +279,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "VPN Config",
@@ -307,7 +307,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "WPA3 Config"
@@ -332,7 +332,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "MDM Policy"
@@ -357,7 +357,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "BYOD Agreement"
@@ -382,7 +382,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Training Policy"
@@ -408,7 +408,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Training Attendance Log"
@@ -434,7 +434,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Role Training Certificates"
@@ -460,7 +460,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "LMS Training Audit"
@@ -486,7 +486,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ISAC Membership Record"
@@ -511,7 +511,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Threat Briefing Log"
@@ -535,7 +535,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Audit Policy"
@@ -561,7 +561,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Auditd/Syslog Config"
@@ -587,7 +587,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Audit Log Schema Export"
@@ -613,7 +613,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Disk Allocation Audit"
@@ -639,7 +639,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SIEM Alert Rule"
@@ -665,7 +665,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Daily Log Review Signoff"
@@ -691,7 +691,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SIEM Query Log"
@@ -716,7 +716,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "NTP Sync Config"
@@ -742,7 +742,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Log Permissions Audit"
@@ -768,7 +768,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Digital Signature Audit"
@@ -793,7 +793,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Retention Policy Config"
@@ -819,7 +819,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "System Audit Event List"
@@ -845,7 +845,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privileged Session Records"
@@ -869,7 +869,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CloudTrail Log Sharing Setup"
@@ -893,7 +893,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ATO Policy"
@@ -919,7 +919,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Assessment Report (SAR)"
@@ -945,7 +945,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Interconnection Security Agreement (ISA)"
@@ -971,7 +971,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "POA&M Spreadsheet"
@@ -997,7 +997,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Authority to Operate (ATO) Letter"
@@ -1023,7 +1023,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ConMon Dashboard Export"
@@ -1049,7 +1049,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Penetration Test Report"
@@ -1074,7 +1074,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Internal Connection Ledger"
@@ -1099,7 +1099,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CM Policy"
@@ -1125,7 +1125,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CIS Benchmark Result"
@@ -1151,7 +1151,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CAB Meeting Minutes"
@@ -1177,7 +1177,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Change Impact Form"
@@ -1202,7 +1202,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Repo Branch Protection Config"
@@ -1228,7 +1228,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hardening Audit Output"
@@ -1254,7 +1254,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Open Ports & Services Report"
@@ -1280,7 +1280,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Asset Inventory Export"
@@ -1306,7 +1306,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CM Plan Document"
@@ -1331,7 +1331,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Approved Software List"
@@ -1356,7 +1356,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Software Application Inventory"
@@ -1381,7 +1381,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Classification Inventory"
@@ -1405,7 +1405,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Flow Diagram"
@@ -1429,7 +1429,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Binary Code Signature Verification"
@@ -1453,7 +1453,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "BCP/DRP Policy"
@@ -1479,7 +1479,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Contingency Plan Document"
@@ -1505,7 +1505,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "DR Training Log"
@@ -1531,7 +1531,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Tabletop Exercise Report"
@@ -1557,7 +1557,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Offsite Storage Agreement"
@@ -1582,7 +1582,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hot Site SLA Agreement"
@@ -1607,7 +1607,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Dual ISP SLA Agreement"
@@ -1632,7 +1632,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Backup Status Log"
@@ -1658,7 +1658,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "System Reconstitution Guide"
@@ -1684,7 +1684,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Out-of-Band Comms Plan"
@@ -1708,7 +1708,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Fail-Safe Ops SOP"
@@ -1732,7 +1732,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Fallback Security Standard"
@@ -1756,7 +1756,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "IAM Policy"
@@ -1782,7 +1782,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "MFA Audit Report"
@@ -1809,7 +1809,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "802.1X/Certificate Audit"
@@ -1835,7 +1835,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "User ID Naming SOP"
@@ -1861,7 +1861,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Password Policy Config"
@@ -1888,7 +1888,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Logon Masking Verification"
@@ -1914,7 +1914,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FIPS 140-3 Validation Certificate"
@@ -1939,7 +1939,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Guest Portal Config"
@@ -1965,7 +1965,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Service Account Inventory"
@@ -1990,7 +1990,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Conditional Access Policy Export"
@@ -2015,7 +2015,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Sudo Timeout Config"
@@ -2040,7 +2040,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Internal CA Audit"
@@ -2065,7 +2065,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FIDO2 Biometric Spec"
@@ -2089,7 +2089,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "IRP Policy"
@@ -2115,7 +2115,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "IR Simulation Certificates"
@@ -2141,7 +2141,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Tabletop Exercise Summary"
@@ -2167,7 +2167,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Playbook SOP"
@@ -2193,7 +2193,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SIEM Incident Dashboard"
@@ -2219,7 +2219,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "US-CERT Incident Report"
@@ -2245,7 +2245,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Third-Party Incident Retainer Contract"
@@ -2271,7 +2271,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "IR Plan Document"
@@ -2297,7 +2297,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Spillage SOP"
@@ -2322,7 +2322,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CSIRT Charter"
@@ -2346,7 +2346,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Maintenance Policy"
@@ -2372,7 +2372,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Maintenance Log"
@@ -2398,7 +2398,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Approved Maintenance Tool List"
@@ -2423,7 +2423,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Remote Maintenance SSH Log"
@@ -2448,7 +2448,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Vendor Escort Sign-in Log"
@@ -2474,7 +2474,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hardware Support SLA Contract"
@@ -2499,7 +2499,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Field Sanitization SOP"
@@ -2523,7 +2523,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Media Protection Policy"
@@ -2549,7 +2549,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Removable Media Policy"
@@ -2575,7 +2575,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Media Classification Label SOP"
@@ -2600,7 +2600,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Physical Vault Log"
@@ -2625,7 +2625,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Chain of Custody Form"
@@ -2650,7 +2650,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Certificate of Destruction"
@@ -2676,7 +2676,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "USB Storage Block Audit"
@@ -2701,7 +2701,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Media Downgrade Authorization"
@@ -2725,7 +2725,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Physical Security Policy"
@@ -2751,7 +2751,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Badge Authorization List"
@@ -2777,7 +2777,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Visitor Access Log"
@@ -2803,7 +2803,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Physical Conduit Inspection Log"
@@ -2828,7 +2828,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Screen Filter Audit"
@@ -2853,7 +2853,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CCTV Recording Log"
@@ -2879,7 +2879,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Keycard Swipe Log"
@@ -2904,7 +2904,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "UPS Maintenance Report"
@@ -2929,7 +2929,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "EPO Button Inspection Form"
@@ -2954,7 +2954,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Generator Test Log"
@@ -2979,7 +2979,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Emergency Light Test Form"
@@ -3005,7 +3005,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FM-200 Fire Inspection Report"
@@ -3031,7 +3031,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "HVAC Temp/Humidity Sensor Log"
@@ -3057,7 +3057,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Water Detector Audit"
@@ -3083,7 +3083,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Loading Dock Manifest"
@@ -3109,7 +3109,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Telework Checklist"
@@ -3134,7 +3134,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Facility Flood Map Review"
@@ -3159,7 +3159,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "TEMPEST Shielding Audit"
@@ -3183,7 +3183,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "RFID Asset Tracker Audit"
@@ -3207,7 +3207,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Faraday Enclosure Audit"
@@ -3231,7 +3231,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Tamper-Evident Asset Tag Audit"
@@ -3255,7 +3255,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Geographic Hazard Evaluation"
@@ -3279,7 +3279,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Planning SOP"
@@ -3304,7 +3304,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "System Security Plan (SSP)"
@@ -3330,7 +3330,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Signed Rules of Behavior"
@@ -3356,7 +3356,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ConOps Document"
@@ -3380,7 +3380,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Enterprise Security Architecture"
@@ -3405,7 +3405,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Enterprise Policy Engine Config"
@@ -3429,7 +3429,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "NIST Baseline Tailoring Matrix"
@@ -3454,7 +3454,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Control Overlay Doc"
@@ -3479,7 +3479,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hardware EOL Plan"
@@ -3503,7 +3503,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Program Plan"
@@ -3528,7 +3528,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CISO Appointment Designation"
@@ -3553,7 +3553,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Budget Approval"
@@ -3578,7 +3578,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "POA&M Standard Operating Procedure"
@@ -3603,7 +3603,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Master System Inventory"
@@ -3628,7 +3628,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Executive KPI Dashboard"
@@ -3653,7 +3653,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "EA Security Integration Plan"
@@ -3678,7 +3678,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Critical Infrastructure Protection Plan"
@@ -3702,7 +3702,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Organization Risk Management Strategy"
@@ -3727,7 +3727,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ATO Governance Plan"
@@ -3752,7 +3752,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Business Process Security Mapping"
@@ -3777,7 +3777,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Insider Threat Plan"
@@ -3802,7 +3802,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Cybersecurity Workforce Plan"
@@ -3827,7 +3827,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ConMon Strategy"
@@ -3852,7 +3852,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CISA Contact Protocol"
@@ -3877,7 +3877,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Threat Intel Feed SOP"
@@ -3901,7 +3901,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "High Value Asset (HVA) Designation"
@@ -3925,7 +3925,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Program Plan"
@@ -3950,7 +3950,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Chief Privacy Officer Designation"
@@ -3975,7 +3975,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "PII Disclosure Accounting Log"
@@ -4000,7 +4000,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Accounting of Disclosures SOP"
@@ -4025,7 +4025,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Quality SOP"
@@ -4049,7 +4049,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Governance Steering Charter"
@@ -4074,7 +4074,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "PIA Standard Template"
@@ -4099,7 +4099,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "PII Minimization SOP"
@@ -4124,7 +4124,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Complaint SOP"
@@ -4149,7 +4149,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Training Attendance"
@@ -4174,7 +4174,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "RMF Governance Frame"
@@ -4198,7 +4198,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Emerging Risk Radar Report"
@@ -4222,7 +4222,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SCRM Strategy Document"
@@ -4247,7 +4247,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ConMon Strategy Doc"
@@ -4272,7 +4272,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Purging Verification Log"
@@ -4296,7 +4296,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Personnel Security Policy"
@@ -4322,7 +4322,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Position Sensitivity Matrix"
@@ -4348,7 +4348,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Background Check Policy"
@@ -4374,7 +4374,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Offboarding Checklist"
@@ -4400,7 +4400,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Transfer Clearance Form"
@@ -4426,7 +4426,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Signed NDA Ledger"
@@ -4452,7 +4452,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Vendor Clearance Attestation"
@@ -4478,7 +4478,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Disciplinary SOP"
@@ -4504,7 +4504,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Role Position Descriptions"
@@ -4529,7 +4529,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Processing Policy"
@@ -4554,7 +4554,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Legal Authority Matrix"
@@ -4579,7 +4579,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Public Privacy Notice"
@@ -4604,7 +4604,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Consent Management System Export"
@@ -4629,7 +4629,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Privacy Notice Review Log"
@@ -4654,7 +4654,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Federal Register SORN Publication"
@@ -4679,7 +4679,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Special Category PII Assessment"
@@ -4703,7 +4703,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CMA Federal Agreement"
@@ -4727,7 +4727,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Risk Assessment Policy"
@@ -4753,7 +4753,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FIPS 199 Categorization Document"
@@ -4779,7 +4779,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Risk Assessment Report (RAR)"
@@ -4805,7 +4805,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Vulnerability Scan Log"
@@ -4831,7 +4831,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Risk Treatment Plan"
@@ -4856,7 +4856,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Completed PIA"
@@ -4881,7 +4881,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "High Value Asset Criticality Audit"
@@ -4905,7 +4905,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Threat Hunting Summary"
@@ -4929,7 +4929,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Acquisition Policy"
@@ -4955,7 +4955,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Capital Plan"
@@ -4981,7 +4981,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Secure SDLC SOP"
@@ -5007,7 +5007,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "RFP Security Requirements"
@@ -5033,7 +5033,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "System Architecture Manual"
@@ -5059,7 +5059,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Design Specification"
@@ -5084,7 +5084,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FedRAMP Marketplace Authorization"
@@ -5110,7 +5110,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Developer CM Audit"
@@ -5135,7 +5135,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SAST/DAST Report"
@@ -5160,7 +5160,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Approved Developer Tooling List"
@@ -5184,7 +5184,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Threat Model Artifact"
@@ -5208,7 +5208,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Developer Background Investigation Log"
@@ -5232,7 +5232,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "EOL Exception Register"
@@ -5257,7 +5257,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Custom Security Hardware Spec"
@@ -5281,7 +5281,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "NetSec Policy"
@@ -5307,7 +5307,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Management Subnet Rules"
@@ -5332,7 +5332,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Object Reuse Policy Audit"
@@ -5357,7 +5357,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Anti-DDoS Provider SLA"
@@ -5382,7 +5382,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Firewall Config Export"
@@ -5409,7 +5409,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "TLS 1.2+ Suite Export"
@@ -5436,7 +5436,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SSH Client Alive Interval Config"
@@ -5461,7 +5461,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "KMS Key Rotation Schedule"
@@ -5486,7 +5486,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "FIPS Approved Crypto List"
@@ -5512,7 +5512,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Video Conf Security SOP"
@@ -5537,7 +5537,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Public Cert Inventory"
@@ -5562,7 +5562,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Browser Policy Audit"
@@ -5587,7 +5587,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "DNSSEC Validation Report"
@@ -5612,7 +5612,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Recursive DNS Query Log"
@@ -5637,7 +5637,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Redundant DNS Topology"
@@ -5662,7 +5662,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Secure Cookie Flag Audit"
@@ -5687,7 +5687,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "LUKS / BitLocker Encryption Audit"
@@ -5714,7 +5714,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "ASLR/DEP Enforcement Audit"
@@ -5739,7 +5739,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Storage Deduplication Policy"
@@ -5763,7 +5763,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Integrity Policy"
@@ -5789,7 +5789,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Patch Verification Report"
@@ -5815,7 +5815,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "EDR Active Service Log"
@@ -5841,7 +5841,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Suricata / Snort Rule Export"
@@ -5867,7 +5867,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "CISA KEV Patch Audit"
@@ -5893,7 +5893,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Security Diagnostic Log"
@@ -5918,7 +5918,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "File Integrity Monitoring (FIM) Log"
@@ -5943,7 +5943,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SPF/DKIM/DMARC Record"
@@ -5969,7 +5969,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "WAF Input Validation Rules"
@@ -5994,7 +5994,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Custom Error Page Verification"
@@ -6019,7 +6019,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Data Disposal SOP"
@@ -6044,7 +6044,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "NX/DEP Memory Protection Status"
@@ -6069,7 +6069,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "AI/ML Security Audit"
@@ -6093,7 +6093,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SCRM Policy"
@@ -6120,7 +6120,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "SCRM Plan Document"
@@ -6146,7 +6146,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Software Bill of Materials (SBOM)"
@@ -6173,7 +6173,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hardware/Software Provenance Log"
@@ -6198,7 +6198,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Vendor Risk Assessment Form"
@@ -6223,7 +6223,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Supplier Audit Report"
@@ -6248,7 +6248,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Supply Chain Threat Feed Sub"
@@ -6273,7 +6273,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Vendor Breach Notification SLA"
@@ -6299,7 +6299,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Tamper-Evident Packaging Verification"
@@ -6323,7 +6323,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Hardware Sanitization Certificate"
@@ -6348,7 +6348,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "Counterfeit Component Avoidance SOP"
@@ -6372,7 +6372,7 @@
       "crosswalk": [
         "ISO27001:A.5.1",
         "CIS:5.1",
-        "NIST_CSF:PR.AA-01"
+        "NIST_CSF_V2:PR.AA-01"
       ],
       "evidence_checklist": [
         "E-Waste Disposal Contract"

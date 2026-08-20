@@ -1014,15 +1014,86 @@ Source: `Backend/routers/compliance.py` — 35 operations, the largest router.
 `GET /compliance/policies` accepts `framework_id`. Install returns 201;
 uninstall returns 200.
 
+### Control register
+
+| Method | Path                                             | Permission        |
+| ------ | ------------------------------------------------ | ----------------- |
+| GET    | `/compliance/frameworks/{framework_id}/controls` | `compliance:read` |
+
+Returns every control of one installed framework with its rolled-up verdict,
+attestation state, owner, review date and attached-evidence count, ordered
+numerically (`A.5.2` before `A.5.10`). NIST CSF 2.0 is ordered by its published
+Function and Category sequence rather than alphabetically — `GV, ID, PR, DE, RS,
+RC`, and within Govern `OC, RM, RR, PO, OV, SC` — and its rows additionally
+carry `function`, `category` and `category_name`, which are null for frameworks
+whose controls are not CSF Subcategories. Accepts `status`, `theme`,
+`scannability` and `search`. The `summary` block reports coverage and
+conformity separately — `passed`, `failed`, `awaiting_review`, `not_assessed`,
+`not_applicable`, `exception` — because a single percentage cannot distinguish
+a framework nobody has assessed from one that was assessed and failed.
+
+This is the only way to reach a control that has no finding yet, which is most
+of Annex A before the first scan.
+
 ### Scans, findings and attestation
 
 | Method | Path                                       | Permission                       |
 | ------ | ------------------------------------------ | -------------------------------- |
 | POST   | `/compliance/scans`                        | `compliance:scan` (202 Accepted) |
+| GET    | `/compliance/scans`                        | `compliance:read`                |
+| GET    | `/compliance/scans/{run_id}`               | `compliance:read`                |
 | GET    | `/compliance/findings`                     | `compliance:read`                |
 | GET    | `/compliance/summary`                      | `compliance:read`                |
 | GET    | `/compliance/gap-analysis`                 | `compliance:read`                |
 | POST   | `/compliance/controls/{control_id}/attest` | `compliance:attest`              |
+
+`POST /compliance/scans` dispatches to the Celery `compliance` queue and returns
+`scan_run_id` plus `dispatch` (`celery`, or `in_process` when the broker is
+unreachable). `GET /compliance/scans/{run_id}` reports `status`, `created_at`,
+`started_at`, `finished_at`, `error_message` and per-status finding counts — a
+failed run carries its reason rather than simply ceasing to progress.
+`GET /compliance/scans` lists history, newest first, and accepts `framework_id`
+and `limit`.
+
+`POST /compliance/controls/{control_id}/attest` takes `status`
+(`pass`|`fail`|`not_applicable`), `note`, `justification`, `owner`,
+`next_review_at` and `evidence_file_ids`. **A `not_applicable` attestation
+without a `justification` is rejected with 422** — ISO/IEC 27001:2022 clause
+6.1.3(d) requires every exclusion to be justified. Evidence file ids must belong
+to the same tenant and control.
+
+`GET /compliance/findings` returns one row per _check_ — distinct on
+`(asset_id, control_id, rule_id)` — so a control carrying several rules shows
+each one. Rows include `status_reason`, the engine's plain-English explanation
+of why a control could not be assessed.
+
+### Attestation evidence
+
+| Method | Path                                         | Permission                |
+| ------ | -------------------------------------------- | ------------------------- |
+| POST   | `/compliance/controls/{control_id}/evidence` | `compliance:attest` (201) |
+| GET    | `/compliance/controls/{control_id}/evidence` | `compliance:read`         |
+| GET    | `/compliance/evidence/{file_id}/download`    | `compliance:read`         |
+| DELETE | `/compliance/evidence/{file_id}`             | `compliance:attest`       |
+
+Multipart upload, 25 MB cap, allow-listed content types (PDF, PNG/JPEG/GIF,
+text, CSV, Word, Excel). The stored filename is derived from the generated id
+and the accepted type, never from the client-supplied name. Each file records a
+SHA-256 digest, returned on download as `X-Evidence-SHA256`.
+
+### Scan schedules
+
+| Method | Path                                  | Permission                          |
+| ------ | ------------------------------------- | ----------------------------------- |
+| POST   | `/compliance/schedules`               | `compliance:manage_schedules` (201) |
+| GET    | `/compliance/schedules`               | `compliance:read`                   |
+| PATCH  | `/compliance/schedules/{schedule_id}` | `compliance:manage_schedules`       |
+| DELETE | `/compliance/schedules/{schedule_id}` | `compliance:manage_schedules`       |
+
+`frequency` is `daily`|`weekly`|`monthly`|`quarterly`|`continuous`
+(`continuous` re-arms hourly). Celery beat polls due schedules every 60 seconds
+via `compliance.run_scheduled_scans`, so **a worker must consume the
+`compliance` queue** or schedules never execute.
 
 `GET /compliance/findings` and `GET /compliance/summary` share a 16-parameter
 scoping filter: `framework_id`, `status` (findings only), `saq_profile`,
@@ -1070,13 +1141,24 @@ list endpoint.
 
 ### Framework reports
 
-All require `compliance:read` and produce a file download.
+All require `compliance:export_report` and produce a file download. All also
+require the framework to be **active** on this installation
+(`core/compliance_frameworks.py`, `COMPLIANCE_ACTIVE_FRAMEWORKS`): eleven of the
+thirteen catalogues are parked while ISO 27001 and NIST CSF are finished, and a
+parked one answers **403** here — previously none of these routes checked
+anything and would render a PDF for a framework the workspace does not list.
+`/compliance/marketplace` returns `active_framework_ids` and
+`parked_framework_ids` so a client can build its menus from the server's list.
+That
+permission existed and was granted long before anything enforced it; these
+routes previously checked `compliance:read`, so a `viewer` could export.
 
 | Path                                 | Format parameter          | Additional filters                                                             |
 | ------------------------------------ | ------------------------- | ------------------------------------------------------------------------------ |
-| `/compliance/reports/soa`            | `fmt` (default `pdf`)     | —                                                                              |
+| `/compliance/reports/soa`            | `fmt` (default `pdf`)     | `framework_id` (default `cfw_iso27001_2022`)                                   |
+| `/compliance/reports/nerc_cip`       | `fmt` = `pdf`\|**`docx`** | `bes_impact_level` High/Medium/Low; `standard_number` CIP-002…CIP-014          |
 | `/compliance/reports/executive`      | —                         | —                                                                              |
-| `/compliance/reports/nist_csf`       | `fmt`                     | `functions` = `GV,ID,PR,DE,RS,RC`                                              |
+| `/compliance/reports/nist_csf`       | `fmt` = `pdf`\|**`docx`** | `functions` = `GV,ID,PR,DE,RS,RC` (an unrecognised Function is a 400)          |
 | `/compliance/reports/cis_v8_1`       | `fmt`                     | `ig` = `ig1`\|`ig2`\|`ig3`                                                     |
 | `/compliance/reports/soc2_type2`     | `fmt`                     | `tsc` = `cc`\|`a`\|`pi`\|`c`\|`p`; `audit_period_days` 30–365 (90)             |
 | `/compliance/reports/cert_in_2022`   | `fmt`                     | `theme` = `CERT_IR`\|`CERT_LOG`\|`CERT_AM`\|`CERT_VM`\|`CERT_AC`\|`CERT_DP`    |
@@ -1088,8 +1170,16 @@ All require `compliance:read` and produce a file download.
 | `/compliance/reports/nist_800_82`    | `fmt` = `pdf`\|**`docx`** | `purdue_level` L0–L5; `component_type` PLC/RTU/SCADA/DCS/SIS/HMI/HISTORIAN/IED |
 | `/compliance/reports/nis2`           | `fmt` = `pdf`\|**`docx`** | `nis2_entity_type` (default `essential`); `nis2_sector`; `nis2_member_state`   |
 
-DOCX output exists **only** for the last three; every other compliance report and
-every scan report is PDF or CSV.
+DOCX output exists for `soa`, `iec_62443`, `nist_800_82`, `nis2` and `nerc_cip`;
+every other compliance report and every scan report is PDF or CSV. DOCX requires
+`python-docx`, which is a declared dependency — if it is missing the SoA
+endpoint returns 503 rather than silently substituting a PDF.
+
+`/compliance/reports/soa` is scoped to **one** framework. A Statement of
+Applicability is an ISO/IEC 27001 artefact covering a single standard's control
+set; it carries applicability, justification for inclusion, implementation
+status, justification for exclusion, evidence counts and an approval block, and
+orders controls numerically.
 
 ---
 

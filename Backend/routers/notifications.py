@@ -343,15 +343,17 @@ async def stream_notifications(
     async def event_generator():
         db = SessionLocal()
         try:
-            yield _format_sse(
-                "connected",
-                {
-                    "ok": True,
-                    "summary": _summary_payload(db, user_id),
-                },
-            )
+            summary = _summary_payload(db, user_id)
         finally:
             db.close()
+
+        yield _format_sse(
+            "connected",
+            {
+                "ok": True,
+                "summary": summary,
+            },
+        )
 
         pubsub = redis_client.pubsub()
         try:

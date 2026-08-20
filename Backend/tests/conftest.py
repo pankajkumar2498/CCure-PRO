@@ -879,6 +879,31 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture(scope="function")
+def activate_frameworks(monkeypatch):
+    """Temporarily offer a parked framework, for one test.
+
+    Eleven of the thirteen seeded catalogues are parked while ISO 27001 and
+    NIST CSF are finished (`core.compliance_frameworks`), and the compliance
+    routes answer 403 for them. Their integration suites still have to run —
+    a parked framework should not be allowed to rot — so each one activates
+    itself explicitly here rather than the whole session being switched to
+    "everything on", which would mean nothing ever exercised the parked path.
+
+    The active list is read per call from the environment, so `monkeypatch`
+    reaches it and unwinds automatically at the end of the test.
+    """
+    from core.compliance_frameworks import DEFAULT_ACTIVE_FRAMEWORK_IDS
+
+    def _activate(*framework_ids: str) -> tuple:
+        ids = list(DEFAULT_ACTIVE_FRAMEWORK_IDS)
+        ids += [f for f in framework_ids if f not in ids]
+        monkeypatch.setenv("COMPLIANCE_ACTIVE_FRAMEWORKS", ",".join(ids))
+        return tuple(ids)
+
+    return _activate
+
+
+@pytest.fixture(scope="function")
 def client(
     session_client: TestClient, db_session: Session
 ) -> Generator[TestClient, None, None]:

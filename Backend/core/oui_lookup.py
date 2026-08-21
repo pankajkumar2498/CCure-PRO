@@ -12,6 +12,7 @@ Format: hex OUI (6 chars) tab Org Name
 
 import logging
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
@@ -26,6 +27,83 @@ DEFAULT_VENDOR_API_URL = os.environ.get(
 DEFAULT_VENDOR_CACHE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "vendor_cache.json"
 )
+
+#: Separators that sit between the octets of the MAC forms this codebase
+#: actually receives: colons (Scapy, Nmap), hyphens (Windows ``getmac``), dots
+#: (Cisco's ``001a.2b3c.4d5e``) and stray whitespace.
+#:
+#: Removing exactly these — rather than "every character that is not a hex
+#: digit", which is what ``core.topology.identity.normalize_mac`` does — is what
+#: makes the check below a rejection instead of a silent salvage. Stripping all
+#: non-hex characters turns ``00:1a:2b:3c:4d:5ezz`` into a well-formed address
+#: and would hand it to the vendor API as though it had been scanned that way.
+#: Here the ``z`` survives, fails the hex test, and the value is refused.
+_MAC_SEPARATORS = re.compile(r"[:.\-\s]")
+
+#: What remains once the separators are gone has to be hexadecimal and nothing
+#: else. ``\A``/``\Z`` rather than ``^``/``$``: ``$`` also matches before a
+#: trailing newline, so a value ending in one would pass a ``$`` anchor.
+_HEX_ONLY = re.compile(r"\A[0-9a-f]+\Z")
+
+#: Accepted lengths, in hex digits, after separators are removed.
+#:
+#:   6  — a bare 24-bit OUI prefix. This is the key both the local registry and
+#:        the ``mac_vendor_cache`` table are indexed on, and ``OUIDatabase``'s
+#:        own docstring documents ``lookup("00:1A:2B")``, so it stays supported.
+#:   12 — EUI-48: the ordinary MAC address every collector in this repository
+#:        emits.
+#:   16 — EUI-64. Nothing here produces one today, but it is a valid hardware
+#:        address whose leading 24 bits are an OUI like any other, and the
+#:        previous ``len >= 6`` rule accepted it. Refusing it would be a
+#:        narrowing rather than a fix.
+#:
+#: Every other length is refused. Note what this excludes that ``len >= 6`` did
+#: not: 7-to-11 and 13-to-15 digit strings, which are not addresses in any
+#: format, and which reached the network as ``https://api.macvendors.com/<junk>``.
+_VALID_MAC_HEX_LENGTHS = frozenset({6, 12, 16})
+
+
+def _normalize_mac_address(value) -> str | None:
+    """
+    Return ``value`` as compact lower-case hex, or None when it is not a MAC.
+
+    This is the validation boundary in front of the vendor API. It exists
+    because the previous rule — strip separators, accept anything six
+    characters or longer — asked only about length and never about content, so
+    any word of six or more letters was treated as an address. That was
+    reachable in production, not merely in theory: ``_normalize_mac`` in
+    ``orchestrator/scan_orchestrator.py`` passes ``"Unknown"`` through
+    unchanged, and the vendor-resolution branch beside it guards on
+    ``mac != "N/A"`` only, so a host discovered without a MAC produced a live
+    request to ``https://api.macvendors.com/unknown``.
+
+    Two consequences, and the second is the one that matters:
+
+    * a value the caller never validated decided the path of an outbound URL,
+      and separators are stripped while ``/`` and ``?`` are not; and
+    * every such lookup spent a real HTTPS round trip to be told nothing.
+
+    The return value for a non-address is unchanged — callers received ``None``
+    before and receive ``None`` now. What changes is that the request is no
+    longer made.
+
+    There are two other MAC normalizers in this codebase and neither fits here.
+    ``core.utils.normalize_mac`` and ``core.topology.identity.normalize_mac``
+    both require exactly 48 bits and both return a colon-delimited string; this
+    module is indexed on 24-bit prefixes and needs the compact form to build a
+    cache key and a URL. Keeping the rule local also keeps a leaf primitive —
+    imported by discovery, the orchestrator, ``core.tasks`` and the device
+    classifier — from depending on the topology package.
+    """
+    if not value:
+        return None
+
+    compact = _MAC_SEPARATORS.sub("", str(value).lower())
+    if len(compact) not in _VALID_MAC_HEX_LENGTHS:
+        return None
+    if not _HEX_ONLY.match(compact):
+        return None
+    return compact
 
 
 class OUIDatabase:
@@ -132,18 +210,33 @@ class OUIDatabase:
         """Placeholder for disk cache save (disabled in favor of PostgreSQL cache)."""
 
     def _normalize_mac(self, mac_address: str) -> str | None:
-        if not mac_address:
-            return None
-        mac_clean = (
-            mac_address.lower().replace(":", "").replace("-", "").replace(".", "")
-        )
-        return mac_clean if len(mac_clean) >= 6 else None
+        """Validate and compact ``mac_address``; None when it is not an address.
+
+        See ``_normalize_mac_address`` for why this rejects rather than merely
+        shortens. Kept as a method because ``lookup``, ``lookup_sync`` and
+        ``_schedule_api_fetch`` all route through it, so the three entry points
+        into the vendor API are gated by one check.
+        """
+        return _normalize_mac_address(mac_address)
 
     def _query_vendor_api(self, mac_address: str) -> str | None:
         if not self.api_url:
             return None
 
-        url = self.api_url.rstrip("/") + "/" + mac_address
+        # Re-validated here rather than trusted from the caller. This is the
+        # only function that turns a scanned value into an outbound URL, so it
+        # is where the guarantee has to hold: every current caller normalizes
+        # first, but that is a property of today's call graph, not of this
+        # function, and a future caller reaching it directly would otherwise
+        # reopen the hole. Cheap enough to do twice.
+        mac_clean = _normalize_mac_address(mac_address)
+        if not mac_clean:
+            log.debug(
+                "Refusing vendor API request: %r is not a MAC address", mac_address
+            )
+            return None
+
+        url = self.api_url.rstrip("/") + "/" + mac_clean
         try:
             response = requests.get(url, timeout=2.0)
             if response.status_code != 200:
@@ -236,7 +329,10 @@ class OUIDatabase:
         Look up vendor name for a MAC address.
 
         Args:
-            mac_address: MAC address in format "XX:XX:XX:XX:XX:XX" or "XXXXXXXXXX"
+            mac_address: MAC address in any of the accepted forms — colon,
+                hyphen or Cisco dot separated, or bare hex; a 24-bit OUI prefix
+                ("00:1A:2B"), a 48-bit EUI-48 or a 64-bit EUI-64. Anything else
+                returns None without a lookup.
 
         Returns:
             Vendor name or None if not found

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
-from core.oui_lookup import OUIDatabase
+from core.oui_lookup import OUIDatabase, _normalize_mac_address
 
 
 @pytest.fixture(autouse=True)
@@ -14,11 +14,13 @@ def drain_oui_executors():
 
     ``OUIDatabase.__init__`` opens a real ``ThreadPoolExecutor`` and nothing ever
     closes it, so a fetch scheduled by one test can still be running inside the
-    next one. ``test_oui_database_local_lookup_only`` reaches that path: it looks
-    up "INVALID_MAC", which is not a MAC, but ``_normalize_mac`` only checks
-    length rather than that the characters are hexadecimal — so it falls through
-    to ``_schedule_api_fetch`` and submits a real job against the real
-    ``api.macvendors.com`` with a 2s timeout.
+    next one. ``test_oui_database_local_lookup_only`` used to reach that path: it
+    looks up "INVALID_MAC", which is not a MAC, but ``_normalize_mac`` checked
+    only length rather than that the characters were hexadecimal — so it fell
+    through to ``_schedule_api_fetch`` and submitted a real job against the real
+    ``api.macvendors.com`` with a 2s timeout. ``_normalize_mac_address`` refuses
+    that input now, so no such job is scheduled; the tests at the end of this
+    file pin that.
 
     Note what this fixture is *not*. It was written while chasing this module's
     one-in-three failure, on the theory that the stray thread was landing on the
@@ -118,13 +120,15 @@ def test_oui_database_local_lookup_only(mock_get, mock_session_maker, temp_manuf
     mock_session_maker.assert_not_called()
     mock_get.assert_not_called()
 
-    # "INVALID_MAC" is not a MAC, but _normalize_mac only rejects strings under
-    # six characters — it does not check that the remainder is hexadecimal — so
-    # this normalizes to "invalid_mac" and falls through to the DB-cache and
-    # API-fallback paths. lookup() still answers None, which is why the assertion
-    # below has always held. Left as-is deliberately: tightening _normalize_mac
-    # is an application behaviour change and does not belong in a flakiness fix.
+    # "INVALID_MAC" is not a MAC. It used to normalize to "invalid_mac" — the
+    # old rule asked only whether six characters were present, never whether
+    # they were hexadecimal — and fell through to the DB-cache and API-fallback
+    # paths, which is why this assertion held while still costing a round trip.
+    # It is refused up front now, and the two mocks prove it: neither is called
+    # anywhere in this test.
     assert db.lookup("INVALID_MAC") is None
+    mock_session_maker.assert_not_called()
+    mock_get.assert_not_called()
 
 
 @patch("db.base.SessionLocal")
@@ -208,3 +212,211 @@ def test_update_mac_vendor_registry_task_success(mock_get, temp_manuf_file):
         with open(temp_manuf_file, "r", encoding="utf-8") as f:
             written_content = f.read()
         assert "New Vendor Corp" in written_content
+
+
+# =============================================================================
+# MAC syntax validation
+# -----------------------------------------------------------------------------
+# `_normalize_mac` used to ask only whether six characters survived separator
+# stripping. It never asked whether they were hexadecimal, so any word of six
+# or more letters was treated as an address and was handed to the vendor API as
+# a URL path segment.
+#
+# That was reachable in production rather than only from this file.
+# `orchestrator/scan_orchestrator.py::_normalize_mac` returns "Unknown" and
+# "None" unchanged, and the vendor-resolution branch beside it guards on
+# `mac != "N/A"` only — so a host discovered without a MAC produced a live
+# request to https://api.macvendors.com/unknown on every scan.
+#
+# The tests below pin both halves of the fix: every address form the module
+# accepted before is still accepted and still normalizes to the same value, and
+# nothing that is not an address reaches the network.
+# =============================================================================
+
+
+#: Every form this module is documented or known to accept, with the compact
+#: value it must produce. Verified against the previous implementation: all of
+#: these normalized to exactly the same string before the validation was added,
+#: so this list is a preservation contract, not a new capability.
+SUPPORTED_MAC_FORMATS = [
+    ("00:1a:2b:3c:4d:5e", "001a2b3c4d5e", "colon separated, lower case"),
+    ("00:1A:2B:3C:4D:5E", "001a2b3c4d5e", "colon separated, upper case"),
+    ("00-1A-2B-3C-4D-5E", "001a2b3c4d5e", "hyphen separated (Windows getmac)"),
+    ("001a2b3c4d5e", "001a2b3c4d5e", "bare hex"),
+    ("001A2B3C4D5E", "001a2b3c4d5e", "bare hex, upper case"),
+    ("001a.2b3c.4d5e", "001a2b3c4d5e", "Cisco three-group dotted form"),
+    ("Aa-Bb:Cc-Dd:Ee-Ff", "aabbccddeeff", "mixed separators and case"),
+    ("00:1A:2B", "001a2b", "24-bit OUI prefix (OUIDatabase docstring)"),
+    ("001a2b", "001a2b", "24-bit OUI prefix, bare"),
+    ("00-1A-2B", "001a2b", "24-bit OUI prefix, hyphenated"),
+    ("00:1a:2b:3c:4d:5e:6f:70", "001a2b3c4d5e6f70", "EUI-64"),
+    # Syntactically valid and must stay accepted here. Whether an address is
+    # *useful* is a different question, asked by core.topology.identity's
+    # is_usable_mac; this module only asks whether it is an address. 00:00:00
+    # is a real assignment (Xerox), and the shipped manuf.txt carries it.
+    ("00:00:00:00:00:00", "000000000000", "all-zero address"),
+    ("ff:ff:ff:ff:ff:ff", "ffffffffffff", "broadcast address"),
+]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(raw, expected) for raw, expected, _ in SUPPORTED_MAC_FORMATS],
+    ids=[label for _, _, label in SUPPORTED_MAC_FORMATS],
+)
+def test_normalize_mac_preserves_every_supported_format(raw, expected):
+    """Each accepted form still normalizes to the value it produced before."""
+    assert _normalize_mac_address(raw) == expected
+
+
+#: Values that are not addresses. Each one was accepted by the previous rule
+#: unless marked otherwise, and each therefore became a URL path segment.
+NON_ADDRESSES = [
+    ("INVALID_MAC", "the placeholder this module's own test used"),
+    ("Unknown", "scan_orchestrator passes this through verbatim"),
+    ("unknown", "same, lower case"),
+    ("core-sw-01", "LLDP chassis subtype 7, a locally assigned name"),
+    ("edge-sw.corp.local", "CDP device id"),
+    ("10.180.4.1", "LLDP chassis subtype 5, a network address"),
+    ("aabbccddeef", "11 hex digits: one short of an address"),
+    ("aabbccddeeffgg", "12 hex digits with trailing junk"),
+    ("00:1a:2b:3c:4d:5ez", "a valid address plus one stray character"),
+    ("deadbeefcafebabe0", "17 hex digits"),
+    # Not hypothetical: separators are removed but "/" and "?" are not, so
+    # before the hex check these reached requests.get as a crafted path.
+    ("aabbcc/../../etc/passwd", "path traversal through the API URL"),
+    ("aabbcc?callback=x", "query-string injection through the API URL"),
+    ("N/A", "already refused before, on length"),
+    ("None", "already refused before, on length"),
+    ("", "empty string"),
+    (None, "None"),
+    (0, "a non-string falsy value"),
+]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [raw for raw, _ in NON_ADDRESSES],
+    ids=[label for _, label in NON_ADDRESSES],
+)
+def test_normalize_mac_rejects_non_addresses(raw):
+    """Anything that is not an address normalizes to None, not to a URL."""
+    assert _normalize_mac_address(raw) is None
+
+
+@pytest.mark.parametrize("length", range(1, 21))
+def test_normalize_mac_accepts_only_address_lengths(length):
+    """Only 24-bit, 48-bit and 64-bit addresses are accepted, whatever the digits.
+
+    The old rule was ``len >= 6``, which admitted every length above five. This
+    walks all-hex strings of length 1 through 20 so the boundary is stated
+    explicitly rather than inferred from the examples above.
+    """
+    candidate = "a" * length
+    expected = candidate if length in (6, 12, 16) else None
+    assert _normalize_mac_address(candidate) == expected
+
+
+def test_normalize_mac_method_delegates_to_module_function(temp_manuf_file):
+    """The bound method and the module function cannot drift apart."""
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+    for raw, _, _ in SUPPORTED_MAC_FORMATS:
+        assert db._normalize_mac(raw) == _normalize_mac_address(raw)
+    for raw, _ in NON_ADDRESSES:
+        assert db._normalize_mac(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["INVALID_MAC", "Unknown", "core-sw-01", "10.180.4.1", "aabbcc/../../etc/passwd"],
+)
+@patch("db.base.SessionLocal")
+@patch("requests.get")
+def test_lookup_refuses_non_address_without_db_or_network(
+    mock_get, mock_session_maker, raw, temp_manuf_file
+):
+    """lookup() answers None for a non-address and touches nothing to do it.
+
+    The return value is what it always was. What changed is that reaching it no
+    longer costs a database round trip and an HTTPS request.
+    """
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+
+    assert db.lookup(raw) is None
+
+    mock_session_maker.assert_not_called()
+    mock_get.assert_not_called()
+
+
+@pytest.mark.parametrize("raw", ["INVALID_MAC", "Unknown", "10.180.4.1"])
+@patch("db.base.SessionLocal")
+@patch("requests.get")
+def test_lookup_sync_refuses_non_address_without_db_or_network(
+    mock_get, mock_session_maker, raw, temp_manuf_file
+):
+    """lookup_sync() has its own call into the API and is gated the same way."""
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+    db._executor = MagicMock()
+
+    assert db.lookup_sync(raw) is None
+
+    mock_session_maker.assert_not_called()
+    mock_get.assert_not_called()
+
+
+@patch("requests.get")
+def test_query_vendor_api_revalidates_its_own_argument(mock_get, temp_manuf_file):
+    """The URL boundary refuses a non-address even when called directly.
+
+    Every current caller normalizes first, so this is redundant today. It is a
+    property of the call graph rather than of the function, though, and this is
+    the one place a scanned value becomes an outbound request — so the check
+    lives here too, and this test is what stops it being removed as dead.
+    """
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+
+    assert db._query_vendor_api("Unknown") is None
+    assert db._query_vendor_api("aabbcc/../../etc/passwd") is None
+
+    mock_get.assert_not_called()
+
+
+@patch("requests.get")
+def test_query_vendor_api_requests_the_normalized_address(mock_get, temp_manuf_file):
+    """A separator-bearing address is requested in compact form, once."""
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "Some Vendor"
+    mock_get.return_value = mock_response
+
+    assert db._query_vendor_api("00-11-22-33-44-55") == "Some Vendor"
+
+    mock_get.assert_called_once_with(
+        "https://api.macvendors.com/001122334455", timeout=2.0
+    )
+
+
+@patch("db.base.SessionLocal")
+@patch("requests.get")
+def test_valid_address_still_resolves_from_local_registry(
+    mock_get, mock_session_maker, temp_manuf_file
+):
+    """Regression guard: validation must not cost the offline path.
+
+    Includes the bare 24-bit prefix form, which the class docstring documents
+    and which no other test in this file exercises — it is the format most at
+    risk from a length check written for 48-bit addresses.
+    """
+    db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
+
+    assert db.lookup("00:00:0C:11:22:33") == "Cisco Systems, Inc"
+    assert db.lookup("00:00:0C") == "Cisco Systems, Inc"
+    assert db.lookup("00000c") == "Cisco Systems, Inc"
+    assert db.lookup("28-6F-B9-AA-BB-CC") == "Nokia Shanghai Bell Co., Ltd."
+    assert db.lookup("001a2b3c4d5e") == "Cisco SPA Phone"
+    assert db.lookup("0000.0c11.2233") == "Cisco Systems, Inc"
+
+    mock_session_maker.assert_not_called()
+    mock_get.assert_not_called()

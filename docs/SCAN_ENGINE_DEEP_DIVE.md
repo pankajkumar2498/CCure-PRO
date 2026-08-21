@@ -1268,7 +1268,7 @@ hidden}`, capped at `MAX_SQLMAP_TARGETS = 20`.
 Nuclei **and** SQLMap both finding SQLi → one finding with `verified=True`.
 `correlate_with_network_findings()` cross-links to network CVEs.
 
-`core/web/compliance.py::map_compliance(finding_type)` maps to OWASP Top 10 (2021),
+`core/web/standards_mapping.py::map_compliance(finding_type)` maps to OWASP Top 10 (2021),
 PCI-DSS 4.0 and SOC 2 TSC; `generate_compliance_scorecard(findings)` produces the
 rollup behind `GET /dashboard/web-owasp-scorecard`.
 

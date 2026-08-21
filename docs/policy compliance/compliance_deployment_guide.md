@@ -14,7 +14,7 @@ Deploy the compliance module to production in this strict sequence:
    ```
 2. **Step 2: Seed Static Data**: Execute the seeding script to populate `compliance_frameworks` and the 93 `compliance_controls` for ISO 27001:2022.
    ```bash
-   python -m scripts.seed_compliance --seed-file docs/iso27001_2022_controls_seed.json
+   python -m scripts.seed_compliance --seed-file scripts/iso27001_2022_controls_seed.json
    ```
 3. **Step 3: Deploy Worker & API Code**: Roll out the new backend package container images. Ensure the new `compliance` Celery queue configuration is registered.
 4. **Step 4: Enable Feature Flag**: Set the feature flag to `True` in environment variables and restart API pods.

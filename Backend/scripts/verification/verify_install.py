@@ -111,8 +111,10 @@ check(
 )
 
 check(
-    "api imports",
-    lambda: __import__("api.host_discovery_api", fromlist=["HostDiscoveryAPI"]),
+    "host_discovery_api imports",
+    lambda: __import__(
+        "orchestrator.host_discovery_api", fromlist=["HostDiscoveryAPI"]
+    ),
 )
 
 # -- Functional checks --
@@ -120,7 +122,7 @@ check(
     "HostDiscoveryAPI instantiates cleanly",
     lambda: (
         __import__(
-            "api.host_discovery_api", fromlist=["HostDiscoveryAPI"]
+            "orchestrator.host_discovery_api", fromlist=["HostDiscoveryAPI"]
         ).HostDiscoveryAPI(silent=True)
     ),
 )
@@ -191,7 +193,9 @@ check(
     lambda: (
         all(
             k
-            in __import__("api.host_discovery_api", fromlist=["HostDiscoveryAPI"])
+            in __import__(
+                "orchestrator.host_discovery_api", fromlist=["HostDiscoveryAPI"]
+            )
             .HostDiscoveryAPI(silent=True)
             .get_system_info()
             for k in (

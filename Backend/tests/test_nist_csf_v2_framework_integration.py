@@ -267,7 +267,7 @@ def test_scannability_is_derived_from_reachable_automation():
     had no business carrying them: ID.AM-07, "inventories of data are
     maintained", was answered by A.8.8's critical-vulnerability count.
     """
-    from scripts.nist_csf_v2_core import AUTOMATED_ISO_CONTROLS
+    from core.nist_csf_catalogue import AUTOMATED_ISO_CONTROLS
 
     wrong: list = []
     for c in _seed_controls():
@@ -280,7 +280,7 @@ def test_scannability_is_derived_from_reachable_automation():
 
 def test_auto_subcategories_name_a_module_that_exists():
     """`scan_module_hint` used to name modules the product does not have."""
-    from scripts.nist_csf_v2_core import AUTOMATED_ISO_CONTROLS
+    from core.nist_csf_catalogue import AUTOMATED_ISO_CONTROLS
 
     known = set(AUTOMATED_ISO_CONTROLS.values())
     for c in _seed_controls():

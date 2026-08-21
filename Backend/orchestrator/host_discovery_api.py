@@ -1,10 +1,12 @@
 """
-api/host_discovery_api.py
---------------------------
-HostDiscoveryAPI - public interface.
+orchestrator/host_discovery_api.py
+----------------------------------
+HostDiscoveryAPI - public interface. All heavy lifting lives in ScanOrchestrator.
 
-Exactly mirrors the interface from host_discovery_api.py so callers
-require zero changes.  All heavy lifting lives in ScanOrchestrator.
+This is the scan facade, not the HTTP API. It used to sit in a top-level
+`api/` package, which read as the place to find endpoints — those are in
+`routers/`, and `api/` held only this one file. It belongs beside the
+orchestrator it wraps.
 """
 
 import logging

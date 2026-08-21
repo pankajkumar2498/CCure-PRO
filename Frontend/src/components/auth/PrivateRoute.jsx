@@ -1,16 +1,16 @@
 /**
- * src/components/PrivateRoute.jsx
+ * src/components/auth/PrivateRoute.jsx
  * Wraps protected routes. Shows spinner while auth state loads,
  * then redirects to /login if user is not authenticated.
  */
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 import {
   canPermission,
   canAny,
   canAll,
   isSuperAdmin,
-} from "../auth/permissions";
+} from "../../auth/permissions";
 
 const fallbackPathFor = (user, currentPath) => {
   const candidates = [

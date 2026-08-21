@@ -4,7 +4,7 @@ Purpose: NIST CSF 2.0 structure the *running application* needs — the Function
          and Category order, their display names, and a sort key that puts a
          Subcategory where NIST puts it.
 
-The catalogue itself lives in `scripts/nist_csf_v2_core.py`, which is the seed
+The catalogue itself lives in `core/nist_csf_catalogue.py`, which is the seed
 generator's input. This module re-exports the two ordering tables so the API,
 the report generators and the dashboard share one definition of the order
 rather than each restating it — and so nothing under `routers/` has to import
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.nist_csf_v2_core import (
+from core.nist_csf_catalogue import (
     CATEGORY_ORDER,
     FUNCTION_NAMES,
     FUNCTION_ORDER,

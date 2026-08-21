@@ -6,12 +6,12 @@ import ScanDetail from "./pages/ScanDetail";
 import FindingsExplorer from "./pages/FindingsExplorer";
 import AssetInventory from "./pages/AssetInventory";
 
-import ErrorBoundary from "../../components/common/ErrorBoundary";
+import PanelErrorBoundary from "../../components/common/PanelErrorBoundary";
 import "./styles/web-scanning.css";
 
 export default function WebScanningRoutes() {
   return (
-    <ErrorBoundary>
+    <PanelErrorBoundary>
       <Routes>
         <Route path="dashboard" element={<WebDashboard />} />
         <Route path="list" element={<ScanList />} />
@@ -21,6 +21,6 @@ export default function WebScanningRoutes() {
         <Route path=":id/assets" element={<AssetInventory />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>
-    </ErrorBoundary>
+    </PanelErrorBoundary>
   );
 }

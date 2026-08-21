@@ -544,7 +544,7 @@ Key implementation facts:
 - A single-flight 401 interceptor calls `POST /auth/refresh`, replays the
   original request, and queues concurrent 401s behind the same refresh. Five
   auth URLs bypass it so their 401s surface as real errors.
-- Route guarding is `components/PrivateRoute.jsx`, which supports
+- Route guarding is `components/auth/PrivateRoute.jsx`, which supports
   `requiredPermission`, `requiredAny`, `requiredAll` and `superadminOnly`, and on
   denial redirects to the first permission-appropriate fallback rather than a
   dead end.

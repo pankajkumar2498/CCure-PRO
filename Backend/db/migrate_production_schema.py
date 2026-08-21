@@ -668,7 +668,7 @@ def run_migration():
 
     # 3. Scans schema (might fail on Windows permission issues with scapy)
     try:
-        from scans.models import ensure_scan_schema
+        from scans.schema_bootstrap import ensure_scan_schema
 
         ensure_scan_schema()
         print("  ✓ Scan schema verified and migrated")

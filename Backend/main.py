@@ -18,7 +18,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from api.host_discovery_api import HostDiscoveryAPI
+from orchestrator.host_discovery_api import HostDiscoveryAPI
 
 # ── Router imports ────────────────────────────────────────────────────────────
 from auth.router import router as auth_router
@@ -47,8 +47,8 @@ from routers.traditional_scans import router as traditional_scans_router
 from routers.user_profile import router as user_profile_router
 from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
-from scans.models import ensure_scan_schema
-from scans.router import router as scans_router
+from scans.schema_bootstrap import ensure_scan_schema
+from routers.scan_history import router as scans_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 

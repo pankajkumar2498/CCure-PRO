@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import PrivateRoute from "../../components/PrivateRoute";
-import AuthContext from "../../context/AuthContext";
+import PrivateRoute from "../../../components/auth/PrivateRoute";
+import AuthContext from "../../../context/AuthContext";
 
 describe("PrivateRoute Component", () => {
   const renderWithAuth = (authValue, route = "/dashboard") => {

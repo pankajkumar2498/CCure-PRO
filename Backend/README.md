@@ -200,7 +200,7 @@ sudo python cli.py
 ### Programmatic usage
 
 ```python
-from api.host_discovery_api import HostDiscoveryAPI
+from orchestrator.host_discovery_api import HostDiscoveryAPI
 
 api = HostDiscoveryAPI(silent=False, intensity="normal")
 

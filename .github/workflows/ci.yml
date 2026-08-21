@@ -204,7 +204,26 @@ jobs:
           cd Frontend
           npm audit --audit-level=high || echo "NPM audit flagged high/critical vulnerabilities"
 
-      - name: Run Code Formatting and Linting Checks
+      - name: Run Frontend Tests
         run: |
           cd Frontend
-          npm run lint || echo "Lint warnings found"
+          npm test
+
+      # There is deliberately no lint step here yet, and that is a change from
+      # what this file used to claim.
+      #
+      # It ran `npm run lint || echo "Lint warnings found"`. Frontend/package.json
+      # defines no `lint` script and eslint is not a dependency, so npm exited
+      # non-zero, `|| echo` swallowed it, and the step reported success on every
+      # run. It had never linted anything. A step that cannot fail is worse than
+      # no step, because it reads as coverage that does not exist.
+      #
+      # Frontend/.eslintrc.json is kept: it is a valid rule set and the intent
+      # behind it stands. Measured against it on 21 Aug 2026 with eslint 8.57.1,
+      # eslint-plugin-react and eslint-plugin-react-hooks, `src/` reports
+      # 774 problems (747 errors, 27 warnings) — mostly no-unused-vars plus
+      # react-hooks/exhaustive-deps. Gating on that today would pin CI red.
+      #
+      # To turn it on: add those three devDependencies and a `lint` script, clear
+      # the backlog (or start with --max-warnings and a narrowed rule set), then
+      # add the step back WITHOUT a `|| echo` so it can actually fail.

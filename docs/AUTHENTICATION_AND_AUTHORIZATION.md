@@ -580,7 +580,7 @@ of the SPA.
 
 ### Route guards
 
-`Frontend/src/components/PrivateRoute.jsx` — renders a spinner while
+`Frontend/src/components/auth/PrivateRoute.jsx` — renders a spinner while
 `loading`, redirects to `/login` (carrying `state.from`, `state.reason`,
 `state.message`) when there is no user, then evaluates
 `superadminOnly` / `requiredPermission` / `requiredAny` / `requiredAll`. On

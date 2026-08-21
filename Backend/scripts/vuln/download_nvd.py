@@ -5,9 +5,9 @@ Downloads recent CVEs from NVD API and caches them in SQLite database.
 This allows the scanning engine to query CVEs from local DB instead of hardcoding.
 
 Usage:
-    python Scripts/download_nvd.py                    # Default: fetch 500 recent CVEs
-    python Scripts/download_nvd.py --limit 1000       # Fetch 1000 CVEs
-    python Scripts/download_nvd.py --skip-ssl         # Skip SSL verification (dev only)
+    python scripts/vuln/download_nvd.py                    # Default: fetch 500 recent CVEs
+    python scripts/vuln/download_nvd.py --limit 1000       # Fetch 1000 CVEs
+    python scripts/vuln/download_nvd.py --skip-ssl         # Skip SSL verification (dev only)
 """
 
 import argparse
@@ -298,7 +298,7 @@ def main():
         # Step 5: Show next offset for continued downloads
         print("\n💡 To download the next batch of CVEs, use:")
         print(
-            f"   python scripts/download_nvd.py --limit {args.limit} --offset {next_offset}"
+            f"   python scripts/vuln/download_nvd.py --limit {args.limit} --offset {next_offset}"
         )
 
         print(f"\n✓ CVE database ready at: {DB_PATH}")

@@ -17,7 +17,7 @@ import logging
 import sys
 from typing import Any, Dict
 
-from api.host_discovery_api import HostDiscoveryAPI
+from orchestrator.host_discovery_api import HostDiscoveryAPI
 from core.models import ScanIntensity
 
 logging.basicConfig(

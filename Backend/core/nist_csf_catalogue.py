@@ -1,5 +1,5 @@
 """
-Module: scripts.nist_csf_v2_core
+Module: core.nist_csf_catalogue
 Purpose: The NIST Cybersecurity Framework 2.0 Core, as data — six Functions,
          twenty-two Categories and 106 Subcategories, with NIST's own outcome
          statements, a written objective, an audit evidence checklist and an

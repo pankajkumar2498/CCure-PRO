@@ -29,6 +29,10 @@ models under `Backend/db/models/` and the 32 Alembic revisions under
 | Application DB (`DATABASE_URL`) | **Yes** — the 47 tables below | Tenants, users, RBAC, scans, assets, findings, web scans, compliance, topology                                                                                                               |
 | `vuln_intel` (`VULN_DB_*`)      | **No**                        | NVD/CVSS/CPE, OSV, MSRC, CSAF, exploit intel, CISA KEV, VulnCheck KEV. Its `alembic_version` names a revision that exists nowhere in this tree; each sync script asserts the tables it needs |
 
+An entity-relationship diagram for the `vuln_intel` schema is kept alongside this
+document at [VULN_INTEL_ERD.html](VULN_INTEL_ERD.html). It lived at the
+repository root as `Vulnerability_ERD Diagram.html` and nothing linked to it.
+
 ### PostgreSQL specifics
 
 `db/base.py` defines `TIMESTAMPTZ = DateTime(timezone=True)` and uses it for
@@ -1171,7 +1175,7 @@ CI additionally proves reversibility: `alembic downgrade -1` followed by
 
 Four idempotent helpers run at application startup and from the bootstrap script,
 outside Alembic: `ensure_user_schema()` (`db/models/users.py`),
-`ensure_scan_schema()` (`scans/models.py`), `ensure_topology_schema()`
+`ensure_scan_schema()` (`scans/schema_bootstrap.py`), `ensure_topology_schema()`
 (`db/models/topology.py`), `ensure_mac_vendor_schema()` (`db/models/assets.py`).
 They add columns that were introduced without a migration and are safe to re-run.
 

@@ -56,7 +56,7 @@ except ImportError:
 # CVE / Vulnerability Intelligence  (Fallback hardcoded hints)
 # =============================================================================
 # NOTE: These are used as fallback when SQLite database is unavailable.
-# For production, use Backend/scripts/download_nvd.py to populate cves.db
+# For production, use Backend/scripts/vuln/download_nvd.py to populate cves.db
 # =============================================================================
 
 CVE_HINTS: dict[str, list[dict]] = {

@@ -1,6 +1,6 @@
 """
 Script: enrich_nist_csf_v2_seed.py
-Purpose: Render `scripts/nist_csf_v2_core.py` into
+Purpose: Render `core/nist_csf_catalogue.py` into
          `nist_csf_v2_controls_seed.json`.
 Usage:   python -m scripts.enrich_nist_csf_v2_seed [--check]
 
@@ -52,7 +52,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.nist_csf_v2_core import (  # noqa: E402
+from core.nist_csf_catalogue import (  # noqa: E402
     AUTOMATED_ISO_CONTROLS,
     CATEGORY_ORDER,
     FUNCTION_NAMES,

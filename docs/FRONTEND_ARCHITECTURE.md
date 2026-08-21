@@ -97,9 +97,11 @@ preferences once `isAuthenticated` is true, so it must sit inside `AuthProvider`
 > **NOTE:** `App.jsx`'s header comment states that `BrowserRouter` and
 > `AuthProvider` are already in `main.jsx` and must not be re-wrapped.
 
-Two distinct `ErrorBoundary` components exist:
-`components/ErrorBoundary.jsx` (app-level, used in `main.jsx`) and
-`components/common/ErrorBoundary.jsx` (used by `WebScanningRoutes`).
+Two distinct error boundaries exist. They were both named `ErrorBoundary`,
+which made an import written from memory pick the wrong one silently, so they
+are named for their role now:
+`components/common/RootErrorBoundary.jsx` (app-level, used in `main.jsx`) and
+`components/common/PanelErrorBoundary.jsx` (inline, used by `WebScanningRoutes`).
 
 ---
 
@@ -191,7 +193,7 @@ own nested router, its own `ErrorBoundary` and its own stylesheet:
 
 ## 5. Route guards
 
-`src/components/PrivateRoute.jsx`:
+`src/components/auth/PrivateRoute.jsx`:
 
 ```jsx
 export default function PrivateRoute({ children, requiredPermission,
@@ -225,7 +227,7 @@ user can actually reach, excluding the one they were denied:
 A denied user therefore lands somewhere useful rather than on a dead end or a
 redirect loop.
 
-`PrivateRoute` is covered by `src/__tests__/components/PrivateRoute.test.jsx`.
+`PrivateRoute` is covered by `src/__tests__/components/auth/PrivateRoute.test.jsx`.
 
 ---
 
@@ -670,13 +672,13 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 ## 14. Tests
 
-| File                                         | Covers                                                           |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| `__tests__/auth/permissions.test.js`         | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
-| `__tests__/components/PrivateRoute.test.jsx` | Loading, redirect, permission gating, fallback selection         |
-| `__tests__/pages/scan/NewScan.test.jsx`      | Scan launch form and pipeline wiring                             |
-| `__tests__/pages/scan/NetworkMap.test.jsx`   | Topology graph rendering                                         |
-| `__tests__/setupTests.js`                    | `@testing-library/jest-dom` matchers                             |
+| File                                              | Covers                                                           |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `__tests__/auth/permissions.test.js`              | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
+| `__tests__/components/auth/PrivateRoute.test.jsx` | Loading, redirect, permission gating, fallback selection         |
+| `__tests__/pages/scan/NewScan.test.jsx`           | Scan launch form and pipeline wiring                             |
+| `__tests__/pages/scan/NetworkMap.test.jsx`        | Topology graph rendering                                         |
+| `__tests__/setupTests.js`                         | `@testing-library/jest-dom` matchers                             |
 
 Run with `npm test` (`vitest run`).
 

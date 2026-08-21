@@ -915,7 +915,7 @@ class WebScanOrchestrator:
                 )
 
             # 2. Compliance Mapping
-            from core.web.compliance import map_compliance
+            from core.web.standards_mapping import map_compliance
 
             for finding in all_findings:
                 compliance = map_compliance(finding.get("finding_type", ""))

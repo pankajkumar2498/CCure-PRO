@@ -682,7 +682,7 @@ Four things that were wrong and are now guarded by
   cross-framework rule inheritance.
 
 **ISO automation is NIST's automation.** `AUTOMATED_ISO_CONTROLS` in
-`scripts/nist_csf_v2_core.py` is the list of Annex A controls carrying a real
+`core/nist_csf_catalogue.py` is the list of Annex A controls carrying a real
 check, and NIST CSF derives its own `scannability` from it. Wiring a new ISO
 rule therefore means adding that control there and regenerating the CSF seed,
 or NIST is left claiming `manual` for a Subcategory that now inherits an
@@ -743,7 +743,7 @@ offered, not scannable, not reportable and not installable.
 
 ### NIST CSF 2.0
 
-`scripts/nist_csf_v2_core.py` is the catalogue — six Functions, 22 Categories,
+`core/nist_csf_catalogue.py` is the catalogue — six Functions, 22 Categories,
 106 Subcategories — and `scripts/enrich_nist_csf_v2_seed.py` renders it into
 `nist_csf_v2_controls_seed.json`. Edit the core module, never the JSON;
 `tests/test_nist_csf_v2_framework_integration.py` fails if they diverge.

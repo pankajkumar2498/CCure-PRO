@@ -18,6 +18,7 @@ import logging
 import re
 from typing import Any, Callable, Dict, List, Optional
 
+from core.mac import collector_mac
 from engines.credentialed.ssh_scanner import SSHScanner
 
 log = logging.getLogger("ccure.windows_collector")
@@ -179,13 +180,10 @@ def _first_value(value: Any) -> Any:
     return value
 
 
-def _normalize_mac(value: str) -> str:
-    text = str(value or "").strip().lower().replace("-", ":")
-    if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
-        return ""
-    if re.fullmatch(r"[0-9a-f]{12}", text):
-        text = ":".join(text[i : i + 2] for i in range(0, 12, 2))
-    return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
+#: This function lived here and in the other collector, character for
+#: character. ``core.mac.collector_mac`` is that same body, moved once; the
+#: alias keeps both call sites below unchanged.
+_normalize_mac = collector_mac
 
 
 def _mac_from_windows_interfaces(raw: Any, target_ip: str) -> str:

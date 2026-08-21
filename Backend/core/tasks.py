@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
+from core.mac import mac_colon
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
@@ -623,13 +624,25 @@ def _clean_text(value) -> str:
 
 
 def _normalize_mac(value) -> str:
+    """
+    Canonical ``aa:bb:cc:dd:ee:ff`` for asset identity, or ``""``.
+
+    The parsing is ``core.mac.mac_colon``; the policy — that a null or
+    broadcast address is not an identity — stays here, because it is this
+    caller's and not shared.
+
+    This used to end in ``return text if len(text.split(":")) == 6 else ""``,
+    which validated by counting colons and never checked that the groups were
+    hexadecimal. ``"zz:zz:zz:zz:zz:zz"`` therefore reached
+    ``Asset.mac_address``, a PostgreSQL ``MACADDR`` column, where it raises
+    ``DataError`` and aborts the credentialed asset sync. Nothing can currently
+    deliver such a value — both collectors sanitise first — but that is a
+    property of today's call graph rather than of this function.
+    """
     text = _clean_text(value).lower().replace("-", ":")
     if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
         return ""
-    compact = text.replace(":", "").replace(".", "")
-    if len(compact) == 12 and all(ch in "0123456789abcdef" for ch in compact):
-        return ":".join(compact[i : i + 2] for i in range(0, 12, 2))
-    return text if len(text.split(":")) == 6 else ""
+    return mac_colon(text) or ""
 
 
 def _credentialed_sections_with_identity(

@@ -12,12 +12,12 @@ Format: hex OUI (6 chars) tab Org Name
 
 import logging
 import os
-import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
 
 import requests
+from core.mac import mac_hex
 
 log = logging.getLogger("ccure.oui")
 
@@ -27,23 +27,6 @@ DEFAULT_VENDOR_API_URL = os.environ.get(
 DEFAULT_VENDOR_CACHE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "vendor_cache.json"
 )
-
-#: Separators that sit between the octets of the MAC forms this codebase
-#: actually receives: colons (Scapy, Nmap), hyphens (Windows ``getmac``), dots
-#: (Cisco's ``001a.2b3c.4d5e``) and stray whitespace.
-#:
-#: Removing exactly these — rather than "every character that is not a hex
-#: digit", which is what ``core.topology.identity.normalize_mac`` does — is what
-#: makes the check below a rejection instead of a silent salvage. Stripping all
-#: non-hex characters turns ``00:1a:2b:3c:4d:5ezz`` into a well-formed address
-#: and would hand it to the vendor API as though it had been scanned that way.
-#: Here the ``z`` survives, fails the hex test, and the value is refused.
-_MAC_SEPARATORS = re.compile(r"[:.\-\s]")
-
-#: What remains once the separators are gone has to be hexadecimal and nothing
-#: else. ``\A``/``\Z`` rather than ``^``/``$``: ``$`` also matches before a
-#: trailing newline, so a value ending in one would pass a ``$`` anchor.
-_HEX_ONLY = re.compile(r"\A[0-9a-f]+\Z")
 
 #: Accepted lengths, in hex digits, after separators are removed.
 #:
@@ -87,23 +70,12 @@ def _normalize_mac_address(value) -> str | None:
     before and receive ``None`` now. What changes is that the request is no
     longer made.
 
-    There are two other MAC normalizers in this codebase and neither fits here.
-    ``core.utils.normalize_mac`` and ``core.topology.identity.normalize_mac``
-    both require exactly 48 bits and both return a colon-delimited string; this
-    module is indexed on 24-bit prefixes and needs the compact form to build a
-    cache key and a URL. Keeping the rule local also keeps a leaf primitive —
-    imported by discovery, the orchestrator, ``core.tasks`` and the device
-    classifier — from depending on the topology package.
+    The rule itself lives in ``core.mac`` so that this module, ``core.tasks``
+    and the two credentialed collectors all answer "is this an address?" the
+    same way. Only the accepted lengths differ here, and only because this
+    module is indexed on 24-bit OUI prefixes.
     """
-    if not value:
-        return None
-
-    compact = _MAC_SEPARATORS.sub("", str(value).lower())
-    if len(compact) not in _VALID_MAC_HEX_LENGTHS:
-        return None
-    if not _HEX_ONLY.match(compact):
-        return None
-    return compact
+    return mac_hex(value, _VALID_MAC_HEX_LENGTHS)
 
 
 class OUIDatabase:

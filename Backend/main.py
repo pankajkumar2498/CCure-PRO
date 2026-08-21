@@ -460,6 +460,29 @@ async def lifespan(app: FastAPI):
 
     from routers.reports import cleanup_old_reports
 
+    #: How long cleanup_loop waits between passes.
+    #
+    #: This loop had no delay at all. `while True:` ran a filesystem walk over
+    #: the reports directory and two DELETE statements back-to-back for the life
+    #: of the process — measured at ~3,300 iterations/second with the work
+    #: stubbed out, and an idle container sitting at 35-46% CPU with no traffic.
+    #:
+    #: It also made two tests intermittently fail, which is how it was found:
+    #:
+    #:   * test_oui_lookup patches db.base.SessionLocal globally. This loop runs
+    #:     on its own thread, picked up that mock, and called commit() on it, so
+    #:     a test asserting commit was called once saw two calls.
+    #:   * test_email_verification sets a token's expires_at into the past and
+    #:     then reads the row back. This loop deletes exactly those rows, and
+    #:     landing in that window raised ObjectDeletedError.
+    #:
+    #: Hourly is far more frequent than either job needs: reports are retained
+    #: for 7 days and verification tokens live 24 hours, so nothing here is
+    #: time-critical. Do not remove the sleep to make pruning more responsive —
+    #: neither deletion has a deadline, and the previous behaviour is what a
+    #: busy-wait costs.
+    CLEANUP_INTERVAL_SECONDS = 3600
+
     async def cleanup_loop():
         while True:
             try:
@@ -504,6 +527,10 @@ async def lifespan(app: FastAPI):
                     db.close()
             except Exception as e:
                 log.error("Auth token cleanup failed: %s", e)
+
+            # Outside both try blocks on purpose: a failure in either job above
+            # must not turn this back into a busy-wait.
+            await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
     async def nvd_auto_sync_loop():
         """Option A: Background 24-hour automatic NVD live catalog sync into vuln_intel DB."""

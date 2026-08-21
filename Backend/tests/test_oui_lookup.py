@@ -1,9 +1,56 @@
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
 from core.oui_lookup import OUIDatabase
+
+
+@pytest.fixture(autouse=True)
+def drain_oui_executors():
+    """
+    Shut down every OUIDatabase background executor before the next test starts.
+
+    ``OUIDatabase.__init__`` opens a real ``ThreadPoolExecutor`` and nothing ever
+    closes it, so a fetch scheduled by one test can still be running inside the
+    next one. ``test_oui_database_local_lookup_only`` reaches that path: it looks
+    up "INVALID_MAC", which is not a MAC, but ``_normalize_mac`` only checks
+    length rather than that the characters are hexadecimal — so it falls through
+    to ``_schedule_api_fetch`` and submits a real job against the real
+    ``api.macvendors.com`` with a 2s timeout.
+
+    Note what this fixture is *not*. It was written while chasing this module's
+    one-in-three failure, on the theory that the stray thread was landing on the
+    next test's ``db.base.SessionLocal`` mock and adding a second ``commit()``.
+    That theory was wrong. Capturing a thread name and stack for every mock
+    ``commit`` showed the second call coming from ``main.py``'s ``cleanup_loop``,
+    an application background task that had no ``asyncio.sleep`` and therefore
+    ran continuously for the whole session, picking up whatever ``SessionLocal``
+    happened to be patched at the time. The fix for the flakiness is the sleep
+    added to that loop.
+
+    This fixture is kept anyway, on its own merits: a test suite should not leave
+    threads running past the test that started them, and combined with the mocks
+    added below it also stops this module making real network calls, which is
+    what made it the slowest file of its size in the suite.
+    """
+    created = []
+    original_init = OUIDatabase.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        created.append(self)
+
+    with patch.object(OUIDatabase, "__init__", tracking_init):
+        yield
+
+    for db in created:
+        executor = getattr(db, "_executor", None)
+        # A test may have replaced _executor with a MagicMock; only a real pool
+        # needs draining.
+        if isinstance(executor, ThreadPoolExecutor):
+            executor.shutdown(wait=True)
 
 
 @pytest.fixture
@@ -44,14 +91,39 @@ def test_oui_database_load(temp_manuf_file):
     assert db._database.get("000105") == "Beckhoff Automation GmbH"
 
 
-def test_oui_database_local_lookup_only(temp_manuf_file):
+@patch("db.base.SessionLocal")
+@patch("requests.get")
+def test_oui_database_local_lookup_only(mock_get, mock_session_maker, temp_manuf_file):
     """Verify that lookup resolves MAC address via local memory cache without DB/API queries."""
+    # These two patches are what make the claim in the docstring true. Without
+    # them this test issued a real query against whatever DATABASE_URL pointed
+    # at and a real HTTPS request to api.macvendors.com — see drain_oui_executors
+    # above for what that cost the rest of the module.
+    #
+    # The session must model a cache *miss*. A bare MagicMock returns a truthy
+    # mock from .first(), which lookup() would hand back as the vendor name.
+    mock_session_maker.return_value.query.return_value.filter.return_value.first.return_value = (
+        None
+    )
+
     db = OUIDatabase(db_path=temp_manuf_file, cache_path=None)
 
     # Test lookup of offline values
     assert db.lookup("00:00:0C:11:22:33") == "Cisco Systems, Inc"
     assert db.lookup("28-6F-B9-AA-BB-CC") == "Nokia Shanghai Bell Co., Ltd."
     assert db.lookup("001a2b3c4d5e") == "Cisco SPA Phone"
+
+    # The point of the test: a prefix present in the local registry is answered
+    # from memory. Assert it rather than trusting the title.
+    mock_session_maker.assert_not_called()
+    mock_get.assert_not_called()
+
+    # "INVALID_MAC" is not a MAC, but _normalize_mac only rejects strings under
+    # six characters — it does not check that the remainder is hexadecimal — so
+    # this normalizes to "invalid_mac" and falls through to the DB-cache and
+    # API-fallback paths. lookup() still answers None, which is why the assertion
+    # below has always held. Left as-is deliberately: tightening _normalize_mac
+    # is an application behaviour change and does not belong in a flakiness fix.
     assert db.lookup("INVALID_MAC") is None
 
 

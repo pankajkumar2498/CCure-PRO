@@ -63,7 +63,12 @@ function ssGet(key, fallback) {
 function ssSet(key, value) {
   try {
     sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // Deliberately swallowed: sessionStorage throws when the quota is full or
+    // when the browser blocks storage (private mode, embedded webview). This
+    // is a convenience cache for scan state — losing a write degrades the
+    // resume-after-reload nicety and must not break the scan itself.
+  }
 }
 function ssClear() {
   SS_KEYS.forEach((k) => sessionStorage.removeItem(k));

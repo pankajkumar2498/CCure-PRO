@@ -10,7 +10,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
-import { can, denyMessage } from "../../auth/permissions";
+import { can } from "../../auth/permissions";
 import { useAuth } from "../../context/AuthContext";
 import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
 
@@ -498,19 +498,11 @@ export default function NewScan() {
     setPortScanIntensity,
     setPhase1Hosts,
     setPhase1Summary,
-    setPhase2Hosts,
-    setPhase2Summary,
-    setPhase2Results,
-    setPhase3Results,
-    setPhase3Summary,
-    setPhase3AuditResults,
     setScanId,
     setScanNo,
-    setSaveStatus,
     setPipelineState,
     setPipelineMode,
     autoRunAdvancedSingleTarget,
-    setAutoRunAdvancedSingleTarget,
     ctxScanNo,
     executionMode,
     setExecutionMode,
@@ -569,7 +561,7 @@ export default function NewScan() {
     () => !!excludePorts,
   );
   const [excludePortsError, setExcludePortsError] = useState("");
-  const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
+  const [, setParsedExcludePortsCount] = useState(0);
   const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
 
   const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(
@@ -600,7 +592,7 @@ export default function NewScan() {
       return { ports: [], error: "", sensitiveFound: false };
     }
     const clean = portsStr.replace(/\s+/g, "");
-    if (!/^[0-9,\-]+$/.test(clean)) {
+    if (!/^[0-9,-]+$/.test(clean)) {
       return {
         ports: [],
         error:
@@ -692,7 +684,7 @@ export default function NewScan() {
       return { ports: [], error: "" };
     }
     const clean = portsStr.replace(/\s+/g, "");
-    if (!/^[0-9,\-]+$/.test(clean)) {
+    if (!/^[0-9,-]+$/.test(clean)) {
       return {
         ports: [],
         error:
@@ -1172,7 +1164,7 @@ export default function NewScan() {
 
   const isValidHostname = (host) => {
     if (host.length > 253) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(
+    return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(
       host,
     );
   };
@@ -1201,7 +1193,7 @@ export default function NewScan() {
       let dups = 0;
 
       rawTokens.forEach((t) => {
-        const clean = t.replace(/[^\w.\-:/\[\]]/g, "");
+        const clean = t.replace(/[^\w.:/[\]-]/g, "");
         if (
           !clean ||
           clean.toLowerCase() === "target" ||
@@ -1486,7 +1478,6 @@ export default function NewScan() {
     if (isMission && !hasAutoRunRef.current && effectiveScanId) {
       hasAutoRunRef.current = true;
       const {
-        scanId,
         scanNo,
         target: rt,
         pipelineMode: rm,
@@ -2587,8 +2578,8 @@ export default function NewScan() {
                         Select the credentials to try. Each host is audited with
                         the first one whose scope covers it; hosts with no
                         matching credential, or with the SSH port closed, are
-                        reported as unauthenticated and listed in the scan's
-                        coverage.
+                        reported as unauthenticated and listed in the
+                        scan&apos;s coverage.
                       </span>
                       {credentialsList.map((c) => {
                         const checked = selectedCredIds.includes(c.id);

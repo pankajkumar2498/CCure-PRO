@@ -1235,7 +1235,8 @@ export default function CredentialedResults() {
             >
               Coverage bounds every conclusion in this report. A check this
               policy does not perform cannot produce a finding here, so an empty
-              section means "not looked for", not "not present".
+              section means &quot;not looked for&quot;, not &quot;not
+              present&quot;.
             </p>
             <div style={{ display: "grid", gap: "0 24px" }}>
               {coverage.authenticated_checks && (
@@ -1644,7 +1645,7 @@ export default function CredentialedResults() {
             </div>
             {filteredServices.length === 0 ? (
               <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
-                No services matching "{servicesSearch}"
+                No services matching &quot;{servicesSearch}&quot;
               </p>
             ) : (
               <CredTable
@@ -1725,7 +1726,7 @@ export default function CredentialedResults() {
             </div>
             {filteredPorts.length === 0 ? (
               <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
-                No open ports matching "{portsSearch}"
+                No open ports matching &quot;{portsSearch}&quot;
               </p>
             ) : (
               <CredTable
@@ -1819,7 +1820,7 @@ export default function CredentialedResults() {
             </div>
             {filteredPackages.length === 0 ? (
               <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
-                No packages matching "{packagesSearch}"
+                No packages matching &quot;{packagesSearch}&quot;
               </p>
             ) : (
               <CredTable
@@ -1959,7 +1960,7 @@ export default function CredentialedResults() {
             </div>
             {filteredUsers.length === 0 ? (
               <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
-                No users matching "{usersSearch}"
+                No users matching &quot;{usersSearch}&quot;
               </p>
             ) : (
               <CredTable head={usersTableHead} rows={usersTableRows} />

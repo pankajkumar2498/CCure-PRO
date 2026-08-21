@@ -462,8 +462,8 @@ export default function NetworkMap() {
   });
 
   // Sidebar / Control States
+  const [, setExpandedSubnets] = useState(new Set());
   const [subnets, setSubnets] = useState([]);
-  const [expandedSubnets, setExpandedSubnets] = useState(new Set());
   const [filteredSubnets, setFilteredSubnets] = useState(new Set()); // Subnets that are HIDDEN
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
@@ -632,8 +632,8 @@ export default function NetworkMap() {
             <div>
               <p>
                 Add the default gateway router IP to your SNMP targets. The
-                topology engine queries the gateway's ARP table to associate MAC
-                addresses with their host IP addresses.
+                topology engine queries the gateway&apos;s ARP table to
+                associate MAC addresses with their host IP addresses.
               </p>
               <p style={{ marginTop: "12px" }}>
                 Go to the scan setup screen to add your network router IPs as
@@ -658,8 +658,9 @@ export default function NetworkMap() {
               <ol style={{ paddingLeft: "20px", marginTop: "8px" }}>
                 <li>Configure your gateway router to allow SNMP access.</li>
                 <li>
-                  Ensure the router's SNMP configuration allows access to the
-                  standard IP-MIB ARP table (OID <code>1.3.6.1.2.1.4.22</code>).
+                  Ensure the router&apos;s SNMP configuration allows access to
+                  the standard IP-MIB ARP table (OID{" "}
+                  <code>1.3.6.1.2.1.4.22</code>).
                 </li>
                 <li>
                   Add the router IP address as a target in your next scan with
@@ -711,8 +712,8 @@ export default function NetworkMap() {
           content: (
             <div>
               <p>
-                Some endpoints are listed as MAC-only because they haven't been
-                resolved to active IP addresses or matched with registered
+                Some endpoints are listed as MAC-only because they haven&apos;t
+                been resolved to active IP addresses or matched with registered
                 corporate assets.
               </p>
               <p style={{ marginTop: "12px" }}>

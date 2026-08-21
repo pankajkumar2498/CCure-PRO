@@ -56,7 +56,26 @@ repos:
     hooks:
       - id: eslint
         files: ^Frontend/
-        args: [ --max-warnings=0 ]
+        # The upstream hook declares `types: [javascript]`, and identify tags a
+        # .jsx file as `jsx`, not `javascript`. This hook therefore matched no
+        # file in this repository — every component is .jsx — and reported
+        # "(no files to check)Skipped" on every commit while looking configured.
+        # That is how 774 problems accumulated without anyone seeing one.
+        #
+        # `types` must be overridden, not just supplemented: pre-commit ANDs
+        # `types` with `types_or`, so adding `types_or: [javascript, jsx]` on
+        # its own still required the file to be `javascript` and changed
+        # nothing. Widening `types` to `file` and letting `types_or` do the
+        # selecting is what actually admits .jsx.
+        types: [ file ]
+        types_or: [ javascript, jsx ]
+        # This hook sees only the files in the commit, so the number here is a
+        # ceiling for a subset, not the codebase ratchet — errors are what it
+        # blocks on. The whole-codebase ratchet is `npm run lint` in CI, which
+        # runs the same rules over all of src/. Using 0 here would block a
+        # commit that merely touches a file carrying a pre-existing
+        # exhaustive-deps warning, which punishes the wrong person.
+        args: [ --max-warnings=27 ]
         additional_dependencies:
           - eslint@8.57.0
           - eslint-plugin-react@7.34.1

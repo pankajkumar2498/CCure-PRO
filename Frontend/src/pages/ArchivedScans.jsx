@@ -36,15 +36,8 @@ const STATUS_STYLE = {
   },
 };
 
-const PHASE_LABELS = { 1: "Discovery", 2: "Port Scan", 3: "Vulnerability" };
-
 const isCred = (scan) => scan.scan_type === "credentialed";
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
-
-const phaseLabel = (scan) =>
-  isCred(scan)
-    ? "Credentialed Audit"
-    : `P${scan.phase} - ${PHASE_LABELS[scan.phase] || "-"}`;
 
 const scanTypeLabel = (scan) => {
   if (!scan) return "Unknown";

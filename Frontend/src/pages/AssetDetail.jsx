@@ -9,7 +9,7 @@
  * - Services & Open Ports tab with detailed TLS and HTTP security headers inspection
  * - Historical change log audit timeline
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
@@ -24,11 +24,7 @@ import {
   removeAssetTag,
   addAssetNote,
 } from "../api/assets";
-import {
-  getFinding,
-  updateFindingStatus,
-  updateFindingNotes,
-} from "../api/findings";
+import { getFinding, updateFindingStatus } from "../api/findings";
 import CVELink from "../components/common/CVELink";
 import AuditTimeline from "../components/assets/AuditTimeline";
 import "../styles/dashboard.css";
@@ -126,48 +122,6 @@ const riskColor = (score) =>
         ? "#eab308"
         : "#22c55e";
 
-function SidebarRow({
-  label,
-  value,
-  mono = false,
-  isTag = false,
-  noBorder = false,
-}) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === "" ||
-    value === "—" ||
-    value === "Unknown" ||
-    value === "unknown"
-  )
-    return null;
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        borderBottom: noBorder ? "none" : "1px solid var(--border)",
-        paddingBottom: 4,
-      }}
-    >
-      <span style={{ color: "var(--text-muted)" }}>{label}</span>
-      {isTag ? (
-        <span className="db-tag" style={{ margin: 0 }}>
-          {value}
-        </span>
-      ) : (
-        <span
-          className={mono ? "mono" : ""}
-          style={{ fontWeight: 600, textAlign: "right" }}
-        >
-          {value}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function InfoField({ label, value, mono = false, isTag = false }) {
   if (
     value === null ||
@@ -260,21 +214,7 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
     }
   };
 
-  const handleNotesSave = async () => {
-    if (!notes.trim()) return;
-    setSaving(true);
-    try {
-      await updateFindingNotes(findingId, notes);
-      setSaveMsg("Notes saved");
-    } catch {
-      setSaveMsg("Failed to save notes");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const v = detail?.vulnerability;
-  const ast = detail?.asset;
 
   return (
     <div

@@ -173,7 +173,6 @@ export default function Phase3Results() {
     saveStatus,
     setSaveStatus,
     abortRef,
-    resetScan,
   } = useScan();
 
   // Track whether the auto-pipeline has been triggered
@@ -184,7 +183,7 @@ export default function Phase3Results() {
   const [localVulnResults, setLocalVulnResults] = useState(() =>
     safeArr(phase3AuditResults),
   );
-  const [expanded, setExpanded] = useState(new Set());
+  const [, setExpanded] = useState(new Set());
 
   // Filter states for each result section (active/all)
   const [filter1, setFilter1] = useState("active"); // Discovery Results
@@ -547,12 +546,6 @@ export default function Phase3Results() {
     setShowReportModal(true);
   };
 
-  const toggleExpand = (ip) => {
-    const next = new Set(expanded);
-    next.has(ip) ? next.delete(ip) : next.add(ip);
-    setExpanded(next);
-  };
-
   /* ── Guard ──────────────────────────────────────────────────────────────── */
   if (!safePhase1Hosts.length) return null;
 
@@ -833,9 +826,6 @@ export default function Phase3Results() {
                     else if (host.netbios_names && host.netbios_names.length)
                       displayHost = host.netbios_names[0].name;
                   }
-                  const devCat =
-                    host.snmp_device_type || host.device_category || "unknown";
-
                   return (
                     <tr
                       key={host.ip_address}
@@ -952,11 +942,6 @@ export default function Phase3Results() {
                       else if (host.netbios_names && host.netbios_names.length)
                         displayHost = host.netbios_names[0].name;
                     }
-                    const devCat =
-                      host.snmp_device_type ||
-                      host.device_category ||
-                      "unknown";
-
                     return (
                       <tr
                         key={host.ip_address}
@@ -1940,7 +1925,6 @@ export default function Phase3Results() {
                       const http = host.http_audit || {};
                       const smb = host.smb_info || {};
                       const tls = host.tls_info || {};
-                      const ssh = host.ssh_info || {};
 
                       if (host.heartbleed_info?.vulnerable)
                         badges.push({

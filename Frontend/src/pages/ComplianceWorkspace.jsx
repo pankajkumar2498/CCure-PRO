@@ -463,8 +463,8 @@ export default function ComplianceWorkspace() {
   // timer. The previous implementation stopped polling after six ticks
   // regardless of what the run was doing, so a failed run looked identical to
   // a slow one and its error was never shown.
+  const [, setScanRunStatus] = useState(null);
   const [activeScanRunId, setActiveScanRunId] = useState(null);
-  const [scanRunStatus, setScanRunStatus] = useState(null);
   // Controls register
   const [controlsData, setControlsData] = useState(null);
   const [controlsStatusFilter, setControlsStatusFilter] = useState("all");
@@ -3214,8 +3214,8 @@ export default function ComplianceWorkspace() {
                           colSpan={5}
                           style={{ textAlign: "center", padding: "24px" }}
                         >
-                          No baseline policies defined. Click "Create Baseline
-                          Policy" to define one.
+                          No baseline policies defined. Click &quot;Create
+                          Baseline Policy&quot; to define one.
                         </td>
                       </tr>
                     )}

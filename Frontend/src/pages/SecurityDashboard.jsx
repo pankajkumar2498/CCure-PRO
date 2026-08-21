@@ -14,7 +14,7 @@
  *   - Each widget is a self-contained component for clean maintenance
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
@@ -31,9 +31,7 @@ import {
   getAssetBreakdown,
   getScanActivity,
   getInsights,
-  getVulnTrends,
 } from "../api/dashboard";
-import { getScanQuota } from "../api/scans";
 import CVELink from "../components/common/CVELink";
 import "../styles/dashboard.css";
 
@@ -202,7 +200,7 @@ function ScanStatus({ status }) {
 
 // ── 1. Top Metric Cards ───────────────────────────────────────────────────────
 
-function MetricCards({ summary, quota, loading, onNavigate }) {
+function MetricCards({ summary, loading, onNavigate }) {
   if (loading) {
     return (
       <div className="db-metric-grid">
@@ -457,7 +455,6 @@ function RiskScorePanel({ summary, breakdown, loading }) {
   const level = ast.risk_level || "INFO";
 
   const pd = bd.priority_distribution || {};
-  const tls = bd.tls_issues || {};
   const fs = bd.finding_status || {};
 
   return (
@@ -1266,7 +1263,7 @@ function TLSHealthPanel({ tlsHealth, httpHeaders, loading }) {
       >
         HTTP Security Headers Coverage
       </div>
-      {Object.entries(httpCoverage).map(([key, { pct: p, count }]) => (
+      {Object.entries(httpCoverage).map(([key, { pct: p }]) => (
         <BarRow
           key={key}
           label={key
@@ -2153,7 +2150,7 @@ export default function SecurityDashboard() {
                   marginBottom: "20px",
                 }}
               >
-                Your account has been successfully created. You're ready to
+                Your account has been successfully created. You&apos;re ready to
                 start auditing, running vulnerability scans, and monitoring
                 enterprise compliance posture.
               </p>

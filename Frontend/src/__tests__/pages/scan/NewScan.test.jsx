@@ -21,7 +21,9 @@ vi.mock("../../../api/user", () => ({
 
 // Mock the quota bar
 vi.mock("../../../components/scan/ScanQuotaBar", () => ({
-  default: ({ onQuotaChange }) => <div data-testid="quota-bar" />,
+  default: ({ onQuotaChange: _onQuotaChange }) => (
+    <div data-testid="quota-bar" />
+  ),
 }));
 
 // The target input carries no id, name or aria-label, so its placeholder is the

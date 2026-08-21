@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { useScanPolling } from "../hooks/useScanPolling";
 import { webScansApi } from "../api/webScansApi";
@@ -49,7 +49,6 @@ const SvgSpinner = () => (
 
 export default function ScanDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { scan, loading, error, refresh, liveStatus, liveEvents } =
     useScanPolling(id, 5000);
   const [downloading, setDownloading] = useState(false);

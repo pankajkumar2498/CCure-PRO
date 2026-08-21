@@ -834,8 +834,6 @@ export default function ScanHistory({ mode = "history" }) {
     setTarget,
     setScanType,
     setPipelineMode,
-    setPhase1Hosts,
-    setPhase1Summary,
     setScanId,
     setScanNo,
     resetScan,

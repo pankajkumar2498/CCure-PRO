@@ -24,7 +24,7 @@ import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import { can } from "../../auth/permissions";
 
 const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
 
@@ -200,8 +200,8 @@ export default function Phase1Results() {
   const [excludePortsEnabled, setExcludePortsEnabled] = useState(
     () => !!excludePorts,
   );
-  const [excludePortsError, setExcludePortsError] = useState("");
-  const [parsedExcludePortsCount, setParsedExcludePortsCount] = useState(0);
+  const [, setExcludePortsError] = useState("");
+  const [, setParsedExcludePortsCount] = useState(0);
   const [sensitivePortsFound, setSensitivePortsFound] = useState(false);
 
   const [excludeIpsEnabled, setExcludeIpsEnabled] = useState(
@@ -214,7 +214,7 @@ export default function Phase1Results() {
       return { ports: [], error: "", sensitiveFound: false };
     }
     const clean = portsStr.replace(/\s+/g, "");
-    if (!/^[0-9,\-]+$/.test(clean)) {
+    if (!/^[0-9,-]+$/.test(clean)) {
       return {
         ports: [],
         error:
@@ -306,7 +306,7 @@ export default function Phase1Results() {
       return { ports: [], error: "" };
     }
     const clean = portsStr.replace(/\s+/g, "");
-    if (!/^[0-9,\-]+$/.test(clean)) {
+    if (!/^[0-9,-]+$/.test(clean)) {
       return {
         ports: [],
         error:
@@ -425,7 +425,7 @@ export default function Phase1Results() {
 
   const isValidHostname = (host) => {
     if (host.length > 253) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/.test(
+    return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(
       host,
     );
   };
@@ -488,7 +488,7 @@ export default function Phase1Results() {
       return;
     }
     if (customPorts) {
-      const { error, sensitiveFound } = parseCustomPortsJS(customPorts);
+      const { sensitiveFound } = parseCustomPortsJS(customPorts);
       setSensitivePortsFound(sensitiveFound);
     } else {
       setSensitivePortsFound(false);

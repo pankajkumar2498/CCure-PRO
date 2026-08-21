@@ -36,8 +36,7 @@ const STATE_TO_STEP = {
 };
 
 export default function ScanStepper({ current }) {
-  const { scanId, scanNo, pipelineMode, pipelineState, pipelineError } =
-    useScan();
+  const { scanId, scanNo, pipelineMode, pipelineState } = useScan();
 
   const pipeline = getScanPipeline(pipelineMode || "basic");
 

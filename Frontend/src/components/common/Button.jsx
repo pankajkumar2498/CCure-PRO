@@ -36,4 +36,8 @@ const Button = forwardRef(
   },
 );
 
+// forwardRef wraps an anonymous arrow, so React DevTools and any component
+// stack in an error boundary would show "ForwardRef" instead of a name.
+Button.displayName = "Button";
+
 export default Button;

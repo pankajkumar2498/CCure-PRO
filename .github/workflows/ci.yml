@@ -209,21 +209,24 @@ jobs:
           cd Frontend
           npm test
 
-      # There is deliberately no lint step here yet, and that is a change from
-      # what this file used to claim.
+      # No `|| echo` on this step, deliberately.
       #
-      # It ran `npm run lint || echo "Lint warnings found"`. Frontend/package.json
-      # defines no `lint` script and eslint is not a dependency, so npm exited
-      # non-zero, `|| echo` swallowed it, and the step reported success on every
-      # run. It had never linted anything. A step that cannot fail is worse than
-      # no step, because it reads as coverage that does not exist.
+      # The previous version ran `npm run lint || echo "Lint warnings found"`
+      # against a `lint` script that did not exist, with eslint not installed.
+      # npm exited non-zero, `|| echo` swallowed it, and the step reported
+      # success on every run having linted nothing — while the pre-commit hook
+      # was separately skipping every file because it matched `javascript` and
+      # not `jsx`. Between them, ESLint had never run on this codebase.
       #
-      # Frontend/.eslintrc.json is kept: it is a valid rule set and the intent
-      # behind it stands. Measured against it on 21 Aug 2026 with eslint 8.57.1,
-      # eslint-plugin-react and eslint-plugin-react-hooks, `src/` reports
-      # 774 problems (747 errors, 27 warnings) — mostly no-unused-vars plus
-      # react-hooks/exhaustive-deps. Gating on that today would pin CI red.
+      # It has now. The first real run reported 774 problems; the backlog was
+      # cleared to 0 errors, and `--max-warnings=27` in the lint script holds
+      # the remaining react-hooks/exhaustive-deps warnings at their current
+      # count so new ones fail the build. Rationale is in
+      # Frontend/.eslintrc.json.
       #
-      # To turn it on: add those three devDependencies and a `lint` script, clear
-      # the backlog (or start with --max-warnings and a narrowed rule set), then
-      # add the step back WITHOUT a `|| echo` so it can actually fail.
+      # If this step starts failing, that is the gate working. Fix the finding
+      # rather than restoring a `|| echo`.
+      - name: Run Frontend Lint (ESLint)
+        run: |
+          cd Frontend
+          npm run lint

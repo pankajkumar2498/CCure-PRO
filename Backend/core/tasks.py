@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
-from core.mac import mac_colon
+from core.mac import RESERVED_MACS, mac_colon
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
@@ -627,22 +627,33 @@ def _normalize_mac(value) -> str:
     """
     Canonical ``aa:bb:cc:dd:ee:ff`` for asset identity, or ``""``.
 
-    The parsing is ``core.mac.mac_colon``; the policy — that a null or
-    broadcast address is not an identity — stays here, because it is this
-    caller's and not shared.
+    The parsing is ``core.mac.mac_colon``; the policy — that a reserved address
+    is not an identity — is applied here, because it is this caller's. It is
+    applied to the *normalized* value, and the order is the whole point.
 
-    This used to end in ``return text if len(text.split(":")) == 6 else ""``,
-    which validated by counting colons and never checked that the groups were
-    hexadecimal. ``"zz:zz:zz:zz:zz:zz"`` therefore reached
-    ``Asset.mac_address``, a PostgreSQL ``MACADDR`` column, where it raises
-    ``DataError`` and aborts the credentialed asset sync. Nothing can currently
-    deliver such a value — both collectors sanitise first — but that is a
-    property of today's call graph rather than of this function.
+    The reserved check used to run against the raw text, so it only recognised
+    the two addresses spelled exactly as they appear in ``RESERVED_MACS``.
+    ``000000000000``, ``0:0:0:0:0:0`` and ``0000.0000.0000`` are the same
+    all-zero address written differently; every one of them slipped past and
+    was returned as ``00:00:00:00:00:00``. ``ffffffffffff`` did the same for
+    broadcast.
+
+    That matters because ``assets`` is keyed on ``(org_id, mac_address)``. Any
+    number of hosts can report an all-zero MAC — it is what a NIC with no
+    hardware address, some hypervisor interfaces and a failed read all produce —
+    and each one that got through claimed the same asset row, so they collapsed
+    into a single host that appeared to change identity on every scan. Returning
+    ``""`` instead sends the caller down the IP-based identity path, which is
+    what it already does for a host whose MAC could not be read at all.
+
+    Reserved addresses are compared after normalization for the same reason the
+    hex check happens after it: a value is only comparable once it is in one
+    form.
     """
-    text = _clean_text(value).lower().replace("-", ":")
-    if not text or text in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
+    normalized = mac_colon(value)
+    if not normalized or normalized in RESERVED_MACS:
         return ""
-    return mac_colon(text) or ""
+    return normalized
 
 
 def _credentialed_sections_with_identity(

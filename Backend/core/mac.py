@@ -64,7 +64,20 @@ _OCTET = re.compile(r"\A[0-9a-f]{1,2}\Z")
 #: Hex digits in an EUI-48 — an ordinary MAC address.
 EUI48_HEX_DIGITS = 12
 
-_NON_UNIQUE = frozenset({"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"})
+#: The two addresses that identify no interface: the all-zero address and the
+#: broadcast address, in canonical form.
+#:
+#: Deliberately *not* applied by ``mac_hex`` or ``mac_colon``. Both are parsers,
+#: and both of these are syntactically valid addresses — ``core.oui_lookup``
+#: must accept ``00:00:00`` because it is a real assignment (Xerox) present in
+#: the shipped ``manuf.txt``. Whether a well-formed address is a usable
+#: *identity* is a caller's policy, so callers apply this themselves.
+#:
+#: Compare against a value that has already been through ``mac_colon``. Checking
+#: the raw text instead is what let ``000000000000``, ``0:0:0:0:0:0`` and
+#: ``0000.0000.0000`` past the filter in ``core.tasks``: they are the same
+#: address written differently, and only the canonical form makes that visible.
+RESERVED_MACS = frozenset({"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"})
 
 
 def mac_hex(value, lengths=(EUI48_HEX_DIGITS,)) -> str | None:
@@ -132,7 +145,7 @@ def collector_mac(value) -> str:
     Returns ``""`` — not None — because that is what both call sites branch on.
     """
     text = str(value or "").strip().lower().replace("-", ":")
-    if not text or text in _NON_UNIQUE:
+    if not text or text in RESERVED_MACS:
         return ""
     if re.fullmatch(r"[0-9a-f]{12}", text):
         text = ":".join(text[i : i + 2] for i in range(0, 12, 2))

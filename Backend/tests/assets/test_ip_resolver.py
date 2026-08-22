@@ -1,7 +1,17 @@
 """
-tests/test_ip_resolver.py
-─────────────────────────
-Unit tests for core/ip_resolver.py to verify secure client IP resolution.
+tests/assets/test_ip_resolver.py
+────────────────────────────────
+Unit tests for core/ip_resolver.py.
+
+The resolved address is the rate-limiting bucket key and the audit-trail
+address, so these are security tests, not formatting tests. The cases that
+matter are the ones where somebody is *lying* about the client address.
+
+Note on the fixtures: `AppConfig.TRUSTED_PROXIES` names reverse proxies only —
+loopback and the Docker bridge range (172.16.0.0/12). It deliberately no longer
+contains 10.0.0.0/8 or 192.168.0.0/16, because this deployment's own clients
+live at 10.180.6.0/24 and trusting that range made every real client
+indistinguishable from a proxy entitled to declare somebody else's address.
 """
 
 from core.ip_resolver import _is_trusted_proxy, get_client_ip
@@ -26,14 +36,33 @@ def create_mock_request(client_ip=None, headers=None) -> Request:
     return Request(scope)
 
 
-def test_is_trusted_proxy():
-    # AppConfig.TRUSTED_PROXIES defaults to common private networks
+# ── The trust list itself ────────────────────────────────────────────────────
+
+
+def test_is_trusted_proxy_accepts_the_real_proxy_hops():
+    """Loopback and the Docker bridge: the two peers this API is spoken to by."""
     assert _is_trusted_proxy("127.0.0.1") is True
     assert _is_trusted_proxy("172.18.0.5") is True
-    assert _is_trusted_proxy("10.0.0.1") is True
-    assert _is_trusted_proxy("10.180.6.14") is True
+
+
+def test_client_networks_are_not_trusted_proxies():
+    """
+    The regression this whole change exists for.
+
+    10.180.6.14 is a client workstation on the deployment LAN. While
+    10.0.0.0/8 was in TRUSTED_PROXIES it was treated as a hop entitled to
+    declare the client address, and the correct answer only came back through
+    the "all hops trusted, take the leftmost" fallback — which reads the one
+    field a client controls.
+    """
+    assert _is_trusted_proxy("10.180.6.14") is False
+    assert _is_trusted_proxy("10.0.0.1") is False
+    assert _is_trusted_proxy("192.168.1.1") is False
     assert _is_trusted_proxy("8.8.8.8") is False
     assert _is_trusted_proxy("invalid-ip") is False
+
+
+# ── Basic resolution ─────────────────────────────────────────────────────────
 
 
 def test_get_client_ip_no_headers():
@@ -45,36 +74,94 @@ def test_get_client_ip_none():
     assert get_client_ip(None) is None
 
 
-def test_get_client_ip_real_ip_header():
+def test_get_client_ip_real_ip_header_from_a_trusted_proxy():
     request = create_mock_request(
         client_ip="172.18.0.5", headers={"x-real-ip": "198.51.100.10"}
     )
     assert get_client_ip(request) == "198.51.100.10"
 
 
-def test_get_client_ip_x_forwarded_for_trusted():
-    # Hops: [198.51.100.10 (untrusted), 10.0.0.1 (trusted), 172.18.0.5 (trusted socket)]
-    # Traversal from right to left should stop at the first untrusted IP (198.51.100.10)
+def test_get_client_ip_x_forwarded_for_from_a_trusted_proxy():
+    """The deployed shape: host nginx sets XFF to the client, container peer."""
     request = create_mock_request(
-        client_ip="172.18.0.5", headers={"x-forwarded-for": "198.51.100.10, 10.0.0.1"}
+        client_ip="172.18.0.5", headers={"x-forwarded-for": "10.180.6.14"}
     )
-    assert get_client_ip(request) == "198.51.100.10"
+    assert get_client_ip(request) == "10.180.6.14"
 
 
-def test_get_client_ip_x_forwarded_for_spoofed():
-    # Attacker tries to spoof 8.8.8.8 by appending it to the headers.
-    # Hops: [8.8.8.8, 198.51.100.10, 10.0.0.1, 172.18.0.5]
-    # Traversal from right to left must stop at the true client IP (198.51.100.10)
+# ── Spoofing ─────────────────────────────────────────────────────────────────
+
+
+def test_appended_hop_cannot_move_the_bucket():
+    """
+    A client that prefixes its own value to X-Forwarded-For must not be
+    believed. The walk runs right-to-left and stops at the first hop that is
+    not a trusted proxy, so everything further left is discarded.
+    """
     request = create_mock_request(
         client_ip="172.18.0.5",
-        headers={"x-forwarded-for": "8.8.8.8, 198.51.100.10, 10.0.0.1"},
+        headers={"x-forwarded-for": "8.8.8.8, 198.51.100.10"},
     )
     assert get_client_ip(request) == "198.51.100.10"
 
 
-def test_get_client_ip_all_trusted():
-    # If all hops are trusted, return the leftmost client IP
+def test_direct_client_cannot_forge_x_forwarded_for():
+    """A peer that is not a trusted proxy has no say in the answer at all."""
     request = create_mock_request(
-        client_ip="127.0.0.1", headers={"x-forwarded-for": "10.0.0.2, 10.0.0.1"}
+        client_ip="203.0.113.7",
+        headers={"x-forwarded-for": "8.8.8.8"},
     )
-    assert get_client_ip(request) == "10.0.0.2"
+    assert get_client_ip(request) == "203.0.113.7"
+
+
+def test_direct_client_cannot_forge_x_real_ip():
+    """
+    The hole this guard closes.
+
+    X-Real-IP used to be honoured unconditionally whenever no X-Forwarded-For
+    was present, with no check on who sent it. Any caller able to reach the
+    application directly could name its own rate-limiting bucket — and its own
+    address in the audit log — with a single header.
+    """
+    request = create_mock_request(
+        client_ip="203.0.113.7",
+        headers={"x-real-ip": "8.8.8.8"},
+    )
+    assert get_client_ip(request) == "203.0.113.7"
+
+
+def test_client_on_the_lan_cannot_forge_headers_either():
+    """
+    10.180.6.x is a user network, not a proxy. Before the trust list was
+    narrowed this request resolved to the attacker-supplied 8.8.8.8.
+    """
+    request = create_mock_request(
+        client_ip="10.180.6.50",
+        headers={"x-forwarded-for": "8.8.8.8", "x-real-ip": "8.8.8.8"},
+    )
+    assert get_client_ip(request) == "10.180.6.50"
+
+
+# ── Degenerate inputs ────────────────────────────────────────────────────────
+
+
+def test_all_hops_trusted_returns_the_leftmost():
+    """
+    Only reachable when the client genuinely sits inside a proxy range — an
+    internal call, in practice. The leftmost entry is the conventional answer.
+    """
+    request = create_mock_request(
+        client_ip="127.0.0.1", headers={"x-forwarded-for": "172.18.0.2, 172.18.0.1"}
+    )
+    assert get_client_ip(request) == "172.18.0.2"
+
+
+def test_garbage_header_falls_back_rather_than_keying_on_it():
+    """
+    A non-address must never become a rate-limit key: every caller sending the
+    same junk would share one bucket.
+    """
+    request = create_mock_request(
+        client_ip="172.18.0.5", headers={"x-forwarded-for": "not-an-ip"}
+    )
+    assert get_client_ip(request) == "172.18.0.5"

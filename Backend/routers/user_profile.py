@@ -11,6 +11,7 @@ Endpoints
   GET    /user/preferences                → Get user preferences
   PUT    /user/preferences                → Update user preferences
   GET    /user/sessions                   → List active sessions (refresh token sessions)
+  DELETE /user/sessions                   → Revoke every session except this one
   DELETE /user/sessions/{session_id}      → Revoke a session
 """
 
@@ -185,6 +186,36 @@ def _get_user_preferences(user: User) -> UserPreferencesResponse:
     }
     merged = {**defaults, **stored}
     return UserPreferencesResponse(**merged)
+
+
+def _current_session_jti(request: Request) -> str | None:
+    """
+    The refresh-token jti belonging to the request being served, or None.
+
+    Needed because `is_current` cannot be answered from the access token: that
+    token carries the user, not the session, and a user may hold several. The
+    refresh token is the thing that identifies *this* session, and the browser
+    sends it as an HttpOnly cookie on every same-site request.
+
+    Read-only and forgiving. A caller with no cookie — an API client holding
+    only a bearer token, say — simply gets `is_current: false` on every row,
+    which is honest: there is no browser session to point at. It must never
+    raise, because failing to identify the current session is not a reason to
+    refuse to list sessions.
+    """
+    from auth.jwt_handler import decode_token
+    from auth.router import REFRESH_COOKIE_NAME
+
+    token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+    except Exception:
+        return None
+    if not payload or payload.get("type") != "refresh":
+        return None
+    return payload.get("jti")
 
 
 def _extract_session_info(
@@ -466,30 +497,91 @@ def update_preferences(
 
 @router.get("/sessions", response_model=list[SessionResponse])
 def get_sessions(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    List all active sessions (refresh token sessions) for the current user.
+    List active sessions for the current user.
 
-    Includes device info, IP address, and issue/expiration times.
-    Marks the current session with is_current=True.
+    This product allows an account to be signed in on any number of devices at
+    once, which is a deliberate choice rather than an oversight — capping it
+    would push people into sharing one browser or logging each other out, and
+    neither makes anything safer. What that choice *requires* is that the owner
+    of an account can see where it is signed in and end any of those sessions,
+    which is what this endpoint and the two below are for.
+
+    Expired rows are filtered as well as revoked ones: a row past its
+    expires_at cannot be refreshed, so listing it would show a session that
+    does not exist and invite someone to revoke something already gone.
     """
-    # Get the current token's JTI from the request context
-    # Note: In a real impl, you'd extract this from the JWT payload in the request
-    current_token_jti = None  # TODO: Extract from request headers/context
+    current_token_jti = _current_session_jti(request)
 
     sessions = (
         db.query(RefreshTokenSession)
         .filter(
             RefreshTokenSession.user_id == current_user.id,
-            RefreshTokenSession.revoked_at == None,
+            RefreshTokenSession.revoked_at.is_(None),
+            RefreshTokenSession.expires_at > utcnow(),
         )
         .order_by(RefreshTokenSession.issued_at.desc())
         .all()
     )
 
     return [_extract_session_info(s, current_token_jti) for s in sessions]
+
+
+@router.delete("/sessions", status_code=200)
+def revoke_other_sessions(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Sign out every session except the one making this request.
+
+    The control that matters when somebody suspects their account is being used
+    elsewhere: revoking sessions one at a time requires knowing which row is the
+    intruder, and the whole reason for reaching this screen is not knowing.
+
+    Revocation, not deletion. The rows stay with `revoked_at` set so the audit
+    trail keeps showing that these sessions existed and when they were ended —
+    deleting them would erase the evidence of the event being responded to.
+
+    If the caller cannot be identified (no refresh cookie), every session is
+    revoked including whatever the caller is using. That is the safe direction:
+    "I could not tell which one is yours" must not mean "so I left them all
+    running".
+    """
+    current_token_jti = _current_session_jti(request)
+
+    query = db.query(RefreshTokenSession).filter(
+        RefreshTokenSession.user_id == current_user.id,
+        RefreshTokenSession.revoked_at.is_(None),
+    )
+    if current_token_jti:
+        query = query.filter(RefreshTokenSession.token_jti != current_token_jti)
+
+    revoked = query.update(
+        {RefreshTokenSession.revoked_at: utcnow()}, synchronize_session=False
+    )
+
+    log_audit_event(
+        db,
+        current_user,
+        "user.sessions_revoked_bulk",
+        "session",
+        str(current_user.id),
+        request=request,
+        status="success",
+        changes={
+            "sessions_revoked": revoked,
+            "kept_current_session": bool(current_token_jti),
+        },
+    )
+    db.commit()
+    logger.info("User %s revoked %s other session(s)", current_user.username, revoked)
+    return {"revoked": revoked, "kept_current_session": bool(current_token_jti)}
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

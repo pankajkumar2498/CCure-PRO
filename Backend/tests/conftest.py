@@ -691,25 +691,46 @@ def seed_email_domain_rules(seed_system_roles):
 @pytest.fixture(scope="session", autouse=True)
 def relax_registration_volume_limits():
     """
-    Switch off the per-IP daily registration cap for the suite.
+    Switch off the per-IP volume ceilings for the suite.
 
-    Every request the suite makes arrives from one TestClient address, and the
-    counter lives in Redis with a 48-hour expiry — so the cap is shared by all
-    ~110 registrations across the auth, admin, RBAC and tenant-isolation suites
-    *and* survives between runs. Left on, the third consecutive `pytest` of the
-    day starts returning 429 for tests that have nothing to do with rate
-    limiting, which reads as a broken registration endpoint.
+    Every request the suite makes arrives from one TestClient address, and
+    these counters live in Redis with expiries measured in hours — so a ceiling
+    is shared by every test that touches the endpoint *and* survives between
+    runs. Left on, a later `pytest` of the same day starts returning 429 for
+    tests that have nothing to do with rate limiting, which reads as a broken
+    endpoint.
 
-    Set directly rather than through monkeypatch because it has to hold for the
-    whole session. A test that wants to exercise the cap monkeypatches it back
-    to a real number for its own duration.
+    Three of them now, and they fail the same way:
+
+      * REGISTRATION_DAILY_IP_LIMIT — ~110 registrations across the auth,
+        admin, RBAC and tenant-isolation suites, against a cap of 10.
+      * PASSWORD_RESET_IP_HOURLY_LIMIT — counts *failed* reset submissions, and
+        the reset suites deliberately submit bad tokens.
+      * PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT — keyed on the user id, which is
+        derived from the org slug and username, so the fixtures rebuild the
+        same id every run and inherit the previous run's count.
+
+    Set directly rather than through monkeypatch because they have to hold for
+    the whole session. A test that wants to exercise a ceiling patches
+    `core.throttle.hit` for its own duration rather than putting a real number
+    back — the counters are shared state and a real number leaks into whatever
+    runs next.
     """
     from config import AppConfig
 
-    previous = AppConfig.REGISTRATION_DAILY_IP_LIMIT
-    AppConfig.REGISTRATION_DAILY_IP_LIMIT = 0
+    previous = {
+        name: getattr(AppConfig, name)
+        for name in (
+            "REGISTRATION_DAILY_IP_LIMIT",
+            "PASSWORD_RESET_IP_HOURLY_LIMIT",
+            "PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT",
+        )
+    }
+    for name in previous:
+        setattr(AppConfig, name, 0)
     yield
-    AppConfig.REGISTRATION_DAILY_IP_LIMIT = previous
+    for name, value in previous.items():
+        setattr(AppConfig, name, value)
 
 
 @pytest.fixture(scope="session", autouse=True)

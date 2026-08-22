@@ -173,6 +173,219 @@ Two rules the layout depends on, both of which fail loudly if broken:
   confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
   working tokens for an `analyst`, which carries `scans:execute`.
 
+- **Rate limiting** — two layers in the application plus one at the edge, and
+  they answer different questions. Reviewed against OWASP/NIST guidance in
+  August 2026; the findings and their fixes are below.
+
+  **Per-endpoint limits** are `@limiter.limit` decorators (slowapi, counters in
+  the Celery Redis so they are not multiplied by the worker count). The key is
+  `core.ip_resolver.get_client_ip`, never the socket peer — behind nginx that
+  would put every user in one bucket.
+
+  **A per-IP limit alone does not protect login.** It stops one source
+  hammering many accounts; it does nothing about many sources hammering one,
+  which is what credential stuffing is. The account-side control is the
+  `failed_login_count` / `locked_until` lockout (5 attempts, 15 minutes) and it
+  is why the lockout check precedes the password check. Both are needed; say
+  "layered authentication throttling, source-IP *and* account", not "we have
+  rate limiting".
+
+  **`/auth/reset-password` carried no limit at all** — the one unauthenticated
+  write path in the API that could be driven without bound. Worse, a comment in
+  `tests/security/test_rbac_routes.py` asserted in prose that it *was* limited,
+  which is how it survived review. `tests/security/test_rate_limiting.py` now
+  asserts the whole credential set in code against `Limiter._route_limits`.
+
+  Three more things about password recovery, each of which was wrong:
+
+  - **Completing a reset must retire *every* outstanding token for the account,
+    not just the one redeemed.** Clicking "forgot password" three times left
+    three live links; one was consumed and the other two stayed valid against a
+    password that had already been changed. `/auth/forgot-password` likewise
+    deletes prior tokens before issuing a new one.
+  - **The per-account ceiling must never answer 429.** It exists because the
+    per-IP limit does nothing about a caller who rotates addresses while the
+    mail goes to an address they chose. But only a real account can exceed a
+    per-account ceiling, so a distinct status code there is an account-existence
+    oracle — exactly what the uniform 200 exists to prevent. It falls through
+    to the same 200 having sent nothing.
+  - **"User not found." was a fourth distinct failure message** on the reset
+    path. All three failure branches now answer identically.
+
+  **A baseline ceiling covers everything else** —
+  `core/rate_limit_middleware.py`, `API_DEFAULT_RATE_LIMIT`, 600/minute per IP.
+  Deliberately generous: it exists so a route added next month is not
+  *entirely* unbounded, not to be the control that stops abuse. Three things
+  about it:
+
+  - **It is registered before `CORSMiddleware`, which in Starlette means it
+    runs inside it.** A browser cannot read a response without CORS headers, so
+    a 429 emitted outside CORS surfaces in the SPA as a network error rather
+    than "slow down"; and the request-ID middleware further out is what stamps
+    `X-Request-ID` onto it.
+  - **It never wraps `send`.** slowapi's own `SlowAPIASGIMiddleware` re-emits
+    the buffered `http.response.start` on every body message, so any
+    multi-chunk response sends its headers repeatedly — and this API streams
+    (`FileResponse` report downloads, SSE notifications, scan progress).
+  - **Exempt paths are matched exactly** unless the entry ends in `*`. The
+    health endpoint here is `/`, and as a prefix that exempts the entire
+    application — a rate limit that is installed, logged at startup and covers
+    nothing. The first version of the list also named `/health`, `/healthz` and
+    `/metrics`, none of which this API serves.
+
+  **A Redis outage used to break authentication outright.** slowapi is built
+  with `swallow_errors=False`, so a storage failure propagated out of the
+  decorator and login, registration and every scan endpoint answered 500 — not
+  fail-closed, an outage, and one anyone able to disrupt Redis could cause.
+  `RATE_LIMIT_MEMORY_FALLBACK` switches to process-local counters instead:
+  degraded (per worker, and it replaces the per-route limit while active) but
+  never absent.
+
+  **Nginx carries a second layer** (`scripts/host-nginx/nginx-host.conf`:
+  `ccure_auth` 30r/m on `/api/auth/`, `ccure_api` 20r/s on `/api/`). Not
+  redundant with the application: Argon2 is deliberately expensive, so a login
+  flood is CPU exhaustion on the API host whether or not any credential is
+  guessed, and the process doing the hashing cannot defend against that. Keyed
+  on `$binary_remote_addr` — at that hop the socket peer *is* the client.
+  `limit_req_status 429`, because nginx's default 503 reads as "this server is
+  broken". **The `/api/auth/` block duplicates `/api/` in every other respect;
+  change the two together.**
+
+  Deploying it: copy to `C:\nginx\conf\nginx.conf`, `nginx -t`, then
+  **restart the `CCureNginx` service** — `nginx -s reload` fails with
+  `OpenEvent(...) failed (5: Access is denied)` because the service runs under
+  a different account than an interactive shell. `Restart-Service CCureNginx`
+  works. A validated config file is not a deployed one; verify by driving a
+  zone to 429 and checking the response has **no `X-Request-ID`**, which is
+  what distinguishes a refusal by nginx from one by the application.
+
+  `Retry-After` on nginx's own 429s comes from a `map $status`, not a literal:
+  `add_header` with an empty value emits nothing, whereas a literal with
+  `always` would put `Retry-After` on every 200 as well. `X-Content-Type-Options`
+  is emitted here with a matching `proxy_hide_header`, because an nginx-generated
+  429 never passes through the application and so carries none of the headers
+  the API sets on its own responses.
+
+  **`TRUSTED_PROXIES` must name reverse proxies, never a user network.** It
+  decides which hop may *speak about* the client address, and that address is
+  the rate-limit bucket key and the audit-trail entry. The default used to
+  include `10.0.0.0/8` while this deployment's clients live at `10.180.6.0/24`,
+  so every real client was classified as a proxy; the right answer still came
+  back, but only through the "all hops trusted, take the leftmost" fallback,
+  which reads the one field a client controls. It is now loopback plus the
+  Docker bridge pool, and `core/ip_resolver.py` warns at import about any range
+  wider than /12. Two related fixes there: forwarding headers are read **only
+  when the immediate peer is a trusted proxy** (`X-Real-IP` was previously an
+  unconditional override — any direct caller could name its own bucket), and a
+  value that does not parse as an address never becomes a key.
+
+  `Backend/.env` now sets it explicitly to `127.0.0.1,::1,172.18.0.0/16` —
+  the compose network host nginx reaches the published port through — so the
+  trust boundary is a recorded decision for this deployment rather than a
+  library default. **If Docker recreates the network on a different subnet the
+  peer stops being trusted, X-Forwarded-For is ignored, and every client
+  collapses into one bucket keyed on the gateway while the audit trail records
+  the gateway instead of the user.** That fails safe rather than open, but it
+  fails silently; `log_trust_boundary()` prints the ranges in force at startup
+  so it is visible.
+
+  That function is called **from the lifespan, not at import**, and the reason
+  generalises: `main.py` imports every router before it reaches
+  `logging.basicConfig`, so anything a module logs at import time is emitted
+  with no handlers installed. INFO vanishes entirely; WARNING survives only via
+  `logging.lastResort`, unformatted and without the logger name. A safety
+  warning nobody can see is not a safety warning.
+
+  **Every unauthenticated or expensive route needs a recorded decision**, and
+  `tests/security/test_endpoint_limit_inventory.py` enforces it. The by-hand
+  audit that found `/auth/reset-password` unlimited found it exactly once; the
+  route added next month would not have been in it. The test walks
+  `app.routes`, resolves each route's auth dependencies and its entry in
+  `Limiter._route_limits`, and fails on anything unauthenticated or expensive
+  that has neither a limit nor a name in one of its two allowlists. **Adding an
+  allowlist entry with a reason is a legitimate answer** — the goal is a
+  decision on the record, not a limiter everywhere.
+
+  What that audit turned up beyond reset-password: `POST /web-scans` was the
+  only scan-dispatch route with no limit while its eight siblings all carried
+  5/minute, and it sends ffuf and nuclei at a caller-named target — an
+  unbounded loop there is an unbounded outbound attack wearing this host's
+  address. All **thirteen** `/compliance/reports/*` endpoints rendered a PDF or
+  DOCX synchronously inside the request with no limit, which is CPU and memory
+  exhaustion behind nothing more than `compliance:export_report`. And
+  `/auth/refresh` and `/auth/logout`, both unauthenticated in the FastAPI sense
+  because the refresh cookie is what identifies the session, had none either.
+  42 routes carry explicit limits now, up from 21.
+
+  Beware the inventory's own false-positive mode: the first pass flagged four
+  routes as unauthenticated that were not, because it did not know about
+  `get_current_user_flexible` (the ticket-or-bearer dependency the report
+  downloads use). An auth marker missing from that set reads as a
+  vulnerability. Check the dependency before believing the finding.
+
+  **429s are logged, and the log is the point.** `core/rate_limit_audit.py`
+  records layer, method, path, resolved IP, authenticated user and org, the
+  limit breached and the request id — enough to see one address making a
+  thousand login attempts, which a bare counter cannot show. It deliberately
+  omits the account named in a failed login: writing it there rebuilds, in the
+  log file, exactly the account-existence oracle `/auth/forgot-password`
+  refuses to create in its response. `Retry-After` is read from the breached
+  limit rather than hardcoded — a wrong value is worse than none, because
+  clients act on it.
+
+  **`RATE_LIMIT_DEGRADED` is the alert to key on.** The fallback path is
+  invisible by design: when Redis goes away the limiter keeps answering, and
+  nothing in any response says the counters are now per-worker and the
+  effective ceiling has been multiplied by the worker count. It is logged on
+  *transition* only, so an outage produces two lines rather than one per
+  request, and it covers slowapi's own `_storage_dead` as well as the
+  baseline's.
+
+  **Do not treat the 600/minute baseline as an authentication control.** It is
+  10 requests a second; it exists so that no route is *entirely* unbounded, and
+  it is deliberately not consulted by the inventory test. Sensitive endpoints
+  need their own number.
+
+  **Three volume ceilings are disabled for the test session** in
+  `conftest.relax_registration_volume_limits`: the registration daily cap and
+  both password-reset ceilings. Every request in the suite comes from one
+  TestClient address and the counters live in Redis for hours, so they are
+  shared across the whole run *and survive between runs* — a later `pytest` on
+  the same day starts returning 429 in tests that have nothing to do with rate
+  limiting. A test that wants to exercise a ceiling patches `core.throttle.hit`
+  rather than restoring a real number, which would leak into whatever runs next.
+
+- **Concurrent sessions are unlimited, deliberately.** Each login inserts a
+  `refresh_token_sessions` row and nothing displaces an earlier one; logout
+  revokes only the token presented. Capping it would push people into sharing a
+  browser or logging each other out and makes nothing safer — so do not "fix"
+  this. What the choice *requires* is that the owner can see where the account
+  is signed in and end any of it: `GET /user/sessions`,
+  `DELETE /user/sessions/{id}`, and `DELETE /user/sessions` (everything except
+  the caller's own). Password reset, admin reset and any MFA change still
+  revoke every session.
+
+  Two things that made the session list useless and are now fixed:
+  `is_current` was hardcoded `False` behind a TODO — it cannot be answered from
+  the access token, which identifies the user rather than the session, so it is
+  read from the refresh cookie; and `device_info` had never been written, so
+  every row rendered as `{}`. A list of rows a person cannot tell apart is
+  worse than no list — it invites revoking the wrong one. `core/user_agent.py`
+  fills it in on a best-effort basis and keeps `raw` beside the labels because
+  the parse is approximate. The User-Agent is client-supplied, so it is a
+  memory aid, never evidence.
+
+  **`refresh_token_sessions` was append-only and nothing ever swept it.** A row
+  per login *and* one per rotation, which at 30-minute access tokens is roughly
+  48 a day per signed-in session; the table already held 506 rows on a
+  development install. `ccure.tasks.purge_expired_refresh_sessions` runs daily
+  on beat and removes rows that are **both** past `expires_at` and older than
+  `REFRESH_SESSION_RETENTION_DAYS` (90) — so it can never end a session that
+  still works. Revoked-but-recent rows are kept on purpose: the revocation is
+  the audit record of somebody signing a device out, and deleting it the moment
+  it stopped being usable would erase the evidence of the event an
+  investigation is looking for.
+
 - **Email domain screening** — `auth/email_domain_guard.py`. Two halves, and the
   split is not a performance decision.
 

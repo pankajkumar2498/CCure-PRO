@@ -962,7 +962,11 @@ def create_policy_baseline(
 
 
 @router.post("/scans", status_code=status.HTTP_202_ACCEPTED)
+# Dispatches a scanning run. Same class as the other scan-dispatch routes,
+# which have carried 5/minute all along.
+@limiter.limit("5/minute")
 def trigger_compliance_scan(
+    request: Request,
     payload: ScanTrigger,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -2256,7 +2260,11 @@ def delete_credential(
 
 
 @router.post("/findings/{id}/remediate")
+# Changes configuration on a live host. The blast radius of a loop here is
+# somebody else's production machine, not this API's CPU.
+@limiter.limit("10/minute")
 def apply_remediation(
+    request: Request,
     id: str,
     payload: RemediationRequest,
     db: Session = Depends(get_db),
@@ -3831,7 +3839,9 @@ def _generate_soa_pdf(
 
 
 @router.get("/reports/soa")
+@limiter.limit("10/minute")
 def download_statement_of_applicability(
+    request: Request,
     fmt: str = "pdf",
     framework_id: str = Query("cfw_iso27001_2022"),
     db: Session = Depends(get_db),
@@ -3937,7 +3947,14 @@ def download_statement_of_applicability(
 
 
 @router.get("/reports/executive")
+# Report generation renders a PDF or DOCX synchronously inside the request,
+# so each call holds a threadpool worker for as long as the render takes.
+# Thirteen of these endpoints existed and none carried a limit, which made
+# a loop over any one of them a CPU and memory exhaustion path that needs no
+# special privilege beyond compliance:export_report.
+@limiter.limit("10/minute")
 def download_executive_compliance_report(
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("compliance", "export_report")),
 ):
@@ -4695,7 +4712,9 @@ def _generate_nist_csf_docx(
 
 
 @router.get("/reports/nist_csf")
+@limiter.limit("10/minute")
 def download_nist_csf_report(
+    request: Request,
     fmt: str = "pdf",
     functions: str | None = Query(
         None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
@@ -4767,7 +4786,9 @@ def download_nist_csf_report(
 
 
 @router.get("/reports/cis_v8_1")
+@limiter.limit("10/minute")
 def download_cis_v8_1_report(
+    request: Request,
     fmt: str = "pdf",
     ig: str | None = Query(
         None, description="Implementation Group filter: ig1, ig2, ig3"
@@ -4827,7 +4848,9 @@ def download_cis_v8_1_report(
 
 
 @router.get("/reports/soc2_type2")
+@limiter.limit("10/minute")
 def download_soc2_type2_report(
+    request: Request,
     fmt: str = "pdf",
     tsc: str | None = Query(
         None, description="Trust Services Criteria filter: cc, a, pi, c, p"
@@ -4918,7 +4941,9 @@ def download_soc2_type2_report(
 
 
 @router.get("/reports/cert_in_2022")
+@limiter.limit("10/minute")
 def download_cert_in_2022_report(
+    request: Request,
     fmt: str = "pdf",
     theme: str | None = Query(
         None,
@@ -5155,7 +5180,9 @@ def _generate_pci_dss_pdf(
 
 
 @router.get("/reports/pci_dss_v4")
+@limiter.limit("10/minute")
 def download_pci_dss_v4_report(
+    request: Request,
     fmt: str = "pdf",
     saq_profile: str | None = Query(
         None,
@@ -5368,7 +5395,9 @@ def _generate_privacy_pdf(
 
 
 @router.get("/reports/dpdp_2023")
+@limiter.limit("10/minute")
 def download_dpdp_2023_report(
+    request: Request,
     fmt: str = "pdf",
     sdf_scope: str | None = Query(
         None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
@@ -5439,7 +5468,9 @@ def download_dpdp_2023_report(
 
 
 @router.get("/reports/gdpr")
+@limiter.limit("10/minute")
 def download_gdpr_report(
+    request: Request,
     fmt: str = "pdf",
     privacy_role: str | None = Query(
         None, description="Filter by Privacy Role: controller, processor, both"
@@ -5791,7 +5822,9 @@ def _generate_nist_800_53_pdf(
 
 
 @router.get("/reports/nist_800_53_r5")
+@limiter.limit("10/minute")
 def download_nist_800_53_r5_report(
+    request: Request,
     fmt: str = "pdf",
     impact_level: str | None = Query(None, description="LOW | MODERATE | HIGH"),
     control_family: str | None = Query(None, description="SP53_AC | SP53_AU | etc"),
@@ -6155,7 +6188,9 @@ def _generate_iec_62443_docx(
 
 
 @router.get("/reports/iec_62443")
+@limiter.limit("10/minute")
 def download_iec_62443_report(
+    request: Request,
     fmt: str = Query("pdf", description="pdf | docx"),
     purdue_level: str | None = Query(None, description="L0 | L1 | L2 | L3 | L3.5"),
     component_type: str | None = Query(None, description="NDD | EDR | HDR | SW"),
@@ -6473,7 +6508,9 @@ def _generate_nist_800_82_docx(
 
 
 @router.get("/reports/nist_800_82")
+@limiter.limit("10/minute")
 def download_nist_800_82_report(
+    request: Request,
     fmt: str = Query("pdf", description="pdf | docx"),
     purdue_level: str | None = Query(
         None, description="L0 | L1 | L2 | L3 | L3.5 | L4 | L5"
@@ -7128,7 +7165,9 @@ def _generate_nis2_docx(
 
 
 @router.get("/reports/nerc_cip")
+@limiter.limit("10/minute")
 def download_nerc_cip_report(
+    request: Request,
     fmt: str = Query("pdf", description="pdf | docx"),
     bes_impact_level: str | None = Query(None, description="High | Medium | Low"),
     standard_number: str | None = Query(None, description="CIP-002 … CIP-014"),
@@ -7190,7 +7229,9 @@ def download_nerc_cip_report(
 
 
 @router.get("/reports/nis2")
+@limiter.limit("10/minute")
 def download_nis2_report(
+    request: Request,
     fmt: str = Query("pdf", description="pdf | docx"),
     nis2_entity_type: str | None = Query(
         "essential", description="essential | important"

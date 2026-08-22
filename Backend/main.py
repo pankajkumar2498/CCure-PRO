@@ -98,9 +98,15 @@ log = logging.getLogger("ccure.api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from config import AppConfig
+    from core.ip_resolver import log_trust_boundary
     from db.base import engine
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
+
+    # Which hops may declare a client address. Reported here rather than at
+    # import because the router imports above run before logging.basicConfig,
+    # so anything logged then had no handler to reach.
+    log_trust_boundary()
 
     # 0. Health check: Test database connectivity
     try:
@@ -574,6 +580,28 @@ app = FastAPI(
 )
 
 
+# ── Baseline API rate limit ───────────────────────────────────────────────────
+#
+# Registered before CORSMiddleware, which in Starlette means it runs *inside*
+# it: a 429 from here still gets CORS headers (a browser cannot read a response
+# without them, so the SPA would show a network error instead of "slow down")
+# and still passes back out through the request-ID middleware that stamps
+# X-Request-ID and the security headers. Preflights are answered by CORS
+# further out and never reach here, so they consume no budget.
+#
+# This is a backstop for routes with no explicit @limiter.limit, not a
+# replacement for one. See core/rate_limit_middleware.py.
+from config import AppConfig
+from core.rate_limit_middleware import BaselineRateLimitMiddleware
+
+app.add_middleware(
+    BaselineRateLimitMiddleware,
+    limit=AppConfig.API_DEFAULT_RATE_LIMIT,
+    storage_uri=AppConfig.CELERY_BROKER_URL,
+    exempt_paths=AppConfig.API_RATE_LIMIT_EXEMPT_PATHS,
+)
+
+
 # ── CORS ──────────────────────────────────────────────────────────────────────
 
 _default_origins = [
@@ -629,17 +657,46 @@ app.state.limiter = limiter
 
 
 def _make_rate_limit_response(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-    """Return a machine-readable 429 in the standard error envelope."""
+    """
+    Return a machine-readable 429 in the standard error envelope.
+
+    Two things this does beyond the envelope:
+
+    * **Retry-After.** Without it a refused client has no idea whether to come
+      back in a second or an hour, so a well-behaved one busy-waits and looks
+      exactly like the badly-behaved one the limit is aimed at. The value is
+      the breached limit's own window, read from the exception rather than
+      guessed — a wrong Retry-After is worse than none, because clients act on
+      it.
+
+    * **A security log line.** A rate limit that refuses silently is a
+      technical control; one that records what it refused is a signal. See
+      core/rate_limit_audit.py for what is deliberately left out of it.
+    """
+    from core.rate_limit_audit import limit_window_seconds, record_rejection
+
     request_id = getattr(request.state, "request_id", None)
+    retry_after = limit_window_seconds(exc)
+    limit_text = str(exc.detail)
+
+    record_rejection(
+        request, layer="endpoint", limit=limit_text, retry_after=retry_after
+    )
+
+    headers = {"X-Request-ID": request_id or ""}
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+
     return JSONResponse(
         status_code=429,
         content={
             "success": False,
             "error_code": "RATE_LIMIT_EXCEEDED",
-            "message": str(exc.detail),
+            "message": f"Rate limit exceeded ({limit_text}). Please try again later.",
+            "retry_after_seconds": retry_after,
             "request_id": request_id,
         },
-        headers={"X-Request-ID": request_id or ""},
+        headers=headers,
     )
 
 

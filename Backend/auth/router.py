@@ -12,7 +12,7 @@ FastAPI router that wires up all authentication endpoints:
 
 import logging
 import os
-from typing import List, Optional, Union
+from typing import List, NoReturn, Optional, Union
 from uuid import UUID
 
 from auth.dependencies import get_current_user
@@ -1084,6 +1084,11 @@ def login(
 
 
 @router.post("/logout")
+# Unauthenticated in the FastAPI sense — the refresh token in the cookie is
+# what identifies the session, so there is no dependency to refuse first. That
+# makes it reachable by anyone, and it writes to the database on every call.
+# Generous, because closing several tabs logs out several sessions at once.
+@limiter.limit("30/minute")
 def logout(
     request: Request,
     response: Response,
@@ -1175,6 +1180,12 @@ def me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/refresh", response_model=RefreshResponse)
+# The other unauthenticated write path. It mints access tokens, rotates the
+# refresh token and writes two rows per call, and nothing bounded how often it
+# could be driven. 30/minute clears real use by a wide margin — the SPA
+# refreshes on 401 and every 20 minutes, so a busy user with several tabs open
+# is still in single figures per hour.
+@limiter.limit("30/minute")
 def refresh(
     request: Request,
     response: Response,
@@ -1226,6 +1237,7 @@ def forgot_password(
     from config import AppConfig
     from core.audit import log_audit_event
     from core.mail_dispatch import dispatch_email
+    from core.throttle import hit
     from db.models import PasswordResetToken
 
     identifier = req.email_or_username.strip()
@@ -1252,7 +1264,43 @@ def forgot_password(
     else:
         logger.info("Password reset requested for an unrecognised identifier")
 
+    # Ceiling on how often one *account* can be sent a reset link.
+    #
+    # The per-IP limit above bounds a burst from one source and does nothing
+    # about a caller who rotates addresses, which is all it takes to turn this
+    # endpoint into a mail bomb aimed at somebody else's inbox — the address is
+    # chosen by the caller and the mail is sent by us.
+    #
+    # Keyed on the user id, and when it trips the request falls through to the
+    # same 200 below having sent nothing. Answering 429 here would be an
+    # account-existence oracle: only a real account can exceed a per-account
+    # ceiling, so the status code would disclose exactly what the uniform
+    # response exists to hide.
+    if user and hit(
+        "pwreset:account",
+        str(user.id),
+        AppConfig.PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT,
+        window_seconds=3600,
+    ):
+        logger.warning(
+            "Password-reset requests for user id=%s exceeded the hourly "
+            "ceiling; no mail sent",
+            user.id,
+        )
+        user = None
+
     if user:
+        # Invalidate any reset link already outstanding for this account.
+        #
+        # Without this, each request added a token and every one of them stayed
+        # redeemable, so asking three times produced three working links from
+        # three separate emails. The newest link is the one the user is looking
+        # at; the older ones are unattended copies of a credential sitting in a
+        # mailbox.
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id
+        ).delete(synchronize_session=False)
+
         # Generate token
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -1292,6 +1340,7 @@ def forgot_password(
 
 
 @router.post("/reset-password")
+@limiter.limit("5/minute")
 def reset_password_endpoint(
     req: ResetPasswordRequest,
     request: Request,
@@ -1301,13 +1350,57 @@ def reset_password_endpoint(
     Resets the user's password using the secure token.
     Validates token presence, expiration, updates the user's password,
     invalidates all current user sessions, and revokes the token.
+
+    Anti-automation
+    ───────────────
+    This endpoint carried no rate limit at all, which made it the one
+    unauthenticated write path in the API that could be driven without bound.
+    That is not primarily a token-guessing risk — the token is 32 random bytes
+    and `/auth/forgot-password` next door was already limited — it is that an
+    unbounded endpoint produces no signal. A script could submit for as long as
+    it liked and the only trace was a stream of 400s that nothing counted.
+
+    Two ceilings now, both per client IP: a burst limit above, and an hourly
+    cap on *failed* submissions below. Failures only, so a household or office
+    behind one NAT address resetting passwords legitimately is never affected
+    by its neighbours — you have to be getting it wrong to accumulate.
     """
     import hashlib
     from datetime import datetime, timezone
 
     from auth.jwt_handler import hash_password
+    from config import AppConfig
     from core.audit import log_audit_event
+    from core.throttle import client_identity, hit
     from db.models import PasswordResetToken, RefreshTokenSession
+
+    caller = client_identity(request)
+
+    def _reject_bad_token() -> NoReturn:
+        """Count a failed submission, then answer the uniform 400.
+
+        Deliberately identical for an unknown token, an expired one and one
+        whose user has since been removed: the three are indistinguishable to
+        the caller, so none of them can be used to probe for a live token.
+        """
+        if hit(
+            "pwreset:ip",
+            caller,
+            AppConfig.PASSWORD_RESET_IP_HOURLY_LIMIT,
+            window_seconds=3600,
+        ):
+            logger.warning(
+                "Password-reset submissions from %s exceeded the hourly ceiling",
+                caller,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail="Too many password reset attempts. Try again later.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
 
     token_hash = hashlib.sha256(req.token.encode("utf-8")).hexdigest()
 
@@ -1318,29 +1411,23 @@ def reset_password_endpoint(
         .first()
     )
     if not reset_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token.",
-        )
+        _reject_bad_token()
 
     # Check expiration
     if reset_token.expires_at <= datetime.now(timezone.utc):
         db.delete(reset_token)
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token.",
-        )
+        _reject_bad_token()
 
     # Fetch user
     user = db.query(User).filter(User.id == reset_token.user_id).first()
     if not user:
         db.delete(reset_token)
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User not found.",
-        )
+        # "User not found." used to be returned here, which told a caller
+        # holding a token for a deleted account something the other two
+        # branches did not. One message for all three.
+        _reject_bad_token()
 
     # Update user password
     user.password_hash = hash_password(req.password)
@@ -1350,8 +1437,17 @@ def reset_password_endpoint(
         synchronize_session=False
     )
 
-    # Delete the reset token (single-use constraint)
-    db.delete(reset_token)
+    # Retire every reset token this account holds, not only the one redeemed.
+    #
+    # Single-use was already enforced for the token presented, but a user who
+    # clicked "forgot password" three times left three live tokens and only one
+    # was consumed here. The others stayed valid for the rest of their 15
+    # minutes against a password that had already been changed — so a link
+    # leaked from an inbox or a proxy log still worked *after* the legitimate
+    # owner had completed a reset, which is precisely the moment it must not.
+    db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
     # Log audit trail
     log_audit_event(

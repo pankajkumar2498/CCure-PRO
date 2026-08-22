@@ -1153,6 +1153,32 @@
   border-color: rgba(239, 68, 68, 0.3);
   color: var(--danger);
 }
+/* "Sign out all other sessions". Styled as a destructive-but-deliberate
+   action: full width so it reads as applying to the whole list above it
+   rather than to any one card, and not red until hover, because reaching for
+   it is a reasonable thing to do rather than an emergency. */
+.pm-revoke-all-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pm-revoke-all-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+}
+.pm-revoke-all-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .pm-empty-state {
   text-align: center;
   color: var(--text-muted);

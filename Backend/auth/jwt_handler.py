@@ -14,6 +14,7 @@ from typing import Optional, Union
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from core.ip_resolver import get_client_ip
+from core.user_agent import describe_request
 from db.base import SessionLocal
 from db.models.users import RefreshTokenSession, User
 from fastapi import Request
@@ -212,6 +213,10 @@ def create_refresh_token(
             token_hash=_hash_token(token),
             expires_at=expires_at,
             ip_address=get_client_ip(request) if request else None,
+            # device_info existed on this table from the start and was never
+            # written, so /user/sessions listed rows a person could not tell
+            # apart. See core/user_agent.py for how far the parse is trusted.
+            device_info=describe_request(request),
         )
         db.add(session_row)
         db.commit()
@@ -337,6 +342,14 @@ def refresh_access_token(
             token_hash=_hash_token(new_refresh_token),
             expires_at=_utcnow() + REFRESH_TOKEN_EXPIRE,
             ip_address=get_client_ip(request) if request else None,
+            # Carried across the rotation. A refresh happens every 30 minutes,
+            # so leaving it off here would blank the description of every
+            # session shortly after it was created.
+            device_info=(
+                describe_request(request)
+                if request
+                else (session_row.device_info or {})
+            ),
         )
 
         session_row.revoked_at = _utcnow()

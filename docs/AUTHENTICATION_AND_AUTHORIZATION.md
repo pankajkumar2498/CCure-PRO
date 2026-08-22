@@ -321,6 +321,7 @@ cookie, so the value never reaches JavaScript.
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `POST /auth/logout`                                 | Revokes the presented session; clears the cookie; audits `user.logout`                                |
 | `DELETE /user/sessions/{session_id}`                | Revokes one specific session (self-service "sign out other devices")                                  |
+| `DELETE /user/sessions`                             | Revokes every session except the caller's own; revokes all of them if the caller cannot be identified |
 | `POST /auth/reset-password`                         | Deletes **all** sessions for the user                                                                 |
 | `POST /auth/mfa/confirm` / `POST /auth/mfa/disable` | Deletes **all** sessions for the user                                                                 |
 | Organization deactivated                            | No session row changes, but every request, refresh and new login is refused while `is_active = false` |

@@ -15,7 +15,8 @@ from typing import Optional
 from auth.dependencies import get_current_user_flexible
 from db.base import get_db
 from db.models import Permission, RolePermission, Scan, User
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from scan_helpers import limiter
 from fastapi.responses import FileResponse
 from reporting.pdf_generator import ScanReportGenerator
 from scan_helpers import (
@@ -307,7 +308,15 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
 
 
 @router.get("/reports/download/{scan_id}")
+# Normally this streams a file that already exists, which is cheap. It
+# regenerates when the stored PDF is missing, and that path renders the whole
+# report inside the request — so the cost of a call is not something the caller
+# can see and is not something this endpoint can predict. Bounded accordingly.
+# 20/minute clears the real pattern, which is a user pulling the executive PDF,
+# the technical PDF and the CSV for a couple of scans in a row.
+@limiter.limit("20/minute")
 def download_report(
+    request: Request,
     scan_id: str,
     fmt: str = "JSON",
     type: Optional[str] = None,

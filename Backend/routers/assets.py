@@ -15,6 +15,12 @@ from typing import Optional
 
 from auth.rbac import require_permission
 from core.audit import log_audit_event
+from core.upload_guard import (
+    UploadTooLarge,
+    looks_like_text,
+    read_capped,
+    sanitize_filename,
+)
 from core.vuln_intel import compute_priority
 from db.base import get_db
 from db.models import AMTInventoryRecord, AuditLog, User
@@ -25,8 +31,18 @@ from db.models.findings import (
     Service,
     TLSDetail,
 )
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
+from scan_helpers import limiter
 from sqlalchemy import String, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -1484,8 +1500,51 @@ def resolve_duplicate_amt_record(old_item: dict, new_item: dict) -> dict:
     return new_item
 
 
+# An AMT export of this estate is a few thousand records and a few MB. The cap
+# is generous against that and still bounded: `file.file.read()` used to be
+# unbounded, so the endpoint's memory budget per concurrent request was
+# whatever host nginx allowed through — 50 MB, JSON-amplified several times
+# over into Python objects, on a sync endpoint holding a threadpool worker.
+_MAX_AMT_BYTES = 16 * 1024 * 1024
+_MAX_AMT_RECORDS = 100_000
+
+
+def _amt_text(value, max_len: int) -> str | None:
+    """
+    Coerce one AMT field to something the column can actually hold.
+
+    The byte and record caps bound the file; they do not bound a single field.
+    `AMTInventoryRecord` declares String(100)/String(255), so a record carrying
+    a megabyte-long `asset_name` — or a nested object where a string belongs —
+    reached Postgres and came back as a DataError, which surfaces as an
+    unhandled 500 rather than "your file has a bad field". Truncating is the
+    right call over rejecting: this is reference data for correlation, and one
+    over-long display name should not fail an otherwise good import.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        # A structure where a scalar belongs. Recording its repr would store
+        # noise; treat it as absent and let the field be null.
+        return None
+    text = str(value).strip()
+    return text[:max_len] or None
+
+
+def _amt_int(value) -> int | None:
+    """`location_id` is an integer column; anything uncoercible is absent."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.post("/import-amt")
+@limiter.limit("3/minute")
 def import_amt_inventory(
+    request: Request,
     file: UploadFile = File(...),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
@@ -1497,14 +1556,39 @@ def import_amt_inventory(
     """
     org = _resolve_org(user, org_id)
 
+    filename = sanitize_filename(file.filename, fallback="assets.json")
+    if not filename.lower().endswith(".json"):
+        raise HTTPException(
+            status_code=400,
+            detail="AMT inventory must be a .json file.",
+        )
+
     try:
-        content = file.file.read()
+        content = read_capped(file, _MAX_AMT_BYTES)
+    except UploadTooLarge:
+        raise HTTPException(
+            status_code=413,
+            detail=f"AMT inventory files are limited to {_MAX_AMT_BYTES // (1024 * 1024)} MB.",
+        )
+
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+    # Confirm the bytes are text before decoding them. A binary payload named
+    # .json would otherwise be decoded, fail, and be reported as a JSON syntax
+    # error — a misleading message for what is really the wrong file.
+    if not looks_like_text(content):
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is not text. Upload the AMT JSON export.",
+        )
+
+    try:
         data = json.loads(content.decode("utf-8"))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid file format: {exc!s}")
 
     # Validate JSON structure (must have data array or be a list)
-    records = []
     if isinstance(data, dict) and "data" in data:
         records = data["data"]
     elif isinstance(data, list):
@@ -1515,14 +1599,42 @@ def import_amt_inventory(
             detail="JSON file must be a list of asset records or contain a 'data' array.",
         )
 
-    # 1. Clear out old inventory records for this org
-    db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org).delete()
+    # `{"data": {...}}` and `{"data": "text"}` both satisfied the branch above.
+    # Iterating either yields dict keys or single characters, and the `.get()`
+    # below then raised AttributeError outside any handler — a 500 for what is
+    # simply the wrong file.
+    if not isinstance(records, list):
+        raise HTTPException(
+            status_code=400,
+            detail="The 'data' key must contain a list of asset records.",
+        )
+
+    if len(records) > _MAX_AMT_RECORDS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This file holds {len(records)} records, above the limit of "
+                f"{_MAX_AMT_RECORDS}. Split the export or raise the limit deliberately."
+            ),
+        )
 
     from core.utils import normalize_mac
 
-    # 2. Reconcile duplicates and filter unique records using smart heuristics
+    # 1. Reconcile duplicates and filter unique records using smart heuristics.
+    #
+    #    This runs *before* the existing inventory is deleted, and the order is
+    #    load-bearing. The delete used to come first, so a file that parsed as
+    #    JSON but carried the wrong field names — `macAddress1`, or an export
+    #    from a different tool — dropped every record on the floor here, having
+    #    already destroyed the organisation's entire AMT reference inventory,
+    #    and returned `{"success": true, "records_imported": 0}`. The caller was
+    #    told it worked.
     unique_records = {}
+    skipped_malformed = 0
     for item in records:
+        if not isinstance(item, dict):
+            skipped_malformed += 1
+            continue
         mac1 = normalize_mac(item.get("mac_address_1"))
         if not mac1:
             continue  # primary MAC is required for correlation reference
@@ -1548,7 +1660,31 @@ def import_amt_inventory(
         else:
             unique_records[mac1] = item
 
-    # 3. Insert resolved unique records
+    # 2. Refuse an import that would leave the organisation with nothing.
+    #    This is an overwrite, so "no usable records" and "delete everything"
+    #    are the same operation, and it is never the one the operator meant.
+    if not unique_records:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No usable records found in {filename}: none of the {len(records)} "
+                "entries carried a valid 'mac_address_1'. The existing inventory has "
+                "been left untouched."
+            ),
+        )
+
+    if skipped_malformed:
+        log.warning(
+            "AMT import for org %s: skipped %d entries that were not objects.",
+            org,
+            skipped_malformed,
+        )
+
+    # 3. Clear out old inventory records for this org, now that there is a
+    #    validated replacement to put in their place.
+    db.query(AMTInventoryRecord).filter(AMTInventoryRecord.org_id == org).delete()
+
+    # 4. Insert resolved unique records
     inserted_count = 0
     for mac1, item in unique_records.items():
         mac2 = normalize_mac(item.get("mac_address_2"))
@@ -1556,29 +1692,29 @@ def import_amt_inventory(
             org_id=org,
             mac_address_1=mac1,
             mac_address_2=mac2,
-            asset_tag=item.get("asset_tag"),
-            asset_name=item.get("asset_name"),
-            serial=item.get("serial"),
-            vendor=item.get("vendor"),
-            asset_type=item.get("asset_type"),
-            asset_user=item.get("asset_user"),
-            emp_id=item.get("emp_id"),
-            status=item.get("status"),
-            location=item.get("location"),
-            location_id=item.get("location_id"),
-            company_name=item.get("company_name"),
+            asset_tag=_amt_text(item.get("asset_tag"), 100),
+            asset_name=_amt_text(item.get("asset_name"), 255),
+            serial=_amt_text(item.get("serial"), 255),
+            vendor=_amt_text(item.get("vendor"), 255),
+            asset_type=_amt_text(item.get("asset_type"), 255),
+            asset_user=_amt_text(item.get("asset_user"), 255),
+            emp_id=_amt_text(item.get("emp_id"), 100),
+            status=_amt_text(item.get("status"), 100),
+            location=_amt_text(item.get("location"), 255),
+            location_id=_amt_int(item.get("location_id")),
+            company_name=_amt_text(item.get("company_name"), 255),
         )
         db.add(db_record)
         inserted_count += 1
 
     db.commit()
 
-    # 4. Dispatch background task for reconciliation
+    # 5. Dispatch background task for reconciliation
     from core.tasks import reconcile_amt_inventory_task
 
     task = reconcile_amt_inventory_task.delay(org_id=org)
 
-    # 5. Audit Log
+    # 6. Audit Log
     log_audit_event(
         db=db,
         user=user,

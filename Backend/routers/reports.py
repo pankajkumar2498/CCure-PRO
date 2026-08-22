@@ -17,7 +17,7 @@ from db.base import get_db
 from db.models import Permission, RolePermission, Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pdf_generator import ScanReportGenerator
+from reporting.pdf_generator import ScanReportGenerator
 from scan_helpers import (
     apply_phase1_summary_hints,
     log,
@@ -393,7 +393,7 @@ def download_report(
         _attach_asset_lifecycle_dates(db, scan, payload)
         csv_filename = f"scan_{scan.scan_no}_{scan_id[:8]}.csv"
         csv_path = os.path.join(_REPORTS_DIR, csv_filename)
-        from csv_generator import (
+        from reporting.csv_generator import (
             generate_host_inventory_csv,
             generate_scan_csv,
             scan_has_findings,

@@ -29,12 +29,13 @@ an older revision) are not a defect and are ignored, which also keeps the test
 free of autogenerate's usual index and constraint noise.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from alembic.autogenerate import compare_metadata  # noqa: E402
 from alembic.runtime.migration import MigrationContext  # noqa: E402

@@ -7,12 +7,14 @@ Automated "Drift Guard" test suite asserting that:
 3. Every registered RBAC permission is documented in docs/RBAC_Management_Permissions.md.
 """
 
+from testpaths import BACKEND_ROOT, REPO_ROOT
+
 import os
 import sys
 import pytest
 
 # Ensure Backend directory is in path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from main import app
 from db.base import Base
@@ -20,7 +22,7 @@ import db.models
 from db.migrate_production_schema import ROLE_PERMISSIONS
 
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = str(REPO_ROOT)
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 
 

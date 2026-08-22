@@ -118,8 +118,12 @@ Backend/
 │                                Celery app + tasks, risk, quota, audit, feeds
 ├── db/                          SQLAlchemy Base, 47-table model set, RBAC seeder
 ├── alembic/versions/            32 migrations, head c3h4i5j6k7l8
+├── reporting/                   Scan PDF/CSV generators and ReportLab helpers
+├── data/compliance_seeds/       The 13 *_controls_seed.json catalogues
 ├── reports/                     Generated PDF/CSV output (bind-mounted)
-└── tests/                       57 test modules, incl. test_docs_integrity.py
+└── tests/                       65 test modules in 10 groups (auth, security,
+                                 compliance, scans, assets, topology,
+                                 credentialed, web, reports, repo)
 ```
 
 ### Router registration
@@ -639,7 +643,7 @@ a Celery worker used.
 
 ## 13. Documentation drift guard
 
-`Backend/tests/test_docs_integrity.py` is executed by CI and asserts:
+`Backend/tests/repo/test_docs_integrity.py` is executed by CI and asserts:
 
 1. every path in `app.routes` (except `/docs*`, `/redoc`, `/openapi.json`) appears
    in `docs/BACKEND_API_REFERENCE.md`;

@@ -11,9 +11,10 @@ every test asserted on endpoints rather than on the catalogue.
 Each check here is mechanical and would have failed on the pre-fix catalogue.
 """
 
+from testpaths import BACKEND_ROOT
+
 import ast
 import inspect
-import pathlib
 import textwrap
 
 import pytest
@@ -23,8 +24,7 @@ from core.compliance_evidence import (
     ComplianceEvidenceProvider,
 )
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-SEED_RULES = REPO_ROOT / "scripts" / "seed_real_rules.py"
+SEED_RULES = BACKEND_ROOT / "scripts" / "seed_real_rules.py"
 
 # Evidence source -> the adapter method that serves it.
 _ADAPTERS = {

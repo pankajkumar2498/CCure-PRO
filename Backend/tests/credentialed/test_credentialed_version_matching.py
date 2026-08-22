@@ -13,10 +13,11 @@ once on that host — it invented ten AnyDesk findings against a patched 9.x
 install, and it missed eight real Siemens findings including a Critical.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from engines.credentialed.vuln_matcher import (  # noqa: E402
     _parse_version,

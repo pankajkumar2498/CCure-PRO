@@ -3,6 +3,10 @@ tests/test_compliance.py
 Unit and integration tests for the CCure Audit PRO Policy Compliance Engine.
 """
 
+from core.compliance_seeds import seed_path
+
+from testpaths import BACKEND_ROOT
+
 from unittest.mock import MagicMock
 
 from core.compliance_tasks import _check_prerequisites, _evaluate_operator
@@ -161,8 +165,8 @@ def test_cis_v8_1_integration(
     from scripts.seed_compliance import seed_framework_and_controls
 
     # 1. Seed CIS Controls v8.1
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cis_seed_path = os.path.join(base_dir, "scripts", "cis_v8_1_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    cis_seed_path = seed_path("cis_v8_1_controls_seed.json")
     if os.path.exists(cis_seed_path):
         seed_framework_and_controls(db_session, cis_seed_path)
 
@@ -236,8 +240,8 @@ def test_soc2_type2_framework_seeding_and_reports(
     from scripts.seed_compliance import seed_framework_and_controls
 
     # 1. Seed SOC 2 Type II Controls
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    soc2_seed_path = os.path.join(base_dir, "scripts", "soc2_type2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    soc2_seed_path = seed_path("soc2_type2_controls_seed.json")
     if os.path.exists(soc2_seed_path):
         seed_framework_and_controls(db_session, soc2_seed_path)
 
@@ -341,8 +345,8 @@ def test_cert_in_2022_framework_integration(
     )
 
     # 2. Seed CERT-In controls and real rules
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cert_in_seed = os.path.join(base_dir, "scripts", "cert_in_2022_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    cert_in_seed = seed_path("cert_in_2022_controls_seed.json")
     if os.path.exists(cert_in_seed):
         seed_framework_and_controls(db_session, cert_in_seed)
 
@@ -437,8 +441,8 @@ def test_pci_dss_v4_framework_integration(
     assert _evaluate_operator("equals", False, True) is False
 
     # 2. Seed PCI-DSS controls
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pci_seed = os.path.join(base_dir, "scripts", "pci_dss_v4_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    pci_seed = seed_path("pci_dss_v4_controls_seed.json")
     if os.path.exists(pci_seed):
         seed_framework_and_controls(db_session, pci_seed)
 
@@ -535,8 +539,8 @@ def test_dpdp_2023_framework_integration(
     from scripts.seed_real_rules import seed_and_evaluate
 
     # 1. Seed DPDP controls catalog
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    dpdp_seed = os.path.join(base_dir, "scripts", "dpdp_2023_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    dpdp_seed = seed_path("dpdp_2023_controls_seed.json")
     if os.path.exists(dpdp_seed):
         seed_framework_and_controls(db_session, dpdp_seed)
 
@@ -638,8 +642,8 @@ def test_gdpr_framework_integration(
     from scripts.seed_real_rules import seed_and_evaluate
 
     # 1. Seed GDPR controls catalog
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    gdpr_seed = os.path.join(base_dir, "scripts", "gdpr_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    gdpr_seed = seed_path("gdpr_controls_seed.json")
     if os.path.exists(gdpr_seed):
         seed_framework_and_controls(db_session, gdpr_seed)
 

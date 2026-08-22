@@ -9,10 +9,11 @@ Chrome's CVEs never surfaced on a machine running Chrome 138; too loose and
 "Microsoft .NET Framework" resolved to ``golang:net``.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from engines.credentialed.package_identity import (  # noqa: E402
     candidate_products,

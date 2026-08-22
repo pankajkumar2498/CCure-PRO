@@ -33,7 +33,6 @@ integration test uses.
 """
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -42,6 +41,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.nist_csf_catalogue import SUBCATEGORIES  # noqa: E402
+from core.compliance_seeds import all_seed_paths
 
 # CSF 1.1 Subcategory -> CSF 2.0 Subcategory, following NIST's own 1.1-to-2.0
 # mapping published alongside CSF 2.0.
@@ -228,11 +228,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
     total_changed = 0
     all_dangling: list = []
 
-    for path in sorted(glob.glob(os.path.join(base_dir, "*_controls_seed.json"))):
+    for path in all_seed_paths():
         # The CSF catalogue itself crosswalks *to* ISO, not to itself.
         if path.endswith("nist_csf_v2_controls_seed.json"):
             continue

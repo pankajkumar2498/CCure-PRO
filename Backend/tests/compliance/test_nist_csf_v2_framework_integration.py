@@ -30,17 +30,17 @@ the live database undetected:
 Every test below fails on the pre-fix engine.
 """
 
-import glob
+from core.compliance_seeds import all_seed_paths, seed_path
+
+from testpaths import MAIN_PY
+
 import json
 import os
 
 import pytest
 
 CSF_FW = "cfw_nist_csf_v2"
-SCRIPTS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
-)
-SEED = os.path.join(SCRIPTS, "nist_csf_v2_controls_seed.json")
+SEED = seed_path("nist_csf_v2_controls_seed.json")
 
 # NIST.CSWP.29, February 2024. Six Functions, 22 Categories, 106 Subcategories.
 EXPECTED_PER_FUNCTION = {"GV": 31, "ID": 21, "PR": 22, "DE": 11, "RS": 13, "RC": 8}
@@ -194,7 +194,7 @@ def test_seed_json_matches_the_core_module():
 
 def test_crosswalks_resolve_to_real_iso_controls():
     """A crosswalk is what the rule mapper and gap analysis both read."""
-    iso_path = os.path.join(SCRIPTS, "iso27001_2022_controls_seed.json")
+    iso_path = seed_path("iso27001_2022_controls_seed.json")
     with open(iso_path, encoding="utf-8") as fh:
         iso = json.load(fh)["controls"]
     valid = {
@@ -222,7 +222,7 @@ def test_no_other_framework_references_a_csf_11_subcategory():
     csf_ref = re.compile(r"^(GV|ID|PR|DE|RS|RC)\.[A-Z]{2}-\d{1,2}$")
 
     dangling: list = []
-    for path in glob.glob(os.path.join(SCRIPTS, "*_controls_seed.json")):
+    for path in all_seed_paths():
         if path.endswith("nist_csf_v2_controls_seed.json"):
             continue
         with open(path, encoding="utf-8") as fh:
@@ -244,7 +244,7 @@ def test_no_other_framework_references_a_csf_11_subcategory():
 
 def test_iso_and_csf_crosswalks_agree_on_rs_an_08():
     """The reference that proved RS.AN-08 was missing rather than optional."""
-    iso_path = os.path.join(SCRIPTS, "iso27001_2022_controls_seed.json")
+    iso_path = seed_path("iso27001_2022_controls_seed.json")
     with open(iso_path, encoding="utf-8") as fh:
         iso = json.load(fh)["controls"]
     refs = {r for c in iso for r in (c.get("crosswalk") or []) if "RS.AN-08" in r}
@@ -709,9 +709,7 @@ def test_bootstrap_reseeds_a_truncated_csf_catalogue():
     catalogue truncated to anything above 20 satisfied the check and was never
     repaired.
     """
-    main_py = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py"
-    )
+    main_py = MAIN_PY
     with open(main_py, encoding="utf-8") as fh:
         source = fh.read()
     assert (

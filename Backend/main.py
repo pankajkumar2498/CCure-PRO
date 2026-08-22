@@ -371,10 +371,9 @@ async def lifespan(app: FastAPI):
                 from scripts.seed_compliance import seed_framework_and_controls
                 from scripts.seed_real_rules import seed_and_evaluate
 
-                base_scripts_dir = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "scripts",
-                )
+                from core.compliance_seeds import SEEDS_DIR
+
+                base_scripts_dir = str(SEEDS_DIR)
                 iso_seed = os.path.join(
                     base_scripts_dir, "iso27001_2022_controls_seed.json"
                 )

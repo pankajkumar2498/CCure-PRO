@@ -1167,7 +1167,7 @@ CI additionally proves reversibility: `alembic downgrade -1` followed by
 > the named constraint. `asset_vulnerabilities.severity` is nullable and a CHECK
 > passes on NULL, so a finding whose severity was never determined is unaffected.
 >
-> `tests/test_schema_drift.py` does not catch this class of drift — it checks only
+> `tests/repo/test_schema_drift.py` does not catch this class of drift — it checks only
 > the model-ahead-of-database direction and deliberately ignores index and
 > constraint noise.
 
@@ -1179,7 +1179,7 @@ outside Alembic: `ensure_user_schema()` (`db/models/users.py`),
 (`db/models/topology.py`), `ensure_mac_vendor_schema()` (`db/models/assets.py`).
 They add columns that were introduced without a migration and are safe to re-run.
 
-`Backend/tests/test_schema_drift.py::test_models_have_no_unmigrated_changes`
+`Backend/tests/repo/test_schema_drift.py::test_models_have_no_unmigrated_changes`
 asserts that the models and the migrated schema agree.
 
 ---

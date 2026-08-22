@@ -15,10 +15,11 @@ These lock in the contract that makes that safe:
     which never runs this engine — normalizes exactly as it always did.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from engines.vulnerability.vulnerability_engine import VulnerabilityEngine  # noqa: E402
 from scans.finding_normalizer import (  # noqa: E402

@@ -43,7 +43,7 @@ from engines.vulnerability.vulnerability_engine import VulnerabilityEngine
 from scans.finding_normalizer import version_precision
 
 if PDF_AVAILABLE:
-    from pdf_generator import ScanReportGenerator
+    from reporting.pdf_generator import ScanReportGenerator
 
 log = logging.getLogger("ccure.orchestrator")
 

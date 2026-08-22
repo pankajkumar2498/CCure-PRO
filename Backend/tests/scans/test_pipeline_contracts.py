@@ -15,10 +15,11 @@ one.
                     and trusts the precision recorded at measurement.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from core.discovery.enrichment import _register_open_port  # noqa: E402
 from core.models import PortResult  # noqa: E402
@@ -542,7 +543,7 @@ def test_report_does_not_invent_scan_configuration():
     fingerprinting)") was printed for scans that performed no service detection
     at all.
     """
-    from pdf_generator import _scan_configuration
+    from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import build_scan_report
 
     findings = build_scan_report({"data": []})
@@ -554,7 +555,7 @@ def test_report_does_not_invent_scan_configuration():
 
 
 def test_recorded_configuration_reaches_the_report():
-    from pdf_generator import _scan_configuration
+    from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import build_scan_report
 
     findings = build_scan_report({"data": []})

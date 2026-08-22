@@ -1,3 +1,5 @@
+from testpaths import CORE_DIR
+
 import ipaddress
 import logging
 import socket
@@ -270,9 +272,7 @@ class TestOTSafetyAndStability(unittest.TestCase):
         """Analyze ot_probes.py source code to verify no write/control payloads are defined."""
         import os
 
-        probes_file_path = os.path.join(
-            os.path.dirname(__file__), "../core/discovery/techniques/ot_probes.py"
-        )
+        probes_file_path = str(CORE_DIR / "discovery" / "techniques" / "ot_probes.py")
 
         # Ensure the file exists
         self.assertTrue(os.path.exists(probes_file_path))

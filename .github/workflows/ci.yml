@@ -176,7 +176,7 @@ jobs:
         run: |
           cd Backend
           python scripts/compile_docs.py
-          pytest tests/test_docs_integrity.py -v
+          pytest tests/repo/test_docs_integrity.py -v
 
   frontend-validation:
     name: Frontend Validation

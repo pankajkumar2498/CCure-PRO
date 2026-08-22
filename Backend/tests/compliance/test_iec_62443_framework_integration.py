@@ -3,6 +3,9 @@ tests/test_iec_62443_framework_integration.py
 Integration tests for the IEC 62443 Industrial Communication Networks & OT/ICS framework.
 """
 
+from core.compliance_seeds import seed_path
+
+
 import os
 from datetime import datetime, timezone
 
@@ -33,10 +36,7 @@ def test_iec_62443_framework_end_to_end(
     """
     activate_frameworks("cfw_iec_62443")
     # 1. Seed IEC 62443 controls
-    scripts_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
-    )
-    seed_file = os.path.join(scripts_dir, "iec_62443_controls_seed.json")
+    seed_file = seed_path("iec_62443_controls_seed.json")
     assert os.path.exists(seed_file)
     seed_framework_and_controls(db_session, seed_file)
 

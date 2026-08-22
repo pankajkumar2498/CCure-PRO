@@ -2,7 +2,7 @@ import os
 import shutil
 import tempfile
 
-from pdf_generator import ScanReportGenerator
+from reporting.pdf_generator import ScanReportGenerator
 
 
 def test_credentialed_report_generation_linux():

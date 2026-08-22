@@ -52,6 +52,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.compliance_seeds import seed_path  # noqa: E402
 from core.nist_csf_catalogue import (  # noqa: E402
     AUTOMATED_ISO_CONTROLS,
     CATEGORY_ORDER,
@@ -199,8 +200,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(base_dir, "nist_csf_v2_controls_seed.json")
+    path = seed_path("nist_csf_v2_controls_seed.json")
 
     doc = render()
     problems = _validate(doc)

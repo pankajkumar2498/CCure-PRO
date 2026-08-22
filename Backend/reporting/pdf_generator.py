@@ -32,7 +32,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from report_helpers import (
+from reporting.report_helpers import (
     NumberedCanvas,
     ReportDocTemplate,
     age_in_days as _age_in_days,

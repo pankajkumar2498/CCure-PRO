@@ -4,6 +4,10 @@ Verifies catalog seeding (22 controls across 10 Article 21 risk management domai
 rule mappings, entity/sector scoping filters, and executive report endpoints.
 """
 
+from core.compliance_seeds import seed_path
+
+from testpaths import BACKEND_ROOT
+
 import os
 import pytest
 from db.models.compliance import (
@@ -19,8 +23,8 @@ from scripts.seed_real_rules import seed_and_evaluate
 
 def test_nis2_framework_seeding(db_session):
     """Test EU NIS 2 framework and 22 seed controls registration."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    seed_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    seed_json = seed_path("nis2_controls_seed.json")
     assert os.path.exists(seed_json), "nis2_controls_seed.json missing!"
 
     # Seed framework and controls
@@ -44,8 +48,8 @@ def test_nis2_framework_seeding(db_session):
 
 def test_nis2_theme_constraints(db_session, test_org):
     """Verify that NIS2 Article 21 themes are accepted by ComplianceControl and ComplianceScore DB models."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    seed_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    seed_json = seed_path("nis2_controls_seed.json")
     seed_framework_and_controls(db_session, seed_json)
 
     sample_control = ComplianceControl(
@@ -87,9 +91,9 @@ def test_nis2_theme_constraints(db_session, test_org):
 
 def test_nis2_rules_seeding(db_session):
     """Test seeding custom and auto-generated rules for EU NIS 2 controls."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    iso_json = os.path.join(base_dir, "scripts", "iso27001_2022_controls_seed.json")
-    nis2_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    iso_json = seed_path("iso27001_2022_controls_seed.json")
+    nis2_json = seed_path("nis2_controls_seed.json")
 
     seed_framework_and_controls(db_session, iso_json)
     seed_framework_and_controls(db_session, nis2_json)
@@ -107,10 +111,10 @@ def test_nis2_crosswalk_rule_inheritance(db_session):
     """Test that NIS 2 controls inherit check rules from ISO 27001, NIST CSF, and CIS crosswalks."""
     from db.models.compliance import ComplianceRuleControl
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    iso_json = os.path.join(base_dir, "scripts", "iso27001_2022_controls_seed.json")
-    nist_json = os.path.join(base_dir, "scripts", "nist_csf_v2_controls_seed.json")
-    nis2_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    iso_json = seed_path("iso27001_2022_controls_seed.json")
+    nist_json = seed_path("nist_csf_v2_controls_seed.json")
+    nis2_json = seed_path("nis2_controls_seed.json")
 
     seed_framework_and_controls(db_session, iso_json)
     seed_framework_and_controls(db_session, nist_json)
@@ -134,8 +138,8 @@ def test_nis2_endpoints_and_report(
 ):
     """Verify summary, findings, and executive report endpoints for NIS 2 Directive."""
     activate_frameworks("cfw_nis2")
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    seed_json = os.path.join(base_dir, "scripts", "nis2_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    seed_json = seed_path("nis2_controls_seed.json")
     seed_framework_and_controls(db_session, seed_json)
 
     # Enable framework for tenant

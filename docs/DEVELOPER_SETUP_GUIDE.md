@@ -463,7 +463,7 @@ every feed has run. Grant access with
 ```bash
 cd Backend
 pytest                                  # whole suite
-pytest tests/test_scans.py -v
+pytest tests/scans/test_scans.py -v
 pytest --cov=. --cov-report=xml -v --reruns 1   # the CI invocation
 ```
 
@@ -569,7 +569,7 @@ authoritative one to reproduce locally.
 ```bash
 cd Backend
 python scripts/compile_docs.py
-pytest tests/test_docs_integrity.py -v
+pytest tests/repo/test_docs_integrity.py -v
 ```
 
 `compile_docs.py` compiles nine Markdown files from `docs/` into
@@ -614,7 +614,7 @@ Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
 7. **OpenAPI schema diff** — dumps `app.openapi()` deterministically and `diff`s
    against the committed `Backend/openapi.json`. A mismatch **fails the build**.
 8. `pytest --cov=. --cov-report=xml -v --reruns 1` with `MOCK_SCANNERS=true`.
-9. `python scripts/compile_docs.py` and `pytest tests/test_docs_integrity.py -v`.
+9. `python scripts/compile_docs.py` and `pytest tests/repo/test_docs_integrity.py -v`.
 
 > **IMPORTANT:** Step 7 means **any** route change must be accompanied by a
 > regenerated `Backend/openapi.json`:

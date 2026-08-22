@@ -93,6 +93,22 @@ sqlite_base.SQLiteDialect.colspecs.update(
 # Add Backend to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Add tests/ itself, so every module under it can `from testpaths import ...`
+# whichever grouping subdirectory it lives in.
+#
+# Those subdirectories deliberately carry no __init__.py. As packages their
+# names would be importable, and `tests/auth` and `tests/scans` would collide
+# head-on with Backend's own `auth` and `scans` packages: pytest names the
+# module `auth.test_auth`, Python resolves `auth` to the application package,
+# and every test in the group fails to import with ModuleNotFoundError. Without
+# the markers pytest imports each file under its bare basename, which the suite
+# keeps unique.
+#
+# pytest also happens to put this directory on sys.path while loading this very
+# file. Doing it explicitly means the shared path anchors do not depend on that
+# implementation detail.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Load environment from Backend/.env.test if available BEFORE importing app
 dotenv_path = Path(__file__).absolute().parents[1] / ".env.test"
 if dotenv_path.exists():

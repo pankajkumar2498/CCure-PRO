@@ -4,6 +4,10 @@ Verifies catalog seeding (52 controls across CIP-002..CIP-014), theme check cons
 rule mapping, and executive report endpoints.
 """
 
+from core.compliance_seeds import seed_path
+
+from testpaths import BACKEND_ROOT
+
 import os
 
 import pytest
@@ -19,8 +23,8 @@ from scripts.seed_real_rules import seed_and_evaluate
 
 def test_nerc_cip_framework_seeding(db_session):
     """Test NERC CIP framework and 52 seed controls registration."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    seed_json = os.path.join(base_dir, "scripts", "nerc_cip_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    seed_json = seed_path("nerc_cip_controls_seed.json")
     assert os.path.exists(seed_json), "nerc_cip_controls_seed.json missing!"
 
     # Seed framework and controls
@@ -44,8 +48,8 @@ def test_nerc_cip_framework_seeding(db_session):
 
 def test_nerc_cip_theme_constraints(db_session, test_org):
     """Verify that CIP_002..CIP-014 themes are accepted by ComplianceControl and ComplianceScore DB models."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    seed_json = os.path.join(base_dir, "scripts", "nerc_cip_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    seed_json = seed_path("nerc_cip_controls_seed.json")
     seed_framework_and_controls(db_session, seed_json)
 
     sample_control = ComplianceControl(
@@ -88,9 +92,9 @@ def test_nerc_cip_theme_constraints(db_session, test_org):
 
 def test_nerc_cip_rules_seeding(db_session):
     """Test seeding custom and auto-generated rules for NERC CIP controls."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    iso_json = os.path.join(base_dir, "scripts", "iso27001_2022_controls_seed.json")
-    nerc_json = os.path.join(base_dir, "scripts", "nerc_cip_controls_seed.json")
+    base_dir = str(BACKEND_ROOT)
+    iso_json = seed_path("iso27001_2022_controls_seed.json")
+    nerc_json = seed_path("nerc_cip_controls_seed.json")
 
     seed_framework_and_controls(db_session, iso_json)
     seed_framework_and_controls(db_session, nerc_json)

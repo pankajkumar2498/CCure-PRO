@@ -22,6 +22,10 @@ column no query in the codebase reads, so setting it would look like it worked
 and change nothing. There is a test for that below so nobody reaches for it.
 """
 
+from core.compliance_seeds import all_seed_paths
+
+from testpaths import BACKEND_ROOT
+
 import pytest
 from core import compliance_frameworks
 
@@ -44,15 +48,10 @@ def test_the_two_finished_frameworks_are_the_default():
 
 def test_every_seeded_catalogue_is_either_active_or_parked():
     """A framework missing from both lists would be unreachable and untestable."""
-    import glob
     import json
-    import os
 
-    scripts = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
-    )
     seeded = set()
-    for path in glob.glob(os.path.join(scripts, "*_controls_seed.json")):
+    for path in all_seed_paths():
         with open(path, encoding="utf-8") as fh:
             framework = json.load(fh)["framework"]
         # `seed_compliance.py` derives the id from `code`; the `id` key is
@@ -101,9 +100,8 @@ def test_is_active_column_is_still_unused():
     it, this test should be deleted deliberately rather than the column being
     quietly repurposed as a second, half-working parking mechanism.
     """
-    import pathlib
 
-    backend = pathlib.Path(__file__).resolve().parents[1]
+    backend = BACKEND_ROOT
     hits = []
     for path in list(backend.glob("routers/*.py")) + list(backend.glob("core/*.py")):
         # This module explains why the column is not used; naming it in prose

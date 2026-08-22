@@ -194,8 +194,8 @@ def build_story_text(payload: Dict[str, Any]) -> Dict[str, str]:
     The generator's build call is intercepted so the assembled story can be
     harvested without depending on how ReportLab later encodes it.
     """
-    import pdf_generator
-    from pdf_generator import ScanReportGenerator
+    import reporting.pdf_generator as pdf_generator
+    from reporting.pdf_generator import ScanReportGenerator
 
     captured: Dict[str, str] = {}
 

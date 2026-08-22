@@ -13,7 +13,7 @@ headers, footers, table styles) but structures content for web scan results:
   - WAF detection and tech stack notes
 
 Usage:
-    from web_pdf_generator import WebScanReportGenerator
+    from reporting.web_pdf_generator import WebScanReportGenerator
 
     gen   = WebScanReportGenerator(output_dir="reports")
     path  = gen.generate(web_scan_dict)
@@ -621,7 +621,7 @@ class WebScanReportGenerator:
         filename = f"web_scan_{safe_domain}_{now.strftime('%d-%m-%Y_%H-%M-%S')}.pdf"
         filepath = os.path.join(self.output_dir, filename)
 
-        from report_helpers import NumberedCanvas
+        from reporting.report_helpers import NumberedCanvas
 
         doc = SimpleDocTemplate(
             filepath,

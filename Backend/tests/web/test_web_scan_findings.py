@@ -7,10 +7,11 @@ scans — so it is held to the same rule: a number that was not measured is not
 reported as if it were.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from core.web.nuclei.wrapper import NucleiWrapper  # noqa: E402
 

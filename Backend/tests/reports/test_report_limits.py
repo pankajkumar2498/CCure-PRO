@@ -8,8 +8,8 @@ import os
 import shutil
 import tempfile
 
-import pdf_generator
-from pdf_generator import ScanReportGenerator
+import reporting.pdf_generator as pdf_generator
+from reporting.pdf_generator import ScanReportGenerator
 
 
 def test_report_generation_empty_data():

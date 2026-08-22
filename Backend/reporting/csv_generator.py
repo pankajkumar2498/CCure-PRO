@@ -16,7 +16,7 @@ import csv
 import os
 from typing import Any, Dict, List
 
-from report_helpers import age_in_days, date_only
+from reporting.report_helpers import age_in_days, date_only
 from scans.finding_normalizer import (
     DetectionMethod,
     ScanFindings,

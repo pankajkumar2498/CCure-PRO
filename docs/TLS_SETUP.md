@@ -199,7 +199,7 @@ reach a broken deployment to be told why. Once every client is confirmed
 working, raise **both together** to `31536000`. `includeSubDomains` only if every
 subdomain of `ccurepro.cdacb.in` is also served over TLS.
 
-`tests/test_cors_and_headers.py::test_hsts_max_age_is_short_during_rollout`
+`tests/security/test_cors_and_headers.py::test_hsts_max_age_is_short_during_rollout`
 fails if one is raised past an hour, so the change has to be deliberate.
 
 The API only sends HSTS when `X-Forwarded-Proto` is `https`. It is still directly

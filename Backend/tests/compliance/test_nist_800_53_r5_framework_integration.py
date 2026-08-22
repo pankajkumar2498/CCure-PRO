@@ -3,6 +3,9 @@ tests/test_nist_800_53_r5_framework_integration.py
 Integration tests for the NIST SP 800-53 Rev. 5 framework.
 """
 
+from core.compliance_seeds import seed_path
+
+
 import os
 from datetime import datetime, timezone
 
@@ -32,10 +35,7 @@ def test_nist_800_53_r5_framework_end_to_end(
     """
     activate_frameworks("cfw_nist_800_53_r5")
     # 1. Seed NIST SP 800-53 Rev. 5 controls
-    scripts_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
-    )
-    seed_file = os.path.join(scripts_dir, "nist_800_53_r5_controls_seed.json")
+    seed_file = seed_path("nist_800_53_r5_controls_seed.json")
     assert os.path.exists(seed_file)
     seed_framework_and_controls(db_session, seed_file)
 

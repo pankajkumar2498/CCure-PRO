@@ -18,18 +18,16 @@ all reached the live database undetected:
 Each test below fails on the pre-fix engine.
 """
 
+from core.compliance_seeds import all_seed_paths, seed_path
+
+
 import json
-import os
 from datetime import datetime, timezone
 
 import pytest
 
 ISO_FW = "cfw_iso27001_2022"
-SEED = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "scripts",
-    "iso27001_2022_controls_seed.json",
-)
+SEED = seed_path("iso27001_2022_controls_seed.json")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +85,10 @@ def test_scannability_only_claims_automation_that_exists():
     still a claim of partial automation, and the register, the coverage figures
     and the SoA's scan-mode column all read it as one.
     """
-    from tests.test_compliance_rule_wiring import _adapter_keys, _seeded_rules
+    # Imported by bare module name, which is how pytest itself names it: the
+    # grouping directories carry no __init__.py, so there is no `tests`
+    # package to qualify through, and `tests/` is on sys.path via conftest.
+    from test_compliance_rule_wiring import _adapter_keys, _seeded_rules
 
     auto_ids = {
         f"cct_iso27001_2022_{c['id'].replace('.', '_')}"
@@ -558,13 +559,9 @@ def test_every_crosswalk_resolves_to_a_real_control():
     `CERT_IN_2022:IR-1` against `cert_in_ir_1`, `IEC_62443:SR 5.1` against
     `SR-5.1`. Each one silently resolved to nothing.
     """
-    import glob
 
-    scripts_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
-    )
     catalogues: dict = {}
-    for path in glob.glob(os.path.join(scripts_dir, "*_controls_seed.json")):
+    for path in all_seed_paths():
         with open(path, encoding="utf-8") as fh:
             doc = json.load(fh)
         ids = {str(c["id"]) for c in doc["controls"]}

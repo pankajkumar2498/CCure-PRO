@@ -396,7 +396,7 @@ cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
 # Enable local scanner mocking so you don't need nmap/scapy binaries installed on your host OS
 $env:MOCK_SCANNERS="true"
 # Execute our new regression test modules
-pytest tests/test_rbac_routes.py tests/test_remediation_safety.py tests/test_report_limits.py -v
+pytest tests/security/test_rbac_routes.py tests/compliance/test_remediation_safety.py tests/reports/test_report_limits.py -v
 Expected Output: All three test suites should execute and print PASSED.
 
 Step 2: Register and Verify Git Pre-commit Hooks

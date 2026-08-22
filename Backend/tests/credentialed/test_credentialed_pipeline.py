@@ -602,7 +602,7 @@ def test_suppressed_candidates_reach_the_report():
 
 
 def test_methodology_appendix_prints_the_coverage_the_scan_recorded():
-    from pdf_generator import _scan_configuration
+    from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import ScanFindings
 
     coverage = credentialed_coverage(network_scanned=False)
@@ -626,7 +626,7 @@ def test_appendix_omits_credentialed_rows_for_an_ordinary_scan():
     Printing "Not recorded" against network reachability on a port scan would
     imply the question applied to it.
     """
-    from pdf_generator import _scan_configuration
+    from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import ScanFindings
 
     rows = dict(

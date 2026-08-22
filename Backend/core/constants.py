@@ -36,7 +36,7 @@ except (ImportError, PermissionError):
 
 # -- Optional PDF --------------------------------------------------------------
 try:
-    from pdf_generator import ScanReportGenerator
+    from reporting.pdf_generator import ScanReportGenerator
 
     PDF_AVAILABLE = True
 except ImportError:

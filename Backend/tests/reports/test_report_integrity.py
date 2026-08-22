@@ -15,12 +15,13 @@ plausible-looking one:
   * Evidence is never synthesized to look like captured plugin output.
 """
 
-import os
+from testpaths import BACKEND_ROOT
+
 import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from scans.cvss import parse_cvss_vector, severity_from_score  # noqa: E402
 from scans.finding_normalizer import (  # noqa: E402

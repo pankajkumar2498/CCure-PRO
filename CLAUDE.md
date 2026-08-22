@@ -73,6 +73,48 @@ Baseline as of 11 Aug 2026: the suites touching scans, findings, reports,
 credentialed scanning, compliance and schema run clean apart from the eager-mode
 test above.
 
+## Test layout
+
+`Backend/tests/` is grouped by module: `auth/`, `security/`, `compliance/`,
+`scans/`, `assets/`, `topology/`, `credentialed/`, `web/`, `reports/`, `repo/`.
+[`Backend/tests/README.md`](Backend/tests/README.md) says what belongs where.
+
+Two rules the layout depends on, both of which fail loudly if broken:
+
+- **The group directories carry no `__init__.py`, and must not gain one.** As
+  packages, `tests/auth` and `tests/scans` collide with Backend's own `auth` and
+  `scans` packages — pytest names the module `auth.test_auth`, Python resolves
+  `auth` to the application package, and every test in the group fails to import
+  with `ModuleNotFoundError`. Without the markers pytest imports each file under
+  its bare basename, so **test file basenames must stay unique across groups**.
+  One test imports another (`test_compliance_iso27001` reads
+  `test_compliance_rule_wiring`) and does so by bare name for the same reason.
+
+- **Never spell a path as `os.path.dirname(os.path.dirname(__file__))`.** A
+  module's depth below `tests/` is no longer a constant, and that expression now
+  resolves to `tests/` rather than `Backend/` — which surfaces as a confusing
+  "no such file" from a seed lookup, not as an import error. Import the anchors
+  from `testpaths` (`BACKEND_ROOT`, `REPO_ROOT`, `SCRIPTS_DIR`, `CORE_DIR`,
+  `MAIN_PY`); `conftest.py` puts `tests/` on `sys.path` so it resolves from any
+  group.
+
+## Where things live
+
+- **Compliance catalogues** — the thirteen `*_controls_seed.json` files are in
+  `Backend/data/compliance_seeds/`, not `Backend/scripts/`. Resolve the
+  directory through `core/compliance_seeds.py` (`SEEDS_DIR`, `seed_path()`,
+  `all_seed_paths()`) rather than joining a path by hand. `main.py`'s bootstrap
+  condition names all thirteen, so a catalogue it cannot find makes the
+  condition permanently true and re-runs the whole seeder on every container
+  start without ever satisfying itself — a slow boot, not an error.
+
+- **Scan report generators** — `pdf_generator.py`, `csv_generator.py`,
+  `web_pdf_generator.py` and `report_helpers.py` are in `Backend/reporting/`.
+  Note the name: `Backend/reports/` already exists and is the *runtime output
+  directory* for generated PDFs, bind-mounted into the API container. Code in
+  `reporting/`, artefacts in `reports/`. Compliance keeps its own DOCX/PDF
+  generators inside `routers/compliance.py`.
+
 ## Architecture
 
 - **API** — `ccure-api` container, `127.0.0.1:8000`, mounts `./Backend` (restart
@@ -246,7 +288,7 @@ test above.
   `max-age` is **300** in both Nginx and `main.py`. Raise them **together** and
   only after every client is confirmed working — HSTS is a one-way door, and a
   client that cached HTTPS-only for a year cannot reach a broken deployment to
-  be told why. `tests/test_cors_and_headers.py` asserts the low value.
+  be told why. `tests/security/test_cors_and_headers.py` asserts the low value.
 
 - **`add_header` in Nginx does not merge.** A `location` containing any
   `add_header` replaces the parent's whole set. This silently disabled the SPA's
@@ -600,7 +642,7 @@ Six things that were wrong for a long time and must not be reintroduced:
   63 of ISO 27001's 93 controls.
 
 - **A rule's evidence key must be one the adapter actually emits.**
-  `tests/test_compliance_rule_wiring.py` asserts this statically and would have
+  `tests/compliance/test_compliance_rule_wiring.py` asserts this statically and would have
   caught the two defects it exists for: 35 rules named `auto_scan`, an evidence
   source with no adapter, and 14 more read `offline_configuration` keys that
   were computed and then left out of the return dict. Between them, 49 of 79
@@ -651,7 +693,7 @@ checklists, crosswalks, scannability and module hints; edit the tables there,
 never the generated JSON.
 
 Four things that were wrong and are now guarded by
-`tests/test_compliance_iso27001.py`:
+`tests/compliance/test_compliance_iso27001.py`:
 
 - **An `archived` rule with no successor is a control switched off by
   accident.** `run_scan_task` evaluates `active` only, which is right — but 24
@@ -706,7 +748,7 @@ offered, not scannable, not reportable and not installable.
 
 - **`ComplianceFramework.is_active` is a trap.** It is set at seed time and read
   by no query anywhere, so setting it looks like it worked and changes nothing.
-  `tests/test_framework_activation.py` fails if anything starts reading it.
+  `tests/compliance/test_framework_activation.py` fails if anything starts reading it.
 
 - **Two layers, both needed.** `ComplianceTenantFramework.is_enabled` already
   gated the register, policies, scans, findings, attestation, evidence,
@@ -746,7 +788,7 @@ offered, not scannable, not reportable and not installable.
 `core/nist_csf_catalogue.py` is the catalogue — six Functions, 22 Categories,
 106 Subcategories — and `scripts/enrich_nist_csf_v2_seed.py` renders it into
 `nist_csf_v2_controls_seed.json`. Edit the core module, never the JSON;
-`tests/test_nist_csf_v2_framework_integration.py` fails if they diverge.
+`tests/compliance/test_nist_csf_v2_framework_integration.py` fails if they diverge.
 
 Six things that were wrong and must not come back:
 

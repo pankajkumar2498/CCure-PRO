@@ -10,4 +10,13 @@ Or import the specific function:
     from core.discovery.techniques.arp import probe as arp_probe
 """
 
-__all__ = ["arp", "icmp", "nbns", "tcp_conn", "tcp_syn", "udp_probe"]
+__all__ = [
+    "arp",
+    "arp_cache",
+    "icmp",
+    "nbns",
+    "ot_probes",
+    "tcp_conn",
+    "tcp_syn",
+    "udp_probe",
+]

@@ -73,6 +73,48 @@ Baseline as of 11 Aug 2026: the suites touching scans, findings, reports,
 credentialed scanning, compliance and schema run clean apart from the eager-mode
 test above.
 
+## Test layout
+
+`Backend/tests/` is grouped by module: `auth/`, `security/`, `compliance/`,
+`scans/`, `assets/`, `topology/`, `credentialed/`, `web/`, `reports/`, `repo/`.
+[`Backend/tests/README.md`](Backend/tests/README.md) says what belongs where.
+
+Two rules the layout depends on, both of which fail loudly if broken:
+
+- **The group directories carry no `__init__.py`, and must not gain one.** As
+  packages, `tests/auth` and `tests/scans` collide with Backend's own `auth` and
+  `scans` packages — pytest names the module `auth.test_auth`, Python resolves
+  `auth` to the application package, and every test in the group fails to import
+  with `ModuleNotFoundError`. Without the markers pytest imports each file under
+  its bare basename, so **test file basenames must stay unique across groups**.
+  One test imports another (`test_compliance_iso27001` reads
+  `test_compliance_rule_wiring`) and does so by bare name for the same reason.
+
+- **Never spell a path as `os.path.dirname(os.path.dirname(__file__))`.** A
+  module's depth below `tests/` is no longer a constant, and that expression now
+  resolves to `tests/` rather than `Backend/` — which surfaces as a confusing
+  "no such file" from a seed lookup, not as an import error. Import the anchors
+  from `testpaths` (`BACKEND_ROOT`, `REPO_ROOT`, `SCRIPTS_DIR`, `CORE_DIR`,
+  `MAIN_PY`); `conftest.py` puts `tests/` on `sys.path` so it resolves from any
+  group.
+
+## Where things live
+
+- **Compliance catalogues** — the thirteen `*_controls_seed.json` files are in
+  `Backend/data/compliance_seeds/`, not `Backend/scripts/`. Resolve the
+  directory through `core/compliance_seeds.py` (`SEEDS_DIR`, `seed_path()`,
+  `all_seed_paths()`) rather than joining a path by hand. `main.py`'s bootstrap
+  condition names all thirteen, so a catalogue it cannot find makes the
+  condition permanently true and re-runs the whole seeder on every container
+  start without ever satisfying itself — a slow boot, not an error.
+
+- **Scan report generators** — `pdf_generator.py`, `csv_generator.py`,
+  `web_pdf_generator.py` and `report_helpers.py` are in `Backend/reporting/`.
+  Note the name: `Backend/reports/` already exists and is the *runtime output
+  directory* for generated PDFs, bind-mounted into the API container. Code in
+  `reporting/`, artefacts in `reports/`. Compliance keeps its own DOCX/PDF
+  generators inside `routers/compliance.py`.
+
 ## Architecture
 
 - **API** — `ccure-api` container, `127.0.0.1:8000`, mounts `./Backend` (restart
@@ -246,7 +288,26 @@ test above.
   `max-age` is **300** in both Nginx and `main.py`. Raise them **together** and
   only after every client is confirmed working — HSTS is a one-way door, and a
   client that cached HTTPS-only for a year cannot reach a broken deployment to
-  be told why. `tests/test_cors_and_headers.py` asserts the low value.
+  be told why. `tests/security/test_cors_and_headers.py` asserts the low value.
+
+- **The `gateway` service in `docker-compose.yml` is not part of this
+  deployment**, and two things now stop it becoming part of one by accident: it
+  sits behind the `alt-gateway` profile, so `docker compose up` cannot start it,
+  and its mapping is `127.0.0.1:${GATEWAY_PORT:-8082}:80`, so if it is started
+  it is reachable from this host only. It previously carried no bind address —
+  Docker published it on `0.0.0.0`, the one port in the file that was not
+  loopback bound.
+
+  It duplicates host Nginx's routing (`/api/` → api:8000, `/` → frontend:80)
+  but over plain HTTP, which would not merely expose sessions but break them:
+  `REFRESH_COOKIE_SECURE` is set statically in `.env` rather than derived from
+  `X-Forwarded-Proto`, so over HTTP the browser refuses to store the refresh
+  cookie and every session dies at the 30-minute access-token expiry.
+
+  The default port is `8082` because that is what `.env` already sets, so the
+  value is the same with or without `.env`. It is deliberately not `80`, the
+  previous default, which collides with host Nginx's `0.0.0.0:80` redirect
+  listener; and not `8080`, which on this host is the Oracle XE TNS listener.
 
 - **`add_header` in Nginx does not merge.** A `location` containing any
   `add_header` replaces the parent's whole set. This silently disabled the SPA's
@@ -600,7 +661,7 @@ Six things that were wrong for a long time and must not be reintroduced:
   63 of ISO 27001's 93 controls.
 
 - **A rule's evidence key must be one the adapter actually emits.**
-  `tests/test_compliance_rule_wiring.py` asserts this statically and would have
+  `tests/compliance/test_compliance_rule_wiring.py` asserts this statically and would have
   caught the two defects it exists for: 35 rules named `auto_scan`, an evidence
   source with no adapter, and 14 more read `offline_configuration` keys that
   were computed and then left out of the return dict. Between them, 49 of 79
@@ -651,7 +712,7 @@ checklists, crosswalks, scannability and module hints; edit the tables there,
 never the generated JSON.
 
 Four things that were wrong and are now guarded by
-`tests/test_compliance_iso27001.py`:
+`tests/compliance/test_compliance_iso27001.py`:
 
 - **An `archived` rule with no successor is a control switched off by
   accident.** `run_scan_task` evaluates `active` only, which is right — but 24
@@ -682,7 +743,7 @@ Four things that were wrong and are now guarded by
   cross-framework rule inheritance.
 
 **ISO automation is NIST's automation.** `AUTOMATED_ISO_CONTROLS` in
-`scripts/nist_csf_v2_core.py` is the list of Annex A controls carrying a real
+`core/nist_csf_catalogue.py` is the list of Annex A controls carrying a real
 check, and NIST CSF derives its own `scannability` from it. Wiring a new ISO
 rule therefore means adding that control there and regenerating the CSF seed,
 or NIST is left claiming `manual` for a Subcategory that now inherits an
@@ -706,7 +767,7 @@ offered, not scannable, not reportable and not installable.
 
 - **`ComplianceFramework.is_active` is a trap.** It is set at seed time and read
   by no query anywhere, so setting it looks like it worked and changes nothing.
-  `tests/test_framework_activation.py` fails if anything starts reading it.
+  `tests/compliance/test_framework_activation.py` fails if anything starts reading it.
 
 - **Two layers, both needed.** `ComplianceTenantFramework.is_enabled` already
   gated the register, policies, scans, findings, attestation, evidence,
@@ -743,10 +804,10 @@ offered, not scannable, not reportable and not installable.
 
 ### NIST CSF 2.0
 
-`scripts/nist_csf_v2_core.py` is the catalogue — six Functions, 22 Categories,
+`core/nist_csf_catalogue.py` is the catalogue — six Functions, 22 Categories,
 106 Subcategories — and `scripts/enrich_nist_csf_v2_seed.py` renders it into
 `nist_csf_v2_controls_seed.json`. Edit the core module, never the JSON;
-`tests/test_nist_csf_v2_framework_integration.py` fails if they diverge.
+`tests/compliance/test_nist_csf_v2_framework_integration.py` fails if they diverge.
 
 Six things that were wrong and must not come back:
 
@@ -819,6 +880,149 @@ renders an approval block.
 every `_generate_*_docx` path guarded on the import, so a DOCX request either
 returned a PDF or downloaded a 29-byte file reading "python-docx is not
 installed."
+
+## File uploads
+
+Exactly **two** endpoints accept a file, and both go through
+`core/upload_guard.py`: `POST /compliance/controls/{id}/evidence` and
+`POST /assets/import-amt`. A third surface *looks* like an upload and is not —
+the scan target list on `NewScan.jsx` is parsed by `FileReader` in the browser
+and only the extracted target strings are POSTed, which
+`validate_scan_targets()` re-validates from scratch. Guards there are UX, not a
+boundary.
+
+Keep the shared primitives shared. The two endpoints previously carried
+different and differently incomplete versions of the same three checks, which
+is the shape every finding in the August 2026 upload audit took.
+
+- **The declared `Content-Type` is attacker-controlled.** `UploadFile.content_type`
+  is the string from the multipart part header and nothing more. The evidence
+  whitelist used to be satisfied by that string alone, so `malware.exe` renamed
+  to `malware.pdf` was accepted as a PDF. `assert_content_matches()` checks the
+  payload's own signature. There is deliberately **no `python-magic` or
+  `filetype` dependency** — libmagic is not in the API image, and ten formats
+  with stable signatures is a table a reviewer can read.
+
+- **Text has no magic number**, so `text/plain` and `text/csv` are confirmed by
+  *exclusion*: must decode as UTF-8, must carry no NUL or C0 control bytes. Get
+  this backwards and declaring `text/plain` becomes an unconditional bypass of
+  the whole whitelist — a PE fails on its first NUL.
+
+- **OOXML is a ZIP, and archives are excluded from the whitelist on purpose.**
+  A bare ZIP renamed `.docx` has exactly OOXML's magic bytes. `_looks_like_ooxml()`
+  requires `[Content_Types].xml` in the central directory. Only the directory is
+  read, so a zip bomb costs the directory parse and nothing more.
+
+- **Never build `Content-Disposition` with an f-string.** The filename is
+  user-supplied and reaches a response header. `os.path.basename()` is not
+  sanitisation: the API runs on Linux, where `\` is not a separator, and it
+  strips neither quotes nor control characters. Use `content_disposition()`,
+  which emits RFC 6266 — an ASCII `filename=` plus an RFC 5987 `filename*=`.
+
+- **Read with a cap, never `read()`.** `file.file.read()` on the AMT import was
+  unbounded, so the endpoint's per-request memory budget was whatever host
+  nginx allowed through — 50 MB, JSON-amplified, on a sync endpoint holding a
+  threadpool worker. `read_capped()` / `read_capped_async()` read MAX + 1 and
+  test for overflow, which never allocates past the limit and cannot be lied to
+  by a declared `Content-Length`.
+
+- **Validate before you destroy.** `import-amt` is an overwrite: it deleted the
+  organisation's entire AMT inventory *before* discovering whether any record
+  carried a usable MAC. A file that parsed as JSON but used the wrong field
+  names — `macAddress1`, or an export from another tool — wiped the inventory
+  and returned `{"success": true, "records_imported": 0}`. The unique-record set
+  is now built first and an import that would leave nothing is refused. Do not
+  reorder these.
+
+- **`{"data": ...}` is not necessarily a list.** `{"data": {...}}` and
+  `{"data": "text"}` both satisfied the structure check; iterating either
+  yielded dict keys or single characters and `item.get()` raised
+  `AttributeError` outside any handler — a 500 for the wrong file. The
+  `isinstance(records, list)` check is load-bearing.
+
+- **A per-file cap bounds one request, not a loop of them.** Evidence has a
+  25 MB per-file limit *and* a per-tenant quota
+  (`COMPLIANCE_EVIDENCE_TENANT_QUOTA_BYTES`, default 2 GiB), because
+  `compliance:attest` was otherwise an unbounded write to the API host's disk.
+  Both upload endpoints also carry `@limiter.limit`; `conftest` disables the
+  limiter session-wide, so `tests/security/test_upload_validation.py` asserts
+  registration in `Limiter._route_limits` rather than exercising a 429.
+
+- **The quota check is a read-modify-write and must stay serialised.**
+  SUM → compare → insert spans three statements; two concurrent uploads each
+  read the same total, each conclude they fit, and the quota is exceeded.
+  `_lock_tenant_evidence_quota()` takes `pg_advisory_xact_lock` keyed on the
+  tenant, so the read and the write are one critical section and Postgres
+  releases it at COMMIT or ROLLBACK. It is a deliberate no-op on SQLite, which
+  serialises writers anyway.
+
+- **Only an explicit `OK` from clamd is `clean`.** A timeout, a dropped
+  connection, a reply with no NUL terminator, an `ERROR`, or anything the
+  parser does not recognise is `scanner_unavailable`. This is the single most
+  important property of `scan_for_malware()`: a scanner failure reported as
+  clean is worse than having no scanner, because it launders an unscanned file
+  into an audit trail that says it was checked. The NUL is checked *before* the
+  content, because a truncated reply ending in "OK" is otherwise read as a
+  verdict.
+
+- **Deploying a scanner means requiring it.** `UPLOAD_AV_REQUIRED` defaults to
+  on whenever `CLAMAV_HOST` is set. The email domain guard fails open for a
+  blocklist that did not load and that is right there — refusing every signup
+  is the worse outage. Malware inverts the trade: evidence upload is
+  low-frequency, so refusing it while the scanner is down costs a retry,
+  whereas storing an unscanned file costs the thing the scan exists for.
+  A required scanner that cannot answer raises `MalwareScanUnavailable` → **503**,
+  deliberately not the **400** a detection gets: the file is not accused of
+  anything. With no `CLAMAV_HOST` there is no scan and no error, and the
+  response says `malware_scan: not_configured` — never a silent clean verdict.
+  `docker compose --profile av up -d clamav` starts one.
+
+- **`COMPLIANCE_EVIDENCE_DIR` defaults to a development path.** `/app` is the
+  API container's mount of `./Backend`, so the default writes real tenant
+  evidence into the source tree. It is gitignored, but a production deployment
+  should point it at a dedicated backed-up volume outside the repository. The
+  test suite redirects it to `tmp_path` via an autouse fixture.
+
+- **Scan then persist, never persist then scan.** Nothing in the evidence
+  endpoint touches the disk until every check has passed: read → empty → magic
+  bytes → AV scan → quota → *then* the first byte is written. Do not move the
+  write earlier for convenience; a refused upload must never be briefly present
+  in storage where a backup or an indexer can reach it.
+
+- **Evidence filesystem writes and their database rows must behave as one
+  logical unit; any failure after the filesystem write must remove the newly
+  written file.** The bytes land before `db.commit()`, so a failure between them
+  leaves a file nothing points at — unreachable through the API, and **invisible
+  to the quota**, which enforces against `SUM(size_bytes)` over *rows*. Such an
+  orphan consumes disk that nothing accounts for, nothing reclaims, and no
+  figure in the system ever shows. Row construction, `db.add` and `db.commit`
+  are therefore wrapped: the handler rolls back, unlinks, and re-raises, so the
+  end state is always file-and-row or neither. If the unlink itself fails the
+  path is logged and the original error still propagates — masking it to report
+  a cleanup failure would be worse.
+
+  `test_failed_commit_leaves_no_orphaned_file` covers it, and **its injection
+  point is load-bearing**. Patching `ComplianceEvidenceFile` — the obvious lever
+  — detonates in the quota query *above* the write, so the file is never created
+  and the test passes having exercised nothing. It patches `sanitize_filename`,
+  which has one call site, inside the row constructor. The test also captures
+  the evidence directory's *contents* at the moment of failure to prove the
+  write actually happened first: "no file at the end" is equally consistent with
+  "never written". Capture the bytes, not the `Path` — by assertion time the
+  cleanup has unlinked it.
+
+Downloads stream with `FileResponse`. The evidence download used to `fh.read()`
+the whole file into a `Response`.
+
+The AMT replacement is **atomic**: the DELETE and the INSERTs share one
+transaction with a single `db.commit()` at the end, so a failure partway
+through leaves the old inventory intact. Validating before the delete (above)
+is necessary but not sufficient on its own — both properties are needed, and
+`test_amt_import_replacement_is_atomic` proves the second by detonating an
+insert. Field values are also bounded by `_amt_text`/`_amt_int` before they
+reach the columns: the byte and record caps bound the file, not a single
+megabyte-long `asset_name`, which used to reach Postgres and return a
+DataError as an unhandled 500.
 
 ## Reports
 

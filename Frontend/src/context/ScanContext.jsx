@@ -50,6 +50,9 @@ const SS_KEYS = [
   "cc_excludeIps",
 ];
 
+/* The one session-storage key that is also written outside `mk`. */
+const PIPELINE_STATE_KEY = "cc_pipelineState";
+
 /* ── Session storage helpers ─────────────────────────────────────────────── */
 
 function ssGet(key, fallback) {
@@ -63,7 +66,12 @@ function ssGet(key, fallback) {
 function ssSet(key, value) {
   try {
     sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // Deliberately swallowed: sessionStorage throws when the quota is full or
+    // when the browser blocks storage (private mode, embedded webview). This
+    // is a convenience cache for scan state — losing a write degrades the
+    // resume-after-reload nicety and must not break the scan itself.
+  }
 }
 function ssClear() {
   SS_KEYS.forEach((k) => sessionStorage.removeItem(k));
@@ -160,7 +168,7 @@ export function ScanProvider({ children }) {
 
   // Pipeline state machine
   const [pipelineState, setPipelineStateRaw] = useState(() =>
-    ssGet("cc_pipelineState", PIPELINE_STATES.IDLE),
+    ssGet(PIPELINE_STATE_KEY, PIPELINE_STATES.IDLE),
   );
   const [pipelineError, setPipelineErrorRaw] = useState(() =>
     ssGet("cc_pipelineError", null),
@@ -214,23 +222,31 @@ export function ScanProvider({ children }) {
   const setPortProfile = mk("cc_portProfile", setPortProfileRaw);
   const setExcludePorts = mk("cc_excludePorts", setExcludePortsRaw);
   const setExcludeIps = mk("cc_excludeIps", setExcludeIpsRaw);
-  const setPipelineState = mk("cc_pipelineState", setPipelineStateRaw);
+  const setPipelineState = mk(PIPELINE_STATE_KEY, setPipelineStateRaw);
   const setPipelineError = mk("cc_pipelineError", setPipelineErrorRaw);
   const setPipelinePhaseTimings = mk(
     "cc_pipelinePhaseTimings",
     setPipelinePhaseTimingsRaw,
   );
 
+  // These two write the same key/state pair that `setPipelineState` does, but
+  // reach the stable primitives directly. `setPipelineState` is rebuilt by `mk`
+  // on every render, so depending on it would make both callbacks change
+  // identity every render; they are handed to consumers that use them as
+  // event handlers and as effect dependencies. `ssSet` is module scope and
+  // `setPipelineStateRaw` is a useState setter, so `[]` is genuinely complete.
   const cancelPipeline = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    setPipelineState(PIPELINE_STATES.CANCELLED);
+    ssSet(PIPELINE_STATE_KEY, PIPELINE_STATES.CANCELLED);
+    setPipelineStateRaw(PIPELINE_STATES.CANCELLED);
   }, []);
 
   const pausePipeline = useCallback(() => {
-    setPipelineState(PIPELINE_STATES.PAUSED);
+    ssSet(PIPELINE_STATE_KEY, PIPELINE_STATES.PAUSED);
+    setPipelineStateRaw(PIPELINE_STATES.PAUSED);
   }, []);
 
   const resetScan = () => {

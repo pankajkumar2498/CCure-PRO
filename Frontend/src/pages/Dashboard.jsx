@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useScan } from "../context/ScanContext";
-import { SCAN_PIPELINES, getScanPipeline } from "../config/scanConfig";
+import { getScanPipeline } from "../config/scanConfig";
 import AppLayout from "../components/layout/AppLayout";
 import Modal from "../components/layout/Modal";
 
@@ -499,7 +499,9 @@ export default function Dashboard() {
           {filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">🔍</span>
-              <p className="empty-state-title">No templates match "{search}"</p>
+              <p className="empty-state-title">
+                No templates match &quot;{search}&quot;
+              </p>
             </div>
           ) : (
             <div className="scan-grid">

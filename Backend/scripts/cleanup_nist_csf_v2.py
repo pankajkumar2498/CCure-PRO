@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import func  # noqa: E402
 
 from db.base import SessionLocal  # noqa: E402
+from core.compliance_seeds import seed_path  # noqa: E402
 from db.models.compliance import (  # noqa: E402
     ComplianceControl,
     ComplianceEvidenceFile,
@@ -56,8 +57,7 @@ PLACEHOLDER_PREFIX = "crl_nist_auto_gen_"
 
 
 def _seed_subcategory_ids() -> set:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(base_dir, "nist_csf_v2_controls_seed.json")
+    path = seed_path("nist_csf_v2_controls_seed.json")
     with open(path, encoding="utf-8") as fh:
         return {c["id"] for c in json.load(fh)["controls"]}
 

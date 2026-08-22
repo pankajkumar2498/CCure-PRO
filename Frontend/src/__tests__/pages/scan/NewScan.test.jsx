@@ -21,8 +21,18 @@ vi.mock("../../../api/user", () => ({
 
 // Mock the quota bar
 vi.mock("../../../components/scan/ScanQuotaBar", () => ({
-  default: ({ onQuotaChange }) => <div data-testid="quota-bar" />,
+  default: ({ onQuotaChange: _onQuotaChange }) => (
+    <div data-testid="quota-bar" />
+  ),
 }));
+
+// The target input carries no id, name or aria-label, so its placeholder is the
+// only handle a query can reach it by. That placeholder changed from
+// "192.168.1.0/24" to the current value and these four tests kept looking for
+// the old one — which nothing caught, because the frontend suite was never run
+// by CI. Keep the pattern here, in one place, so the next copy change breaks a
+// single line rather than four.
+const TARGET_PLACEHOLDER = /10\.180\.6\.0\/24/i;
 
 describe("NewScan Component", () => {
   const userWithPermission = {
@@ -56,7 +66,7 @@ describe("NewScan Component", () => {
 
   it("renders the scan wizard correctly", () => {
     renderComponent();
-    expect(screen.getByPlaceholderText(/192.168.1.0\/24/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(TARGET_PLACEHOLDER)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Start Scan/i }),
     ).toBeInTheDocument();
@@ -64,7 +74,7 @@ describe("NewScan Component", () => {
 
   it("handles input target change", () => {
     renderComponent();
-    const input = screen.getByPlaceholderText(/192.168.1.0\/24/i);
+    const input = screen.getByPlaceholderText(TARGET_PLACEHOLDER);
     fireEvent.change(input, { target: { value: "10.0.0.1" } });
     expect(input.value).toBe("10.0.0.1");
   });
@@ -76,7 +86,7 @@ describe("NewScan Component", () => {
 
     renderComponent();
 
-    const input = screen.getByPlaceholderText(/192.168.1.0\/24/i);
+    const input = screen.getByPlaceholderText(TARGET_PLACEHOLDER);
     fireEvent.change(input, { target: { value: "invalid-target" } });
 
     const startButton = screen.getByRole("button", { name: /Start Scan/i });
@@ -91,7 +101,7 @@ describe("NewScan Component", () => {
     const userWithoutPermission = { role: { name: "viewer", permissions: [] } };
     renderComponent(userWithoutPermission);
 
-    const input = screen.getByPlaceholderText(/192.168.1.0\/24/i);
+    const input = screen.getByPlaceholderText(TARGET_PLACEHOLDER);
     expect(input).toBeDisabled();
 
     const startButton = screen.getByRole("button", { name: /Start Scan/i });

@@ -34,6 +34,7 @@ already parses.
 import json
 import os
 import sys
+from core.compliance_seeds import seed_path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -961,8 +962,7 @@ SCAN_MODULE_HINTS = {
 
 
 def main() -> int:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(base_dir, "iso27001_2022_controls_seed.json")
+    path = seed_path("iso27001_2022_controls_seed.json")
 
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)

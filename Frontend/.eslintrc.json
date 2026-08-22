@@ -1,4 +1,5 @@
 {
+  "root": true,
   "env": {
     "browser": true,
     "es2021": true,
@@ -22,7 +23,59 @@
       "version": "detect"
     }
   },
+  "ignorePatterns": ["dist", "node_modules", "coverage"],
   "rules": {
-    "react/react-in-jsx-scope": "off"
+    // The automatic JSX runtime is in use, so React need not be in scope.
+    "react/react-in-jsx-scope": "off",
+
+    // ── react/prop-types: off, deliberately ──────────────────────────────
+    // This is the one broad suppression in this file and it is a decision
+    // about how the project validates props, not a way to quieten CI.
+    //
+    // Measured on 21 Aug 2026, the first time ESLint was ever run against
+    // this codebase: 653 violations across 46 of the 59 files with any
+    // finding — 84% of every problem reported. That is not a backlog, it is
+    // the rule reporting that the project does not use PropTypes at all:
+    // `prop-types` is not a dependency, and no component imports it.
+    //
+    // Turning it on would mean hand-writing 653 prop declarations across 46
+    // components, which is exactly the unrelated refactor this work was told
+    // to stay out of, for a checker React itself is retiring — PropTypes are
+    // deprecated as of React 19 and this app is on React 18.3. When prop
+    // validation is wanted here, TypeScript is the route, and that is a
+    // project decision rather than a lint setting.
+    //
+    // Every other rule stays on. If prop validation is adopted later, delete
+    // this line rather than working around it.
+    "react/prop-types": "off",
+
+    // An underscore prefix is an explicit "this is deliberately unused" —
+    // opt-in per variable by renaming it, not a blanket exemption. It exists
+    // for the handful of parameters whose presence is fixed by an external
+    // contract: React hands getDerivedStateFromError an error whether the
+    // implementation reads it or not, and a destructured array position cannot
+    // be skipped without naming it.
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "after-used",
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }
+    ],
+
+    // ── react-hooks/exhaustive-deps: warn, not error ─────────────────────
+    // 27 occurrences. These are real and worth fixing, but the fix is to add
+    // a dependency to an effect, which changes when that effect re-runs — a
+    // runtime behaviour change that needs reviewing hook by hook against what
+    // the component is meant to do, not a lint sweep.
+    //
+    // They are warnings rather than errors so the work can be done
+    // deliberately. They are NOT ignored: `npm run lint` passes
+    // --max-warnings=27, which is a ratchet against exactly this count. Fixing
+    // one is free; introducing a new one fails the build. When the count drops,
+    // lower the number in package.json to lock the gain in.
+    "react-hooks/exhaustive-deps": "warn"
   }
 }

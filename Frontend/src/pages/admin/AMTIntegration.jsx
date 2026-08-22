@@ -132,11 +132,44 @@ export default function AMTIntegration() {
     return cat === "scanned" || cat === "matched" || cat === "shadow_it";
   };
 
+  /* Mirrors the server's own limits so the operator hears about a wrong file
+     before uploading it, not after. The backend enforces both independently —
+     `accept=".json"` does not apply to drag-and-drop, and nothing in the
+     browser is a boundary the API may rely on. */
+  const MAX_AMT_FILE_BYTES = 16 * 1024 * 1024;
+
+  const acceptFile = (candidate) => {
+    if (!candidate) return;
+    setUploadSuccess(false);
+
+    if (!(candidate.name || "").toLowerCase().endsWith(".json")) {
+      setFile(null);
+      setUploadError(
+        `Unsupported file format: ${candidate.name}. The AMT inventory must be a .json export.`,
+      );
+      return;
+    }
+    if (candidate.size === 0) {
+      setFile(null);
+      setUploadError(`${candidate.name} is empty.`);
+      return;
+    }
+    if (candidate.size > MAX_AMT_FILE_BYTES) {
+      setFile(null);
+      setUploadError(
+        `${candidate.name} is ${(candidate.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+          `${MAX_AMT_FILE_BYTES / (1024 * 1024)} MB limit.`,
+      );
+      return;
+    }
+
+    setFile(candidate);
+    setUploadError(null);
+  };
+
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setUploadSuccess(false);
-      setUploadError(null);
+      acceptFile(e.target.files[0]);
     }
   };
 
@@ -268,7 +301,9 @@ export default function AMTIntegration() {
                 onDrop={(e) => {
                   e.preventDefault();
                   if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    setFile(e.dataTransfer.files[0]);
+                    // `accept` does not apply to a drop, so this path needs the
+                    // same checks the picker path gets.
+                    acceptFile(e.dataTransfer.files[0]);
                   }
                 }}
                 onClick={() => document.getElementById("file-input").click()}

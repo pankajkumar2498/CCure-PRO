@@ -340,15 +340,47 @@ services:
     depends_on:
       - api
 
-  # ── Reverse Proxy Gateway ──────────────────────────────────────────────────
+  # ── Reverse Proxy Gateway (opt-in; not used by this deployment) ────────────
   # Single entry point: captures real client IPs for audit logging.
-  # Access the application at http://<server-ip>:${GATEWAY_PORT:-80}
+  #
+  # Host Nginx does this job on 443 and does it over TLS — see docs/TLS_SETUP.md
+  # and the "TLS" section of CLAUDE.md. It terminates TLS, sets HSTS, forwards
+  # the real client IP the same way, and is the only listener on a routable
+  # interface. Every other published port in this file is bound to 127.0.0.1
+  # precisely so that stays true. Audit logs confirm it works: they carry real
+  # per-user LAN addresses, where the pre-host-Nginx rows all read 172.18.0.1,
+  # the Docker bridge address every client used to collapse into.
+  #
+  # Reaching the application through this gateway instead would also break
+  # sessions rather than merely expose them. REFRESH_COOKIE_SECURE is set
+  # statically in .env and is not derived from X-Forwarded-Proto, so over plain
+  # HTTP the browser refuses to store the refresh cookie at all and every
+  # session dies at the 30-minute access-token expiry with no silent refresh.
+  #
+  # Two things therefore keep it from starting by accident:
+  #
+  #   * the `alt-gateway` profile — `docker compose up` cannot start this
+  #     service, only `docker compose --profile alt-gateway up` can;
+  #   * the 127.0.0.1 bind — if it is started, it is reachable from this host
+  #     only, never from the LAN. The mapping previously carried no bind
+  #     address, so Docker published it on 0.0.0.0.
+  #
+  # The default is 8082, the value .env already sets, so the port is the same
+  # whether or not .env is present. It is deliberately *not* 80 — the previous
+  # default, which collides head-on with host Nginx's 0.0.0.0:80 redirect
+  # listener — and deliberately not 8080, which on this host belongs to the
+  # Oracle XE TNS listener.
+  #
+  # It stays defined, with `restart: "no"`, for deployments that terminate TLS
+  # elsewhere. Such a deployment binds it outward deliberately, and opens the
+  # firewall deliberately; neither can now happen by omission.
   gateway:
     image: nginx:stable-alpine
     container_name: ccure-gateway
     restart: "no"
+    profiles: ["alt-gateway"]
     ports:
-      - "${GATEWAY_PORT:-80}:80"
+      - "127.0.0.1:${GATEWAY_PORT:-8082}:80"
     volumes:
       - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -357,7 +389,51 @@ services:
     environment:
       - TZ=Asia/Kolkata
 
+  # ── Malware scanning for uploaded evidence ─────────────────────────────────
+  #
+  # Compliance evidence is stored on disk and handed back to other people in
+  # the tenant, which makes the audit workspace a file-sharing surface whether
+  # or not it was designed as one. core/upload_guard.py talks clamd's INSTREAM
+  # protocol directly over a socket, so no Python dependency is involved.
+  #
+  # Behind the `av` profile because it is a real cost, not because it is
+  # optional in principle: the image carries a signature database, freshclam
+  # pulls updates on a schedule, and clamd wants ~2 GB of RAM to hold the
+  # signatures resident. A deployment that cannot spare that should know it is
+  # running without the scan rather than discover it.
+  #
+  #   docker compose --profile av up -d clamav
+  #
+  # Then set CLAMAV_HOST=clamav in Backend/.env. Until that variable is set the
+  # API does not attempt a scan and reports `malware_scan: not_configured` on
+  # every upload — an honest "nobody looked", never a silent clean verdict.
+  #
+  # Leave UPLOAD_AV_REQUIRED at its default False until the container is
+  # confirmed healthy. An unreachable scanner then logs loudly and lets the
+  # upload through; flip it to True to fail closed once clamd is dependable.
+  # A positive detection refuses the upload in both modes.
+  #
+  # No ports are published. Only the API talks to it, over the compose network.
+  clamav:
+    image: clamav/clamav:stable
+    container_name: ccure-clamav
+    restart: unless-stopped
+    profiles: ["av"]
+    volumes:
+      - clamav_db:/var/lib/clamav
+    environment:
+      - TZ=Asia/Kolkata
+    healthcheck:
+      # clamd answers PING with PONG once the signature database is loaded,
+      # which takes a couple of minutes on a cold start.
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
 volumes:
   pgdata:
   backend_venv:
   beat_state:
+  clamav_db:

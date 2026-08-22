@@ -17,7 +17,7 @@
  */
 
 import { Routes, Route, Navigate } from "react-router-dom";
-import PrivateRoute from "./components/PrivateRoute";
+import PrivateRoute from "./components/auth/PrivateRoute";
 import { ScanProvider } from "./context/ScanContext";
 
 // ── New dashboard pages ───────────────────────────────────────────────────────

@@ -8,15 +8,15 @@ This document establishes the official quality assurance framework, regression c
 
 To ensure clear accountability, each core module of CCure Audit PRO has a designated owner who is responsible for reviewing code changes impacting their module and validating core workflows before release.
 
-| Module                                | Scope / Key Files                                      | Primary Owner          | Backup Validator      |
-| ------------------------------------- | ------------------------------------------------------ | ---------------------- | --------------------- |
-| **Authentication & Authorization**    | `Backend/auth/*`, MFA (`test_mfa.py`), JWT logic       | Lead Backend Engineer  | Security Architect    |
-| **Asset Management**                  | `Backend/routers/assets.py`, DHCP hijack protections   | Lead Backend Engineer  | Fullstack Developer   |
-| **Network Discovery & Scanning**      | `Backend/core/discovery/`, Scapy ARP/ICMP probes, Nmap | Scanning Specialist    | Lead Backend Engineer |
-| **DAST Web Scanning**                 | `Backend/core/web/`, Nuclei, SQLMap, crawl queue       | Security Architect     | Scanning Specialist   |
-| **Compliance Engine & Maker-Checker** | `Backend/routers/compliance.py`, Fernet rules          | Compliance Specialist  | Security Architect    |
-| **PDF & Word Reporting Exporters**    | `Backend/pdf_generator.py`, python-docx scripts        | Fullstack Developer    | Frontend Engineer     |
-| **Frontend UI & Visual Topology**     | `Frontend/src/*`, Vis-Network, dashboard maps          | Lead Frontend Engineer | Fullstack Developer   |
+| Module                                | Scope / Key Files                                         | Primary Owner          | Backup Validator      |
+| ------------------------------------- | --------------------------------------------------------- | ---------------------- | --------------------- |
+| **Authentication & Authorization**    | `Backend/auth/*`, MFA (`test_mfa.py`), JWT logic          | Lead Backend Engineer  | Security Architect    |
+| **Asset Management**                  | `Backend/routers/assets.py`, DHCP hijack protections      | Lead Backend Engineer  | Fullstack Developer   |
+| **Network Discovery & Scanning**      | `Backend/core/discovery/`, Scapy ARP/ICMP probes, Nmap    | Scanning Specialist    | Lead Backend Engineer |
+| **DAST Web Scanning**                 | `Backend/core/web/`, Nuclei, SQLMap, crawl queue          | Security Architect     | Scanning Specialist   |
+| **Compliance Engine & Maker-Checker** | `Backend/routers/compliance.py`, Fernet rules             | Compliance Specialist  | Security Architect    |
+| **PDF & Word Reporting Exporters**    | `Backend/reporting/pdf_generator.py`, python-docx scripts | Fullstack Developer    | Frontend Engineer     |
+| **Frontend UI & Visual Topology**     | `Frontend/src/*`, Vis-Network, dashboard maps             | Lead Frontend Engineer | Fullstack Developer   |
 
 ---
 

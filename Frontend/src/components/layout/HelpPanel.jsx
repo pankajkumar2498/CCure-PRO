@@ -178,7 +178,7 @@ function SupportForm() {
       <h4 className="hp-section-title">Contact Support</h4>
       {sent ? (
         <div className="hp-support-sent">
-          ✅ Message sent! We'll get back to you soon.
+          ✅ Message sent! We&apos;ll get back to you soon.
         </div>
       ) : (
         <>

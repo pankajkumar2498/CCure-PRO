@@ -36,7 +36,7 @@ except (ImportError, PermissionError):
 
 # -- Optional PDF --------------------------------------------------------------
 try:
-    from pdf_generator import ScanReportGenerator
+    from reporting.pdf_generator import ScanReportGenerator
 
     PDF_AVAILABLE = True
 except ImportError:
@@ -56,7 +56,7 @@ except ImportError:
 # CVE / Vulnerability Intelligence  (Fallback hardcoded hints)
 # =============================================================================
 # NOTE: These are used as fallback when SQLite database is unavailable.
-# For production, use Backend/scripts/download_nvd.py to populate cves.db
+# For production, use Backend/scripts/vuln/download_nvd.py to populate cves.db
 # =============================================================================
 
 CVE_HINTS: dict[str, list[dict]] = {

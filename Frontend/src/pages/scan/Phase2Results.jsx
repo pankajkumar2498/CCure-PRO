@@ -111,7 +111,6 @@ export default function Phase2Results() {
     target,
     pipelineMode,
     saveStatus,
-    setSaveStatus,
     setPhase2Results,
     setPhase2Summary,
     setPhase3Results,
@@ -148,7 +147,7 @@ export default function Phase2Results() {
   const [phase2Running, setPhase2Running] = useState(
     phase2Results.length === 0,
   );
-  const [phase2Polling, setPhase2Polling] = useState(false);
+  const [, setPhase2Polling] = useState(false);
   const hasResults = results.length > 0;
 
   useEffect(() => {

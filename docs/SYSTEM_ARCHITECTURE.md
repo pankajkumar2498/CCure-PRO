@@ -67,15 +67,15 @@ graph TB
 
 **Container inventory** — `docker-compose.yml`, verified service by service:
 
-| Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                      |
-| ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                    |
-| `db`         | `ccure-db`         | `postgres:15-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                               |
-| `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro` |
-| `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                     |
-| `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`         |
-| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:20-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**          |
-| `gateway`    | `ccure-gateway`    | `nginx:stable-alpine`   | `${GATEWAY_PORT:-80}:80`                        | `./nginx/gateway.conf`; single entry point so real client IPs reach the audit log                          |
+| Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                       |
+| ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                     |
+| `db`         | `ccure-db`         | `postgres:15-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                                |
+| `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro`  |
+| `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                      |
+| `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`          |
+| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:20-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**           |
+| `gateway`    | `ccure-gateway`    | `nginx:stable-alpine`   | `127.0.0.1:${GATEWAY_PORT:-8082}:80`            | `./nginx/gateway.conf`; opt-in only, behind the `alt-gateway` profile. Host Nginx is the entry point on 443 |
 
 Both scanner workers sit behind the `container-scanner` Compose profile, so
 `docker compose up` starts neither by default. That is deliberate: raw-socket
@@ -118,8 +118,12 @@ Backend/
 │                                Celery app + tasks, risk, quota, audit, feeds
 ├── db/                          SQLAlchemy Base, 47-table model set, RBAC seeder
 ├── alembic/versions/            32 migrations, head c3h4i5j6k7l8
+├── reporting/                   Scan PDF/CSV generators and ReportLab helpers
+├── data/compliance_seeds/       The 13 *_controls_seed.json catalogues
 ├── reports/                     Generated PDF/CSV output (bind-mounted)
-└── tests/                       57 test modules, incl. test_docs_integrity.py
+└── tests/                       65 test modules in 10 groups (auth, security,
+                                 compliance, scans, assets, topology,
+                                 credentialed, web, reports, repo)
 ```
 
 ### Router registration
@@ -544,7 +548,7 @@ Key implementation facts:
 - A single-flight 401 interceptor calls `POST /auth/refresh`, replays the
   original request, and queues concurrent 401s behind the same refresh. Five
   auth URLs bypass it so their 401s surface as real errors.
-- Route guarding is `components/PrivateRoute.jsx`, which supports
+- Route guarding is `components/auth/PrivateRoute.jsx`, which supports
   `requiredPermission`, `requiredAny`, `requiredAll` and `superadminOnly`, and on
   denial redirects to the first permission-appropriate fallback rather than a
   dead end.
@@ -639,7 +643,7 @@ a Celery worker used.
 
 ## 13. Documentation drift guard
 
-`Backend/tests/test_docs_integrity.py` is executed by CI and asserts:
+`Backend/tests/repo/test_docs_integrity.py` is executed by CI and asserts:
 
 1. every path in `app.routes` (except `/docs*`, `/redoc`, `/openapi.json`) appears
    in `docs/BACKEND_API_REFERENCE.md`;

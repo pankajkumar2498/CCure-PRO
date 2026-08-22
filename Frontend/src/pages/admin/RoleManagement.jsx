@@ -13,6 +13,27 @@ export default function RoleManagement() {
   const [error, setError] = useState("");
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
+  // Declared before `loadRoles`, which calls it. A dependency array is
+  // evaluated during render, so naming `handleSelectRole` in `loadRoles`'s
+  // array while it was still declared below would have thrown a temporal dead
+  // zone ReferenceError. `pushToast` is a `useCallback([])`, so this identity
+  // is stable and neither the callback below nor its effect re-runs.
+  const handleSelectRole = useCallback(
+    async (role) => {
+      setSelectedRole(role);
+      setLoadingPerms(true);
+      try {
+        const data = await listRolePermissions(role.id);
+        setPermissions(data.permissions);
+      } catch (err) {
+        pushToast("Failed to load permissions for this role.", "error");
+      } finally {
+        setLoadingPerms(false);
+      }
+    },
+    [pushToast],
+  );
+
   const loadRoles = useCallback(async () => {
     setLoading(true);
     try {
@@ -26,24 +47,11 @@ export default function RoleManagement() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handleSelectRole]);
 
   useEffect(() => {
     loadRoles();
   }, [loadRoles]);
-
-  const handleSelectRole = async (role) => {
-    setSelectedRole(role);
-    setLoadingPerms(true);
-    try {
-      const data = await listRolePermissions(role.id);
-      setPermissions(data.permissions);
-    } catch (err) {
-      pushToast("Failed to load permissions for this role.", "error");
-    } finally {
-      setLoadingPerms(false);
-    }
-  };
 
   if (loading) {
     return (

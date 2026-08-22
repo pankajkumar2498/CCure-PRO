@@ -40,9 +40,22 @@ def diagnostics():
         print("\n=== Compliance Findings ===")
         findings = db.query(ComplianceFinding).all()
         print(f"Total findings in database: {len(findings)}")
+
+        status_counts: dict[str, int] = {}
+        for f in findings:
+            status_counts[f.status] = status_counts.get(f.status, 0) + 1
+        print(f"Status breakdown: {status_counts}")
+
         for f in findings[:10]:
             print(
                 f"ID: {f.id} | Tenant ID: {f.tenant_id} | Control: {f.control_id} | Status: {f.status}"
+            )
+
+        failed = [f for f in findings if f.status == "fail"]
+        print(f"\n=== Failed findings (first 10 of {len(failed)}) ===")
+        for f in failed[:10]:
+            print(
+                f"ID: {f.id} | Tenant: {f.tenant_id} | Asset: {f.asset_id} | Control: {f.control_id}"
             )
 
     except Exception as e:

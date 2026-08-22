@@ -14,7 +14,7 @@
  * 404, and the page says so instead of presenting a form that cannot succeed.
  */
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
@@ -66,7 +66,6 @@ export function strengthOf(pw) {
 
 export default function Register() {
   const { register } = useAuth();
-  const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -391,7 +390,7 @@ export default function Register() {
               />
               {username && username.includes("@") && (
                 <span className="field-hint field-hint--error">
-                  Username cannot contain '@' symbol
+                  Username cannot contain &apos;@&apos; symbol
                 </span>
               )}
               {username && !username.includes("@") && username.length < 3 && (
@@ -555,7 +554,7 @@ export default function Register() {
               )}
               {confirm && confirm !== password && (
                 <span className="field-hint field-hint--warn">
-                  Passwords don't match
+                  Passwords don&apos;t match
                 </span>
               )}
               {confirm && confirm === password && password && (

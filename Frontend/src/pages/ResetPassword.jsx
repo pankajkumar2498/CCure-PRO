@@ -271,7 +271,7 @@ export default function ResetPassword() {
                 )}
                 {confirm && confirm !== password && (
                   <span className="field-hint field-hint--warn">
-                    Passwords don't match
+                    Passwords don&apos;t match
                   </span>
                 )}
                 {confirm && confirm === password && password && (

@@ -5,7 +5,6 @@ Usage:   python -m scripts.seed_compliance [--seed-file PATH]
 """
 
 import argparse
-import glob
 import json
 import os
 
@@ -17,6 +16,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core.compliance_seeds import SEED_GLOB, SEEDS_DIR, all_seed_paths
 from db.base import SessionLocal
 from db.models.compliance import ComplianceControl, ComplianceFramework
 
@@ -178,7 +178,7 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = str(SEEDS_DIR)
         if args.seed_file:
             seed_framework_and_controls(db, args.seed_file)
             return 0
@@ -190,9 +190,9 @@ def main() -> int:
         # those two frameworks were present in code and absent from any
         # database built by running this script. Globbing removes the failure
         # mode entirely: adding a framework is adding its file.
-        seed_files = sorted(glob.glob(os.path.join(base_dir, "*_controls_seed.json")))
+        seed_files = all_seed_paths()
         if not seed_files:
-            print(f"No *_controls_seed.json files found in {base_dir}")
+            print(f"No {SEED_GLOB} files found in {base_dir}")
             return 1
 
         for path in seed_files:

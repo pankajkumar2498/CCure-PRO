@@ -62,7 +62,7 @@ graph LR
 - **Audit Logging**: Existing `AuditLog` ORM model and logger middleware will capture compliance exceptions, policy updates, and manual attestations.
 - **Background Worker**: Celery task runner will process asynchronous scan jobs and schedule daily/weekly evaluations.
 - **RBAC Helper**: `PrivateRoute` and permission checks in the FastAPI router will map the new roles.
-- **Reporting Core**: Existing PDF generation (`pdf_generator.py`) will be extended to format the Statement of Applicability (SoA) and Compliance reports.
+- **Reporting Core**: Existing PDF generation (`reporting/pdf_generator.py`) will be extended to format the Statement of Applicability (SoA) and Compliance reports.
 
 ---
 

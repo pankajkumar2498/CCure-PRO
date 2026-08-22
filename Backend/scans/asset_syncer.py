@@ -8,6 +8,7 @@ into their respective normalized PostgreSQL rows (assets, services, findings).
 import logging
 from typing import Any, Dict, List, Optional
 
+from core.mac import mac_identity
 from db.base import gen_asset_id, gen_service_id, utcnow
 from db.models import (
     Asset,
@@ -454,14 +455,35 @@ def _resolve_mac(host_data: dict) -> str | None:
     lowercase, so writing them uppercase made every scan see the stored
     lowercase value differ from the incoming uppercase one and log a MAC
     "change" that never happened — on every host, on every scan.
+
+    *Spacing* matters for the same reason, and used not to be handled. This
+    lowercased and swapped hyphens for colons but did not otherwise normalize,
+    so a scanner emitting ``001a2b3c4d5e`` or ``001a.2b3c.4d5e`` got that
+    string back unchanged. The database tolerates both — ``macaddr`` parses
+    every dialect and stores one canonical value — but ``_existing_assets_for_hosts``
+    keys ``existing_by_mac`` off the *stored* form, so the reconciliation
+    lookups at the three call sites missed on any host whose scanner did not
+    happen to emit colons, and the host was re-identified by IP or created
+    again. Returning the canonical form is what makes those lookups hit.
+
+    Three further things it did not do, all of which end at a PostgreSQL
+    ``MACADDR`` column:
+
+    * **No hex check at all.** ``"zz:zz:zz:zz:zz:zz"`` was returned verbatim and
+      raised ``DataError`` on write, failing the whole sync.
+    * **No broadcast filter.** ``ff:ff:ff:ff:ff:ff`` was accepted as an identity.
+    * **All-zero filtered by spelling only.** ``000000000000`` and
+      ``0:0:0:0:0:0`` are the same address as ``00:00:00:00:00:00`` and slipped
+      past the literal comparison.
+
+    ``"n/a"`` and ``"unknown"`` no longer need naming: they are not addresses,
+    so ``mac_identity`` refuses them along with every other placeholder a
+    scanner might invent.
+
+    Returns None — not ``""`` — because callers branch on it, and one of them
+    substitutes the string ``"unknown"`` into an asset id when there is no MAC.
     """
-    mac = host_data.get("mac_address") or host_data.get("mac")
-    if not mac:
-        return None
-    mac_str = str(mac).strip().replace("-", ":").lower()
-    if mac_str in ("n/a", "unknown", "00:00:00:00:00:00", ""):
-        return None
-    return mac_str
+    return mac_identity(host_data.get("mac_address") or host_data.get("mac"))
 
 
 def _existing_assets_for_hosts(db: Session, org_id: str, hosts: list[dict]):

@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Dict, List, Optional
 
-from api.host_discovery_api import HostDiscoveryAPI
+from orchestrator.host_discovery_api import HostDiscoveryAPI
 from config import AppConfig
 from core.ip_resolver import get_client_ip
 from db.models import Scan

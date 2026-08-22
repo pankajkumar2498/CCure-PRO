@@ -27,17 +27,6 @@ const REPORT_TYPE_LABELS = {
 
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
-const fmtDate = (iso) =>
-  iso
-    ? new Date(iso).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "—";
-
 const fmtDur = (sec) =>
   !sec
     ? "—"

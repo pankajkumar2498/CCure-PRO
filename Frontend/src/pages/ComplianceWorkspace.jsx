@@ -463,8 +463,8 @@ export default function ComplianceWorkspace() {
   // timer. The previous implementation stopped polling after six ticks
   // regardless of what the run was doing, so a failed run looked identical to
   // a slow one and its error was never shown.
+  const [, setScanRunStatus] = useState(null);
   const [activeScanRunId, setActiveScanRunId] = useState(null);
-  const [scanRunStatus, setScanRunStatus] = useState(null);
   // Controls register
   const [controlsData, setControlsData] = useState(null);
   const [controlsStatusFilter, setControlsStatusFilter] = useState("all");
@@ -679,28 +679,61 @@ export default function ComplianceWorkspace() {
   const credentialsPagination = useClientPagination(credentialsList, 25);
   const approvalsPagination = useClientPagination(approvalsList, 25);
 
+  // The reset effects below depend on the `setPage` setters, not on the
+  // pagination objects. `useClientPagination` returns a fresh object literal on
+  // every render, so depending on the object would re-run each effect on every
+  // render and call setPage(1) forever — the page would be impossible to leave.
+  // The setters are `useState` setters and so keep a stable identity, which
+  // makes these dependency arrays both complete and inert.
+  const { setPage: setFindingsPage } = findingsPagination;
+  const { setPage: setPoliciesPage } = policiesPagination;
+  const { setPage: setExceptionsPage } = exceptionsPagination;
+  const { setPage: setCredentialsPage } = credentialsPagination;
+  const { setPage: setApprovalsPage } = approvalsPagination;
+
   // Reset findings page on search/filter changes
   useEffect(() => {
-    findingsPagination.setPage(1);
-  }, [filterSearch, filterAsset, filterStatus, filterSeverity, filterIg]);
+    setFindingsPage(1);
+  }, [
+    filterSearch,
+    filterAsset,
+    filterStatus,
+    filterSeverity,
+    filterIg,
+    setFindingsPage,
+  ]);
 
   // Reset pages on data updates
   useEffect(() => {
-    policiesPagination.setPage(1);
-  }, [policies]);
+    setPoliciesPage(1);
+  }, [policies, setPoliciesPage]);
   useEffect(() => {
-    exceptionsPagination.setPage(1);
-  }, [exceptions]);
+    setExceptionsPage(1);
+  }, [exceptions, setExceptionsPage]);
   useEffect(() => {
-    credentialsPagination.setPage(1);
-  }, [credentialsList]);
+    setCredentialsPage(1);
+  }, [credentialsList, setCredentialsPage]);
   useEffect(() => {
-    approvalsPagination.setPage(1);
-  }, [approvalsList]);
+    setApprovalsPage(1);
+  }, [approvalsList, setApprovalsPage]);
 
-  useEffect(() => {
-    fetchTabData(false);
-  }, [activeTab]);
+  // NOTE: an effect calling `fetchTabData(false)` on [activeTab] used to sit
+  // here. The effect further down already lists `activeTab` first in its own
+  // dependency array and calls `fetchTabData()`, whose `quiet` parameter
+  // defaults to false — so the two were identical, and every tab switch issued
+  // the whole tab's request set twice. Removed; the later effect is the one
+  // that carries the framework and filter dependencies as well.
+
+  // `fetchTabData` is declared below, reads roughly twenty pieces of filter
+  // state, and is rebuilt on every render. The effects that call it must not
+  // list it directly: their dependency arrays are evaluated during render,
+  // before that `const` is initialised (a temporal dead zone ReferenceError),
+  // and even hoisted into a useCallback its dependency set would include the
+  // controls search box — so every keystroke would refetch the register, which
+  // is exactly what the explicit Enter/`setTimeout` triggers exist to avoid.
+  // Holding the newest one in a ref keeps each effect's trigger set unchanged
+  // while guaranteeing it calls the current closure rather than a stale one.
+  const fetchTabDataRef = useRef(null);
 
   // Poll the run itself. `scanPollCount` remains only as a safety valve for a
   // run the server never resolves — the authoritative signal is the run's own
@@ -721,7 +754,7 @@ export default function ComplianceWorkspace() {
           setIsScanning(false);
           setActiveScanRunId(null);
           pushToast("Compliance scan completed.", "success");
-          fetchTabData(true);
+          fetchTabDataRef.current?.(true);
         } else if (res.data.status === "failed") {
           setIsScanning(false);
           setActiveScanRunId(null);
@@ -743,7 +776,7 @@ export default function ComplianceWorkspace() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isScanning, activeScanRunId]);
+  }, [isScanning, activeScanRunId, pushToast]);
 
   // Safety valve: a run stuck in `queued` or `running` for ten minutes has
   // almost certainly lost its worker. Stop spinning and say so rather than
@@ -758,7 +791,7 @@ export default function ComplianceWorkspace() {
         "error",
       );
     }
-  }, [scanPollCount, isScanning]);
+  }, [scanPollCount, isScanning, pushToast]);
 
   useEffect(() => {
     let shouldPoll = false;
@@ -783,14 +816,14 @@ export default function ComplianceWorkspace() {
       if (isScanning) {
         setScanPollCount((prev) => prev + 1);
       }
-      fetchTabData(true);
+      fetchTabDataRef.current?.(true);
     }, 5000);
 
     return () => clearInterval(interval);
   }, [activeTab, findings, approvalsList, isScanning]);
 
   useEffect(() => {
-    fetchTabData();
+    fetchTabDataRef.current?.();
   }, [
     activeTab,
     selectedFrameworkId,
@@ -991,6 +1024,9 @@ export default function ComplianceWorkspace() {
     }
   };
 
+  // Publish the current closure for the effects declared above.
+  fetchTabDataRef.current = fetchTabData;
+
   const handleInstallFramework = async (id) => {
     try {
       await axiosInstance.post(`/compliance/marketplace/${id}/install`);
@@ -1104,8 +1140,31 @@ export default function ComplianceWorkspace() {
     }
   };
 
+  /* Kept in step with _ALLOWED_EVIDENCE_TYPES and _MAX_EVIDENCE_BYTES in
+     routers/compliance.py. The server enforces both regardless — and now also
+     checks the file's magic bytes, which the browser cannot — but without an
+     `accept` the picker offered every file on disk and the only feedback was a
+     400 after the whole upload had finished. */
+  const EVIDENCE_ACCEPT =
+    ".pdf,.png,.jpg,.jpeg,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx";
+  const MAX_EVIDENCE_BYTES = 25 * 1024 * 1024;
+
   const handleUploadEvidence = async (controlId, file) => {
     if (!file) return;
+
+    if (file.size === 0) {
+      pushToast(`${file.name} is empty.`, "error");
+      return;
+    }
+    if (file.size > MAX_EVIDENCE_BYTES) {
+      pushToast(
+        `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+          `${MAX_EVIDENCE_BYTES / (1024 * 1024)} MB evidence limit.`,
+        "error",
+      );
+      return;
+    }
+
     setUploadingEvidence(true);
     const form = new FormData();
     form.append("file", file);
@@ -3214,8 +3273,8 @@ export default function ComplianceWorkspace() {
                           colSpan={5}
                           style={{ textAlign: "center", padding: "24px" }}
                         >
-                          No baseline policies defined. Click "Create Baseline
-                          Policy" to define one.
+                          No baseline policies defined. Click &quot;Create
+                          Baseline Policy&quot; to define one.
                         </td>
                       </tr>
                     )}
@@ -5112,6 +5171,7 @@ export default function ComplianceWorkspace() {
               </label>
               <input
                 type="file"
+                accept={EVIDENCE_ACCEPT}
                 disabled={uploadingEvidence}
                 onChange={(e) => {
                   const f = e.target.files?.[0];

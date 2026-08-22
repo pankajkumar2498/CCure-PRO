@@ -1,6 +1,6 @@
 # CCure-Audit-PRO — Pipeline Data Integrity Audit
 
-> Sources verified directly from code: `Backend/core/discovery/enrichment.py`, `Backend/engines/port/port_engine.py`, `Backend/core/nmap/wrapper.py`, `Backend/core/models.py`, `Backend/core/utils.py`, `Backend/core/cve_database.py`, `Backend/core/vuln_intel.py`, `Backend/engines/vulnerability/`, `Backend/scans/finding_normalizer.py`, `Backend/core/risk.py`, `Backend/scans/asset_syncer.py`, `Backend/scans/nvd_sync.py`, `Backend/orchestrator/scan_orchestrator.py`, `Backend/pdf_generator.py`.
+> Sources verified directly from code: `Backend/core/discovery/enrichment.py`, `Backend/engines/port/port_engine.py`, `Backend/core/nmap/wrapper.py`, `Backend/core/models.py`, `Backend/core/utils.py`, `Backend/core/cve_database.py`, `Backend/core/vuln_intel.py`, `Backend/engines/vulnerability/`, `Backend/scans/finding_normalizer.py`, `Backend/core/risk.py`, `Backend/scans/asset_syncer.py`, `Backend/scans/nvd_sync.py`, `Backend/orchestrator/scan_orchestrator.py`, `Backend/reporting/pdf_generator.py`.
 
 ## Why this document exists
 
@@ -36,7 +36,7 @@ flowchart LR
     C --> V[4. Verification<br/>finding_normalizer.py]
     V --> R[5. Risk<br/>risk.py]
     R --> S[6. Persistence<br/>asset_syncer.py]
-    S --> O[7. Reporting<br/>pdf_generator.py]
+    S --> O[7. Reporting<br/>reporting/pdf_generator.py]
     F[(Feed ingestion<br/>vuln_intel DB)] --> C
 ```
 
@@ -71,7 +71,7 @@ the origin of every fact verification later depends on — the highest-leverage 
 
 **Guarantee now:** _every open port carries either an exact version or an explicit statement of what
 the version pins down, plus the scanner's CPE where one exists, and later, better evidence always
-replaces earlier, weaker evidence._ Held by `tests/test_pipeline_contracts.py`.
+replaces earlier, weaker evidence._ Held by `tests/scans/test_pipeline_contracts.py`.
 
 ---
 
@@ -130,7 +130,7 @@ of that asset, since the syncer closes findings not seen in the current scan.
 
 ---
 
-## Stage 7 — Reporting (`pdf_generator.py`, `csv_generator.py`)
+## Stage 7 — Reporting (`reporting/pdf_generator.py`, `reporting/csv_generator.py`)
 
 Sound, and no longer load-bearing for correctness: it re-verifies whatever it is handed, which keeps
 pre-verification payloads and credentialed audits working, but it is not where filtering happens.
@@ -204,7 +204,7 @@ something to settle by patching.
 
 ## Still not audited
 
-- `core/compliance_*` and the web-scanning module (`web_pdf_generator.py`,
+- `core/compliance_*` and the web-scanning module (`reporting/web_pdf_generator.py`,
   `modules/web-scanning/`), which is a separate pipeline with its own scanner and report path.
 
 ---
@@ -321,7 +321,7 @@ The matcher and the database agree exactly.
 
 ---
 
-## Stage 14 — Presenting findings that one upgrade resolves (`pdf_generator.py`)
+## Stage 14 — Presenting findings that one upgrade resolves (`reporting/pdf_generator.py`)
 
 Correct matching produced ~1,700 findings for one browser on a real host. The matching was right; the
 presentation was not, and the consequence was more than cosmetic.

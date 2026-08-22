@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { PreferencesProvider } from "./context/PreferencesContext";
-import ErrorBoundary from "./components/ErrorBoundary";
+import RootErrorBoundary from "./components/common/RootErrorBoundary";
 import "./styles/global.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -12,9 +12,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <AuthProvider>
         <PreferencesProvider>
-          <ErrorBoundary>
+          <RootErrorBoundary>
             <App />
-          </ErrorBoundary>
+          </RootErrorBoundary>
         </PreferencesProvider>
       </AuthProvider>
     </BrowserRouter>

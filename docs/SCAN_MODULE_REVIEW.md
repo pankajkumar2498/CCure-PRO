@@ -3,7 +3,7 @@
 > End-to-end review of the four scan modules, input to output. Companion to
 > `PIPELINE_DATA_INTEGRITY_AUDIT.md`, which covers the shared data pipeline those modules run on.
 > Sources verified from `Backend/orchestrator/scan_orchestrator.py`, `Backend/core/tasks.py`,
-> `Backend/scan_helpers.py`, `Backend/engines/`, `Backend/scans/`, `Backend/pdf_generator.py`.
+> `Backend/scan_helpers.py`, `Backend/engines/`, `Backend/scans/`, `Backend/reporting/pdf_generator.py`.
 
 ## What was reviewed
 

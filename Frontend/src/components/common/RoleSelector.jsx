@@ -5,8 +5,6 @@ export default function RoleSelector({
   disabled = false,
   label = "Role",
 }) {
-  const selectedRole = roles.find((role) => String(role.id) === String(value));
-
   return (
     <div className="field">
       <label className="field-label">{label}</label>

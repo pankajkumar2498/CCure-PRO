@@ -604,7 +604,7 @@ def download_web_scan_report(
     findings_list = [_finding_detail(f) for f in findings]
     assets_list = [_asset_detail(a) for a in assets]
 
-    from web_pdf_generator import WebScanReportGenerator
+    from reporting.web_pdf_generator import WebScanReportGenerator
 
     gen = WebScanReportGenerator()
     pdf_path = gen.generate(scan_dict, findings_list, assets_list)

@@ -105,6 +105,16 @@ docs/*.pdf
 backups/
 .env.bak*
 
+# AMT inventory export. This is operator data, not source: a live export of the
+# organisation's asset register carrying employee names, employee IDs, hardware
+# serials and MAC addresses. Nothing in the tree reads it — it is the payload a
+# human uploads to POST /assets/import-amt, and tests/test_amt.py builds its own
+# fixture inline. It was tracked and being refreshed by commit, which put real
+# personal data in every clone of this repository.
+#
+# Keep your working copy here; it just is not version-controlled any more.
+/assets.json
+
 # ── TLS material ────────────────────────────────────────────────────────────
 # The internal root CA is public and safe to distribute, but it is
 # deployment-specific: each installation runs its own CA, so committing one
@@ -132,3 +142,8 @@ celerybeat.pid
 
 # Staged blocklist and vulnerability feed downloads. Regenerable, and large.
 Backend/data/feeds/
+
+# Uploaded compliance evidence. Tenant data, not source — the API container
+# bind-mounts ./Backend at /app, so the default COMPLIANCE_EVIDENCE_DIR
+# (/app/data/compliance_evidence) writes real uploads into the working tree.
+Backend/data/compliance_evidence/

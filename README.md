@@ -20,13 +20,13 @@ pip install -r requirements.txt
 
 
 # For Running Worker for Nmap Scans locally
-.\Backend\scripts\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker
+.\Backend\scripts\scan\start_host_scanner_worker.ps1     // Run when all dockers are up and showing error in Nmap worker
 
 # Scanner worker concurrency
 # Default is 20 parallel scan tasks. Override before starting the worker if needed:
 $env:SCANNER_WORKER_CONCURRENCY="30"
 $env:MAX_NMAP_PROCESSES="20"   # global Nmap process cap; raise only if the scanner host can handle it
-.\Backend\scripts\start_host_scanner_worker.ps1
+.\Backend\scripts\scan\start_host_scanner_worker.ps1
 
 
 
@@ -37,16 +37,16 @@ $env:MAX_NMAP_PROCESSES="20"   # global Nmap process cap; raise only if the scan
 
 
 # Download next 1000 (offset 3300)
-python scripts/download_nvd.py --limit 1000 --offset 3300
+python scripts/vuln/download_nvd.py --limit 1000 --offset 3300
 
 # Then next batch (offset shown in output)
-python scripts/download_nvd.py --limit 1000 --offset 4300
+python scripts/vuln/download_nvd.py --limit 1000 --offset 4300
 
 # Then next batch (offset shown in output)
-python scripts/download_nvd.py --limit 1000 --offset 12500
+python scripts/vuln/download_nvd.py --limit 1000 --offset 12500
 # And so on...
 
-python test_cve_db.py    # Quick test
+python scripts/verification/check_cve_source.py    # Confirm which CVE source is in use
 
 
 
@@ -396,7 +396,7 @@ cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
 # Enable local scanner mocking so you don't need nmap/scapy binaries installed on your host OS
 $env:MOCK_SCANNERS="true"
 # Execute our new regression test modules
-pytest tests/test_rbac_routes.py tests/test_remediation_safety.py tests/test_report_limits.py -v
+pytest tests/security/test_rbac_routes.py tests/compliance/test_remediation_safety.py tests/reports/test_report_limits.py -v
 Expected Output: All three test suites should execute and print PASSED.
 
 Step 2: Register and Verify Git Pre-commit Hooks

@@ -39,20 +39,6 @@ const IcoFileText = () => (
 const IcoGrid = () => (
   <Icon d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
 );
-const IcoPlay = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-  </svg>
-);
 const IcoFile = () => (
   <Icon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" />
 );
@@ -384,12 +370,7 @@ function ProfileDropdown({ user, onClose, onLogout, onOpenProfile }) {
 }
 
 // ── Main Layout Component ────────────────────────────────────────────────────
-export default function AppLayout({
-  children,
-  pageTitle = "",
-  saveStatus = "",
-  onNewScan,
-}) {
+export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { pathname, search } = location;
@@ -568,7 +549,11 @@ export default function AppLayout({
       try {
         const summary = await getUnreadCount();
         if (!stopped) setUnreadCount(summary.total_unread || 0);
-      } catch {}
+      } catch {
+        // Deliberately swallowed: this polls on a timer, so a transient
+        // failure corrects itself on the next tick. Surfacing it would put a
+        // toast on screen every time the network blinked.
+      }
     };
 
     const connect = async () => {

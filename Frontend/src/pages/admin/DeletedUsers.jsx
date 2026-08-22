@@ -76,7 +76,12 @@ export default function DeletedUsers() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // The role name is read above to decide whether to ask for the
+    // organization list. It was excluded, so a render where auth had not yet
+    // hydrated loaded the page with `isSuperadmin` false and never retried —
+    // a superadmin saw an empty organization column. It is a primitive, so it
+    // settles once and reloads at most one extra time.
+  }, [currentUser?.role?.name]);
 
   useEffect(() => {
     loadData();

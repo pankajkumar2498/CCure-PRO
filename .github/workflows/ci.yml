@@ -176,7 +176,7 @@ jobs:
         run: |
           cd Backend
           python scripts/compile_docs.py
-          pytest tests/test_docs_integrity.py -v
+          pytest tests/repo/test_docs_integrity.py -v
 
   frontend-validation:
     name: Frontend Validation
@@ -204,7 +204,29 @@ jobs:
           cd Frontend
           npm audit --audit-level=high || echo "NPM audit flagged high/critical vulnerabilities"
 
-      - name: Run Code Formatting and Linting Checks
+      - name: Run Frontend Tests
         run: |
           cd Frontend
-          npm run lint || echo "Lint warnings found"
+          npm test
+
+      # No `|| echo` on this step, deliberately.
+      #
+      # The previous version ran `npm run lint || echo "Lint warnings found"`
+      # against a `lint` script that did not exist, with eslint not installed.
+      # npm exited non-zero, `|| echo` swallowed it, and the step reported
+      # success on every run having linted nothing — while the pre-commit hook
+      # was separately skipping every file because it matched `javascript` and
+      # not `jsx`. Between them, ESLint had never run on this codebase.
+      #
+      # It has now. The first real run reported 774 problems; the backlog was
+      # cleared to 0 errors, and `--max-warnings=27` in the lint script holds
+      # the remaining react-hooks/exhaustive-deps warnings at their current
+      # count so new ones fail the build. Rationale is in
+      # Frontend/.eslintrc.json.
+      #
+      # If this step starts failing, that is the gate working. Fix the finding
+      # rather than restoring a `|| echo`.
+      - name: Run Frontend Lint (ESLint)
+        run: |
+          cd Frontend
+          npm run lint

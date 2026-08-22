@@ -183,7 +183,7 @@ def _persist_web_findings(
     findings: list[dict],
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
-    from core.web.compliance import map_compliance
+    from core.web.standards_mapping import map_compliance
 
     for f in findings:
         finding_type = f.get("finding_type", "unknown")

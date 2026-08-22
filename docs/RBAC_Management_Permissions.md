@@ -561,7 +561,7 @@ There is no API for this. The procedure is:
 3. Add an Alembic revision if existing deployments need the row backfilled
    (`f7g8h9i0j1k2` is the worked example for `dashboard:read`).
 4. Apply `Depends(require_permission("resource", "action"))` at the call site.
-5. Update this document — `Backend/tests/test_docs_integrity.py::test_rbac_permissions_documented`
+5. Update this document — `Backend/tests/repo/test_docs_integrity.py::test_rbac_permissions_documented`
    fails CI otherwise.
 6. Restart the API; `seed_rbac()` inserts the new atom and grants idempotently.
 

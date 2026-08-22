@@ -14,7 +14,7 @@
  * Gracefully hides itself if the API call fails (no layout shift).
  */
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { getScanQuota } from "../../api/scans";
 
 /* ── Plan colour palette ────────────────────────────────────────────────── */
@@ -52,12 +52,23 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
   const [visible, setVisible] = useState(false);
   const intervalRef = useRef(null);
 
-  const fetchQuota = async () => {
+  // `onQuotaChange` is passed as an inline arrow by every caller, so it is a
+  // new function on each of the parent's renders. Depending on it directly
+  // would rebuild `fetchQuota`, which would tear down and restart the 30s
+  // interval on every parent render — turning a poll into a burst of requests.
+  // Holding it in a ref keeps the poll on its own clock while still calling the
+  // *current* callback rather than the one captured at mount.
+  const onQuotaChangeRef = useRef(onQuotaChange);
+  useEffect(() => {
+    onQuotaChangeRef.current = onQuotaChange;
+  }, [onQuotaChange]);
+
+  const fetchQuota = useCallback(async () => {
     try {
       const { data } = await getScanQuota();
       setQuota(data);
       setVisible(true);
-      onQuotaChange?.({
+      onQuotaChangeRef.current?.({
         quota_exceeded: data.quota_exceeded,
         concurrent_exceeded: data.concurrent_exceeded,
       });
@@ -65,13 +76,13 @@ export default function ScanQuotaBar({ className = "", onQuotaChange }) {
       /* Silently hide — quota widget is non-critical */
       setVisible(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchQuota();
     intervalRef.current = setInterval(fetchQuota, 30_000);
     return () => clearInterval(intervalRef.current);
-  }, []);
+  }, [fetchQuota]);
 
   if (!visible || !quota) return null;
 

@@ -989,7 +989,10 @@ export default function ScanHistory({ mode = "history" }) {
       stopped = true;
       controller.abort();
     };
-  }, [applySnapshot, load, searchTerm]);
+    // `ownerParam` is read inside the stream's request. `load` already depends
+    // on it, so the effect was in fact restarting when the owner filter moved —
+    // listing it makes that guarantee explicit instead of transitive.
+  }, [applySnapshot, load, ownerParam, searchTerm]);
 
   const handleView = (scan) => {
     if (!canReadScans) {

@@ -30,6 +30,65 @@ import { stopScan } from "../../api/scans";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 
+/** Progress-socket URL for a scan. Derived from the axios base URL only. */
+function buildScanProgressUrl(scanId, ticket) {
+  const baseURL = api.defaults.baseURL || "";
+  const wsPrefix = baseURL.replace(/^http/, "ws");
+  return `${wsPrefix}/scans/${scanId}/progress?ticket=${encodeURIComponent(ticket)}`;
+}
+
+/**
+ * Wait for one pipeline phase to report complete over the progress socket.
+ *
+ * Module scope: it closes over nothing from the component, and as a
+ * component-local arrow it was rebuilt every render, which made it an unstable
+ * dependency of the `runFullPipeline` callback below.
+ */
+async function waitForPhase(scanId, phase, signal) {
+  const { data } = await api.post("/auth/ticket", null, { signal });
+  const ticket = data.ticket;
+
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(buildScanProgressUrl(scanId, ticket));
+
+    const handleAbort = () => {
+      ws.close();
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      signal.addEventListener("abort", handleAbort);
+    }
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.phase === phase) {
+        if (
+          data.progress?.status === "complete" ||
+          data.progress?.status === "failed"
+        ) {
+          ws.close();
+          if (signal) signal.removeEventListener("abort", handleAbort);
+          resolve(data.progress);
+        }
+      }
+    };
+    ws.onerror = () => {
+      ws.close();
+      if (signal) signal.removeEventListener("abort", handleAbort);
+      reject(new Error(`Phase ${phase} WebSocket failed`));
+    };
+    setTimeout(() => {
+      ws.close();
+      if (signal) signal.removeEventListener("abort", handleAbort);
+      reject(new Error(`Phase ${phase} timed out`));
+    }, 1200000); // 20 mins
+  });
+}
+
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 const SEV_COLOR = {
@@ -216,13 +275,22 @@ export default function Phase3Results() {
   }, [phase3AuditResults]);
 
   /* ── Auto-start pipeline on mount ───────────────────────────────────────── */
+  // A one-shot: `pipelineStarted` latches on the first start, so re-running
+  // this is pure waste. The values it inspects to decide *how* to start are
+  // read through a ref rather than named as dependencies — naming them would
+  // re-evaluate the guards as the pipeline itself produced phase 2 and phase 3
+  // results, i.e. the effect would react to its own output. The ref is
+  // assigned during the same render that creates the effect closure, so the
+  // body still sees exactly the values the old closure captured.
+  const autoStartRef = useRef(null);
   useEffect(() => {
+    const snap = autoStartRef.current;
     if (
       pipelineStarted.current ||
       !safePhase1Hosts.length ||
       !activeDiscoveryHosts.length ||
-      pipelineState === PIPELINE_STATES.REPORT_READY ||
-      pipelineState === PIPELINE_STATES.COMPLETE
+      snap.pipelineState === PIPELINE_STATES.REPORT_READY ||
+      snap.pipelineState === PIPELINE_STATES.COMPLETE
     )
       return;
 
@@ -235,79 +303,28 @@ export default function Phase3Results() {
         PIPELINE_STATES.VULN_SCAN,
         PIPELINE_STATES.REPORT_READY,
         PIPELINE_STATES.COMPLETE,
-      ].includes(pipelineState)
+      ].includes(snap.pipelineState)
     )
       return;
 
-    if (safeArr(phase3AuditResults).length > 0) return;
+    if (safeArr(snap.phase3AuditResults).length > 0) return;
     if (
       !requestedStartPhase &&
-      !auditQueueHosts.length &&
-      safeArr(phase2Results).length > 0
+      !snap.auditQueueHosts.length &&
+      safeArr(snap.phase2Results).length > 0
     )
       return;
 
     pipelineStarted.current = true;
-    runFullPipeline(
+    snap.runFullPipeline(
       requestedStartPhase ||
-        (auditQueueHosts.length ? "VULN_SCAN" : "PORT_SCAN"),
+        (snap.auditQueueHosts.length ? "VULN_SCAN" : "PORT_SCAN"),
     );
   }, [
     safePhase1Hosts.length,
     activeDiscoveryHosts.length,
     requestedStartPhase,
   ]);
-
-  const baseURL = api.defaults.baseURL || "";
-  const wsPrefix = baseURL.replace(/^http/, "ws");
-  const buildScanProgressUrl = (scanId, ticket) => {
-    return `${wsPrefix}/scans/${scanId}/progress?ticket=${encodeURIComponent(ticket)}`;
-  };
-
-  const waitForPhase = async (scanId, phase, signal) => {
-    const { data } = await api.post("/auth/ticket", null, { signal });
-    const ticket = data.ticket;
-
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(buildScanProgressUrl(scanId, ticket));
-
-      const handleAbort = () => {
-        ws.close();
-        reject(new DOMException("Aborted", "AbortError"));
-      };
-      if (signal) {
-        if (signal.aborted) {
-          reject(new DOMException("Aborted", "AbortError"));
-          return;
-        }
-        signal.addEventListener("abort", handleAbort);
-      }
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.phase === phase) {
-          if (
-            data.progress?.status === "complete" ||
-            data.progress?.status === "failed"
-          ) {
-            ws.close();
-            if (signal) signal.removeEventListener("abort", handleAbort);
-            resolve(data.progress);
-          }
-        }
-      };
-      ws.onerror = () => {
-        ws.close();
-        if (signal) signal.removeEventListener("abort", handleAbort);
-        reject(new Error(`Phase ${phase} WebSocket failed`));
-      };
-      setTimeout(() => {
-        ws.close();
-        if (signal) signal.removeEventListener("abort", handleAbort);
-        reject(new Error(`Phase ${phase} timed out`));
-      }, 1200000); // 20 mins
-    });
-  };
 
   /* ── The automated pipeline executor ────────────────────────────────────── */
   const runFullPipeline = useCallback(
@@ -500,6 +517,17 @@ export default function Phase3Results() {
       abortRef,
     ],
   );
+
+  // Assigned here, below `runFullPipeline`: a dependency of the auto-start
+  // effect above, but declared after it, so filling the ref any earlier would
+  // read the `const` in its temporal dead zone.
+  autoStartRef.current = {
+    pipelineState,
+    phase3AuditResults,
+    auditQueueHosts,
+    phase2Results,
+    runFullPipeline,
+  };
 
   /* ── Event handlers ─────────────────────────────────────────────────────── */
 

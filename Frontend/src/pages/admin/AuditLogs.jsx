@@ -28,7 +28,11 @@ export default function AuditLogs() {
   const isFirstLoad = useRef(true);
 
   const loadData = useCallback(
-    async (quiet = false, targetPage = page) => {
+    // `targetPage` has no default. It used to fall back to `page`, which made
+    // `page` a dependency of this callback while every one of the four call
+    // sites already passes the page it wants explicitly — a fallback that could
+    // only ever fire with a stale value.
+    async (quiet = false, targetPage) => {
       if (!quiet) setLoading(true);
       else setRefreshing(true);
       try {

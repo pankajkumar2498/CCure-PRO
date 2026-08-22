@@ -264,6 +264,15 @@ export default function CredentialedResults() {
 
   const logRef = useRef(null);
 
+  // `ws.onclose` below needs to know whether results have arrived. Reading the
+  // `result` state there would read the value captured when the socket was
+  // opened — always null — so a socket closing *after* a successful completion
+  // still armed the polling fallback and issued one more scan fetch. Listing
+  // `result` as a dependency instead would tear down and rebuild the WebSocket
+  // on completion, which costs the same extra request. A mirror ref gives the
+  // handler the live value while leaving the socket's lifetime alone.
+  const resultRef = useRef(hasReport ? stateResult : null);
+
   useEffect(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -272,6 +281,7 @@ export default function CredentialedResults() {
 
   useEffect(() => {
     if (stateResult && stateResult.system_info) {
+      resultRef.current = stateResult;
       setResult(stateResult);
       setLoading(false);
       return;
@@ -299,6 +309,7 @@ export default function CredentialedResults() {
         ) {
           const r = hydrateFromHistory(data);
           if (r) {
+            resultRef.current = r;
             setResult(r);
             setLoading(false);
             if (ws) ws.close();
@@ -363,7 +374,7 @@ export default function CredentialedResults() {
           }
         };
         ws.onclose = () => {
-          if (!cancelled && !result) {
+          if (!cancelled && !resultRef.current) {
             // If WS closes but we don't have results yet, fallback to polling
             pollTimer = setTimeout(pollScan, 3000);
           }

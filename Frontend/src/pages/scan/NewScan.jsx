@@ -13,6 +13,7 @@ import api from "../../api/axiosInstance";
 import { can } from "../../auth/permissions";
 import { useAuth } from "../../context/AuthContext";
 import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
+import { detectTargetType, parseExcludeIpsJS } from "../../utils/ipValidation";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -755,32 +756,6 @@ export default function NewScan() {
     }
   };
 
-  const parseExcludeIpsJS = (ipsStr) => {
-    if (!ipsStr || !ipsStr.trim()) {
-      return { ips: [], error: "" };
-    }
-    const clean = ipsStr.replace(/\s+/g, "");
-    const tokens = clean.split(",");
-    const ipsArray = [];
-    for (const token of tokens) {
-      if (!token) continue;
-      const isValid =
-        isValidIPv4(token) ||
-        isValidIPv6(token) ||
-        isValidCIDR(token) ||
-        isValidRange(token) ||
-        isValidHostname(token);
-      if (!isValid) {
-        return {
-          ips: [],
-          error: `Invalid IP, range, or CIDR format: "${token}"`,
-        };
-      }
-      ipsArray.push(token);
-    }
-    return { ips: ipsArray, error: "" };
-  };
-
   const handleExcludeIpsToggleChange = (checked) => {
     setExcludeIpsEnabled(checked);
     if (!checked) {
@@ -1107,76 +1082,6 @@ export default function NewScan() {
 
   /* ── Strict Target Validation Helpers ──────────────────────────────────────── */
 
-  const isValidIPv4 = (ip) => {
-    const parts = ip.split(".");
-    if (parts.length !== 4) return false;
-    return parts.every((p) => {
-      const num = Number(p);
-      return (
-        p !== "" && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p
-      );
-    });
-  };
-
-  const isValidIPv6 = (ip) => {
-    if (!ip.includes(":")) return false;
-    return (
-      /^[0-9a-fA-F:]+$/.test(ip) &&
-      !ip.includes(":::") &&
-      (ip.match(/:/g) || []).length <= 7
-    );
-  };
-
-  const isValidCIDR = (cidr) => {
-    if (!cidr.includes("/")) return false;
-    const parts = cidr.split("/");
-    if (parts.length !== 2) return false;
-    const [ip, maskStr] = parts;
-    const mask = Number(maskStr);
-    if (isNaN(mask) || maskStr === "") return false;
-    if (isValidIPv4(ip)) return mask >= 0 && mask <= 32;
-    if (isValidIPv6(ip)) return mask >= 0 && mask <= 128;
-    return false;
-  };
-
-  const ipToLong = (ip) => {
-    return (
-      ip.split(".").reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0
-    );
-  };
-
-  const isValidRange = (range) => {
-    if (!range.includes("-")) return false;
-    const parts = range.split("-");
-    if (parts.length !== 2) return false;
-    const [start, end] = parts.map((p) => p.trim());
-    if (!isValidIPv4(start)) return false;
-    if (isValidIPv4(end)) {
-      return ipToLong(start) <= ipToLong(end);
-    } else if (/^\d+$/.test(end)) {
-      const endOctet = Number(end);
-      const startParts = start.split(".");
-      const startOctet = Number(startParts[3]);
-      return endOctet >= startOctet && endOctet <= 255;
-    }
-    return false;
-  };
-
-  const isValidHostname = (host) => {
-    if (host.length > 253) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(
-      host,
-    );
-  };
-
-  const detectTargetType = (val) => {
-    if (isValidCIDR(val)) return "CIDR";
-    if (isValidRange(val)) return "Range";
-    if (isValidIPv4(val) || isValidIPv6(val)) return "IP";
-    if (isValidHostname(val)) return "Hostname";
-    return null;
-  };
-
   const processFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
@@ -1471,7 +1376,31 @@ export default function NewScan() {
   }, []);
 
   const hasAutoRunRef = useRef(false);
+
+  // Everything this bootstrap calls that is rebuilt each render — the scan
+  // context's session-storage-backed setters, the polling helpers, and
+  // `handleScan` — is reached through a ref rather than named as a dependency.
+  // It is a one-shot: both branches latch `hasAutoRunRef`, so re-running it is
+  // pure waste, and listing those values made it re-run on literally every
+  // render. The dependency array below now holds exactly the values that decide
+  // *whether* the bootstrap should fire.
+  const bootstrapRef = useRef(null);
+  bootstrapRef.current = {
+    setTarget,
+    setPipelineMode,
+    setScanId,
+    setScanNo,
+    setPhase1Hosts,
+    setPhase1Summary,
+    startHostPolling,
+    listenForProgress,
+    stopHostPolling,
+    handleScan,
+    executionMode,
+  };
+
   useEffect(() => {
+    const boot = bootstrapRef.current;
     const effectiveScanId = location.state?.scanId || urlScanId;
     const isMission = location.state?.missionMode || !!urlScanId;
 
@@ -1493,14 +1422,14 @@ export default function NewScan() {
         startMs: Date.now(),
       }));
       missionScanIdRef.current = effectiveScanId;
-      if (rt) setTarget(rt);
-      if (rm) setPipelineMode(rm);
-      setScanId(effectiveScanId);
-      if (scanNo) setScanNo(scanNo);
+      if (rt) boot.setTarget(rt);
+      if (rm) boot.setPipelineMode(rm);
+      boot.setScanId(effectiveScanId);
+      if (scanNo) boot.setScanNo(scanNo);
 
-      startHostPolling(effectiveScanId);
-      listenForProgress(effectiveScanId).then((res) => {
-        stopHostPolling();
+      boot.startHostPolling(effectiveScanId);
+      boot.listenForProgress(effectiveScanId).then((res) => {
+        boot.stopHostPolling();
         const fs =
           res?.status === "failed"
             ? "failed"
@@ -1511,8 +1440,10 @@ export default function NewScan() {
           const d =
               f?.results?.phase1?.data || latestDiscoveredHostsRef.current,
             active = d.filter((h) => h.is_active);
-          setPhase1Hosts(d);
-          setPhase1Summary(f?.results?.phase1?.summary || {});
+          bootstrapRef.current.setPhase1Hosts(d);
+          bootstrapRef.current.setPhase1Summary(
+            f?.results?.phase1?.summary || {},
+          );
           setMissionState((prev) => ({
             ...prev,
             status: fs,
@@ -1539,7 +1470,7 @@ export default function NewScan() {
                 },
               });
             else {
-              if (executionMode === "interactive") {
+              if (bootstrapRef.current.executionMode === "interactive") {
                 navigate("/scan/host-discovery", { replace: true });
               } else {
                 navigate("/scan/asset-discovery", { replace: true });
@@ -1566,7 +1497,7 @@ export default function NewScan() {
     ) {
       hasAutoRunRef.current = true;
       navigate(".", { replace: true, state: {} });
-      setTimeout(() => handleScan(), 100);
+      setTimeout(() => bootstrapRef.current.handleScan(), 100);
     }
   }, [
     location.state,
@@ -1576,15 +1507,6 @@ export default function NewScan() {
     loading,
     quotaBlocked,
     navigate,
-    startHostPolling,
-    listenForProgress,
-    stopHostPolling,
-    setTarget,
-    setScanId,
-    setScanNo,
-    setPhase1Hosts,
-    setPhase1Summary,
-    handleScan,
   ]);
 
   if (view === "mission")

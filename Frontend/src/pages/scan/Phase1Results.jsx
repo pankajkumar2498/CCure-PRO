@@ -25,6 +25,7 @@ import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can } from "../../auth/permissions";
+import { parseExcludeIpsJS } from "../../utils/ipValidation";
 
 const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
 
@@ -367,93 +368,6 @@ export default function Phase1Results() {
     if (!checked) {
       setExcludePorts("");
     }
-  };
-
-  const isValidIPv4 = (ip) => {
-    const parts = ip.split(".");
-    if (parts.length !== 4) return false;
-    return parts.every((p) => {
-      const num = Number(p);
-      return (
-        p !== "" && !isNaN(num) && num >= 0 && num <= 255 && String(num) === p
-      );
-    });
-  };
-
-  const isValidIPv6 = (ip) => {
-    if (!ip.includes(":")) return false;
-    return (
-      /^[0-9a-fA-F:]+$/.test(ip) &&
-      !ip.includes(":::") &&
-      (ip.match(/:/g) || []).length <= 7
-    );
-  };
-
-  const isValidCIDR = (cidr) => {
-    if (!cidr.includes("/")) return false;
-    const parts = cidr.split("/");
-    const [ip, maskStr] = parts;
-    const mask = Number(maskStr);
-    if (isNaN(mask) || maskStr === "") return false;
-    if (isValidIPv4(ip)) return mask >= 0 && mask <= 32;
-    if (isValidIPv6(ip)) return mask >= 0 && mask <= 128;
-    return false;
-  };
-
-  const ipToLong = (ip) => {
-    return (
-      ip.split(".").reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0
-    );
-  };
-
-  const isValidRange = (range) => {
-    if (!range.includes("-")) return false;
-    const parts = range.split("-");
-    if (parts.length !== 2) return false;
-    const [start, end] = parts.map((p) => p.trim());
-    if (!isValidIPv4(start)) return false;
-    if (isValidIPv4(end)) {
-      return ipToLong(start) <= ipToLong(end);
-    } else if (/^\d+$/.test(end)) {
-      const endOctet = Number(end);
-      const startParts = start.split(".");
-      const startOctet = Number(startParts[3]);
-      return endOctet >= startOctet && endOctet <= 255;
-    }
-    return false;
-  };
-
-  const isValidHostname = (host) => {
-    if (host.length > 253) return false;
-    return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(
-      host,
-    );
-  };
-
-  const parseExcludeIpsJS = (ipsStr) => {
-    if (!ipsStr || !ipsStr.trim()) {
-      return { ips: [], error: "" };
-    }
-    const clean = ipsStr.replace(/\s+/g, "");
-    const tokens = clean.split(",");
-    const ipsArray = [];
-    for (const token of tokens) {
-      if (!token) continue;
-      const isValid =
-        isValidIPv4(token) ||
-        isValidIPv6(token) ||
-        isValidCIDR(token) ||
-        isValidRange(token) ||
-        isValidHostname(token);
-      if (!isValid) {
-        return {
-          ips: [],
-          error: `Invalid IP, range, or CIDR format: "${token}"`,
-        };
-      }
-      ipsArray.push(token);
-    }
-    return { ips: ipsArray, error: "" };
   };
 
   const handleExcludeIpsToggleChange = (checked) => {

@@ -27,7 +27,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint src --ext .js,.jsx --max-warnings=27",
+    "lint": "eslint src --ext .js,.jsx --max-warnings=0",
     "test": "vitest run"
   }
 }

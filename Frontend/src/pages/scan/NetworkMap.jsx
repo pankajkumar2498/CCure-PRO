@@ -445,6 +445,7 @@ export default function NetworkMap() {
   const networkRef = useRef(null);
 
   // Raw data from API
+  const [topology, setTopology] = useState({ nodes: [], edges: [] });
   const allNodesRef = useRef([]);
   const allEdgesRef = useRef([]);
 
@@ -507,6 +508,16 @@ export default function NetworkMap() {
 
       allNodesRef.current = data.nodes || [];
       allEdgesRef.current = data.edges || [];
+      // The refs are what the vis-network callbacks read, and mutating one does
+      // not re-render. Publishing the same array instances as state gives the
+      // derived memos below a dependency they can actually observe; previously
+      // they leaned on `stats`/`subnets` changing in this same batch, or named
+      // `allNodesRef.current` directly, which only worked because the ref is
+      // replaced rather than mutated in place.
+      setTopology({
+        nodes: allNodesRef.current,
+        edges: allEdgesRef.current,
+      });
       setSubnets(data.subnets || []);
 
       setStats({
@@ -565,8 +576,8 @@ export default function NetworkMap() {
   }, [selectedEndpoints, endpointPage]);
 
   const topologyQuality = useMemo(() => {
-    const nodes = allNodesRef.current || [];
-    const edges = allEdgesRef.current || [];
+    const nodes = topology.nodes || [];
+    const edges = topology.edges || [];
     const hostNodes = nodes.filter((node) => node.tier === "host");
     const macOnly = hostNodes.filter((node) =>
       isMacOnlySubnet(node.subnet),
@@ -602,7 +613,7 @@ export default function NetworkMap() {
       hasLldpOrCdp:
         linkTypes.has("lldp") || linkTypes.has("cdp") || linkTypes.has("edp"),
     };
-  }, [stats, subnets, isMacOnlySubnet]);
+  }, [topology, isMacOnlySubnet]);
 
   const handleActionClick = useCallback((action) => {
     switch (action) {
@@ -1053,6 +1064,23 @@ export default function NetworkMap() {
     safeSyncGraphView();
   }, [searchQuery, safeSyncGraphView]);
 
+  // The vis-network instance below is built once per topology load and keeps
+  // long-lived event handlers. Those handlers need the current expand/collapse
+  // helpers, but naming them as dependencies would tear down and rebuild the
+  // whole graph whenever they changed identity — and they change on every
+  // keystroke in the search box, because they chain down to `syncGraphView`,
+  // which depends on `searchQuery`. Rebuilding the canvas mid-search would
+  // reset the operator's zoom and pan. Reading them through a ref keeps the
+  // graph alive and still calls the newest closure, which the previous code
+  // did not: a click after typing ran the helpers captured at initialisation.
+  const graphActionsRef = useRef(null);
+  graphActionsRef.current = {
+    collapseSubnet,
+    expandSubnet,
+    isMacOnlySubnet,
+    safeSyncGraphView,
+  };
+
   /* ── Initialise vis-network canvas ────────────────────────────────────────── */
   useEffect(() => {
     if (
@@ -1068,7 +1096,7 @@ export default function NetworkMap() {
         dsNodesRef.current = new DataSet([]);
         dsEdgesRef.current = new DataSet([]);
 
-        safeSyncGraphView();
+        graphActionsRef.current.safeSyncGraphView();
 
         const isHierarchical = layoutMode === "hierarchical";
 
@@ -1150,13 +1178,15 @@ export default function NetworkMap() {
                 setSelectedNode(node._data);
                 setEndpointSearch("");
                 setEndpointPage(0);
-                if (isMacOnlySubnet(node._data.subnet)) {
+                if (
+                  graphActionsRef.current.isMacOnlySubnet(node._data.subnet)
+                ) {
                   return;
                 }
                 if (expandedSubnetsRef.current.has(nodeId)) {
-                  collapseSubnet(nodeId);
+                  graphActionsRef.current.collapseSubnet(nodeId);
                 } else {
-                  expandSubnet(nodeId);
+                  graphActionsRef.current.expandSubnet(nodeId);
                 }
               } else {
                 setSelectedNode(node._data);
@@ -1244,7 +1274,7 @@ export default function NetworkMap() {
 
   const legendItems = useMemo(() => {
     const activeGroups = new Set();
-    allNodesRef.current.forEach((node) => {
+    topology.nodes.forEach((node) => {
       if (node.tier === "infra" || node.tier === "host") {
         activeGroups.add(node.group || "endpoint");
       }
@@ -1255,7 +1285,7 @@ export default function NetworkMap() {
         label: CATEGORY_LABELS[g] || g.charAt(0).toUpperCase() + g.slice(1),
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [allNodesRef.current]);
+  }, [topology.nodes]);
 
   return (
     <AppLayout>

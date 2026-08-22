@@ -285,7 +285,12 @@ export default function UserManagement() {
         .then((d) => setRoles(d.roles || []))
         .catch(() => {});
     }
-  }, []);
+    // `isSuperadmin` decides which lists are fetched, so it belongs here: on a
+    // render where auth had not yet hydrated it reads false, and without the
+    // dependency the organization list was never fetched once it flipped. It
+    // is a boolean derived from the session, so it settles after at most one
+    // additional pass.
+  }, [isSuperadmin]);
 
   // Reload users when filters/page change
   useEffect(() => {

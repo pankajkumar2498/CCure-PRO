@@ -75,7 +75,7 @@ repos:
         # runs the same rules over all of src/. Using 0 here would block a
         # commit that merely touches a file carrying a pre-existing
         # exhaustive-deps warning, which punishes the wrong person.
-        args: [ --max-warnings=27 ]
+        args: [ --max-warnings=0 ]
         additional_dependencies:
           - eslint@8.57.0
           - eslint-plugin-react@7.34.1

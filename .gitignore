@@ -142,3 +142,8 @@ celerybeat.pid
 
 # Staged blocklist and vulnerability feed downloads. Regenerable, and large.
 Backend/data/feeds/
+
+# Uploaded compliance evidence. Tenant data, not source — the API container
+# bind-mounts ./Backend at /app, so the default COMPLIANCE_EVIDENCE_DIR
+# (/app/data/compliance_evidence) writes real uploads into the working tree.
+Backend/data/compliance_evidence/

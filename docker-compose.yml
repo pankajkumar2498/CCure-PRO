@@ -389,7 +389,51 @@ services:
     environment:
       - TZ=Asia/Kolkata
 
+  # ── Malware scanning for uploaded evidence ─────────────────────────────────
+  #
+  # Compliance evidence is stored on disk and handed back to other people in
+  # the tenant, which makes the audit workspace a file-sharing surface whether
+  # or not it was designed as one. core/upload_guard.py talks clamd's INSTREAM
+  # protocol directly over a socket, so no Python dependency is involved.
+  #
+  # Behind the `av` profile because it is a real cost, not because it is
+  # optional in principle: the image carries a signature database, freshclam
+  # pulls updates on a schedule, and clamd wants ~2 GB of RAM to hold the
+  # signatures resident. A deployment that cannot spare that should know it is
+  # running without the scan rather than discover it.
+  #
+  #   docker compose --profile av up -d clamav
+  #
+  # Then set CLAMAV_HOST=clamav in Backend/.env. Until that variable is set the
+  # API does not attempt a scan and reports `malware_scan: not_configured` on
+  # every upload — an honest "nobody looked", never a silent clean verdict.
+  #
+  # Leave UPLOAD_AV_REQUIRED at its default False until the container is
+  # confirmed healthy. An unreachable scanner then logs loudly and lets the
+  # upload through; flip it to True to fail closed once clamd is dependable.
+  # A positive detection refuses the upload in both modes.
+  #
+  # No ports are published. Only the API talks to it, over the compose network.
+  clamav:
+    image: clamav/clamav:stable
+    container_name: ccure-clamav
+    restart: unless-stopped
+    profiles: ["av"]
+    volumes:
+      - clamav_db:/var/lib/clamav
+    environment:
+      - TZ=Asia/Kolkata
+    healthcheck:
+      # clamd answers PING with PONG once the signature database is loaded,
+      # which takes a couple of minutes on a cold start.
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
 volumes:
   pgdata:
   backend_venv:
   beat_state:
+  clamav_db:

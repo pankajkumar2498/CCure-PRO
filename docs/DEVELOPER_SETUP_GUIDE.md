@@ -130,14 +130,14 @@ curl -s http://127.0.0.1:8000/api/pipeline-modes
 docker compose logs -f api
 ```
 
-| Surface           | URL                                                               |
-| ----------------- | ----------------------------------------------------------------- |
-| API               | `http://127.0.0.1:8000`                                           |
-| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**) |
-| ReDoc             | `http://127.0.0.1:8000/redoc`                                     |
-| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                              |
-| Frontend (direct) | `http://127.0.0.1:3200`                                           |
-| Gateway           | `http://<host>:${GATEWAY_PORT:-80}`                               |
+| Surface           | URL                                                                      |
+| ----------------- | ------------------------------------------------------------------------ |
+| API               | `http://127.0.0.1:8000`                                                  |
+| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**)        |
+| ReDoc             | `http://127.0.0.1:8000/redoc`                                            |
+| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                                     |
+| Frontend (direct) | `http://127.0.0.1:3200`                                                  |
+| Gateway (opt-in)  | `http://127.0.0.1:${GATEWAY_PORT:-8082}` — needs `--profile alt-gateway` |
 
 ### 3.4 Rebuild rules
 

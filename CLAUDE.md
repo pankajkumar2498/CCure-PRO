@@ -291,15 +291,23 @@ Two rules the layout depends on, both of which fail loudly if broken:
   be told why. `tests/security/test_cors_and_headers.py` asserts the low value.
 
 - **The `gateway` service in `docker-compose.yml` is not part of this
-  deployment.** It duplicates host Nginx's routing (`/api/` → api:8000, `/` →
-  frontend:80) but over plain HTTP, and its port mapping —
-  `${GATEWAY_PORT:-80}:80` — carries no bind address, so Docker publishes it on
-  `0.0.0.0`. It is the only published port in the file that is not loopback
-  bound, and the root `.env` sets `GATEWAY_PORT=8082`. Starting it serves the
-  whole application, login included, unencrypted on a LAN-reachable port and
-  bypasses the TLS hop entirely. It is left defined with `restart: "no"` for
-  deployments that terminate TLS elsewhere; bind it to loopback before starting
-  it here.
+  deployment**, and two things now stop it becoming part of one by accident: it
+  sits behind the `alt-gateway` profile, so `docker compose up` cannot start it,
+  and its mapping is `127.0.0.1:${GATEWAY_PORT:-8082}:80`, so if it is started
+  it is reachable from this host only. It previously carried no bind address —
+  Docker published it on `0.0.0.0`, the one port in the file that was not
+  loopback bound.
+
+  It duplicates host Nginx's routing (`/api/` → api:8000, `/` → frontend:80)
+  but over plain HTTP, which would not merely expose sessions but break them:
+  `REFRESH_COOKIE_SECURE` is set statically in `.env` rather than derived from
+  `X-Forwarded-Proto`, so over HTTP the browser refuses to store the refresh
+  cookie and every session dies at the 30-minute access-token expiry.
+
+  The default port is `8082` because that is what `.env` already sets, so the
+  value is the same with or without `.env`. It is deliberately not `80`, the
+  previous default, which collides with host Nginx's `0.0.0.0:80` redirect
+  listener; and not `8080`, which on this host is the Oracle XE TNS listener.
 
 - **`add_header` in Nginx does not merge.** A `location` containing any
   `add_header` replaces the parent's whole set. This silently disabled the SPA's

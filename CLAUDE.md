@@ -290,6 +290,17 @@ Two rules the layout depends on, both of which fail loudly if broken:
   client that cached HTTPS-only for a year cannot reach a broken deployment to
   be told why. `tests/security/test_cors_and_headers.py` asserts the low value.
 
+- **The `gateway` service in `docker-compose.yml` is not part of this
+  deployment.** It duplicates host Nginx's routing (`/api/` → api:8000, `/` →
+  frontend:80) but over plain HTTP, and its port mapping —
+  `${GATEWAY_PORT:-80}:80` — carries no bind address, so Docker publishes it on
+  `0.0.0.0`. It is the only published port in the file that is not loopback
+  bound, and the root `.env` sets `GATEWAY_PORT=8082`. Starting it serves the
+  whole application, login included, unencrypted on a LAN-reachable port and
+  bypasses the TLS hop entirely. It is left defined with `restart: "no"` for
+  deployments that terminate TLS elsewhere; bind it to loopback before starting
+  it here.
+
 - **`add_header` in Nginx does not merge.** A `location` containing any
   `add_header` replaces the parent's whole set. This silently disabled the SPA's
   Content-Security-Policy for months: `location = /index.html` declared a

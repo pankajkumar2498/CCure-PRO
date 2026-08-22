@@ -1082,9 +1082,47 @@ export default function NewScan() {
 
   /* ── Strict Target Validation Helpers ──────────────────────────────────────── */
 
+  /* The `accept` attribute on the <input> is a picker hint and nothing more:
+     it does not apply to drag-and-drop, and the drop zone below feeds the same
+     function. These guards are the ones that actually run on every path.
+
+     Nothing here is a security boundary — the file never leaves the browser,
+     and only the extracted target strings are POSTed, which the API
+     re-validates from scratch. This is about not handing the operator
+     "No valid targets found." when the real answer is "that is a .zip", and
+     not calling readAsText() on something large enough to hang the tab. */
+  const MAX_TARGET_FILE_BYTES = 5 * 1024 * 1024;
+  const ACCEPTED_TARGET_EXTENSIONS = [".txt", ".csv"];
+
   const processFile = (file) => {
     if (!file) return;
+
+    const name = (file.name || "").toLowerCase();
+    if (!ACCEPTED_TARGET_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+      setError(
+        `Unsupported file format: ${file.name || "unnamed file"}. ` +
+          `Upload a ${ACCEPTED_TARGET_EXTENSIONS.join(" or ")} file with one target per line.`,
+      );
+      return;
+    }
+
+    if (file.size === 0) {
+      setError(`${file.name} is empty — no targets to import.`);
+      return;
+    }
+
+    if (file.size > MAX_TARGET_FILE_BYTES) {
+      setError(
+        `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+          `${MAX_TARGET_FILE_BYTES / (1024 * 1024)} MB limit for a target list.`,
+      );
+      return;
+    }
+
     const reader = new FileReader();
+    reader.onerror = () => {
+      setError(`Could not read ${file.name}.`);
+    };
     reader.onload = (event) => {
       const rawTokens = event.target.result
         .replace(/\s*-\s*/g, "-")
@@ -1120,6 +1158,7 @@ export default function NewScan() {
       });
 
       if (valid.length > 0) {
+        setError("");
         setTarget(valid.map((r) => r.value).join(", "));
         setParsedTargets(valid);
         setUploadSummary({
@@ -1131,7 +1170,9 @@ export default function NewScan() {
           show: true,
         });
       } else {
-        setError("No valid targets found.");
+        setError(
+          `No valid targets found in ${file.name}. Expected one IP, CIDR or range per line.`,
+        );
       }
     };
     reader.readAsText(file);

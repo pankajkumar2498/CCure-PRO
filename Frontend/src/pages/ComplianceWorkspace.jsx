@@ -1140,8 +1140,31 @@ export default function ComplianceWorkspace() {
     }
   };
 
+  /* Kept in step with _ALLOWED_EVIDENCE_TYPES and _MAX_EVIDENCE_BYTES in
+     routers/compliance.py. The server enforces both regardless — and now also
+     checks the file's magic bytes, which the browser cannot — but without an
+     `accept` the picker offered every file on disk and the only feedback was a
+     400 after the whole upload had finished. */
+  const EVIDENCE_ACCEPT =
+    ".pdf,.png,.jpg,.jpeg,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx";
+  const MAX_EVIDENCE_BYTES = 25 * 1024 * 1024;
+
   const handleUploadEvidence = async (controlId, file) => {
     if (!file) return;
+
+    if (file.size === 0) {
+      pushToast(`${file.name} is empty.`, "error");
+      return;
+    }
+    if (file.size > MAX_EVIDENCE_BYTES) {
+      pushToast(
+        `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB, above the ` +
+          `${MAX_EVIDENCE_BYTES / (1024 * 1024)} MB evidence limit.`,
+        "error",
+      );
+      return;
+    }
+
     setUploadingEvidence(true);
     const form = new FormData();
     form.append("file", file);
@@ -5148,6 +5171,7 @@ export default function ComplianceWorkspace() {
               </label>
               <input
                 type="file"
+                accept={EVIDENCE_ACCEPT}
                 disabled={uploadingEvidence}
                 onChange={(e) => {
                   const f = e.target.files?.[0];

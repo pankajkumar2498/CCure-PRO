@@ -4,15 +4,42 @@ Base routers for the CCure Audit PRO Policy Compliance Engine.
 """
 
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field, SecretStr, model_validator
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
 
 from auth.rbac import require_permission
 from core import compliance_frameworks, nist_csf
 from core.audit import log_audit_event
 from core.security_crypto import encrypt_credential
+from core.upload_guard import (
+    MalwareDetected,
+    MalwareScanUnavailable,
+    UploadTooLarge,
+    UploadTypeRejected,
+    assert_content_matches,
+    content_disposition,
+    read_capped_async,
+    sanitize_filename,
+    scan_for_malware,
+)
 from db.base import (
     gen_compliance_credential_id,
     gen_compliance_remediation_request_id,
@@ -38,21 +65,7 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    File,
-    HTTPException,
-    Query,
-    Request,
-    UploadFile,
-    status,
-)
-from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field, SecretStr, model_validator
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import Session
+from scan_helpers import limiter
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
@@ -319,15 +332,15 @@ class RolledFinding:
     """
 
     __slots__ = (
-        "status",
-        "rule_id",
+        "attested_by",
+        "contributing",
         "evidence",
-        "source",
         "justification",
         "owner",
-        "attested_by",
         "reviewed_at",
-        "contributing",
+        "rule_id",
+        "source",
+        "status",
     )
 
     def __init__(self, status: str, findings: list):
@@ -1559,6 +1572,37 @@ _ALLOWED_EVIDENCE_TYPES = {
 }
 _MAX_EVIDENCE_BYTES = 25 * 1024 * 1024
 
+# A per-tenant ceiling, because the per-file cap alone bounds nothing: an
+# account holding `compliance:attest` could upload 25 MB in a loop until the
+# API host's disk filled. Evidence is policy documents and screenshots, so 2 GB
+# is far above any real workspace and still a bound. Raise it deliberately for
+# a tenant that legitimately needs more.
+_MAX_EVIDENCE_BYTES_PER_TENANT = int(
+    os.environ.get("COMPLIANCE_EVIDENCE_TENANT_QUOTA_BYTES", 2 * 1024 * 1024 * 1024)
+)
+
+
+def _lock_tenant_evidence_quota(db: Session, tenant_id: str) -> None:
+    """
+    Take a transaction-scoped advisory lock covering one tenant's quota check.
+
+    Postgres only. SQLite — which `config.py` falls back to when DATABASE_URL is
+    unset — serialises writers at the database level anyway, so there is nothing
+    to add there and nothing to fail over. Any other backend gets no lock and
+    the pre-existing race; that is stated here rather than hidden, because a
+    silent no-op is how a concurrency guard stops guarding.
+    """
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    # hashtext() gives a stable 32-bit key; the constant namespaces this lock
+    # so it cannot collide with an advisory lock taken elsewhere.
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(:ns, hashtext(:tenant))"),
+        {"ns": 0x0E71DE17, "tenant": str(tenant_id)},
+    )
+
 
 def _evidence_root() -> str:
     """Base directory for stored evidence, configurable per deployment."""
@@ -1570,7 +1614,9 @@ def _evidence_root() -> str:
 
 
 @router.post("/controls/{control_id}/evidence", status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def upload_control_evidence(
+    request: Request,
     control_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -1578,7 +1624,6 @@ async def upload_control_evidence(
 ):
     """Attach an audit evidence document to a control."""
     import hashlib
-    import os
 
     ctrl = (
         db.query(ComplianceControl).filter(ComplianceControl.id == control_id).first()
@@ -1612,14 +1657,82 @@ async def upload_control_evidence(
     # Read with a cap rather than trusting a declared length: the size is only
     # known once the bytes are in hand, and an unbounded read is how an upload
     # endpoint becomes a memory exhaustion primitive.
-    payload = await file.read(_MAX_EVIDENCE_BYTES + 1)
-    if len(payload) > _MAX_EVIDENCE_BYTES:
+    try:
+        payload = await read_capped_async(file, _MAX_EVIDENCE_BYTES)
+    except UploadTooLarge:
         raise HTTPException(
             status_code=413,
             detail=f"Evidence files are limited to {_MAX_EVIDENCE_BYTES // (1024 * 1024)} MB.",
         )
     if not payload:
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+    # The content type above is the one the *client* declared in the multipart
+    # part header. Nothing derived it from the bytes, so `malware.exe` renamed
+    # to `malware.pdf` arrives declared `application/pdf` and satisfied the
+    # whitelist. Confirm the payload's own signature agrees before storing it.
+    try:
+        assert_content_matches(payload, content_type)
+    except UploadTypeRejected as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+    # Evidence is handed back to other people in the tenant, which makes this a
+    # file-sharing surface whether or not it was designed as one. No-ops unless
+    # CLAMAV_HOST is configured; see core/upload_guard.py for the fail-open
+    # rationale and how to make it fail closed.
+    try:
+        av_verdict = scan_for_malware(payload, context=f"evidence upload by {user.id}")
+    except MalwareDetected as exc:
+        log_audit_event(
+            db, user, "upload_evidence", "evidence", control_id, "blocked_malware"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"The uploaded file was rejected by malware scanning: {exc.signature}",
+        )
+    except MalwareScanUnavailable as exc:
+        # 503, not 400: the file is not accused of anything — the scanner this
+        # deployment requires could not answer, so the upload is refused rather
+        # than stored unscanned. Distinct status so a client can retry.
+        log_audit_event(
+            db, user, "upload_evidence", "evidence", control_id, "scanner_unavailable"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Evidence cannot be accepted right now: malware scanning is "
+                f"unavailable ({exc}). Try again shortly."
+            ),
+        )
+
+    # A per-file cap bounds one request; it does not bound a loop of them.
+    #
+    # Serialise the check per tenant before summing. SUM-then-compare-then-write
+    # is read-modify-write across three statements: two concurrent uploads each
+    # read the same total, each conclude they fit, and the quota is exceeded by
+    # whatever the second one carried. A transaction-scoped advisory lock keyed
+    # on the tenant makes the read and the write one critical section; Postgres
+    # releases it at COMMIT or ROLLBACK, so no unlock path can be missed.
+    #
+    # Evidence upload is a low-frequency operation, so serialising a tenant's
+    # concurrent uploads costs nothing measurable.
+    _lock_tenant_evidence_quota(db, user.org_id)
+
+    used = (
+        db.query(func.coalesce(func.sum(ComplianceEvidenceFile.size_bytes), 0))
+        .filter(ComplianceEvidenceFile.tenant_id == user.org_id)
+        .scalar()
+        or 0
+    )
+    if used + len(payload) > _MAX_EVIDENCE_BYTES_PER_TENANT:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "This workspace has reached its evidence storage quota of "
+                f"{_MAX_EVIDENCE_BYTES_PER_TENANT // (1024 * 1024)} MB. "
+                "Remove superseded evidence or ask an administrator to raise it."
+            ),
+        )
 
     file_id = f"cef_{uuid.uuid4().hex[:24]}"
     digest = hashlib.sha256(payload).hexdigest()
@@ -1632,31 +1745,62 @@ async def upload_control_evidence(
     tenant_dir = os.path.join(_evidence_root(), user.org_id)
     os.makedirs(tenant_dir, exist_ok=True)
     storage_path = os.path.join(tenant_dir, f"{file_id}{extension}")
+    # Nothing above this line has touched the disk. Every rejection — wrong
+    # type, wrong content, malware detected, scanner unavailable, over quota —
+    # returns before the first byte is written, so a refused upload is never
+    # briefly present in storage. Scan-then-persist, never persist-then-scan.
     with open(storage_path, "wb") as fh:
         fh.write(payload)
 
-    record = ComplianceEvidenceFile(
-        id=file_id,
-        tenant_id=user.org_id,
-        control_id=control_id,
-        filename=os.path.basename(file.filename or f"evidence{extension}")[:255],
-        content_type=content_type,
-        size_bytes=len(payload),
-        sha256=digest,
-        storage_path=storage_path,
-        uploaded_by=user.id,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(record)
-    db.commit()
+    try:
+        record = ComplianceEvidenceFile(
+            id=file_id,
+            tenant_id=user.org_id,
+            control_id=control_id,
+            # A display name only — the storage path above is UUID-derived and
+            # never touches this. `os.path.basename()` alone was not enough: the
+            # API runs on Linux, where `\` is not a separator, and it strips
+            # neither quotes nor control characters, both of which reach a
+            # response header on download.
+            filename=sanitize_filename(file.filename, fallback=f"evidence{extension}"),
+            content_type=content_type,
+            size_bytes=len(payload),
+            sha256=digest,
+            storage_path=storage_path,
+            uploaded_by=user.id,
+            uploaded_at=datetime.now(timezone.utc),
+        )
+        db.add(record)
+        db.commit()
+    except Exception:
+        # The bytes are on disk and the row that points at them does not exist.
+        # An orphan here is worse than it looks: it is unreachable through the
+        # API, and the quota sums `size_bytes` over *rows*, so it consumes disk
+        # that nothing accounts for and nothing will ever reclaim.
+        db.rollback()
+        try:
+            os.unlink(storage_path)
+        except OSError:
+            log.warning(
+                "Orphaned evidence file left on disk after a failed commit: %s",
+                storage_path,
+            )
+        raise
 
     log_audit_event(db, user, "upload_evidence", "evidence", file_id, "success")
+    if av_verdict != "clean":
+        # An auditor reading this trail needs to know the difference between
+        # "scanned and clean" and "never scanned".
+        log.info(
+            "Evidence %s stored with malware scan verdict: %s", file_id, av_verdict
+        )
     return {
         "id": file_id,
         "filename": record.filename,
         "content_type": content_type,
         "size_bytes": record.size_bytes,
         "sha256": digest,
+        "malware_scan": av_verdict,
         "uploaded_at": record.uploaded_at.isoformat(),
     }
 
@@ -1713,14 +1857,18 @@ def download_control_evidence(
     if not record or not os.path.exists(record.storage_path):
         raise HTTPException(status_code=404, detail="Evidence file not found")
 
-    with open(record.storage_path, "rb") as fh:
-        content = fh.read()
-
-    return Response(
-        content=content,
+    # FileResponse streams from disk rather than reading the whole file into
+    # memory first. One 25 MB read is survivable; a dozen concurrent auditors
+    # downloading evidence at once is what made this worth changing.
+    #
+    # The Content-Disposition is built by upload_guard, not by f-string. The
+    # filename is user-supplied, and interpolating it into a quoted-string
+    # header let a `"` in the name reshape the header.
+    return FileResponse(
+        path=record.storage_path,
         media_type=record.content_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{record.filename}"',
+            "Content-Disposition": content_disposition(record.filename),
             "X-Evidence-SHA256": record.sha256,
         },
     )
@@ -1880,7 +2028,7 @@ def create_scan_schedule(
         .filter(
             CompliancePolicy.id == payload.policy_id,
             or_(
-                CompliancePolicy.tenant_id == None,  # noqa: E711
+                CompliancePolicy.tenant_id == None,
                 CompliancePolicy.tenant_id == user.org_id,
             ),
         )
@@ -6672,8 +6820,8 @@ def _generate_nis2_pdf(
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.platypus import (
-            SimpleDocTemplate,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,

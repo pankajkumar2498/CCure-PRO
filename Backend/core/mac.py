@@ -125,28 +125,56 @@ def mac_colon(value) -> str | None:
     return ":".join(compact[i : i + 2] for i in range(0, EUI48_HEX_DIGITS, 2))
 
 
+def mac_identity(value) -> str | None:
+    """
+    Return ``value`` as a canonical address usable as an identity, or None.
+
+    This is the policy, as distinct from the parsing: an address is an identity
+    when it is well-formed *and* it names a specific interface. ``mac_colon``
+    answers the first half; ``RESERVED_MACS`` answers the second.
+
+    Three callers share this and each keeps its own failure value, because each
+    has call sites that branch on it — ``scans.asset_syncer._resolve_mac``
+    returns None, ``collector_mac`` and ``core.tasks._normalize_mac`` return
+    ``""``. That is the only thing separating them, and it is a real contract
+    rather than an accident, so they stay as three thin adapters over one rule
+    instead of one function with a flag.
+
+    Reserved addresses are compared *after* normalization. Compared before, the
+    check only ever recognised the two canonical spellings, and
+    ``000000000000``, ``0:0:0:0:0:0`` and ``0000.0000.0000`` — the same all-zero
+    address written differently — went straight through it.
+    """
+    normalized = mac_colon(value)
+    if not normalized or normalized in RESERVED_MACS:
+        return None
+    return normalized
+
+
 def collector_mac(value) -> str:
     """
     Canonical ``aa:bb:cc:dd:ee:ff`` for a credentialed collector, or ``""``.
 
     This is the single copy of a function that existed character-for-character
     twice, in ``engines/credentialed/linux_collector.py`` and
-    ``windows_collector.py``. It is reproduced here verbatim rather than rebuilt
-    on ``mac_colon`` so that deduplicating it cannot change what either
-    collector accepts.
+    ``windows_collector.py``.
 
-    It is deliberately stricter than ``mac_colon``: it takes neither the Cisco
-    dotted form nor unpadded octets, because both collectors read from sources
-    that emit full colon- or hyphen-separated octets (``ip -j addr`` on Linux,
-    ``Get-NetAdapter`` on Windows). Widening it would be safe as far as anyone
-    can tell from those two sources, which is not the same as proven, so it is
-    left for a change that can validate it on its own.
+    It began as that body verbatim, which accepted only full colon- or
+    hyphen-separated octets and applied its reserved check to the raw text.
+    Both of those were accidents of the original rather than decisions:
+
+    * It discarded the Cisco dotted form, while the very regex that feeds it in
+      ``linux_collector`` — ``[0-9a-fA-F:.-]{12,17}`` — includes ``.`` and so
+      captures exactly that form. The collector extracted a dotted address and
+      then threw it away.
+    * It let ``000000000000`` and ``ffffffffffff`` through as
+      ``00:00:00:00:00:00`` and ``ff:ff:ff:ff:ff:ff``, because it compared the
+      compact spelling against the canonical one.
+
+    It now shares ``mac_identity`` with the other two callers. Widening cannot
+    lose a correct result: every input it used to refuse produced ``""``, and
+    both call sites read that as "skip this interface".
 
     Returns ``""`` — not None — because that is what both call sites branch on.
     """
-    text = str(value or "").strip().lower().replace("-", ":")
-    if not text or text in RESERVED_MACS:
-        return ""
-    if re.fullmatch(r"[0-9a-f]{12}", text):
-        text = ":".join(text[i : i + 2] for i in range(0, 12, 2))
-    return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
+    return mac_identity(value) or ""

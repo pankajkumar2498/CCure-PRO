@@ -16,12 +16,14 @@ import itertools
 import re
 
 import pytest
-from core.mac import RESERVED_MACS, collector_mac, mac_colon, mac_hex
+from core.mac import RESERVED_MACS, collector_mac, mac_colon, mac_hex, mac_identity
 from core.tasks import _normalize_mac as tasks_mac
 from db.base import gen_asset_id
 from db.models.assets import Asset
 from engines.credentialed import linux_collector, windows_collector
+from scans.asset_syncer import _existing_assets_for_hosts, _resolve_mac
 from sqlalchemy import text
+from sqlalchemy.exc import DataError
 
 # =============================================================================
 # mac_hex — the shared predicate
@@ -144,14 +146,47 @@ def _original_collector_mac(value):
     return text if re.fullmatch(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}", text) else ""
 
 
+#: Every input on which ``collector_mac`` deliberately departs from the body it
+#: replaced, with the value it produces now. Two kinds, and both were accidents
+#: of the original rather than decisions:
+#:
+#: * dialects it discarded. ``linux_collector`` feeds it from a regex whose
+#:   character class is ``[0-9a-fA-F:.-]{12,17}`` — dots included — so it
+#:   captured Cisco dotted addresses and then threw them away.
+#: * reserved addresses it let through, because it compared the compact
+#:   spelling against the canonical one.
+#:
+#: Widening cannot lose a correct result: every input it used to refuse produced
+#: ``""``, and both call sites read that as "skip this interface".
+COLLECTOR_INTENTIONAL_CHANGES = {
+    "001a.2b3c.4d5e": ("", "00:1a:2b:3c:4d:5e"),
+    "001A.2B3C.4D5E": ("", "00:1a:2b:3c:4d:5e"),
+    "0:1a:2b:3c:4d:5e": ("", "00:1a:2b:3c:4d:5e"),
+    "0:1:2:3:4:5": ("", "00:01:02:03:04:05"),
+    "f:f:f:f:f:f": ("", "0f:0f:0f:0f:0f:0f"),
+    "0000.0000.0000": ("", ""),
+    "000000000000": ("00:00:00:00:00:00", ""),
+    "ffffffffffff": ("ff:ff:ff:ff:ff:ff", ""),
+    "FFFFFFFFFFFF": ("ff:ff:ff:ff:ff:ff", ""),
+    "ffff.ffff.ffff": ("", ""),
+}
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(raw, after) for raw, (_, after) in COLLECTOR_INTENTIONAL_CHANGES.items()],
+)
+def test_collector_mac_intended_changes(raw, expected):
+    """The departures are asserted individually, not just tolerated in bulk."""
+    assert collector_mac(raw) == expected
+
+
 @pytest.mark.parametrize(
     "raw",
     [
         "00:1a:2b:3c:4d:5e",
         "00-1A-2B-3C-4D-5E",
         "001a2b3c4d5e",
-        "001a.2b3c.4d5e",
-        "0:1a:2b:3c:4d:5e",
         "00:00:00:00:00:00",
         "ff:ff:ff:ff:ff:ff",
         "FF:FF:FF:FF:FF:FF",
@@ -162,25 +197,35 @@ def _original_collector_mac(value):
         None,
         0,
         "  00:1a:2b:3c:4d:5e  ",
-        "000000000000",
+        "00:00:00:00:00:01",
+        "ff:ff:ff:ff:ff:fe",
+        "0f:0f:0f:0f:0f:0f",
     ],
 )
-def test_collector_mac_matches_the_body_it_replaced(raw):
+def test_collector_mac_is_otherwise_unchanged(raw):
+    """Everything outside the documented set behaves as it always did."""
+    assert raw not in COLLECTOR_INTENTIONAL_CHANGES
     assert collector_mac(raw) == _original_collector_mac(raw)
 
 
-def test_collector_mac_matches_the_body_it_replaced_under_fuzz():
-    """Every string up to four characters over a MAC-ish alphabet."""
+def test_collector_mac_has_no_undocumented_changes_under_fuzz():
+    """Every string up to four characters over a MAC-ish alphabet.
+
+    The original body is still kept, and still compared against — what changed
+    is that a difference is now allowed only where this file says so. An edit
+    that alters any other input fails here.
+    """
     alphabet = "0af:z-. "
-    mismatches = [
+    undocumented = [
         candidate
         for length in range(5)
         for candidate in (
             "".join(t) for t in itertools.product(alphabet, repeat=length)
         )
         if collector_mac(candidate) != _original_collector_mac(candidate)
+        and candidate not in COLLECTOR_INTENTIONAL_CHANGES
     ]
-    assert mismatches == []
+    assert undocumented == []
 
 
 def test_collector_mac_returns_empty_string_not_none():
@@ -451,3 +496,235 @@ def test_a_real_mac_still_keys_an_asset(db_session, test_org):
     finally:
         db_session.delete(asset)
         db_session.commit()
+
+
+# =============================================================================
+# EUI-64: supported on one path, refused on the other, and both are right
+# =============================================================================
+
+
+@pytest.mark.parametrize("raw", ["00:1a:2b:3c:4d:5e:6f:70", "001a2b3c4d5e6f70"])
+def test_eui64_is_accepted_for_vendor_lookup_and_refused_for_asset_identity(raw):
+    """The two paths want different things and the difference is deliberate.
+
+    ``core.oui_lookup`` resolves a vendor from the leading 24 bits, which an
+    EUI-64 has like any other address, so ``mac_hex`` accepts one. Asset
+    identity ends at ``Asset.mac_address``, a PostgreSQL ``MACADDR`` — six
+    bytes, not ``MACADDR8`` — which refuses an EUI-64 outright. Passing one
+    through only moves the failure to the INSERT.
+    """
+    assert mac_hex(raw, (6, 12, 16)) is not None
+    assert mac_colon(raw) is None
+    assert mac_identity(raw) is None
+    assert _resolve_mac({"mac_address": raw}) is None
+    assert tasks_mac(raw) == ""
+
+
+def test_postgres_macaddr_refuses_eui64(db_session):
+    """The reason the line above is drawn where it is."""
+    assert (
+        db_session.execute(
+            text("SELECT CAST(:v AS macaddr)"), {"v": "00:1a:2b:3c:4d:5e"}
+        ).scalar()
+        == "00:1a:2b:3c:4d:5e"
+    )
+    db_session.rollback()
+
+    with pytest.raises(DataError):
+        db_session.execute(
+            text("SELECT CAST(:v AS macaddr)"), {"v": "00:1a:2b:3c:4d:5e:6f:70"}
+        )
+    db_session.rollback()
+
+
+# =============================================================================
+# scans.asset_syncer._resolve_mac
+# -----------------------------------------------------------------------------
+# This lowercased its input and swapped hyphens for colons, and did nothing
+# else. It applied no hex check, filtered the all-zero address by spelling
+# alone, and did not filter broadcast at all — so hostnames, IP literals and
+# path-injection strings were all returned as though they were addresses, on
+# their way to a PostgreSQL MACADDR column.
+#
+# The normalization matters as much as the rejection.
+# `_existing_assets_for_hosts` keys `existing_by_mac` off the value PostgreSQL
+# stored, so a scanner emitting `001a2b3c4d5e` or `001a.2b3c.4d5e` produced a
+# key that could never match and the host was re-identified by IP, or created
+# a second time.
+# =============================================================================
+
+
+def _resolved(raw):
+    return _resolve_mac({"mac_address": raw})
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("00:1a:2b:3c:4d:5e", "00:1a:2b:3c:4d:5e"),
+        ("00:1A:2B:3C:4D:5E", "00:1a:2b:3c:4d:5e"),
+        ("00-1a-2b-3c-4d-5e", "00:1a:2b:3c:4d:5e"),
+        ("00-1A-2B-3C-4D-5E", "00:1a:2b:3c:4d:5e"),
+        ("001a2b3c4d5e", "00:1a:2b:3c:4d:5e"),
+        ("001A2B3C4D5E", "00:1a:2b:3c:4d:5e"),
+        ("001a.2b3c.4d5e", "00:1a:2b:3c:4d:5e"),
+        ("00-1a:2B-3c:4D-5e", "00:1a:2b:3c:4d:5e"),
+        ("0:1a:2b:3c:4d:5e", "00:1a:2b:3c:4d:5e"),
+        ("0:1:2:3:4:5", "00:01:02:03:04:05"),
+        ("  00:1a:2b:3c:4d:5e  ", "00:1a:2b:3c:4d:5e"),
+    ],
+)
+def test_resolve_mac_normalizes_every_supported_format(raw, expected):
+    assert _resolved(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [raw for raw, _ in ALL_ZERO_REPRESENTATIONS]
+    + [raw for raw, _ in BROADCAST_REPRESENTATIONS],
+)
+def test_resolve_mac_refuses_reserved_addresses(raw):
+    """Broadcast was not filtered here at all before, in any spelling."""
+    assert _resolved(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("00:00:00:00:00:01", "00:00:00:00:00:01"),
+        ("01:00:00:00:00:00", "01:00:00:00:00:00"),
+        ("ff:ff:ff:ff:ff:fe", "ff:ff:ff:ff:ff:fe"),
+        ("fe:ff:ff:ff:ff:ff", "fe:ff:ff:ff:ff:ff"),
+        ("f:f:f:f:f:f", "0f:0f:0f:0f:0f:0f"),
+        ("0f:0f:0f:0f:0f:0f", "0f:0f:0f:0f:0f:0f"),
+    ],
+)
+def test_resolve_mac_keeps_near_miss_addresses(raw, expected):
+    assert _resolved(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,kind",
+    [
+        ("zz:zz:zz:zz:zz:zz", "non-hex"),
+        ("q1:q2:q3:q4:q5:q6", "non-hex"),
+        ("00:1a:2b:3c:4d:5ez", "valid address plus a stray character"),
+        ("core-sw-01", "hostname"),
+        ("edge-sw.corp.local", "FQDN"),
+        ("Unknown", "scanner placeholder"),
+        ("N/A", "scanner placeholder"),
+        ("10.180.4.1", "IPv4 literal"),
+        ("192.168.1.1", "IPv4 literal"),
+        ("aabbcc/../../etc/passwd", "path injection"),
+        ("aabbcc?callback=x", "query injection"),
+        ("001a2b3c4d5e/../x", "valid address with a path appended"),
+        ("", "empty"),
+        (None, "None"),
+        (0, "non-string"),
+    ],
+)
+def test_resolve_mac_refuses_values_that_are_not_addresses(raw, kind):
+    """Each of these was previously returned verbatim, bound for a MACADDR."""
+    assert _resolved(raw) is None
+
+
+def test_resolve_mac_reads_either_host_key():
+    """Contract preserved: ``mac_address`` first, then ``mac``."""
+    assert _resolve_mac({"mac_address": "001a2b3c4d5e"}) == "00:1a:2b:3c:4d:5e"
+    assert _resolve_mac({"mac": "001a2b3c4d5e"}) == "00:1a:2b:3c:4d:5e"
+    assert (
+        _resolve_mac({"mac_address": "00:1a:2b:3c:4d:5e", "mac": "aa:bb:cc:dd:ee:ff"})
+        == "00:1a:2b:3c:4d:5e"
+    )
+    assert _resolve_mac({}) is None
+
+
+def test_resolve_mac_output_is_what_postgres_stores(db_session):
+    """The property the reconciliation lookups depend on.
+
+    ``_existing_assets_for_hosts`` builds ``existing_by_mac`` from the stored
+    value. Unless ``_resolve_mac`` returns that same string, the lookup cannot
+    hit — which is what happened for every scanner that did not emit colons.
+    """
+    for raw in (
+        "001a2b3c4d5e",
+        "001a.2b3c.4d5e",
+        "0:1a:2b:3c:4d:5e",
+        "00-1A-2B-3C-4D-5E",
+    ):
+        stored = db_session.execute(
+            text("SELECT CAST(:v AS macaddr)"), {"v": raw}
+        ).scalar()
+        db_session.rollback()
+        assert _resolved(raw) == str(stored)
+
+
+# =============================================================================
+# Asset synchronisation behaviour
+# =============================================================================
+
+
+def test_existing_asset_is_found_whatever_spelling_the_scanner_emits(
+    db_session, test_org
+):
+    """The reconciliation fix, exercised through the real lookup helper."""
+    asset = Asset(
+        id=gen_asset_id(str(test_org.id), "10.0.0.7"),
+        org_id=str(test_org.id),
+        ip_address="10.0.0.7",
+        mac_address="00:1a:2b:3c:4d:5e",
+    )
+    db_session.add(asset)
+    db_session.commit()
+
+    try:
+        for spelling in (
+            "00:1a:2b:3c:4d:5e",
+            "00:1A:2B:3C:4D:5E",
+            "00-1a-2b-3c-4d-5e",
+            "001a2b3c4d5e",
+            "001a.2b3c.4d5e",
+            "0:1a:2b:3c:4d:5e",
+        ):
+            host = {"ip": "10.0.0.99", "mac_address": spelling}
+            _, _, existing_by_mac = _existing_assets_for_hosts(
+                db_session, str(test_org.id), [host]
+            )
+            mac = _resolve_mac(host)
+            assert mac is not None
+            assert existing_by_mac.get(mac) is not None, spelling
+            assert existing_by_mac[mac].id == asset.id
+    finally:
+        db_session.delete(asset)
+        db_session.commit()
+
+
+def test_a_reserved_mac_never_becomes_an_asset_key(db_session, test_org):
+    """A host reporting a reserved address is identified by IP, not by MAC.
+
+    Several hosts can report an all-zero MAC at once — a NIC with no hardware
+    address, some hypervisor interfaces, a failed read — and before this they
+    all resolved to the same key.
+    """
+    for raw, _ in ALL_ZERO_REPRESENTATIONS + BROADCAST_REPRESENTATIONS:
+        host = {"ip": "10.0.0.8", "mac_address": raw}
+        assert _resolve_mac(host) is None
+
+        _, _, existing_by_mac = _existing_assets_for_hosts(
+            db_session, str(test_org.id), [host]
+        )
+        # Nothing to look up with, so the caller falls through to IP identity.
+        assert "00:00:00:00:00:00" not in existing_by_mac
+        assert "ff:ff:ff:ff:ff:ff" not in existing_by_mac
+
+
+def test_asset_id_falls_back_to_unknown_without_a_usable_mac(test_org):
+    """The ``_resolve_mac(h) or "unknown"`` branch in _existing_assets_for_hosts.
+
+    A host with no routable IP is keyed on its MAC instead. With a reserved or
+    malformed address that key is now the literal "unknown" rather than a
+    fabricated one, so two such hosts no longer collide on a MAC-shaped id.
+    """
+    assert _resolve_mac({"mac_address": "000000000000"}) is None
+    assert _resolve_mac({"mac_address": "zz:zz:zz:zz:zz:zz"}) is None
+    assert _resolve_mac({"mac_address": "001a2b3c4d5e"}) == "00:1a:2b:3c:4d:5e"

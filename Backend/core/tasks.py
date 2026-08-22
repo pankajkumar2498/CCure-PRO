@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
-from core.mac import RESERVED_MACS, mac_colon
+from core.mac import mac_identity
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
@@ -650,10 +650,7 @@ def _normalize_mac(value) -> str:
     hex check happens after it: a value is only comparable once it is in one
     form.
     """
-    normalized = mac_colon(value)
-    if not normalized or normalized in RESERVED_MACS:
-        return ""
-    return normalized
+    return mac_identity(value) or ""
 
 
 def _credentialed_sections_with_identity(

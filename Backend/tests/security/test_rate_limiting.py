@@ -20,6 +20,8 @@ Two things about how these are written:
 """
 
 import hashlib
+import logging
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -28,6 +30,47 @@ from db.base import gen_user_id, utcnow
 from db.models import Organization, PasswordResetToken, Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+
+
+@contextmanager
+def capture_logger(name, level=logging.INFO):
+    """
+    Collect records from one logger, without relying on global logging state.
+
+    `caplog` attaches to the *root* logger, so what it sees depends on the root
+    level, the propagate flag and whichever handlers happen to be installed when
+    the test runs. All three are process-global, and any earlier test can change
+    them. That is not hypothetical: the trust-boundary assertion below passed in
+    isolation and on a developer machine, then failed in CI with an empty
+    `caplog.text` purely because the two runs collect tests in different orders
+    (`pytest-randomly` is installed locally and is absent from CI's install
+    line, so "random" and "alphabetical" give it different neighbours).
+
+    Attaching a handler straight to the logger under test removes every one of
+    those dependencies. A test must not be able to fail because of what an
+    unrelated test did to the root logger.
+    """
+    records = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger(name)
+    handler = _Collector(level=level)
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+
+
+def logged_text(records):
+    """Render captured records the way the handler would have formatted them."""
+    return chr(10).join(r.getMessage() for r in records)
 
 
 # ── Which endpoints declare a limit ──────────────────────────────────────────
@@ -549,7 +592,7 @@ def test_rate_limit_response_carries_retry_after():
     assert body["request_id"] == "req-1"
 
 
-def test_rejections_are_logged_without_leaking_credentials(caplog):
+def test_rejections_are_logged_without_leaking_credentials():
     """
     A rate limit that refuses silently is a technical control; one that records
     what it refused is a security signal — it is what turns "some requests were
@@ -571,12 +614,12 @@ def test_rejections_are_logged_without_leaking_credentials(caplog):
         url = type("U", (), {"path": "/auth/login"})()
         client = type("C", (), {"host": "198.51.100.4"})()
 
-    with caplog.at_level(logging.WARNING, logger="ccure.security.ratelimit"):
+    with capture_logger("ccure.security.ratelimit", logging.WARNING) as records:
         record_rejection(
             _Req(), layer="endpoint", limit="10 per 1 minute", retry_after=60
         )
 
-    text = caplog.text
+    text = logged_text(records)
     assert "RATE_LIMIT_REJECTED" in text
     assert "/auth/login" in text
     assert "198.51.100.4" in text
@@ -584,7 +627,7 @@ def test_rejections_are_logged_without_leaking_credentials(caplog):
     assert "Bearer" not in text
 
 
-def test_degradation_is_announced_once_per_transition(caplog):
+def test_degradation_is_announced_once_per_transition():
     """
     The fallback path is invisible by design — when the shared store goes away
     the limiter keeps answering, so nothing in any response tells an operator
@@ -594,23 +637,22 @@ def test_degradation_is_announced_once_per_transition(caplog):
     Logged on transition only: a long outage must produce two lines, not one
     per request, or the alert drowns in its own noise.
     """
-    import logging
-
     from core.rate_limit_audit import report_degradation, reset_degradation_state
 
     reset_degradation_state()
-    with caplog.at_level(logging.WARNING, logger="ccure.security.ratelimit"):
+    with capture_logger("ccure.security.ratelimit", logging.WARNING) as records:
         report_degradation("unit", True)
         report_degradation("unit", True)
         report_degradation("unit", True)
         report_degradation("unit", False)
 
-    assert caplog.text.count("RATE_LIMIT_DEGRADED") == 1
-    assert caplog.text.count("RATE_LIMIT_RECOVERED") == 1
+    text = logged_text(records)
+    assert text.count("RATE_LIMIT_DEGRADED") == 1
+    assert text.count("RATE_LIMIT_RECOVERED") == 1
     reset_degradation_state()
 
 
-def test_the_trust_boundary_is_reported_at_startup(caplog):
+def test_the_trust_boundary_is_reported_at_startup():
     """
     An auditor asking "which hops may declare a client address here?" should
     get the answer from the running system, not from a config file that may not
@@ -620,12 +662,10 @@ def test_the_trust_boundary_is_reported_at_startup(caplog):
     router before logging.basicConfig, so an import-time warning had no handler
     to reach and was effectively invisible.
     """
-    import logging
-
     from core.ip_resolver import log_trust_boundary
 
-    with caplog.at_level(logging.INFO, logger="core.ip_resolver"):
+    with capture_logger("core.ip_resolver", logging.INFO) as records:
         too_wide = log_trust_boundary()
 
-    assert "trusts" in caplog.text
+    assert "trusts" in logged_text(records)
     assert not too_wide, f"a trusted range is wide enough to hold users: {too_wide}"

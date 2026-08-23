@@ -3525,6 +3525,68 @@ def purge_stale_unverified_accounts() -> dict:
         db.close()
 
 
+@celery_app.task(name="ccure.tasks.purge_expired_refresh_sessions", queue="default")
+def purge_expired_refresh_sessions() -> dict:
+    """
+    Delete refresh-token sessions that are long past being useful.
+
+    `refresh_token_sessions` is append-only in practice: every login inserts a
+    row, every refresh inserts another and revokes the old one, and nothing
+    ever removed any of them. With 30-minute access tokens the SPA refreshes
+    roughly 48 times a day per signed-in session, so a single daily user
+    generates on the order of 17,000 rows a year — none of which any query
+    needs after the row expires.
+
+    Two properties worth keeping:
+
+    * **Revoked rows are kept for the full retention window, not deleted
+      immediately.** The revocation *is* the audit record — "this session was
+      signed out at 14:02 from this address" is exactly what someone
+      investigating a compromise needs, and deleting it the moment it stops
+      being usable would erase the evidence of the event being investigated.
+
+    * **Only rows that are both past `expires_at` and older than the window are
+      removed.** A row cannot be revived: `_get_refresh_session` rejects
+      anything expired, so nothing here can end a session that still works.
+
+    Bounded by `REFRESH_SESSION_RETENTION_DAYS`.
+    """
+    import datetime
+
+    from config import AppConfig
+    from db.models import RefreshTokenSession
+
+    days = AppConfig.REFRESH_SESSION_RETENTION_DAYS
+    if days <= 0:
+        return {"success": True, "purged": 0, "skipped": "retention disabled"}
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff = now - datetime.timedelta(days=days)
+
+    db = SessionLocal()
+    try:
+        removed = (
+            db.query(RefreshTokenSession)
+            .filter(
+                RefreshTokenSession.expires_at < now,
+                RefreshTokenSession.issued_at < cutoff,
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        if removed:
+            log.info(
+                "Purged %s refresh-token session(s) issued before %s", removed, cutoff
+            )
+        return {"success": True, "purged": removed}
+    except Exception as exc:
+        db.rollback()
+        log.error("Failed to purge refresh sessions: %s", exc, exc_info=True)
+        return {"success": False, "error": str(exc)}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="ccure.tasks.reconcile_amt_inventory_task", queue="scanner")
 def reconcile_amt_inventory_task(org_id: str) -> dict:
     """Async background task to run AMT reconciliation for an organization."""

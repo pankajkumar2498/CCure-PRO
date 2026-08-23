@@ -1215,9 +1215,32 @@ Source: `Backend/routers/user_profile.py` — 7 operations, all
 | GET    | `/user/preferences`           | —                       | Theme, defaults, notification settings |
 | PUT    | `/user/preferences`           | `PreferencesRequest`    | Persisted to `users.preferences`       |
 | GET    | `/user/sessions`              | —                       | Active `refresh_token_sessions`        |
+| DELETE | `/user/sessions`              | —                       | Revokes every session except this one  |
 | DELETE | `/user/sessions/{session_id}` | `session_id: int`       | 204; revokes one session               |
 
 `session_id` is the `BigInteger` primary key of `refresh_token_sessions`.
+
+`GET /user/sessions` returns only sessions that are neither revoked nor past
+`expires_at`, and marks the session making the request with `is_current: true`.
+That flag is read from the refresh cookie, not the access token — the access
+token identifies the _user_, who may hold several sessions. A caller with no
+refresh cookie (an API client holding only a bearer token) gets `is_current:
+false` on every row rather than an error. `device_info` is a best-effort parse
+of the User-Agent recorded when the session was created: `{browser, platform,
+raw}`. It is a memory aid for the account owner, never evidence — the header is
+supplied by the client.
+
+`DELETE /user/sessions` returns `{"revoked": <count>, "kept_current_session":
+<bool>}`. If the caller cannot be identified, every session is revoked
+including the caller's own; "I could not tell which one is yours" must not mean
+"so I left them all running". Sessions are marked `revoked_at` rather than
+deleted, so the audit trail keeps showing that they existed.
+
+**An account may be signed in on any number of devices at once.** That is
+deliberate: capping it pushes people into sharing a browser or logging each
+other out, and neither makes anything safer. What the choice requires is that
+the owner can see where the account is signed in and end any of it, which is
+what these three endpoints are for.
 
 ---
 

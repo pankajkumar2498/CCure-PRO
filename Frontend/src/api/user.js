@@ -43,3 +43,15 @@ export const getSessions = () =>
 /** Revoke a specific session by ID */
 export const revokeSession = (session_id) =>
   axiosInstance.delete(`/user/sessions/${session_id}`).then((r) => r.data);
+
+/**
+ * Revoke every session except the one making this request.
+ *
+ * The control that matters when somebody suspects their account is in use
+ * elsewhere: revoking one at a time needs you to know which row is the
+ * intruder, and the reason for opening this screen is not knowing.
+ *
+ * Resolves to { revoked, kept_current_session }.
+ */
+export const revokeOtherSessions = () =>
+  axiosInstance.delete("/user/sessions").then((r) => r.data);

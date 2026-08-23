@@ -71,6 +71,14 @@ celery_app.conf.beat_schedule = {
     # New disposable-mail providers appear constantly, so a corpus frozen at
     # deploy time decays into uselessness. Weekly, off-hours; the sync merges
     # and never replaces, so a failed run leaves the previous data intact.
+    # refresh_token_sessions gains a row per login *and* one per token
+    # rotation, which with 30-minute access tokens is ~48 a day per signed-in
+    # session. Nothing ever deleted them. Revoked rows are deliberately kept
+    # for the full retention window — the revocation is the audit record.
+    "purge-expired-refresh-sessions-daily": {
+        "task": "ccure.tasks.purge_expired_refresh_sessions",
+        "schedule": crontab(hour=4, minute=0),
+    },
     "sync-disposable-email-domains-weekly": {
         "task": "ccure.tasks.sync_disposable_domains",
         "schedule": crontab(hour=4, minute=15, day_of_week="mon"),

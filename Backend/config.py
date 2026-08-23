@@ -437,14 +437,111 @@ class AppConfig:
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # Trusted proxies for client IP resolution (prevents IP spoofing)
+    # ── Trusted proxies for client IP resolution ─────────────────────────────
+    #
+    # This list decides which hops are allowed to *speak about* the client
+    # address, so it is a security control, not a logging convenience: the
+    # resolved address is the rate-limiting bucket key and the value written to
+    # the audit trail.
+    #
+    # The default used to include 10.0.0.0/8 and 192.168.0.0/16. This
+    # deployment's own clients live at 10.180.6.0/24 — inside 10.0.0.0/8 — so
+    # every real client was classified as a trusted proxy and skipped by the
+    # chain walk. The correct address still came back, but only through the
+    # "all hops trusted, take the leftmost" fallback, and the leftmost entry is
+    # exactly the one a client controls if any hop ever appends instead of
+    # overwriting X-Forwarded-For. It worked by luck of the topology, not by
+    # design.
+    #
+    # List only the addresses of actual reverse proxies. Here that is host
+    # nginx, which the API container sees as the Docker bridge gateway, plus
+    # loopback for a direct local call. If you put a load balancer or WAF in
+    # front, add *its* address — never the network your users sit on.
     TRUSTED_PROXIES: list = [
         ip.strip()
-        for ip in os.getenv(
-            "TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-        ).split(",")
+        for ip in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12").split(",")
         if ip.strip()
     ]
+
+    # ── Rate limiting ────────────────────────────────────────────────────────
+    #
+    # Per-endpoint limits are declared with @limiter.limit on the routes that
+    # need them. These three settings cover what a decorator cannot.
+
+    # Baseline ceiling applied to every API route that carries no explicit
+    # limit of its own, per client IP. Deliberately generous — this is a
+    # backstop against a runaway client or a scripted sweep, not a usability
+    # tax, and the endpoints that need a real limit already have one. Set to an
+    # empty string to disable the baseline entirely.
+    #
+    # Sized per *IP*, and an office behind one NAT address shares the bucket,
+    # so it has to clear a whole floor of analysts using the dashboard at once.
+    API_DEFAULT_RATE_LIMIT: str = os.getenv("API_DEFAULT_RATE_LIMIT", "600/minute")
+
+    # Paths the baseline never applies to. Matched exactly unless the entry
+    # ends in "*", which makes the text before it a prefix.
+    #
+    # "/" is this API's health endpoint and is polled by monitoring at a rate
+    # that has nothing to do with abuse. Note it must be an *exact* entry — as
+    # a prefix it would exempt the whole application, which is why the
+    # middleware does not treat entries as prefixes by default.
+    API_RATE_LIMIT_EXEMPT_PATHS: list = [
+        p.strip()
+        for p in os.getenv(
+            "API_RATE_LIMIT_EXEMPT_PATHS",
+            "/,/docs*,/redoc*,/openapi.json",
+        ).split(",")
+        if p.strip()
+    ]
+
+    # What happens to rate limiting when Redis is unreachable.
+    #
+    # Before this existed the answer was "every limited endpoint returns 500":
+    # slowapi is constructed with swallow_errors=False, so a storage failure
+    # propagated out of the decorator and login, registration and every scan
+    # endpoint broke outright. That is not fail-closed in any useful sense — it
+    # is an outage.
+    #
+    # With an in-memory fallback the limits keep being enforced from process
+    # memory during the outage. Two caveats, both acceptable: the counters are
+    # per worker process, so the effective limit is multiplied by the worker
+    # count, and slowapi applies *these* limits in place of the per-route ones
+    # while the fallback is active. It is a degraded control, not the absence
+    # of one. Set empty to restore the old raise-on-failure behaviour.
+    RATE_LIMIT_MEMORY_FALLBACK: str = os.getenv(
+        "RATE_LIMIT_MEMORY_FALLBACK", "20/minute"
+    )
+
+    # ── Password-recovery anti-automation ────────────────────────────────────
+    #
+    # Two different abuses, so two different counters.
+    #
+    # PASSWORD_RESET_IP_HOURLY_LIMIT bounds token guessing. The token is 32
+    # random bytes, so guessing it is not the realistic threat; what this
+    # actually buys is that a script hammering /auth/reset-password shows up as
+    # 429s in the audit trail instead of as unbounded 400s that nobody counts.
+    #
+    # PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT bounds mail bombing. /auth/forgot-
+    # password sends a message to an address the caller names, and the per-IP
+    # limit does nothing about a caller who rotates addresses, so this one is
+    # keyed on the *target account*. Set either to 0 to disable.
+    PASSWORD_RESET_IP_HOURLY_LIMIT: int = int(
+        os.getenv("PASSWORD_RESET_IP_HOURLY_LIMIT", "20")
+    )
+    PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT: int = int(
+        os.getenv("PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT", "5")
+    )
+
+    # How long an expired refresh-token session row is kept before being swept.
+    #
+    # Not the same thing as the token's own 7-day lifetime: the row stops being
+    # usable at expires_at, and this is how long the *record* of it survives
+    # afterwards. 90 days keeps a full quarter of sign-in history for anyone
+    # investigating an incident, while stopping a table that grows by ~48 rows
+    # per signed-in user per day from growing forever. 0 disables the sweep.
+    REFRESH_SESSION_RETENTION_DAYS: int = int(
+        os.getenv("REFRESH_SESSION_RETENTION_DAYS", "90")
+    )
 
     # Database
     DATABASE_URL = DatabaseConfig.DATABASE_URL

@@ -33,9 +33,23 @@ from db.base import Base
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
+#
+# `disable_existing_loggers=False` is required, not cosmetic. The default is
+# True, and it sets `.disabled = True` on every logger that already exists in
+# the process and is not named in alembic.ini — the whole application's
+# loggers, in other words.
+#
+# That is irreversible from the outside: `Logger.isEnabledFor()` checks
+# `.disabled` before it consults levels or handlers, so once it is set neither
+# `setLevel()` nor attaching a handler directly to the logger brings the
+# records back. Nothing is emitted at all.
+#
+# It only bites when alembic runs *in-process* rather than as the CLI, which
+# `tests/conftest.py` does when it upgrades the scratch schema. The symptom is
+# a test asserting on log output that captures zero records, several hundred
+# tests later, with nothing to connect it back to here.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Ensure env var database url overrides the ini setting.
 database_url = os.getenv("DATABASE_URL")

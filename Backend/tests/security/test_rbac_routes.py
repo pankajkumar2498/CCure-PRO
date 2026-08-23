@@ -22,6 +22,11 @@ PUBLIC_ROUTE_WHITELIST = {
     # Necessarily unauthenticated: the caller is proving control of a mailbox
     # precisely because it cannot yet authenticate. Both are rate-limited and
     # neither discloses whether an account exists.
+    #
+    # That rate-limiting claim was prose here and false in the code for a long
+    # time: /auth/reset-password carried no limit at all. It is asserted for
+    # real in tests/security/test_rate_limiting.py now. Do not restate a
+    # control in a comment without a test that fails when it goes away.
     "/auth/verify-email",
     "/auth/resend-verification",
     "/docs",

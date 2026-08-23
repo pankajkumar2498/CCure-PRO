@@ -9,22 +9,37 @@ import api from "../../../api/axiosInstance";
 // Mock the API instance
 vi.mock("../../../api/axiosInstance");
 
-// Mock vis-network library since it requires browser canvas APIs
+// Mock vis-network library since it requires browser canvas APIs.
+//
+// The implementations are `function` expressions rather than arrow functions,
+// and that is load-bearing rather than style. NetworkMap calls `new DataSet()`
+// and `new Network()`, and from Vitest 4 a mock whose implementation is an
+// arrow function is no longer constructible — `new` on it raises "is not a
+// constructor". Vitest says so directly: "The vi.fn() mock did not use
+// 'function' or 'class' in its implementation."
+//
+// The component catches that failure and degrades to "Failed to load
+// vis-network", so the symptom is not an obvious crash: most assertions still
+// pass and one test fails for a reason that reads like a component bug.
 vi.mock("vis-network/standalone", () => {
-  const mockNetwork = vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    fit: vi.fn(),
-    on: vi.fn(),
-    once: vi.fn(),
-  }));
-  const mockDataSet = vi.fn().mockImplementation(() => ({
-    clear: vi.fn(),
-    add: vi.fn(),
-    remove: vi.fn(),
-    get: vi.fn(),
-    getIds: vi.fn().mockReturnValue([]),
-    length: 0,
-  }));
+  const mockNetwork = vi.fn().mockImplementation(function () {
+    return {
+      destroy: vi.fn(),
+      fit: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+    };
+  });
+  const mockDataSet = vi.fn().mockImplementation(function () {
+    return {
+      clear: vi.fn(),
+      add: vi.fn(),
+      remove: vi.fn(),
+      get: vi.fn(),
+      getIds: vi.fn().mockReturnValue([]),
+      length: 0,
+    };
+  });
   return {
     Network: mockNetwork,
     DataSet: mockDataSet,

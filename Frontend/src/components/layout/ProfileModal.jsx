@@ -12,6 +12,7 @@ import {
   getProfile,
   updateProfile,
   getSessions,
+  revokeOtherSessions,
   revokeSession,
 } from "../../api/user";
 import ChangePasswordModal from "./ChangePasswordModal";
@@ -63,6 +64,30 @@ function formatDate(iso) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * Render a session's device description.
+ *
+ * The backend records { browser, platform, raw } from the User-Agent, and both
+ * labels can be "Unknown" — the parse is a deliberately small table, not a
+ * user-agent database. Falls back through the raw string rather than showing
+ * "Unknown Unknown", so an unrecognised client is still distinguishable from
+ * the others in the list, which is the entire point of showing this column.
+ */
+function formatDevice(info) {
+  if (!info) return "Browser session";
+
+  const browser =
+    info.browser && info.browser !== "Unknown" ? info.browser : null;
+  const platform =
+    info.platform && info.platform !== "Unknown" ? info.platform : null;
+
+  if (browser && platform) return `${browser} on ${platform}`;
+  if (browser) return browser;
+  if (platform) return platform;
+  if (info.raw) return info.raw.slice(0, 60);
+  return "Browser session";
 }
 
 function getInitials(name, username) {
@@ -253,7 +278,9 @@ function SecurityTab({ onOpenChangePassword }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   // MFA states
   const [wizardStep, setWizardStep] = useState(0); // 0 = closed, 1 = qr code scanning, 2 = recovery codes
@@ -287,6 +314,30 @@ function SecurityTab({ onOpenChangePassword }) {
       setError("Failed to revoke session");
     } finally {
       setRevoking(null);
+    }
+  };
+
+  const handleRevokeOthers = async () => {
+    // The list is re-fetched rather than filtered locally. The server decides
+    // which session it kept — it may have kept none, if this client had no
+    // refresh cookie to identify itself with — and guessing that here would
+    // show a session that no longer exists.
+    setRevokingOthers(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await revokeOtherSessions();
+      const remaining = await getSessions();
+      setSessions(remaining);
+      setNotice(
+        result.revoked === 0
+          ? "No other sessions were signed in."
+          : `Signed out ${result.revoked} other session${result.revoked === 1 ? "" : "s"}.`,
+      );
+    } catch {
+      setError("Failed to sign out other sessions");
+    } finally {
+      setRevokingOthers(false);
     }
   };
 
@@ -782,9 +833,12 @@ function SecurityTab({ onOpenChangePassword }) {
         <h4 className="pm-section-title">Active Sessions</h4>
         <p className="pm-section-desc">
           These are all devices / browsers currently logged into your account.
+          Signing in on a new device does not sign you out anywhere else, so
+          anything here that you do not recognise should be revoked.
         </p>
 
         {error && <div className="pm-alert pm-alert--error">{error}</div>}
+        {notice && <div className="pm-alert pm-alert--success">{notice}</div>}
 
         {loading ? (
           <div className="pm-loading">Loading sessions…</div>
@@ -802,9 +856,7 @@ function SecurityTab({ onOpenChangePassword }) {
                 </div>
                 <div className="pm-session-info">
                   <div className="pm-session-device">
-                    {s.device_info?.user_agent_summary ||
-                      s.device_info?.browser ||
-                      "Browser Session"}
+                    {formatDevice(s.device_info)}
                     {s.is_current && (
                       <span className="pm-current-badge">Current</span>
                     )}
@@ -831,6 +883,16 @@ function SecurityTab({ onOpenChangePassword }) {
               </div>
             ))}
           </div>
+        )}
+
+        {sessions.length > 1 && (
+          <button
+            className="pm-revoke-all-btn"
+            onClick={handleRevokeOthers}
+            disabled={revokingOthers}
+          >
+            {revokingOthers ? "Signing out…" : "Sign out all other sessions"}
+          </button>
         )}
       </div>
     </div>

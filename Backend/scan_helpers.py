@@ -42,8 +42,38 @@ def _rate_limit_key(request) -> str:
 
 
 # ─── Rate limiter (shared across routers) ────────────────────────────────────
-# Uses the same Redis instance as Celery for persistence
-limiter = Limiter(key_func=_rate_limit_key, storage_uri=AppConfig.CELERY_BROKER_URL)
+#
+# Counters live in the same Redis instance as Celery, which is what makes the
+# limit a real limit: an in-process counter would be multiplied by the number of
+# API worker processes, so "3/minute" would mean 3 per minute *per worker*.
+#
+# `in_memory_fallback` decides what happens when that Redis is unreachable, and
+# the previous answer was bad in a way that is easy to miss. slowapi is built
+# with swallow_errors=False, so a storage failure propagated straight out of the
+# decorator: login, registration and every scan endpoint answered 500. That is
+# not a fail-closed rate limit, it is an outage of the authentication system,
+# and it hands anyone who can disrupt Redis a way to take the product down.
+#
+# With a fallback configured, slowapi switches to process-local counters for the
+# duration and re-probes the backend periodically. Two honest caveats: the
+# counters are per worker process, and slowapi applies the *fallback* limit in
+# place of each route's own while the backend is down. The control is degraded,
+# not absent — which is the right trade for an outage nobody chose.
+_fallback_limits = (
+    [AppConfig.RATE_LIMIT_MEMORY_FALLBACK]
+    if AppConfig.RATE_LIMIT_MEMORY_FALLBACK
+    else []
+)
+
+limiter = Limiter(
+    key_func=_rate_limit_key,
+    storage_uri=AppConfig.CELERY_BROKER_URL,
+    in_memory_fallback=_fallback_limits,
+    # X-RateLimit-* on every limited response. Clients can back off before they
+    # are refused, and an auditor can confirm a limit is live from the wire
+    # rather than from the source.
+    headers_enabled=True,
+)
 
 from scans.progress import (
     finish_progress as _db_finish_progress,

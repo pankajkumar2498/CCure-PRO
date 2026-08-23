@@ -8775,7 +8775,7 @@
     },
     "/auth/reset-password": {
       "post": {
-        "description": "Resets the user's password using the secure token.\nValidates token presence, expiration, updates the user's password,\ninvalidates all current user sessions, and revokes the token.",
+        "description": "Resets the user's password using the secure token.\nValidates token presence, expiration, updates the user's password,\ninvalidates all current user sessions, and revokes the token.\n\nAnti-automation\n───────────────\nThis endpoint carried no rate limit at all, which made it the one\nunauthenticated write path in the API that could be driven without bound.\nThat is not primarily a token-guessing risk — the token is 32 random bytes\nand `/auth/forgot-password` next door was already limited — it is that an\nunbounded endpoint produces no signal. A script could submit for as long as\nit liked and the only trace was a stream of 400s that nothing counted.\n\nTwo ceilings now, both per client IP: a burst limit above, and an hourly\ncap on *failed* submissions below. Failures only, so a household or office\nbehind one NAT address resetting passwords legitimately is never affected\nby its neighbours — you have to be getting it wrong to accumulate.",
         "operationId": "reset_password_endpoint_auth_reset_password_post",
         "requestBody": {
           "content": {
@@ -15791,8 +15791,31 @@
       }
     },
     "/user/sessions": {
+      "delete": {
+        "description": "Sign out every session except the one making this request.\n\nThe control that matters when somebody suspects their account is being used\nelsewhere: revoking sessions one at a time requires knowing which row is the\nintruder, and the whole reason for reaching this screen is not knowing.\n\nRevocation, not deletion. The rows stay with `revoked_at` set so the audit\ntrail keeps showing that these sessions existed and when they were ended —\ndeleting them would erase the evidence of the event being responded to.\n\nIf the caller cannot be identified (no refresh cookie), every session is\nrevoked including whatever the caller is using. That is the safe direction:\n\"I could not tell which one is yours\" must not mean \"so I left them all\nrunning\".",
+        "operationId": "revoke_other_sessions_user_sessions_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Other Sessions",
+        "tags": [
+          "User Profile & Preferences"
+        ]
+      },
       "get": {
-        "description": "List all active sessions (refresh token sessions) for the current user.\n\nIncludes device info, IP address, and issue/expiration times.\nMarks the current session with is_current=True.",
+        "description": "List active sessions for the current user.\n\nThis product allows an account to be signed in on any number of devices at\nonce, which is a deliberate choice rather than an oversight — capping it\nwould push people into sharing one browser or logging each other out, and\nneither makes anything safer. What that choice *requires* is that the owner\nof an account can see where it is signed in and end any of those sessions,\nwhich is what this endpoint and the two below are for.\n\nExpired rows are filtered as well as revoked ones: a row past its\nexpires_at cannot be refreshed, so listing it would show a session that\ndoes not exist and invite someone to revoke something already gone.",
         "operationId": "get_sessions_user_sessions_get",
         "responses": {
           "200": {

@@ -31,10 +31,12 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from pydantic import BaseModel, Field, field_validator
+from scan_helpers import limiter
 from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger("ccure.routers.web_scans")
@@ -154,7 +156,14 @@ class TriageFindingRequest(BaseModel):
 
 
 @router.post("", status_code=201)
+# Same class as /scan/host-discovery and the other dispatch routes, and it was
+# the only one of them with no limit. This sends ffuf and nuclei at a target
+# the caller names, so an unbounded loop here is an unbounded outbound attack
+# from this host's address — the abuse lands on somebody else's network and
+# arrives with our name on it.
+@limiter.limit("5/minute")
 def start_web_scan(
+    request: Request,
     body: StartWebScanRequest,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),
@@ -563,7 +572,9 @@ def triage_finding(
 
 
 @router.get("/{scan_id}/report")
+@limiter.limit("10/minute")
 def download_web_scan_report(
+    request: Request,
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),

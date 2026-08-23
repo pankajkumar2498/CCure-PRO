@@ -59,13 +59,33 @@ def capture_logger(name, level=logging.INFO):
     logger = logging.getLogger(name)
     handler = _Collector(level=level)
     previous_level = logger.level
+    previous_disabled = logger.disabled
+    previous_manager_disable = logging.root.manager.disable
+
     logger.addHandler(handler)
     logger.setLevel(level)
+
+    # Both of these have to be cleared, and neither is reachable through
+    # setLevel or through the handler.
+    #
+    # `Logger.isEnabledFor()` checks `self.disabled` and the module-wide
+    # `manager.disable` threshold *before* it looks at levels or handlers, so
+    # either one leaves this collector attached to a logger that emits nothing
+    # and the assertion fails against an empty list with no clue why.
+    #
+    # `.disabled` is set wholesale by `logging.config.fileConfig` /
+    # `dictConfig`, which default to `disable_existing_loggers=True` and switch
+    # off every logger already in the process. alembic's env.py did exactly
+    # that, several hundred tests before this one ran.
+    logger.disabled = False
+    logging.disable(logging.NOTSET)
     try:
         yield records
     finally:
         logger.removeHandler(handler)
         logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
+        logging.disable(previous_manager_disable)
 
 
 def logged_text(records):

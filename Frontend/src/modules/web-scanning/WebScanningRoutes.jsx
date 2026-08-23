@@ -19,7 +19,10 @@ export default function WebScanningRoutes() {
         <Route path=":id" element={<ScanDetail />} />
         <Route path=":id/findings" element={<FindingsExplorer />} />
         <Route path=":id/assets" element={<AssetInventory />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/web-scans/dashboard" replace />}
+        />
       </Routes>
     </PanelErrorBoundary>
   );

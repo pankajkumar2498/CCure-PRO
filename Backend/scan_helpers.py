@@ -17,6 +17,7 @@ from core.ip_resolver import get_client_ip
 from db.models import Scan
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from starlette.responses import Response
 
 log = logging.getLogger("ccure.api")
 
@@ -65,7 +66,65 @@ _fallback_limits = (
     else []
 )
 
-limiter = Limiter(
+
+class _HeaderSafeLimiter(Limiter):
+    """A Limiter whose header injection cannot take an endpoint down.
+
+    With ``headers_enabled=True`` slowapi writes X-RateLimit-* onto the
+    response after the handler returns. It finds that response one of two
+    ways: the handler returned a ``Response`` object, or the handler declared
+    a ``response: Response`` parameter that FastAPI filled in. A handler that
+    does neither — the overwhelming majority, since returning a dict and
+    letting FastAPI serialise it is the normal style — hands slowapi ``None``,
+    and upstream `_inject_headers` answers that with a bare
+    ``raise Exception(...)`` from inside the endpoint call.
+
+    That is a 500 on every single request to the route, caused by a missing
+    parameter, and it is invisible until the route is exercised on a live
+    server: the test suite sets ``limiter.enabled = False``, which skips
+    injection entirely. Twenty-one routes shipped in exactly that state,
+    including `/scan/host-discovery` and `/auth/reset-password`, because
+    adding a limit to a route requires a change to its signature that nothing
+    checked for.
+
+    Missing rate-limit headers are a cosmetic loss; a 500 on scan dispatch is
+    an outage. So the same trade this module already makes for a Redis outage
+    applies here — degrade, log, and keep answering. `_route_limits` is
+    untouched, so the limit itself is still enforced; only the advisory
+    headers go missing.
+
+    `tests/security/test_rate_limit_headers.py` is what keeps this from
+    becoming a silent excuse for never declaring the parameter.
+    """
+
+    # Endpoints already warned about. The condition is a property of the route,
+    # not of the request, so it is logged once per endpoint — the same reason
+    # RATE_LIMIT_DEGRADED is logged on transition rather than per request. A
+    # line every request would bury the log of a busy route in a message about
+    # a missing header.
+    _warned_endpoints: set[str] = set()
+
+    def _inject_headers(self, response, current_limit):  # type: ignore[override]
+        if not isinstance(response, Response):
+            if self.enabled and self._headers_enabled and current_limit is not None:
+                # current_limit[1] is [key, scope]; the scope is the endpoint
+                # slowapi registered the limit against, which is the one piece
+                # of information that makes this actionable.
+                scope = current_limit[1][-1] if len(current_limit[1]) > 1 else "?"
+                if scope not in self._warned_endpoints:
+                    self._warned_endpoints.add(scope)
+                    log.warning(
+                        "Rate limit headers skipped for %s: the endpoint "
+                        "neither returned a Response nor declared a "
+                        "`response: Response` parameter. The limit is still "
+                        "enforced. See tests/security/test_rate_limit_headers.py",
+                        scope,
+                    )
+            return response
+        return super()._inject_headers(response, current_limit)
+
+
+limiter = _HeaderSafeLimiter(
     key_func=_rate_limit_key,
     storage_uri=AppConfig.CELERY_BROKER_URL,
     in_memory_fallback=_fallback_limits,

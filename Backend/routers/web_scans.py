@@ -32,6 +32,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -164,6 +165,7 @@ class TriageFindingRequest(BaseModel):
 @limiter.limit("5/minute")
 def start_web_scan(
     request: Request,
+    response: Response,
     body: StartWebScanRequest,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),

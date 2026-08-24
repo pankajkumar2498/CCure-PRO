@@ -17,7 +17,7 @@ from db.base import SessionLocal
 from db.models import ComplianceCredential, User
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE, SSHScanner
 from orchestrator.scan_orchestrator import ScanOrchestrator
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from scan_helpers import limiter, log
 from scans.db_helpers import create_scan
@@ -193,6 +193,7 @@ from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
 @limiter.limit("5/minute")
 async def scan_credentialed(
     request: Request,
+    response: Response,
     req: CredentialedScanRequest,
     org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),

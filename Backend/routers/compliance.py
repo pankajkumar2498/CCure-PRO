@@ -17,6 +17,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -967,6 +968,7 @@ def create_policy_baseline(
 @limiter.limit("5/minute")
 def trigger_compliance_scan(
     request: Request,
+    response: Response,
     payload: ScanTrigger,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -1621,6 +1623,7 @@ def _evidence_root() -> str:
 @limiter.limit("20/minute")
 async def upload_control_evidence(
     request: Request,
+    response: Response,
     control_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -2265,6 +2268,7 @@ def delete_credential(
 @limiter.limit("10/minute")
 def apply_remediation(
     request: Request,
+    response: Response,
     id: str,
     payload: RemediationRequest,
     db: Session = Depends(get_db),

@@ -38,6 +38,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -1545,6 +1546,7 @@ def _amt_int(value) -> int | None:
 @limiter.limit("3/minute")
 def import_amt_inventory(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),

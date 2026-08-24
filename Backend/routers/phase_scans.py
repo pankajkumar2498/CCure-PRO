@@ -22,7 +22,7 @@ from core.tasks import (
 )
 from db.base import get_db
 from db.models import Scan, User
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from scan_helpers import (
     VALID_PIPELINE_MODES,
@@ -310,6 +310,7 @@ class PhasesRequest(BaseModel):
 @limiter.limit("5/minute")
 async def scan_host_discovery(
     request: Request,
+    response: Response,
     req: HostDiscoveryRequest,
     org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
@@ -442,6 +443,7 @@ async def scan_host_discovery(
 @limiter.limit("5/minute")
 async def scan_asset_discovery(
     request: Request,
+    response: Response,
     req: AssetDiscoveryRequest,
     org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
@@ -511,6 +513,7 @@ async def scan_asset_discovery(
 @limiter.limit("5/minute")
 async def scan_vulnerability_audit(
     request: Request,
+    response: Response,
     req: VulnerabilityAuditRequest,
     user: User = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
@@ -562,6 +565,7 @@ async def scan_vulnerability_audit(
 @limiter.limit("5/minute")
 async def scan_phases(
     request: Request,
+    response: Response,
     req: PhasesRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),

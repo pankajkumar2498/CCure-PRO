@@ -13,7 +13,7 @@ Endpoints
 
 from auth.rbac import require_permission
 from db.models import User
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from scan_helpers import limiter, log
 
@@ -53,6 +53,7 @@ from core.tasks import run_traditional_scan_task
 @limiter.limit("5/minute")
 async def scan_host(
     request: Request,
+    response: Response,
     req: SingleHostRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
 ):
@@ -78,6 +79,7 @@ async def scan_host(
 @limiter.limit("5/minute")
 async def scan_range(
     request: Request,
+    response: Response,
     req: RangeRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
 ):
@@ -103,6 +105,7 @@ async def scan_range(
 @limiter.limit("5/minute")
 async def scan_subnet(
     request: Request,
+    response: Response,
     req: SubnetRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
 ):
@@ -128,6 +131,7 @@ async def scan_subnet(
 @limiter.limit("5/minute")
 async def scan_subnets(
     request: Request,
+    response: Response,
     req: SubnetsRequest,
     current_user: User = Depends(require_permission("scans", "execute")),
 ):

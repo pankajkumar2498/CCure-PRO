@@ -317,6 +317,34 @@ Two rules the layout depends on, both of which fail loudly if broken:
   because the refresh cookie is what identifies the session, had none either.
   42 routes carry explicit limits now, up from 21.
 
+  **Adding `@limiter.limit` to a route means adding `response: Response` to its
+  signature.** The limiter is built `headers_enabled=True`, so slowapi writes
+  X-RateLimit-* after the handler returns, and it finds the response only two
+  ways: the handler returned a `Response`, or it declared a `response: Response`
+  parameter for FastAPI to fill in. A handler that returns a dict and declares
+  neither hands slowapi `None`, and upstream `_inject_headers` answers with a
+  bare `raise Exception` ("parameter response must be an instance of …") from
+  inside the endpoint call — **a 500 on every request to that route**.
+
+  All 21 routes the audit above added limits to shipped in exactly that state,
+  `/scan/host-discovery` and `/auth/reset-password` among them. The original 21
+  were unaffected only by luck: five auth routes already took `response` to set
+  the refresh cookie, and the sixteen report downloads return a `FileResponse`.
+
+  Nothing caught it, and the reason matters: `conftest` sets
+  `limiter.enabled = False` for the suite, and a disabled limiter skips header
+  injection entirely, so the tests asserting the limits are *registered* pass
+  whether or not the route can serve a single request. This is only observable
+  on a live server. `tests/security/test_rate_limit_headers.py` now checks the
+  signature of every limited route statically, which does not depend on the
+  limiter being enabled.
+
+  `scan_helpers._HeaderSafeLimiter` is the backstop: no response to write to is
+  a logged warning naming the endpoint and a missing advisory header, never an
+  exception. Same trade as the Redis fallback above — degrade, log, keep
+  answering. `_route_limits` is untouched, so the limit is still enforced. Do
+  not read that as licence to skip the parameter; the test is what catches it.
+
   Beware the inventory's own false-positive mode: the first pass flagged four
   routes as unauthenticated that were not, because it did not know about
   `get_current_user_flexible` (the ticket-or-bearer dependency the report

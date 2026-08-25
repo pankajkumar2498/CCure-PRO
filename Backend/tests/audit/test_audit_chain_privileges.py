@@ -23,6 +23,8 @@ injection reaching a second statement, not a database superuser.
 
 import pytest
 from audit_chain_support import (
+    chain_schema,
+    fn,
     heads,
     require_chain,
 )
@@ -178,7 +180,7 @@ def test_app_role_cannot_set_role_to_the_writer(db_session):
 
 def test_app_role_cannot_take_ownership_of_the_head_table(db_session):
     role = db_session.execute(text("SELECT current_user")).scalar()
-    message = _denied(db_session, f'ALTER TABLE audit_chain_heads OWNER TO "{role}"')
+    message = _denied(db_session, f'ALTER TABLE {heads(db_session)} OWNER TO "{role}"')
     assert "must be" in message or "permission denied" in message
 
 
@@ -189,7 +191,8 @@ def test_app_role_cannot_redefine_the_canonical_algorithm(db_session):
     """
     message = _denied(
         db_session,
-        "CREATE OR REPLACE FUNCTION public._audit_field_v1(v text) RETURNS text "
+        f"CREATE OR REPLACE FUNCTION {fn(db_session, '_audit_field_v1')}(v text) "
+        "RETURNS text "
         "LANGUAGE sql IMMUTABLE AS $$ SELECT 'x' $$",
     )
     assert "must be owner" in message or "permission denied" in message
@@ -202,35 +205,45 @@ def test_app_role_cannot_drop_the_canonical_functions(db_session):
     else.** So this property holds only where the application role does not own
     the schema the chain objects live in.
 
-    Measured on this cluster, same roles, same script:
+    Measured on this cluster *before* the machinery was isolated, when it still
+    lived in `public`:
 
         ccure_test       public owned by pg_database_owner
                          -> DROP FUNCTION ... = must be owner   (protected)
         ccure_pytest_db  public owned by ccure_user
                          -> DROP FUNCTION ... = ALLOWED         (not protected)
 
-    Where the precondition does not hold this **skips and is reported as NOT
-    VERIFIED**, rather than failing forever or — as an earlier version did —
-    actually performing the drop. It is a property of the deployment, not a
-    defect in the chain: hashes are still computed and verified, and tampering
-    with existing rows is still detected. What is absent is protection against
-    the application role removing the machinery outright.
+    That difference is exactly why the machinery moved to `audit_chain`, owned
+    by `audit_chain_writer`. The precondition is therefore no longer "who owns
+    public" — `audit_logs` still lives there and the application role may well
+    own it — but **who owns the schema the chain objects are in**. Checking
+    `public` here after the move would test an unrelated schema and pass or
+    skip for the wrong reason.
+
+    A skip means the chain has not been isolated on this database and the
+    property genuinely does not hold. It is reported as NOT VERIFIED rather
+    than failing forever or — as an earlier version of this test did —
+    actually performing the drop.
     """
-    schema_owner = db_session.execute(
-        text("SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname='public'")
-    ).scalar()
     app_role = db_session.execute(text("SELECT current_user")).scalar()
+    schema = chain_schema(db_session)
+    schema_owner = db_session.execute(
+        text("SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = :s"),
+        {"s": schema},
+    ).scalar()
 
     if schema_owner == app_role:
         pytest.skip(
-            f"NOT VERIFIED on this database: schema public is owned by the "
-            f"application role ({app_role}), and a schema owner can drop objects "
-            f"it does not own. Verified on ccure_test, where public is owned by "
-            f"pg_database_owner. See scripts/audit/bootstrap_chain.sql, which "
-            f"warns about exactly this at install time."
+            f"NOT VERIFIED on this database: the chain lives in schema "
+            f"`{schema}`, owned by the application role ({app_role}), and a "
+            f"schema owner can drop objects it does not own. Run "
+            f"scripts/audit/bootstrap_chain.sql as a superuser to isolate the "
+            f"machinery in `audit_chain`."
         )
 
-    message = _denied(db_session, "DROP FUNCTION public._audit_field_v1(text)")
+    message = _denied(
+        db_session, f"DROP FUNCTION {fn(db_session, '_audit_field_v1')}(text)"
+    )
     assert "must be owner" in message or "permission denied" in message
 
 
@@ -241,8 +254,9 @@ def test_the_head_table_is_owned_by_the_writer_role(db_session):
     owner = db_session.execute(
         text(
             "SELECT pg_get_userbyid(relowner) FROM pg_class "
-            "WHERE oid = 'public.audit_chain_heads'::regclass"
-        )
+            "WHERE oid = CAST(:h AS regclass)"
+        ),
+        {"h": heads(db_session)},
     ).scalar()
     assert owner == "audit_chain_writer"
 
@@ -254,7 +268,7 @@ def test_every_chain_function_is_owned_by_the_writer_role(db_session, fname, arg
             "SELECT pg_get_userbyid(proowner) FROM pg_proc "
             "WHERE oid = CAST(:s AS regprocedure)"
         ),
-        {"s": f"public.{fname}({args})"},
+        {"s": f"{chain_schema(db_session)}.{fname}({args})"},
     ).scalar()
     assert owner == "audit_chain_writer"
 
@@ -272,11 +286,12 @@ def test_every_chain_function_pins_its_search_path(db_session, fname, args):
                 "SELECT array_to_string(proconfig, ',') FROM pg_proc "
                 "WHERE oid = CAST(:s AS regprocedure)"
             ),
-            {"s": f"public.{fname}({args})"},
+            {"s": f"{chain_schema(db_session)}.{fname}({args})"},
         ).scalar()
         or ""
     )
-    assert "search_path=pg_catalog, public" in cfg.replace('"', "")
+    expected = f"search_path=pg_catalog, {chain_schema(db_session)}, public"
+    assert expected in cfg.replace('"', ""), f"expected {expected!r}, got {cfg!r}"
 
 
 @pytest.mark.parametrize("fname,args", DEFINER_FUNCS)
@@ -284,7 +299,7 @@ def test_the_writing_functions_are_security_definer(db_session, fname, args):
     assert (
         db_session.execute(
             text("SELECT prosecdef FROM pg_proc WHERE oid = CAST(:s AS regprocedure)"),
-            {"s": f"public.{fname}({args})"},
+            {"s": f"{chain_schema(db_session)}.{fname}({args})"},
         ).scalar()
         is True
     )
@@ -302,7 +317,7 @@ def test_the_pure_functions_are_not_security_definer(db_session, fname, args):
     assert (
         db_session.execute(
             text("SELECT prosecdef FROM pg_proc WHERE oid = CAST(:s AS regprocedure)"),
-            {"s": f"public.{fname}({args})"},
+            {"s": f"{chain_schema(db_session)}.{fname}({args})"},
         ).scalar()
         is False
     )
@@ -318,8 +333,9 @@ def test_the_chain_trigger_function_pins_a_lock_timeout(db_session):
     cfg = db_session.execute(
         text(
             "SELECT array_to_string(proconfig, ',') FROM pg_proc "
-            "WHERE oid = 'public.audit_chain_advance_v1()'::regprocedure"
-        )
+            "WHERE oid = CAST(:s AS regprocedure)"
+        ),
+        {"s": f"{fn(db_session, 'audit_chain_advance_v1')}()"},
     ).scalar()
     assert "lock_timeout=3s" in (cfg or "")
 
@@ -333,7 +349,7 @@ def test_public_cannot_execute_any_chain_function(db_session, fname, args):
     assert (
         db_session.execute(
             text("SELECT has_function_privilege('public', :s, 'EXECUTE')"),
-            {"s": f"public.{fname}({args})"},
+            {"s": f"{chain_schema(db_session)}.{fname}({args})"},
         ).scalar()
         is False
     )
@@ -344,7 +360,7 @@ def test_the_app_role_can_execute_what_it_legitimately_needs(db_session, fname, 
     assert (
         db_session.execute(
             text("SELECT has_function_privilege(current_user, :s, 'EXECUTE')"),
-            {"s": f"public.{fname}({args})"},
+            {"s": f"{chain_schema(db_session)}.{fname}({args})"},
         ).scalar()
         is True
     )
@@ -357,7 +373,7 @@ def test_the_app_role_cannot_execute_the_legacy_seeder(db_session):
         db_session.execute(
             text(
                 "SELECT has_function_privilege(current_user, "
-                "'public.audit_chain_seed_legacy_v1()', 'EXECUTE')"
+                "'audit_chain.audit_chain_seed_legacy_v1()', 'EXECUTE')"
             )
         ).scalar()
         is False
@@ -387,3 +403,103 @@ def test_the_trigger_writes_the_head_the_app_role_cannot(db_session, test_user):
     assert after.event_count == before_count + 1
     assert after.last_event_id == event.id
     assert after.last_record_hash == event.record_hash
+
+
+# ── A decoy in `public` cannot reach the real chain ─────────────────────────
+
+
+def test_a_public_decoy_function_cannot_affect_the_real_chain(db_session):
+    """
+    The application role can legitimately create `public._audit_field_v1` where
+    it owns `public` — and that is fine, because it is inert.
+
+    This is the specific finding that made an earlier version of
+    `test_app_role_cannot_redefine_the_canonical_algorithm` misleading. That
+    test attempted `CREATE OR REPLACE FUNCTION public._audit_field_v1(...)` and
+    asserted refusal. While the real function lived in `public` that was a
+    genuine check. Once it moved to `audit_chain`, `public` was empty, the
+    statement started **succeeding**, and the test reported "the app role can
+    redefine the canonical algorithm" — which was false. It was creating a
+    decoy in an unrelated schema.
+
+    What actually protects the chain is not that the decoy cannot exist, but
+    that nothing ever resolves to it: every chain reference is fully
+    schema-qualified, and `search_path` is defence in depth rather than the
+    boundary. This test pins that down directly.
+
+    Complementary to `test_a_public_shadow_head_table_cannot_affect_the_real_chain`
+    in the isolation suite, which covers the same property for the head *table*.
+    Both are kept.
+    """
+    schema = chain_schema(db_session)
+    if schema != "audit_chain":
+        pytest.skip(
+            f"NOT VERIFIED: chain is in `{schema}`; a decoy in `public` is only "
+            f"meaningful once the machinery has been isolated."
+        )
+
+    real = fn(db_session, "_audit_field_v1")
+    before = db_session.execute(text(f"SELECT {real}('abc')")).scalar()
+    assert before == "3:abc", "baseline: the real encoder length-prefixes"
+
+    try:
+        db_session.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION public._audit_field_v1(v text) "
+                "RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'PWNED' $$"
+            )
+        )
+    except Exception:
+        db_session.rollback()
+        pytest.skip(
+            "NOT VERIFIED here: this role cannot create functions in `public`, "
+            "so the decoy scenario is not reachable on this database."
+        )
+
+    try:
+        # The decoy exists and is genuinely different...
+        assert (
+            db_session.execute(text("SELECT public._audit_field_v1('abc')")).scalar()
+            == "PWNED"
+        )
+        # ...and the real one is untouched.
+        assert db_session.execute(text(f"SELECT {real}('abc')")).scalar() == "3:abc"
+
+        # Canonical hashing must still route through audit_chain. If it
+        # resolved to the decoy, every field would encode as 'PWNED' and the
+        # payload would collapse to a constant.
+        row = db_session.execute(
+            text(
+                "SELECT id, org_id FROM public.audit_logs "
+                " WHERE record_hash IS NOT NULL LIMIT 1"
+            )
+        ).fetchone()
+        if row is not None:
+            payload = db_session.execute(
+                text(
+                    f"SELECT {fn(db_session, 'audit_canonical_payload_v1')}(a) "
+                    "FROM public.audit_logs a WHERE a.id = :i AND a.org_id = :o"
+                ),
+                {"i": row.id, "o": row.org_id},
+            ).scalar()
+            assert "PWNED" not in payload, (
+                "the canonical payload resolved to the decoy — chain references "
+                "are not fully qualified"
+            )
+            assert row.id in payload, "payload should contain the real event id"
+
+        # And the owner of the real function is still the writer role.
+        assert (
+            db_session.execute(
+                text(
+                    "SELECT pg_get_userbyid(proowner) FROM pg_proc p "
+                    "  JOIN pg_namespace n ON n.oid = p.pronamespace "
+                    " WHERE n.nspname = 'audit_chain' AND p.proname = '_audit_field_v1'"
+                )
+            ).scalar()
+            == "audit_chain_writer"
+        )
+    finally:
+        db_session.rollback()
+        db_session.execute(text("DROP FUNCTION IF EXISTS public._audit_field_v1(text)"))
+        db_session.commit()

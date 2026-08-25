@@ -184,18 +184,34 @@ def main() -> int:
         _print_state(state)
 
         # These are expected to change: that is the point of the move.
-        expected_to_change = {"chain_schema", "chain_schema_owner", "trigger_points_at"}
-        # These must NOT change under any circumstances.
+        #
+        # `alembic_revision` is here rather than in `must_hold` because the
+        # documented sequence deliberately applies the guard revision
+        # (b8c9d0e1f2a3) after the move, and `start.sh` also runs
+        # `alembic upgrade head` on container restart. Treating it as an
+        # invariant made this tool report a violation on a database that was
+        # entirely correct — a false alarm on the one report that exists to be
+        # trusted. It is still printed, so an unexpected revision is visible.
+        expected_to_change = {
+            "chain_schema",
+            "chain_schema_owner",
+            "trigger_points_at",
+            "alembic_revision",
+        }
+        # These must NOT change under any circumstances. Every one is either
+        # chain data or a property whose change would mean the move was not the
+        # catalogue operation it claims to be.
         must_hold = [
             "event_fingerprint",
             "head_fingerprint",
             "total_events",
             "legacy_events",
             "chained_events",
-            "alembic_revision",
             "audit_logs_owner",
             "public_schema_owner",
             "append_only_triggers",
+            # Unchanged OID is the proof the trigger binding followed the
+            # function across schemas rather than being dropped and recreated.
             "trigger_function_oid",
         ]
 

@@ -250,20 +250,43 @@ written unchained, which `verify_chain.py` reports as unhashed rows sitting
 after genesis, and which the startup line reports as a count of unverifiable
 events.
 
-**Status:** the precondition **holds** on `ccure_test`, the production-like
-database. It does **not** hold on `ccure_pytest_db`, whose database and schema
-were created by `ccure_user` in `conftest`.
+**CLOSED 25 Aug 2026.** The machinery was moved into a dedicated `audit_chain`
+schema owned by `audit_chain_writer`, on **both** databases. The application
+role owns nothing there and belongs to no role that does, so the precondition
+now holds everywhere:
 
-`bootstrap_chain.sql` now reports this at install time — `NOTICE` when
-protected, `WARNING` naming the consequence when not — so it is a recorded
-decision rather than a silent assumption.
-`test_app_role_cannot_drop_the_canonical_functions` skips with an explicit
-NOT VERIFIED message where the precondition cannot hold.
+```
+DROP SCHEMA audit_chain    -> must be owner of schema audit_chain
+DROP TABLE  …_heads        -> must be owner of table audit_chain_heads
+DROP FUNCTION …hash_v1     -> must be owner of function audit_chain.audit_record_hash_v1
+CREATE OR REPLACE …        -> permission denied for schema audit_chain
+```
 
-**To close properly:** move the chain objects into a dedicated schema owned by
-`audit_chain_writer` (`audit_chain`), which no application role owns. That is a
-design change to the bootstrap and is **not** made unilaterally — it would need
-approval and a re-run on both databases.
+The move was a catalogue operation — `ALTER … SET SCHEMA` plus
+`CREATE OR REPLACE`, with **zero DROP statements** — and preserved chain state
+byte-for-byte. `trigger_function_oid` was unchanged at 3194421, which is the
+direct evidence the trigger binding followed the function rather than being
+recreated. Both fingerprints survived intact:
+
+```
+event fingerprint : baf3ae314755dc9989ec6903ed7cfba630be5faf98879798c8e71c9ff9117d86
+head  fingerprint : f3a92a310d755e17490eda662f97f4d253412184d33a8ed4c707164ce288719a
+517 total / 515 legacy / 2 chained    (unchanged)
+```
+
+**One thing the move changed that is worth recording**, because it briefly
+looked like a security regression and was not: with the real functions gone
+from `public`, `ccure_user` _can_ create a decoy `public._audit_field_v1` on a
+database where it owns that schema. It is inert — every chain reference is
+schema-qualified — and
+`test_a_public_decoy_function_cannot_affect_the_real_chain` now pins that down
+directly. The old assertion "cannot create `public._audit_field_v1`" was
+meaningful only while the real function lived there; afterwards it reported a
+compromise that did not exist.
+
+`bootstrap_chain.sql` reports this at install time — `NOTICE` when protected,
+`WARNING` naming the consequence when not. Both databases now report
+`app role can remove : no`.
 
 ### How it was found
 
@@ -282,16 +305,16 @@ in a `finally`, before any assertion, and an AST sweep confirms no remaining
 
 ## Status summary
 
-| Gap                                  | State                                           | Blocks                         |
-| ------------------------------------ | ----------------------------------------------- | ------------------------------ |
-| Chain installed on `ccure_test`      | **DONE** 25 Aug 2026                            | —                              |
-| Chain installed on `ccure_pytest_db` | **DONE** 25 Aug 2026                            | —                              |
-| Cross-role SECURITY DEFINER path     | **VERIFIED** — 38/38 acceptance checks          | —                              |
-| Schema-ownership precondition (§6)   | Holds on `ccure_test`, not on `ccure_pytest_db` | Removal-resistance only        |
-| Concurrent-load testing              | Not performed                                   | Chain lock-cost acceptance     |
-| Migration downgrade execution        | Written, never run                              | Production rollback confidence |
-| Fresh-install hardening              | Code in place, never run                        | Any new deployment             |
-| Per-endpoint atomicity (19 of 21)    | Structural guard only                           | Nothing; belt-and-braces       |
+| Gap                                  | State                                                    | Blocks                         |
+| ------------------------------------ | -------------------------------------------------------- | ------------------------------ |
+| Chain installed on `ccure_test`      | **DONE** 25 Aug 2026                                     | —                              |
+| Chain installed on `ccure_pytest_db` | **DONE** 25 Aug 2026                                     | —                              |
+| Cross-role SECURITY DEFINER path     | **VERIFIED** — 38/38 acceptance checks                   | —                              |
+| Schema-ownership precondition (§6)   | **CLOSED** — isolated in `audit_chain` on both databases | —                              |
+| Concurrent-load testing              | Not performed                                            | Chain lock-cost acceptance     |
+| Migration downgrade execution        | Written, never run                                       | Production rollback confidence |
+| Fresh-install hardening              | Code in place, never run                                 | Any new deployment             |
+| Per-endpoint atomicity (19 of 21)    | Structural guard only                                    | Nothing; belt-and-braces       |
 
 None blocks the work already deployed on this host, which was verified
 directly. The first two block any claim that audit records are

@@ -116,6 +116,29 @@ BEGIN
             RETURN OLD;
         END IF;
 
+        -- Phase 6a retention. TWO conditions, and both are load-bearing.
+        --
+        -- `current_user = 'audit_maintenance'` is true only inside
+        -- audit_retention.purge_legacy_v1(), which is SECURITY DEFINER and
+        -- owned by that role. `current_user` reflects the definer during the
+        -- function's execution and is not settable by the caller, so the
+        -- application role executing ordinary SQL never satisfies it.
+        --
+        -- `OLD.record_hash IS NULL` is the phase boundary, enforced by
+        -- PostgreSQL rather than by care. During 6a the maintenance role is
+        -- incapable of deleting a *chained* row at all -- not "does not", but
+        -- cannot, even if the purge function grows a bug, even if its
+        -- predicate is wrong, even if it is called with the wrong arguments.
+        -- Widening this to chained rows is phase 6b and needs its own
+        -- approval; until then the scope limit is a database constraint.
+        --
+        -- A legacy row has no hash, so nothing links to it: `prev_hash`
+        -- references a `record_hash` value and legacy rows have none.
+        -- Deleting one therefore cannot break a chain, for any dataset.
+        IF current_user = 'audit_maintenance' AND OLD.record_hash IS NULL THEN
+            RETURN OLD;
+        END IF;
+
         RAISE EXCEPTION
             'audit_logs is append-only: DELETE is not permitted (attempted by %)',
             current_user

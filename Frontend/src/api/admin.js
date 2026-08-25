@@ -184,6 +184,20 @@ export const getAuditLogDetail = async (eventId) => {
 // `verify` defaults to true and should stay that way. It is what makes the file
 // evidence rather than a copy: with it off, no stored hash is recomputed and the
 // export says so in its own header.
+// Phase 6a. What audit retention would remove, and everything standing in its
+// way — holds, the backup precondition, whether retention is enabled at all.
+//
+// Read-only. There is deliberately no counterpart that deletes: a purge runs
+// from the beat schedule or the CLI, so destroying audit history needs shell
+// access to the host as well as the permission. A deletion a session cookie
+// can reach is a deletion an XSS can reach.
+export const previewAuditRetention = async () => {
+  const response = await axiosInstance.get(
+    "/admin/audit-logs/retention/preview",
+  );
+  return response.data;
+};
+
 export const exportAuditLogs = async (params = {}, format = "csv") => {
   const response = await axiosInstance.get("/admin/audit-logs/export", {
     params: { ...params, format },

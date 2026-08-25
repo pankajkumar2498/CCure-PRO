@@ -17,9 +17,18 @@ to their own organisation.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from auth.rbac import require_permission
+from auth.rbac import require_permission, require_role
 from config import AppConfig
 from core.audit import log_audit_event
+from core.audit_retention import (
+    RetentionRefused,
+    active_holds,
+    newest_backup,
+    preview as retention_preview,
+    resolve_cutoff,
+    retention_installed,
+    take_export_lock,
+)
 from core.audit_taxonomy import SEVERITY_LEVELS
 from core.upload_guard import content_disposition
 from db.base import SessionLocal, get_db
@@ -636,6 +645,17 @@ def export_audit_logs(
             q=q,
         )
 
+    # Phase 6a. A shared, transaction-scoped advisory lock so a retention purge
+    # cannot remove rows between this count and the stream below and leave a
+    # file that contradicts its own header. The purge takes the same lock
+    # exclusively and non-blocking, so it defers to its next run rather than
+    # waiting on a download.
+    #
+    # `None` for a superadmin export that is not scoped to one tenant: it
+    # cannot decompose per organisation, so it takes the global key every purge
+    # also acquires.
+    take_export_lock(db, None if _is_superadmin(current_user) else current_user.org_id)
+
     query = build(db, current_user)
 
     cap = (
@@ -787,6 +807,14 @@ def export_audit_logs(
                     "the exporting user no longer exists; refusing to produce "
                     "an unscoped export"
                 )
+            # The streaming session needs its own lock: advisory locks belong to
+            # the transaction that took them, and the request's transaction was
+            # committed before this generator ran. Every keyset page below runs
+            # inside this session's single read transaction, so one acquisition
+            # covers the whole stream and is released when the session closes.
+            take_export_lock(
+                session, None if _is_superadmin(principal) else principal.org_id
+            )
             rows = _iter_export_rows(
                 session,
                 build(session, principal),
@@ -804,9 +832,94 @@ def export_audit_logs(
     )
 
 
+# ─── Retention preview ───────────────────────────────────────────────────────
+#
+# Phase 6a, and note what is *not* here: no route deletes an audit row, and
+# none ever will. Execution is the beat task or
+# `scripts/audit/purge_audit_retention.py --apply`, so destroying audit history
+# needs shell access to this host **as well as** the permission below. A
+# deletion that a session cookie can reach is a deletion an XSS can reach.
+
+
+@router.get("/retention/preview")
+@limiter.limit("5/minute")
+def preview_audit_retention(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    # `require_role`, not a permission. The rules a purge follows are
+    # platform-wide and its effect is not tenant-scoped in the way reading is:
+    # it destroys a record other parties may need. The same reasoning makes
+    # /admin/email-domains superadmin-only, and a permission check could not
+    # express it anyway — superadmin holds every permission, so any permission
+    # an org_admin also held would let them through.
+    current_user: User = Depends(require_role("superadmin")),
+):
+    """
+    What audit retention would remove, and everything standing in its way.
+
+    Read-only in the strongest sense available: it reaches the database through
+    `audit_retention.preview_legacy_v1`, a STABLE function, and the application
+    role holds no privilege that could delete an audit row whatever this
+    handler does.
+    """
+    state = retention_installed(db)
+    if not state["installed"]:
+        return {
+            "installed": False,
+            "detail": (
+                "Audit retention is not installed in this database. A database "
+                "administrator must run bootstrap_chain_retention.sql as a "
+                "superuser. Until then no purge can run."
+            ),
+            "components": state,
+        }
+
+    backup_path, backup_age = newest_backup()
+    payload = {
+        "installed": True,
+        "enabled": AppConfig.AUDIT_LOG_RETENTION_DAYS > 0,
+        "retention_days": AppConfig.AUDIT_LOG_RETENTION_DAYS,
+        "floor_days": AppConfig.AUDIT_RETENTION_MIN_DAYS,
+        "dry_run_default": AppConfig.AUDIT_RETENTION_DRY_RUN,
+        "max_rows_per_run": AppConfig.AUDIT_RETENTION_MAX_ROWS_PER_RUN,
+        "batch_size": AppConfig.AUDIT_RETENTION_BATCH_SIZE,
+        "backup": {
+            "newest": backup_path.name if backup_path else None,
+            "age_hours": round(backup_age, 1) if backup_age is not None else None,
+            "required_within_hours": AppConfig.AUDIT_RETENTION_REQUIRE_BACKUP_HOURS,
+        },
+        "holds": active_holds(db),
+        "scope": (
+            "legacy rows only (record_hash IS NULL). Chained rows are phase 6b "
+            "and the database refuses to delete one on this path."
+        ),
+    }
+
+    try:
+        cutoff = resolve_cutoff()
+    except RetentionRefused as refusal:
+        # Disabled is the shipped state, not an error. The preview still shows
+        # the trail's composition so an operator can see what a period *would*
+        # affect before choosing one.
+        payload["cutoff"] = None
+        payload["reason"] = str(refusal)
+        payload["organizations"] = retention_preview(db, datetime.now(timezone.utc))
+        payload["would_delete_total"] = 0
+        return payload
+
+    rows = retention_preview(db, cutoff)
+    payload["cutoff"] = cutoff.isoformat()
+    payload["organizations"] = rows
+    payload["would_delete_total"] = sum(
+        row["eligible_count"] for row in rows if not row["on_hold"]
+    )
+    return payload
+
+
 # NOTE: this dynamic route must stay LAST in the module. A literal path
-# registered after it — `/export`, above — would otherwise be captured here
-# as an `event_id` and answer 404 instead of exporting.
+# registered after it — `/export` and `/retention/preview`, above — would
+# otherwise be captured here as an `event_id` and answer 404.
 @router.get("/{event_id}")
 def get_audit_log(
     event_id: str,

@@ -4,9 +4,10 @@ import {
   listAuditLogs,
   getAuditLogDetail,
   exportAuditLogs,
+  previewAuditRetention,
 } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
-import { can } from "../../auth/permissions";
+import { can, isSuperAdmin } from "../../auth/permissions";
 import { formatDateTime } from "../../utils/date";
 import Button from "../../components/common/Button";
 import FormField from "../../components/common/FormField";
@@ -53,6 +54,12 @@ export default function AuditLogs() {
   // actually refuses. Hiding it only stops offering an action that would 403.
   const { user: currentUser } = useAuth();
   const canExport = can(currentUser, "audit", "export");
+  // Superadmin only, matching the backend's `require_role("superadmin")`. A
+  // purge is not tenant-scoped in effect -- it destroys a record other parties
+  // may need -- so it is not expressed as a per-tenant permission.
+  const canSeeRetention = isSuperAdmin(currentUser);
+  const [retention, setRetention] = useState(null);
+  const [retentionOpen, setRetentionOpen] = useState(false);
 
   const loadData = useCallback(
     // `targetPage` has no default. It used to fall back to `page`, which made
@@ -107,6 +114,24 @@ export default function AuditLogs() {
     }, 350);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Retention status. Fetched once, not polled: it changes when an operator
+  // edits configuration or a nightly job runs, not between renders.
+  useEffect(() => {
+    if (!canSeeRetention) return;
+    let cancelled = false;
+    previewAuditRetention()
+      .then((data) => {
+        if (!cancelled) setRetention(data);
+      })
+      .catch(() => {
+        // Silent. This is a status panel; a failure to load it must not
+        // interrupt reading the audit trail, which is what the page is for.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeRetention]);
 
   useEffect(() => {
     // Only show full-page loading spinner on initial mount when logs are empty.
@@ -599,6 +624,130 @@ export default function AuditLogs() {
             )}
           </div>
         </div>
+
+        {canSeeRetention && retention && (
+          <div
+            style={{
+              border: "1px solid rgba(148,163,184,0.25)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              marginBottom: 14,
+              fontSize: "0.78rem",
+            }}
+          >
+            <div
+              onClick={() => setRetentionOpen((open) => !open)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                cursor: "pointer",
+              }}
+            >
+              <strong>Retention</strong>
+              <span
+                style={{
+                  padding: "1px 8px",
+                  borderRadius: 4,
+                  fontWeight: 700,
+                  fontSize: "0.68rem",
+                  background: retention.installed
+                    ? retention.enabled
+                      ? "rgba(234,88,12,0.15)"
+                      : "rgba(107,114,128,0.15)"
+                    : "rgba(107,114,128,0.15)",
+                  color: retention.installed
+                    ? retention.enabled
+                      ? "#fb923c"
+                      : "#9ca3af"
+                    : "#9ca3af",
+                }}
+              >
+                {!retention.installed
+                  ? "NOT INSTALLED"
+                  : retention.enabled
+                    ? `${retention.retention_days} DAYS`
+                    : "DISABLED"}
+              </span>
+              <span style={{ opacity: 0.7 }}>
+                {retention.installed
+                  ? `${retention.would_delete_total ?? 0} event(s) would be removed`
+                  : "no purge can run"}
+              </span>
+              <span style={{ marginLeft: "auto", opacity: 0.6 }}>
+                {retentionOpen ? "▲" : "▼"}
+              </span>
+            </div>
+
+            {retentionOpen && (
+              <div style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.6 }}>
+                {!retention.installed ? (
+                  <div>{retention.detail}</div>
+                ) : (
+                  <>
+                    <div>Scope: {retention.scope}</div>
+                    <div>
+                      Cutoff: {retention.cutoff ?? "none — retention disabled"}
+                      {retention.reason ? ` (${retention.reason})` : ""}
+                    </div>
+                    <div>
+                      Floor: {retention.floor_days} days &middot; batch{" "}
+                      {retention.batch_size} &middot; max{" "}
+                      {retention.max_rows_per_run} per run &middot; dry run by
+                      default: {String(retention.dry_run_default)}
+                    </div>
+                    <div>
+                      Backup:{" "}
+                      {retention.backup?.newest
+                        ? `${retention.backup.newest}, ${retention.backup.age_hours}h old (required within ${retention.backup.required_within_hours}h)`
+                        : "none found — a purge would be refused"}
+                    </div>
+                    {Object.keys(retention.holds || {}).length > 0 && (
+                      <div style={{ color: "#fb923c" }}>
+                        Holds:{" "}
+                        {Object.entries(retention.holds)
+                          .map(([org, reason]) => `${org} (${reason})`)
+                          .join(", ")}
+                      </div>
+                    )}
+                    <table style={{ marginTop: 8, width: "100%" }}>
+                      <thead>
+                        <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                          <th>Organization</th>
+                          <th>Eligible</th>
+                          <th>Legacy</th>
+                          <th>Chained</th>
+                          <th>Hold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(retention.organizations || []).map((row) => (
+                          <tr key={row.org_id}>
+                            <td>{row.org_id}</td>
+                            <td>{row.eligible_count}</td>
+                            <td>{row.legacy_total}</td>
+                            <td>{row.chained_total}</td>
+                            <td>{row.on_hold ? "YES" : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ marginTop: 8, opacity: 0.7 }}>
+                      This panel is read-only. A purge runs from the scheduler
+                      or
+                      <code>
+                        {" "}
+                        scripts/audit/purge_audit_retention.py --apply
+                      </code>
+                      , so removing audit history needs host access as well as
+                      this role.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <div className="alert alert--error">{error}</div>}
 

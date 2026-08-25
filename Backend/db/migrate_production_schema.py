@@ -216,6 +216,12 @@ PERMISSIONS = [
     # platform-wide email-domain rules, which are superadmin-only for exactly
     # the opposite reason.
     ("audit", "export", "Export the audit log as CSV or PDF"),
+    # Phase 6a. Gates the read-only retention *preview* only -- no HTTP
+    # endpoint deletes an audit row. Execution is the beat task or the CLI,
+    # so destroying audit history needs shell access to the host as well as
+    # this permission. Superadmin only: a purge is not tenant-scoped in
+    # effect, because it destroys a record other parties may need.
+    ("audit", "purge", "Preview audit-log retention and what it would remove"),
     # Compliance
     ("compliance", "read", "View compliance dashboards and findings"),
     ("compliance", "scan", "Trigger manual compliance scans"),

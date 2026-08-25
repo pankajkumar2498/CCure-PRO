@@ -83,4 +83,18 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.sync_disposable_domains",
         "schedule": crontab(hour=4, minute=15, day_of_week="mon"),
     },
+    # Phase 6a audit retention. Scheduled, but a **no-op until
+    # AUDIT_LOG_RETENTION_DAYS is set to a non-zero value**, and a dry run
+    # unless AUDIT_RETENTION_DRY_RUN is explicitly false — so registering it
+    # here changes nothing about what the deployment does today.
+    #
+    # It is registered anyway rather than added later, because the interaction
+    # worth exercising is the schedule itself: a retention job that has never
+    # once run its preconditions on this beat is a job nobody has tested.
+    # 04:30 puts it after the refresh-session sweep and well clear of the
+    # 6-hourly backup window it depends on.
+    "purge-expired-audit-logs-daily": {
+        "task": "ccure.tasks.purge_expired_audit_logs",
+        "schedule": crontab(hour=4, minute=30),
+    },
 }

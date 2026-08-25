@@ -59,6 +59,41 @@ def chain_installed(db) -> bool:
     return chain_location(db)["installed"]
 
 
+def retention_anchors(db, org_id: str) -> dict:
+    """
+    What retention has legitimately removed from this organisation.
+
+    Returns zeroes when the phase-6a machinery is not installed, so a database
+    without retention reads exactly as it did before.
+
+    Phase 6a covers **legacy** rows only, and those have no hash, so an anchor
+    here is an accounting record rather than continuity evidence — there was
+    never a link to preserve. Phase 6b introduces ``kind='chained'``, where the
+    anchor *is* continuity evidence; this function reports the counts either
+    way and the caller decides what may be claimed.
+    """
+    if not db.execute(
+        text("SELECT to_regclass('audit_retention.retention_anchors')")
+    ).scalar():
+        return {"installed": False, "legacy_purged": 0, "chained_purged": 0, "runs": 0}
+
+    row = db.execute(
+        text(
+            "SELECT coalesce(sum(deleted_count) FILTER (WHERE kind='legacy'), 0), "
+            "       coalesce(sum(deleted_count) FILTER (WHERE kind='chained'), 0), "
+            "       count(*) "
+            "  FROM audit_retention.retention_anchors WHERE org_id = :o"
+        ),
+        {"o": org_id},
+    ).fetchone()
+    return {
+        "installed": True,
+        "legacy_purged": int(row[0]),
+        "chained_purged": int(row[1]),
+        "runs": int(row[2]),
+    }
+
+
 def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
     """Walk one organisation's chain from genesis and check every link.
 
@@ -90,14 +125,58 @@ def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
         {"o": org_id},
     ).fetchone()
 
+    anchors = retention_anchors(db, org_id)
+
     report = {
         "org_id": org_id,
         "chained": len(rows),
         "legacy": legacy,
+        "purged": anchors,
         "walked": 0,
         "breaks": [],
+        "notes": [],
         "head": head,
     }
+
+    # An unexplained fall in the legacy count IS a break, and phase 6a is what
+    # makes it detectable. `legacy_event_count` is seeded from a COUNT at chain
+    # bootstrap and afterwards only ever *decremented*, by
+    # `audit_chain_note_legacy_purge_v1`, which the sanctioned purge calls in
+    # the same transaction as the deletion and the anchor. Nothing else can
+    # reach it: the head is owned by audit_chain_writer and the application
+    # role holds SELECT only.
+    #
+    # So a privileged deletion performed outside the purge — as postgres, say —
+    # removes rows without moving the counter, and the two stop agreeing. That
+    # is exactly the difference between sanctioned retention and somebody
+    # quietly removing history, and it is reported as a break rather than
+    # excused.
+    # **Directional, and the direction is the whole point.**
+    #
+    # head > actual: pre-chain rows have *disappeared* without the counter
+    #   moving. That is the break — sanctioned retention always moves both in
+    #   one transaction.
+    #
+    # head < actual: pre-chain rows were *inserted* without being hashed, which
+    #   means the chain trigger was disabled for that write. It is how real
+    #   pre-chain history and every legacy test fixture come to exist, and it
+    #   is reported as a note rather than a break: nothing was lost, and
+    #   calling it tampering would cry wolf on the ordinary case.
+    if head is not None:
+        if head.legacy_event_count > legacy:
+            report["breaks"].append(
+                f"legacy accounting mismatch: head records "
+                f"{head.legacy_event_count} pre-chain event(s) and only {legacy} "
+                f"remain. Retention decrements the head in the same transaction "
+                f"as the deletion, so a shortfall means rows were removed "
+                f"outside the purge path."
+            )
+        elif head.legacy_event_count < legacy:
+            report["notes"].append(
+                f"{legacy - head.legacy_event_count} unhashed row(s) beyond the "
+                f"count recorded at chain bootstrap — written with the chain "
+                f"trigger disabled. Not a loss; not verifiable either."
+            )
 
     if not rows:
         if head and head.event_count:
@@ -243,12 +322,14 @@ def main() -> int:
         )
 
         total_breaks = 0
-        total_chained = total_legacy = 0
+        total_chained = total_legacy = total_purged = 0
         print(f"verifying {len(org_ids)} organisation(s)\n")
         for org_id in org_ids:
             report = verify_org(db, org_id, schema)
             total_chained += report["chained"]
             total_legacy += report["legacy"]
+            purged = report["purged"]
+            total_purged += purged["legacy_purged"] + purged["chained_purged"]
             total_breaks += len(report["breaks"])
 
             state = "BROKEN" if report["breaks"] else "verified"
@@ -261,6 +342,23 @@ def main() -> int:
                 f"    legacy    : {report['legacy']} "
                 f"(pre-chain, NOT verifiable — no hash exists to check)"
             )
+            if purged["runs"]:
+                # A distinct category, deliberately not folded into either of
+                # the two above. These events are gone; what survives is an
+                # accounting record of their removal, which is a different
+                # claim from "verified" and from "present but unverifiable".
+                print(
+                    f"    purged    : {purged['legacy_purged']} legacy"
+                    + (
+                        f", {purged['chained_purged']} chained"
+                        if purged["chained_purged"]
+                        else ""
+                    )
+                    + f" (retention, {purged['runs']} anchored run(s)) — "
+                    "removed and accounted for, NOT preserved"
+                )
+            for note in report["notes"]:
+                print(f"    note      : {note}")
             for issue in report["breaks"]:
                 print(f"    BREAK     : {issue}")
             print()
@@ -268,12 +366,20 @@ def main() -> int:
         print("=" * 68)
         print(f"chained events verified : {total_chained - total_breaks}")
         print(f"legacy, unverifiable    : {total_legacy}")
+        print(f"purged under retention  : {total_purged}")
         print(f"breaks found            : {total_breaks}")
         if total_breaks:
             print("\nCHAIN INTEGRITY FAILED — investigate before trusting this trail.")
             return 1
         print("\nAll chained events verify. Legacy events are reported separately")
         print("above and are NOT covered by any cryptographic guarantee.")
+        if total_purged:
+            print(
+                "Events removed under retention are counted separately again: "
+                "an\nanchor records that they were removed and by what run. It "
+                "does not\npreserve their contents, and for pre-chain rows "
+                "there was never any\ncryptographic continuity to preserve."
+            )
         return 0
     finally:
         db.close()

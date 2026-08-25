@@ -1487,18 +1487,19 @@ existing sessions: `_load_auth_context_from_payload` re-checks
 `organization.is_active` on every request, and both refresh-token creation and
 rotation refuse for an inactive org.
 
-### Audit logs — `/admin/audit-logs` (3 operations)
+### Audit logs — `/admin/audit-logs` (4 operations)
 
 Source: `Backend/routers/audit.py`.
 
-| Method | Path                           | Permission     | Purpose                       |
-| ------ | ------------------------------ | -------------- | ----------------------------- |
-| GET    | `/admin/audit-logs`            | `audit:read`   | List events, newest first     |
-| GET    | `/admin/audit-logs/export`     | `audit:export` | Download the trail as CSV/PDF |
-| GET    | `/admin/audit-logs/{event_id}` | `audit:read`   | One event in full, for detail |
+| Method | Path                                  | Permission      | Purpose                       |
+| ------ | ------------------------------------- | --------------- | ----------------------------- |
+| GET    | `/admin/audit-logs`                   | `audit:read`    | List events, newest first     |
+| GET    | `/admin/audit-logs/export`            | `audit:export`  | Download the trail as CSV/PDF |
+| GET    | `/admin/audit-logs/retention/preview` | superadmin role | What retention would remove   |
+| GET    | `/admin/audit-logs/{event_id}`        | `audit:read`    | One event in full, for detail |
 
-`/export` is registered **before** `/{event_id}` in the module, and must stay
-there. FastAPI matches in registration order, so a literal path declared after a
+Both literal paths are registered **before** `/{event_id}` in the module, and
+must stay there. FastAPI matches in registration order, so a literal path declared after a
 same-prefix dynamic one is unreachable — the export request would be read as a
 lookup for an event whose id is the string `export` and would answer 404.
 
@@ -1600,6 +1601,38 @@ commit.
 CSV cells beginning with `=`, `+`, `-`, `@`, TAB or CR are prefixed with one
 apostrophe so a spreadsheet cannot execute them; the preamble says so, and the
 transform is reversible. `user_agent` is attacker-chosen and reaches a cell.
+
+#### Retention preview — `GET /admin/audit-logs/retention/preview`
+
+Phase 6a. **Read-only, and there is deliberately no counterpart that deletes.**
+A purge runs from the beat schedule (`ccure.tasks.purge_expired_audit_logs`) or
+`scripts/audit/purge_audit_retention.py --apply`, so removing audit history
+needs shell access to the host as well as the role. A deletion a session cookie
+can reach is a deletion an XSS can reach.
+
+**Superadmin only, via `require_role`, not a permission.** A purge is not
+tenant-scoped in effect — it destroys a record other parties may need — and a
+permission check could not express this anyway, because superadmin holds every
+permission and any permission an org_admin also held would let them through.
+The same reasoning makes `/admin/email-domains` superadmin-only. Rate limited
+5/minute.
+
+Returns the retention configuration, the resolved cutoff (or why there is
+none), the newest backup and its age, every active hold, and per-organisation
+counts of eligible / legacy / chained events. When the privileged half is not
+installed it answers `{"installed": false, ...}` carrying the DBA command,
+rather than an error: not installed is a legitimate and safe state.
+
+**Scope: legacy rows only** — those with `record_hash IS NULL`, written before
+the tamper-evidence chain existed. Nothing can ever have linked to one, because
+`prev_hash` references a `record_hash` value and a legacy row has none, so
+removing them cannot break a chain for any dataset. Chained-record deletion is
+phase 6b; the append-only trigger refuses it on this path regardless.
+
+Retention ships **disabled** (`AUDIT_LOG_RETENTION_DAYS=0`) and stays that way
+until a period is agreed with the business or compliance owner. An
+`AUDIT_RETENTION_MIN_DAYS` floor (90) cannot be lowered by the setting it
+guards, because "9" for "90" is not a recoverable typo.
 
 ### NVD catalog — `/api/v1/admin` (2 operations)
 

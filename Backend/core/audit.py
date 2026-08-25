@@ -65,7 +65,27 @@ def log_audit_event(
     request: Request = None,
     status: str = "success",
     severity: str = None,
+    org_id: str = None,
+    system_actor: str = None,
 ):
+    """
+    Write one audit event into the caller's transaction.
+
+    ``org_id`` and ``system_actor`` exist for events with **no human actor** —
+    at present only the retention purge, which runs on beat and acts on one
+    organisation at a time. Without them a background task has no way to write
+    an event at all: ``org_id`` is NOT NULL and half the primary key, and it is
+    normally read from ``user``.
+
+    They do not weaken the actorless guard. ``user=None`` with no ``org_id``
+    still resolves to a NULL ``org_id`` and still fails loudly, which is what
+    ``test_an_actorless_audit_call_fails_loudly_rather_than_silently`` asserts:
+    an event nobody can attribute is worse than a visible error.
+
+    ``system_actor`` is recorded in ``actor_username`` and is deliberately a
+    *label*, not an identity — ``system:retention`` reads as what it is, and no
+    account exists that could be confused with it.
+    """
     ip_address = None
     user_agent = None
     request_id = None
@@ -81,7 +101,7 @@ def log_audit_event(
 
     try:
         log_entry = AuditLog(
-            org_id=user.org_id if user else None,
+            org_id=org_id or (user.org_id if user else None),
             user_id=user.id if user else None,
             action=action,
             resource_type=resource_type,
@@ -103,7 +123,7 @@ def log_audit_event(
             # deletion mutates it, which would break the chain for every event
             # that user ever produced.
             actor_user_id=user.id if user else None,
-            actor_username=user.username if user else None,
+            actor_username=user.username if user else system_actor,
         )
         db.add(log_entry)
         # Not committed here: the caller owns the transaction, and the whole

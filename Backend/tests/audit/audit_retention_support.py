@@ -42,10 +42,12 @@ def require_retention(conn) -> None:
         pytest.skip(SKIP_REASON)
 
 
-def make_legacy_event(session, org_id: str, *, age_days: float, action="user.login"):
+def make_legacy_event(
+    session, org_id: str, *, age_days: float, action="user.login"
+) -> str:
     """
     One pre-chain row, made the way real pre-chain history was made: **with the
-    chain trigger disabled**.
+    chain trigger disabled**. Returns its **id**, not an ORM instance.
 
     The earlier version of this helper inserted the row normally and then
     stripped its hash. That looked equivalent and is not, and the difference is
@@ -92,12 +94,20 @@ def make_legacy_event(session, org_id: str, *, age_days: float, action="user.log
     session.execute(text("ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_chain"))
     session.commit()
 
-    row = session.get(AuditLog, {"id": event_id, "org_id": org_id})
-    assert row is not None and row.record_hash is None, (
+    stored_hash = session.execute(
+        text("SELECT record_hash FROM audit_logs WHERE id = :i AND org_id = :o"),
+        {"i": event_id, "o": org_id},
+    ).fetchone()
+    assert stored_hash is not None and stored_hash[0] is None, (
         "a legacy fixture row must carry no hash; the chain trigger was not "
         "disabled for its insert"
     )
-    return row
+    # **The id, not the ORM instance.** A mapped object whose row is later
+    # deleted by the purge raises `ObjectDeletedError` the moment any attribute
+    # is touched, because SQLAlchemy tries to refresh it from a row that is no
+    # longer there. Tests then fail while asserting the very deletion they asked
+    # for. A plain string is what the assertions actually need.
+    return event_id
 
 
 def seed_legacy(session, org_id: str, count: int, *, age_days: float = 400):
@@ -118,6 +128,29 @@ def seed_legacy(session, org_id: str, count: int, *, age_days: float = 400):
     """
     ensure_head(session, org_id)
     return [make_legacy_event(session, org_id, age_days=age_days) for _ in range(count)]
+
+
+def chained_ids(session, org_id: str) -> set[str]:
+    """Ids of every row currently carrying a hash. Plain strings, read fresh."""
+    return {
+        r[0]
+        for r in session.execute(
+            text(
+                "SELECT id FROM audit_logs "
+                " WHERE org_id = :o AND record_hash IS NOT NULL"
+            ),
+            {"o": org_id},
+        )
+    }
+
+
+def all_ids(session, org_id: str) -> set[str]:
+    return {
+        r[0]
+        for r in session.execute(
+            text("SELECT id FROM audit_logs WHERE org_id = :o"), {"o": org_id}
+        )
+    }
 
 
 def ensure_head(session, org_id: str) -> None:

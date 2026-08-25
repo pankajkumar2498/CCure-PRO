@@ -55,6 +55,7 @@ from pathlib import Path
 
 from config import AppConfig
 from sqlalchemy import text
+from sqlalchemy.exc import DatabaseError
 
 log = logging.getLogger("ccure.audit.retention")
 
@@ -348,6 +349,42 @@ def preview(conn, cutoff: datetime) -> list[dict]:
 # ─── The run ─────────────────────────────────────────────────────────────────
 
 
+#: Sentinel distinguishing "this organisation has no chain head" from any other
+#: failure. A bare `except Exception` here would swallow a genuine error --
+#: a privilege problem, a lock timeout, a constraint violation -- and report it
+#: as a routine skip, which is exactly how a broken purge would go unnoticed.
+_NO_CHAIN_HEAD = object()
+
+#: SQLSTATE raised by `audit_chain_lock_head_v1` when the organisation has no
+#: head row. `no_data_found` in PL/pgSQL.
+_NO_DATA_FOUND = "P0002"
+
+
+def _call_purge(db, org_id: str, cutoff, batch: int, operator: str, backup_ref: str):
+    """Invoke the purge function, separating "no head" from every other error."""
+    try:
+        return db.execute(
+            text(
+                "SELECT deleted_count, anchor_id, range_from, range_to, "
+                "       legacy_remaining "
+                "  FROM audit_retention.purge_legacy_v1("
+                "       :org, :cutoff, :batch, :floor, :operator, NULL, :backup)"
+            ),
+            {
+                "org": org_id,
+                "cutoff": cutoff,
+                "batch": batch,
+                "floor": AppConfig.AUDIT_RETENTION_MIN_DAYS,
+                "operator": operator,
+                "backup": backup_ref,
+            },
+        ).fetchone()
+    except DatabaseError as exc:
+        if getattr(getattr(exc, "orig", None), "pgcode", None) == _NO_DATA_FOUND:
+            return _NO_CHAIN_HEAD
+        raise
+
+
 def _purge_one_batch(
     db,
     org_id: str,
@@ -376,24 +413,47 @@ def _purge_one_batch(
 
     if not try_take_purge_lock(db, org_id):
         db.rollback()
-        return {"deleted": 0, "anchor_id": None, "exhausted": True, "deferred": True}
+        return {
+            "deleted": 0,
+            "anchor_id": None,
+            "exhausted": True,
+            "deferred": True,
+            "no_head": False,
+        }
 
-    result = db.execute(
-        text(
-            "SELECT deleted_count, anchor_id, range_from, range_to, "
-            "       legacy_remaining "
-            "  FROM audit_retention.purge_legacy_v1("
-            "       :org, :cutoff, :batch, :floor, :operator, NULL, :backup)"
-        ),
-        {
-            "org": org_id,
-            "cutoff": cutoff,
-            "batch": batch,
-            "floor": AppConfig.AUDIT_RETENTION_MIN_DAYS,
-            "operator": operator,
-            "backup": backup_ref,
-        },
-    ).fetchone()
+    result = _call_purge(db, org_id, cutoff, batch, operator, backup_ref)
+
+    if result is _NO_CHAIN_HEAD:
+        # An organisation with pre-chain rows but no chain head. The purge
+        # cannot run for it -- there is no head to lock, and locking the head is
+        # what stops a purge interleaving with an insert -- so it is skipped and
+        # reported.
+        #
+        # It must not abort the run. Retention is a nightly job over every
+        # tenant, and one tenant in an unexpected state taking the other
+        # tenants' retention down with it is the wrong failure mode: the
+        # backlog for everyone else silently stops draining. Failing closed for
+        # the one organisation and continuing is both safer and more visible.
+        #
+        # A correctly bootstrapped database cannot reach this state --
+        # `audit_chain_seed_legacy_v1` creates a head for every organisation
+        # holding unhashed rows -- so it means either a tenant created after
+        # that seeding whose rows arrived out of band, or a head that was
+        # removed. Either is worth an operator seeing.
+        db.rollback()
+        log.warning(
+            "audit retention: organisation %s has pre-chain rows but no chain "
+            "head; skipping it. No rows were removed for this tenant. Every "
+            "other organisation in this run is unaffected.",
+            org_id,
+        )
+        return {
+            "deleted": 0,
+            "anchor_id": None,
+            "exhausted": True,
+            "deferred": False,
+            "no_head": True,
+        }
 
     deleted = int(result.deleted_count or 0)
     if deleted == 0:
@@ -477,6 +537,11 @@ def run_retention(
         # needs to be able to tell them apart.
         "held_orgs": {org: row for org, row in held.items()},
         "deferred_orgs": [],
+        # Organisations skipped because they carry pre-chain rows but no chain
+        # head. Reported rather than silent: a correctly bootstrapped database
+        # cannot reach that state, so seeing one here means something is worth
+        # looking at.
+        "no_head_orgs": [],
         "purged": {},
         "deleted_total": 0,
         "backup_reference": None,
@@ -525,6 +590,11 @@ def run_retention(
                 )
                 raise
 
+            if outcome.get("no_head"):
+                if org_id not in report["no_head_orgs"]:
+                    report["no_head_orgs"].append(org_id)
+                break
+
             if outcome["deferred"]:
                 if org_id not in report["deferred_orgs"]:
                     report["deferred_orgs"].append(org_id)
@@ -549,11 +619,12 @@ def run_retention(
 
     log.info(
         "audit retention: deleted %s legacy row(s) across %s organisation(s); "
-        "%s deferred, %s held, capped=%s",
+        "%s deferred, %s held, %s without a chain head, capped=%s",
         report["deleted_total"],
         len(report["purged"]),
         len(report["deferred_orgs"]),
         len(report["held_orgs"]),
+        len(report["no_head_orgs"]),
         report["capped"],
     )
     return report

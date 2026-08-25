@@ -270,11 +270,11 @@ def test_dry_run_deletes_nothing_and_writes_no_anchor_or_event(
 
 def test_ccure_user_still_cannot_delete_an_audit_row(db_session, test_user):
     """Phase 6a must not have widened anything for the application role."""
-    row = seed_legacy(db_session, test_user.org_id, 1)[0]
+    event_id = seed_legacy(db_session, test_user.org_id, 1)[0]
     message = expect_refused(
         db_session,
         "DELETE FROM audit_logs WHERE id = :i AND org_id = :o",
-        {"i": row.id, "o": row.org_id},
+        {"i": event_id, "o": test_user.org_id},
     )
     assert "append-only" in message
 
@@ -285,21 +285,21 @@ def test_ccure_user_still_cannot_delete_an_aged_legacy_row(db_session, test_user
     application. Eligibility is a property of the row; the privilege to act on
     it belongs to a different role entirely.
     """
-    row = seed_legacy(db_session, test_user.org_id, 1, age_days=900)[0]
+    event_id = seed_legacy(db_session, test_user.org_id, 1, age_days=900)[0]
     message = expect_refused(
         db_session,
         "DELETE FROM audit_logs WHERE id = :i AND org_id = :o",
-        {"i": row.id, "o": row.org_id},
+        {"i": event_id, "o": test_user.org_id},
     )
     assert "append-only" in message
 
 
 def test_ccure_user_still_cannot_update_an_audit_row(db_session, test_user):
-    row = seed_legacy(db_session, test_user.org_id, 1)[0]
+    event_id = seed_legacy(db_session, test_user.org_id, 1)[0]
     message = expect_refused(
         db_session,
         "UPDATE audit_logs SET action = 'forged' WHERE id = :i AND org_id = :o",
-        {"i": row.id, "o": row.org_id},
+        {"i": event_id, "o": test_user.org_id},
     )
     assert "append-only" in message
 

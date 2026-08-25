@@ -86,15 +86,23 @@ def _effect_check(db) -> None:
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(days=365)
 
-        db.execute(
-            text(
-                "INSERT INTO organizations (id, name, slug, plan, max_assets, "
-                "                           max_users, settings, is_active, created_at) "
-                "VALUES (:o, 'Retention self-test', :s, 'community', 1, 1, "
-                "        '{}'::jsonb, true, now())"
-            ),
-            {"o": _PROBE_ORG, "s": f"{_PROBE_ORG}-slug"},
+        # Built through the ORM model rather than a literal INSERT so the
+        # column defaults come from one place. A hand-written INSERT has to
+        # restate every NOT NULL column and goes stale the moment one is added
+        # — which is exactly how this check first failed, on `updated_at`.
+        from db.models import Organization
+
+        db.add(
+            Organization(
+                id=_PROBE_ORG,
+                name="Retention self-test",
+                slug=f"{_PROBE_ORG}-slug",
+                max_assets=1,
+                max_users=1,
+                is_active=True,
+            )
         )
+        db.flush()
 
         # A normal insert: the chain trigger hashes it and creates the head.
         db.execute(

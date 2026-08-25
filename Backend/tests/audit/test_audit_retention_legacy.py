@@ -20,7 +20,9 @@ content anywhere.
 import pytest
 from audit_chain_support import require_chain, verify_org, write_event
 from audit_retention_support import (
+    all_ids,
     anchors_for,
+    chained_ids,
     counts,
     head_row,
     purge_events,
@@ -51,11 +53,21 @@ def enabled(monkeypatch):
 def mixed(db_session, test_user):
     """Aged legacy rows, recent legacy rows, and a live chain above both."""
     org = test_user.org_id
+    # Plain ids, never mapped instances: the purge deletes these rows, and a
+    # mapped object raises ObjectDeletedError the moment an attribute is read
+    # afterwards — failing the test while asserting the deletion it asked for.
     old = seed_legacy(db_session, org, 6, age_days=400)
-    recent = [row for row in seed_legacy(db_session, org, 2, age_days=10)]
+    recent = seed_legacy(db_session, org, 2, age_days=10)
     write_event(db_session, test_user, "user.login")
     write_event(db_session, test_user, "user.profile_updated")
-    return {"old": old, "recent": recent, "org": org}
+    return {
+        "old": old,
+        "recent": recent,
+        "org": org,
+        # Captured before any purge runs, so "every chained row survived" is a
+        # claim about the rows that existed then, not about a count.
+        "chained_before": chained_ids(db_session, org),
+    }
 
 
 # ─── Only the right rows go ──────────────────────────────────────────────────
@@ -71,20 +83,37 @@ def test_only_rows_older_than_the_cutoff_are_removed(db_session, mixed, enabled)
             text("SELECT id FROM audit_logs WHERE org_id = :o"), {"o": org}
         )
     }
-    for row in mixed["old"]:
-        assert row.id not in remaining, "an aged legacy row survived"
-    for row in mixed["recent"]:
-        assert row.id in remaining, "a legacy row inside the window was removed"
+    for event_id in mixed["old"]:
+        assert event_id not in remaining, "an aged legacy row survived"
+    for event_id in mixed["recent"]:
+        assert event_id in remaining, "a legacy row inside the window was removed"
 
 
 def test_chained_rows_survive_a_legacy_purge(db_session, mixed, enabled):
+    """
+    **Survival is set inclusion, not an unchanged count.**
+
+    A purge appends its own `audit.retention_purge_executed`, which is written
+    through the ordinary audit path and is therefore chained like anything
+    else. So the chained *count* legitimately rises by one per committed batch.
+    Asserting the count was unchanged tested the wrong thing and would have
+    failed on correct behaviour — what matters is that no row that was chained
+    before the purge is missing after it.
+    """
     org = mixed["org"]
     before = counts(db_session, org)
-    run_retention(db_session, dry_run=False)
-    after = counts(db_session, org)
 
-    assert after["chained"] == before["chained"]
+    run_retention(db_session, dry_run=False)
+
+    after = counts(db_session, org)
+    survivors = chained_ids(db_session, org)
+
+    assert (
+        mixed["chained_before"] <= survivors
+    ), "a pre-existing chained row was removed"
     assert after["legacy"] == before["legacy"] - len(mixed["old"])
+    # One new chained row: the purge's own event, from the single batch.
+    assert after["chained"] == before["chained"] + 1
 
 
 def test_only_rows_with_no_record_hash_are_eligible(db_session, mixed, enabled):
@@ -93,23 +122,9 @@ def test_only_rows_with_no_record_hash_are_eligible(db_session, mixed, enabled):
     the absence of a hash is the other, and it is the one that matters.
     """
     org = mixed["org"]
-    chained_ids = {
-        row[0]
-        for row in db_session.execute(
-            text(
-                "SELECT id FROM audit_logs WHERE org_id=:o AND record_hash IS NOT NULL"
-            ),
-            {"o": org},
-        )
-    }
+    hashed_before = chained_ids(db_session, org)
     run_retention(db_session, dry_run=False)
-    still_there = {
-        row[0]
-        for row in db_session.execute(
-            text("SELECT id FROM audit_logs WHERE org_id = :o"), {"o": org}
-        )
-    }
-    assert chained_ids <= still_there
+    assert hashed_before <= all_ids(db_session, org)
 
 
 # ─── Chain integrity, before and after ───────────────────────────────────────
@@ -127,24 +142,44 @@ def test_the_chain_still_verifies_after_the_purge(db_session, mixed, enabled):
     run_retention(db_session, dry_run=False)
     after = verify_org(db_session, mixed["org"])
 
-    assert after["broken"] == []
+    assert after["broken"] == [], "the purge introduced a chain break"
     assert after["genesis_count"] == 1
     assert after["forks"] == {}
-    # The chained half must be byte-for-byte the same walk.
-    assert after["chained"] == before["chained"]
-    assert after["walked"] == before["walked"]
+    # Every chained row is still reachable from genesis — including the purge's
+    # own event, which is why the walk grows by one rather than staying equal.
+    assert after["walked"] == after["chained"]
+    assert after["chained"] == before["chained"] + 1
+    assert mixed["chained_before"] <= chained_ids(db_session, mixed["org"])
 
 
-def test_the_genesis_and_tip_are_untouched(db_session, mixed, enabled):
+def test_genesis_is_unchanged_and_the_tip_advances_to_the_purge_event(
+    db_session, mixed, enabled
+):
+    """
+    Genesis must not move; the tip must, and to a specific row.
+
+    `genesis_event_id` is `COALESCE(genesis_event_id, NEW.id)` — set once and
+    never again — so a purge moving it would mean the head had been rebuilt,
+    which nothing here may do. The **tip** is different: the purge appends its
+    own `audit.retention_purge_executed`, so the head advances to that event
+    exactly as it would for any other write. Asserting the tip was unchanged
+    was asserting that the purge failed to record itself.
+
+    Pinning *which* row becomes the tip is the point — "the tip changed" alone
+    would also be satisfied by something having quietly rewritten it.
+    """
     org = mixed["org"]
     before = head_row(db_session, org)
-    run_retention(db_session, dry_run=False)
-    after = head_row(db_session, org)
 
-    assert after.genesis_event_id == before.genesis_event_id
-    assert after.last_event_id == before.last_event_id
-    assert after.last_record_hash == before.last_record_hash
-    assert after.event_count == before.event_count
+    run_retention(db_session, dry_run=False)
+
+    after = head_row(db_session, org)
+    purge_event = purge_events(db_session, org)[-1]
+
+    assert after.genesis_event_id == before.genesis_event_id, "genesis moved"
+    assert after.last_event_id == purge_event.id
+    assert after.last_record_hash == purge_event.record_hash
+    assert after.event_count == before.event_count + 1
 
 
 def test_a_legitimate_purge_is_not_reported_as_a_tamper_break(
@@ -165,17 +200,29 @@ def test_a_legitimate_purge_is_not_reported_as_a_tamper_break(
 
 def test_an_unaccounted_deletion_is_reported_as_a_break(db_session, mixed, enabled):
     """
-    The mirror of the test above, and the one that proves the accounting
-    *distinguishes* sanctioned retention from tampering rather than *excusing*
-    both. Without it, "a purge is not reported as a break" would be satisfied
-    by a verifier that never reports anything.
+    The mirror of the test above: the accounting must *distinguish* sanctioned
+    retention from tampering, not *excuse* both. Without this, "a purge is not
+    reported as a break" would be satisfied by a verifier that never reports
+    anything at all.
 
-    The deletion is performed the way a determined operator holding the
-    application's own credentials would: suspend the append-only trigger, delete
-    directly, put it back. That is the documented honest-scope limit of this
-    design — `ccure_user` owns `audit_logs` — and it is exactly the case the
-    accounting exists to make visible. The chain head is not decremented,
-    because nothing tells it, so the head ends up ahead of reality.
+    **Scope, and why this test can skip.** The detection compares
+    `audit_chain_heads.legacy_event_count` against the surviving pre-chain rows
+    and reports a break only when the head is *ahead* — rows vanished without
+    the counter moving, which is what an out-of-band deletion looks like.
+
+    That comparison is meaningful only where the counter is authoritative: it
+    is seeded once, from a `COUNT`, by `audit_chain_seed_legacy_v1` at chain
+    bootstrap, and afterwards only ever decremented by the purge. On a real
+    installation it therefore tracks reality, and this detection works. On a
+    test organisation the rows are injected after that seeding, so the counter
+    reads 0 while rows exist, and the head can never be ahead of anything.
+
+    Raising it from a test is not available and must not be made available:
+    `audit_chain_seed_legacy_v1` is granted to nobody, and
+    `audit_chain_note_legacy_purge_v1` only decrements and is executable by
+    `audit_maintenance` alone. Both are correct. So this test uses an
+    organisation whose counter is genuinely authoritative if one exists, and
+    **skips as NOT VERIFIED** rather than pretending otherwise.
     """
     from db.audit_hardening import suspended_immutability
     from scripts.audit.verify_chain import verify_org as script_verify_org
@@ -184,25 +231,77 @@ def test_an_unaccounted_deletion_is_reported_as_a_break(db_session, mixed, enabl
     run_retention(db_session, dry_run=False)
     assert script_verify_org(db_session, org)["breaks"] == [], "clean before"
 
+    # An organisation where the counter tracks the rows, and there is a
+    # pre-chain row left to remove.
+    candidate = db_session.execute(
+        text(
+            "SELECT h.org_id FROM audit_chain.audit_chain_heads h "
+            "  JOIN (SELECT org_id, count(*) AS n FROM audit_logs "
+            "         WHERE record_hash IS NULL GROUP BY org_id) a "
+            "    ON a.org_id = h.org_id "
+            " WHERE h.legacy_event_count = a.n AND a.n > 0 LIMIT 1"
+        )
+    ).scalar()
+
+    if candidate is None:
+        pytest.skip(
+            "no organisation in this database has an authoritative "
+            "legacy_event_count with pre-chain rows remaining. The counter is "
+            "seeded from a COUNT by audit_chain_seed_legacy_v1 at chain "
+            "bootstrap and can only be decremented afterwards, so a test "
+            "organisation cannot reach that state and must not be given a "
+            "privilege that would let it. Out-of-band-deletion detection is "
+            "NOT VERIFIED here, not passing."
+        )
+
+    before = script_verify_org(db_session, candidate)
+    assert before["breaks"] == [], "the candidate organisation is not clean"
+
     victim = db_session.execute(
         text(
             "SELECT id FROM audit_logs WHERE org_id = :o AND record_hash IS NULL "
             " LIMIT 1"
         ),
-        {"o": org},
+        {"o": candidate},
     ).scalar()
-    assert victim, "the fixture must leave a legacy row to remove out of band"
 
+    # Removed the way a determined operator holding the application's own
+    # credentials would — `ccure_user` owns `audit_logs`, the documented
+    # honest-scope limit of this design. The head is not decremented, because
+    # nothing tells it, so it ends up ahead of the surviving rows.
     with suspended_immutability(db_session):
         db_session.execute(
             text("DELETE FROM audit_logs WHERE id = :i AND org_id = :o"),
-            {"i": victim, "o": org},
+            {"i": victim, "o": candidate},
         )
     db_session.commit()
 
-    report = script_verify_org(db_session, org)
+    report = script_verify_org(db_session, candidate)
     assert report["breaks"], "an out-of-band deletion was not detected"
     assert any("outside the purge path" in issue for issue in report["breaks"])
+
+
+def test_the_note_direction_is_not_reported_as_a_break(db_session, mixed, enabled):
+    """
+    The other half of the directional rule, and the half that *is* reachable
+    here: a head **behind** the row count means rows were inserted with the
+    chain trigger disabled — how pre-chain history exists at all, and what
+    every legacy fixture produces. Reporting that as tampering would cry wolf
+    on the ordinary case, so it is a note.
+    """
+    from scripts.audit.verify_chain import verify_org as script_verify_org
+
+    org = mixed["org"]
+    head = head_row(db_session, org)
+    legacy_rows = counts(db_session, org)["legacy"]
+    assert head.legacy_event_count < legacy_rows, (
+        "this test needs the head behind the row count, which is what an "
+        "injected legacy fixture produces"
+    )
+
+    report = script_verify_org(db_session, org)
+    assert report["breaks"] == []
+    assert any("unhashed row(s) beyond the count" in note for note in report["notes"])
 
 
 # ─── Accounting ──────────────────────────────────────────────────────────────
@@ -263,10 +362,23 @@ def test_the_anchor_records_every_required_fact(db_session, mixed, enabled):
     assert anchor.cutoff is not None
     assert anchor.range_from is not None and anchor.range_to is not None
     assert anchor.range_from <= anchor.range_to
-    assert anchor.last_deleted_event_id in {row.id for row in mixed["old"]}
+    assert anchor.last_deleted_event_id in set(mixed["old"])
     assert anchor.first_surviving_event_id is not None
     assert anchor.head_legacy_count_after == head.legacy_event_count
-    assert anchor.head_tip_after == head.last_event_id
+
+    # `head_tip_after` is the tip **as the deletion left it** — captured when
+    # the purge locked the head, which is necessarily before the purge writes
+    # its own `audit.retention_purge_executed`. That event's id cannot exist
+    # yet, and the anchor is written inside a SECURITY DEFINER function that
+    # returns before it is created; `ccure_user` holds no UPDATE on the anchor
+    # table and must not, so the row cannot be amended afterwards either.
+    #
+    # So the correct assertion is that the purge did not move the tip — legacy
+    # rows are never the tip — and that the live head has since advanced to the
+    # purge's own event.
+    purge_event = purge_events(db_session, org)[-1]
+    assert anchor.head_tip_after != purge_event.id
+    assert head.last_event_id == purge_event.id
     assert anchor.head_genesis_after == head.genesis_event_id
     assert anchor.operator_db_user
     assert anchor.operator_identity
@@ -359,7 +471,7 @@ def test_batching_removes_every_qualifying_row_exactly_once(
             text("SELECT id FROM audit_logs WHERE org_id = :o"), {"o": org}
         )
     }
-    assert not ({row.id for row in rows} & survivors)
+    assert not (set(rows) & survivors)
 
 
 def test_each_batch_produces_its_own_audit_event(
@@ -398,6 +510,23 @@ def test_nothing_is_deleted_when_no_row_qualifies(db_session, test_user, enabled
 def test_a_purge_touches_only_its_own_organisation(
     db_session, test_user, test_org, enabled
 ):
+    """
+    A second tenant's rows must survive, and — because this one has pre-chain
+    rows but **no chain head** — it must be skipped and reported rather than
+    taking the whole run down with it.
+
+    The purge locks the organisation's chain head, and that lock is what stops
+    a purge interleaving with an insert. With no head there is nothing to lock,
+    so the purge cannot run for that tenant and must not. What it must also not
+    do is abort: retention is a nightly job across every tenant, and one tenant
+    in an unexpected state stopping everyone else's backlog from draining is
+    the wrong failure mode. It fails closed for the one and continues.
+
+    A correctly bootstrapped database cannot reach this state —
+    `audit_chain_seed_legacy_v1` creates a head for every organisation holding
+    unhashed rows — so reaching it means something worth an operator seeing.
+    """
+    from audit_retention_support import make_legacy_event
     from db.base import gen_uuid
     from db.models import Organization
 
@@ -412,19 +541,18 @@ def test_a_purge_touches_only_its_own_organisation(
     db_session.add(other)
     db_session.commit()
 
-    seed_legacy(db_session, test_user.org_id, 3, age_days=400)
-    # The other tenant gets aged rows too, but no chain head — so it is not
-    # eligible and must be left entirely alone.
-    from audit_retention_support import make_legacy_event
-
+    mine = seed_legacy(db_session, test_user.org_id, 3, age_days=400)
     foreign = [make_legacy_event(db_session, other.id, age_days=400) for _ in range(3)]
 
-    run_retention(db_session, dry_run=False)
+    report = run_retention(db_session, dry_run=False)
 
-    survivors = {
-        row[0]
-        for row in db_session.execute(
-            text("SELECT id FROM audit_logs WHERE org_id = :o"), {"o": other.id}
-        )
-    }
-    assert {row.id for row in foreign} <= survivors
+    # The eligible tenant was purged...
+    assert report["deleted_total"] == len(mine)
+    assert test_user.org_id in report["purged"]
+
+    # ...and the headless one was skipped, reported, and left completely alone.
+    assert other.id in report["no_head_orgs"]
+    assert other.id not in report["purged"]
+    assert set(foreign) <= all_ids(db_session, other.id)
+    assert counts(db_session, other.id)["legacy"] == 3
+    assert anchors_for(db_session, other.id) == []

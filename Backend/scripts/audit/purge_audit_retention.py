@@ -144,6 +144,10 @@ def main() -> int:
             print("\n  HELD (never purged, and the skip is audited):")
             for org in sorted(report["held_orgs"]):
                 print(f"    {org}")
+        if report["no_head_orgs"]:
+            print("\n  SKIPPED (pre-chain rows but no chain head, nothing removed):")
+            for org in report["no_head_orgs"]:
+                print(f"    {org}")
         if report["deferred_orgs"]:
             print("\n  DEFERRED (an export held the shared lock):")
             for org in report["deferred_orgs"]:

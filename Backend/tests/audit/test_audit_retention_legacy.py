@@ -208,14 +208,38 @@ def test_an_unaccounted_deletion_is_reported_as_a_break(db_session, mixed, enabl
 # ─── Accounting ──────────────────────────────────────────────────────────────
 
 
-def test_legacy_event_count_matches_the_remaining_legacy_rows(
+def test_the_head_legacy_counter_falls_by_exactly_what_was_deleted(
     db_session, mixed, enabled
 ):
-    org = mixed["org"]
-    run_retention(db_session, dry_run=False)
+    """
+    A **delta**, not an absolute, and the distinction is not a convenience.
 
-    head = head_row(db_session, org)
-    assert head.legacy_event_count == counts(db_session, org)["legacy"]
+    `legacy_event_count` is seeded once from a COUNT when the chain is
+    bootstrapped. On a real installation it therefore equals the surviving
+    pre-chain rows, and `verify_chain` treats a shortfall as a break. On a test
+    organisation the rows are injected afterwards and the head cannot see them —
+    the only function that moves it decrements, and is executable by
+    `audit_maintenance` alone. Adjusting it from a fixture would mean handing
+    the application role a privilege the design deliberately withholds.
+
+    What the product guarantees either way is this: a purge decrements the head
+    by exactly the number of rows it removed, in the same transaction. That is
+    what makes an out-of-band deletion detectable, and it is what is asserted.
+    """
+    org = mixed["org"]
+    before = head_row(db_session, org).legacy_event_count
+    rows_before = counts(db_session, org)["legacy"]
+
+    report = run_retention(db_session, dry_run=False)
+
+    after = head_row(db_session, org).legacy_event_count
+    rows_after = counts(db_session, org)["legacy"]
+
+    assert report["deleted_total"] == len(mixed["old"])
+    assert rows_before - rows_after == report["deleted_total"]
+    # GREATEST(...,0) floors the counter, so the fall can be smaller than the
+    # deletion only when the counter was already below it — never larger.
+    assert before - after == min(before, report["deleted_total"])
 
 
 def test_an_anchor_is_written_for_the_purge(db_session, mixed, enabled):

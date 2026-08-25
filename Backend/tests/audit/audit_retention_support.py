@@ -19,7 +19,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from db.audit_hardening import suspended_immutability
 from db.base import gen_uuid
 from db.models import AuditLog
 from sqlalchemy import text
@@ -45,54 +44,80 @@ def require_retention(conn) -> None:
 
 def make_legacy_event(session, org_id: str, *, age_days: float, action="user.login"):
     """
-    One pre-chain row: written normally, then stripped of its hash.
+    One pre-chain row, made the way real pre-chain history was made: **with the
+    chain trigger disabled**.
 
-    This is the shape real legacy history has, and the only way to produce it —
-    the chain trigger hashes every insert unconditionally and discards whatever
-    the client supplied in those columns, so a legacy row cannot be inserted
-    directly. Stripping afterwards needs the append-only trigger suspended,
-    which is why this helper exists rather than each suite doing it by hand.
+    The earlier version of this helper inserted the row normally and then
+    stripped its hash. That looked equivalent and is not, and the difference is
+    the whole point of these suites: a normal insert makes the chain trigger
+    hash the row *and advance the head to it*. Removing the hash afterwards
+    leaves the head — and the next event's ``prev_hash`` — pointing at a value
+    no row carries any more. It broke the chain in the fixture, before the
+    purge under test had run, and ``verify_chain`` duly reported
+    ``walked 1 of 3 chained rows``.
+
+    A test that corrupts the chain while setting up cannot say anything about
+    whether a purge preserves it.
+
+    Disabling the trigger is what genuinely pre-chain rows experienced: they
+    were written before it existed. The head is never advanced, no hash is
+    computed, no ``prev_hash`` link is created, and no legitimately chained row
+    is touched. It matches ``test_audit_chain_legacy_boundary.org_with_legacy``,
+    which had it right all along.
 
     ``age_days`` is what makes a row eligible: the purge floor is 90 days and
     is not overridable, so a test that wants a deletion has to age its data
     rather than lower the guard.
     """
     created = datetime.now(timezone.utc) - timedelta(days=age_days)
-    row = AuditLog(
-        id=gen_uuid(),
-        org_id=org_id,
-        action=action,
-        resource_type="user",
-        resource_id="legacy",
-        status="success",
-        severity="info",
-        ip_address="10.180.6.14",
-        created_at=created,
+    event_id = gen_uuid()
+
+    # `DISABLE TRIGGER` takes ACCESS EXCLUSIVE and is transactional, so no other
+    # session ever observes a window in which audit_logs is unchained. Restored
+    # on the success path; on failure the caller's ROLLBACK restores it, which
+    # is the same discipline `suspended_immutability` documents — a statement
+    # issued in a `finally` after an error would itself fail with "current
+    # transaction is aborted" and turn a clear error into a confusing one.
+    session.execute(text("ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_chain"))
+    session.execute(
+        text(
+            "INSERT INTO audit_logs (id, org_id, action, resource_type, "
+            "                        resource_id, status, severity, ip_address, "
+            "                        created_at) "
+            "VALUES (:i, :o, :a, 'user', 'legacy', 'success', 'info', "
+            "        '10.180.6.14'::inet, :c)"
+        ),
+        {"i": event_id, "o": org_id, "a": action, "c": created},
     )
-    session.add(row)
+    session.execute(text("ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_chain"))
     session.commit()
 
-    with suspended_immutability(session):
-        session.execute(
-            text(
-                "UPDATE audit_logs SET record_hash = NULL, prev_hash = NULL "
-                " WHERE id = :i AND org_id = :o"
-            ),
-            {"i": row.id, "o": org_id},
-        )
-    session.commit()
+    row = session.get(AuditLog, {"id": event_id, "org_id": org_id})
+    assert row is not None and row.record_hash is None, (
+        "a legacy fixture row must carry no hash; the chain trigger was not "
+        "disabled for its insert"
+    )
     return row
 
 
 def seed_legacy(session, org_id: str, count: int, *, age_days: float = 400):
-    """`count` aged pre-chain rows, plus the head row retention needs."""
+    """`count` aged pre-chain rows, plus the head row retention needs.
+
+    The head's ``legacy_event_count`` is deliberately **not** adjusted to match.
+    It is seeded once, from a COUNT, when the chain is bootstrapped; rows
+    injected afterwards are invisible to it, and the only function that can
+    move it decrements and is executable by ``audit_maintenance`` alone — which
+    is correct and must not be worked around to make a fixture tidy.
+
+    So on a test organisation the head sits *below* the row count, and
+    ``verify_chain`` reports that as a **note**, not a break: rows written with
+    the chain trigger disabled are how pre-chain history exists at all. What the
+    product actually guarantees, and what the suites therefore assert, is that a
+    purge decrements the head by exactly the number of rows it removed — a
+    delta, not an absolute.
+    """
     ensure_head(session, org_id)
-    rows = [make_legacy_event(session, org_id, age_days=age_days) for _ in range(count)]
-    # The head's legacy counter is seeded once at chain bootstrap; rows created
-    # afterwards are invisible to it. Align it so the decrement the purge
-    # performs can be asserted against a known starting point.
-    set_head_legacy_count(session, org_id, count)
-    return rows
+    return [make_legacy_event(session, org_id, age_days=age_days) for _ in range(count)]
 
 
 def ensure_head(session, org_id: str) -> None:
@@ -112,30 +137,6 @@ def ensure_head(session, org_id: str) -> None:
     if actor is not None:
         log_audit_event(session, actor, "user.login", "user", str(actor.id))
         session.commit()
-
-
-def set_head_legacy_count(session, org_id: str, value: int) -> None:
-    """Set the head's legacy counter through the sanctioned function only.
-
-    The application role holds SELECT on `audit_chain_heads` and nothing more,
-    so this goes through `audit_chain_note_legacy_purge_v1` — which only ever
-    *decrements*. To raise the counter the helper first reads it; a test that
-    needs a higher value must therefore have created the rows first.
-    """
-    current = session.execute(
-        text(
-            "SELECT legacy_event_count FROM audit_chain.audit_chain_heads "
-            " WHERE org_id = :o"
-        ),
-        {"o": org_id},
-    ).scalar()
-    if current is None or current <= value:
-        return
-    session.execute(
-        text("SELECT audit_chain.audit_chain_note_legacy_purge_v1(:o, :n)"),
-        {"o": org_id, "n": current - value},
-    )
-    session.commit()
 
 
 def head_row(session, org_id: str):

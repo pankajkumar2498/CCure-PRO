@@ -36,6 +36,7 @@ PURGE_SIG = (
     "integer, integer, text, character varying, text)"
 )
 NOTE_SIG = "audit_chain.audit_chain_note_legacy_purge_v1(character varying, bigint)"
+LOCK_SIG = "audit_chain.audit_chain_lock_head_v1(character varying)"
 PREVIEW_SIG = "audit_retention.preview_legacy_v1(timestamp with time zone)"
 
 
@@ -46,6 +47,142 @@ def check(number: str, description: str, actual, expected, detail: str = "") -> 
         line += f"  ({detail or f'got={actual!r} want={expected!r}'})"
     print(line)
     (PASSED if ok else FAILED).append(line)
+
+
+#: A tenant id no real installation uses, so the effect check below cannot
+#: collide with anything. It never survives the rollback regardless.
+_PROBE_ORG = "org_retention_selftest_probe"
+
+
+def _effect_check(db) -> None:
+    """
+    Drive the **whole purge path** once, then roll it back unconditionally.
+
+    Every check above this one reads GRANT metadata, and metadata is not the
+    same thing as a working path. The first version of this verifier passed
+    48/48 against a database on which no purge could execute at all: the
+    EXECUTE grant on a function in ``audit_chain`` reported true while
+    ``audit_maintenance`` had no USAGE on that schema, so every call failed
+    with "permission denied for schema audit_chain". `has_function_privilege`
+    cannot see that, and neither can any other catalogue query.
+
+    So this creates a throwaway organisation, one chained event and one aged
+    pre-chain row, purges the pre-chain row, and asserts what came back — the
+    lock function, the hold check, the anchor insert, the DELETE through the
+    append-only trigger, and the chain-head decrement, in one go.
+
+    **Nothing is committed.** The transaction is rolled back in a ``finally``
+    before any assertion is reported, exactly as the chain suites' probes do,
+    so a failure part-way cannot leave synthetic purge state behind.
+
+    One cost worth knowing: producing an unhashed row requires disabling the
+    chain trigger, which takes a brief ACCESS EXCLUSIVE lock on ``audit_logs``.
+    It is held for the few milliseconds of this transaction and released by the
+    rollback. That is why this runs last.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    outcome: dict = {}
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+
+        db.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, plan, max_assets, "
+                "                           max_users, settings, is_active, created_at) "
+                "VALUES (:o, 'Retention self-test', :s, 'community', 1, 1, "
+                "        '{}'::jsonb, true, now())"
+            ),
+            {"o": _PROBE_ORG, "s": f"{_PROBE_ORG}-slug"},
+        )
+
+        # A normal insert: the chain trigger hashes it and creates the head.
+        db.execute(
+            text(
+                "INSERT INTO audit_logs (id, org_id, action, status, severity, "
+                "                        created_at) "
+                "VALUES ('probe_chained', :o, 'user.login', 'success', 'info', now())"
+            ),
+            {"o": _PROBE_ORG},
+        )
+
+        # A pre-chain row: the only way to make one is with the trigger off,
+        # which is how real legacy history came to exist.
+        db.execute(text("ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_chain"))
+        db.execute(
+            text(
+                "INSERT INTO audit_logs (id, org_id, action, status, severity, "
+                "                        created_at) "
+                "VALUES ('probe_legacy', :o, 'user.login', 'success', 'info', "
+                "        now() - interval '500 days')"
+            ),
+            {"o": _PROBE_ORG},
+        )
+        db.execute(text("ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_chain"))
+
+        row = db.execute(
+            text(
+                "SELECT deleted_count, anchor_id FROM audit_retention.purge_legacy_v1("
+                "  :o, :c, 10, 90, 'verify_retention_bootstrap', NULL, 'self-test')"
+            ),
+            {"o": _PROBE_ORG, "c": cutoff},
+        ).fetchone()
+
+        outcome["deleted"] = int(row.deleted_count or 0)
+        outcome["anchor"] = row.anchor_id
+        outcome["anchor_rows"] = db.execute(
+            text(
+                "SELECT count(*) FROM audit_retention.retention_anchors "
+                " WHERE org_id = :o AND kind = 'legacy'"
+            ),
+            {"o": _PROBE_ORG},
+        ).scalar()
+        outcome["legacy_left"] = db.execute(
+            text(
+                "SELECT count(*) FROM audit_logs "
+                " WHERE org_id = :o AND record_hash IS NULL"
+            ),
+            {"o": _PROBE_ORG},
+        ).scalar()
+        outcome["chained_left"] = db.execute(
+            text(
+                "SELECT count(*) FROM audit_logs "
+                " WHERE org_id = :o AND record_hash IS NOT NULL"
+            ),
+            {"o": _PROBE_ORG},
+        ).scalar()
+    except Exception as exc:  # noqa: BLE001 - the message is the evidence
+        outcome["error"] = str(exc).splitlines()[0]
+    finally:
+        # Unconditional, and before any assertion is made.
+        db.rollback()
+
+    if "error" in outcome:
+        check("12", "the purge path executes end to end", outcome["error"], "no error")
+        return
+
+    check(
+        "12a",
+        "the purge path executes and removes the legacy row",
+        outcome["deleted"],
+        1,
+    )
+    check("12b", "an anchor was written by that purge", outcome["anchor_rows"], 1)
+    check("12c", "no pre-chain row remains", outcome["legacy_left"], 0)
+    check("12d", "the chained row survived", outcome["chained_left"], 1)
+
+    # And the rollback really did undo it.
+    left = db.execute(
+        text("SELECT count(*) FROM audit_logs WHERE org_id = :o"), {"o": _PROBE_ORG}
+    ).scalar()
+    anchors = db.execute(
+        text(
+            "SELECT count(*) FROM audit_retention.retention_anchors WHERE org_id = :o"
+        ),
+        {"o": _PROBE_ORG},
+    ).scalar()
+    check("12e", "the self-test left no rows behind", left, 0)
+    check("12f", "the self-test left no anchor behind", anchors, 0)
 
 
 def main() -> int:
@@ -146,7 +283,11 @@ def main() -> int:
                 db.execute(
                     text(
                         "SELECT pg_get_userbyid(relowner) FROM pg_class "
-                        " WHERE oid = :t::regclass"
+                        # CAST(...) rather than `:t::regclass`: SQLAlchemy's
+                        # text() reads `:t::regclass` as a bind parameter named
+                        # `t:` and emits it verbatim. The same trap cost a pass
+                        # in the phase-4 verifier with `:s::regprocedure`.
+                        " WHERE oid = CAST(:t AS regclass)"
                     ),
                     {"t": f"audit_retention.{table}"},
                 ).scalar(),
@@ -171,6 +312,34 @@ def main() -> int:
                     ).scalar(),
                     want,
                 )
+
+        # ── 5c. Schema reachability ─────────────────────────────────────────
+        # An EXECUTE grant on a function in a schema the role cannot enter
+        # reports true and does not work. This is the check whose absence let
+        # the first bootstrap pass 48/48 while no purge could run at all.
+        check(
+            "5c-usage",
+            "audit_maintenance has USAGE on audit_chain",
+            db.execute(
+                text(
+                    "SELECT has_schema_privilege('audit_maintenance','audit_chain','USAGE')"
+                )
+            ).scalar(),
+            True,
+        )
+        for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
+            check(
+                f"5d-{privilege}",
+                f"audit_maintenance has NO {privilege} on audit_chain_heads",
+                db.execute(
+                    text(
+                        "SELECT has_table_privilege('audit_maintenance',"
+                        "  'audit_chain.audit_chain_heads', :p)"
+                    ),
+                    {"p": privilege},
+                ).scalar(),
+                False,
+            )
 
         # ── 6. audit_logs privileges for the maintenance role ───────────────
         for privilege, want in (
@@ -217,6 +386,11 @@ def main() -> int:
             # maintenance role direct UPDATE would let retention rewrite a
             # chain tip.
             ("7c", NOTE_SIG, "audit_chain_writer"),
+            # Also the chain role's: PostgreSQL requires UPDATE privilege to
+            # lock a row, and audit_maintenance must never hold one on the
+            # head, so the lock is taken by a function owned by the table's
+            # owner.
+            ("7d", LOCK_SIG, "audit_chain_writer"),
         ):
             row = db.execute(
                 text(
@@ -254,6 +428,13 @@ def main() -> int:
             # directly: that path exists for the purge function alone.
             ("8e", NOTE_SIG, app_role, False),
             ("8f", NOTE_SIG, "audit_maintenance", True),
+            ("8g", LOCK_SIG, "public", False),
+            ("8h", LOCK_SIG, "audit_maintenance", True),
+            # Deliberately NOT the application role: locking a tenant's chain
+            # head blocks every audit write for that tenant until the
+            # transaction ends, which is a denial of service nothing reachable
+            # from a request may be able to cause.
+            ("8i", LOCK_SIG, app_role, False),
         ):
             check(
                 number,
@@ -378,6 +559,9 @@ def main() -> int:
             ).scalar(),
             "audit_chain",
         )
+
+        # ── 12. The path actually executes ──────────────────────────────────
+        _effect_check(db)
 
         print("=" * 74)
         total = len(PASSED) + len(FAILED)

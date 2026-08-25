@@ -211,6 +211,34 @@ END $schema_grants$;
 -- granted to PUBLIC, which is true on some databases here and not others.
 GRANT USAGE ON SCHEMA public TO audit_maintenance;
 
+-- USAGE on audit_chain, and USAGE only. It is what lets the purge function
+-- *reach* the two chain functions below; it grants nothing on the head table.
+--
+-- Without this, an EXECUTE grant on a function in that schema reports true from
+-- `has_function_privilege` and is unusable in practice — the call fails with
+-- "permission denied for schema audit_chain". That is the same shape as the
+-- GRANT-without-grant-option trap the phase-4 verifier documents: metadata that
+-- says yes over a path that does not work.
+GRANT USAGE ON SCHEMA audit_chain TO audit_maintenance;
+
+-- Stated as an assertion rather than left implicit. `audit_maintenance` must
+-- never hold a write privilege on the chain head: with one it could rewrite
+-- `last_record_hash` — a chain tip — which is the single thing this whole
+-- separation of roles exists to prevent.
+DO $head_privileges$
+BEGIN
+    IF has_table_privilege('audit_maintenance', 'audit_chain.audit_chain_heads', 'INSERT')
+    OR has_table_privilege('audit_maintenance', 'audit_chain.audit_chain_heads', 'UPDATE')
+    OR has_table_privilege('audit_maintenance', 'audit_chain.audit_chain_heads', 'DELETE')
+    OR has_table_privilege('audit_maintenance', 'audit_chain.audit_chain_heads', 'TRUNCATE')
+    THEN
+        RAISE EXCEPTION
+            'Refusing to bootstrap: audit_maintenance holds a write privilege on '
+            'audit_chain.audit_chain_heads. Retention must reach the head only '
+            'through the SECURITY DEFINER functions owned by audit_chain_writer.';
+    END IF;
+END $head_privileges$;
+
 -- ---------------------------------------------------------------------------
 -- 4. Anchors. One row per (organisation, purge transaction), append-only.
 --
@@ -349,6 +377,75 @@ BEGIN
 
     GRANT SELECT ON TABLE public.organizations TO audit_maintenance;
 END $audit_logs_grants$;
+
+-- ---------------------------------------------------------------------------
+-- 6b. Locking the chain head, owned by the CHAIN role.
+--
+--     The purge must take the same `FOR UPDATE` row lock on the head that the
+--     insert trigger takes, or a purge and an insert for one organisation can
+--     interleave. It cannot take that lock directly:
+--
+--       **PostgreSQL requires UPDATE privilege to lock a row.** Measured on
+--       this schema — a role holding SELECT but not UPDATE on
+--       audit_chain_heads is refused `SELECT ... FOR UPDATE` with "permission
+--       denied for table audit_chain_heads". So "grant SELECT and let it lock"
+--       does not work, and granting UPDATE would hand retention the ability to
+--       rewrite a chain tip.
+--
+--     Hence this function. It is owned by audit_chain_writer, which owns the
+--     table and therefore may lock it; audit_maintenance holds EXECUTE and no
+--     table privilege whatsoever. The lock is a row lock held to the end of the
+--     *calling* transaction — SECURITY DEFINER changes whose privileges apply,
+--     not transaction scope — so the serialisation is exactly as strong as a
+--     direct `FOR UPDATE` would have been.
+--
+--     It returns state and locks. It cannot write: no UPDATE, INSERT or DELETE
+--     statement appears in it, so EXECUTE on it confers no ability to alter the
+--     head.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION audit_chain.audit_chain_lock_head_v1(
+    p_org varchar(100)
+) RETURNS TABLE (
+    last_event_id      varchar(200),
+    last_record_hash   varchar(64),
+    event_count        bigint,
+    legacy_event_count bigint,
+    genesis_event_id   varchar(200)
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, audit_chain, public
+-- The same 3s ceiling audit_chain_advance_v1 pins. A purge that cannot get the
+-- head lock must fail loudly and quickly rather than sit behind a long-running
+-- writer; the run reports it and tries again on the next schedule.
+SET lock_timeout = '3s'
+AS $fn$
+BEGIN
+    RETURN QUERY
+    SELECT h.last_event_id, h.last_record_hash, h.event_count,
+           h.legacy_event_count, h.genesis_event_id
+      FROM audit_chain.audit_chain_heads h
+     WHERE h.org_id = p_org
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'no chain head for organisation %', p_org
+            USING ERRCODE = 'no_data_found';
+    END IF;
+END
+$fn$;
+
+ALTER FUNCTION audit_chain.audit_chain_lock_head_v1(varchar)
+    OWNER TO audit_chain_writer;
+
+REVOKE ALL ON FUNCTION audit_chain.audit_chain_lock_head_v1(varchar) FROM PUBLIC;
+
+-- audit_maintenance only. Deliberately **not** the application role: locking a
+-- tenant's chain head blocks every audit write for that tenant until the
+-- transaction ends, which is a denial of service anything reachable from a
+-- request must not be able to cause.
+GRANT EXECUTE ON FUNCTION audit_chain.audit_chain_lock_head_v1(varchar)
+    TO audit_maintenance;
 
 -- ---------------------------------------------------------------------------
 -- 7. Head adjustment, owned by the CHAIN role, not the maintenance role.
@@ -554,19 +651,17 @@ BEGIN
     END IF;
 
     -- --- Serialise against the chain --------------------------------------
-    -- The same row lock the insert trigger takes. A purge and an insert for
-    -- the same organisation cannot interleave; different organisations do not
+    -- The same row lock the insert trigger takes, so a purge and an insert for
+    -- one organisation cannot interleave; different organisations do not
     -- contend.
-    SELECT h.last_event_id, h.last_record_hash, h.event_count,
-           h.legacy_event_count, h.genesis_event_id
-      INTO head
-      FROM audit_chain.audit_chain_heads h
-     WHERE h.org_id = p_org
-       FOR UPDATE;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'no chain head for organisation %', p_org;
-    END IF;
+    --
+    -- Taken **through a function owned by audit_chain_writer**, not with a
+    -- direct `SELECT ... FOR UPDATE` here. PostgreSQL requires UPDATE privilege
+    -- to lock a row, and audit_maintenance must never hold a write privilege on
+    -- the head — with one it could rewrite a chain tip. The lock is a row lock
+    -- held to the end of THIS transaction; SECURITY DEFINER changes whose
+    -- privileges apply, not transaction scope.
+    SELECT * INTO head FROM audit_chain.audit_chain_lock_head_v1(p_org);
 
     -- --- Select the batch --------------------------------------------------
     -- `record_hash IS NULL` is the legacy predicate. Oldest first, so a purge

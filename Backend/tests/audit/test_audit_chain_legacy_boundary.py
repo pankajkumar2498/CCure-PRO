@@ -216,7 +216,7 @@ def test_legacy_rows_never_inflate_the_chained_event_count(
 
     Two things this test deliberately does **not** do:
 
-    * It does not call `audit_chain_seed_legacy_v1()`. That function is a
+    * It does not call `audit_chain.audit_chain_seed_legacy_v1()`. That function is a
       bootstrap-only entry point and the application role is denied EXECUTE on
       it — an earlier version of this test invoked it and was refused with
       `permission denied for function audit_chain_seed_legacy_v1`, which is the

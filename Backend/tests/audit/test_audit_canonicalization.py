@@ -10,7 +10,12 @@ worse, two different events that hash identically.
 """
 
 import pytest
-from audit_chain_support import newest_event, require_chain, write_event
+from audit_chain_support import (
+    fn,
+    newest_event,
+    require_chain,
+    write_event,
+)
 from sqlalchemy import text
 
 pytestmark = pytest.mark.usefixtures("db_session")
@@ -54,7 +59,7 @@ def event(db_session, test_user):
 def _payload(db_session, event) -> str:
     return db_session.execute(
         text(
-            "SELECT audit_canonical_payload_v1(a) FROM audit_logs a "
+            f"SELECT {fn(db_session, 'audit_canonical_payload_v1')}(a) FROM public.audit_logs a "
             " WHERE a.id = :i AND a.org_id = :o"
         ),
         {"i": event.id, "o": event.org_id},
@@ -81,7 +86,7 @@ def test_user_id_is_not_part_of_the_payload(db_session, event, test_user):
     """
     before = db_session.execute(
         text(
-            "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+            f"SELECT {fn(db_session, 'audit_record_hash_v1')}(a.prev_hash, a) FROM public.audit_logs a "
             " WHERE a.id = :i AND a.org_id = :o"
         ),
         {"i": event.id, "o": event.org_id},
@@ -94,7 +99,7 @@ def test_user_id_is_not_part_of_the_payload(db_session, event, test_user):
 
     after = db_session.execute(
         text(
-            "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+            f"SELECT {fn(db_session, 'audit_record_hash_v1')}(a.prev_hash, a) FROM public.audit_logs a "
             " WHERE a.id = :i AND a.org_id = :o"
         ),
         {"i": event.id, "o": event.org_id},
@@ -128,7 +133,9 @@ def test_the_field_order_is_fixed_in_the_function_not_the_catalogue(db_session):
 def test_null_and_empty_string_are_distinguishable(db_session):
     """Without this, `resource_id` NULL and '' collide."""
     null_form, empty_form = db_session.execute(
-        text("SELECT _audit_field_v1(NULL), _audit_field_v1('')")
+        text(
+            f"SELECT {fn(db_session, '_audit_field_v1')}(NULL), {fn(db_session, '_audit_field_v1')}('')"
+        )
     ).fetchone()
     assert null_form == "~"
     assert empty_form == "0:"
@@ -141,12 +148,10 @@ def test_the_encoding_is_injective(db_session):
     the same input, so one event could be substituted for another. Length
     prefixing removes that.
     """
+    F = fn(db_session, "_audit_field_v1")
     assert (
         db_session.execute(
-            text(
-                "SELECT _audit_field_v1('a:b') || _audit_field_v1('c') "
-                "    <> _audit_field_v1('a') || _audit_field_v1('b:c')"
-            )
+            text(f"SELECT {F}('a:b') || {F}('c') <> {F}('a') || {F}('b:c')")
         ).scalar()
         is True
     )
@@ -157,7 +162,9 @@ def test_multibyte_values_are_length_prefixed_in_bytes(db_session):
     `octet_length`, not `char_length`. A character count would make two
     different strings share a prefix length and reopen the ambiguity above.
     """
-    encoded = db_session.execute(text("SELECT _audit_field_v1('é')")).scalar()
+    encoded = db_session.execute(
+        text(f"SELECT {fn(db_session, '_audit_field_v1')}('é')")
+    ).scalar()
     assert encoded == "2:é"
 
 
@@ -177,7 +184,7 @@ def test_hashes_reproduce_under_any_session_timezone(db_session, event):
         db_session.execute(text(f"SET LOCAL TimeZone = '{tz}'"))
         recomputed = db_session.execute(
             text(
-                "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+                f"SELECT {fn(db_session, 'audit_record_hash_v1')}(a.prev_hash, a) FROM public.audit_logs a "
                 " WHERE a.id = :i AND a.org_id = :o"
             ),
             {"i": event.id, "o": event.org_id},
@@ -194,7 +201,7 @@ def test_hashes_reproduce_under_any_datestyle(db_session, event):
         db_session.execute(text(f"SET LOCAL DateStyle = '{style}'"))
         recomputed = db_session.execute(
             text(
-                "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+                f"SELECT {fn(db_session, 'audit_record_hash_v1')}(a.prev_hash, a) FROM public.audit_logs a "
                 " WHERE a.id = :i AND a.org_id = :o"
             ),
             {"i": event.id, "o": event.org_id},
@@ -306,7 +313,7 @@ def test_the_verifier_and_the_trigger_share_one_definition(db_session, event):
     """
     recomputed = db_session.execute(
         text(
-            "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+            f"SELECT {fn(db_session, 'audit_record_hash_v1')}(a.prev_hash, a) FROM public.audit_logs a "
             " WHERE a.id = :i AND a.org_id = :o"
         ),
         {"i": event.id, "o": event.org_id},

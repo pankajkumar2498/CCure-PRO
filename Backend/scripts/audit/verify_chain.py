@@ -42,21 +42,34 @@ from db.base import SessionLocal
 from sqlalchemy import text
 
 
+def chain_location(db) -> dict:
+    """Where the chain machinery is, if anywhere.
+
+    Delegates to `db.audit_hardening.chain_objects_installed`, which checks
+    both `audit_chain` (current) and `public` (pre-isolation), so there is one
+    definition of "installed" shared by the verifier, the startup check and
+    the migration downgrade guard.
+    """
+    from db.audit_hardening import chain_objects_installed
+
+    return chain_objects_installed(db)
+
+
 def chain_installed(db) -> bool:
-    return bool(
-        db.execute(text("SELECT to_regclass('public.audit_chain_heads')")).scalar()
-    ) and bool(
-        db.execute(
-            text("SELECT 1 FROM pg_trigger WHERE tgname = 'audit_logs_chain' LIMIT 1")
-        ).scalar()
-    )
+    return chain_location(db)["installed"]
 
 
-def verify_org(db, org_id: str) -> dict:
-    """Walk one organisation's chain from genesis and check every link."""
+def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
+    """Walk one organisation's chain from genesis and check every link.
+
+    `schema` is where the chain machinery lives, resolved once by
+    `chain_location()`. Every chain-object reference below is qualified
+    with it — never left bare — because the application role owns `public`
+    on some databases and could create a shadow `audit_chain_heads` there.
+    """
     rows = db.execute(
         text(
-            "SELECT id, prev_hash, record_hash FROM audit_logs "
+            "SELECT id, prev_hash, record_hash FROM public.audit_logs "
             " WHERE org_id = :o AND record_hash IS NOT NULL"
         ),
         {"o": org_id},
@@ -64,7 +77,7 @@ def verify_org(db, org_id: str) -> dict:
 
     legacy = db.execute(
         text(
-            "SELECT count(*) FROM audit_logs WHERE org_id = :o AND record_hash IS NULL"
+            "SELECT count(*) FROM public.audit_logs WHERE org_id = :o AND record_hash IS NULL"
         ),
         {"o": org_id},
     ).scalar()
@@ -72,7 +85,7 @@ def verify_org(db, org_id: str) -> dict:
     head = db.execute(
         text(
             "SELECT event_count, last_event_id, last_record_hash, genesis_event_id, "
-            "       legacy_event_count FROM audit_chain_heads WHERE org_id = :o"
+            f"       legacy_event_count FROM {schema}.audit_chain_heads WHERE org_id = :o"
         ),
         {"o": org_id},
     ).fetchone()
@@ -123,8 +136,8 @@ def verify_org(db, org_id: str) -> dict:
 
         expected = db.execute(
             text(
-                "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
-                " WHERE a.id = :i AND a.org_id = :o"
+                f"SELECT {schema}.audit_record_hash_v1(a.prev_hash, a) "
+                "FROM public.audit_logs a WHERE a.id = :i AND a.org_id = :o"
             ),
             {"i": current.id, "o": org_id},
         ).scalar()
@@ -181,7 +194,8 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        if not chain_installed(db):
+        location = chain_location(db)
+        if not location["installed"]:
             print("audit chain: NOT INSTALLED")
             print(
                 "\nThe privileged half of phase 4 has not been applied. A database\n"
@@ -191,14 +205,25 @@ def main() -> int:
             )
             return 2
 
+        schema = location["schema"]
+        if location["needs_migration"]:
+            print(
+                f"WARNING: chain machinery is in `{schema}`, not `audit_chain`.\n"
+                "Where the application role owns that schema it can DROP the\n"
+                "chain objects, because a schema owner may drop objects it does\n"
+                "not own. Re-run bootstrap_chain.sql as a superuser to move\n"
+                "them; existing chain state is preserved.\n"
+            )
+
         if args.status:
             heads = db.execute(
                 text(
                     "SELECT count(*), coalesce(sum(event_count),0), "
-                    "       coalesce(sum(legacy_event_count),0) FROM audit_chain_heads"
+                    "       coalesce(sum(legacy_event_count),0) "
+                    f"  FROM {schema}.audit_chain_heads"
                 )
             ).fetchone()
-            print("audit chain: INSTALLED")
+            print(f"audit chain: INSTALLED (schema: {schema})")
             print(f"  organisations tracked : {heads[0]}")
             print(f"  chained events        : {heads[1]}")
             print(f"  legacy (unverifiable) : {heads[2]}")
@@ -210,7 +235,9 @@ def main() -> int:
             else [
                 r[0]
                 for r in db.execute(
-                    text("SELECT DISTINCT org_id FROM audit_logs ORDER BY org_id")
+                    text(
+                        "SELECT DISTINCT org_id FROM public.audit_logs ORDER BY org_id"
+                    )
                 )
             ]
         )
@@ -219,7 +246,7 @@ def main() -> int:
         total_chained = total_legacy = 0
         print(f"verifying {len(org_ids)} organisation(s)\n")
         for org_id in org_ids:
-            report = verify_org(db, org_id)
+            report = verify_org(db, org_id, schema)
             total_chained += report["chained"]
             total_legacy += report["legacy"]
             total_breaks += len(report["breaks"])

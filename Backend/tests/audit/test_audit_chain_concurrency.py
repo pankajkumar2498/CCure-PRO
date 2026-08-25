@@ -26,7 +26,11 @@ from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 
 import pytest
-from audit_chain_support import require_chain, verify_org
+from audit_chain_support import (
+    heads,
+    require_chain,
+    verify_org,
+)
 from db.base import SessionLocal, gen_uuid
 from sqlalchemy import text
 
@@ -143,7 +147,7 @@ def test_the_head_tracks_every_insert_under_contention(db_session, fresh_org):
     head = db_session.execute(
         text(
             "SELECT event_count, last_event_id, last_record_hash, genesis_event_id "
-            "  FROM audit_chain_heads WHERE org_id = :o"
+            f"  FROM {heads(db_session)} WHERE org_id = :o"
         ),
         {"o": fresh_org.id},
     ).fetchone()
@@ -180,7 +184,7 @@ def test_the_first_event_race_produces_one_chain_not_two(db_session, fresh_org):
     `prev_hash = NULL` and start two separate chains.
     """
     head_before = db_session.execute(
-        text("SELECT count(*) FROM audit_chain_heads WHERE org_id = :o"),
+        text(f"SELECT count(*) FROM {heads(db_session)} WHERE org_id = :o"),
         {"o": fresh_org.id},
     ).scalar()
     assert head_before == 0, "fixture must start with no chain head"
@@ -188,11 +192,13 @@ def test_the_first_event_race_produces_one_chain_not_two(db_session, fresh_org):
     _run_concurrently([fresh_org.id] * WRITERS)
     db_session.commit()
 
-    heads = db_session.execute(
-        text("SELECT count(*) FROM audit_chain_heads WHERE org_id = :o"),
+    # Not named `heads`: that shadows the imported schema-resolver helper, and
+    # the shadow is created before the f-string on the same line evaluates it.
+    head_count = db_session.execute(
+        text(f"SELECT count(*) FROM {heads(db_session)} WHERE org_id = :o"),
         {"o": fresh_org.id},
     ).scalar()
-    assert heads == 1
+    assert head_count == 1
 
     genesis = db_session.execute(
         text(

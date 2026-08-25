@@ -8,23 +8,27 @@ other chain-dependent test, and run it as the APPLICATION role:
 
 Why it exists
 ─────────────
-The chain's security rests on a cross-role `SECURITY DEFINER` arrangement that
-cannot be prototyped without role-creation rights: a trigger on a table owned
-by the application role invokes a function owned by `audit_chain_writer`, which
-writes a table the application role cannot touch. Until that path has actually
-executed, "implemented" would be a claim rather than a fact.
+The chain's security rests on two arrangements that cannot be prototyped
+without role-creation rights:
 
-It also checks the four things that make `SECURITY DEFINER` safe rather than a
-privilege-escalation gift: ownership, a pinned `search_path`, EXECUTE revoked
-from PUBLIC, and no role membership that would let the caller `SET ROLE` its
-way around the boundary.
+1. A cross-role `SECURITY DEFINER` path — a trigger on a table owned by the
+   application role invokes a function owned by `audit_chain_writer`, which
+   writes a table the application role cannot touch.
+2. Schema isolation — the machinery lives in `audit_chain`, owned by
+   `audit_chain_writer`, because **a schema owner may DROP any object in that
+   schema regardless of who owns the object**. Owning the objects is necessary
+   but not sufficient.
+
+Until both have actually executed, "implemented" would be a claim rather than
+a fact.
 
 Non-invasive
 ────────────
-The end-to-end probe inserts one audit event and then **rolls back**. The head
-advance is observed inside the transaction, so the cross-role write is proven
-without leaving a synthetic row in an append-only table that could never be
-removed afterwards.
+The end-to-end probe inserts one audit event and then **rolls back**, so the
+cross-role write is proven without leaving a synthetic row in an append-only
+table that could never be removed. Every refusal probe rolls back
+unconditionally and never commits — a test that verifies "X is refused" must
+never be the thing that performs X.
 
 Exit code is 0 only if every check passes.
 """
@@ -36,6 +40,14 @@ import sys
 from db.base import SessionLocal, gen_uuid
 from sqlalchemy import text
 
+#: Where the chain machinery lives. Every reference below is qualified with it
+#: — never left bare — because the application role owns `public` on some
+#: databases and could create a shadow `audit_chain_heads` there.
+CHAIN_SCHEMA = "audit_chain"
+HEADS = f"{CHAIN_SCHEMA}.audit_chain_heads"
+
+#: (name, argument types). The `audit_logs` row type stays in `public`: only
+#: the chain machinery moves.
 APP_FUNCS = (
     ("_audit_field_v1", "text"),
     ("audit_canonical_payload_v1", "public.audit_logs"),
@@ -43,7 +55,7 @@ APP_FUNCS = (
     ("audit_chain_advance_v1", ""),
     ("audit_chain_seed_legacy_v1", ""),
 )
-#: The two that write `audit_chain_heads` and therefore must run as the owner.
+#: The two that write the head table and therefore must run as the owner.
 DEFINER_FUNCS = {"audit_chain_advance_v1", "audit_chain_seed_legacy_v1"}
 #: The application role legitimately calls these; it must NOT be able to call
 #: the legacy seeder, which is a bootstrap-only entry point.
@@ -61,31 +73,40 @@ def check(ok: bool, name: str, detail: str = "") -> None:
     results.append((bool(ok), name, detail))
 
 
-def _refused(db, sql: str, params: dict | None = None) -> tuple[bool, str]:
-    """Run `sql`, expecting the database to refuse it."""
+def _refused(db, sql: str) -> tuple[bool, str]:
+    """
+    Run `sql`, expecting the database to refuse it, **without committing**.
+
+    The rollback is unconditional and happens before anything is returned, so a
+    statement that turns out to be permitted is never made durable. This
+    matters: several probes below attempt destructive DDL.
+    """
     try:
-        db.execute(text(sql), params or {})
-        db.rollback()
+        db.execute(text(sql))
         return False, "ALLOWED"
     except Exception as exc:  # noqa: BLE001 - the message is the evidence
-        db.rollback()
         first = str(exc).splitlines()[0]
         return ("permission denied" in first or "must be" in first), first[:110]
+    finally:
+        db.rollback()
 
 
 def main() -> int:
     db = SessionLocal()
-    scalar = lambda sql, **p: db.execute(text(sql), p).scalar()  # noqa: E731
+
+    def scalar(sql: str, **params):
+        return db.execute(text(sql), params).scalar()
 
     app_role = scalar("SELECT current_user")
     print(f"connected as : {app_role}")
-    print(f"database     : {scalar('SELECT current_database()')}\n")
+    print(f"database     : {scalar('SELECT current_database()')}")
+    print(f"chain schema : {CHAIN_SCHEMA}\n")
 
-    # ── Preflight: is the bootstrap even installed? ─────────────────────────
-    installed = bool(scalar("SELECT to_regclass('public.audit_chain_heads')")) and bool(
-        scalar("SELECT 1 FROM pg_trigger WHERE tgname='audit_logs_chain' LIMIT 1")
-    )
-    if not installed:
+    # ── Preflight ───────────────────────────────────────────────────────────
+    from db.audit_hardening import chain_objects_installed
+
+    state = chain_objects_installed(db)
+    if not state["installed"]:
         print("NOT VERIFIED: the chain bootstrap has not been run on this database.")
         print("A database administrator must run, as postgres:")
         print("    psql -U postgres -d <db> -v ON_ERROR_STOP=1 \\")
@@ -93,47 +114,46 @@ def main() -> int:
         print("\nNothing below has been checked. This is not a pass.")
         return 2
 
+    if state["schema"] != CHAIN_SCHEMA:
+        print(
+            f"NOT VERIFIED: the chain is installed in `{state['schema']}`, not "
+            f"`{CHAIN_SCHEMA}`. Where the application role owns that schema it "
+            f"can DROP the chain machinery. Re-run bootstrap_chain.sql as a "
+            f"superuser to move it; existing chain state is preserved."
+        )
+        return 2
+
     # ── 1-3. The cross-role SECURITY DEFINER path, end to end ──────────────
     org_id = scalar(
-        "SELECT org_id FROM audit_chain_heads ORDER BY legacy_event_count DESC LIMIT 1"
-    ) or scalar("SELECT id FROM organizations ORDER BY created_at LIMIT 1")
+        f"SELECT org_id FROM {HEADS} ORDER BY legacy_event_count DESC LIMIT 1"
+    ) or scalar("SELECT id FROM public.organizations ORDER BY created_at LIMIT 1")
 
-    before = db.execute(
-        text(
-            "SELECT event_count, last_event_id, last_record_hash "
-            "FROM audit_chain_heads WHERE org_id = :o"
-        ),
-        {"o": org_id},
-    ).fetchone()
+    head_sql = (
+        f"SELECT event_count, last_event_id, last_record_hash FROM {HEADS} "
+        "WHERE org_id = :o"
+    )
+    before = db.execute(text(head_sql), {"o": org_id}).fetchone()
     before_count = before[0] if before else 0
 
     probe_id = gen_uuid()
     try:
         db.execute(
             text(
-                """
-                INSERT INTO audit_logs
-                    (id, org_id, action, resource_type, status, severity, created_at)
-                VALUES
-                    (:id, :org, 'audit.chain_probe', 'audit', 'success', 'info', now())
-                """
+                "INSERT INTO public.audit_logs "
+                "  (id, org_id, action, resource_type, status, severity, created_at) "
+                "VALUES "
+                "  (:id, :org, 'audit.chain_probe', 'audit', 'success', 'info', now())"
             ),
             {"id": probe_id, "org": org_id},
         )
         row = db.execute(
             text(
-                "SELECT prev_hash, record_hash FROM audit_logs "
+                "SELECT prev_hash, record_hash FROM public.audit_logs "
                 "WHERE id = :id AND org_id = :o"
             ),
             {"id": probe_id, "o": org_id},
         ).fetchone()
-        after = db.execute(
-            text(
-                "SELECT event_count, last_event_id, last_record_hash "
-                "FROM audit_chain_heads WHERE org_id = :o"
-            ),
-            {"o": org_id},
-        ).fetchone()
+        after = db.execute(text(head_sql), {"o": org_id}).fetchone()
 
         check(
             row is not None and row[1] is not None,
@@ -144,8 +164,8 @@ def main() -> int:
             row is not None
             and row[1]
             == scalar(
-                "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
-                "WHERE a.id = :id AND a.org_id = :o",
+                f"SELECT {CHAIN_SCHEMA}.audit_record_hash_v1(a.prev_hash, a) "
+                "FROM public.audit_logs a WHERE a.id = :id AND a.org_id = :o",
                 id=probe_id,
                 o=org_id,
             ),
@@ -156,7 +176,7 @@ def main() -> int:
             and after[0] == before_count + 1
             and after[1] == probe_id
             and after[2] == (row[1] if row else None),
-            "3. SECURITY DEFINER advanced audit_chain_heads across the role boundary",
+            "3. SECURITY DEFINER advanced the head across the role boundary",
             f"event_count {before_count} -> {after[0] if after else '?'}",
         )
     finally:
@@ -165,7 +185,8 @@ def main() -> int:
         db.rollback()
 
     check(
-        scalar("SELECT count(*) FROM audit_logs WHERE id = :id", id=probe_id) == 0,
+        scalar("SELECT count(*) FROM public.audit_logs WHERE id = :id", id=probe_id)
+        == 0,
         "3b. probe rolled back, no synthetic row persisted",
     )
 
@@ -173,43 +194,36 @@ def main() -> int:
     for verb, sql in (
         (
             "INSERT",
-            "INSERT INTO audit_chain_heads (org_id, event_count, legacy_event_count) "
+            f"INSERT INTO {HEADS} (org_id, event_count, legacy_event_count) "
             "VALUES ('org_probe_forged', 0, 0)",
         ),
-        ("UPDATE", "UPDATE audit_chain_heads SET last_record_hash = repeat('f', 64)"),
-        ("DELETE", "DELETE FROM audit_chain_heads"),
+        ("UPDATE", f"UPDATE {HEADS} SET last_record_hash = repeat('f', 64)"),
+        ("DELETE", f"DELETE FROM {HEADS}"),
+        ("TRUNCATE", f"TRUNCATE {HEADS}"),
     ):
         ok, detail = _refused(db, sql)
-        check(ok, f"4-6. direct {verb} on audit_chain_heads is denied", detail)
+        check(ok, f"4-6. direct {verb} on the head table is denied", detail)
 
     # ── 7. The app role cannot grant itself the privilege back ─────────────
     #
-    # Asserted on the EFFECT, not on an exception, because PostgreSQL does not
-    # raise one here: a GRANT issued by a role holding no grant option emits
-    # `WARNING: no privileges were granted` and succeeds as a no-op. An earlier
-    # version of this check expected a raise and reported FAIL against a
-    # boundary that was in fact intact — the failure mode being guarded against
-    # everywhere else in this module, a check that answers for the wrong reason.
-    #
-    # What matters is that the privilege is still absent afterwards and the
-    # write is still refused.
-    before = scalar(
-        "SELECT has_table_privilege(:r,'audit_chain_heads','UPDATE')", r=app_role
-    )
+    # Asserted on the EFFECT, not on an exception: PostgreSQL does not raise
+    # when a role without grant option issues a GRANT — it emits
+    # `WARNING: no privileges were granted` and succeeds as a no-op. An
+    # exception-based assertion reports a broken boundary that is intact.
+    priv = f"SELECT has_table_privilege(:r, '{HEADS}', 'UPDATE')"
+    before_priv = scalar(priv, r=app_role)
     try:
-        db.execute(text(f'GRANT UPDATE ON audit_chain_heads TO "{app_role}"'))
-    except Exception:  # noqa: BLE001 - a refusal here is also an acceptable outcome
+        db.execute(text(f'GRANT UPDATE ON {HEADS} TO "{app_role}"'))
+    except Exception:  # noqa: BLE001 - a refusal is equally acceptable
         db.rollback()
-    after = scalar(
-        "SELECT has_table_privilege(:r,'audit_chain_heads','UPDATE')", r=app_role
-    )
-    still_denied, denial = _refused(
-        db, "UPDATE audit_chain_heads SET last_record_hash = repeat('f', 64)"
+    after_priv = scalar(priv, r=app_role)
+    still_denied, _ = _refused(
+        db, f"UPDATE {HEADS} SET last_record_hash = repeat('f', 64)"
     )
     check(
-        before is False and after is False and still_denied,
+        before_priv is False and after_priv is False and still_denied,
         "7. app role cannot GRANT itself write access",
-        f"privilege before={before} after={after}; write still denied={still_denied}",
+        f"privilege before={before_priv} after={after_priv}; write denied={still_denied}",
     )
     db.rollback()
 
@@ -222,32 +236,62 @@ def main() -> int:
     ok, detail = _refused(db, "SET ROLE audit_chain_writer")
     check(ok, "8b. SET ROLE audit_chain_writer is refused", detail)
 
-    # ── 9-12. Object configuration ─────────────────────────────────────────
+    # ── 9. Ownership ───────────────────────────────────────────────────────
+    check(
+        scalar(
+            "SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = :s",
+            s=CHAIN_SCHEMA,
+        )
+        == "audit_chain_writer",
+        f"9a. schema {CHAIN_SCHEMA} is owned by audit_chain_writer",
+    )
     check(
         scalar(
             "SELECT pg_get_userbyid(relowner) FROM pg_class "
-            "WHERE oid = 'public.audit_chain_heads'::regclass"
+            "WHERE oid = CAST(:h AS regclass)",
+            h=HEADS,
         )
         == "audit_chain_writer",
-        "9a. audit_chain_heads is owned by audit_chain_writer",
+        "9b. head table is owned by audit_chain_writer",
     )
     check(
-        scalar(
-            "SELECT has_table_privilege(:r,'audit_chain_heads','SELECT')", r=app_role
-        )
+        scalar(f"SELECT has_table_privilege(:r, '{HEADS}', 'SELECT')", r=app_role)
         is True,
-        "9b. app role retains SELECT on audit_chain_heads",
+        "9c. app role retains SELECT on the head table",
     )
 
+    # ── 10-13. Removal resistance — the property the schema exists for ─────
+    ok, detail = _refused(db, f"DROP SCHEMA {CHAIN_SCHEMA} CASCADE")
+    check(ok, f"10. app role cannot DROP SCHEMA {CHAIN_SCHEMA}", detail)
+
+    ok, detail = _refused(db, f"DROP TABLE {HEADS}")
+    check(ok, "11. app role cannot DROP the head table", detail)
+
+    ok, detail = _refused(
+        db,
+        f"DROP FUNCTION {CHAIN_SCHEMA}.audit_record_hash_v1(text, public.audit_logs)",
+    )
+    check(ok, "12. app role cannot DROP a chain function", detail)
+
+    ok, detail = _refused(
+        db,
+        f"CREATE OR REPLACE FUNCTION {CHAIN_SCHEMA}._audit_field_v1(v text) "
+        "RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'x' $$",
+    )
+    check(ok, "13. app role cannot redefine the canonical algorithm", detail)
+
+    # ── 14-17. Per-function configuration ──────────────────────────────────
     for fname, args in APP_FUNCS:
-        sig = f"public.{fname}({args})"
+        sig = f"{CHAIN_SCHEMA}.{fname}({args})"
+
         owner = scalar(
-            "SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = CAST(:s AS regprocedure)",
+            "SELECT pg_get_userbyid(proowner) FROM pg_proc "
+            "WHERE oid = CAST(:s AS regprocedure)",
             s=sig,
         )
         check(
             owner == "audit_chain_writer",
-            f"9c. {fname} owned by audit_chain_writer",
+            f"14. {fname} owned by the writer role",
             f"owner={owner}",
         )
 
@@ -260,13 +304,13 @@ def main() -> int:
             or ""
         )
         check(
-            "search_path=pg_catalog, public" in cfg.replace('"', ""),
-            f"10a. {fname} has a pinned search_path",
+            f"search_path=pg_catalog, {CHAIN_SCHEMA}, public" in cfg.replace('"', ""),
+            f"15a. {fname} has a pinned search_path",
             cfg,
         )
         if fname == "audit_chain_advance_v1":
             check(
-                "lock_timeout=3s" in cfg, "10b. chain trigger fn pins lock_timeout", cfg
+                "lock_timeout=3s" in cfg, "15b. chain trigger fn pins lock_timeout", cfg
             )
 
         secdef = scalar(
@@ -274,25 +318,47 @@ def main() -> int:
         )
         check(
             secdef == (fname in DEFINER_FUNCS),
-            f"11. {fname} SECURITY DEFINER is {fname in DEFINER_FUNCS}",
+            f"16. {fname} SECURITY DEFINER is {fname in DEFINER_FUNCS}",
             f"prosecdef={secdef}",
         )
 
         pub = scalar("SELECT has_function_privilege('public', :s, 'EXECUTE')", s=sig)
-        check(pub is False, f"12a. PUBLIC cannot EXECUTE {fname}", f"public={pub}")
+        check(pub is False, f"17a. PUBLIC cannot EXECUTE {fname}", f"public={pub}")
 
         appx = scalar(
             "SELECT has_function_privilege(:r, :s, 'EXECUTE')", r=app_role, s=sig
         )
         check(
             appx is (fname in APP_EXECUTABLE),
-            f"12b. app role EXECUTE on {fname} is {fname in APP_EXECUTABLE}",
+            f"17b. app role EXECUTE on {fname} is {fname in APP_EXECUTABLE}",
             f"app={appx}",
         )
 
+    # ── 18. Nothing left behind in public ──────────────────────────────────
+    residue = db.execute(
+        text(
+            "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            " WHERE n.nspname = 'public' AND p.proname IN "
+            "   ('_audit_field_v1','audit_canonical_payload_v1','audit_record_hash_v1',"
+            "    'audit_chain_advance_v1','audit_chain_seed_legacy_v1')"
+        )
+    ).scalar()
+    check(
+        residue == 0
+        and scalar("SELECT to_regclass('public.audit_chain_heads')") is None,
+        "18. no chain objects remain in schema public",
+        f"stale functions in public: {residue}",
+    )
+
+    # ── 19. The trigger still points where it should ───────────────────────
+    check(
+        state["trigger_points_at"] == f"{CHAIN_SCHEMA}.audit_chain_advance_v1",
+        "19. audit_logs_chain points at the relocated function",
+        f"points at {state['trigger_points_at']}",
+    )
+
     db.close()
 
-    # ── Report ─────────────────────────────────────────────────────────────
     print("=" * 74)
     passed = sum(1 for ok, _, _ in results if ok)
     for ok, name, detail in results:
@@ -303,9 +369,9 @@ def main() -> int:
     print("=" * 74)
     print(f"{passed}/{len(results)} checks passed")
     if passed != len(results):
-        print("\nThe cross-role SECURITY DEFINER path is NOT verified.")
+        print("\nThe chain boundary is NOT verified.")
         return 1
-    print("\nCross-role SECURITY DEFINER path verified end to end.")
+    print("\nCross-role SECURITY DEFINER path and removal resistance verified.")
     return 0
 
 

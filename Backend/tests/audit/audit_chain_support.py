@@ -22,6 +22,48 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
+#: Where the chain machinery is *supposed* to live after the schema-isolation
+#: change. `test_audit_chain_schema_isolation.py` requires exactly this.
+CHAIN_SCHEMA = "audit_chain"
+
+#: Where it *actually* lives on the database under test, resolved at runtime.
+#:
+#: Both are needed. The machinery was originally installed in `public` and is
+#: moved to `audit_chain` by a privileged bootstrap the application role cannot
+#: run, so between merging this change and a DBA running it a database is
+#: legitimately in the old layout. Hardcoding `audit_chain` would make every
+#: chain suite skip during that window — silently trading real coverage for a
+#: green run, at exactly the moment the chain is being altered.
+#:
+#: So the suites resolve the location and keep testing wherever it is; only the
+#: isolation suite insists on the new one.
+
+
+def chain_schema(conn) -> str:
+    """Resolve the schema holding `audit_chain_heads` — `audit_chain` or `public`."""
+    found = conn.execute(
+        text(
+            "SELECT n.nspname FROM pg_class c "
+            "  JOIN pg_namespace n ON n.oid = c.relnamespace "
+            " WHERE c.relname = 'audit_chain_heads' "
+            "   AND n.nspname IN ('audit_chain', 'public') "
+            " ORDER BY CASE n.nspname WHEN 'audit_chain' THEN 0 ELSE 1 END "
+            " LIMIT 1"
+        )
+    ).scalar()
+    return found or CHAIN_SCHEMA
+
+
+def heads(conn) -> str:
+    """Fully-qualified head-table name for this database."""
+    return f"{chain_schema(conn)}.audit_chain_heads"
+
+
+def fn(conn, name: str) -> str:
+    """Fully-qualified chain function name for this database."""
+    return f"{chain_schema(conn)}.{name}"
+
+
 SKIP_REASON = (
     "audit chain is not installed in this database. A DBA must run, as "
     "postgres: psql -v ON_ERROR_STOP=1 -f Backend/scripts/audit/"
@@ -70,7 +112,7 @@ def expect_refused(session, sql: str, params: dict | None = None) -> str:
 def chain_installed(conn) -> bool:
     """True only when both halves are present: the head table and the trigger."""
     has_table = bool(
-        conn.execute(text("SELECT to_regclass('public.audit_chain_heads')")).scalar()
+        conn.execute(text("SELECT to_regclass(:q)"), {"q": heads(conn)}).scalar()
     )
     has_trigger = bool(
         conn.execute(
@@ -109,7 +151,7 @@ def head_row(conn, org_id):
         text(
             "SELECT event_count, last_event_id, last_record_hash, genesis_event_id, "
             "       chain_started_at, legacy_event_count "
-            "  FROM audit_chain_heads WHERE org_id = :o"
+            f"  FROM {heads(conn)} WHERE org_id = :o"
         ),
         {"o": org_id},
     ).fetchone()
@@ -124,7 +166,8 @@ def recompute(conn, event_id, org_id) -> str | None:
     """
     return conn.execute(
         text(
-            "SELECT audit_record_hash_v1(a.prev_hash, a) FROM audit_logs a "
+            f"SELECT {fn(conn, 'audit_record_hash_v1')}(a.prev_hash, a) "
+            "FROM public.audit_logs a "
             " WHERE a.id = :i AND a.org_id = :o"
         ),
         {"i": event_id, "o": org_id},
@@ -142,7 +185,7 @@ def verify_org(conn, org_id) -> dict:
     """
     rows = conn.execute(
         text(
-            "SELECT id, prev_hash, record_hash FROM audit_logs "
+            "SELECT id, prev_hash, record_hash FROM public.audit_logs "
             " WHERE org_id = :o AND record_hash IS NOT NULL"
         ),
         {"o": org_id},
@@ -150,7 +193,7 @@ def verify_org(conn, org_id) -> dict:
 
     legacy = conn.execute(
         text(
-            "SELECT count(*) FROM audit_logs "
+            "SELECT count(*) FROM public.audit_logs "
             " WHERE org_id = :o AND record_hash IS NULL"
         ),
         {"o": org_id},

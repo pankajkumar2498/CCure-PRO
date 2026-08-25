@@ -321,6 +321,78 @@ def remove_audit_immutability(conn, app_role: str | None = None) -> None:
     log.info("audit_logs append-only enforcement removed")
 
 
+#: Where the chain machinery can legitimately live. `audit_chain` is the
+#: current home; `public` is where it was installed before the schema-isolation
+#: change and is still accepted so a database that has not been migrated yet is
+#: recognised rather than reported as having no chain at all.
+CHAIN_SCHEMAS = ("audit_chain", "public")
+
+
+def chain_objects_installed(conn) -> dict:
+    """
+    Where the chain machinery is, if anywhere — checked in **both** schemas.
+
+    This exists because the schema move would otherwise create a silent and
+    dangerous false negative. Migration ``a7b8c9d0e1f2``'s downgrade refuses to
+    run while the chain is installed, and it decides that by looking for
+    ``public.audit_chain_heads``. Once the table moves to ``audit_chain`` that
+    lookup returns NULL, the guard concludes there is no chain, and a downgrade
+    is permitted that drops ``record_hash`` and ``prev_hash`` out from under a
+    live, armed chain.
+
+    That migration is already applied and is deliberately **not** edited. The
+    correction is forward-compatible instead: revision ``b8c9d0e1f2a3`` sits on
+    top of it and refuses to downgrade past itself while the chain exists
+    anywhere. Alembic unwinds newest-first, so that guard is reached before
+    ``a7b8c9d0e1f2.downgrade()`` can run.
+
+    Returns a dict rather than a bool because callers need to distinguish
+    "not installed" from "installed in the old location" — the second is a
+    prompt to run the bootstrap again, not an error.
+
+    Invoked from:
+      * ``alembic/versions/b8c9d0e1f2a3_audit_chain_schema_guard.py``
+        (downgrade refusal — the load-bearing use),
+      * ``log_audit_chain_state()`` below (startup reporting),
+      * ``scripts/audit/verify_chain.py`` and ``verify_chain_bootstrap.py``.
+    """
+    state = {
+        "schema": None,
+        "table": False,
+        "trigger": False,
+        "trigger_points_at": None,
+        "installed": False,
+        "needs_migration": False,
+    }
+
+    for schema in CHAIN_SCHEMAS:
+        found = conn.execute(
+            text("SELECT to_regclass(:q)"), {"q": f"{schema}.audit_chain_heads"}
+        ).scalar()
+        if found:
+            state["schema"] = schema
+            state["table"] = True
+            break
+
+    points_at = conn.execute(
+        text(
+            "SELECT n.nspname || '.' || p.proname "
+            "  FROM pg_trigger t "
+            "  JOIN pg_proc p ON p.oid = t.tgfoid "
+            "  JOIN pg_namespace n ON n.oid = p.pronamespace "
+            " WHERE t.tgname = 'audit_logs_chain' LIMIT 1"
+        )
+    ).scalar()
+    state["trigger"] = points_at is not None
+    state["trigger_points_at"] = points_at
+
+    state["installed"] = state["table"] and state["trigger"]
+    # Installed, but still in the pre-isolation location: the application role
+    # may be able to drop it, depending on who owns `public`.
+    state["needs_migration"] = state["installed"] and state["schema"] == "public"
+    return state
+
+
 def log_audit_chain_state() -> None:
     """
     Report at startup whether the tamper-evidence chain is armed.
@@ -348,35 +420,39 @@ def log_audit_chain_state() -> None:
         from db.base import engine
 
         with engine.connect() as conn:
-            has_table = bool(
-                conn.execute(
-                    text("SELECT to_regclass('public.audit_chain_heads')")
-                ).scalar()
-            )
-            has_trigger = bool(
-                conn.execute(
-                    text(
-                        "SELECT 1 FROM pg_trigger WHERE tgname = 'audit_logs_chain' "
-                        "LIMIT 1"
-                    )
-                ).scalar()
-            )
-            if has_table and has_trigger:
+            state = chain_objects_installed(conn)
+            if state["installed"]:
+                # Schema-qualified from the discovered location, never bare:
+                # the application role owns `public` on some databases and
+                # could create a shadow `audit_chain_heads` there.
                 stats = conn.execute(
                     text(
                         "SELECT count(*), coalesce(sum(event_count), 0), "
                         "       coalesce(sum(legacy_event_count), 0) "
-                        "  FROM audit_chain_heads"
+                        f"  FROM {state['schema']}.audit_chain_heads"
                     )
                 ).fetchone()
                 log.info(
                     "Audit tamper-evidence chain ARMED — %s organisation(s), "
                     "%s chained event(s), %s legacy event(s) predating the chain "
-                    "(not verifiable)",
+                    "(not verifiable) [schema: %s]",
                     stats[0],
                     stats[1],
                     stats[2],
+                    state["schema"],
                 )
+                if state["needs_migration"]:
+                    # Installed and working, but in the pre-isolation location.
+                    # Whether the application role can remove it depends on who
+                    # owns `public`, so this is a prompt rather than an alarm.
+                    log.warning(
+                        "Audit chain is installed in schema `public` rather than "
+                        "`audit_chain`. Where the application role owns `public` "
+                        "it can DROP the chain machinery, because a schema owner "
+                        "may drop objects it does not own. Re-run "
+                        "scripts/audit/bootstrap_chain.sql as a superuser to move "
+                        "it; existing chain state is preserved."
+                    )
             else:
                 unchained = conn.execute(
                     text("SELECT count(*) FROM audit_logs WHERE record_hash IS NULL")

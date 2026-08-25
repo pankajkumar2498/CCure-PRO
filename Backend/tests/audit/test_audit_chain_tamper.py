@@ -17,6 +17,7 @@ the row's own hash, forging its link, and rewriting the head).
 
 import pytest
 from audit_chain_support import (
+    heads,
     newest_event,
     recompute,
     require_chain,
@@ -212,7 +213,7 @@ def test_an_appended_row_that_bypassed_the_trigger_is_visible(
         {"o": test_user.org_id},
     ).scalar()
     head_count = db_session.execute(
-        text("SELECT event_count FROM audit_chain_heads WHERE org_id = :o"),
+        text(f"SELECT event_count FROM {heads(db_session)} WHERE org_id = :o"),
         {"o": test_user.org_id},
     ).scalar()
     chained_rows = db_session.execute(
@@ -245,7 +246,7 @@ def test_a_rewritten_chain_head_disagrees_with_the_recomputed_tip(
     """
     tip = chained[-1]
     head = db_session.execute(
-        text("SELECT last_record_hash FROM audit_chain_heads WHERE org_id = :o"),
+        text(f"SELECT last_record_hash FROM {heads(db_session)} WHERE org_id = :o"),
         {"o": test_user.org_id},
     ).scalar()
 

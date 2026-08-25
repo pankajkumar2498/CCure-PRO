@@ -22,7 +22,10 @@ injection reaching a second statement, not a database superuser.
 """
 
 import pytest
-from audit_chain_support import require_chain
+from audit_chain_support import (
+    heads,
+    require_chain,
+)
 from sqlalchemy import text
 
 pytestmark = pytest.mark.usefixtures("db_session")
@@ -80,7 +83,7 @@ def _denied(db_session, sql: str) -> str:
 def test_app_role_cannot_insert_a_chain_head(db_session):
     message = _denied(
         db_session,
-        "INSERT INTO audit_chain_heads (org_id, event_count, legacy_event_count) "
+        f"INSERT INTO {heads(db_session)} (org_id, event_count, legacy_event_count) "
         "VALUES ('org_forged', 0, 0)",
     )
     assert "permission denied" in message
@@ -93,19 +96,19 @@ def test_app_role_cannot_update_a_chain_head(db_session):
     """
     message = _denied(
         db_session,
-        "UPDATE audit_chain_heads SET last_record_hash = repeat('f', 64)",
+        f"UPDATE {heads(db_session)} SET last_record_hash = repeat('f', 64)",
     )
     assert "permission denied" in message
 
 
 def test_app_role_cannot_delete_a_chain_head(db_session):
     """Deleting the head would let the next insert start a fresh chain."""
-    message = _denied(db_session, "DELETE FROM audit_chain_heads")
+    message = _denied(db_session, f"DELETE FROM {heads(db_session)}")
     assert "permission denied" in message
 
 
 def test_app_role_cannot_truncate_the_head_table(db_session):
-    message = _denied(db_session, "TRUNCATE audit_chain_heads")
+    message = _denied(db_session, f"TRUNCATE {heads(db_session)}")
     assert "permission denied" in message
 
 
@@ -114,7 +117,7 @@ def test_app_role_retains_select(db_session):
     assert (
         db_session.execute(
             text(
-                "SELECT has_table_privilege(current_user,'audit_chain_heads','SELECT')"
+                f"SELECT has_table_privilege(current_user,'{heads(db_session)}','SELECT')"
             )
         ).scalar()
         is True
@@ -138,12 +141,14 @@ def test_app_role_cannot_grant_itself_write_access(db_session):
     broken boundary that is actually intact.
     """
     role = db_session.execute(text("SELECT current_user")).scalar()
-    priv = text("SELECT has_table_privilege(current_user,'audit_chain_heads','UPDATE')")
+    priv = text(
+        f"SELECT has_table_privilege(current_user,'{heads(db_session)}','UPDATE')"
+    )
 
     assert db_session.execute(priv).scalar() is False
 
     try:
-        db_session.execute(text(f'GRANT UPDATE ON audit_chain_heads TO "{role}"'))
+        db_session.execute(text(f'GRANT UPDATE ON {heads(db_session)} TO "{role}"'))
     except Exception:  # a refusal is an equally acceptable outcome
         db_session.rollback()
 
@@ -151,7 +156,7 @@ def test_app_role_cannot_grant_itself_write_access(db_session):
         db_session.execute(priv).scalar() is False
     ), "the app role acquired UPDATE on the chain head table"
     message = _denied(
-        db_session, "UPDATE audit_chain_heads SET last_record_hash = repeat('f', 64)"
+        db_session, f"UPDATE {heads(db_session)} SET last_record_hash = repeat('f', 64)"
     )
     assert "permission denied" in message
 

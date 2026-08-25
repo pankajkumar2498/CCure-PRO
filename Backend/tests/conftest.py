@@ -581,13 +581,27 @@ def seed_system_roles():
         create_partitions(conn)
         seed_rbac(conn)
 
+        # audit_logs' append-only enforcement is triggers and grants, which
+        # SQLAlchemy metadata cannot express — so the create_all bootstrap
+        # above does not produce it, and `alembic stamp head` means the
+        # migration that would never runs. Applying it here is what lets
+        # tests/audit/test_audit_immutability.py actually exercise the
+        # controls instead of skipping. It must come *after* create_partitions:
+        # the TRUNCATE triggers are installed per partition, so partitions
+        # have to exist first.
+        from db.audit_hardening import apply_audit_immutability
+
+        apply_audit_immutability(conn)
+
     # Clear anything a previously crashed run left behind, *before* the app
     # starts. The baseline is whatever exists once the app has seeded itself, so
     # a stale organisation surviving into that snapshot would be recorded as
     # reference data and never cleaned up again.
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE organizations CASCADE"))
-        conn.execute(text("TRUNCATE TABLE users CASCADE"))
+        # See _purge_test_data: DELETE, not TRUNCATE — audit_logs refuses
+        # TRUNCATE and cascading into it would destroy the trail.
+        conn.execute(text("DELETE FROM organizations"))
+        conn.execute(text("DELETE FROM users"))
 
 
 #: Domains the test suite registers with. `test.com` alone accounts for 106
@@ -847,12 +861,25 @@ def _purge_test_data():
             # No baseline captured (session fixtures did not run, e.g. a single
             # test invoked with --noconftest-style isolation) — fall back to the
             # old behaviour rather than silently leaving tenant data behind.
-            conn.execute(text("TRUNCATE TABLE organizations CASCADE"))
+            # DELETE, not TRUNCATE. `audit_logs` carries an append-only
+            # trigger (db/audit_hardening.py) and TRUNCATE is refused outright;
+            # the organisation DELETE reaches audit rows through the org_id
+            # ON DELETE CASCADE, which the trigger permits.
+            conn.execute(text("DELETE FROM organizations"))
 
         # users has no seeded rows and cascades only to notifications,
         # password_reset_tokens and refresh_token_sessions.
+        #
+        # DELETE rather than TRUNCATE CASCADE, for two independent reasons.
+        # `audit_logs.user_id` references `users`, so TRUNCATE CASCADE reached
+        # audit_logs and emptied it — destroying, every single test, the rows
+        # the audit suite had just written. And audit_logs now carries an
+        # append-only trigger that refuses TRUNCATE outright, so the statement
+        # would fail rather than merely do the wrong thing. A DELETE fires the
+        # user_id foreign key's ON DELETE SET NULL instead, which is the one
+        # UPDATE the trigger permits, and leaves the audit trail standing.
         if conn.execute(text("SELECT 1 FROM users LIMIT 1")).scalar():
-            conn.execute(text("TRUNCATE TABLE users CASCADE"))
+            conn.execute(text("DELETE FROM users"))
 
         # Frameworks created by a test against the baseline organisation are not
         # reached by the organisation delete above, so they are removed here.

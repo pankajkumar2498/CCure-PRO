@@ -99,6 +99,7 @@ log = logging.getLogger("ccure.api")
 async def lifespan(app: FastAPI):
     from config import AppConfig
     from core.ip_resolver import log_trust_boundary
+    from db.audit_hardening import log_audit_chain_state
     from db.base import engine
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
@@ -107,6 +108,19 @@ async def lifespan(app: FastAPI):
     # import because the router imports above run before logging.basicConfig,
     # so anything logged then had no handler to reach.
     log_trust_boundary()
+
+    # Whether the audit tamper-evidence chain is armed. Reported for the same
+    # reason and at the same point.
+    #
+    # This needs saying out loud because reaching Alembic head does NOT mean the
+    # chain is installed. Its privileged half — the `audit_chain_writer` role,
+    # the head table it owns, and the SECURITY DEFINER functions — has to be
+    # applied by a database administrator running
+    # `scripts/audit/bootstrap_chain.sql` as a superuser, because the
+    # application role holds neither SUPERUSER nor CREATEROLE. A deployment that
+    # migrated but never ran it looks completely healthy while writing audit
+    # events that carry no hash and cannot be verified afterwards.
+    log_audit_chain_state()
 
     # 0. Health check: Test database connectivity
     try:

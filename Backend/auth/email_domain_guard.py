@@ -629,6 +629,25 @@ def _log_block(db, verdict: DomainVerdict, *, request=None, actor=None, enforced
             # discarded with the transaction. Use a separate session and commit
             # immediately: a refusal that leaves no trace is exactly the event
             # an audit trail exists to hold.
+            #
+            # This is the second-session pattern that `core/audit.py`
+            # prohibits, and it is safe here for a specific reason rather than
+            # by luck. The chain trigger holds a `FOR UPDATE` lock on the
+            # organisation's chain head until commit, so a second session
+            # writing an event for the *same* organisation would block on a
+            # lock its own request holds. This runs at the entry of
+            # registration and admin user-creation, before those handlers write
+            # any audit event of their own, so the request transaction holds no
+            # chain-head lock when this executes.
+            #
+            # Do not move this call later in a handler, and do not copy the
+            # pattern into one that audits earlier. `lock_timeout` on the chain
+            # trigger turns a violation into a loud failure rather than a hang,
+            # but the guarantee here is the ordering, not the timeout.
+            #
+            # (An AST sweep for "audits after its last commit" flags this
+            # function. That is a false positive: the two branches below are
+            # mutually exclusive, and each commits correctly for its own path.)
             from db.base import SessionLocal
 
             audit_db = SessionLocal()

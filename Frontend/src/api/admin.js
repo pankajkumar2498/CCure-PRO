@@ -162,3 +162,13 @@ export const listAuditLogs = async (params) => {
   const response = await axiosInstance.get("/admin/audit-logs/", { params });
   return response.data;
 };
+
+// One audit event in full. The list response is deliberately lean, so the
+// detail view fetches the fields it needs (session id, timezone, org) rather
+// than the table carrying them for every row it renders.
+export const getAuditLogDetail = async (eventId) => {
+  const response = await axiosInstance.get(
+    `/admin/audit-logs/${encodeURIComponent(eventId)}`,
+  );
+  return response.data;
+};

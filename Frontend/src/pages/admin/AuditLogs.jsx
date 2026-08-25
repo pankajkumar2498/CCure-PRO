@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
-import { listAuditLogs } from "../../api/admin";
+import { listAuditLogs, getAuditLogDetail } from "../../api/admin";
 import { formatDateTime } from "../../utils/date";
 import Button from "../../components/common/Button";
 import FormField from "../../components/common/FormField";
@@ -17,9 +17,23 @@ export default function AuditLogs() {
     action: "",
     resource_type: "",
     status: "",
+    severity: "",
+    user_id: "",
+    ip_address: "",
+    range: "",
+    date_from: "",
+    date_to: "",
+    q: "",
   });
+  // The search box is held separately from `filters` and copied across on a
+  // debounce. Bound directly, every keystroke would be a request — and at 100+
+  // concurrent users that is the most expensive query in the module fired per
+  // character typed.
+  const [searchInput, setSearchInput] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const [newEventsCount, setNewEventsCount] = useState(0);
   const [latestLogTime, setLatestLogTime] = useState(null);
@@ -68,6 +82,19 @@ export default function AuditLogs() {
     [filters, pageSize, pushToast],
   );
 
+  // Debounce the search box into the filter set. 350ms is long enough that a
+  // normal typing burst produces one request, short enough not to feel laggy.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((prev) => {
+        if (prev.q === searchInput) return prev; // no-op: don't re-render
+        return { ...prev, q: searchInput };
+      });
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   useEffect(() => {
     // Only show full-page loading spinner on initial mount when logs are empty.
     // Subsequent page navigations or refreshes load "quietly" (with table opacity indicator).
@@ -81,21 +108,25 @@ export default function AuditLogs() {
 
   // Background auto-refresh polling for new events
   // Background auto-refresh polling for new events
+  // The active filter set, serialised. The poll below has to re-subscribe
+  // whenever any filter changes, and there are now ten of them — listing each
+  // one in the dependency array is how a newly added filter silently stops
+  // being applied to the poll while still applying to the table.
+  const activeFilterKey = JSON.stringify(filters);
+
   useEffect(() => {
     if (!latestLogTime || loading) return;
 
-    const action = filters.action;
-    const resource_type = filters.resource_type;
-    const status = filters.status;
+    const activeFilters = Object.fromEntries(
+      Object.entries(JSON.parse(activeFilterKey)).filter(([, v]) => v !== ""),
+    );
 
     const checkNewLogs = async () => {
       try {
         const params = {
           skip: 0,
           limit: 10,
-          ...(action ? { action } : {}),
-          ...(resource_type ? { resource_type } : {}),
-          ...(status ? { status } : {}),
+          ...activeFilters,
         };
         const data = await listAuditLogs(params);
         if (data && data.logs && data.logs.length > 0) {
@@ -115,17 +146,114 @@ export default function AuditLogs() {
     const interval = setInterval(checkNewLogs, 5000); // Poll every 5 seconds for snappy feedback
 
     return () => clearInterval(interval);
-  }, [
-    latestLogTime,
-    filters.action,
-    filters.resource_type,
-    filters.status,
-    loading,
-  ]);
+  }, [latestLogTime, activeFilterKey, loading]);
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
     setPage(1);
+  };
+
+  // Presets and a custom window are mutually exclusive: the backend gives
+  // explicit dates precedence, and leaving a stale preset set would make the
+  // active filter chips lie about what is being shown.
+  const handleRangePreset = (value) => {
+    setFilters((prev) => ({
+      ...prev,
+      range: value,
+      date_from: "",
+      date_to: "",
+    }));
+    setPage(1);
+  };
+
+  const handleCustomDate = (e) => {
+    setFilters((prev) => ({
+      ...prev,
+      range: "",
+      [e.target.name]: e.target.value,
+    }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setFilters({
+      action: "",
+      resource_type: "",
+      status: "",
+      severity: "",
+      user_id: "",
+      ip_address: "",
+      range: "",
+      date_from: "",
+      date_to: "",
+      q: "",
+    });
+    setPage(1);
+  };
+
+  const activeFilterCount = Object.entries(filters).filter(
+    ([, v]) => v !== "",
+  ).length;
+
+  const SEVERITY_STYLES = {
+    critical: { bg: "rgba(220, 38, 38, 0.15)", fg: "#f87171" },
+    high: { bg: "rgba(234, 88, 12, 0.15)", fg: "#fb923c" },
+    medium: { bg: "rgba(217, 119, 6, 0.15)", fg: "#fbbf24" },
+    low: { bg: "rgba(37, 99, 235, 0.15)", fg: "#60a5fa" },
+    info: { bg: "rgba(107, 114, 128, 0.15)", fg: "#9ca3af" },
+  };
+
+  const renderSeverity = (severity) => {
+    const key = String(severity || "info").toLowerCase();
+    const style = SEVERITY_STYLES[key] || SEVERITY_STYLES.info;
+    return (
+      <span
+        title={`Severity: ${key}`}
+        style={{
+          display: "inline-block",
+          background: style.bg,
+          color: style.fg,
+          border: `1px solid ${style.fg}33`,
+          borderRadius: 4,
+          padding: "1px 6px",
+          fontSize: "0.62rem",
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {key}
+      </span>
+    );
+  };
+
+  // The row carries a lean projection; the detail view needs fields the list
+  // deliberately omits (session id, timezone, org). Open immediately with what
+  // the row already has so the modal never appears empty, then fill in.
+  const openDetails = async (log, actInfo) => {
+    const seed = {
+      ...log,
+      _displayActor: getActorDisplay(log),
+      _displayTarget: renderAffectedObject(log),
+      _displayAction: actInfo.label,
+      _displayTime: formatDateTime(log.created_at),
+    };
+    setSelectedLog(seed);
+    setDetailsOpen(true);
+    setDetailsLoading(true);
+    try {
+      const full = await getAuditLogDetail(log.id);
+      setSelectedLog({ ...seed, ...full });
+    } catch (err) {
+      // The row data is already on screen and is correct as far as it goes.
+      // Losing the three detail-only fields is not worth closing the modal the
+      // reviewer just opened.
+      pushToast("Could not load full event detail.", "error");
+    } finally {
+      setDetailsLoading(false);
+    }
   };
 
   const renderAffectedObject = (log) => {
@@ -379,7 +507,7 @@ export default function AuditLogs() {
               }}
               disabled={refreshing}
             >
-              {refreshing ? "Syncing..." : "Sync Logs"}
+              {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
         </div>
@@ -444,9 +572,168 @@ export default function AuditLogs() {
               <option value="success">Success</option>
               <option value="failure">Failure</option>
               <option value="denied">Denied</option>
+              <option value="blocked_malware">Blocked (malware)</option>
+              <option value="scanner_unavailable">Scanner unavailable</option>
             </select>
           </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-severity"
+            label="Severity"
+          >
+            <select
+              id="filter-severity"
+              name="severity"
+              className="field-input"
+              value={filters.severity}
+              onChange={handleFilterChange}
+            >
+              <option value="">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Info</option>
+            </select>
+          </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-range"
+            label="Time Range"
+          >
+            <select
+              id="filter-range"
+              name="range"
+              className="field-input"
+              value={filters.range}
+              onChange={(e) => handleRangePreset(e.target.value)}
+            >
+              <option value="">All Time</option>
+              <option value="today">Today</option>
+              <option value="24h">Last 24 Hours</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+            </select>
+          </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-search"
+            label="Search"
+          >
+            <input
+              id="filter-search"
+              type="search"
+              className="field-input"
+              placeholder="Event ID, request ID, user, IP…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              style={{ minWidth: 220 }}
+            />
+          </FormField>
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginTop: -4,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            {showAdvanced ? "▾ Fewer filters" : "▸ More filters"}
+          </Button>
+          {activeFilterCount > 0 && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""}{" "}
+                active
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear all
+              </Button>
+            </>
+          )}
+        </div>
+
+        {showAdvanced && (
+          <div className="filter-bar" style={{ marginBottom: 16 }}>
+            <FormField
+              className="filter-group"
+              htmlFor="filter-ip"
+              label="IP Address"
+            >
+              <input
+                id="filter-ip"
+                name="ip_address"
+                className="field-input"
+                placeholder="10.180.6. (prefix ok)"
+                value={filters.ip_address}
+                onChange={handleFilterChange}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-user"
+              label="User ID"
+            >
+              <input
+                id="filter-user"
+                name="user_id"
+                className="field-input"
+                placeholder="usr_…"
+                value={filters.user_id}
+                onChange={handleFilterChange}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-from"
+              label="From (UTC)"
+            >
+              <input
+                id="filter-from"
+                name="date_from"
+                type="datetime-local"
+                className="field-input"
+                value={filters.date_from}
+                onChange={handleCustomDate}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-to"
+              label="To (UTC)"
+            >
+              <input
+                id="filter-to"
+                name="date_to"
+                type="datetime-local"
+                className="field-input"
+                value={filters.date_to}
+                onChange={handleCustomDate}
+              />
+            </FormField>
+          </div>
+        )}
 
         {total > 0 && (
           <div className="pagination-row" style={{ marginBottom: 16 }}>
@@ -548,8 +835,8 @@ export default function AuditLogs() {
                 <th>User</th>
                 <th>Action</th>
                 <th>Target Resource</th>
-                <th>Status</th>
-                <th>IP &amp; Device</th>
+                <th>Status &amp; Severity</th>
+                <th>Source</th>
                 <th>Changes</th>
               </tr>
             </thead>
@@ -557,7 +844,12 @@ export default function AuditLogs() {
               {logs.map((log) => {
                 const actInfo = getActionDisplay(log.action);
                 return (
-                  <tr key={log.id}>
+                  <tr
+                    key={log.id}
+                    onClick={() => openDetails(log, actInfo)}
+                    style={{ cursor: "pointer" }}
+                    title="Open full event details"
+                  >
                     <td
                       style={{
                         fontSize: 12,
@@ -600,18 +892,28 @@ export default function AuditLogs() {
                     </td>
                     <td>{renderAffectedObject(log)}</td>
                     <td>
-                      <span
+                      <div
                         style={{
-                          color:
-                            log.status === "success"
-                              ? "var(--ok)"
-                              : "var(--danger)",
-                          fontSize: 12,
-                          fontWeight: 600,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: 3,
                         }}
                       >
-                        {log.status.toUpperCase()}
-                      </span>
+                        <span
+                          style={{
+                            color:
+                              log.status === "success"
+                                ? "var(--ok)"
+                                : "var(--danger)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {String(log.status || "").toUpperCase()}
+                        </span>
+                        {renderSeverity(log.severity)}
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -647,15 +949,12 @@ export default function AuditLogs() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setSelectedLog({
-                              ...log,
-                              _displayActor: getActorDisplay(log),
-                              _displayTarget: renderAffectedObject(log),
-                              _displayAction: actInfo.label,
-                              _displayTime: formatDateTime(log.created_at),
-                            });
-                            setDetailsOpen(true);
+                          onClick={(e) => {
+                            // The row itself opens the same modal now. Without
+                            // this the click runs twice and fires two detail
+                            // requests for one user action.
+                            e.stopPropagation();
+                            openDetails(log, actInfo);
                           }}
                         >
                           View Changes
@@ -690,6 +989,7 @@ export default function AuditLogs() {
         isOpen={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         log={selectedLog}
+        loading={detailsLoading}
       />
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>

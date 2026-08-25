@@ -656,6 +656,14 @@ def update_finding_status(
     if body.remediation_notes:
         finding.remediation_notes = body.remediation_notes
 
+    log_audit_event(
+        db=db,
+        user=user,
+        action=f"finding_{body.status}",
+        resource_type="finding",
+        resource_id=finding_id,
+        status="success",
+    )
     db.commit()
 
     # After status change, refresh vuln_counts and possibly risk_score for the asset
@@ -714,15 +722,6 @@ def update_finding_status(
             db.commit()
     except Exception:
         db.rollback()
-
-    log_audit_event(
-        db=db,
-        user=user,
-        action=f"finding_{body.status}",
-        resource_type="finding",
-        resource_id=finding_id,
-        status="success",
-    )
 
     return {"success": True, "id": finding_id, "status": body.status}
 

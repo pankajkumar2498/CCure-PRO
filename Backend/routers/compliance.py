@@ -42,6 +42,7 @@ from core.upload_guard import (
     scan_for_malware,
 )
 from db.base import (
+    SessionLocal,
     gen_compliance_credential_id,
     gen_compliance_remediation_request_id,
     get_db,
@@ -70,6 +71,45 @@ from scan_helpers import limiter
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
+
+
+def _audit_refusal(
+    user: User,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    status: str,
+) -> None:
+    """
+    Audit an outcome whose handler is about to raise.
+
+    ``log_audit_event`` adds and flushes but deliberately leaves the commit to
+    the caller, and ``get_db`` closes its session without committing. So an
+    event written on the request's session and followed by ``raise
+    HTTPException`` is discarded when the transaction unwinds — and a refusal
+    that leaves no trace is precisely the event an audit trail exists to hold.
+
+    A separate session, committed immediately, is the same remedy
+    ``auth/email_domain_guard.py`` uses for the identical situation. Failure to
+    audit is logged and swallowed: it must not convert a clean 400 or 503 into
+    a 500 that hides why the request was refused.
+    """
+    audit_db = SessionLocal()
+    try:
+        log_audit_event(
+            audit_db, user, action, resource_type, resource_id, status=status
+        )
+        audit_db.commit()
+    except Exception as exc:  # pragma: no cover - auditing must not mask the refusal
+        audit_db.rollback()
+        log.warning(
+            "Could not audit %s refusal (%s): %s",
+            action,
+            status,
+            exc.__class__.__name__,
+        )
+    finally:
+        audit_db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -628,8 +668,10 @@ def install_marketplace_framework(
             db.add(CompliancePolicyRule(policy_id=default_policy.id, rule_id=r.id))
             already_linked.add(r.id)
 
+    log_audit_event(
+        db, user, "install_framework", "framework", framework_id, status="success"
+    )
     db.commit()
-    log_audit_event(db, user, "install_framework", "framework", framework_id, "success")
     return {"message": f"Successfully installed framework {fw.name}"}
 
 
@@ -655,10 +697,10 @@ def uninstall_marketplace_framework(
         )
 
     existing.is_enabled = False
-    db.commit()
     log_audit_event(
-        db, user, "uninstall_framework", "framework", framework_id, "success"
+        db, user, "uninstall_framework", "framework", framework_id, status="success"
     )
+    db.commit()
     return {"message": "Framework uninstalled successfully"}
 
 
@@ -952,8 +994,8 @@ def create_policy_baseline(
         link = CompliancePolicyRule(policy_id=policy_id, rule_id=r.id)
         db.add(link)
 
+    log_audit_event(db, user, "create_policy", "policy", policy_id, status="success")
     db.commit()
-    log_audit_event(db, user, "create_policy", "policy", policy_id, "success")
     return {"message": "Policy baseline created successfully", "policy_id": policy_id}
 
 
@@ -1027,6 +1069,7 @@ def trigger_compliance_scan(
         created_at=now,
     )
     db.add(new_run)
+    log_audit_event(db, user, "trigger_scan", "scan_run", run_id, status="success")
     db.commit()
 
     # Dispatch to the Celery `compliance` queue. This used to go through
@@ -1054,7 +1097,6 @@ def trigger_compliance_scan(
         background_tasks.add_task(run_scan_task, run_id, user.org_id)
         dispatch = "in_process"
 
-    log_audit_event(db, user, "trigger_scan", "scan_run", run_id, "success")
     return {
         "message": "Scan run triggered successfully",
         "scan_run_id": run_id,
@@ -1396,9 +1438,9 @@ def attest_manual_control(
         None,
         _latest_run_id(db, user.org_id, ctrl.framework_id),
     )
+    log_audit_event(db, user, "attest_control", "finding", finding_id, status="success")
     db.commit()
 
-    log_audit_event(db, user, "attest_control", "finding", finding_id, "success")
     return {"message": "Attestation recorded successfully", "finding_id": finding_id}
 
 
@@ -1690,8 +1732,8 @@ async def upload_control_evidence(
     try:
         av_verdict = scan_for_malware(payload, context=f"evidence upload by {user.id}")
     except MalwareDetected as exc:
-        log_audit_event(
-            db, user, "upload_evidence", "evidence", control_id, "blocked_malware"
+        _audit_refusal(
+            user, "upload_evidence", "evidence", control_id, "blocked_malware"
         )
         raise HTTPException(
             status_code=400,
@@ -1701,8 +1743,8 @@ async def upload_control_evidence(
         # 503, not 400: the file is not accused of anything — the scanner this
         # deployment requires could not answer, so the upload is refused rather
         # than stored unscanned. Distinct status so a client can retry.
-        log_audit_event(
-            db, user, "upload_evidence", "evidence", control_id, "scanner_unavailable"
+        _audit_refusal(
+            user, "upload_evidence", "evidence", control_id, "scanner_unavailable"
         )
         raise HTTPException(
             status_code=503,
@@ -1794,7 +1836,13 @@ async def upload_control_evidence(
             )
         raise
 
-    log_audit_event(db, user, "upload_evidence", "evidence", file_id, "success")
+    # Committed explicitly. The commit above persisted the evidence row and
+    # ended that transaction, so this event begins a new one that nothing else
+    # would ever close — the handler returns straight after, and `get_db`
+    # closes without committing, discarding it.
+    log_audit_event(db, user, "upload_evidence", "evidence", file_id, status="success")
+    db.commit()
+
     if av_verdict != "clean":
         # An auditor reading this trail needs to know the difference between
         # "scanned and clean" and "never scanned".
@@ -1908,8 +1956,8 @@ def delete_control_evidence(
         log.warning("Could not remove evidence file from disk: %s", record.storage_path)
 
     db.delete(record)
+    log_audit_event(db, user, "delete_evidence", "evidence", file_id, status="success")
     db.commit()
-    log_audit_event(db, user, "delete_evidence", "evidence", file_id, "success")
     return {"message": "Evidence file removed"}
 
 
@@ -2063,8 +2111,10 @@ def create_scan_schedule(
         next_run_at=payload.first_run_at or datetime.now(timezone.utc),
     )
     db.add(schedule)
+    log_audit_event(
+        db, user, "create_schedule", "schedule", schedule_id, status="success"
+    )
     db.commit()
-    log_audit_event(db, user, "create_schedule", "schedule", schedule_id, "success")
     return {"message": "Schedule created", "schedule_id": schedule_id}
 
 
@@ -2134,8 +2184,10 @@ def update_scan_schedule(
     if payload.notify_channels is not None:
         schedule.notify_channels = payload.notify_channels
 
+    log_audit_event(
+        db, user, "update_schedule", "schedule", schedule_id, status="success"
+    )
     db.commit()
-    log_audit_event(db, user, "update_schedule", "schedule", schedule_id, "success")
     return {"message": "Schedule updated"}
 
 
@@ -2158,8 +2210,10 @@ def delete_scan_schedule(
         raise HTTPException(status_code=404, detail="Schedule not found")
 
     db.delete(schedule)
+    log_audit_event(
+        db, user, "delete_schedule", "schedule", schedule_id, status="success"
+    )
     db.commit()
-    log_audit_event(db, user, "delete_schedule", "schedule", schedule_id, "success")
     return {"message": "Schedule removed"}
 
 
@@ -2223,9 +2277,11 @@ def create_credential(
         auth_method=payload.auth_method,
     )
     db.add(new_cred)
+    log_audit_event(
+        db, user, "create_credential", "credential", cred_id, status="success"
+    )
     db.commit()
     db.refresh(new_cred)
-    log_audit_event(db, user, "create_credential", "credential", cred_id, "success")
     return new_cred
 
 
@@ -2252,8 +2308,8 @@ def delete_credential(
     if not cred:
         raise HTTPException(status_code=404, detail="Credential not found")
     db.delete(cred)
+    log_audit_event(db, user, "delete_credential", "credential", id, status="success")
     db.commit()
-    log_audit_event(db, user, "delete_credential", "credential", id, "success")
     return {"message": "Credential deleted successfully"}
 
 
@@ -2374,7 +2430,10 @@ def apply_remediation(
             "emergency_bypass_remediation",
             "finding",
             finding.id,
-            f"Bypassed Maker-Checker queue. Asset: {finding.asset_id or 'Global'}",
+            changes={
+                "reason": "Bypassed Maker-Checker queue",
+                "asset_id": finding.asset_id or "Global",
+            },
         )
 
         from core.compliance_tasks import run_reremediation_task
@@ -2415,11 +2474,11 @@ def apply_remediation(
     db.add(new_request)
 
     finding.status = "pending_reverify"
+    log_audit_event(
+        db, user, "request_remediation", "remediation_request", req_id, status="success"
+    )
     db.commit()
 
-    log_audit_event(
-        db, user, "request_remediation", "remediation_request", req_id, "success"
-    )
     return {
         "message": "Remediation request submitted to the approvals queue.",
         "request_id": req_id,
@@ -2602,16 +2661,27 @@ def approve_remediation_request(
             db.commit()
 
         log_audit_event(
-            db, user, "reject_remediation", "remediation_request", id, "success"
+            db, user, "reject_remediation", "remediation_request", id, status="success"
         )
         return {"message": "Remediation request rejected."}
 
     req.status = "approved"
+
+    # The approval is the auditable act, so it and its audit event share one
+    # transaction. `is_rb` is derived from the request id, which is already
+    # known here, so classifying the action does not need the commit to have
+    # happened first.
+    is_rb = req.id.startswith("crrq_rollback_")
+    action_label = "approve_rollback" if is_rb else "approve_remediation"
+    log_audit_event(db, user, action_label, "remediation_request", id, status="success")
     db.commit()
 
+    # Dispatched only after the commit: the worker reads this row, and handing
+    # it a request that is still uncommitted is a race it cannot win. Keeping
+    # the dispatch outside the transaction also releases the audit chain-head
+    # lock before this call blocks on the broker.
     from core.compliance_tasks import run_reremediation_task
 
-    is_rb = req.id.startswith("crrq_rollback_")
     run_reremediation_task.delay(
         req.finding_id,
         req.remediation_id,
@@ -2620,13 +2690,11 @@ def approve_remediation_request(
         is_rollback=is_rb,
     )
 
-    action_label = "approve_rollback" if is_rb else "approve_remediation"
     msg_label = (
         "Rollback approved and queued for execution."
         if is_rb
         else "Remediation approved and queued for execution."
     )
-    log_audit_event(db, user, action_label, "remediation_request", id, "success")
     return {"message": msg_label}
 
 
@@ -2668,6 +2736,9 @@ def cancel_remediation_request(
     req.encrypted_key_content = None
     req.port = None
     req.auth_method = None
+    log_audit_event(
+        db, user, "cancel_remediation", "remediation_request", id, status="success"
+    )
     db.commit()
 
     finding = db.query(ComplianceFinding).filter_by(id=req.finding_id).first()
@@ -2684,9 +2755,6 @@ def cancel_remediation_request(
         db.add(history)
         db.commit()
 
-    log_audit_event(
-        db, user, "cancel_remediation", "remediation_request", id, "success"
-    )
     return {"message": "Remediation request cancelled."}
 
 
@@ -2842,9 +2910,26 @@ def rollback_remediation_request(
         new_req.emergency_bypass = True
 
     db.add(new_req)
+
+    # One audit call rather than two, because both branches record the same
+    # act — the rollback request being created — and differ only in whether it
+    # bypassed approval. `is_bypass` is decided above, so the classification is
+    # available before the commit and both action names are preserved.
+    #
+    # An emergency bypass skips the approvals queue, so this event is the only
+    # record that it happened.
+    log_audit_event(
+        db,
+        user,
+        "emergency_bypass_rollback" if is_bypass else "request_rollback",
+        "remediation_request",
+        new_req.id,
+        status="success",
+    )
     db.commit()
 
     if is_bypass:
+        # After the commit: the worker reads this row.
         from core.compliance_tasks import run_reremediation_task
 
         run_reremediation_task.delay(
@@ -2854,26 +2939,14 @@ def rollback_remediation_request(
             remediation_request_id=new_req.id,
             is_rollback=True,
         )
-        log_audit_event(
-            db,
-            user,
-            "emergency_bypass_rollback",
-            "remediation_request",
-            new_req.id,
-            "success",
-        )
         return {
             "message": "Emergency bypass rollback dispatched directly.",
             "request_id": new_req.id,
         }
-    else:
-        log_audit_event(
-            db, user, "request_rollback", "remediation_request", new_req.id, "success"
-        )
-        return {
-            "message": "Rollback request submitted to approvals queue.",
-            "request_id": new_req.id,
-        }
+    return {
+        "message": "Rollback request submitted to approvals queue.",
+        "request_id": new_req.id,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2927,9 +3000,9 @@ def request_exception_waiver(
         expires_at=payload.expires_at,
     )
     db.add(new_exception)
+    log_audit_event(db, user, "request_waiver", "exception", exc_id, status="success")
     db.commit()
 
-    log_audit_event(db, user, "request_waiver", "exception", exc_id, "success")
     return {"message": "Exception request submitted", "exception_id": exc_id}
 
 
@@ -2975,8 +3048,8 @@ def approve_exception_waiver(
             )
             db.add(history)
 
+    log_audit_event(db, user, "approve_waiver", "exception", id, status="success")
     db.commit()
-    log_audit_event(db, user, "approve_waiver", "exception", id, "success")
     return {"message": f"Waiver request {payload.status} successfully"}
 
 
@@ -3942,7 +4015,7 @@ def download_statement_of_applicability(
         media = "application/pdf"
         filename = f"soa_{slug}_{user.org_id}.pdf"
 
-    log_audit_event(db, user, "export_soa", "framework", framework_id, "success")
+    log_audit_event(db, user, "export_soa", "framework", framework_id, status="success")
     return StreamingResponse(
         buffer,
         media_type=media,
@@ -7224,7 +7297,7 @@ def download_nerc_cip_report(
         media = "application/pdf"
         filename = f"nerc_cip_report_{user.org_id[:4]}.pdf"
 
-    log_audit_event(db, user, "export_report", "framework", fw_id, "success")
+    log_audit_event(db, user, "export_report", "framework", fw_id, status="success")
     return StreamingResponse(
         buffer,
         media_type=media,

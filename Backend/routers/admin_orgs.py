@@ -7,7 +7,7 @@ from auth.jwt_handler import hash_password
 from auth.rbac import require_permission
 from core.audit import log_audit_event
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
-from db.models import Organization, Role, User
+from db.models import Organization, RefreshTokenSession, Role, User
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
@@ -89,6 +89,7 @@ def _serialize_org(org: Organization) -> dict:
         "max_users": org.max_users,
         "is_active": org.is_active,
         "created_at": org.created_at,
+        "archived_at": org.archived_at,
         "detail": "Organization updated successfully",
     }
 
@@ -98,11 +99,23 @@ def _serialize_org(org: Organization) -> dict:
 def list_organizations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("organizations", "read")),
+    include_archived: bool = False,
 ):
+    """
+    List organisations. Archived tenants are excluded unless asked for.
+
+    An archived organisation is not deleted — it and all of its data are still
+    present — so it has to be filtered out here or the list would show
+    terminated tenants alongside live ones. `include_archived=true` is how a
+    superadmin finds one to restore.
+    """
     if _role_name(current_user) == "superadmin":
         query = db.query(Organization)
     else:
         query = db.query(Organization).filter(Organization.id == current_user.org_id)
+
+    if not include_archived:
+        query = query.filter(Organization.archived_at.is_(None))
 
     orgs = query.order_by(Organization.created_at.desc()).all()
     return {
@@ -116,6 +129,7 @@ def list_organizations(
                 "max_users": o.max_users,
                 "is_active": o.is_active,
                 "created_at": o.created_at,
+                "archived_at": o.archived_at,
             }
             for o in orgs
         ]
@@ -373,15 +387,45 @@ def change_organization_status(
 
 @router.delete("/{org_id}")
 @router.delete("/{org_id}/")
-def delete_organization(
+def archive_organization(
     org_id: str,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    reason: Optional[str] = None,
 ):
+    """
+    End a tenancy by **archiving** the organisation. Nothing is deleted.
+
+    This route used to call ``db.delete(org)``. Thirty foreign keys reference
+    ``organizations`` and every one of them is ``ON DELETE CASCADE``, so that
+    single statement destroyed the tenant's users, assets, scans, every
+    ``compliance_*`` record including findings and evidence, and its entire
+    audit trail — irreversibly, with no undo, at exactly the moment an
+    offboarding is most likely to be disputed. For an audit and compliance
+    product that is the wrong default.
+
+    Archiving sets ``is_active = False`` as well as ``archived_at``, and that
+    flag is what actually denies access: it is already enforced in
+    ``auth/jwt_handler.py`` (twice) and ``auth/router.py``. No new
+    authorisation code is introduced here, and therefore no new bypass surface.
+
+    ``archived_at`` is deliberately not ``is_active`` on its own —
+    deactivation is a reversible suspension used for billing and temporary
+    lockout, archival is the end of the tenancy, and collapsing the two makes
+    a suspended tenant indistinguishable from a terminated one in the audit
+    trail.
+
+    Hard deletion is **not** available. When it is built it will be a separate,
+    explicitly named purge that first exports the trail and seals the tenant's
+    hash chain — the same delete-then-purge shape ``users`` already has.
+
+    The ``ON DELETE CASCADE`` relationships are left exactly as they were; this
+    route simply stops invoking them.
+    """
     if _role_name(current_user) != "superadmin":
         raise HTTPException(
-            status_code=403, detail="Only superadmins can delete organizations"
+            status_code=403, detail="Only superadmins can archive organizations"
         )
 
     org = db.query(Organization).filter(Organization.id == org_id).first()
@@ -390,33 +434,133 @@ def delete_organization(
 
     if str(org.id) == str(current_user.org_id):
         raise HTTPException(
-            status_code=400, detail="Cannot delete your own organization"
+            status_code=400, detail="Cannot archive your own organization"
         )
 
-    org_count = db.query(Organization).count()
-    if org_count <= 1:
+    # Both pre-existing guards are kept. The second counts only live
+    # organisations: once archival exists, "the last organization" has to mean
+    # the last one still in use, or archiving every tenant but one would be
+    # blocked by tenants that are already gone.
+    live_orgs = (
+        db.query(Organization).filter(Organization.archived_at.is_(None)).count()
+    )
+    if live_orgs <= 1:
         raise HTTPException(
-            status_code=400, detail="Cannot delete the last organization"
+            status_code=400, detail="Cannot archive the last active organization"
         )
 
-    changes = {
-        "name": org.name,
-        "slug": org.slug,
-        "plan": org.plan,
-        "is_active": org.is_active,
-    }
+    if org.archived_at is not None:
+        return {"detail": "Organization is already archived", "archived": False}
+
+    now = utcnow()
+    previous_active = bool(org.is_active)
+    org.archived_at = now
+    org.archived_by_user_id = str(current_user.id)
+    org.archive_reason = (reason or "").strip() or None
+    org.is_active = False
+    org.updated_at = now
+
+    # Members lose access immediately, using the semantics `users` already has
+    # (see admin_users.delete_user): soft-deleted and deactivated, never
+    # removed. Their audit history stays attributable because the actor
+    # snapshot is frozen on each event.
+    members = db.query(User).filter(User.org_id == org.id).all()
+    for member in members:
+        if not member.is_deleted:
+            member.is_deleted = True
+            member.deleted_at = now
+        member.is_active = False
+        member.updated_at = now
+
+    # Sessions are revoked rather than left to expire: an access token already
+    # issued stays valid for up to 30 minutes, and the refresh cookie for 7
+    # days, so without this an archived tenant keeps working for the rest of
+    # the access-token lifetime.
+    revoked = (
+        db.query(RefreshTokenSession)
+        .filter(RefreshTokenSession.org_id == org.id)
+        .delete(synchronize_session=False)
+    )
+
     log_audit_event(
         db,
         current_user,
-        "organization.deleted",
+        "organization.archived",
         "organization",
         str(org.id),
-        changes,
+        {
+            "name": org.name,
+            "slug": org.slug,
+            "plan": org.plan,
+            "is_active": {"old": previous_active, "new": False},
+            "archived_at": {"old": None, "new": now.isoformat()},
+            "reason": org.archive_reason,
+            "members_deactivated": len(members),
+            "sessions_revoked": revoked,
+        },
         request,
     )
-    db.delete(org)
     db.commit()
-    return {"detail": "Organization deleted successfully"}
+    return {
+        "detail": "Organization archived",
+        "archived": True,
+        "members_deactivated": len(members),
+        "sessions_revoked": revoked,
+    }
+
+
+@router.post("/{org_id}/restore")
+@router.post("/{org_id}/restore/")
+def restore_organization(
+    org_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reverse an archival.
+
+    Member accounts are **not** silently reactivated. Archiving soft-deleted
+    them, and restoring an account is a decision about that person, not about
+    the tenancy — the same reason ``admin_users.restore_user`` leaves a
+    restored account inactive until someone explicitly reactivates it. A bulk
+    reactivation here would quietly re-enable an account that had been disabled
+    for its own reasons before the organisation was archived.
+    """
+    if _role_name(current_user) != "superadmin":
+        raise HTTPException(
+            status_code=403, detail="Only superadmins can restore organizations"
+        )
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if org.archived_at is None:
+        return {"detail": "Organization is not archived", "restored": False}
+
+    previous_archived_at = org.archived_at
+    org.archived_at = None
+    org.archived_by_user_id = None
+    org.archive_reason = None
+    org.is_active = True
+    org.updated_at = utcnow()
+
+    log_audit_event(
+        db,
+        current_user,
+        "organization.restored",
+        "organization",
+        str(org.id),
+        {
+            "archived_at": {"old": previous_archived_at.isoformat(), "new": None},
+            "is_active": {"old": False, "new": True},
+            "note": "member accounts remain deactivated until reactivated individually",
+        },
+        request,
+    )
+    db.commit()
+    return {"detail": "Organization restored", "restored": True}
 
 
 # ── Authorised scan scope ─────────────────────────────────────────────────────

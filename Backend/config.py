@@ -543,6 +543,29 @@ class AppConfig:
         os.getenv("REFRESH_SESSION_RETENTION_DAYS", "90")
     )
 
+    # ── Audit-trail export ───────────────────────────────────────────────────
+    #
+    # Two caps, deliberately independent of each other.
+    #
+    # The CSV cap bounds an evidence extract. It is a hard refusal, not a
+    # truncation: an export that silently stops at the limit produces a file
+    # that looks complete, and "this person did nothing after 14:00" is exactly
+    # the wrong conclusion for a truncated audit extract to invite. Over the
+    # cap the endpoint answers 413 naming the count, and the caller narrows the
+    # date range.
+    #
+    # The PDF cap is much lower and is not a smaller version of the same
+    # number. 50,000 rows is a reasonable machine-readable extract and an
+    # unreadable document; the PDF is a summary somebody actually looks at, and
+    # rendering it is CPU and memory inside the request.
+    AUDIT_EXPORT_MAX_ROWS: int = int(os.getenv("AUDIT_EXPORT_MAX_ROWS", "50000"))
+    AUDIT_EXPORT_PDF_MAX_ROWS: int = int(os.getenv("AUDIT_EXPORT_PDF_MAX_ROWS", "5000"))
+
+    # Rows fetched per keyset page while streaming. Bounds the memory the
+    # export holds at once — the whole point of paginating rather than
+    # materialising the capped set — without making the round trips dominate.
+    AUDIT_EXPORT_PAGE_SIZE: int = int(os.getenv("AUDIT_EXPORT_PAGE_SIZE", "1000"))
+
     # Database
     DATABASE_URL = DatabaseConfig.DATABASE_URL
     DATABASE_ENGINE_KWARGS = DatabaseConfig.get_engine_kwargs()

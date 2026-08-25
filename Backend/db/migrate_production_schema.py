@@ -210,6 +210,12 @@ PERMISSIONS = [
     ("organizations", "delete", "Delete organizations"),
     # Audit Logs
     ("audit", "read", "View the immutable audit log"),
+    # Taking a copy of the trail off the platform is a distinct act from
+    # reading it on screen, and is audited as one. It is a permission rather
+    # than a role check because the export is tenant-scoped -- unlike the
+    # platform-wide email-domain rules, which are superadmin-only for exactly
+    # the opposite reason.
+    ("audit", "export", "Export the audit log as CSV or PDF"),
     # Compliance
     ("compliance", "read", "View compliance dashboards and findings"),
     ("compliance", "scan", "Trigger manual compliance scans"),
@@ -278,6 +284,7 @@ ROLE_PERMISSIONS = {
         "settings:update",
         "dashboard:read",
         "audit:read",
+        "audit:export",
         "compliance:read",
         "compliance:scan",
         "compliance:manage_schedules",

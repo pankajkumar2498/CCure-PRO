@@ -1487,14 +1487,20 @@ existing sessions: `_load_auth_context_from_payload` re-checks
 `organization.is_active` on every request, and both refresh-token creation and
 rotation refuse for an inactive org.
 
-### Audit logs — `/admin/audit-logs` (2 operations)
+### Audit logs — `/admin/audit-logs` (3 operations)
 
-Source: `Backend/routers/audit.py`. Both require `audit:read`.
+Source: `Backend/routers/audit.py`.
 
-| Method | Path                           | Purpose                       |
-| ------ | ------------------------------ | ----------------------------- |
-| GET    | `/admin/audit-logs`            | List events, newest first     |
-| GET    | `/admin/audit-logs/{event_id}` | One event in full, for detail |
+| Method | Path                           | Permission     | Purpose                       |
+| ------ | ------------------------------ | -------------- | ----------------------------- |
+| GET    | `/admin/audit-logs`            | `audit:read`   | List events, newest first     |
+| GET    | `/admin/audit-logs/export`     | `audit:export` | Download the trail as CSV/PDF |
+| GET    | `/admin/audit-logs/{event_id}` | `audit:read`   | One event in full, for detail |
+
+`/export` is registered **before** `/{event_id}` in the module, and must stay
+there. FastAPI matches in registration order, so a literal path declared after a
+same-prefix dynamic one is unreachable — the export request would be read as a
+lookup for an event whose id is the string `export` and would answer 404.
 
 **List parameters** — all optional, all AND-ed together, all applied in the
 database:
@@ -1532,6 +1538,68 @@ else sees events whose `org_id` — or whose actor's `org_id` — is their own.
 There is deliberately **no POST, PUT, PATCH or DELETE** on this prefix. Audit
 rows are written only by `core.audit.log_audit_event`, from the endpoint that
 performed the action.
+
+#### Export — `GET /admin/audit-logs/export`
+
+Takes **every parameter the list endpoint takes** except `skip`/`limit`, applied
+through the same `_scoped_query` and `_apply_filters`, plus:
+
+| Parameter | Meaning                                                                   |
+| --------- | ------------------------------------------------------------------------- |
+| `format`  | `csv` (default) or `pdf`; 422 on anything else                            |
+| `verify`  | Default **true**. Recompute every stored `record_hash` and report per row |
+
+Rate limited to **5/minute**. Requires `audit:export`, held by `superadmin` and
+`org_admin` only.
+
+**Integrity labelling.** Every row carries an `integrity` column, and a non-NULL
+`record_hash` is never on its own enough to earn the word _verified_ — the
+stored hash is the value under suspicion, not the evidence:
+
+| Value                 | Meaning                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| `verified`            | Recomputed through the database's own canonical function; it matched |
+| `INTEGRITY_FAILURE`   | Recomputed; it did **not** match                                     |
+| `legacy_unverifiable` | No `record_hash` — predates the tamper-evidence chain                |
+| `not_verified`        | Hash present, deliberately not checked (`verify=false`)              |
+
+Verification calls `audit_chain.audit_record_hash_v1`, the same SQL function the
+insert trigger uses. There is no Python reimplementation: two definitions of a
+canonical form drift, and drift is indistinguishable from tampering.
+
+Both formats open with a `#`-prefixed preamble carrying the filters, the row
+count, the four counts above, and a sentence naming the verification mode in
+words. An export produced with `verify=false` says **"VERIFICATION WAS NOT
+PERFORMED"** — a file that merely omits the claim reads, to anyone who did not
+issue the request, exactly like one that made it.
+
+**On an integrity failure the export is still produced, and is marked in five
+places**: the row's `integrity` value, a non-zero count in the preamble,
+`X-Audit-Integrity: FAILED`, an `INTEGRITY-FAILURE` infix in the filename, and
+`status="failure"` on the `audit.log_exported` event. Refusing outright would
+deny an investigator the evidence they came for; a quiet 200 would launder it.
+
+**Response headers**: `X-Audit-Integrity` (`VERIFIED` | `FAILED` |
+`NOT_VERIFIED`), `X-Audit-Export-Rows`, `X-Audit-Verification-Mode`
+(`performed` | `not_requested` | `unavailable`), and `Cache-Control: no-store`.
+
+**The row cap refuses; it never truncates.** Over `AUDIT_EXPORT_MAX_ROWS`
+(50,000 for CSV) or `AUDIT_EXPORT_PDF_MAX_ROWS` (5,000, an independent number)
+the endpoint answers **413** naming the real count, and produces no partial
+file. A truncated audit extract looks complete, and "nothing happened after
+14:02" is precisely the conclusion it would invite.
+
+`audit.log_exported` is written and **committed before the first byte is sent**.
+Two reasons: the chain insert holds a `FOR UPDATE` lock on the organisation's
+chain head until commit, and `get_db` closes the request's session when the
+handler returns — which for a `StreamingResponse` is _before_ the body is
+produced, so an uncommitted event is silently discarded. The CSV generator
+therefore streams from a session of its own, read-only, opened after that
+commit.
+
+CSV cells beginning with `=`, `+`, `-`, `@`, TAB or CR are prefixed with one
+apostrophe so a spreadsheet cannot execute them; the preamble says so, and the
+transform is reversible. `user_agent` is attacker-chosen and reaches a cell.
 
 ### NVD catalog — `/api/v1/admin` (2 operations)
 

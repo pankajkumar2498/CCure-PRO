@@ -14,15 +14,45 @@ Reading the trail is itself privileged: every route requires
 to their own organisation.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from auth.rbac import require_permission
+from config import AppConfig
+from core.audit import log_audit_event
 from core.audit_taxonomy import SEVERITY_LEVELS
-from db.base import get_db
+from core.upload_guard import content_disposition
+from db.base import SessionLocal, get_db
 from db.models import AuditLog, User
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, func, or_
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from reporting.audit_export import (
+    INTEGRITY_FAILURE,
+    INTEGRITY_LEGACY,
+    INTEGRITY_NOT_VERIFIED,
+    INTEGRITY_VERIFIED,
+    VERIFICATION_NOT_REQUESTED,
+    VERIFICATION_PERFORMED,
+    VERIFICATION_UNAVAILABLE,
+    export_filename,
+    iter_csv,
+    render_pdf,
+)
+from scan_helpers import limiter
+from sqlalchemy import (
+    String,
+    and_,
+    case,
+    cast,
+    func,
+    literal,
+    literal_column,
+    or_,
+    text,
+)
 from sqlalchemy.orm import Session, joinedload
+from starlette.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/audit-logs", tags=["Audit Logs"])
 
@@ -312,8 +342,470 @@ def list_audit_logs(
     }
 
 
+# ─── Export ──────────────────────────────────────────────────────────────────
+#
+# Phase 5. Everything below sits above the `/{event_id}` route on purpose; see
+# the note there.
+
+#: Columns the export selects. Narrower than the ORM entity on purpose — the
+#: export reads up to the row cap and never needs a mapped instance, and
+#: selecting the entity would pull the `user` relationship into scope per row.
+_EXPORT_COLUMNS = (
+    AuditLog.id,
+    AuditLog.created_at,
+    AuditLog.org_id,
+    AuditLog.user_id,
+    AuditLog.actor_user_id,
+    AuditLog.actor_username,
+    AuditLog.action,
+    AuditLog.resource_type,
+    AuditLog.resource_id,
+    AuditLog.status,
+    AuditLog.severity,
+    AuditLog.ip_address,
+    AuditLog.user_agent,
+    AuditLog.request_id,
+    AuditLog.changes,
+    AuditLog.prev_hash,
+    AuditLog.record_hash,
+)
+
+_EXPORT_FIELDS = tuple(column.key for column in _EXPORT_COLUMNS)
+
+
+def _chain_hash_schema(db: Session) -> str | None:
+    """
+    Where ``audit_record_hash_v1`` lives, or None if it is not installed.
+
+    Resolved per request rather than cached: the bootstrap that installs it is
+    run by a DBA out of band, so a process that cached "absent" at import time
+    would keep reporting verification as unavailable until it was restarted.
+    It is a catalogue lookup on an indexed system table.
+
+    `audit_chain` wins over `public`. The chain was originally installed in
+    `public` and is moved by a privileged bootstrap the application role cannot
+    run, so both locations are legitimate; preferring the isolated one means a
+    database that still carries a stale shadow copy in `public` verifies
+    against the real function.
+    """
+    return db.execute(
+        text(
+            "SELECT n.nspname FROM pg_proc p "
+            "  JOIN pg_namespace n ON n.oid = p.pronamespace "
+            " WHERE p.proname = 'audit_record_hash_v1' "
+            "   AND n.nspname IN ('audit_chain', 'public') "
+            " ORDER BY CASE n.nspname WHEN 'audit_chain' THEN 0 ELSE 1 END "
+            " LIMIT 1"
+        )
+    ).scalar()
+
+
+def _integrity_expression(chain_schema: str | None):
+    """
+    The per-row integrity verdict, as SQL.
+
+    **A non-NULL ``record_hash`` is never on its own enough to say `verified`.**
+    The stored hash is the value under suspicion; the evidence is whether it
+    reproduces. So the verified branch compares it against a fresh computation
+    through the database's own canonical function — the same one the insert
+    trigger calls — and anything that does not reproduce falls through to
+    ``INTEGRITY_FAILURE``.
+
+    With no chain schema (verification not requested, or the machinery is not
+    installed) the function is never called and a stored hash yields
+    ``not_verified``: present, unchecked, and labelled as such.
+    """
+    legacy = (AuditLog.record_hash.is_(None), literal(INTEGRITY_LEGACY))
+
+    if chain_schema is None:
+        return case(legacy, else_=literal(INTEGRITY_NOT_VERIFIED))
+
+    # `literal_column("audit_logs")` is the whole-row reference the function's
+    # second parameter takes. `_scoped_query` never aliases the table, so this
+    # is the name it renders under.
+    recomputed = getattr(func, chain_schema).audit_record_hash_v1(
+        AuditLog.prev_hash, literal_column("audit_logs")
+    )
+    return case(
+        legacy,
+        (AuditLog.record_hash == recomputed, literal(INTEGRITY_VERIFIED)),
+        else_=literal(INTEGRITY_FAILURE),
+    )
+
+
+def _integrity_counts(db: Session, query, chain_schema: str | None) -> dict[str, int]:
+    """
+    Count each integrity state over the filtered set, in one pass.
+
+    Run **before** streaming because ``audit.log_exported`` has to record the
+    failure count, and that event must be committed before the first byte
+    leaves — the two requirements together rule out discovering the count while
+    writing the file.
+    """
+    state = _integrity_expression(chain_schema).label("state")
+    subquery = query.with_entities(state).order_by(None).subquery()
+
+    # `GROUP BY state`, **not** four `count(*) FILTER (WHERE state = …)`
+    # aggregates over the same subquery. The subquery is a plain scan, so
+    # PostgreSQL flattens it and substitutes the expression into every place
+    # `state` appears — which with four FILTER clauses means
+    # `audit_record_hash_v1` is called **four times per row**. Confirmed on
+    # EXPLAIN VERBOSE, and measured: it was the single largest cost in the
+    # export, roughly quadrupling verified-mode time. Grouping names the
+    # expression once, so it is evaluated once.
+    rows = (
+        db.query(subquery.c.state, func.count())
+        .select_from(subquery)
+        .group_by(subquery.c.state)
+        .all()
+    )
+    tally = {state_value: count for state_value, count in rows}
+
+    return {
+        value: tally.get(value, 0)
+        for value in (
+            INTEGRITY_VERIFIED,
+            INTEGRITY_NOT_VERIFIED,
+            INTEGRITY_LEGACY,
+            INTEGRITY_FAILURE,
+        )
+    }
+
+
+def _iter_export_rows(db: Session, query, chain_schema: str | None, page_size: int):
+    """
+    Walk the filtered set newest-first with a **keyset** cursor.
+
+    Not OFFSET. Offset re-scans and discards everything before the page on
+    every request, so the cost of page *n* grows with *n* — over a 50,000-row
+    export that is the same rows read fifty times. The cursor is
+    ``(created_at, id)``: ``created_at`` alone is not unique (two events inside
+    the same millisecond are ordinary), and a cursor that is not unique either
+    skips rows or repeats them.
+    """
+    state = _integrity_expression(chain_schema).label("integrity")
+    base = query.with_entities(*_EXPORT_COLUMNS, state).order_by(None)
+
+    cursor: tuple[datetime, str] | None = None
+    while True:
+        page = base
+        if cursor is not None:
+            last_created, last_id = cursor
+            page = page.filter(
+                or_(
+                    AuditLog.created_at < last_created,
+                    and_(
+                        AuditLog.created_at == last_created,
+                        AuditLog.id < last_id,
+                    ),
+                )
+            )
+        rows = (
+            page.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .limit(page_size)
+            .all()
+        )
+        if not rows:
+            return
+
+        for row in rows:
+            record = dict(zip(_EXPORT_FIELDS, row[: len(_EXPORT_FIELDS)]))
+            record["integrity"] = row[-1]
+            yield record
+
+        cursor = (rows[-1].created_at, rows[-1].id)
+        if len(rows) < page_size:
+            return
+
+
+@router.get("/export")
+@limiter.limit("5/minute")
+def export_audit_logs(
+    request: Request,
+    # slowapi writes X-RateLimit-* after the handler returns and finds the
+    # response either from the return value or from this parameter. This
+    # handler returns a Response, which is what slowapi actually uses — the
+    # parameter is declared because `tests/security/test_rate_limit_headers.py`
+    # requires every limited route to have one of the two, and a future edit
+    # that returns a dict from some branch would otherwise 500 the route.
+    response: Response,
+    fmt: str = Query("csv", alias="format", description="csv|pdf"),
+    verify: bool = Query(
+        True,
+        description=(
+            "Recompute every stored record_hash and report the result per row. "
+            "Default, and the mode an evidence export should use. Setting it "
+            "false produces a file in which nothing is verified, and says so."
+        ),
+    ),
+    user_id: str | None = Query(None, description="Exact actor id"),
+    action: str | None = Query(None, description="Exact action, e.g. user.login"),
+    resource_type: str | None = Query(None, description="Exact resource type"),
+    status: str | None = Query(None, description="Exact status, e.g. success"),
+    severity: str | None = Query(None, description="info|low|medium|high|critical"),
+    ip_address: str | None = Query(None, description="Source IP, prefix match"),
+    range: str | None = Query(  # noqa: A002 - the query parameter is named `range`
+        None, description="Named window: today|24h|7d|30d"
+    ),
+    date_from: datetime | None = Query(None, description="ISO 8601, inclusive"),
+    date_to: datetime | None = Query(None, description="ISO 8601, inclusive"),
+    q: str | None = Query(None, description="Same search as the list endpoint"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("audit", "export")),
+):
+    """
+    Export the audit trail the caller can see, as CSV or PDF.
+
+    Taking a copy of the trail off the platform is itself an auditable event,
+    and it is written and **committed before the first byte is sent**. Two
+    reasons, and both are load-bearing:
+
+    * The chain insert holds a ``FOR UPDATE`` lock on the organisation's row in
+      ``audit_chain_heads`` until commit. Streaming inside that transaction
+      would hold it for the whole download — seconds to minutes on a slow
+      client — and block every other audit write in the tenant meanwhile.
+    * ``get_db`` closes the request's session when the handler returns, which
+      for a ``StreamingResponse`` is *before* the body is produced. An event
+      written and not yet committed at that point is silently discarded.
+
+    The generator therefore opens its own read-only session. That is not the
+    second-session pattern ``core/audit.py`` prohibits: it writes nothing, and
+    the request's transaction is already committed when it starts, so there is
+    no lock for it to deadlock against.
+    """
+    fmt = (fmt or "csv").strip().lower()
+    if fmt not in ("csv", "pdf"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown format '{fmt}'. Expected one of: csv, pdf.",
+        )
+
+    if severity and severity.strip().lower() not in SEVERITY_LEVELS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unknown severity '{severity}'. "
+                f"Expected one of: {', '.join(SEVERITY_LEVELS)}."
+            ),
+        )
+
+    resolved_from, resolved_to = _resolve_window(range, date_from, date_to)
+
+    # Every pass — the count, the integrity tally and the stream — is bounded
+    # by one instant captured here. Without it the three see different sets:
+    # this request's own `audit.log_exported` event is written between the
+    # count and the stream, and being the newest row it would appear *first* in
+    # a newest-first export the header had already counted without it.
+    snapshot = datetime.now(timezone.utc)
+    if resolved_to is None or resolved_to > snapshot:
+        resolved_to = snapshot
+
+    filters = {
+        "user_id": user_id,
+        "action": action,
+        "resource_type": resource_type,
+        "status": status,
+        "severity": severity,
+        "ip_address": ip_address,
+        "range": range,
+        "date_from": date_from,
+        "date_to": date_to,
+        "q": q,
+    }
+
+    def build(session: Session, principal: User):
+        """The one place the export's row set is defined.
+
+        Both passes go through `_scoped_query` and `_apply_filters` — the same
+        two functions the list endpoint uses — so "what this caller may see"
+        and "what these filters mean" have exactly one definition. A second
+        implementation here would be a tenant-isolation bug waiting to be
+        written.
+        """
+        scoped = _scoped_query(session, principal, needs_user_join=bool(q))
+        return _apply_filters(
+            scoped,
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            status=status,
+            severity=severity,
+            ip_address=ip_address,
+            date_from=resolved_from,
+            date_to=resolved_to,
+            q=q,
+        )
+
+    query = build(db, current_user)
+
+    cap = (
+        AppConfig.AUDIT_EXPORT_PDF_MAX_ROWS
+        if fmt == "pdf"
+        else AppConfig.AUDIT_EXPORT_MAX_ROWS
+    )
+    total = query.with_entities(func.count(AuditLog.id)).order_by(None).scalar() or 0
+
+    if total > cap:
+        # A hard refusal, never a truncation. A file that stops at the cap
+        # looks complete, and "nothing happened after 14:02" is precisely the
+        # wrong conclusion for a silently shortened audit extract to invite.
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"This export would contain {total:,} events, which exceeds the "
+                f"{cap:,}-event limit for {fmt.upper()}. Narrow the date range "
+                f"or add filters and try again. No partial export is produced."
+            ),
+        )
+
+    chain_schema = _chain_hash_schema(db)
+    if not verify:
+        verification_mode = VERIFICATION_NOT_REQUESTED
+    elif chain_schema is None:
+        verification_mode = VERIFICATION_UNAVAILABLE
+    else:
+        verification_mode = VERIFICATION_PERFORMED
+
+    verifying_schema = (
+        chain_schema if verification_mode == VERIFICATION_PERFORMED else None
+    )
+    counts = _integrity_counts(db, query, verifying_schema)
+    failures = counts[INTEGRITY_FAILURE]
+
+    if failures:
+        logger.warning(
+            "AUDIT_INTEGRITY_FAILURE: %s of %s exported event(s) did not "
+            "reproduce their stored record_hash. org_scope=%s actor=%s "
+            "request_id=%s format=%s. The audit trail has been modified "
+            "outside the application.",
+            failures,
+            total,
+            "all" if _is_superadmin(current_user) else current_user.org_id,
+            current_user.id,
+            getattr(request.state, "request_id", None),
+            fmt,
+        )
+
+    log_audit_event(
+        db,
+        current_user,
+        "audit.log_exported",
+        resource_type="audit_log",
+        resource_id=None,
+        changes={
+            "format": fmt,
+            "row_count": total,
+            "verification_requested": verify,
+            "verification_mode": verification_mode,
+            "chain_schema": chain_schema,
+            "verified": counts[INTEGRITY_VERIFIED],
+            "not_verified": counts[INTEGRITY_NOT_VERIFIED],
+            "legacy_unverifiable": counts[INTEGRITY_LEGACY],
+            "integrity_failures": failures,
+            "row_cap": cap,
+            "snapshot_upper_bound": snapshot.isoformat(),
+            "filters": {
+                key: (value.isoformat() if isinstance(value, datetime) else value)
+                for key, value in filters.items()
+                if value not in (None, "")
+            },
+        },
+        request=request,
+        # An export that surfaced a broken row is not a successful export. The
+        # status is what a reviewer filters on, so it has to carry the outcome
+        # rather than merely the fact that the endpoint answered 200.
+        status="failure" if failures else "success",
+    )
+    # Committed here, deliberately: see the docstring. Nothing below this line
+    # writes, and the chain-head lock is released before any byte is produced.
+    db.commit()
+
+    meta = {
+        "generated_at": snapshot,
+        "exported_by": current_user.username,
+        "exported_by_user_id": current_user.id,
+        "organization_scope": (
+            "all organizations (superadmin)"
+            if _is_superadmin(current_user)
+            else current_user.org_id
+        ),
+        "row_count": total,
+        "snapshot_upper_bound": snapshot,
+        "filters": filters,
+        "request_id": getattr(request.state, "request_id", None),
+        "verification_mode": verification_mode,
+        "verified_count": counts[INTEGRITY_VERIFIED],
+        "not_verified_count": counts[INTEGRITY_NOT_VERIFIED],
+        "legacy_unverifiable_count": counts[INTEGRITY_LEGACY],
+        "integrity_failure_count": failures,
+        "chain_schema": chain_schema,
+    }
+
+    headers = {
+        "Content-Disposition": content_disposition(
+            export_filename(fmt, failed=bool(failures), generated_at=snapshot)
+        ),
+        # Machine-readable counterpart to the preamble, so a client that never
+        # opens the file still cannot mistake a failed export for a clean one.
+        "X-Audit-Integrity": (
+            "FAILED"
+            if failures
+            else (
+                "VERIFIED"
+                if verification_mode == VERIFICATION_PERFORMED
+                else "NOT_VERIFIED"
+            )
+        ),
+        "X-Audit-Export-Rows": str(total),
+        "X-Audit-Verification-Mode": verification_mode,
+        "Cache-Control": "no-store",
+    }
+
+    if fmt == "pdf":
+        # Materialised, and safe to be: the PDF cap is a separate, much smaller
+        # number precisely because reportlab has to hold the whole document.
+        rows = list(
+            _iter_export_rows(
+                db, query, verifying_schema, AppConfig.AUDIT_EXPORT_PAGE_SIZE
+            )
+        )
+        return Response(
+            content=render_pdf(meta, rows),
+            media_type="application/pdf",
+            headers=headers,
+        )
+
+    principal_id = current_user.id
+
+    def stream():
+        """Produce the CSV from a session of its own. See the docstring."""
+        session = SessionLocal()
+        try:
+            principal = session.get(User, principal_id)
+            if principal is None:  # pragma: no cover - the actor vanished mid-export
+                raise RuntimeError(
+                    "the exporting user no longer exists; refusing to produce "
+                    "an unscoped export"
+                )
+            rows = _iter_export_rows(
+                session,
+                build(session, principal),
+                verifying_schema,
+                AppConfig.AUDIT_EXPORT_PAGE_SIZE,
+            )
+            yield from iter_csv(meta, rows)
+        finally:
+            session.close()
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/csv; charset=utf-8",
+        headers=headers,
+    )
+
+
 # NOTE: this dynamic route must stay LAST in the module. A literal path
-# registered after it — `/export` in phase 5 — would otherwise be captured here
+# registered after it — `/export`, above — would otherwise be captured here
 # as an `event_id` and answer 404 instead of exporting.
 @router.get("/{event_id}")
 def get_audit_log(

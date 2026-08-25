@@ -1,6 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
-import { listAuditLogs, getAuditLogDetail } from "../../api/admin";
+import {
+  listAuditLogs,
+  getAuditLogDetail,
+  exportAuditLogs,
+} from "../../api/admin";
+import { useAuth } from "../../context/AuthContext";
+import { can } from "../../auth/permissions";
 import { formatDateTime } from "../../utils/date";
 import Button from "../../components/common/Button";
 import FormField from "../../components/common/FormField";
@@ -39,7 +45,14 @@ export default function AuditLogs() {
   const [latestLogTime, setLatestLogTime] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [exporting, setExporting] = useState("");
   const isFirstLoad = useRef(true);
+
+  // The button is hidden without the permission, and that is a courtesy, not a
+  // control: `require_permission("audit", "export")` on the route is what
+  // actually refuses. Hiding it only stops offering an action that would 403.
+  const { user: currentUser } = useAuth();
+  const canExport = can(currentUser, "audit", "export");
 
   const loadData = useCallback(
     // `targetPage` has no default. It used to fall back to `page`, which made
@@ -151,6 +164,57 @@ export default function AuditLogs() {
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
     setPage(1);
+  };
+
+  // Export what is currently on screen — the same filters, never the whole
+  // table. Pagination is deliberately not passed: the export is capped and
+  // keyset-paginated server-side, so sending `skip`/`limit` would hand back one
+  // page of a file that is meant to be the whole filtered set.
+  const handleExport = async (format) => {
+    if (exporting) return;
+    setExporting(format);
+    try {
+      const params = Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== ""),
+      );
+      const result = await exportAuditLogs(params, format);
+      if (result.integrity === "FAILED") {
+        // Never a routine "downloaded" message. At least one exported row's
+        // stored hash did not reproduce, which means the trail was modified
+        // outside the application.
+        pushToast(
+          `${result.filename} downloaded - INTEGRITY FAILURE: at least one event did not match its stored hash. Investigate before relying on this trail.`,
+          "error",
+        );
+      } else if (result.verificationMode !== "performed") {
+        pushToast(
+          `${result.filename} downloaded (${result.rows} events). Verification was NOT performed for this export.`,
+          // "info", not "warning": there is no toast--warning style, and an
+          // unstyled toast is less legible than a plain one. The file itself
+          // says so in words, which is where it matters.
+          "info",
+        );
+      } else {
+        pushToast(
+          `${result.filename} downloaded (${result.rows} events, all verified).`,
+          "success",
+        );
+      }
+    } catch (err) {
+      // 413 is the row cap refusing rather than truncating, and its detail names
+      // the count and what to do about it, so it is shown verbatim.
+      let detail = err.response?.data?.detail;
+      if (!detail && err.response?.data instanceof Blob) {
+        try {
+          detail = JSON.parse(await err.response.data.text())?.detail;
+        } catch {
+          detail = "";
+        }
+      }
+      pushToast(detail || "Unable to export the audit log.", "error");
+    } finally {
+      setExporting("");
+    }
   };
 
   // Presets and a custom window are mutually exclusive: the backend gives
@@ -509,6 +573,30 @@ export default function AuditLogs() {
             >
               {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
+            {canExport && (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport("csv")}
+                  disabled={Boolean(exporting)}
+                  title="Download the events matching the current filters, with every stored hash re-verified"
+                >
+                  {exporting === "csv" ? "Exporting..." : "Export CSV"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport("pdf")}
+                  disabled={Boolean(exporting)}
+                  title="Summary document; the CSV carries the hashes"
+                >
+                  {exporting === "pdf" ? "Exporting..." : "Export PDF"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
 

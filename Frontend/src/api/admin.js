@@ -172,3 +172,49 @@ export const getAuditLogDetail = async (eventId) => {
   );
   return response.data;
 };
+
+// Download the audit trail as CSV or PDF.
+//
+// Fetched with the access token rather than opened as a plain link: the
+// endpoint is bearer-authenticated, so a bare <a href> would be an
+// unauthenticated request and answer 403. The response comes back as a blob and
+// is saved with the filename the server chose, which is where the
+// INTEGRITY-FAILURE marker lives on a failed export.
+//
+// `verify` defaults to true and should stay that way. It is what makes the file
+// evidence rather than a copy: with it off, no stored hash is recomputed and the
+// export says so in its own header.
+export const exportAuditLogs = async (params = {}, format = "csv") => {
+  const response = await axiosInstance.get("/admin/audit-logs/export", {
+    params: { ...params, format },
+    responseType: "blob",
+  });
+
+  const disposition = response.headers?.["content-disposition"] || "";
+  const match =
+    /filename\*=UTF-8''([^;]+)/i.exec(disposition) ||
+    /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match
+    ? decodeURIComponent(match[1].trim())
+    : `ccure-audit-log.${format === "pdf" ? "pdf" : "csv"}`;
+
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  return {
+    filename,
+    rows: Number(response.headers?.["x-audit-export-rows"] || 0),
+    // "FAILED" means at least one exported row's stored hash did not reproduce.
+    // Surfaced to the caller so the UI can say so rather than reporting a
+    // routine download.
+    integrity: response.headers?.["x-audit-integrity"] || "NOT_VERIFIED",
+    verificationMode:
+      response.headers?.["x-audit-verification-mode"] || "unavailable",
+  };
+};

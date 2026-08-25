@@ -59,6 +59,53 @@ def chain_installed(db) -> bool:
     return chain_location(db)["installed"]
 
 
+def legacy_accounting_status(
+    head_count: int, surviving: int
+) -> tuple[str | None, str | None]:
+    """
+    Compare the chain head's pre-chain counter against the rows still present.
+
+    Returns ``(break, note)``, at most one of which is set.
+
+    **Directional, and the direction is the whole point.**
+
+    ``head > surviving`` — pre-chain rows *disappeared* without the counter
+    moving. That is the break. Sanctioned retention decrements the head in the
+    same transaction as the deletion, so the two can only diverge this way
+    through a removal outside the purge path.
+
+    ``head < surviving`` — pre-chain rows were *inserted* without being hashed,
+    which means the chain trigger was disabled for that write. It is how real
+    pre-chain history and every legacy test fixture come to exist. A note, not
+    a break: nothing was lost, and calling it tampering would cry wolf on the
+    ordinary case.
+
+    Pure, and separated out for that reason. The break direction is only
+    reachable on a database whose counter is authoritative — seeded from a
+    COUNT at chain bootstrap — which a test organisation cannot be, because the
+    only function that raises it is granted to nobody and the only one that
+    lowers it belongs to ``audit_maintenance``. Extracting the comparison means
+    both directions are testable without a database, and without granting
+    anything a privilege the design withholds.
+    """
+    if head_count > surviving:
+        return (
+            f"legacy accounting mismatch: head records {head_count} pre-chain "
+            f"event(s) and only {surviving} remain. Retention decrements the "
+            f"head in the same transaction as the deletion, so a shortfall "
+            f"means rows were removed outside the purge path.",
+            None,
+        )
+    if head_count < surviving:
+        return (
+            None,
+            f"{surviving - head_count} unhashed row(s) beyond the count "
+            f"recorded at chain bootstrap — written with the chain trigger "
+            f"disabled. Not a loss; not verifiable either.",
+        )
+    return None, None
+
+
 def retention_anchors(db, org_id: str) -> dict:
     """
     What retention has legitimately removed from this organisation.
@@ -151,32 +198,12 @@ def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
     # is exactly the difference between sanctioned retention and somebody
     # quietly removing history, and it is reported as a break rather than
     # excused.
-    # **Directional, and the direction is the whole point.**
-    #
-    # head > actual: pre-chain rows have *disappeared* without the counter
-    #   moving. That is the break — sanctioned retention always moves both in
-    #   one transaction.
-    #
-    # head < actual: pre-chain rows were *inserted* without being hashed, which
-    #   means the chain trigger was disabled for that write. It is how real
-    #   pre-chain history and every legacy test fixture come to exist, and it
-    #   is reported as a note rather than a break: nothing was lost, and
-    #   calling it tampering would cry wolf on the ordinary case.
     if head is not None:
-        if head.legacy_event_count > legacy:
-            report["breaks"].append(
-                f"legacy accounting mismatch: head records "
-                f"{head.legacy_event_count} pre-chain event(s) and only {legacy} "
-                f"remain. Retention decrements the head in the same transaction "
-                f"as the deletion, so a shortfall means rows were removed "
-                f"outside the purge path."
-            )
-        elif head.legacy_event_count < legacy:
-            report["notes"].append(
-                f"{legacy - head.legacy_event_count} unhashed row(s) beyond the "
-                f"count recorded at chain bootstrap — written with the chain "
-                f"trigger disabled. Not a loss; not verifiable either."
-            )
+        issue, note = legacy_accounting_status(head.legacy_event_count, legacy)
+        if issue:
+            report["breaks"].append(issue)
+        if note:
+            report["notes"].append(note)
 
     if not rows:
         if head and head.event_count:

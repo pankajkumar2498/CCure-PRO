@@ -384,6 +384,145 @@ def test_the_anchor_records_every_required_fact(db_session, mixed, enabled):
     assert anchor.operator_identity
 
 
+def test_the_anchor_names_the_purge_event_that_describes_it(db_session, mixed, enabled):
+    """
+    Phase 6b: `audit_event_id` resolves to the event, and to the right one.
+
+    It used to be NULL, and could not be anything else: the anchor is written
+    inside a SECURITY DEFINER function that returns *before* the audit event
+    exists, and nothing may amend the anchor afterwards — `ccure_user` holds no
+    UPDATE on that table and must not. The id is now chosen before the purge
+    runs and handed to both, so the anchor and the event it names are one
+    atomic fact rather than two things hoped to agree.
+    """
+    org = mixed["org"]
+    run_retention(db_session, dry_run=False)
+
+    anchor = anchors_for(db_session, org)[0]
+    assert anchor.audit_event_id is not None, "the anchor did not name its event"
+
+    event = (
+        db_session.execute(
+            text(
+                "SELECT id, action, org_id, changes FROM audit_logs "
+                " WHERE id = :i AND org_id = :o"
+            ),
+            {"i": anchor.audit_event_id, "o": org},
+        )
+        .mappings()
+        .fetchone()
+    )
+
+    assert event is not None, "the anchor names an event that does not exist"
+    assert event["action"] == "audit.retention_purge_executed"
+    assert (
+        event["changes"]["anchor_id"] == anchor.id
+    ), "the event and the anchor do not point at each other"
+    assert event["changes"]["deleted_count"] == anchor.deleted_count
+
+
+def test_each_batch_anchor_names_its_own_distinct_event(
+    db_session, test_user, enabled, monkeypatch
+):
+    """
+    One anchor and one event per committed batch, paired one to one.
+
+    A single id reused across batches would make the linkage worse than
+    useless: every anchor would resolve to an event describing a different
+    deletion.
+    """
+    org = test_user.org_id
+    seed_legacy(db_session, org, 7, age_days=400)
+    monkeypatch.setattr(AppConfig, "AUDIT_RETENTION_BATCH_SIZE", 3)
+
+    run_retention(db_session, dry_run=False)
+
+    anchors = anchors_for(db_session, org)
+    events = purge_events(db_session, org)
+    assert len(anchors) == 3 and len(events) == 3
+
+    ids = [a.audit_event_id for a in anchors]
+    assert all(ids), "an anchor was left without an event id"
+    assert len(set(ids)) == 3, "an event id was reused across batches"
+    assert set(ids) == {e.id for e in events}
+
+    for a in anchors:
+        event = next(e for e in events if e.id == a.audit_event_id)
+        assert event.changes["anchor_id"] == a.id
+        assert event.changes["deleted_count"] == a.deleted_count
+
+
+def test_a_failed_audit_write_rolls_back_the_anchor_and_the_deletion(
+    db_session, test_user, enabled, monkeypatch
+):
+    """
+    The linkage must not have created a way for an anchor to outlive its event.
+
+    The audit write happens after the purge function returns, so if it fails
+    the anchor is already in the transaction — and must go with it. Failure is
+    injected there deliberately.
+    """
+    import core.audit_retention as retention
+
+    org = test_user.org_id
+    rows = seed_legacy(db_session, org, 4, age_days=400)
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("injected: audit write fails after the anchor exists")
+
+    monkeypatch.setattr(retention, "log_audit_event", explode, raising=False)
+    monkeypatch.setattr("core.audit.log_audit_event", explode)
+
+    with pytest.raises(RuntimeError):
+        run_retention(db_session, dry_run=False)
+
+    db_session.rollback()
+    assert counts(db_session, org)["legacy"] == len(rows), "rows were lost"
+    assert anchors_for(db_session, org) == [], "an anchor outlived its event"
+
+
+def test_an_anchor_written_before_phase_6b_is_still_valid(
+    db_session, test_user, enabled
+):
+    """
+    `audit_event_id` stays nullable and carries no foreign key.
+
+    Anchors written before this change have NULL there and must keep reading
+    cleanly — the column is a soft reference by design. An FK to `audit_logs`
+    was rejected precisely because audit rows *are* removable (an organisation
+    deletion cascades, and a future chained purge would too), so the constraint
+    would either block that removal or null the link, tying the anchor's
+    survival to the trail it describes.
+    """
+    org = test_user.org_id
+    seed_legacy(db_session, org, 2, age_days=400)
+    run_retention(db_session, dry_run=False)
+
+    anchor = anchors_for(db_session, org)[0]
+    column = db_session.execute(
+        text(
+            "SELECT is_nullable FROM information_schema.columns "
+            " WHERE table_schema='audit_retention' "
+            "   AND table_name='retention_anchors' "
+            "   AND column_name='audit_event_id'"
+        )
+    ).scalar()
+    assert column == "YES", "audit_event_id must remain nullable"
+
+    fks = db_session.execute(
+        text(
+            "SELECT count(*) FROM pg_constraint c "
+            "  JOIN pg_class t ON t.oid = c.conrelid "
+            " WHERE c.contype = 'f' AND t.relname = 'retention_anchors'"
+        )
+    ).scalar()
+    assert fks == 0, "retention_anchors must carry no foreign key"
+
+    # And the current anchor still resolves, proving the soft reference works
+    # without one.
+    assert anchor.audit_event_id is not None
+
+
 def test_a_legacy_anchor_carries_no_hash_because_there_is_none(
     db_session, mixed, enabled
 ):

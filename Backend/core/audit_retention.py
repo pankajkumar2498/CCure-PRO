@@ -54,6 +54,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from config import AppConfig
+from db.base import gen_uuid
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
@@ -360,15 +361,28 @@ _NO_CHAIN_HEAD = object()
 _NO_DATA_FOUND = "P0002"
 
 
-def _call_purge(db, org_id: str, cutoff, batch: int, operator: str, backup_ref: str):
-    """Invoke the purge function, separating "no head" from every other error."""
+def _call_purge(
+    db, org_id: str, cutoff, batch: int, operator: str, backup_ref: str, event_id: str
+):
+    """Invoke the purge function, separating "no head" from every other error.
+
+    ``event_id`` is the id of the ``audit.retention_purge_executed`` event this
+    batch is about to write, generated **before** the call. The anchor records
+    it, so an anchor can be resolved to the event that describes it -- and the
+    two are written in one transaction, so a dangling reference is impossible.
+
+    It used to be NULL, because the anchor is written inside a SECURITY DEFINER
+    function that returns before the event exists and nothing may amend the
+    anchor afterwards: `ccure_user` holds no UPDATE on that table and must not.
+    Choosing the id first is what resolves that without a new privilege.
+    """
     try:
         return db.execute(
             text(
                 "SELECT deleted_count, anchor_id, range_from, range_to, "
                 "       legacy_remaining "
                 "  FROM audit_retention.purge_legacy_v1("
-                "       :org, :cutoff, :batch, :floor, :operator, NULL, :backup)"
+                "       :org, :cutoff, :batch, :floor, :operator, :event, :backup)"
             ),
             {
                 "org": org_id,
@@ -376,6 +390,7 @@ def _call_purge(db, org_id: str, cutoff, batch: int, operator: str, backup_ref: 
                 "batch": batch,
                 "floor": AppConfig.AUDIT_RETENTION_MIN_DAYS,
                 "operator": operator,
+                "event": event_id,
                 "backup": backup_ref,
             },
         ).fetchone()
@@ -421,7 +436,12 @@ def _purge_one_batch(
             "no_head": False,
         }
 
-    result = _call_purge(db, org_id, cutoff, batch, operator, backup_ref)
+    # Chosen before the purge runs so the anchor can name it. If the batch
+    # turns out to be empty, or the transaction rolls back, the id is simply
+    # discarded -- it is a UUID4 and nothing has been written under it.
+    event_id = gen_uuid()
+
+    result = _call_purge(db, org_id, cutoff, batch, operator, backup_ref, event_id)
 
     if result is _NO_CHAIN_HEAD:
         # An organisation with pre-chain rows but no chain head. The purge
@@ -479,12 +499,15 @@ def _purge_one_batch(
         },
         org_id=org_id,
         system_actor=SYSTEM_ACTOR,
+        # The same id the anchor recorded a moment ago, in this transaction.
+        event_id=event_id,
     )
     db.commit()
 
     return {
         "deleted": deleted,
         "anchor_id": result.anchor_id,
+        "audit_event_id": event_id,
         "legacy_remaining": result.legacy_remaining,
         "exhausted": deleted < batch,
         "deferred": False,

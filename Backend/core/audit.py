@@ -67,6 +67,7 @@ def log_audit_event(
     severity: str = None,
     org_id: str = None,
     system_actor: str = None,
+    event_id: str = None,
 ):
     """
     Write one audit event into the caller's transaction.
@@ -85,6 +86,20 @@ def log_audit_event(
     ``system_actor`` is recorded in ``actor_username`` and is deliberately a
     *label*, not an identity — ``system:retention`` reads as what it is, and no
     account exists that could be confused with it.
+
+    ``event_id`` lets a caller choose the row's id instead of taking the
+    column's default. It exists for one case: the retention purge writes an
+    anchor recording which audit event describes it, and that anchor is written
+    inside a SECURITY DEFINER function that returns *before* this row exists.
+    Generating the id first and handing it to both is what makes the anchor and
+    the event it names a single atomic fact — there is no path that amends the
+    anchor afterwards, and deliberately so: `ccure_user` holds no UPDATE on
+    that table and must not.
+
+    It does not weaken anything. The id is still a UUID4, the composite primary
+    key still rejects a collision, and the chain trigger still overwrites
+    ``prev_hash``/``record_hash`` unconditionally — a caller choosing an id
+    gains no influence over the hash or the link.
     """
     ip_address = None
     user_agent = None
@@ -125,6 +140,11 @@ def log_audit_event(
             actor_user_id=user.id if user else None,
             actor_username=user.username if user else system_actor,
         )
+        if event_id:
+            # Set rather than passed to the constructor: assigning the
+            # attribute suppresses the column's `gen_uuid` default, so the two
+            # cannot both apply and there is still exactly one default.
+            log_entry.id = event_id
         db.add(log_entry)
         # Not committed here: the caller owns the transaction, and the whole
         # point is that this row and the change it describes share one.

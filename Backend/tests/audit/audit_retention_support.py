@@ -202,7 +202,7 @@ def anchors_for(session, org_id: str) -> list:
             "       last_deleted_event_id, last_deleted_record_hash, "
             "       first_surviving_event_id, head_legacy_count_after, "
             "       head_tip_after, head_genesis_after, backup_reference, "
-            "       operator_identity, operator_db_user "
+            "       operator_identity, operator_db_user, audit_event_id "
             "  FROM audit_retention.retention_anchors "
             " WHERE org_id = :o ORDER BY id"
         ),

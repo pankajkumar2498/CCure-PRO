@@ -88,6 +88,70 @@ def _print_preview(rows: list[dict]) -> None:
         )
 
 
+def _run_chained(db, args) -> int:
+    """Chained mode: one organisation, one archive, oldest-first."""
+    from core.audit_retention import (
+        ArchiveUnacceptable,
+        chained_retention_installed,
+        run_chained_retention,
+    )
+
+    if not chained_retention_installed(db):
+        from core.audit_retention import CHAINED_NOT_INSTALLED_HINT
+
+        print("\n" + CHAINED_NOT_INSTALLED_HINT)
+        return 2
+
+    try:
+        report = run_chained_retention(
+            db,
+            args.chained,
+            args.archive_event,
+            args.archive_sha256,
+            dry_run=not args.apply,
+            operator="cli",
+        )
+    except (ArchiveUnacceptable, RetentionRefused) as refusal:
+        print(f"\nREFUSED\n  {refusal}")
+        return 1
+
+    archive = report["archive"]
+    print("\nCHAINED RETENTION")
+    print(f"  organisation   : {report['org_id']}")
+    print(f"  cutoff         : {report['cutoff']}")
+    print(f"  on hold        : {report['on_hold']}")
+    print(f"  eligible by age: {report['eligible_by_age']}")
+    print(f"  archive        : {args.archive_event}")
+    print(f"    acceptable   : {archive['acceptable']}")
+    if not archive["acceptable"]:
+        print(f"    reason       : {archive['reason']}")
+    else:
+        print(f"    exported     : {archive['exported_at']}")
+        print(f"    rows / verified: {archive['row_count']} / {archive['verified']}")
+
+    print()
+    if report["dry_run"]:
+        print("DRY RUN — nothing was written.")
+        print(f"  would delete : {report['would_delete_total']} chained row(s)")
+        print(
+            "\n  Re-run with --apply to perform the deletion. This is "
+            "irreversible;\n  the archive is the only copy of what goes."
+        )
+    else:
+        print("APPLIED")
+        print(f"  deleted      : {report['deleted_total']} chained row(s)")
+        print(f"  batches      : {len(report['batches'])}")
+        for b in report["batches"]:
+            print(
+                f"    anchor {b['anchor_id']}: {b['deleted']} row(s), "
+                f"new genesis {b['new_genesis']}"
+            )
+        print(f"  backup       : {report['backup_reference']}")
+    if report["deferred"]:
+        print("\n  DEFERRED — an export held the shared lock.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -95,7 +159,40 @@ def main() -> int:
         action="store_true",
         help="actually delete. Without this nothing is written.",
     )
+    # ── Phase 6c: chained rows ──────────────────────────────────────────────
+    # Three separate flags rather than one `--chained` switch, because a
+    # chained purge needs a named organisation and a named archive, and there
+    # is no sensible default for either. A sweep across every tenant is
+    # available for legacy rows and deliberately not for these.
+    parser.add_argument(
+        "--chained",
+        metavar="ORG_ID",
+        help=(
+            "remove CHAINED rows for one organisation. Requires --archive-event "
+            "and --archive-sha256. Legacy rows are removed by the default mode."
+        ),
+    )
+    parser.add_argument(
+        "--archive-event",
+        metavar="EVENT_ID",
+        help=(
+            "id of the audit.log_exported event that is the archive. Must have "
+            "been produced with verify=true and report zero integrity failures."
+        ),
+    )
+    parser.add_argument(
+        "--archive-sha256",
+        metavar="HASH",
+        help="SHA-256 of the exported file, recorded on the anchor.",
+    )
     args = parser.parse_args()
+
+    if args.chained and not (args.archive_event and args.archive_sha256):
+        parser.error(
+            "--chained requires --archive-event and --archive-sha256. A chained "
+            "purge destroys rows that carry cryptographic evidence; it is not "
+            "permitted without an archive that verified successfully."
+        )
 
     db = SessionLocal()
     try:
@@ -113,6 +210,9 @@ def main() -> int:
 
         print()
         _print_settings()
+
+        if args.chained:
+            return _run_chained(db, args)
 
         try:
             report = run_retention(db, dry_run=not args.apply, operator="cli")

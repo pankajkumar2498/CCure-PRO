@@ -141,6 +141,52 @@ def retention_anchors(db, org_id: str) -> dict:
     }
 
 
+def anchored_genesis(db, org_id: str, prev_hash: str | None) -> dict | None:
+    """
+    Is this non-NULL ``prev_hash`` explained by a sanctioned chained purge?
+
+    After a chained purge the oldest surviving row no longer has
+    ``prev_hash IS NULL`` -- the row it linked to is gone. That is
+    indistinguishable, from the row alone, from somebody having deleted history
+    and left the remainder behind.
+
+    What distinguishes them is the anchor. A chained purge writes
+    ``last_deleted_record_hash``: the hash of the newest row it removed. The
+    surviving row's ``prev_hash`` must equal it. A value with no matching
+    anchor is exactly the unsanctioned case, and stays a break.
+
+    Note what this does **not** establish. It proves the surviving chain links
+    back to a value committed at purge time; it says nothing about what the
+    removed events contained. Deletion destroyed that. The archive artefact
+    named on the anchor is where the content went, and verifying that file is a
+    manual act against something this tool does not hold.
+    """
+    if prev_hash is None:
+        return None
+    if not db.execute(
+        text("SELECT to_regclass('audit_retention.retention_anchors')")
+    ).scalar():
+        return None
+
+    row = (
+        db.execute(
+            text(
+                "SELECT id, deleted_count, range_from, range_to, purge_completed_at, "
+                "       archive_artifact ->> 'export_event_id' AS export_event_id, "
+                "       archive_artifact ->> 'sha256'          AS sha256 "
+                "  FROM audit_retention.retention_anchors "
+                " WHERE org_id = :o AND kind = 'chained' "
+                "   AND last_deleted_record_hash = :h "
+                " ORDER BY id DESC LIMIT 1"
+            ),
+            {"o": org_id, "h": prev_hash},
+        )
+        .mappings()
+        .fetchone()
+    )
+    return dict(row) if row else None
+
+
 def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
     """Walk one organisation's chain from genesis and check every link.
 
@@ -182,6 +228,7 @@ def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
         "walked": 0,
         "breaks": [],
         "notes": [],
+        "anchored_genesis": None,
         "head": head,
     }
 
@@ -225,11 +272,44 @@ def verify_org(db, org_id: str, schema: str = "audit_chain") -> dict:
             )
 
     genesis = by_prev.get(None, [])
-    if len(genesis) != 1:
+
+    if len(genesis) > 1:
         report["breaks"].append(
             f"expected exactly one chain start, found {len(genesis)}"
         )
         return report
+
+    if not genesis:
+        # No row with a NULL prev_hash. Either a chained purge removed the
+        # original genesis -- in which case an anchor explains it -- or history
+        # was removed by something that left no account of itself.
+        candidates = [
+            row for row in rows if row.prev_hash not in {r.record_hash for r in rows}
+        ]
+        if len(candidates) != 1:
+            report["breaks"].append(
+                f"no chain start: {len(candidates)} row(s) link to a hash that "
+                f"is not present, expected exactly one"
+            )
+            return report
+
+        anchor_row = anchored_genesis(db, org_id, candidates[0].prev_hash)
+        if anchor_row is None:
+            report["breaks"].append(
+                f"chain starts at {candidates[0].id}, whose prev_hash "
+                f"{(candidates[0].prev_hash or '')[:16]} matches no retention "
+                f"anchor. History was removed outside the purge path."
+            )
+            return report
+
+        report["anchored_genesis"] = anchor_row
+        report["notes"].append(
+            f"chain starts above a purge boundary: anchor {anchor_row['id']} "
+            f"removed {anchor_row['deleted_count']} chained event(s) under "
+            f"archive {anchor_row['export_event_id']}. Continuity is provable; "
+            f"the removed events are NOT preserved here."
+        )
+        genesis = candidates
 
     seen: set[str] = set()
     current = genesis[0]

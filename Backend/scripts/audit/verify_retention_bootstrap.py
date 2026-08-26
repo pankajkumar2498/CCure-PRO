@@ -38,6 +38,12 @@ PURGE_SIG = (
 NOTE_SIG = "audit_chain.audit_chain_note_legacy_purge_v1(character varying, bigint)"
 LOCK_SIG = "audit_chain.audit_chain_lock_head_v1(character varying)"
 PREVIEW_SIG = "audit_retention.preview_legacy_v1(timestamp with time zone)"
+CHAINED_SIG = (
+    "audit_retention.purge_chained_v1(character varying, timestamp with time zone, "
+    "integer, integer, character varying, text, text, character varying, text)"
+)
+TIP_SIG = "audit_chain.audit_chain_is_tip_v1(character varying, character varying)"
+NOTE_CHAINED_SIG = "audit_chain.audit_chain_note_chained_purge_v1(character varying, bigint, character varying)"
 
 
 def check(number: str, description: str, actual, expected, detail: str = "") -> None:
@@ -567,6 +573,121 @@ def main() -> int:
             ).scalar(),
             "audit_chain",
         )
+
+        # ── 13. Phase 6c: chained retention ─────────────────────────────────
+        # Reported as absent rather than failed. A database carrying only the
+        # 6a half is a legitimate, safer state -- it was the state for the whole
+        # of phases 6a and 6b -- and calling it a failure would train an
+        # operator to ignore this report.
+        chained = db.execute(
+            text(
+                "SELECT 1 FROM pg_proc p JOIN pg_namespace n "
+                "  ON n.oid = p.pronamespace "
+                " WHERE n.nspname='audit_retention' AND p.proname='purge_chained_v1'"
+            )
+        ).scalar()
+
+        if not chained:
+            print(
+                "\n  [ -- ] 13. chained retention (phase 6c) is NOT installed. "
+                "Only pre-chain rows can be removed here, which is the safe "
+                "default. Not a failure."
+            )
+        else:
+            for number, signature, owner in (
+                ("13a", CHAINED_SIG, "audit_maintenance"),
+                ("13b", TIP_SIG, "audit_chain_writer"),
+                ("13c", NOTE_CHAINED_SIG, "audit_chain_writer"),
+            ):
+                row = db.execute(
+                    text(
+                        "SELECT pg_get_userbyid(proowner), prosecdef, proconfig "
+                        "  FROM pg_proc WHERE oid = CAST(:s AS regprocedure)"
+                    ),
+                    {"s": signature},
+                ).fetchone()
+                name = signature.split("(")[0]
+                check(f"{number}-owner", f"{name} owned by {owner}", row[0], owner)
+                check(f"{number}-secdef", f"{name} is SECURITY DEFINER", row[1], True)
+                check(
+                    f"{number}-path",
+                    f"{name} pins search_path",
+                    any(str(c).startswith("search_path=") for c in (row[2] or [])),
+                    True,
+                )
+
+            for number, signature, who, want in (
+                ("13d", CHAINED_SIG, "public", False),
+                ("13e", CHAINED_SIG, app_role, True),
+                ("13f", TIP_SIG, "public", False),
+                ("13g", TIP_SIG, "audit_maintenance", True),
+                ("13h", NOTE_CHAINED_SIG, "public", False),
+                ("13i", NOTE_CHAINED_SIG, app_role, False),
+                ("13j", NOTE_CHAINED_SIG, "audit_maintenance", True),
+            ):
+                check(
+                    number,
+                    f"EXECUTE on {signature.split('(')[0]} for {who} is {want}",
+                    db.execute(
+                        text(
+                            "SELECT has_function_privilege(:w, "
+                            "  CAST(:s AS regprocedure), 'EXECUTE')"
+                        ),
+                        {"w": who, "s": signature},
+                    ).scalar(),
+                    want,
+                )
+
+            # An archive is mandatory for a chained anchor, and it is a database
+            # constraint rather than a convention in the purge function.
+            check(
+                "13k",
+                "a chained anchor cannot be written without an archive",
+                bool(
+                    db.execute(
+                        text(
+                            "SELECT 1 FROM pg_constraint "
+                            " WHERE conname = "
+                            "  'retention_anchor_chained_requires_archive'"
+                        )
+                    ).scalar()
+                ),
+                True,
+            )
+
+            # D1(b): the guard that replaced phase 6a's record_hash clause.
+            source = (
+                db.execute(
+                    text(
+                        "SELECT prosrc FROM pg_proc p JOIN pg_namespace n "
+                        "  ON n.oid = p.pronamespace "
+                        " WHERE p.proname='audit_logs_reject_mutation' "
+                        "   AND n.nspname='public'"
+                    )
+                ).scalar()
+                or ""
+            )
+            check(
+                "13l",
+                "the trigger refuses to delete the chain tip",
+                "audit_chain_is_tip_v1" in source,
+                True,
+            )
+            check(
+                "13m",
+                "audit_maintenance still holds NO privilege on the chain head",
+                any(
+                    db.execute(
+                        text(
+                            "SELECT has_table_privilege('audit_maintenance',"
+                            "  'audit_chain.audit_chain_heads', :p)"
+                        ),
+                        {"p": p},
+                    ).scalar()
+                    for p in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+                ),
+                False,
+            )
 
         # ── 12. The path actually executes ──────────────────────────────────
         _effect_check(db)

@@ -116,26 +116,68 @@ BEGIN
             RETURN OLD;
         END IF;
 
-        -- Phase 6a retention. TWO conditions, and both are load-bearing.
+        -- Retention. `current_user = 'audit_maintenance'` is true only inside
+        -- audit_retention.purge_legacy_v1() and purge_chained_v1(), both
+        -- SECURITY DEFINER and owned by that role. `current_user` reflects the
+        -- definer during the function's execution and is not settable by the
+        -- caller, so the application role executing ordinary SQL never
+        -- satisfies it.
         --
-        -- `current_user = 'audit_maintenance'` is true only inside
-        -- audit_retention.purge_legacy_v1(), which is SECURITY DEFINER and
-        -- owned by that role. `current_user` reflects the definer during the
-        -- function's execution and is not settable by the caller, so the
-        -- application role executing ordinary SQL never satisfies it.
+        -- **The chain tip can never be deleted, by anyone, ever.**
         --
-        -- `OLD.record_hash IS NULL` is the phase boundary, enforced by
-        -- PostgreSQL rather than by care. During 6a the maintenance role is
-        -- incapable of deleting a *chained* row at all -- not "does not", but
-        -- cannot, even if the purge function grows a bug, even if its
+        -- Phase 6a made a stronger claim here -- `OLD.record_hash IS NULL`,
+        -- so the maintenance role was *incapable* of removing a chained row.
+        -- Phase 6c exists to remove chained rows, so that clause could not
+        -- survive it. What replaces it is narrower but real, and it guards the
+        -- one deletion that is unrecoverable: removing the tip would leave
+        -- `last_record_hash` naming a row that no longer exists, and the next
+        -- insert would link to a hash nothing can resolve. Permanently
+        -- unverifiable, and unfixable afterwards.
+        --
+        -- Checked per row, so it holds even if the purge function's own
         -- predicate is wrong, even if it is called with the wrong arguments.
-        -- Widening this to chained rows is phase 6b and needs its own
-        -- approval; until then the scope limit is a database constraint.
         --
-        -- A legacy row has no hash, so nothing links to it: `prev_hash`
-        -- references a `record_hash` value and legacy rows have none.
-        -- Deleting one therefore cannot break a chain, for any dataset.
-        IF current_user = 'audit_maintenance' AND OLD.record_hash IS NULL THEN
+        -- Routed through a SECURITY DEFINER function rather than a direct read
+        -- because `audit_maintenance` holds **no table privilege whatsoever**
+        -- on `audit_chain_heads` -- not even SELECT -- and that is worth
+        -- keeping. This trigger function is not SECURITY DEFINER, so it runs
+        -- with the invoker's privileges and could not read the head itself.
+        IF current_user = 'audit_maintenance' THEN
+            -- Degrade to the phase-6a rule when the phase-6c half is absent.
+            --
+            -- The tip guard lives in `audit_chain_is_tip_v1`, which a DBA
+            -- installs with bootstrap_chain_retention_chained.sql, while this
+            -- trigger arrives with an Alembic revision. The two are applied by
+            -- different people at different times, so a database will sit in
+            -- between -- and calling a function that is not there yet would
+            -- break the *legacy* purge that already worked.
+            --
+            -- So the absence of the guard narrows what is permitted rather
+            -- than widening it: pre-chain rows only, exactly as phase 6a. Fail
+            -- closed, and no ordering hazard between the migration and the
+            -- bootstrap in either direction.
+            IF to_regprocedure(
+                   'audit_chain.audit_chain_is_tip_v1(character varying,character varying)'
+               ) IS NULL THEN
+                IF OLD.record_hash IS NULL THEN
+                    RETURN OLD;
+                END IF;
+                RAISE EXCEPTION
+                    'audit_logs: chained retention is not installed in this '
+                    'database, so only pre-chain rows may be removed'
+                    USING ERRCODE = '42501',
+                          HINT = 'Run bootstrap_chain_retention_chained.sql as '
+                                 'a superuser to enable chained retention.';
+            END IF;
+
+            IF audit_chain.audit_chain_is_tip_v1(OLD.org_id, OLD.id) THEN
+                RAISE EXCEPTION
+                    'audit_logs: refusing to delete the current chain tip (%)',
+                    OLD.id
+                    USING ERRCODE = '42501',
+                          HINT = 'Retention removes a contiguous prefix from '
+                                 'genesis. The tip is never eligible.';
+            END IF;
             RETURN OLD;
         END IF;
 

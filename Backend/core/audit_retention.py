@@ -55,6 +55,7 @@ from pathlib import Path
 
 from config import AppConfig
 from db.base import gen_uuid
+from reporting.audit_export import VERIFICATION_PERFORMED
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
@@ -150,6 +151,34 @@ def retention_installed(conn) -> dict:
         )
     )
     return state
+
+
+def chained_retention_installed(conn) -> bool:
+    """Whether the phase-6c half is present. Separate from 6a on purpose.
+
+    A database may legitimately carry legacy retention and not chained
+    retention -- that was the state throughout phases 6a and 6b -- and the
+    difference has to be reportable rather than collapsed into one boolean.
+    """
+    return bool(
+        conn.execute(
+            text(
+                "SELECT 1 FROM pg_proc p JOIN pg_namespace n "
+                "  ON n.oid = p.pronamespace "
+                " WHERE n.nspname = 'audit_retention' "
+                "   AND p.proname = 'purge_chained_v1'"
+            )
+        ).scalar()
+    )
+
+
+CHAINED_NOT_INSTALLED_HINT = (
+    "Chained-record retention is not installed in this database. A database "
+    "administrator must run, as a superuser:\n"
+    "    psql -v ON_ERROR_STOP=1 -f "
+    "Backend/scripts/audit/bootstrap_chain_retention_chained.sql\n"
+    "Until then only pre-chain rows can be removed, which is the safe default."
+)
 
 
 NOT_INSTALLED_HINT = (
@@ -512,6 +541,291 @@ def _purge_one_batch(
         "exhausted": deleted < batch,
         "deferred": False,
     }
+
+
+# ─── Chained retention (phase 6c) ────────────────────────────────────────────
+
+
+class ArchiveUnacceptable(RetentionRefused):
+    """The nominated export cannot authorise a chained purge."""
+
+
+def describe_archive(db, event_id: str) -> dict:
+    """
+    Read the nominated ``audit.log_exported`` event and say whether it qualifies.
+
+    Returns a dict with ``acceptable`` and a ``reason`` when it is not, rather
+    than raising, so a **dry run can report why an archive would be rejected
+    without refusing to run at all**. The mutating path raises; the preview
+    explains.
+
+    Every rule here is enforced again inside ``purge_chained_v1``, where the
+    caller cannot reach it. This is the courtesy copy, not the control.
+    """
+    row = (
+        db.execute(
+            text(
+                "SELECT id, action, changes, created_at, org_id "
+                "  FROM public.audit_logs WHERE id = :i LIMIT 1"
+            ),
+            {"i": event_id},
+        )
+        .mappings()
+        .fetchone()
+    )
+
+    if row is None:
+        return {"acceptable": False, "reason": f"no event with id {event_id!r}"}
+    if row["action"] != "audit.log_exported":
+        return {
+            "acceptable": False,
+            "reason": f"event {event_id} is a {row['action']}, not an export",
+        }
+
+    changes = row["changes"] or {}
+    mode = changes.get("verification_mode")
+    failures = changes.get("integrity_failures")
+
+    if mode != VERIFICATION_PERFORMED:
+        return {
+            "acceptable": False,
+            "reason": (
+                f"export {event_id} was not verified (verification_mode="
+                f"{mode!r}). A chained purge requires verify=true."
+            ),
+        }
+    if failures != 0:
+        return {
+            "acceptable": False,
+            "reason": (
+                f"export {event_id} reported {failures} integrity failure(s); "
+                f"it cannot authorise a purge"
+            ),
+        }
+
+    return {
+        "acceptable": True,
+        "event_id": row["id"],
+        "exported_at": row["created_at"],
+        "row_count": changes.get("row_count"),
+        "verified": changes.get("verified"),
+        "format": changes.get("format"),
+        "snapshot_upper_bound": changes.get("snapshot_upper_bound"),
+    }
+
+
+def _purge_one_chained_batch(
+    db,
+    org_id: str,
+    cutoff,
+    batch: int,
+    operator: str,
+    backup_ref: str,
+    archive_event: str,
+    archive_sha256: str,
+) -> dict:
+    """One chained batch, committed. Same contract as the legacy path.
+
+    The archive is validated **again** inside the SQL function; the check in
+    ``run_chained_retention`` is there so an operator gets the reason before
+    anything is attempted, not instead of the control.
+    """
+    from core.audit import log_audit_event
+
+    if not try_take_purge_lock(db, org_id):
+        db.rollback()
+        return {"deleted": 0, "anchor_id": None, "exhausted": True, "deferred": True}
+
+    event_id = gen_uuid()
+
+    result = db.execute(
+        text(
+            "SELECT deleted_count, anchor_id, range_from, range_to, "
+            "       new_genesis, events_remaining "
+            "  FROM audit_retention.purge_chained_v1("
+            "       :org, :cutoff, :batch, :floor, :archive, :sha, "
+            "       :operator, :event, :backup)"
+        ),
+        {
+            "org": org_id,
+            "cutoff": cutoff,
+            "batch": batch,
+            "floor": AppConfig.AUDIT_RETENTION_MIN_DAYS,
+            "archive": archive_event,
+            "sha": archive_sha256,
+            "operator": operator,
+            "event": event_id,
+            "backup": backup_ref,
+        },
+    ).fetchone()
+
+    deleted = int(result.deleted_count or 0)
+    if deleted == 0:
+        db.rollback()
+        return {"deleted": 0, "anchor_id": None, "exhausted": True, "deferred": False}
+
+    log_audit_event(
+        db,
+        None,
+        "audit.retention_purge_executed",
+        resource_type="audit_log",
+        resource_id=str(result.anchor_id),
+        changes={
+            "kind": "chained",
+            "deleted_count": deleted,
+            "cutoff": cutoff.isoformat(),
+            "range_from": result.range_from.isoformat() if result.range_from else None,
+            "range_to": result.range_to.isoformat() if result.range_to else None,
+            "anchor_id": result.anchor_id,
+            "new_genesis": result.new_genesis,
+            "events_remaining": result.events_remaining,
+            "archive_event_id": archive_event,
+            "archive_sha256": archive_sha256,
+            "backup_reference": backup_ref,
+            "operator": operator,
+        },
+        org_id=org_id,
+        system_actor=SYSTEM_ACTOR,
+        event_id=event_id,
+    )
+    db.commit()
+
+    return {
+        "deleted": deleted,
+        "anchor_id": result.anchor_id,
+        "audit_event_id": event_id,
+        "new_genesis": result.new_genesis,
+        "events_remaining": result.events_remaining,
+        "exhausted": deleted < batch,
+        "deferred": False,
+    }
+
+
+def run_chained_retention(
+    db,
+    org_id: str,
+    archive_event: str,
+    archive_sha256: str,
+    *,
+    dry_run: bool = True,
+    operator: str | None = None,
+    now: datetime | None = None,
+) -> dict:
+    """
+    Remove chained rows for **one** organisation, oldest first, under an archive.
+
+    Deliberately per-organisation and never a sweep. A legacy purge can run
+    across every tenant unattended because the rows it removes carry no
+    cryptographic evidence and nothing links to them. This one destroys rows
+    that do, so it requires a named archive that a person nominated — and an
+    archive is specific to the tenant whose trail it contains.
+
+    **Dry run is the default and writes nothing.** It reports what would go and
+    whether the archive qualifies, and touches no row.
+    """
+    state = retention_installed(db)
+    if not state["installed"]:
+        raise RetentionRefused(NOT_INSTALLED_HINT)
+    if not chained_retention_installed(db):
+        raise RetentionRefused(CHAINED_NOT_INSTALLED_HINT)
+
+    cutoff = resolve_cutoff(now)
+    operator = operator or f"{SYSTEM_ACTOR}@{os.environ.get('HOSTNAME', 'unknown')}"
+    archive = describe_archive(db, archive_event)
+
+    eligible = db.execute(
+        text(
+            "SELECT count(*) FROM public.audit_logs "
+            " WHERE org_id = :o AND record_hash IS NOT NULL AND created_at < :c"
+        ),
+        {"o": org_id, "c": cutoff},
+    ).scalar()
+
+    holds = active_holds(db)
+    report = {
+        "dry_run": dry_run,
+        "kind": "chained",
+        "org_id": org_id,
+        "cutoff": cutoff.isoformat(),
+        "archive": archive,
+        "on_hold": org_id in holds,
+        "eligible_by_age": eligible,
+        "deleted_total": 0,
+        "batches": [],
+        "backup_reference": None,
+        "deferred": False,
+    }
+
+    if dry_run:
+        report["would_delete_total"] = 0 if report["on_hold"] else eligible
+        log.info(
+            "chained retention DRY RUN for %s: %s row(s) older than the cutoff, "
+            "archive acceptable=%s. Nothing was written.",
+            org_id,
+            eligible,
+            archive["acceptable"],
+        )
+        return report
+
+    if not archive["acceptable"]:
+        raise ArchiveUnacceptable(archive["reason"])
+    if report["on_hold"]:
+        raise RetentionRefused(f"organisation {org_id} is under a retention hold")
+
+    report["backup_reference"] = assert_backup_recent()
+
+    budget = AppConfig.AUDIT_RETENTION_MAX_ROWS_PER_RUN
+    batch_size = AppConfig.AUDIT_RETENTION_BATCH_SIZE
+
+    while budget > 0:
+        batch = min(batch_size, budget)
+        try:
+            outcome = _purge_one_chained_batch(
+                db,
+                org_id,
+                cutoff,
+                batch,
+                operator,
+                report["backup_reference"],
+                archive_event,
+                archive_sha256,
+            )
+        except Exception:
+            db.rollback()
+            log.exception(
+                "chained retention: batch failed for %s; the anchor, the "
+                "deletion and the audit event were all rolled back",
+                org_id,
+            )
+            raise
+
+        if outcome["deferred"]:
+            report["deferred"] = True
+            break
+        if not outcome["deleted"]:
+            break
+
+        report["batches"].append(
+            {
+                "deleted": outcome["deleted"],
+                "anchor_id": outcome["anchor_id"],
+                "new_genesis": outcome["new_genesis"],
+            }
+        )
+        report["deleted_total"] += outcome["deleted"]
+        budget -= outcome["deleted"]
+        if outcome["exhausted"]:
+            break
+
+    log.info(
+        "chained retention: removed %s row(s) from %s across %s batch(es) under "
+        "archive %s",
+        report["deleted_total"],
+        org_id,
+        len(report["batches"]),
+        archive_event,
+    )
+    return report
 
 
 def run_retention(

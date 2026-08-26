@@ -28,7 +28,7 @@ this system does not have and cannot verify.
 """
 
 import pytest
-from audit_chain_support import require_chain, verify_org, write_event
+from audit_chain_support import require_chain
 from audit_retention_support import (
     anchors_for,
     chained_ids,
@@ -72,65 +72,95 @@ def enabled(monkeypatch):
     monkeypatch.setattr(AppConfig, "AUDIT_RETENTION_BATCH_SIZE", 1000)
 
 
-def _age(db, org_id, event_id, days):
-    """Backdate one chained row without disturbing its hash.
+def _write_aged(db, org_id: str, action: str, days_ago: float) -> str:
+    """One genuinely aged chained event, hashed correctly at its own timestamp.
 
-    `created_at` is inside the canonical payload, so changing it would break
-    the row's own hash — which is why this is done with the append-only trigger
-    suspended and the chain re-verified afterwards by the caller. Tests that
-    need aged chained rows have no other way: the chain hashes at insert time
-    and the purge floor is 90 days.
+    **Inserted with the timestamp it needs, never backdated afterwards.**
+    `created_at` is inside the canonical payload the chain hashes, so an
+    `UPDATE` that moved it would leave the row unable to reproduce its own
+    hash — and `verify_chain` would report content alteration on a fixture that
+    was only trying to be old.
+
+    That is not hypothetical: the first version of this file did backdate, and
+    every test here then ran against a chain that was already broken.
+    `test_verify_chain_reports_no_break_after_a_chained_purge` passed anyway,
+    because the purge deleted precisely the rows whose hashes were wrong — a
+    false pass produced by the fixture, on the assertion the phase turns on.
+
+    Supplying the timestamp at INSERT is the honest way: the chain trigger
+    hashes `NEW`, which already carries it, so the row is genuinely old and
+    genuinely valid.
     """
-    from db.audit_hardening import suspended_immutability
+    from db.base import gen_uuid
 
-    with suspended_immutability(db):
-        db.execute(
-            text(
-                "UPDATE audit_logs SET created_at = now() - make_interval(days => :d) "
-                " WHERE id = :i AND org_id = :o"
-            ),
-            {"d": days, "i": event_id, "o": org_id},
-        )
+    event_id = gen_uuid()
+    db.execute(
+        text(
+            "INSERT INTO audit_logs (id, org_id, action, resource_type, "
+            "                        resource_id, status, severity, ip_address, "
+            "                        created_at) "
+            "VALUES (:i, :o, :a, 'user', 'chained-fixture', 'success', 'info', "
+            "        '10.180.6.14'::inet, now() - make_interval(days => :d))"
+        ),
+        {"i": event_id, "o": org_id, "a": action, "d": days_ago},
+    )
     db.commit()
+    return event_id
 
 
 @pytest.fixture
-def aged_chain(db_session, test_user, enabled):
-    """Six chained events, the first four backdated past the cutoff.
+def aged_chain(db_session, enabled):
+    """Six chained events in a dedicated organisation: four old, two recent.
 
-    Backdating rewrites `created_at`, which is hashed — so these rows no longer
-    reproduce their own hashes. That is fine and deliberate for the tests that
-    only exercise selection, refusal and accounting; the continuity tests below
-    assert against the anchor and the head rather than against recomputation.
+    **Its own organisation, and no `ensure_head`.** The chain trigger creates
+    the head on the first event it sees, so whichever row is written first
+    becomes genesis — and the purge walks a prefix *from genesis*. A helper
+    that established the head with a `now()` event would put a recent row at
+    the front of the chain, the walk would stop at it immediately, and nothing
+    would ever be eligible. That is the purge behaving correctly on a fixture
+    that had quietly made its own data unpurgeable.
+
+    So the oldest row is written first and becomes genesis, and every row is
+    hashed at the timestamp it actually carries.
     """
-    org = test_user.org_id
+    from db.base import gen_uuid
+    from db.models import Organization
+
+    uid = gen_uuid()[:8]
+    org = Organization(
+        id=f"org_chainfix_{uid}",
+        name="Chained retention fixture",
+        slug=f"chained-fixture-{uid}",
+        max_assets=1,
+        max_users=1,
+        is_active=True,
+    )
+    db_session.add(org)
+    db_session.commit()
+
     ids = []
-    for action in (
-        "user.login",
-        "user.profile_updated",
-        "user.logout",
-        "user.login",
-        "user.profile_updated",
-        "user.logout",
-    ):
-        write_event(db_session, test_user, action)
-        ids.append(
-            db_session.execute(
-                text(
-                    "SELECT id FROM audit_logs WHERE org_id = :o "
-                    "   AND record_hash IS NOT NULL "
-                    " ORDER BY created_at DESC LIMIT 1"
-                ),
-                {"o": org},
-            ).scalar()
+    for index, action in enumerate(
+        (
+            "user.login",
+            "user.profile_updated",
+            "user.logout",
+            "user.login",
+            "user.profile_updated",
+            "user.logout",
         )
-    for event_id in ids[:4]:
-        _age(db_session, org, event_id, 400)
-    return {"org": org, "ids": ids, "old": ids[:4], "recent": ids[4:]}
+    ):
+        # Descending age, so chain order and time order agree as they do in a
+        # real trail. The purge walks links rather than timestamps, but a
+        # fixture in which the two disagreed would be testing something
+        # incidental.
+        days = 400 - index if index < 4 else 5 - (index - 4)
+        ids.append(_write_aged(db_session, org.id, action, days))
+
+    return {"org": org.id, "ids": ids, "old": ids[:4], "recent": ids[4:]}
 
 
 @pytest.fixture
-def archive(db_session, test_user):
+def archive(db_session, test_user, aged_chain):
     """A qualifying export event: verified, zero failures, covering everything."""
     from core.audit import log_audit_event
     from datetime import datetime, timedelta, timezone
@@ -152,6 +182,7 @@ def archive(db_session, test_user):
                 datetime.now(timezone.utc) + timedelta(days=1)
             ).isoformat(),
         },
+        org_id=aged_chain["org"],
     )
     db_session.commit()
     return db_session.execute(
@@ -160,7 +191,7 @@ def archive(db_session, test_user):
             "   AND action = 'audit.log_exported' "
             " ORDER BY created_at DESC LIMIT 1"
         ),
-        {"o": test_user.org_id},
+        {"o": aged_chain["org"]},
     ).scalar()
 
 
@@ -369,9 +400,6 @@ def test_a_purge_never_removes_the_tip(db_session, aged_chain, archive, enabled)
     the trigger refuses the tip per row.
     """
     org = aged_chain["org"]
-    for event_id in aged_chain["ids"]:
-        _age(db_session, org, event_id, 400)
-
     tip = head_row(db_session, org).last_event_id
     run_chained_retention(db_session, org, archive, SHA, dry_run=False)
 

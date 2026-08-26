@@ -344,7 +344,61 @@ BEGIN
     EXECUTE format('REVOKE ALL ON TABLE audit_retention.retention_holds   FROM %I', app_role);
     EXECUTE format('GRANT SELECT ON TABLE audit_retention.retention_anchors TO %I', app_role);
     EXECUTE format('GRANT SELECT ON TABLE audit_retention.retention_holds   TO %I', app_role);
+
+    -- **The sequences too, and this is not cosmetic.**
+    --
+    -- `bigserial` creates an implicit sequence, and `ALTER TABLE ... OWNER TO`
+    -- carries it to the new owner along with the table. Granting the app role
+    -- SELECT on the table alone therefore leaves it unable to read the
+    -- sequence -- and `pg_dump` reads sequence state.
+    --
+    -- The first version of this file did exactly that, and it broke database
+    -- backups outright: `pg_dump` running as the application role aborted with
+    -- "failed to get data for sequence retention_anchors_id_seq", leaving a
+    -- ZERO-BYTE file where a dump should be. Not a short dump -- an empty one
+    -- that looks like a backup.
+    --
+    -- It went unnoticed because the scheduled task had not yet reached its
+    -- next run. The irony is worth recording: retention's central safety
+    -- control is "refuse to purge without a recent backup", and installing
+    -- retention is what stopped backups being taken.
+    --
+    -- SELECT only, never USAGE. USAGE would additionally permit `nextval`,
+    -- which the app role has no use for -- it cannot insert into either table.
+    -- SELECT discloses nothing it could not already obtain by counting rows in
+    -- the table it can already read.
+    EXECUTE format(
+        'GRANT SELECT ON SEQUENCE audit_retention.retention_anchors_id_seq TO %I',
+        app_role);
+    EXECUTE format(
+        'GRANT SELECT ON SEQUENCE audit_retention.retention_holds_id_seq TO %I',
+        app_role);
 END $table_grants$;
+
+-- The grant above is what makes a dump possible; this asserts it took effect,
+-- because a GRANT issued without grant option succeeds while doing nothing.
+DO $sequence_grants_took_effect$
+DECLARE app_role text := current_setting('bootstrap.app_role');
+BEGIN
+    IF NOT has_sequence_privilege(
+           app_role, 'audit_retention.retention_anchors_id_seq', 'SELECT')
+    OR NOT has_sequence_privilege(
+           app_role, 'audit_retention.retention_holds_id_seq', 'SELECT') THEN
+        RAISE EXCEPTION
+            'Refusing to complete: % cannot SELECT the retention sequences. '
+            'pg_dump would fail and leave a zero-byte file.', app_role;
+    END IF;
+
+    -- And no more than SELECT: USAGE was considered and deliberately withheld.
+    IF has_sequence_privilege(
+           app_role, 'audit_retention.retention_anchors_id_seq', 'USAGE')
+    OR has_sequence_privilege(
+           app_role, 'audit_retention.retention_holds_id_seq', 'USAGE') THEN
+        RAISE EXCEPTION
+            'Refusing to complete: % holds USAGE on a retention sequence. '
+            'SELECT is the approved minimum; USAGE permits nextval.', app_role;
+    END IF;
+END $sequence_grants_took_effect$;
 
 -- ---------------------------------------------------------------------------
 -- 6. The maintenance role's privileges on audit_logs.

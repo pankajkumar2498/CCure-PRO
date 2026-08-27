@@ -590,7 +590,87 @@ backend auto-chains the later phases.
   NetBIOS-NS are UDP; recording them as TCP claims an open TCP port that is
   usually filtered, and that claim reaches the asset registry and the reports.
 
+## Assessment framework (`core/checks/`)
+
+The common contract every new assessment speaks. Added in Phase 0 of the
+Nessus gap-closure programme; the tracker is
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**It does not replace the fifteen vulnerability plugins and is not meant to.**
+Those are stable and produce real findings; rewriting them onto this contract
+would be a large refactor with no capability gained. New capabilities —
+configuration audit, local privilege checks, database and network-device
+assessment — register here. What the plugins gained instead is the guard they
+never had (below).
+
+- **`CheckOutcome` reuses the compliance vocabulary, deliberately.** `pass`,
+  `fail`, `not_applicable`, `manual_review` are spelled exactly as
+  `compliance_findings.status` spells them, so a check result stores as a
+  compliance verdict with no translation table — and a translation table is how
+  two vocabularies for one idea begin. `error` is the one addition, and it is
+  deliberately *not* storable as a verdict: it is a scan-time condition, and
+  writing it as a status would assert something about a host that nothing
+  established.
+
+- **`is_verdict` is True for exactly PASS and FAIL, and every roll-up must gate
+  on it.** Treating NOT_APPLICABLE, MANUAL_REVIEW or ERROR as a pass inflates a
+  compliance score; treating any of them as a fail invents findings on hosts
+  nobody could reach. ISO A.8.2 was once reported as *failed* on hosts the
+  scanner could not authenticate to — that is this bug.
+
+- **A FAIL with no evidence is rejected at construction.** Not a lint, not a
+  review checklist — `CheckResult.__post_init__` raises. It is the mirror image
+  of the synthesised `password_policy` that once made every rule reading it pass
+  unconditionally on every host, and it is the direction that reaches a customer
+  as a false positive.
+
+- **A check that raises yields an ERROR result**, never a swallowed log line and
+  never a FAIL. Swallowing makes a broken check indistinguishable from a clean
+  host; returning FAIL invents a finding out of a bug in our own code.
+
+- **Severity has one vocabulary.** `normalize_severity()` maps
+  `compliance_rules`' `info` onto `scans.cvss.CANONICAL_SEVERITIES`' `none`.
+  Unrecognised input becomes `unscored`, not `none` — no rating published is a
+  different fact from a published rating of zero.
+
+- **`tests/scans/test_plugin_contract.py` is the guard the legacy plugins never
+  had.** `VulnerabilityEngine` calls serial plugins with three arguments and
+  parallel plugins with two, and catches plugin exceptions at DEBUG. A plugin
+  with the wrong arity raises `TypeError` on every host, is swallowed, and stays
+  in `plugin_names()` and `select_plugins()` while producing **zero findings
+  indefinitely**. The test reads `plugin_selector`'s own dispatch tables — not
+  `plugins.__all__`, which is the import list and says nothing about arity — and
+  checks each signature statically. Verified by mutation: reducing
+  `nuclei_probe.run` to two arguments fails it with a message naming the plugin,
+  the arity and the call site.
+
 ## Data model notes
+
+- **The catalogue holds checks as well as CVEs.** `vulnerability_definitions`
+  gained `definition_type` (`cve` | `config_check` | `plugin_check` |
+  `privilege_check`) in migration `e1f2a3b4c5d6`, and both `id` and
+  `asset_vulnerabilities.vuln_id` widened from 30 to 120 characters. Before
+  that, `vuln_id` was a NOT NULL foreign key into a CVE-only catalogue, so
+  **every finding the product could record had to be a CVE** — and a CIS
+  control, a STIG rule, a weak service ACL or a database privilege finding had
+  nowhere to go except its own findings table, which is where a second finding
+  model, a second risk model and a second report generator come from.
+
+  Mint non-CVE identifiers with `core.checks.definitions.definition_id_for_check`
+  — never by hand. It emits the `CCURE-` vendor prefix (so a reader knows the
+  identifier is ours and that NVD has never heard of it), folds dots and
+  underscores to one spelling (so `2.3.1.1` and `2_3_1_1` cannot become two
+  catalogue rows for one control), and refuses rather than truncating an
+  over-long id, because a truncated key silently merges two sibling controls.
+
+  `ck_vuln_def_cve_id_matches_type` enforces that a `cve` row carries `cve_id`
+  and a check row does not. Without it a check filed as `cve` inherits KEV
+  lookups, EPSS scores, CVSS bands and an NVD link that resolves to nothing.
+
+  Note the live catalogue already contains 23 rows keyed `CVE-9999-<hex>`. They
+  are **test residue** from `tests/scans/test_scans.py`, predating the conftest
+  database guards, and no current code path creates more — but they are exactly
+  the confusion the `CCURE-` prefix exists to prevent.
 
 - `services` is a **current-state projection**, not per-scan history. The row id
   is `gen_service_id(asset, port, protocol)`, so re-scanning re-points rows

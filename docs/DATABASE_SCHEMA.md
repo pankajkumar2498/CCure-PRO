@@ -729,75 +729,96 @@ is `uselist=False`).
 
 ### `vulnerability_definitions`
 
-The canonical catalog — one row per unique vulnerability id.
+The canonical catalog — one row per unique vulnerability **or check**.
 
-| Column                                              | Type           | Null | Default      | Notes                                                                          |
-| --------------------------------------------------- | -------------- | ---- | ------------ | ------------------------------------------------------------------------------ |
-| `id`                                                | `String(30)`   | no   | —            | **PK** — `CVE-2024-4577`, `CCURE-CUSTOM-001`                                   |
-| `cve_id`                                            | `String(30)`   | yes  | —            | **UNIQUE**, indexed                                                            |
-| `cwe_ids`                                           | `JSONB`        | no   | `[]`         |                                                                                |
-| `title`                                             | `String(512)`  | no   | —            | GIN trigram indexed                                                            |
-| `description`                                       | `Text`         | yes  | —            |                                                                                |
-| `cvss_v2_score` / `cvss_v3_score` / `cvss_v4_score` | `Numeric(3,1)` | yes  | —            |                                                                                |
-| `cvss_vector`                                       | `String(255)`  | yes  | —            |                                                                                |
-| `cvss_version`                                      | `String(8)`    | yes  | —            | Separated by `z9e0f1g2h3i4`                                                    |
-| `severity`                                          | `String(20)`   | no   | `'unscored'` | Indexed. `unscored` when no vector is published — a score is never synthesized |
-| `published_at` / `last_modified_at`                 | `Date`         | yes  | —            |                                                                                |
-| `references`                                        | `JSONB`        | no   | `[]`         |                                                                                |
-| `affected_software`                                 | `JSONB`        | no   | `[]`         |                                                                                |
-| `source`                                            | `String(50)`   | no   | `'nvd'`      | Indexed                                                                        |
-| `is_custom`                                         | `Boolean`      | no   | `false`      |                                                                                |
-| `created_at` / `updated_at`                         | `TIMESTAMPTZ`  | no   | `utcnow`     |                                                                                |
+Two kinds of row live here, distinguished by `definition_type` (added by
+`e1f2a3b4c5d6`). A `cve` row is a published vulnerability written by the
+vulnerability feeds; everything else is a check this product defines — a CIS
+control, a STIG rule, a weak service ACL, a database privilege finding — none
+of which has a CVE. Before that revision `asset_vulnerabilities.vuln_id` was a
+NOT NULL foreign key into a CVE-only catalogue, so every finding the product
+could record had to _be_ a CVE, and any capability that found something else
+needed its own findings table.
+
+Identifiers for non-CVE rows are minted by `core/checks/definitions.py` and
+always carry the `CCURE-` vendor prefix — `CCURE-CFG-…`, `CCURE-CHK-…`,
+`CCURE-PRV-…` — so a reader who meets one in a report knows it is ours and that
+searching NVD for it will return nothing.
+
+| Column                                              | Type           | Null | Default      | Notes                                                                                           |
+| --------------------------------------------------- | -------------- | ---- | ------------ | ----------------------------------------------------------------------------------------------- |
+| `id`                                                | `String(120)`  | no   | —            | **PK** — `CVE-2024-4577`, or `CCURE-CFG-CIS-WIN2022-2-3-1-1`. Widened from 30 by `e1f2a3b4c5d6` |
+| `cve_id`                                            | `String(30)`   | yes  | —            | **UNIQUE**, indexed. Deliberately _not_ widened: only a real CVE goes here                      |
+| `definition_type`                                   | `String(20)`   | no   | `'cve'`      | Indexed. `cve` \| `config_check` \| `plugin_check` \| `privilege_check`                         |
+| `cwe_ids`                                           | `JSONB`        | no   | `[]`         |                                                                                                 |
+| `title`                                             | `String(512)`  | no   | —            | GIN trigram indexed                                                                             |
+| `description`                                       | `Text`         | yes  | —            |                                                                                                 |
+| `cvss_v2_score` / `cvss_v3_score` / `cvss_v4_score` | `Numeric(3,1)` | yes  | —            |                                                                                                 |
+| `cvss_vector`                                       | `String(255)`  | yes  | —            |                                                                                                 |
+| `cvss_version`                                      | `String(8)`    | yes  | —            | Separated by `z9e0f1g2h3i4`                                                                     |
+| `severity`                                          | `String(20)`   | no   | `'unscored'` | Indexed. `unscored` when no vector is published — a score is never synthesized                  |
+| `published_at` / `last_modified_at`                 | `Date`         | yes  | —            |                                                                                                 |
+| `references`                                        | `JSONB`        | no   | `[]`         |                                                                                                 |
+| `affected_software`                                 | `JSONB`        | no   | `[]`         |                                                                                                 |
+| `source`                                            | `String(50)`   | no   | `'nvd'`      | Indexed                                                                                         |
+| `is_custom`                                         | `Boolean`      | no   | `false`      |                                                                                                 |
+| `created_at` / `updated_at`                         | `TIMESTAMPTZ`  | no   | `utcnow`     |                                                                                                 |
 
 **Indexes:** `ix_vuln_def_severity`, `ix_vuln_def_cvss_v3`,
-`ix_vuln_def_published`, `ix_vuln_def_source`, `idx_vuln_def_title_trgm` (GIN
-trigram). **Constraints:** `ck_vuln_cvss_score` — `cvss_v3_score BETWEEN 0.0 AND 10.0`; `ck_vuln_def_severity_canonical` — `severity IN ('critical','high','medium','low','none','unscored')`.
+`ix_vuln_def_published`, `ix_vuln_def_source`, `ix_vuln_def_definition_type`,
+`idx_vuln_def_title_trgm` (GIN trigram). **Constraints:** `ck_vuln_cvss_score` — `cvss_v3_score BETWEEN 0.0 AND 10.0`; `ck_vuln_def_severity_canonical` — `severity IN ('critical','high','medium','low','none','unscored')`; `ck_vuln_def_definition_type` — `definition_type IN ('cve','config_check','plugin_check','privilege_check')`; `ck_vuln_def_cve_id_matches_type` — a `cve` row carries `cve_id`, a check row does not.
+
+That last constraint is load-bearing rather than tidy. A configuration check
+filed as `definition_type='cve'` would inherit CVE semantics everywhere
+downstream — KEV membership, EPSS scoring, CVSS band tables, a "look this up in
+NVD" link resolving to nothing — none of which mean anything for a benchmark
+control. The constraint makes that state unrepresentable.
 
 ### `asset_vulnerabilities`
 
 The finding table: one vulnerability, on one asset, in one scan.
 
-| Column                                            | Type           | Null | Default     | Notes                                                   |
-| ------------------------------------------------- | -------------- | ---- | ----------- | ------------------------------------------------------- |
-| `id`                                              | `String(350)`  | no   | —           | **PK part**, `gen_vuln_finding_id()`                    |
-| `org_id`                                          | `String(100)`  | no   | —           | **PK part**, FK `organizations.id` CASCADE, indexed     |
-| `scan_id`                                         | `String(100)`  | no   | —           | FK `scans.id` CASCADE, indexed                          |
-| `asset_id`                                        | `String(200)`  | no   | —           | FK `assets.id` CASCADE, indexed                         |
-| `vuln_id`                                         | `String(30)`   | no   | —           | FK `vulnerability_definitions.id` **RESTRICT**, indexed |
-| `service_id`                                      | `String(200)`  | yes  | —           | FK `services.id` **SET NULL**                           |
-| `severity`                                        | `String(20)`   | yes  | —           | Indexed                                                 |
-| `cvss_score`                                      | `Numeric(3,1)` | yes  | —           |                                                         |
-| `status`                                          | `String(50)`   | no   | `'open'`    | Indexed                                                 |
-| `source_family`                                   | `String(50)`   | no   | `'unknown'` | Indexed. `network_service` \| `credentialed` \| …       |
-| `evidence_source`                                 | `String(50)`   | no   | `'unknown'` | Indexed                                                 |
-| `proof` / `plugin_output` / `evidence`            | `Text`         | yes  | —           | Verbatim scanner output                                 |
-| `confidence`                                      | `String(16)`   | yes  | —           | `Confirmed` \| `Potential` \| …                         |
-| `qod`                                             | `Integer`      | yes  | —           | Quality of detection, 0–100                             |
-| `detection_method`                                | `String(40)`   | yes  | —           | e.g. `CONFIG_CHECK`                                     |
-| `detected_version`                                | `String(160)`  | yes  | —           |                                                         |
-| `cvss_vector`                                     | `String(200)`  | yes  | —           |                                                         |
-| `cvss_version`                                    | `String(8)`    | yes  | —           |                                                         |
-| `attack_surface`                                  | `String(16)`   | yes  | —           |                                                         |
-| `in_kev`                                          | `Boolean`      | no   | `false`     | Indexed. **CISA KEV only**                              |
-| `kev_due_date`                                    | `Date`         | yes  | —           | BOD 22-01 deadline                                      |
-| `epss_score` / `epss_percentile`                  | `Numeric(7,5)` | yes  | —           |                                                         |
-| `has_exploit`                                     | `Boolean`      | no   | `false`     | Public exploit exists — not proof of exploitability     |
-| `exploit_sources`                                 | `ARRAY(Text)`  | yes  | —           | ExploitDB / Metasploit / Nuclei / KEV                   |
-| `verified_exploit`                                | `Boolean`      | no   | `false`     | Reproducible per ExploitDB, or VulnCheck canary         |
-| `canary_confirmed`                                | `Boolean`      | no   | `false`     | Observed against VulnCheck honeypots                    |
-| `ransomware_linked`                               | `Boolean`      | no   | `false`     |                                                         |
-| `vendor_advisory_id`                              | `String(100)`  | yes  | —           | CSAF advisory id                                        |
-| `vendor_advisory_url`                             | `Text`         | yes  | —           |                                                         |
-| `vendor_remediation`                              | `Text`         | yes  | —           | Always prefixed with the advisory id                    |
-| `first_scan_id`                                   | `String(64)`   | yes  | —           |                                                         |
-| `component`                                       | `String(200)`  | yes  | —           | Added by `a1f2g3h4i5j6`                                 |
-| `component_version`                               | `String(160)`  | yes  | —           |                                                         |
-| `component_fixed_version`                         | `String(160)`  | yes  | —           | Added by `b2g3h4i5j6k7`                                 |
-| `remediation_notes`                               | `Text`         | yes  | —           |                                                         |
-| `fixed_at`                                        | `TIMESTAMPTZ`  | yes  | —           |                                                         |
-| `accepted_risk_reason`                            | `Text`         | yes  | —           |                                                         |
-| `accepted_by`                                     | `String(150)`  | yes  | —           | FK `users.id` SET NULL                                  |
-| `first_found_at` / `last_found_at` / `created_at` | `TIMESTAMPTZ`  | no   | `utcnow`    |                                                         |
+| Column                                            | Type           | Null | Default     | Notes                                                                                                                                         |
+| ------------------------------------------------- | -------------- | ---- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                              | `String(350)`  | no   | —           | **PK part**, `gen_vuln_finding_id()`                                                                                                          |
+| `org_id`                                          | `String(100)`  | no   | —           | **PK part**, FK `organizations.id` CASCADE, indexed                                                                                           |
+| `scan_id`                                         | `String(100)`  | no   | —           | FK `scans.id` CASCADE, indexed                                                                                                                |
+| `asset_id`                                        | `String(200)`  | no   | —           | FK `assets.id` CASCADE, indexed                                                                                                               |
+| `vuln_id`                                         | `String(120)`  | no   | —           | FK `vulnerability_definitions.id` **RESTRICT**, indexed. Widened from 30 by `e1f2a3b4c5d6` so a finding can point at a check as well as a CVE |
+| `service_id`                                      | `String(200)`  | yes  | —           | FK `services.id` **SET NULL**                                                                                                                 |
+| `severity`                                        | `String(20)`   | yes  | —           | Indexed                                                                                                                                       |
+| `cvss_score`                                      | `Numeric(3,1)` | yes  | —           |                                                                                                                                               |
+| `status`                                          | `String(50)`   | no   | `'open'`    | Indexed                                                                                                                                       |
+| `source_family`                                   | `String(50)`   | no   | `'unknown'` | Indexed. `network_service` \| `credentialed` \| …                                                                                             |
+| `evidence_source`                                 | `String(50)`   | no   | `'unknown'` | Indexed                                                                                                                                       |
+| `proof` / `plugin_output` / `evidence`            | `Text`         | yes  | —           | Verbatim scanner output                                                                                                                       |
+| `confidence`                                      | `String(16)`   | yes  | —           | `Confirmed` \| `Potential` \| …                                                                                                               |
+| `qod`                                             | `Integer`      | yes  | —           | Quality of detection, 0–100                                                                                                                   |
+| `detection_method`                                | `String(40)`   | yes  | —           | e.g. `CONFIG_CHECK`                                                                                                                           |
+| `detected_version`                                | `String(160)`  | yes  | —           |                                                                                                                                               |
+| `cvss_vector`                                     | `String(200)`  | yes  | —           |                                                                                                                                               |
+| `cvss_version`                                    | `String(8)`    | yes  | —           |                                                                                                                                               |
+| `attack_surface`                                  | `String(16)`   | yes  | —           |                                                                                                                                               |
+| `in_kev`                                          | `Boolean`      | no   | `false`     | Indexed. **CISA KEV only**                                                                                                                    |
+| `kev_due_date`                                    | `Date`         | yes  | —           | BOD 22-01 deadline                                                                                                                            |
+| `epss_score` / `epss_percentile`                  | `Numeric(7,5)` | yes  | —           |                                                                                                                                               |
+| `has_exploit`                                     | `Boolean`      | no   | `false`     | Public exploit exists — not proof of exploitability                                                                                           |
+| `exploit_sources`                                 | `ARRAY(Text)`  | yes  | —           | ExploitDB / Metasploit / Nuclei / KEV                                                                                                         |
+| `verified_exploit`                                | `Boolean`      | no   | `false`     | Reproducible per ExploitDB, or VulnCheck canary                                                                                               |
+| `canary_confirmed`                                | `Boolean`      | no   | `false`     | Observed against VulnCheck honeypots                                                                                                          |
+| `ransomware_linked`                               | `Boolean`      | no   | `false`     |                                                                                                                                               |
+| `vendor_advisory_id`                              | `String(100)`  | yes  | —           | CSAF advisory id                                                                                                                              |
+| `vendor_advisory_url`                             | `Text`         | yes  | —           |                                                                                                                                               |
+| `vendor_remediation`                              | `Text`         | yes  | —           | Always prefixed with the advisory id                                                                                                          |
+| `first_scan_id`                                   | `String(64)`   | yes  | —           |                                                                                                                                               |
+| `component`                                       | `String(200)`  | yes  | —           | Added by `a1f2g3h4i5j6`                                                                                                                       |
+| `component_version`                               | `String(160)`  | yes  | —           |                                                                                                                                               |
+| `component_fixed_version`                         | `String(160)`  | yes  | —           | Added by `b2g3h4i5j6k7`                                                                                                                       |
+| `remediation_notes`                               | `Text`         | yes  | —           |                                                                                                                                               |
+| `fixed_at`                                        | `TIMESTAMPTZ`  | yes  | —           |                                                                                                                                               |
+| `accepted_risk_reason`                            | `Text`         | yes  | —           |                                                                                                                                               |
+| `accepted_by`                                     | `String(150)`  | yes  | —           | FK `users.id` SET NULL                                                                                                                        |
+| `first_found_at` / `last_found_at` / `created_at` | `TIMESTAMPTZ`  | no   | `utcnow`    |                                                                                                                                               |
 
 **Composite primary key:** `(id, org_id)` — `org_id` participates because this
 table is declared partitionable by hash on `org_id` in

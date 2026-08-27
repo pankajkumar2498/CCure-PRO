@@ -274,11 +274,46 @@ class HttpSecurityDetail(Base):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+#: ``vulnerability_definitions.definition_type``. The catalogue holds two
+#: kinds of row and conflating them is what forced every capability that finds
+#: something without a CVE — a CIS control, a STIG rule, a weak service ACL, a
+#: database account with no password policy — to grow its own findings table.
+#:
+#: Vocabulary and identifier minting live in ``core/checks/definitions.py``;
+#: these constants are re-exported from there so the model and the CHECK
+#: constraint cannot drift from the code that produces the values.
+DEFINITION_TYPE_VALUES = (
+    "cve",
+    "config_check",
+    "plugin_check",
+    "privilege_check",
+)
+
+#: Rendered exactly as migration e1f2a3b4c5d6 renders it, so a bootstrapped and
+#: an upgraded database produce byte-identical CHECK constraints and
+#: autogenerate sees no difference between them. Same reasoning as
+#: SEVERITY_CANONICAL_SQL above.
+DEFINITION_TYPE_SQL = "definition_type IN %s" % str(DEFINITION_TYPE_VALUES)
+
+
 class VulnerabilityDefinition(Base):
     """
-    The canonical vulnerability catalog — one row per unique CVE/vulnerability ID.
-    ID is already human-readable: "CVE-2024-4577" or "CCURE-CUSTOM-001".
-    No change needed here.
+    The canonical catalogue — one row per unique vulnerability or check.
+
+    Two kinds of row, distinguished by ``definition_type``:
+
+      * ``cve`` — a published vulnerability, keyed on its real CVE identifier
+        and written by the vulnerability feeds. ``cve_id`` is set.
+      * everything else — a check this product defines, keyed on a
+        ``CCURE-``-prefixed identifier minted by
+        ``core.checks.definitions.definition_id_for_check``. ``cve_id`` is
+        NULL, because there is no CVE and inventing one would put a
+        CVE-shaped string that NVD has never heard of in front of a customer.
+
+    The distinction is enforced by ``ck_vuln_def_cve_id_matches_type`` rather
+    than left to convention: a config check filed as a ``cve`` inherits CVE
+    semantics — KEV lookups, EPSS scores, CVSS bands, "search this in NVD" —
+    every one of which is meaningless for it.
     """
 
     __tablename__ = "vulnerability_definitions"
@@ -297,14 +332,42 @@ class VulnerabilityDefinition(Base):
         # Severity must be one of the six canonical lowercase ratings. Declared
         # here as well as in migration z9e0f1g2h3i4 — see SEVERITY_CANONICAL_SQL.
         CheckConstraint(SEVERITY_CANONICAL_SQL, name="ck_vuln_def_severity_canonical"),
+        Index("ix_vuln_def_definition_type", "definition_type"),
+        CheckConstraint(DEFINITION_TYPE_SQL, name="ck_vuln_def_definition_type"),
+        # A CVE row carries a CVE id; a check row does not. Without this, a
+        # check written with definition_type='cve' would be indistinguishable
+        # from a real advisory everywhere downstream, and a real CVE written
+        # with cve_id NULL would silently drop out of every join that reaches
+        # the feeds through that column.
+        CheckConstraint(
+            "(definition_type = 'cve' AND cve_id IS NOT NULL) OR "
+            "(definition_type <> 'cve' AND cve_id IS NULL)",
+            name="ck_vuln_def_cve_id_matches_type",
+        ),
         # Integrity constraint for CVSS scores
         CheckConstraint(
             "cvss_v3_score >= 0.0 AND cvss_v3_score <= 10.0", name="ck_vuln_cvss_score"
         ),
     )
 
-    id = Column(String(30), primary_key=True)  # "CVE-2024-4577" — already readable!
+    #: "CVE-2024-4577", or "CCURE-CFG-CIS-WIN2022-2-3-1-1" for a check.
+    #: Widened from 30 by migration e1f2a3b4c5d6: a CVE never exceeds 20-odd
+    #: characters, but a benchmark control identifier carries a framework, a
+    #: platform and a dotted control number and does not fit.
+    id = Column(String(120), primary_key=True)
+    #: Deliberately left at 30 while ``id`` widened. Only a real CVE goes here,
+    #: and a column too narrow to hold anything else is a structural reminder
+    #: of that rather than a comment somebody has to read.
     cve_id = Column(String(30), unique=True, nullable=True, index=True)
+    #: Deliberately carries no ``index=True``. The index is declared once, by
+    #: name, in ``__table_args__`` above, matching migration e1f2a3b4c5d6. With
+    #: both, a fresh install (which builds from ``Base.metadata``) would get two
+    #: indexes on this column — SQLAlchemy's auto-named one and the migration's
+    #: — while an upgraded install got only the migration's. Same trap the
+    #: ``in_kev`` note in CLAUDE.md describes, approached from the other side.
+    definition_type = Column(
+        String(20), nullable=False, default="cve", server_default="cve"
+    )
     cwe_ids = Column(JSONB, nullable=False, default=list)
 
     title = Column(String(512), nullable=False)
@@ -440,8 +503,13 @@ class AssetVulnerability(Base):
         nullable=False,
         index=True,
     )
+    #: Widened from 30 alongside ``vulnerability_definitions.id``. This column
+    #: is what makes the finding model one model: a CIS control failure and a
+    #: CVE match are the same row shape, carry the same severity, feed the same
+    #: risk score and appear in the same report — they differ only in which
+    #: kind of catalogue row they point at.
     vuln_id = Column(
-        String(30),
+        String(120),
         ForeignKey("vulnerability_definitions.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,

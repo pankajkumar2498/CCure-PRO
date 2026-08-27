@@ -590,6 +590,70 @@ backend auto-chains the later phases.
   NetBIOS-NS are UDP; recording them as TCP claims an open TCP port that is
   usually filtered, and that claim reaches the asset registry and the reports.
 
+## Scan scheduling (`core/scheduling/`)
+
+Recurring network and credentialed scans. Phase 1 of the gap-closure
+programme; tracker in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+- **Scheduling adds no scan engine.** `core/scheduling/dispatcher.py` calls
+  `run_host_discovery_task.delay(...)` and `run_credentialed_scan_task.delay(...)`
+  — the same tasks the manual routes call. A scheduled run is an ordinary
+  `Scan` row and shows up in Scan History, reports and the dashboard like any
+  other, marked `options.origin = "schedule"`. If you add a scan kind, add a
+  dispatch branch; do not add a pipeline.
+
+- **`scan_schedules` is deliberately not `compliance_scan_schedules`.** That
+  table's `framework_id` and `policy_id` are NOT NULL FKs into the compliance
+  catalogue and a network scan has no framework. Six of its behaviours are
+  defects this table does not repeat, each documented at the point of the
+  decision: no time zones, `monthly` as a 30-day `timedelta`, a
+  `cron_expression` nothing reads, no duplicate-execution guard, no execution
+  history, and a bare `except` reporting `success: False`.
+
+- **A schedule stores a credential *reference*, never a secret.**
+  `run_credentialed_scan_task` already resolved `credential_id` worker-side, so
+  nothing had to change to make this true. `POST /scan/credentialed` still
+  accepts a plaintext password and puts it in the task arguments; a schedule
+  doing that would put it in the database, in every backup, and in the broker
+  payload on every run.
+
+- **Scope and quota are re-checked at every dispatch, never inherited.** A
+  schedule written in March and firing in November is a stored intent, not a
+  standing authorisation — narrowing an org's `scan_scope_cidrs` must take
+  effect on the next run.
+
+- **`next_run_at IS NULL` means dormant, not due.** The compliance scheduler
+  treats NULL as due (`or_(next_run_at.is_(None), ...)`), so any row written
+  without a computed next run fires on the very next tick regardless of the
+  time the user chose. Here NULL is a one-time schedule that has fired, or a
+  custom recurrence nothing can place yet.
+
+- **Wall-clock time is preserved across DST, and the awkward hours have
+  defined answers.** `core/scheduling/recurrence.py` computes in the schedule's
+  IANA zone: a skipped hour (spring forward) is pushed to the first instant
+  that exists rather than skipping the day; a repeated hour (autumn back) fires
+  once, at the earlier instant; day 31 clamps to the month's last day. Zones
+  are IANA names only — a fixed offset cannot express daylight saving and is
+  refused.
+
+- **Next run is computed from *now*, not from the previous `next_run_at`.** A
+  worker down for a week comes back and runs once, not seven times.
+
+- **Duplicate dispatch is prevented by `pg_try_advisory_xact_lock`**, not by
+  assuming one beat process. Transaction-scoped, never session-scoped —
+  `pg_advisory_lock` releases when the *connection* closes and SQLAlchemy pools
+  connections, so a session-scoped lock leaks onto the next unrelated request.
+
+- **`custom` (cron) is stored but not yet placed.** `compute_next_run` returns
+  None for it, so such a schedule stays dormant rather than firing at an
+  arbitrary time. Parsing cron needs a dependency decision that has not been
+  taken.
+
+- **Body models are prefixed `ScanSchedule` and must stay that way.** FastAPI
+  keys OpenAPI component schemas by class name; a `ScheduleCreate` here
+  silently replaced `routers/compliance.py`'s in the generated contract. The CI
+  contract gate caught it — a regeneration showing *deletions* is the signal.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

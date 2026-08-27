@@ -642,6 +642,86 @@ A lighter, separate record of generated report files. Not FK-linked to `scans`.
 
 ---
 
+### `scan_schedules`
+
+One scheduling rule: what to scan, how often, in whose time zone. Added by
+migration `f2a3b4c5d6e7` (Phase 1).
+
+Deliberately separate from `compliance_scan_schedules`, whose `framework_id`
+and `policy_id` are NOT NULL foreign keys into the compliance catalogue — a
+network scan has no framework. What is **not** duplicated is execution: a due
+schedule dispatches the same Celery task the manual API route dispatches.
+
+| Column                                     | Type          | Null | Default  | Notes                                                                    |
+| ------------------------------------------ | ------------- | ---- | -------- | ------------------------------------------------------------------------ |
+| `id`                                       | `String(100)` | no   | —        | **PK**, `gen_scan_schedule_id()` — `sch_defa_1a2b_x9v1`                  |
+| `org_id`                                   | `String(100)` | no   | —        | FK `organizations.id` CASCADE                                            |
+| `created_by`                               | `String(150)` | yes  | —        | FK `users.id` SET NULL. The identity scheduled scans run as              |
+| `name`                                     | `String(200)` | no   | —        | Unique per org                                                           |
+| `description`                              | `Text`        | yes  | —        |                                                                          |
+| `scan_kind`                                | `String(32)`  | no   | —        | Indexed. `network` and `credentialed` dispatchable; 4 more reserved      |
+| `targets`                                  | `JSONB`       | no   | `[]`     | Re-validated against org scan scope at every dispatch, never trusted     |
+| `scan_options`                             | `JSONB`       | no   | `{}`     | Whatever the manual route accepts, so a new option needs no migration    |
+| `credential_id`                            | `String(100)` | yes  | —        | FK `compliance_credentials.id` SET NULL. **A reference, never a secret** |
+| `recurrence`                               | `String(20)`  | no   | —        | `once`, `daily`, `weekly`, `monthly`, `custom`                           |
+| `timezone`                                 | `String(64)`  | no   | `UTC`    | IANA name. Not an offset — an offset cannot express daylight saving      |
+| `run_at_minute`                            | `Integer`     | no   | `0`      | Minutes past local midnight, 0–1439                                      |
+| `day_of_week`                              | `Integer`     | yes  | —        | 0 = Monday .. 6 = Sunday, matching `datetime.weekday()`                  |
+| `day_of_month`                             | `Integer`     | yes  | —        | 1–31. A shorter month runs on its last day                               |
+| `cron_expression`                          | `String(120)` | yes  | —        | Permitted **only** when `recurrence = 'custom'`, enforced by CHECK       |
+| `starts_at`                                | `TIMESTAMPTZ` | yes  | —        | The moment, for `once`; the earliest eligible moment otherwise           |
+| `is_enabled`                               | `Boolean`     | no   | `true`   |                                                                          |
+| `next_run_at`                              | `TIMESTAMPTZ` | yes  | —        | NULL means dormant. **Not** treated as due                               |
+| `last_run_at`, `last_status`, `last_error` | mixed         | yes  | —        | Denormalised from the newest run so the list view needs no subquery      |
+| `last_scan_id`                             | `String(100)` | yes  | —        | FK `scans.id` SET NULL                                                   |
+| `consecutive_failures`                     | `Integer`     | no   | `0`      | At 5 the schedule disables itself; any success resets it                 |
+| `total_run_count`                          | `BigInteger`  | no   | `0`      |                                                                          |
+| `created_at`, `updated_at`                 | `TIMESTAMPTZ` | no   | `utcnow` |                                                                          |
+
+**Indexes:** `ix_scan_schedules_org_enabled` (org_id, is_enabled),
+`ix_scan_schedules_due` (is_enabled, next_run_at) — the beat query —
+`ix_scan_schedules_scan_kind`. No single-column index on `org_id` or
+`next_run_at`: both are leftmost columns of a composite above, and a second
+index would cost every write and answer nothing the first cannot.
+
+**Constraints:** `uq_scan_schedules_org_name`; `ck_scan_schedule_kind`;
+`ck_scan_schedule_recurrence`; `ck_scan_schedule_cron_only_when_custom` — a
+cron expression exists exactly when the recurrence is custom, which is what
+stops a `cron_expression` column that nothing reads;
+`ck_scan_schedule_weekly_needs_weekday`; `ck_scan_schedule_monthly_needs_day`;
+`ck_scan_schedule_failures_non_negative`.
+
+### `scan_schedule_runs`
+
+One row per dispatch attempt — **including attempts that failed before a scan
+existed**. That is the point: a schedule whose targets fell outside the
+organisation's scan scope, or whose credential was deleted, fails before there
+is a `Scan` to inspect, and without this row the user sees a schedule that
+silently never runs and no reason anywhere.
+
+| Column           | Type          | Null | Default    | Notes                                                        |
+| ---------------- | ------------- | ---- | ---------- | ------------------------------------------------------------ |
+| `id`             | `String(100)` | no   | —          | **PK**, `gen_scan_schedule_run_id()`                         |
+| `schedule_id`    | `String(100)` | no   | —          | FK `scan_schedules.id` CASCADE                               |
+| `org_id`         | `String(100)` | no   | —          | FK `organizations.id` CASCADE                                |
+| `scan_id`        | `String(100)` | yes  | —          | FK `scans.id` **SET NULL** — NULL when dispatch failed early |
+| `triggered_by`   | `String(150)` | yes  | —          | FK `users.id` SET NULL. NULL for a scheduled run             |
+| `trigger`        | `String(20)`  | no   | `schedule` | `schedule` or `manual`                                       |
+| `status`         | `String(20)`  | no   | —          | `dispatched`, `failed`, `skipped`                            |
+| `detail`         | `Text`        | yes  | —          | Why it failed or was skipped, in the operator's language     |
+| `celery_task_id` | `String(100)` | yes  | —          | So a stuck run can be traced to a worker                     |
+| `triggered_at`   | `TIMESTAMPTZ` | no   | `utcnow`   |                                                              |
+
+**Indexes:** `ix_scan_schedule_runs_schedule` (schedule_id, triggered_at),
+`ix_scan_schedule_runs_org` (org_id, triggered_at).
+**Constraints:** `ck_scan_schedule_run_status`, `ck_scan_schedule_run_trigger`.
+
+Over quota is recorded as `skipped`, not `failed`, and so does not count toward
+the failure threshold that disables a schedule — a working schedule meeting a
+plan limit is not a broken schedule.
+
+---
+
 ## 7. Services and findings
 
 Source: `Backend/db/models/findings.py`.

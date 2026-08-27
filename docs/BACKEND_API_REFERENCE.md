@@ -630,6 +630,66 @@ hosts, or single unreachable target; `404` stored credential not found;
 
 ---
 
+## 6b. Scan schedules — `/scan-schedules`
+
+Source: `Backend/routers/scan_schedules.py` — 10 operations. Added by Phase 1 of
+the Nessus capability gap-closure programme.
+
+**Scheduling does not run scans.** A due schedule dispatches the same Celery
+task the manual route dispatches — `run_host_discovery_task` for
+`scan_kind="network"`, `run_credentialed_scan_task` for `"credentialed"` — so
+there is one scan engine, and a scheduled scan appears in Scan History,
+reports, findings and the dashboard exactly like a manual one. It is marked
+with `options.origin = "schedule"` and `options.schedule_id`.
+
+**A schedule never holds a secret.** The create and update bodies have no
+password or key field, only `credential_id` referencing
+`compliance_credentials`. The worker resolves and decrypts it. Compare
+`POST /scan/credentialed`, which accepts a password and passes it into the task
+arguments.
+
+| Method | Path                                    | Permission               | Limit  |
+| ------ | --------------------------------------- | ------------------------ | ------ |
+| GET    | `/scan-schedules`                       | `scan_schedules:read`    | 60/min |
+| POST   | `/scan-schedules`                       | `scan_schedules:create`  | 20/min |
+| GET    | `/scan-schedules/timezones`             | `scan_schedules:read`    | 30/min |
+| GET    | `/scan-schedules/credentials`           | `scan_schedules:read`    | 60/min |
+| GET    | `/scan-schedules/{schedule_id}`         | `scan_schedules:read`    | 60/min |
+| PATCH  | `/scan-schedules/{schedule_id}`         | `scan_schedules:update`  | 20/min |
+| DELETE | `/scan-schedules/{schedule_id}`         | `scan_schedules:delete`  | 20/min |
+| POST   | `/scan-schedules/{schedule_id}/enable`  | `scan_schedules:update`  | 20/min |
+| POST   | `/scan-schedules/{schedule_id}/run-now` | `scan_schedules:execute` | 10/min |
+| GET    | `/scan-schedules/{schedule_id}/runs`    | `scan_schedules:read`    | 60/min |
+
+**Body — `ScheduleCreate`**: `name`, `description`, `scan_kind`
+(`network` | `credentialed`), `targets[]`, `scan_options{}`, `credential_id`,
+`recurrence` (`once` | `daily` | `weekly` | `monthly` | `custom`), `timezone`
+(IANA name), `run_at` (`"HH:MM"` local), `day_of_week` (0 = Monday),
+`day_of_month` (1-31), `cron_expression`, `starts_at`, `is_enabled`.
+
+`PATCH` takes the same fields, all optional, minus `scan_kind` — changing a
+schedule's kind would change which task it dispatches and which options are
+meaningful, so a new schedule is the honest way to express that.
+
+Three behaviours worth knowing:
+
+- **Another tenant's schedule returns 404, not 403.** The `org_id` filter is
+  part of the query rather than a comparison after the fetch, so the two cases
+  are indistinguishable from outside. A 403 would confirm the id exists.
+- **`run-now` does not advance `next_run_at`.** Testing a schedule at 11:00
+  would otherwise cancel that night's real run. It also works on a _disabled_
+  schedule, which is how an operator confirms a fix before switching it on.
+- **Deleting a schedule does not delete the scans it produced.**
+  `scan_schedule_runs.scan_id` is `ON DELETE SET NULL` from `scans`; a scan is
+  evidence of what was on a network at a moment in time.
+
+Time zones are IANA names, never fixed offsets, and `next_run_at` is computed
+in the schedule's own zone — so "09:00 daily, Europe/London" stays 09:00 across
+a daylight-saving boundary rather than sliding by an hour. See
+`Backend/core/scheduling/recurrence.py`.
+
+---
+
 ## 7. Scan history — `/scans`
 
 Source: `Backend/scans/router.py` — 8 HTTP operations + 1 WebSocket.

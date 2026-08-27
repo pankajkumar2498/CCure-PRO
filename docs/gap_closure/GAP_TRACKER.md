@@ -256,7 +256,144 @@ downstream phases, not just Windows.
 
 ---
 
-## 4. Definition of Done — Phase 0
+## 4. Phase 1 — Network & credentialed scan scheduling
+
+**Status: Complete.** GAP-01 closed.
+
+### 4.1 The rule that shaped the design
+
+Scheduling adds **no scan engine**. A due schedule calls
+`run_host_discovery_task.delay(...)` or `run_credentialed_scan_task.delay(...)`
+— the same tasks, with the same arguments, that `routers/phase_scans.py` and
+`routers/credentialed.py` dispatch when a person presses the button. A
+scheduled run therefore appears in Scan History, reports, findings and the
+dashboard exactly like a manual one, marked with `options.origin = "schedule"`.
+
+### 4.2 What was reused rather than rebuilt
+
+| Need                   | Existing implementation                                         | Reused how                                      |
+| ---------------------- | --------------------------------------------------------------- | ----------------------------------------------- |
+| Periodic trigger       | Celery beat (`ccure-beat`)                                      | One new `beat_schedule` entry; no new process   |
+| Network execution      | `run_host_discovery_task`                                       | Called directly                                 |
+| Credentialed execution | `run_credentialed_scan_task`                                    | Called directly, with `credential_id`           |
+| Scan record            | `scans/db_helpers.create_scan`                                  | Called directly                                 |
+| Scan history           | `routers/scan_history.py`                                       | Nothing added — scheduled scans are `Scan` rows |
+| Credentials            | `compliance_credentials` + `_resolve_stored_credential`         | Referenced by id; worker decrypts               |
+| Target gate            | `validate_scan_targets`, `enforce_org_scan_scope`               | Re-run at every dispatch                        |
+| Quota                  | `core.quota.check_scan_quota`                                   | Re-run at every dispatch                        |
+| RBAC / audit / limiter | `require_permission`, `log_audit_event`, `scan_helpers.limiter` | Unchanged                                       |
+
+The single most useful finding of the inspection: `run_credentialed_scan_task`
+**already accepted `credential_id`** and resolved it worker-side. So a schedule
+never has to hold a secret — unlike `POST /scan/credentialed`, which passes a
+plaintext password into the Celery task arguments.
+
+### 4.3 What was deliberately not copied from `compliance_scan_schedules`
+
+It is the closest existing thing, and six of its properties are defects rather
+than designs. Each is listed in `db/models/scan_schedules.py` beside the
+decision not to repeat it:
+
+1. **No time zones.** `next_run_at = now + delta` makes "daily at 09:00"
+   unrepresentable and lets every tick drift by however late beat was.
+2. **`monthly` as a fixed `timedelta`** — 30 days is not a calendar month.
+3. **A `cron_expression` column nothing reads or constrains.**
+4. **No duplicate-execution guard.**
+5. **No execution history** — run records fused to the compliance run table, so
+   a dispatch that failed before a scan existed left no trace a user could see.
+6. **A bare `except` returning `{"success": False}`** — what hid a `TypeError`
+   until it emerged that scheduled compliance scanning had never once run.
+
+### 4.4 Validation
+
+| Line                           | Result                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| Unit — recurrence              | 27 tests, pure, no DB                                                      |
+| Integration — API/RBAC/tenancy | 25 tests against the real router and database                              |
+| Integration — dispatcher/beat  | 16 tests                                                                   |
+| Migration                      | up → down → up round-trip on a throwaway database, zero autogenerate drift |
+| Frontend                       | `eslint --max-warnings=0` clean; `npm run build` succeeds                  |
+| API contract                   | `openapi.json` regenerated — **908 insertions, 0 deletions**               |
+| Docs integrity                 | `tests/repo` 8 passed (routes, tables and permissions all documented)      |
+| Regression                     | see §6                                                                     |
+
+**Time-zone correctness was treated as load-bearing** and is covered by
+executable cases rather than assertion:
+
+- daily 09:00 Europe/London stays 09:00 across the spring-forward boundary;
+- a run at 01:30 on a spring-forward night — an hour that does not exist —
+  is pushed to the first instant that does, rather than skipped;
+- a run at 01:30 on an autumn-back night — an hour that happens twice — fires
+  once, at the earlier instant;
+- day 31 runs on 28 Feb in a common year and 29 Feb in a leap year;
+- a fixed offset (`+05:30`) is refused as a zone, because it cannot express
+  daylight saving.
+
+**Two defects were found by the process rather than by testing the feature:**
+
+- **`ScheduleCreate` / `ScheduleUpdate` collided with `routers/compliance.py`.**
+  FastAPI keys OpenAPI component schemas by _class name_, so this router's
+  models silently replaced compliance's — the first regeneration of
+  `openapi.json` showed 880 deletions, including compliance's entire
+  `ScheduleCreate` schema. A client generated from that contract would have had
+  the wrong shape for compliance schedules. Every body model here is now
+  prefixed `ScanSchedule`, and the regenerated contract is purely additive.
+  Caught by the CI contract gate, which is exactly what it is for.
+- **`GET /compliance/credentials` requires `compliance:read`.** Using it for the
+  schedule form would have meant an analyst needed a compliance permission to
+  pick a credential for a scan. `GET /scan-schedules/credentials` serves the
+  same rows gated on `scan_schedules:read`, returning identifying fields only.
+
+### 4.5 Known limitations
+
+- **`custom` (cron) recurrence is accepted and stored but not yet placed.**
+  `compute_next_run` returns `None` for it, so such a schedule stays dormant
+  rather than firing at an arbitrary time. Parsing cron needs a dependency
+  decision (`croniter`) that has not been taken. The database refuses a cron
+  expression outside the custom recurrence, so nothing else is affected.
+- **The `scan_kind` column reserves `configuration`, `database`,
+  `network_device` and `cloud`.** The API refuses to create one, so a reserved
+  kind cannot produce a schedule that silently never runs; the reservation
+  exists so Phases 3, 10, 11 and 16 need no CHECK migration on a table that by
+  then holds customer schedules.
+- **Failure notification is the run record and the audit log, not email.** The
+  notification model exists and wiring it is a small follow-up, but it was not
+  in this phase's scope.
+- **Not yet deployed to the live database.** `ccure_test` is at
+  `d0e1f2a3b4c5`; both `e1f2a3b4c5d6` and `f2a3b4c5d6e7` are committed and
+  round-trip-tested but not applied there.
+
+### 4.6 Definition of Done — Phase 1
+
+| Line                      | Status                                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| Backend implemented       | ✅ model, recurrence engine, dispatcher, beat task                                                  |
+| Scanner/check logic       | ✅ reuses the existing tasks; none added                                                            |
+| Database changes          | ✅ `f2a3b4c5d6e7` — two tables                                                                      |
+| Migration tested          | ✅ round-trip, zero drift                                                                           |
+| API implemented           | ✅ 10 operations                                                                                    |
+| UI implemented            | ✅ full CRUD, enable/disable, Run Now, history                                                      |
+| Finding model integrated  | ✅ via the existing scan pipeline                                                                   |
+| Risk scoring / reporting  | ✅ unchanged — scheduled scans are ordinary scans                                                   |
+| Logging                   | ✅                                                                                                  |
+| Audit trail               | ✅ 7 actions classified in `core/audit_taxonomy.py`                                                 |
+| RBAC enforced             | ✅ new `scan_schedules` resource, 5 actions, 3 roles                                                |
+| Tenant isolation          | ✅ org filter in the query; 404 not 403                                                             |
+| Credential protection     | ✅ reference only; asserted no material is returned                                                 |
+| Rate limiting             | ✅ every route limited and declaring `response: Response`                                           |
+| Unit tests                | ✅ 27                                                                                               |
+| Integration tests         | ✅ 41                                                                                               |
+| E2E tests                 | ✅ create → dispatch → scan row → history, through the API                                          |
+| Regression passed         | ✅ §6                                                                                               |
+| Real-target validation    | ⚠️ dispatch verified to the task boundary; a live network run needs credentials and a target window |
+| False-positive validation | ✅ reserved kinds skipped not failed; over-quota skipped not failed                                 |
+| Documentation updated     | ✅ API reference, schema, RBAC, CLAUDE.md                                                           |
+| Gap tracker updated       | ✅ this section                                                                                     |
+| Git commit                | see §6                                                                                              |
+
+---
+
+## 5. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
 | ------------------------- | ----------------------------------------- | ------------------------------------ |
@@ -291,12 +428,19 @@ downstream phases, not just Windows.
 
 ---
 
-## 5. Regression
+## 6. Regression
 
-| Run                                              | Result                            |
-| ------------------------------------------------ | --------------------------------- |
-| Baseline (before any Phase 0 change), full suite | **1535 passed, 2 skipped**, 6m22s |
-| After Phase 0, full suite                        | **1589 passed, 2 skipped**, 6m12s |
+| Run                                              | Result                                                    |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| Baseline (before any Phase 0 change), full suite | **1535 passed, 2 skipped**, 6m22s                         |
+| After Phase 0, full suite                        | **1589 passed, 2 skipped**, 6m12s                         |
+| After the audit-boundary fix, full suite × 3     | **1589 passed, 2 skipped**, every run                     |
+| After the catalogue-residue cleanup, full suite  | **1592 passed, 2 skipped** + 1 pre-existing flake (below) |
+| After Phase 1, full suite                        | **1661 passed, 2 skipped**, 7m23s                         |
+
+Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
+catalogue guard, +68 for Phase 1 — so no existing test was lost, silently
+skipped, or renamed out of collection at any point.
 
 The delta is exactly **+54**, matching the 54 tests this phase added — so no
 existing test was lost, silently skipped, or renamed out of collection.
@@ -350,7 +494,7 @@ regression is read correctly rather than blamed on that phase's code.
 
 ---
 
-## 6. Commit log
+## 7. Commit log
 
 | Phase | Commit    | Tag | Suite result              |
 | ----- | --------- | --- | ------------------------- |
@@ -361,7 +505,7 @@ only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 ---
 
-## 7. Observations recorded during Phase 0 that are not gaps
+## 8. Observations recorded during Phase 0 that are not gaps
 
 Findings worth someone's attention that are outside this programme's scope.
 

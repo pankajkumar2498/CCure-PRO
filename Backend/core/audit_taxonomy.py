@@ -108,6 +108,26 @@ SEVERITY_BY_ACTION: dict[str, str] = {
     "scan.completed": INFO,
     "scan.failed": MEDIUM,
     "scan.cancelled": LOW,
+    # ── Scan scheduling (Phase 1) ───────────────────────────────────────────
+    # Creating or editing a schedule decides what this platform will point at
+    # a network unattended, repeatedly, from now on — so it outranks starting
+    # one scan by hand ("scan.created": LOW). Deleting one is the same weight
+    # as creating: an assurance scan that silently stops running is a
+    # compliance gap nobody is told about.
+    "scan_schedule.created": MEDIUM,
+    "scan_schedule.updated": MEDIUM,
+    "scan_schedule.deleted": MEDIUM,
+    # Enable/disable is the switch that decides whether the above happens at
+    # all, and is the most likely thing to be changed quietly.
+    "scan_schedule.enabled": MEDIUM,
+    "scan_schedule.disabled": MEDIUM,
+    # A person pressing Run Now is one scan, deliberately taken, and is
+    # rated like the manual scan it produces.
+    "scan_schedule.run_now": LOW,
+    # The scheduler switching a schedule off after repeated failures. HIGH
+    # because nobody asked for it and the effect is that assurance scanning
+    # silently stops — exactly the state a reviewer needs to find.
+    "scan_schedule.auto_disabled": HIGH,
     # ── Assets ──────────────────────────────────────────────────────────────
     "asset_updated": LOW,
     "amt_inventory_imported": MEDIUM,

@@ -292,6 +292,27 @@ def gen_compliance_remediation_request_id(org_slug: str) -> str:
     return f"crrq_{org_part}_{_rand()}"
 
 
+def gen_scan_schedule_id(org_slug: str) -> str:
+    """
+    Generate a readable Scan Schedule ID.
+    Example: sch_defa_1a2b3c4d_x9v1
+    """
+    org_part = gen_org_token(org_slug)
+    return f"sch_{org_part}_{_rand()}"
+
+
+def gen_scan_schedule_run_id(schedule_id: str) -> str:
+    """
+    Generate a readable Scan Schedule Run ID.
+    Example: schr_sch_defa_1a2b3c4d_x9v1_k4m2
+
+    Keyed on the schedule rather than the organisation so a run id reads as
+    "this run, of that schedule" without a join — the same reasoning as
+    ``gen_service_id`` keying on the asset.
+    """
+    return f"schr_{schedule_id}_{_rand()}"
+
+
 def gen_compliance_scan_run_id(org_slug: str) -> str:
     """
     Generate a readable Compliance Scan Run ID.

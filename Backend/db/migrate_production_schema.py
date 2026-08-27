@@ -170,6 +170,15 @@ PERMISSIONS = [
     ("scans", "purge", "Permanently delete recycled scans"),
     ("scans", "execute", "Trigger scan execution via API"),
     ("scans", "cancel", "Cancel an in-progress scan"),
+    # Scan scheduling (Phase 1). A separate resource rather than more actions
+    # on "scans", because the questions are genuinely different: "may this
+    # person start a scan" and "may this person point the platform at a network
+    # unattended, every night, indefinitely" are not the same authorisation.
+    ("scan_schedules", "create", "Create scheduled and recurring scans"),
+    ("scan_schedules", "read", "View scan schedules and their run history"),
+    ("scan_schedules", "update", "Edit, enable or disable scan schedules"),
+    ("scan_schedules", "delete", "Delete scan schedules"),
+    ("scan_schedules", "execute", "Trigger a scheduled scan immediately (Run Now)"),
     # Assets
     ("assets", "create", "Manually add assets to the registry"),
     ("assets", "read", "View asset inventory and details"),
@@ -267,6 +276,11 @@ ROLE_PERMISSIONS = {
         "scans:purge",
         "scans:execute",
         "scans:cancel",
+        "scan_schedules:create",
+        "scan_schedules:read",
+        "scan_schedules:update",
+        "scan_schedules:delete",
+        "scan_schedules:execute",
         "assets:create",
         "assets:read",
         "assets:update",
@@ -309,6 +323,10 @@ ROLE_PERMISSIONS = {
         "scans:read_all",
         "scans:execute",
         "scans:cancel",
+        "scan_schedules:create",
+        "scan_schedules:read",
+        "scan_schedules:update",
+        "scan_schedules:execute",
         "assets:read",
         "assets:update",
         "assets:export",
@@ -330,6 +348,9 @@ ROLE_PERMISSIONS = {
     "viewer": [
         "scans:read",
         "scans:read_all",
+        # A viewer who can see scans can see what is scheduled to produce them.
+        # Read only: no create, update, delete or execute.
+        "scan_schedules:read",
         "assets:read",
         "findings:read",
         "reports:read",

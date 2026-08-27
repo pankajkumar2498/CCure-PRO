@@ -97,4 +97,13 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.purge_expired_audit_logs",
         "schedule": crontab(hour=4, minute=30),
     },
+    # Scan scheduling (Phase 1). Every minute, because one minute is the
+    # resolution the feature promises: a schedule set for 09:00 fires between
+    # 09:00 and 09:01. The cost of a tick that finds nothing is one indexed
+    # lookup against ix_scan_schedules_due, and the task takes a
+    # try-advisory-xact-lock so a second beat process cannot double-dispatch.
+    "run-due-scan-schedules-every-minute": {
+        "task": "ccure.tasks.run_due_scan_schedules",
+        "schedule": crontab(minute="*"),
+    },
 }

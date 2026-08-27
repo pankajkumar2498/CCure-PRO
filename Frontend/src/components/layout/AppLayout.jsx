@@ -163,6 +163,16 @@ const SIDEBAR_SECTIONS = [
         badgeColor: "info",
       },
       {
+        id: "scan-schedules",
+        label: "Scan Schedules",
+        Icon: IcoFile,
+        route: "/scan-schedules",
+        // scan_schedules:read, not scans:read. Seeing what is scheduled to
+        // point at a network unattended is its own question, and `viewer`
+        // holds this one deliberately.
+        permission: { resource: "scan_schedules", action: "read" },
+      },
+      {
         id: "scan-history",
         label: "Scan History",
         Icon: IcoFile,

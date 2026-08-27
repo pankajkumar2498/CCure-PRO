@@ -25,6 +25,7 @@ Notification Types
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
@@ -355,10 +356,17 @@ async def stream_notifications(
             },
         )
 
+        connected_at = time.monotonic()
         pubsub = redis_client.pubsub()
         try:
             await pubsub.subscribe(channel)
-            logger.info("Notification stream connected for user %s", user_id)
+            # A fresh connection every few tens of seconds, for one user, all
+            # day, is normal SSE churn (tab backgrounding, laptop sleep, a
+            # flaky hop) — logging it at INFO turns into most of the log
+            # volume once more than a couple of users are online. What is
+            # actually interesting is a connection that keeps *closing*
+            # abnormally fast; see the duration check in `finally` below.
+            logger.debug("Notification stream connected for user %s", user_id)
         except Exception as exc:
             logger.warning(
                 "Notification stream heartbeat-only mode for user %s: %s",
@@ -388,7 +396,29 @@ async def stream_notifications(
         finally:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
-            logger.info("Notification stream disconnected for user %s", user_id)
+            duration = time.monotonic() - connected_at
+            # The heartbeat cadence is 25s, so a healthy connection that has
+            # nothing else to send still lives past that mark. One closing
+            # sooner than that never got as far as its first heartbeat —
+            # that's the client aborting, a proxy dropping it, or an auth
+            # failure, not routine churn — and is worth a WARNING precisely
+            # because it's the signal that would otherwise be buried under
+            # routine reconnects logged at the same level.
+            if duration < 20:
+                logger.warning(
+                    "Notification stream for user %s closed after %.1fs, "
+                    "before its first heartbeat — investigate for a "
+                    "premature disconnect (client, proxy, or auth) rather "
+                    "than treating this as routine reconnect churn",
+                    user_id,
+                    duration,
+                )
+            else:
+                logger.debug(
+                    "Notification stream disconnected for user %s after %.1fs",
+                    user_id,
+                    duration,
+                )
 
     return StreamingResponse(
         event_generator(),

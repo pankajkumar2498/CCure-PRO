@@ -1393,7 +1393,7 @@ Source: `Backend/routers/admin_rbac.py`. Both require `roles:read`.
 > seeded by `db/migrate_production_schema.py` and cannot be modified through the
 > API.
 
-### Organizations — `/admin/organizations` (7 operations)
+### Organizations — `/admin/organizations` (8 operations)
 
 Source: `Backend/routers/admin_orgs.py`.
 
@@ -1406,6 +1406,49 @@ Source: `Backend/routers/admin_orgs.py`.
 | GET    | `/admin/organizations/{org_id}/scan-scope` | `organizations:read`                                     |
 | PUT    | `/admin/organizations/{org_id}/scan-scope` | `get_current_user` + in-body **superadmin** check        |
 | DELETE | `/admin/organizations/{org_id}`            | `get_current_user` + in-body superadmin check — see note |
+| POST   | `/admin/organizations/{org_id}/restore`    | `get_current_user` + in-body superadmin check            |
+
+#### `DELETE /admin/organizations/{org_id}` archives; it does not delete
+
+The verb is kept for compatibility, but the operation is **archival**. Thirty
+foreign keys reference `organizations` and every one is `ON DELETE CASCADE`, so
+the previous `db.delete(org)` destroyed the tenant's users, assets, scans, every
+`compliance_*` record including findings and evidence, and its entire audit
+trail — irreversibly, at exactly the moment an offboarding is most likely to be
+disputed.
+
+Archiving sets `archived_at`, `archived_by_user_id`, `archive_reason` (optional
+`?reason=` query parameter) and `is_active = False`, soft-deletes member
+accounts using the semantics `users` already has, and revokes every refresh
+session for the organization. Audited as `organization.archived` (severity
+`critical`).
+
+Access denial comes entirely from `is_active`, which is already enforced in
+`auth/jwt_handler.py` and `auth/router.py`; archival introduces no new
+authorization code and therefore no new bypass surface. `archived_at` is
+deliberately separate from `is_active` because deactivation is a reversible
+suspension used for billing and temporary lockout, and collapsing the two would
+make a suspended tenant indistinguishable from a terminated one.
+
+`GET /admin/organizations` excludes archived tenants unless
+`?include_archived=true`. The guard against removing the last organization now
+counts only non-archived ones.
+
+**There is no hard delete.** When a purge is built it will be a separate,
+explicitly named operation that first exports the trail and seals the tenant's
+hash chain. The `ON DELETE CASCADE` relationships are unchanged; this route
+simply no longer invokes them.
+
+#### `POST /admin/organizations/{org_id}/restore`
+
+Reverses an archival: clears the archive columns and sets `is_active = True`.
+Audited as `organization.restored`.
+
+Member accounts are **not** bulk-reactivated. Restoring an account is a decision
+about that person rather than about the tenancy — the same reason
+`POST /admin/users/{id}/restore` leaves an account inactive until explicitly
+reactivated — and a bulk reactivation here would quietly re-enable accounts that
+had been disabled for their own reasons before the organization was archived.
 
 #### `GET|PUT /admin/organizations/{org_id}/scan-scope`
 
@@ -1444,11 +1487,152 @@ existing sessions: `_load_auth_context_from_payload` re-checks
 `organization.is_active` on every request, and both refresh-token creation and
 rotation refuse for an inactive org.
 
-### Audit logs — `/admin/audit-logs` (1 operation)
+### Audit logs — `/admin/audit-logs` (4 operations)
 
-Source: `Backend/routers/audit.py`. Requires `audit:read`.
-Parameters: `user_id`, `action`, `resource_type`, `status`, `skip`,
-`limit` (1–1000, default 50).
+Source: `Backend/routers/audit.py`.
+
+| Method | Path                                  | Permission      | Purpose                       |
+| ------ | ------------------------------------- | --------------- | ----------------------------- |
+| GET    | `/admin/audit-logs`                   | `audit:read`    | List events, newest first     |
+| GET    | `/admin/audit-logs/export`            | `audit:export`  | Download the trail as CSV/PDF |
+| GET    | `/admin/audit-logs/retention/preview` | superadmin role | What retention would remove   |
+| GET    | `/admin/audit-logs/{event_id}`        | `audit:read`    | One event in full, for detail |
+
+Both literal paths are registered **before** `/{event_id}` in the module, and
+must stay there. FastAPI matches in registration order, so a literal path declared after a
+same-prefix dynamic one is unreachable — the export request would be read as a
+lookup for an event whose id is the string `export` and would answer 404.
+
+**List parameters** — all optional, all AND-ed together, all applied in the
+database:
+
+| Parameter               | Meaning                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `user_id`               | Exact actor id                                                                                               |
+| `action`                | Exact action, e.g. `user.login`                                                                              |
+| `resource_type`         | Exact resource type                                                                                          |
+| `status`                | Exact status, e.g. `success`, `blocked_malware`                                                              |
+| `severity`              | `info` \| `low` \| `medium` \| `high` \| `critical`; 422 on anything else                                    |
+| `ip_address`            | Source IP, **prefix** match (`10.180.6.` works)                                                              |
+| `range`                 | Named window: `today` \| `24h` \| `7d` \| `30d`; 422 on anything else                                        |
+| `date_from` / `date_to` | ISO 8601, inclusive. Naive values are read as UTC                                                            |
+| `q`                     | Search: event id and request id exactly, then action, resource type/id, IP, username and email as substrings |
+| `skip` / `limit`        | Offset pagination; `limit` 1–1000, default 50                                                                |
+
+`date_from`/`date_to` take precedence over `range`, so a UI that sends both
+while switching from a preset to a custom window gets the custom window.
+`date_from > date_to` is a 422.
+
+A **malformed `ip_address` returns an empty result, not a 500** — the column is
+matched as text rather than INET precisely so a typo in a filter box cannot
+raise `DataError` in the driver.
+
+**List vs detail responses differ deliberately** (spec §21). The list response
+carries what a table row needs; `org_id`, `user_full_name`, `timezone` and
+`session_id` are detail-only, because at 250 rows a page they are pure weight.
+
+`{event_id}` answers **404 for an event in another organisation**, not 403: a
+403 would confirm the id exists somewhere, which is an existence oracle over
+other tenants' audit trails. A superadmin sees every organisation; everyone
+else sees events whose `org_id` — or whose actor's `org_id` — is their own.
+
+There is deliberately **no POST, PUT, PATCH or DELETE** on this prefix. Audit
+rows are written only by `core.audit.log_audit_event`, from the endpoint that
+performed the action.
+
+#### Export — `GET /admin/audit-logs/export`
+
+Takes **every parameter the list endpoint takes** except `skip`/`limit`, applied
+through the same `_scoped_query` and `_apply_filters`, plus:
+
+| Parameter | Meaning                                                                   |
+| --------- | ------------------------------------------------------------------------- |
+| `format`  | `csv` (default) or `pdf`; 422 on anything else                            |
+| `verify`  | Default **true**. Recompute every stored `record_hash` and report per row |
+
+Rate limited to **5/minute**. Requires `audit:export`, held by `superadmin` and
+`org_admin` only.
+
+**Integrity labelling.** Every row carries an `integrity` column, and a non-NULL
+`record_hash` is never on its own enough to earn the word _verified_ — the
+stored hash is the value under suspicion, not the evidence:
+
+| Value                 | Meaning                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| `verified`            | Recomputed through the database's own canonical function; it matched |
+| `INTEGRITY_FAILURE`   | Recomputed; it did **not** match                                     |
+| `legacy_unverifiable` | No `record_hash` — predates the tamper-evidence chain                |
+| `not_verified`        | Hash present, deliberately not checked (`verify=false`)              |
+
+Verification calls `audit_chain.audit_record_hash_v1`, the same SQL function the
+insert trigger uses. There is no Python reimplementation: two definitions of a
+canonical form drift, and drift is indistinguishable from tampering.
+
+Both formats open with a `#`-prefixed preamble carrying the filters, the row
+count, the four counts above, and a sentence naming the verification mode in
+words. An export produced with `verify=false` says **"VERIFICATION WAS NOT
+PERFORMED"** — a file that merely omits the claim reads, to anyone who did not
+issue the request, exactly like one that made it.
+
+**On an integrity failure the export is still produced, and is marked in five
+places**: the row's `integrity` value, a non-zero count in the preamble,
+`X-Audit-Integrity: FAILED`, an `INTEGRITY-FAILURE` infix in the filename, and
+`status="failure"` on the `audit.log_exported` event. Refusing outright would
+deny an investigator the evidence they came for; a quiet 200 would launder it.
+
+**Response headers**: `X-Audit-Integrity` (`VERIFIED` | `FAILED` |
+`NOT_VERIFIED`), `X-Audit-Export-Rows`, `X-Audit-Verification-Mode`
+(`performed` | `not_requested` | `unavailable`), and `Cache-Control: no-store`.
+
+**The row cap refuses; it never truncates.** Over `AUDIT_EXPORT_MAX_ROWS`
+(50,000 for CSV) or `AUDIT_EXPORT_PDF_MAX_ROWS` (5,000, an independent number)
+the endpoint answers **413** naming the real count, and produces no partial
+file. A truncated audit extract looks complete, and "nothing happened after
+14:02" is precisely the conclusion it would invite.
+
+`audit.log_exported` is written and **committed before the first byte is sent**.
+Two reasons: the chain insert holds a `FOR UPDATE` lock on the organisation's
+chain head until commit, and `get_db` closes the request's session when the
+handler returns — which for a `StreamingResponse` is _before_ the body is
+produced, so an uncommitted event is silently discarded. The CSV generator
+therefore streams from a session of its own, read-only, opened after that
+commit.
+
+CSV cells beginning with `=`, `+`, `-`, `@`, TAB or CR are prefixed with one
+apostrophe so a spreadsheet cannot execute them; the preamble says so, and the
+transform is reversible. `user_agent` is attacker-chosen and reaches a cell.
+
+#### Retention preview — `GET /admin/audit-logs/retention/preview`
+
+Phase 6a. **Read-only, and there is deliberately no counterpart that deletes.**
+A purge runs from the beat schedule (`ccure.tasks.purge_expired_audit_logs`) or
+`scripts/audit/purge_audit_retention.py --apply`, so removing audit history
+needs shell access to the host as well as the role. A deletion a session cookie
+can reach is a deletion an XSS can reach.
+
+**Superadmin only, via `require_role`, not a permission.** A purge is not
+tenant-scoped in effect — it destroys a record other parties may need — and a
+permission check could not express this anyway, because superadmin holds every
+permission and any permission an org_admin also held would let them through.
+The same reasoning makes `/admin/email-domains` superadmin-only. Rate limited
+5/minute.
+
+Returns the retention configuration, the resolved cutoff (or why there is
+none), the newest backup and its age, every active hold, and per-organisation
+counts of eligible / legacy / chained events. When the privileged half is not
+installed it answers `{"installed": false, ...}` carrying the DBA command,
+rather than an error: not installed is a legitimate and safe state.
+
+**Scope: legacy rows only** — those with `record_hash IS NULL`, written before
+the tamper-evidence chain existed. Nothing can ever have linked to one, because
+`prev_hash` references a `record_hash` value and a legacy row has none, so
+removing them cannot break a chain for any dataset. Chained-record deletion is
+phase 6b; the append-only trigger refuses it on this path regardless.
+
+Retention ships **disabled** (`AUDIT_LOG_RETENTION_DAYS=0`) and stays that way
+until a period is agreed with the business or compliance owner. An
+`AUDIT_RETENTION_MIN_DAYS` floor (90) cannot be lowered by the setting it
+guards, because "9" for "90" is not a recoverable typo.
 
 ### NVD catalog — `/api/v1/admin` (2 operations)
 

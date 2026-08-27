@@ -147,3 +147,8 @@ Backend/data/feeds/
 # bind-mounts ./Backend at /app, so the default COMPLIANCE_EVIDENCE_DIR
 # (/app/data/compliance_evidence) writes real uploads into the working tree.
 Backend/data/compliance_evidence/
+
+# Runtime artefact of scripts/audit/preflight_schema_move.py --capture.
+# A point-in-time snapshot regenerated on each run; the fingerprints that
+# matter are recorded in docs/ and in the commit messages.
+Backend/scripts/audit/preflight_snapshot.json

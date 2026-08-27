@@ -543,6 +543,79 @@ class AppConfig:
         os.getenv("REFRESH_SESSION_RETENTION_DAYS", "90")
     )
 
+    # ── Audit-trail export ───────────────────────────────────────────────────
+    #
+    # Two caps, deliberately independent of each other.
+    #
+    # The CSV cap bounds an evidence extract. It is a hard refusal, not a
+    # truncation: an export that silently stops at the limit produces a file
+    # that looks complete, and "this person did nothing after 14:00" is exactly
+    # the wrong conclusion for a truncated audit extract to invite. Over the
+    # cap the endpoint answers 413 naming the count, and the caller narrows the
+    # date range.
+    #
+    # The PDF cap is much lower and is not a smaller version of the same
+    # number. 50,000 rows is a reasonable machine-readable extract and an
+    # unreadable document; the PDF is a summary somebody actually looks at, and
+    # rendering it is CPU and memory inside the request.
+    AUDIT_EXPORT_MAX_ROWS: int = int(os.getenv("AUDIT_EXPORT_MAX_ROWS", "50000"))
+    AUDIT_EXPORT_PDF_MAX_ROWS: int = int(os.getenv("AUDIT_EXPORT_PDF_MAX_ROWS", "5000"))
+
+    # Rows fetched per keyset page while streaming. Bounds the memory the
+    # export holds at once — the whole point of paginating rather than
+    # materialising the capped set — without making the round trips dominate.
+    AUDIT_EXPORT_PAGE_SIZE: int = int(os.getenv("AUDIT_EXPORT_PAGE_SIZE", "1000"))
+
+    # ── Audit-trail retention (phase 6a: legacy rows only) ───────────────────
+    #
+    # **Ships disabled and must stay disabled** until a retention period is
+    # agreed with the business/compliance owner. 0 means no purge runs at all;
+    # it is not a placeholder for "we will pick a number later in code". ISO
+    # 27001 A.5.33 and A.8.15 require a *defined* period and do not supply one,
+    # so inventing one here would be inventing a compliance position.
+    AUDIT_LOG_RETENTION_DAYS: int = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "0"))
+
+    # A floor the code refuses to go below whatever the environment says.
+    # AUDIT_LOG_RETENTION_DAYS is an operator-supplied number and a typo in it
+    # ("9" for "90") is unrecoverable — audit rows do not come back. This is
+    # the guard that makes the typo an error rather than a data loss.
+    AUDIT_RETENTION_MIN_DAYS: int = int(os.getenv("AUDIT_RETENTION_MIN_DAYS", "90"))
+
+    # One transaction per batch, never one for the whole run: the purge holds
+    # the organisation's chain-head lock for the duration of a batch, and a
+    # run-long transaction would block every audit write in that tenant until
+    # it finished.
+    AUDIT_RETENTION_BATCH_SIZE: int = int(
+        os.getenv("AUDIT_RETENTION_BATCH_SIZE", "1000")
+    )
+
+    # A ceiling per invocation. Retention runs daily, so a backlog drains over
+    # several nights rather than in one very long transaction sequence — and a
+    # misconfiguration removes at most this many rows before anyone looks.
+    AUDIT_RETENTION_MAX_ROWS_PER_RUN: int = int(
+        os.getenv("AUDIT_RETENTION_MAX_ROWS_PER_RUN", "50000")
+    )
+
+    # A purge is irreversible and `archive_mode` is off on this deployment, so
+    # recovery granularity is "since the last dump". The purge refuses to run
+    # without one this recent. 0 disables the check, and that fact is logged
+    # loudly rather than passing silently.
+    AUDIT_RETENTION_REQUIRE_BACKUP_HOURS: int = int(
+        os.getenv("AUDIT_RETENTION_REQUIRE_BACKUP_HOURS", "24")
+    )
+
+    # Where backup_db.ps1 writes. Read only to check the age of the newest
+    # dump; nothing here ever writes to or prunes this directory.
+    AUDIT_RETENTION_BACKUP_DIR: str = os.getenv(
+        "AUDIT_RETENTION_BACKUP_DIR", str(BACKEND_DIR.parent / "backups")
+    )
+
+    # Dry run is the default everywhere: the task, the CLI and the function all
+    # default to reporting what they would delete and writing nothing at all.
+    AUDIT_RETENTION_DRY_RUN: bool = (
+        os.getenv("AUDIT_RETENTION_DRY_RUN", "True").lower() == "true"
+    )
+
     # Database
     DATABASE_URL = DatabaseConfig.DATABASE_URL
     DATABASE_ENGINE_KWARGS = DatabaseConfig.get_engine_kwargs()

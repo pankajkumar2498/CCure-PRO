@@ -162,3 +162,73 @@ export const listAuditLogs = async (params) => {
   const response = await axiosInstance.get("/admin/audit-logs/", { params });
   return response.data;
 };
+
+// One audit event in full. The list response is deliberately lean, so the
+// detail view fetches the fields it needs (session id, timezone, org) rather
+// than the table carrying them for every row it renders.
+export const getAuditLogDetail = async (eventId) => {
+  const response = await axiosInstance.get(
+    `/admin/audit-logs/${encodeURIComponent(eventId)}`,
+  );
+  return response.data;
+};
+
+// Download the audit trail as CSV or PDF.
+//
+// Fetched with the access token rather than opened as a plain link: the
+// endpoint is bearer-authenticated, so a bare <a href> would be an
+// unauthenticated request and answer 403. The response comes back as a blob and
+// is saved with the filename the server chose, which is where the
+// INTEGRITY-FAILURE marker lives on a failed export.
+//
+// `verify` defaults to true and should stay that way. It is what makes the file
+// evidence rather than a copy: with it off, no stored hash is recomputed and the
+// export says so in its own header.
+// Phase 6a. What audit retention would remove, and everything standing in its
+// way — holds, the backup precondition, whether retention is enabled at all.
+//
+// Read-only. There is deliberately no counterpart that deletes: a purge runs
+// from the beat schedule or the CLI, so destroying audit history needs shell
+// access to the host as well as the permission. A deletion a session cookie
+// can reach is a deletion an XSS can reach.
+export const previewAuditRetention = async () => {
+  const response = await axiosInstance.get(
+    "/admin/audit-logs/retention/preview",
+  );
+  return response.data;
+};
+
+export const exportAuditLogs = async (params = {}, format = "csv") => {
+  const response = await axiosInstance.get("/admin/audit-logs/export", {
+    params: { ...params, format },
+    responseType: "blob",
+  });
+
+  const disposition = response.headers?.["content-disposition"] || "";
+  const match =
+    /filename\*=UTF-8''([^;]+)/i.exec(disposition) ||
+    /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match
+    ? decodeURIComponent(match[1].trim())
+    : `ccure-audit-log.${format === "pdf" ? "pdf" : "csv"}`;
+
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  return {
+    filename,
+    rows: Number(response.headers?.["x-audit-export-rows"] || 0),
+    // "FAILED" means at least one exported row's stored hash did not reproduce.
+    // Surfaced to the caller so the UI can say so rather than reporting a
+    // routine download.
+    integrity: response.headers?.["x-audit-integrity"] || "NOT_VERIFIED",
+    verificationMode:
+      response.headers?.["x-audit-verification-mode"] || "unavailable",
+  };
+};

@@ -418,7 +418,12 @@ def _require_self_registration_enabled() -> None:
 
 @router.get("/check-username")
 @limiter.limit("10/minute")
-def check_username(request: Request, q: str, db: Session = Depends(get_db)):
+def check_username(
+    request: Request,
+    response: Response,
+    q: str,
+    db: Session = Depends(get_db),
+):
     """
     Check whether a username is free.
 
@@ -440,7 +445,12 @@ def check_username(request: Request, q: str, db: Session = Depends(get_db)):
 
 @router.get("/check-email")
 @limiter.limit("10/minute")
-def check_email(request: Request, q: str, db: Session = Depends(get_db)):
+def check_email(
+    request: Request,
+    response: Response,
+    q: str,
+    db: Session = Depends(get_db),
+):
     """
     Report whether an email address can be used to register.
 
@@ -723,6 +733,7 @@ class ResendVerificationRequest(BaseModel):
 def verify_email(
     req: VerifyEmailRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -824,6 +835,7 @@ def verify_email(
 def resend_verification(
     req: ResendVerificationRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -1221,6 +1233,7 @@ def refresh(
 def forgot_password(
     req: ForgotPasswordRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -1344,6 +1357,7 @@ def forgot_password(
 def reset_password_endpoint(
     req: ResetPasswordRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -1517,7 +1531,10 @@ def decrypt_secret(encrypted_secret: str) -> str:
 @router.post("/login/send-email-otp")
 @limiter.limit("5/minute")
 def send_email_otp(
-    req: MfaEmailRequest, request: Request, db: Session = Depends(get_db)
+    req: MfaEmailRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
 ):
     """
     Generate and email a 6-digit verification code fallback.

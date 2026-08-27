@@ -210,6 +210,18 @@ PERMISSIONS = [
     ("organizations", "delete", "Delete organizations"),
     # Audit Logs
     ("audit", "read", "View the immutable audit log"),
+    # Taking a copy of the trail off the platform is a distinct act from
+    # reading it on screen, and is audited as one. It is a permission rather
+    # than a role check because the export is tenant-scoped -- unlike the
+    # platform-wide email-domain rules, which are superadmin-only for exactly
+    # the opposite reason.
+    ("audit", "export", "Export the audit log as CSV or PDF"),
+    # Phase 6a. Gates the read-only retention *preview* only -- no HTTP
+    # endpoint deletes an audit row. Execution is the beat task or the CLI,
+    # so destroying audit history needs shell access to the host as well as
+    # this permission. Superadmin only: a purge is not tenant-scoped in
+    # effect, because it destroys a record other parties may need.
+    ("audit", "purge", "Preview audit-log retention and what it would remove"),
     # Compliance
     ("compliance", "read", "View compliance dashboards and findings"),
     ("compliance", "scan", "Trigger manual compliance scans"),
@@ -278,6 +290,7 @@ ROLE_PERMISSIONS = {
         "settings:update",
         "dashboard:read",
         "audit:read",
+        "audit:export",
         "compliance:read",
         "compliance:scan",
         "compliance:manage_schedules",
@@ -386,6 +399,49 @@ def run_alembic_migrations():
         Base.metadata.create_all(bind=engine)
         with engine.begin() as conn:
             create_partitions(conn)
+
+        # Triggers and grants cannot be expressed in SQLAlchemy metadata, so
+        # `create_all` does not produce them and the migration that would has
+        # just been skipped by the `stamp head` below. Without this call a
+        # fresh install would come up with `audit_logs` fully mutable while an
+        # upgraded install was append-only — the fresh-vs-migrated divergence
+        # `tests/repo/test_schema_drift.py` exists to catch, except that test
+        # only compares columns and would not see a missing trigger.
+        with engine.begin() as conn:
+            from db.audit_hardening import apply_audit_immutability
+
+            result = apply_audit_immutability(conn)
+            print(
+                f"  ✓ audit_logs append-only enforcement applied "
+                f"({result['partitions']} partitions)."
+            )
+
+        # The tamper-evidence chain is deliberately NOT installed here, and it
+        # cannot be: it needs a dedicated `audit_chain_writer` role that owns
+        # the chain-head table and the SECURITY DEFINER hash functions, and this
+        # process connects as the application role, which holds neither
+        # SUPERUSER nor CREATEROLE. Measured on this deployment:
+        #
+        #     CREATE ROLE ...          -> permission denied to create role
+        #     ALTER TABLE ... OWNER TO -> must be able to SET ROLE
+        #
+        # Granting the application role CREATEROLE to close that gap would
+        # defeat the control it exists to build, since from PostgreSQL 16 a
+        # CREATEROLE role becomes admin of the roles it creates and could
+        # SET ROLE into the writer.
+        #
+        # So a fresh install comes up append-only but unchained, and says so
+        # here as well as on every subsequent boot via `log_audit_chain_state()`
+        # in main.py's lifespan. Silence would be the dangerous option: the
+        # deployment behaves normally while writing unverifiable events.
+        print(
+            "  ! audit tamper-evidence chain NOT installed — this requires a\n"
+            "    database administrator to run, as a superuser:\n"
+            "        psql -v ON_ERROR_STOP=1 -f "
+            "Backend/scripts/audit/bootstrap_chain.sql\n"
+            "    Until then audit events are append-only but carry no hash and\n"
+            "    cannot be cryptographically verified."
+        )
 
         print("  ✓ Schema bootstrap complete; stamping Alembic head.")
         command = [sys.executable, "-m", "alembic", "stamp", "head"]

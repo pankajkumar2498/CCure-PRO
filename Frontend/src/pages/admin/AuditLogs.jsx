@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
-import { listAuditLogs } from "../../api/admin";
+import {
+  listAuditLogs,
+  getAuditLogDetail,
+  exportAuditLogs,
+  previewAuditRetention,
+} from "../../api/admin";
+import { useAuth } from "../../context/AuthContext";
+import { can, isSuperAdmin } from "../../auth/permissions";
 import { formatDateTime } from "../../utils/date";
 import Button from "../../components/common/Button";
 import FormField from "../../components/common/FormField";
@@ -17,15 +24,42 @@ export default function AuditLogs() {
     action: "",
     resource_type: "",
     status: "",
+    severity: "",
+    user_id: "",
+    ip_address: "",
+    range: "",
+    date_from: "",
+    date_to: "",
+    q: "",
   });
+  // The search box is held separately from `filters` and copied across on a
+  // debounce. Bound directly, every keystroke would be a request — and at 100+
+  // concurrent users that is the most expensive query in the module fired per
+  // character typed.
+  const [searchInput, setSearchInput] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const [newEventsCount, setNewEventsCount] = useState(0);
   const [latestLogTime, setLatestLogTime] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [exporting, setExporting] = useState("");
   const isFirstLoad = useRef(true);
+
+  // The button is hidden without the permission, and that is a courtesy, not a
+  // control: `require_permission("audit", "export")` on the route is what
+  // actually refuses. Hiding it only stops offering an action that would 403.
+  const { user: currentUser } = useAuth();
+  const canExport = can(currentUser, "audit", "export");
+  // Superadmin only, matching the backend's `require_role("superadmin")`. A
+  // purge is not tenant-scoped in effect -- it destroys a record other parties
+  // may need -- so it is not expressed as a per-tenant permission.
+  const canSeeRetention = isSuperAdmin(currentUser);
+  const [retention, setRetention] = useState(null);
+  const [retentionOpen, setRetentionOpen] = useState(false);
 
   const loadData = useCallback(
     // `targetPage` has no default. It used to fall back to `page`, which made
@@ -68,6 +102,37 @@ export default function AuditLogs() {
     [filters, pageSize, pushToast],
   );
 
+  // Debounce the search box into the filter set. 350ms is long enough that a
+  // normal typing burst produces one request, short enough not to feel laggy.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((prev) => {
+        if (prev.q === searchInput) return prev; // no-op: don't re-render
+        return { ...prev, q: searchInput };
+      });
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Retention status. Fetched once, not polled: it changes when an operator
+  // edits configuration or a nightly job runs, not between renders.
+  useEffect(() => {
+    if (!canSeeRetention) return;
+    let cancelled = false;
+    previewAuditRetention()
+      .then((data) => {
+        if (!cancelled) setRetention(data);
+      })
+      .catch(() => {
+        // Silent. This is a status panel; a failure to load it must not
+        // interrupt reading the audit trail, which is what the page is for.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeRetention]);
+
   useEffect(() => {
     // Only show full-page loading spinner on initial mount when logs are empty.
     // Subsequent page navigations or refreshes load "quietly" (with table opacity indicator).
@@ -81,21 +146,25 @@ export default function AuditLogs() {
 
   // Background auto-refresh polling for new events
   // Background auto-refresh polling for new events
+  // The active filter set, serialised. The poll below has to re-subscribe
+  // whenever any filter changes, and there are now ten of them — listing each
+  // one in the dependency array is how a newly added filter silently stops
+  // being applied to the poll while still applying to the table.
+  const activeFilterKey = JSON.stringify(filters);
+
   useEffect(() => {
     if (!latestLogTime || loading) return;
 
-    const action = filters.action;
-    const resource_type = filters.resource_type;
-    const status = filters.status;
+    const activeFilters = Object.fromEntries(
+      Object.entries(JSON.parse(activeFilterKey)).filter(([, v]) => v !== ""),
+    );
 
     const checkNewLogs = async () => {
       try {
         const params = {
           skip: 0,
           limit: 10,
-          ...(action ? { action } : {}),
-          ...(resource_type ? { resource_type } : {}),
-          ...(status ? { status } : {}),
+          ...activeFilters,
         };
         const data = await listAuditLogs(params);
         if (data && data.logs && data.logs.length > 0) {
@@ -115,17 +184,165 @@ export default function AuditLogs() {
     const interval = setInterval(checkNewLogs, 5000); // Poll every 5 seconds for snappy feedback
 
     return () => clearInterval(interval);
-  }, [
-    latestLogTime,
-    filters.action,
-    filters.resource_type,
-    filters.status,
-    loading,
-  ]);
+  }, [latestLogTime, activeFilterKey, loading]);
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
     setPage(1);
+  };
+
+  // Export what is currently on screen — the same filters, never the whole
+  // table. Pagination is deliberately not passed: the export is capped and
+  // keyset-paginated server-side, so sending `skip`/`limit` would hand back one
+  // page of a file that is meant to be the whole filtered set.
+  const handleExport = async (format) => {
+    if (exporting) return;
+    setExporting(format);
+    try {
+      const params = Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== ""),
+      );
+      const result = await exportAuditLogs(params, format);
+      if (result.integrity === "FAILED") {
+        // Never a routine "downloaded" message. At least one exported row's
+        // stored hash did not reproduce, which means the trail was modified
+        // outside the application.
+        pushToast(
+          `${result.filename} downloaded - INTEGRITY FAILURE: at least one event did not match its stored hash. Investigate before relying on this trail.`,
+          "error",
+        );
+      } else if (result.verificationMode !== "performed") {
+        pushToast(
+          `${result.filename} downloaded (${result.rows} events). Verification was NOT performed for this export.`,
+          // "info", not "warning": there is no toast--warning style, and an
+          // unstyled toast is less legible than a plain one. The file itself
+          // says so in words, which is where it matters.
+          "info",
+        );
+      } else {
+        pushToast(
+          `${result.filename} downloaded (${result.rows} events, all verified).`,
+          "success",
+        );
+      }
+    } catch (err) {
+      // 413 is the row cap refusing rather than truncating, and its detail names
+      // the count and what to do about it, so it is shown verbatim.
+      let detail = err.response?.data?.detail;
+      if (!detail && err.response?.data instanceof Blob) {
+        try {
+          detail = JSON.parse(await err.response.data.text())?.detail;
+        } catch {
+          detail = "";
+        }
+      }
+      pushToast(detail || "Unable to export the audit log.", "error");
+    } finally {
+      setExporting("");
+    }
+  };
+
+  // Presets and a custom window are mutually exclusive: the backend gives
+  // explicit dates precedence, and leaving a stale preset set would make the
+  // active filter chips lie about what is being shown.
+  const handleRangePreset = (value) => {
+    setFilters((prev) => ({
+      ...prev,
+      range: value,
+      date_from: "",
+      date_to: "",
+    }));
+    setPage(1);
+  };
+
+  const handleCustomDate = (e) => {
+    setFilters((prev) => ({
+      ...prev,
+      range: "",
+      [e.target.name]: e.target.value,
+    }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setFilters({
+      action: "",
+      resource_type: "",
+      status: "",
+      severity: "",
+      user_id: "",
+      ip_address: "",
+      range: "",
+      date_from: "",
+      date_to: "",
+      q: "",
+    });
+    setPage(1);
+  };
+
+  const activeFilterCount = Object.entries(filters).filter(
+    ([, v]) => v !== "",
+  ).length;
+
+  const SEVERITY_STYLES = {
+    critical: { bg: "rgba(220, 38, 38, 0.15)", fg: "#f87171" },
+    high: { bg: "rgba(234, 88, 12, 0.15)", fg: "#fb923c" },
+    medium: { bg: "rgba(217, 119, 6, 0.15)", fg: "#fbbf24" },
+    low: { bg: "rgba(37, 99, 235, 0.15)", fg: "#60a5fa" },
+    info: { bg: "rgba(107, 114, 128, 0.15)", fg: "#9ca3af" },
+  };
+
+  const renderSeverity = (severity) => {
+    const key = String(severity || "info").toLowerCase();
+    const style = SEVERITY_STYLES[key] || SEVERITY_STYLES.info;
+    return (
+      <span
+        title={`Severity: ${key}`}
+        style={{
+          display: "inline-block",
+          background: style.bg,
+          color: style.fg,
+          border: `1px solid ${style.fg}33`,
+          borderRadius: 4,
+          padding: "1px 6px",
+          fontSize: "0.62rem",
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {key}
+      </span>
+    );
+  };
+
+  // The row carries a lean projection; the detail view needs fields the list
+  // deliberately omits (session id, timezone, org). Open immediately with what
+  // the row already has so the modal never appears empty, then fill in.
+  const openDetails = async (log, actInfo) => {
+    const seed = {
+      ...log,
+      _displayActor: getActorDisplay(log),
+      _displayTarget: renderAffectedObject(log),
+      _displayAction: actInfo.label,
+      _displayTime: formatDateTime(log.created_at),
+    };
+    setSelectedLog(seed);
+    setDetailsOpen(true);
+    setDetailsLoading(true);
+    try {
+      const full = await getAuditLogDetail(log.id);
+      setSelectedLog({ ...seed, ...full });
+    } catch (err) {
+      // The row data is already on screen and is correct as far as it goes.
+      // Losing the three detail-only fields is not worth closing the modal the
+      // reviewer just opened.
+      pushToast("Could not load full event detail.", "error");
+    } finally {
+      setDetailsLoading(false);
+    }
   };
 
   const renderAffectedObject = (log) => {
@@ -379,10 +596,158 @@ export default function AuditLogs() {
               }}
               disabled={refreshing}
             >
-              {refreshing ? "Syncing..." : "Sync Logs"}
+              {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
+            {canExport && (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport("csv")}
+                  disabled={Boolean(exporting)}
+                  title="Download the events matching the current filters, with every stored hash re-verified"
+                >
+                  {exporting === "csv" ? "Exporting..." : "Export CSV"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExport("pdf")}
+                  disabled={Boolean(exporting)}
+                  title="Summary document; the CSV carries the hashes"
+                >
+                  {exporting === "pdf" ? "Exporting..." : "Export PDF"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
+
+        {canSeeRetention && retention && (
+          <div
+            style={{
+              border: "1px solid rgba(148,163,184,0.25)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              marginBottom: 14,
+              fontSize: "0.78rem",
+            }}
+          >
+            <div
+              onClick={() => setRetentionOpen((open) => !open)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                cursor: "pointer",
+              }}
+            >
+              <strong>Retention</strong>
+              <span
+                style={{
+                  padding: "1px 8px",
+                  borderRadius: 4,
+                  fontWeight: 700,
+                  fontSize: "0.68rem",
+                  background: retention.installed
+                    ? retention.enabled
+                      ? "rgba(234,88,12,0.15)"
+                      : "rgba(107,114,128,0.15)"
+                    : "rgba(107,114,128,0.15)",
+                  color: retention.installed
+                    ? retention.enabled
+                      ? "#fb923c"
+                      : "#9ca3af"
+                    : "#9ca3af",
+                }}
+              >
+                {!retention.installed
+                  ? "NOT INSTALLED"
+                  : retention.enabled
+                    ? `${retention.retention_days} DAYS`
+                    : "DISABLED"}
+              </span>
+              <span style={{ opacity: 0.7 }}>
+                {retention.installed
+                  ? `${retention.would_delete_total ?? 0} event(s) would be removed`
+                  : "no purge can run"}
+              </span>
+              <span style={{ marginLeft: "auto", opacity: 0.6 }}>
+                {retentionOpen ? "▲" : "▼"}
+              </span>
+            </div>
+
+            {retentionOpen && (
+              <div style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.6 }}>
+                {!retention.installed ? (
+                  <div>{retention.detail}</div>
+                ) : (
+                  <>
+                    <div>Scope: {retention.scope}</div>
+                    <div>
+                      Cutoff: {retention.cutoff ?? "none — retention disabled"}
+                      {retention.reason ? ` (${retention.reason})` : ""}
+                    </div>
+                    <div>
+                      Floor: {retention.floor_days} days &middot; batch{" "}
+                      {retention.batch_size} &middot; max{" "}
+                      {retention.max_rows_per_run} per run &middot; dry run by
+                      default: {String(retention.dry_run_default)}
+                    </div>
+                    <div>
+                      Backup:{" "}
+                      {retention.backup?.newest
+                        ? `${retention.backup.newest}, ${retention.backup.age_hours}h old (required within ${retention.backup.required_within_hours}h)`
+                        : "none found — a purge would be refused"}
+                    </div>
+                    {Object.keys(retention.holds || {}).length > 0 && (
+                      <div style={{ color: "#fb923c" }}>
+                        Holds:{" "}
+                        {Object.entries(retention.holds)
+                          .map(([org, reason]) => `${org} (${reason})`)
+                          .join(", ")}
+                      </div>
+                    )}
+                    <table style={{ marginTop: 8, width: "100%" }}>
+                      <thead>
+                        <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                          <th>Organization</th>
+                          <th>Eligible</th>
+                          <th>Legacy</th>
+                          <th>Chained</th>
+                          <th>Hold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(retention.organizations || []).map((row) => (
+                          <tr key={row.org_id}>
+                            <td>{row.org_id}</td>
+                            <td>{row.eligible_count}</td>
+                            <td>{row.legacy_total}</td>
+                            <td>{row.chained_total}</td>
+                            <td>{row.on_hold ? "YES" : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ marginTop: 8, opacity: 0.7 }}>
+                      This panel is read-only. A purge runs from the scheduler
+                      or
+                      <code>
+                        {" "}
+                        scripts/audit/purge_audit_retention.py --apply
+                      </code>
+                      , so removing audit history needs host access as well as
+                      this role.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <div className="alert alert--error">{error}</div>}
 
@@ -444,9 +809,168 @@ export default function AuditLogs() {
               <option value="success">Success</option>
               <option value="failure">Failure</option>
               <option value="denied">Denied</option>
+              <option value="blocked_malware">Blocked (malware)</option>
+              <option value="scanner_unavailable">Scanner unavailable</option>
             </select>
           </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-severity"
+            label="Severity"
+          >
+            <select
+              id="filter-severity"
+              name="severity"
+              className="field-input"
+              value={filters.severity}
+              onChange={handleFilterChange}
+            >
+              <option value="">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Info</option>
+            </select>
+          </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-range"
+            label="Time Range"
+          >
+            <select
+              id="filter-range"
+              name="range"
+              className="field-input"
+              value={filters.range}
+              onChange={(e) => handleRangePreset(e.target.value)}
+            >
+              <option value="">All Time</option>
+              <option value="today">Today</option>
+              <option value="24h">Last 24 Hours</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+            </select>
+          </FormField>
+
+          <FormField
+            className="filter-group"
+            htmlFor="filter-search"
+            label="Search"
+          >
+            <input
+              id="filter-search"
+              type="search"
+              className="field-input"
+              placeholder="Event ID, request ID, user, IP…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              style={{ minWidth: 220 }}
+            />
+          </FormField>
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginTop: -4,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            {showAdvanced ? "▾ Fewer filters" : "▸ More filters"}
+          </Button>
+          {activeFilterCount > 0 && (
+            <>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""}{" "}
+                active
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear all
+              </Button>
+            </>
+          )}
+        </div>
+
+        {showAdvanced && (
+          <div className="filter-bar" style={{ marginBottom: 16 }}>
+            <FormField
+              className="filter-group"
+              htmlFor="filter-ip"
+              label="IP Address"
+            >
+              <input
+                id="filter-ip"
+                name="ip_address"
+                className="field-input"
+                placeholder="10.180.6. (prefix ok)"
+                value={filters.ip_address}
+                onChange={handleFilterChange}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-user"
+              label="User ID"
+            >
+              <input
+                id="filter-user"
+                name="user_id"
+                className="field-input"
+                placeholder="usr_…"
+                value={filters.user_id}
+                onChange={handleFilterChange}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-from"
+              label="From (UTC)"
+            >
+              <input
+                id="filter-from"
+                name="date_from"
+                type="datetime-local"
+                className="field-input"
+                value={filters.date_from}
+                onChange={handleCustomDate}
+              />
+            </FormField>
+
+            <FormField
+              className="filter-group"
+              htmlFor="filter-to"
+              label="To (UTC)"
+            >
+              <input
+                id="filter-to"
+                name="date_to"
+                type="datetime-local"
+                className="field-input"
+                value={filters.date_to}
+                onChange={handleCustomDate}
+              />
+            </FormField>
+          </div>
+        )}
 
         {total > 0 && (
           <div className="pagination-row" style={{ marginBottom: 16 }}>
@@ -548,8 +1072,8 @@ export default function AuditLogs() {
                 <th>User</th>
                 <th>Action</th>
                 <th>Target Resource</th>
-                <th>Status</th>
-                <th>IP &amp; Device</th>
+                <th>Status &amp; Severity</th>
+                <th>Source</th>
                 <th>Changes</th>
               </tr>
             </thead>
@@ -557,7 +1081,12 @@ export default function AuditLogs() {
               {logs.map((log) => {
                 const actInfo = getActionDisplay(log.action);
                 return (
-                  <tr key={log.id}>
+                  <tr
+                    key={log.id}
+                    onClick={() => openDetails(log, actInfo)}
+                    style={{ cursor: "pointer" }}
+                    title="Open full event details"
+                  >
                     <td
                       style={{
                         fontSize: 12,
@@ -600,18 +1129,28 @@ export default function AuditLogs() {
                     </td>
                     <td>{renderAffectedObject(log)}</td>
                     <td>
-                      <span
+                      <div
                         style={{
-                          color:
-                            log.status === "success"
-                              ? "var(--ok)"
-                              : "var(--danger)",
-                          fontSize: 12,
-                          fontWeight: 600,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: 3,
                         }}
                       >
-                        {log.status.toUpperCase()}
-                      </span>
+                        <span
+                          style={{
+                            color:
+                              log.status === "success"
+                                ? "var(--ok)"
+                                : "var(--danger)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {String(log.status || "").toUpperCase()}
+                        </span>
+                        {renderSeverity(log.severity)}
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -647,15 +1186,12 @@ export default function AuditLogs() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setSelectedLog({
-                              ...log,
-                              _displayActor: getActorDisplay(log),
-                              _displayTarget: renderAffectedObject(log),
-                              _displayAction: actInfo.label,
-                              _displayTime: formatDateTime(log.created_at),
-                            });
-                            setDetailsOpen(true);
+                          onClick={(e) => {
+                            // The row itself opens the same modal now. Without
+                            // this the click runs twice and fires two detail
+                            // requests for one user action.
+                            e.stopPropagation();
+                            openDetails(log, actInfo);
                           }}
                         >
                           View Changes
@@ -690,6 +1226,7 @@ export default function AuditLogs() {
         isOpen={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         log={selectedLog}
+        loading={detailsLoading}
       />
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>

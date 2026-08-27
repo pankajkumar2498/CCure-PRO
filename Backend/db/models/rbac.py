@@ -71,6 +71,31 @@ class Organization(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     settings = Column(JSONB, nullable=False, default=dict)
 
+    # ── Archival (end of tenancy) ─────────────────────────────────────────
+    # `DELETE /admin/organizations/{id}` archives rather than deletes. Thirty
+    # foreign keys reference this table and every one is ON DELETE CASCADE, so
+    # a hard delete destroys the tenant's assets, scans, compliance findings,
+    # evidence and — the reason this matters here — its entire audit trail,
+    # at exactly the moment an offboarding is most likely to be disputed.
+    #
+    # `archived_at` is deliberately NOT `is_active`. Deactivation is a
+    # reversible suspension used for billing and temporary lockout; archival
+    # is the end of the tenancy. Overloading one flag would make "reactivate"
+    # ambiguous and leave a suspended tenant indistinguishable from a
+    # terminated one in the audit trail.
+    #
+    # Archiving also sets `is_active = False`, which is what actually denies
+    # access: that flag is already enforced in auth/jwt_handler.py (twice) and
+    # auth/router.py, so archival needs no new authorisation code and adds no
+    # new bypass surface.
+    #
+    # `archived_by_user_id` carries no foreign key, for the same reason as
+    # AuditLog.actor_user_id: the record must survive the deletion of the
+    # account that made it.
+    archived_at = Column(TIMESTAMPTZ, nullable=True)
+    archived_by_user_id = Column(String(150), nullable=True)
+    archive_reason = Column(Text, nullable=True)
+
     # ── Authorised scan scope ─────────────────────────────────────────────────
     # The CIDR blocks this organisation is permitted to scan. Deliberately its
     # own column rather than a key in `settings`, because `settings` is

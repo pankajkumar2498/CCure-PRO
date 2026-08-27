@@ -225,21 +225,51 @@ class AuditLog(Base):
     """
     Immutable record of every user action — never updated or deleted.
 
-    ID: aud_{org_3chars}_{action}_{4rand}
-        e.g. aud_def_scan_created_x9v1
+    ID: a UUID4 string, e.g. "227f2894-6218-4c9f-8d8d-1445f14f3aa8".
+
+        This docstring previously described a Stripe-style readable id
+        (``aud_{org_3chars}_{action}_{4rand}``) and no such id was ever
+        generated: the column has always defaulted to ``gen_uuid``. The
+        description is corrected rather than the format, because the id is the
+        audit event's permanent external reference — it is quoted in support
+        tickets and correlated against application logs, so changing it would
+        invalidate every reference already given out. A UUID satisfies what the
+        identifier has to be: unique, immutable and searchable.
+
+        The column is ``String(200)`` for the same reason — it was sized for
+        the readable form. Left as-is; narrowing it would rewrite the table for
+        no functional gain.
 
     Required for: SOC 2 Type II, ISO/IEC 27001, PCI-DSS, HIPAA audits.
     """
 
     __tablename__ = "audit_logs"
+    # Only two indexes were added for the phase-3 filtering work, and both are
+    # here because a measurement demanded them. Everything else the API filters
+    # on was measured at 1,000,000 rows and left alone — see
+    # `scripts/audit/bench_audit_queries.py` and the notes on each entry.
     __table_args__ = (
         Index("ix_audit_logs_action", "action"),
         Index("ix_audit_logs_created", "created_at"),
         Index("ix_audit_logs_org_id", "org_id"),
+        # "What did this person do?" — filter by actor, newest first.
+        #
+        # Without the composite, the planner walks `created_at` DESC in every
+        # partition and filters, because a global ORDER BY forces Merge Append
+        # to pull from all of them even though one actor's rows live in exactly
+        # one partition. Measured at 1M rows: 468,174 buffer hits and 461ms for
+        # a 50-row page, with `Rows Removed by Filter: 90432` on partitions
+        # holding none of that user's rows. With it: 73 buffers, 4.4ms — 105x.
+        Index("ix_audit_logs_user_created", "user_id", "created_at"),
+        # The correlation lookup the request_id column exists for: pasting an
+        # id from a support ticket or an application log. Measured at 1M rows:
+        # 267ms parallel seq scan -> 2.9ms index scan, 92x.
+        Index("ix_audit_logs_request_id", "request_id"),
         {"postgresql_partition_by": "HASH (org_id)"},
     )
 
-    # Stripe-style readable ID: "aud_def_scan_created_x9v1"
+    # UUID4 — see the class docstring for why this is not the readable
+    # Stripe-style id the surrounding models use.
     id = Column(String(200), primary_key=True, default=gen_uuid)
 
     org_id = Column(
@@ -263,6 +293,51 @@ class AuditLog(Base):
     ip_address = Column(INET, nullable=True)
     user_agent = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default="success")
+
+    # Classified from `action` by core.audit_taxonomy.severity_for(). Stored
+    # rather than derived at read time so filtering by severity is an indexed
+    # column comparison instead of a scan through a Python mapping.
+    severity = Column(String(20), nullable=False, default="medium")
+
+    # The X-Request-ID of the API request that produced this event, from the
+    # correlation middleware in main.py. Nullable: events written by Celery
+    # tasks and other non-request paths legitimately have none.
+    request_id = Column(String(64), nullable=True)
+
+    # ── Immutable actor snapshot ──────────────────────────────────────────
+    # `user_id` above is a live foreign key and is legitimately set to NULL
+    # when an account is deleted, which is how 88 of the first 511 events on
+    # this deployment lost their actor. These two columns are frozen copies
+    # taken at write time and carry **no foreign key**, so no referential
+    # action can ever reach them.
+    #
+    # `actor_user_id` is deliberately the same type and length as `users.id`
+    # (String(150)) even though nothing enforces the relationship — it is the
+    # join key an investigator uses after the account is gone.
+    #
+    # There is deliberately no `actor_email`. Username is a short handle here;
+    # email is PII subject to erasure requests, and freezing it into an
+    # append-only, hash-chained table would create a record that by design
+    # cannot be erased.
+    actor_user_id = Column(String(150), nullable=True)
+    actor_username = Column(String(100), nullable=True)
+
+    # ── Tamper-evidence chain ─────────────────────────────────────────────
+    # SHA-256 hex, written by the `audit_logs_chain` trigger, never by the
+    # application. Both are NULL on rows that predate the chain — see
+    # `record_hash IS NULL` as the authoritative legacy test below.
+    #
+    # VARCHAR rather than CHAR(64): the values are always exactly 64
+    # characters, but `char(n)` carries blank-padding semantics and strips
+    # trailing spaces when cast to text, which is a hazard in a column whose
+    # entire purpose is exact comparison.
+    #
+    # `prev_hash` is NULL in exactly two situations, and they must not be
+    # confused: the organisation's genesis event (the first chained event,
+    # recorded in `audit_chain_heads.genesis_event_id`), and any legacy row.
+    # `record_hash IS NULL` separates them — legacy rows have no hash at all.
+    prev_hash = Column(String(64), nullable=True)
+    record_hash = Column(String(64), nullable=True)
 
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
 

@@ -98,6 +98,23 @@ services:
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
       - ./docs:/docs:ro
+      # Database dumps, read-only. `core/audit_retention.assert_backup_recent`
+      # refuses an audit purge without a dump newer than
+      # AUDIT_RETENTION_REQUIRE_BACKUP_HOURS, and reads nothing but the newest
+      # file's mtime -- it never writes here and never prunes, so `ro` costs
+      # nothing and removes the possibility.
+      #
+      # The target is `/backups` because that is exactly what the config
+      # default resolves to inside the container: AUDIT_RETENTION_BACKUP_DIR
+      # falls back to BACKEND_DIR.parent/"backups", and BACKEND_DIR is /app, so
+      # its parent is /. Mounting here means host and container agree with no
+      # environment variable to keep in step.
+      #
+      # On the host worker the same default resolves to the repository's own
+      # backups/ directory and is already correct -- which is why the scheduled
+      # purge was never affected, and why only container-run paths (the CLI and
+      # the retention preview endpoint) reported "none found".
+      - ./backups:/backups:ro
 
   # ── Background Worker ────────────────────────────────────────────────────
   worker:
@@ -164,6 +181,23 @@ services:
       - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
       - backend_venv:/app/.venv
       - ./Backend/reports:/app/reports
+      # Database dumps, read-only. `core/audit_retention.assert_backup_recent`
+      # refuses an audit purge without a dump newer than
+      # AUDIT_RETENTION_REQUIRE_BACKUP_HOURS, and reads nothing but the newest
+      # file's mtime -- it never writes here and never prunes, so `ro` costs
+      # nothing and removes the possibility.
+      #
+      # The target is `/backups` because that is exactly what the config
+      # default resolves to inside the container: AUDIT_RETENTION_BACKUP_DIR
+      # falls back to BACKEND_DIR.parent/"backups", and BACKEND_DIR is /app, so
+      # its parent is /. Mounting here means host and container agree with no
+      # environment variable to keep in step.
+      #
+      # On the host worker the same default resolves to the repository's own
+      # backups/ directory and is already correct -- which is why the scheduled
+      # purge was never affected, and why only container-run paths (the CLI and
+      # the retention preview endpoint) reported "none found".
+      - ./backups:/backups:ro
 
   # ── Celery Beat (scheduler) ───────────────────────────────────────────────
   #

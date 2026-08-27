@@ -13,6 +13,7 @@ import time
 from typing import Optional
 
 from auth.dependencies import get_current_user_flexible
+from core.audit import log_audit_event
 from db.base import get_db
 from db.models import Permission, RolePermission, Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -307,6 +308,41 @@ def _can_read_all_org_scans(user: User, db: Session) -> bool:
     ) is not None
 
 
+def _audit_report_download(db: Session, user: User, request, scan, report_format: str):
+    """
+    Record that a report left the platform.
+
+    This used to construct ``AuditLog(...)`` inline — a name never imported
+    into this module, so every call raised ``NameError`` before it could even
+    reach the three other defects in the same statement (``target`` and
+    ``details`` are not columns, and ``org_id`` is NOT NULL *and* part of the
+    primary key but was never set). A bare ``except Exception: pass`` swallowed
+    it, so **no report download ever produced an audit row**.
+
+    The exception guard stays, because failing to audit must not deny a caller
+    a file they are entitled to — but it now logs instead of discarding, which
+    is the part that let the original defect survive.
+    """
+    try:
+        log_audit_event(
+            db=db,
+            user=user,
+            action="report.downloaded",
+            resource_type="scan",
+            resource_id=str(scan.id),
+            changes={"scan_no": scan.scan_no, "format": report_format},
+            request=request,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log.warning(
+            "Could not audit report download for scan %s: %s",
+            scan.id,
+            exc.__class__.__name__,
+        )
+
+
 @router.get("/reports/download/{scan_id}")
 # Normally this streams a file that already exists, which is cheap. It
 # regenerates when the stored PDF is missing, and that path renders the whole
@@ -416,18 +452,7 @@ def download_report(
         else:
             generate_host_inventory_csv(payload, csv_path)
 
-        # Record Audit Log
-        try:
-            audit_entry = AuditLog(
-                user_id=user.id,
-                action="REPORT_DOWNLOAD",
-                target=f"Scan {scan.scan_no} (CSV)",
-                details=f"Downloaded CSV report for scan_id {scan_id}",
-            )
-            db.add(audit_entry)
-            db.commit()
-        except Exception:
-            pass
+        _audit_report_download(db, user, request, scan, "CSV")
 
         return FileResponse(path=csv_path, media_type="text/csv", filename=csv_filename)
 
@@ -462,18 +487,9 @@ def download_report(
     if os.path.commonpath([reports_root, pdf_path]) != reports_root:
         raise HTTPException(status_code=400, detail="Stored report path is invalid.")
 
-    # Record Audit Log
-    try:
-        audit_entry = AuditLog(
-            user_id=user.id,
-            action="REPORT_DOWNLOAD",
-            target=f"Scan {scan.scan_no} ({'Technical' if is_technical else 'Executive'} PDF)",
-            details=f"Downloaded PDF report for scan_id {scan_id}",
-        )
-        db.add(audit_entry)
-        db.commit()
-    except Exception:
-        pass
+    _audit_report_download(
+        db, user, request, scan, "technical_pdf" if is_technical else "executive_pdf"
+    )
 
     return FileResponse(
         path=pdf_path,

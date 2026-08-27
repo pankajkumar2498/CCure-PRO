@@ -1,0 +1,179 @@
+PRE-PHASE-4 BASELINE
+captured: 2026-08-24T17:19:41.397665+00:00
+database: ccure_test | role: ccure_user | pg: 18.3
+
+== ALEMBIC ==
+  revision: f5a6b7c8d9e0
+
+== ROW COUNTS ==
+  audit_logs       511
+  organizations    4
+  users            6
+  assets           5
+  scans            38
+
+== AUDIT: per-org distribution ==
+  org_default                315  2026-08-10 15:11:46.941307+00:00  ..  2026-08-24 16:03:06.550870+00:00
+  org_test_org.com           105  2026-08-17 09:24:35.714272+00:00  ..  2026-08-24 12:59:49.401304+00:00
+  org_self-service            91  2026-08-11 12:29:46.676537+00:00  ..  2026-08-19 08:52:11.684648+00:00
+  actor NULL: 88 | actor present: 423
+
+== AUDIT: per-partition ==
+  audit_logs_p1        105
+  audit_logs_p3        91
+  audit_logs_p7        315
+
+== AUDIT: action counts ==
+  user.login                                   success    232
+  user.logout                                  success    82
+  scan.created                                 success    38
+  scan.completed                               success    36
+  user.created                                 success    21
+  user.login_failed                            denied     15
+  user.verification_token_issued               success    12
+  user.profile_updated                         success    11
+  user.login_failed                            failure    8
+  user.session_revoked                         success    8
+  report.downloaded                            success    6
+  user.email_verified                          success    6
+  user.status_changed                          success    6
+  user.organization_changed                    success    4
+  user.preferences_updated                     success    4
+  user.role_changed                            success    4
+  user.approved                                success    3
+  user.forgot_password_requested               success    2
+  user.password_changed                        success    2
+  user.updated                                 success    2
+  admin.email_domain_rule_created              success    1
+  admin.email_domain_rule_deleted              success    1
+  admin.email_domain_rule_updated              success    1
+  organization.created                         success    1
+  probe.application_path                       success    1
+  probe.raw                                    success    1
+  user.locked                                  failure    1
+  user.password_change_failed                  denied     1
+  user.password_reset_completed                success    1
+
+== TRIGGER INVENTORY (audit_logs family) ==
+  audit_logs           audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs           audit_logs_no_truncate       STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p0        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p0        audit_logs_p0_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p1        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p1        audit_logs_p1_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p2        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p2        audit_logs_p2_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p3        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p3        audit_logs_p3_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p4        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p4        audit_logs_p4_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p5        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p5        audit_logs_p5_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p6        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p6        audit_logs_p6_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  audit_logs_p7        audit_logs_immutable         ROW        -> audit_logs_reject_mutation
+  audit_logs_p7        audit_logs_p7_no_truncate    STATEMENT  -> audit_logs_reject_truncate
+  total: 18
+
+== OWNERSHIP / PRIVILEGES ==
+  owner audit_logs           ccure_user
+  owner audit_logs_id_seq    ccure_user
+  owner audit_logs_p0        ccure_user
+  owner audit_logs_p0_action_idx ccure_user
+  owner audit_logs_p0_created_at_idx ccure_user
+  owner audit_logs_p0_created_at_idx1 ccure_user
+  owner audit_logs_p0_org_id_idx ccure_user
+  owner audit_logs_p0_pkey   ccure_user
+  owner audit_logs_p0_request_id_idx ccure_user
+  owner audit_logs_p0_user_created_idx ccure_user
+  owner audit_logs_p0_user_id_idx ccure_user
+  owner audit_logs_p1        ccure_user
+  owner audit_logs_p1_action_idx ccure_user
+  owner audit_logs_p1_created_at_idx ccure_user
+  owner audit_logs_p1_created_at_idx1 ccure_user
+  owner audit_logs_p1_org_id_idx ccure_user
+  owner audit_logs_p1_pkey   ccure_user
+  owner audit_logs_p1_request_id_idx ccure_user
+  owner audit_logs_p1_user_created_idx ccure_user
+  owner audit_logs_p1_user_id_idx ccure_user
+  owner audit_logs_p2        ccure_user
+  owner audit_logs_p2_action_idx ccure_user
+  owner audit_logs_p2_created_at_idx ccure_user
+  owner audit_logs_p2_created_at_idx1 ccure_user
+  owner audit_logs_p2_org_id_idx ccure_user
+  owner audit_logs_p2_pkey   ccure_user
+  owner audit_logs_p2_request_id_idx ccure_user
+  owner audit_logs_p2_user_created_idx ccure_user
+  owner audit_logs_p2_user_id_idx ccure_user
+  owner audit_logs_p3        ccure_user
+  owner audit_logs_p3_action_idx ccure_user
+  owner audit_logs_p3_created_at_idx ccure_user
+  owner audit_logs_p3_created_at_idx1 ccure_user
+  owner audit_logs_p3_org_id_idx ccure_user
+  owner audit_logs_p3_pkey   ccure_user
+  owner audit_logs_p3_request_id_idx ccure_user
+  owner audit_logs_p3_user_created_idx ccure_user
+  owner audit_logs_p3_user_id_idx ccure_user
+  owner audit_logs_p4        ccure_user
+  owner audit_logs_p4_action_idx ccure_user
+  owner audit_logs_p4_created_at_idx ccure_user
+  owner audit_logs_p4_created_at_idx1 ccure_user
+  owner audit_logs_p4_org_id_idx ccure_user
+  owner audit_logs_p4_pkey   ccure_user
+  owner audit_logs_p4_request_id_idx ccure_user
+  owner audit_logs_p4_user_created_idx ccure_user
+  owner audit_logs_p4_user_id_idx ccure_user
+  owner audit_logs_p5        ccure_user
+  owner audit_logs_p5_action_idx ccure_user
+  owner audit_logs_p5_created_at_idx ccure_user
+  owner audit_logs_p5_created_at_idx1 ccure_user
+  owner audit_logs_p5_org_id_idx ccure_user
+  owner audit_logs_p5_pkey   ccure_user
+  owner audit_logs_p5_request_id_idx ccure_user
+  owner audit_logs_p5_user_created_idx ccure_user
+  owner audit_logs_p5_user_id_idx ccure_user
+  owner audit_logs_p6        ccure_user
+  owner audit_logs_p6_action_idx ccure_user
+  owner audit_logs_p6_created_at_idx ccure_user
+  owner audit_logs_p6_created_at_idx1 ccure_user
+  owner audit_logs_p6_org_id_idx ccure_user
+  owner audit_logs_p6_pkey   ccure_user
+  owner audit_logs_p6_request_id_idx ccure_user
+  owner audit_logs_p6_user_created_idx ccure_user
+  owner audit_logs_p6_user_id_idx ccure_user
+  owner audit_logs_p7        ccure_user
+  owner audit_logs_p7_action_idx ccure_user
+  owner audit_logs_p7_created_at_idx ccure_user
+  owner audit_logs_p7_created_at_idx1 ccure_user
+  owner audit_logs_p7_org_id_idx ccure_user
+  owner audit_logs_p7_pkey   ccure_user
+  owner audit_logs_p7_request_id_idx ccure_user
+  owner audit_logs_p7_user_created_idx ccure_user
+  owner audit_logs_p7_user_id_idx ccure_user
+  owner audit_logs_pkey      ccure_user
+  owner organizations        ccure_user
+  owner users                ccure_user
+  ccure_user grants on audit_logs: ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+  roles: ['admin', 'ccure_user', 'postgres']
+  ccure_user: super/createrole/bypassrls: (False, False, False)
+
+== INDEXES on audit_logs parent ==
+  audit_logs_pkey                    valid=True attached_partitions=8
+  ix_audit_logs_action               valid=True attached_partitions=8
+  ix_audit_logs_created              valid=True attached_partitions=8
+  ix_audit_logs_created_at           valid=True attached_partitions=8
+  ix_audit_logs_org_id               valid=True attached_partitions=8
+  ix_audit_logs_request_id           valid=True attached_partitions=8
+  ix_audit_logs_user_created         valid=True attached_partitions=8
+  ix_audit_logs_user_id              valid=True attached_partitions=8
+
+== CHAIN OBJECTS: confirm NOT installed ==
+  role audit_chain_writer exists : False
+  table audit_chain_heads exists : False
+  function audit_canonical_payload_v1   exists : False
+  function audit_record_hash_v1         exists : False
+  function audit_chain_advance_v1       exists : False
+  function audit_chain_seed_legacy_v1   exists : False
+  trigger audit_logs_chain exists: False
+  columns actor_user_id/actor_username/prev_hash/record_hash present: NONE
+  organizations archival columns: NONE

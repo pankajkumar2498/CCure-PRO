@@ -38,6 +38,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -1340,9 +1341,6 @@ def update_asset(
     if body.custom_attributes is not None:
         asset.custom_attributes = body.custom_attributes
 
-    db.commit()
-
-    # Use the real audit function signature
     log_audit_event(
         db=db,
         user=user,
@@ -1351,6 +1349,11 @@ def update_asset(
         resource_id=asset_id,
         status="success",
     )
+    # Audited before the commit, so the change and its record land together.
+    # This call used to sit after the commit, which meant the row was flushed
+    # and then discarded when `get_db` closed the session — `asset_updated`
+    # appeared zero times in the first 511 events on this deployment.
+    db.commit()
 
     return {"success": True, "id": asset_id}
 
@@ -1545,6 +1548,7 @@ def _amt_int(value) -> int | None:
 @limiter.limit("3/minute")
 def import_amt_inventory(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
@@ -1707,14 +1711,6 @@ def import_amt_inventory(
         db.add(db_record)
         inserted_count += 1
 
-    db.commit()
-
-    # 5. Dispatch background task for reconciliation
-    from core.tasks import reconcile_amt_inventory_task
-
-    task = reconcile_amt_inventory_task.delay(org_id=org)
-
-    # 6. Audit Log
     log_audit_event(
         db=db,
         user=user,
@@ -1723,5 +1719,15 @@ def import_amt_inventory(
         resource_id=org,
         status="success",
     )
+    # 5. Commit the replacement and its audit event together. The DELETE and the
+    # INSERTs already shared one transaction so a partial failure leaves the old
+    # inventory intact; the audit event now shares it too.
+    db.commit()
+
+    # 6. Dispatch reconciliation only after the commit — the worker reads these
+    # rows, and handing it an uncommitted import is a race it cannot win.
+    from core.tasks import reconcile_amt_inventory_task
+
+    task = reconcile_amt_inventory_task.delay(org_id=org)
 
     return {"success": True, "records_imported": inserted_count, "task_id": task.id}

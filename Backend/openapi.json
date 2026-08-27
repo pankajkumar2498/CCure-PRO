@@ -3211,9 +3211,11 @@
     },
     "/admin/audit-logs": {
       "get": {
+        "description": "List audit events, newest first, filtered and paginated in the database.",
         "operationId": "list_audit_logs_admin_audit_logs_get",
         "parameters": [
           {
+            "description": "Exact actor id",
             "in": "query",
             "name": "user_id",
             "required": false,
@@ -3226,10 +3228,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact actor id",
               "title": "User Id"
             }
           },
           {
+            "description": "Exact action, e.g. user.login",
             "in": "query",
             "name": "action",
             "required": false,
@@ -3242,10 +3246,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact action, e.g. user.login",
               "title": "Action"
             }
           },
           {
+            "description": "Exact resource type",
             "in": "query",
             "name": "resource_type",
             "required": false,
@@ -3258,10 +3264,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact resource type",
               "title": "Resource Type"
             }
           },
           {
+            "description": "Exact status, e.g. success",
             "in": "query",
             "name": "status",
             "required": false,
@@ -3274,7 +3282,118 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact status, e.g. success",
               "title": "Status"
+            }
+          },
+          {
+            "description": "info|low|medium|high|critical",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "info|low|medium|high|critical",
+              "title": "Severity"
+            }
+          },
+          {
+            "description": "Source IP, prefix match",
+            "in": "query",
+            "name": "ip_address",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Source IP, prefix match",
+              "title": "Ip Address"
+            }
+          },
+          {
+            "description": "Named window: today|24h|7d|30d",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named window: today|24h|7d|30d",
+              "title": "Range"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Search event id, request id, action, resource, IP, username, email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search event id, request id, action, resource, IP, username, email",
+              "title": "Q"
             }
           },
           {
@@ -3334,9 +3453,11 @@
     },
     "/admin/audit-logs/": {
       "get": {
+        "description": "List audit events, newest first, filtered and paginated in the database.",
         "operationId": "list_audit_logs_admin_audit_logs__get",
         "parameters": [
           {
+            "description": "Exact actor id",
             "in": "query",
             "name": "user_id",
             "required": false,
@@ -3349,10 +3470,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact actor id",
               "title": "User Id"
             }
           },
           {
+            "description": "Exact action, e.g. user.login",
             "in": "query",
             "name": "action",
             "required": false,
@@ -3365,10 +3488,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact action, e.g. user.login",
               "title": "Action"
             }
           },
           {
+            "description": "Exact resource type",
             "in": "query",
             "name": "resource_type",
             "required": false,
@@ -3381,10 +3506,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact resource type",
               "title": "Resource Type"
             }
           },
           {
+            "description": "Exact status, e.g. success",
             "in": "query",
             "name": "status",
             "required": false,
@@ -3397,7 +3524,118 @@
                   "type": "null"
                 }
               ],
+              "description": "Exact status, e.g. success",
               "title": "Status"
+            }
+          },
+          {
+            "description": "info|low|medium|high|critical",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "info|low|medium|high|critical",
+              "title": "Severity"
+            }
+          },
+          {
+            "description": "Source IP, prefix match",
+            "in": "query",
+            "name": "ip_address",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Source IP, prefix match",
+              "title": "Ip Address"
+            }
+          },
+          {
+            "description": "Named window: today|24h|7d|30d",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named window: today|24h|7d|30d",
+              "title": "Range"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Search event id, request id, action, resource, IP, username, email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search event id, request id, action, resource, IP, username, email",
+              "title": "Q"
             }
           },
           {
@@ -3450,6 +3688,320 @@
           }
         ],
         "summary": "List Audit Logs",
+        "tags": [
+          "Audit Logs"
+        ]
+      }
+    },
+    "/admin/audit-logs/export": {
+      "get": {
+        "description": "Export the audit trail the caller can see, as CSV or PDF.\n\nTaking a copy of the trail off the platform is itself an auditable event,\nand it is written and **committed before the first byte is sent**. Two\nreasons, and both are load-bearing:\n\n* The chain insert holds a ``FOR UPDATE`` lock on the organisation's row in\n  ``audit_chain_heads`` until commit. Streaming inside that transaction\n  would hold it for the whole download — seconds to minutes on a slow\n  client — and block every other audit write in the tenant meanwhile.\n* ``get_db`` closes the request's session when the handler returns, which\n  for a ``StreamingResponse`` is *before* the body is produced. An event\n  written and not yet committed at that point is silently discarded.\n\nThe generator therefore opens its own read-only session. That is not the\nsecond-session pattern ``core/audit.py`` prohibits: it writes nothing, and\nthe request's transaction is already committed when it starts, so there is\nno lock for it to deadlock against.",
+        "operationId": "export_audit_logs_admin_audit_logs_export_get",
+        "parameters": [
+          {
+            "description": "csv|pdf",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "csv",
+              "description": "csv|pdf",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Recompute every stored record_hash and report the result per row. Default, and the mode an evidence export should use. Setting it false produces a file in which nothing is verified, and says so.",
+            "in": "query",
+            "name": "verify",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Recompute every stored record_hash and report the result per row. Default, and the mode an evidence export should use. Setting it false produces a file in which nothing is verified, and says so.",
+              "title": "Verify",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Exact actor id",
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact actor id",
+              "title": "User Id"
+            }
+          },
+          {
+            "description": "Exact action, e.g. user.login",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact action, e.g. user.login",
+              "title": "Action"
+            }
+          },
+          {
+            "description": "Exact resource type",
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact resource type",
+              "title": "Resource Type"
+            }
+          },
+          {
+            "description": "Exact status, e.g. success",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact status, e.g. success",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "info|low|medium|high|critical",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "info|low|medium|high|critical",
+              "title": "Severity"
+            }
+          },
+          {
+            "description": "Source IP, prefix match",
+            "in": "query",
+            "name": "ip_address",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Source IP, prefix match",
+              "title": "Ip Address"
+            }
+          },
+          {
+            "description": "Named window: today|24h|7d|30d",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Named window: today|24h|7d|30d",
+              "title": "Range"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "ISO 8601, inclusive",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601, inclusive",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Same search as the list endpoint",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Same search as the list endpoint",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Audit Logs",
+        "tags": [
+          "Audit Logs"
+        ]
+      }
+    },
+    "/admin/audit-logs/retention/preview": {
+      "get": {
+        "description": "What audit retention would remove, and everything standing in its way.\n\nRead-only in the strongest sense available: it reaches the database through\n`audit_retention.preview_legacy_v1`, a STABLE function, and the application\nrole holds no privilege that could delete an audit row whatever this\nhandler does.",
+        "operationId": "preview_audit_retention_admin_audit_logs_retention_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Audit Retention",
+        "tags": [
+          "Audit Logs"
+        ]
+      }
+    },
+    "/admin/audit-logs/{event_id}": {
+      "get": {
+        "description": "One audit event in full, for the detail view.\n\nAn event outside the caller's tenant answers 404 rather than 403: the two\nare distinguishable, and 403 would confirm that an event with this id\nexists in some other organisation.",
+        "operationId": "get_audit_log_admin_audit_logs__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Audit Log",
         "tags": [
           "Audit Logs"
         ]
@@ -4101,7 +4653,20 @@
     },
     "/admin/organizations": {
       "get": {
+        "description": "List organisations. Archived tenants are excluded unless asked for.\n\nAn archived organisation is not deleted — it and all of its data are still\npresent — so it has to be filtered out here or the list would show\nterminated tenants alongside live ones. `include_archived=true` is how a\nsuperadmin finds one to restore.",
         "operationId": "list_organizations_admin_organizations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4110,6 +4675,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -4167,7 +4742,20 @@
     },
     "/admin/organizations/": {
       "get": {
+        "description": "List organisations. Archived tenants are excluded unless asked for.\n\nAn archived organisation is not deleted — it and all of its data are still\npresent — so it has to be filtered out here or the list would show\nterminated tenants alongside live ones. `include_archived=true` is how a\nsuperadmin finds one to restore.",
         "operationId": "list_organizations_admin_organizations__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4176,6 +4764,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -4233,7 +4831,8 @@
     },
     "/admin/organizations/{org_id}": {
       "delete": {
-        "operationId": "delete_organization_admin_organizations__org_id__delete",
+        "description": "End a tenancy by **archiving** the organisation. Nothing is deleted.\n\nThis route used to call ``db.delete(org)``. Thirty foreign keys reference\n``organizations`` and every one of them is ``ON DELETE CASCADE``, so that\nsingle statement destroyed the tenant's users, assets, scans, every\n``compliance_*`` record including findings and evidence, and its entire\naudit trail — irreversibly, with no undo, at exactly the moment an\noffboarding is most likely to be disputed. For an audit and compliance\nproduct that is the wrong default.\n\nArchiving sets ``is_active = False`` as well as ``archived_at``, and that\nflag is what actually denies access: it is already enforced in\n``auth/jwt_handler.py`` (twice) and ``auth/router.py``. No new\nauthorisation code is introduced here, and therefore no new bypass surface.\n\n``archived_at`` is deliberately not ``is_active`` on its own —\ndeactivation is a reversible suspension used for billing and temporary\nlockout, archival is the end of the tenancy, and collapsing the two makes\na suspended tenant indistinguishable from a terminated one in the audit\ntrail.\n\nHard deletion is **not** available. When it is built it will be a separate,\nexplicitly named purge that first exports the trail and seals the tenant's\nhash chain — the same delete-then-purge shape ``users`` already has.\n\nThe ``ON DELETE CASCADE`` relationships are left exactly as they were; this\nroute simply stops invoking them.",
+        "operationId": "archive_organization_admin_organizations__org_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -4242,6 +4841,22 @@
             "schema": {
               "title": "Org Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
             }
           }
         ],
@@ -4270,7 +4885,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Delete Organization",
+        "summary": "Archive Organization",
         "tags": [
           "Organization Management"
         ]
@@ -4331,7 +4946,8 @@
     },
     "/admin/organizations/{org_id}/": {
       "delete": {
-        "operationId": "delete_organization_admin_organizations__org_id___delete",
+        "description": "End a tenancy by **archiving** the organisation. Nothing is deleted.\n\nThis route used to call ``db.delete(org)``. Thirty foreign keys reference\n``organizations`` and every one of them is ``ON DELETE CASCADE``, so that\nsingle statement destroyed the tenant's users, assets, scans, every\n``compliance_*`` record including findings and evidence, and its entire\naudit trail — irreversibly, with no undo, at exactly the moment an\noffboarding is most likely to be disputed. For an audit and compliance\nproduct that is the wrong default.\n\nArchiving sets ``is_active = False`` as well as ``archived_at``, and that\nflag is what actually denies access: it is already enforced in\n``auth/jwt_handler.py`` (twice) and ``auth/router.py``. No new\nauthorisation code is introduced here, and therefore no new bypass surface.\n\n``archived_at`` is deliberately not ``is_active`` on its own —\ndeactivation is a reversible suspension used for billing and temporary\nlockout, archival is the end of the tenancy, and collapsing the two makes\na suspended tenant indistinguishable from a terminated one in the audit\ntrail.\n\nHard deletion is **not** available. When it is built it will be a separate,\nexplicitly named purge that first exports the trail and seals the tenant's\nhash chain — the same delete-then-purge shape ``users`` already has.\n\nThe ``ON DELETE CASCADE`` relationships are left exactly as they were; this\nroute simply stops invoking them.",
+        "operationId": "archive_organization_admin_organizations__org_id___delete",
         "parameters": [
           {
             "in": "path",
@@ -4340,6 +4956,22 @@
             "schema": {
               "title": "Org Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
             }
           }
         ],
@@ -4368,7 +5000,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Delete Organization",
+        "summary": "Archive Organization",
         "tags": [
           "Organization Management"
         ]
@@ -4422,6 +5054,98 @@
           }
         ],
         "summary": "Update Organization",
+        "tags": [
+          "Organization Management"
+        ]
+      }
+    },
+    "/admin/organizations/{org_id}/restore": {
+      "post": {
+        "description": "Reverse an archival.\n\nMember accounts are **not** silently reactivated. Archiving soft-deleted\nthem, and restoring an account is a decision about that person, not about\nthe tenancy — the same reason ``admin_users.restore_user`` leaves a\nrestored account inactive until someone explicitly reactivates it. A bulk\nreactivation here would quietly re-enable an account that had been disabled\nfor its own reasons before the organisation was archived.",
+        "operationId": "restore_organization_admin_organizations__org_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Organization",
+        "tags": [
+          "Organization Management"
+        ]
+      }
+    },
+    "/admin/organizations/{org_id}/restore/": {
+      "post": {
+        "description": "Reverse an archival.\n\nMember accounts are **not** silently reactivated. Archiving soft-deleted\nthem, and restoring an account is a decision about that person, not about\nthe tenancy — the same reason ``admin_users.restore_user`` leaves a\nrestored account inactive until someone explicitly reactivates it. A bulk\nreactivation here would quietly re-enable an account that had been disabled\nfor its own reasons before the organisation was archived.",
+        "operationId": "restore_organization_admin_organizations__org_id__restore__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Organization",
         "tags": [
           "Organization Management"
         ]

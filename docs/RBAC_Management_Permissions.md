@@ -24,8 +24,8 @@ and `Frontend/src/auth/permissions.js` (client-side mirror).
 >
 > ```
 > scans 10 · assets 5 · findings 3 · reports 3 · users 4 · credentials 3
-> settings 2 · dashboard 1 · roles 4 · organizations 4 · audit 1 · compliance 11
-> = 51
+> settings 2 · dashboard 1 · roles 4 · organizations 4 · audit 3 · compliance 11
+> = 53
 > ```
 >
 > The source code is authoritative. Any figure other than 51 in any document,
@@ -197,11 +197,28 @@ Added by migration `f7g8h9i0j1k2`.
 > its users, assets, scans, web scans, audit logs, refresh sessions, AMT records
 > and network links, so aligning it with the rest of the router is worth doing.
 
-### `audit` — 1 atom
+### `audit` — 3 atoms
 
-| Atom         | Seeded description           | Enforced at                                                           |
-| ------------ | ---------------------------- | --------------------------------------------------------------------- |
-| `audit:read` | View the immutable audit log | `GET /admin/audit-logs`; frontend route guard for `/admin/audit-logs` |
+| Atom           | Seeded description                 | Enforced at                                                           |
+| -------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `audit:read`   | View the immutable audit log       | `GET /admin/audit-logs`; frontend route guard for `/admin/audit-logs` |
+| `audit:export` | Export the audit log as CSV or PDF | `GET /admin/audit-logs/export`                                        |
+| `audit:purge`  | Preview audit-log retention        | seeded for completeness; the route uses `require_role("superadmin")`  |
+
+`audit:purge` is seeded but **granted to no role explicitly** — superadmin
+reaches it through `*`. `GET /admin/audit-logs/retention/preview` guards with
+`require_role("superadmin")` rather than the permission, because a purge is not
+tenant-scoped in effect and a permission check cannot express that: superadmin
+holds every permission, so any permission an org_admin also held would let them
+through. **No endpoint deletes an audit row** — execution is the beat schedule
+or `scripts/audit/purge_audit_retention.py --apply`, so it needs host access
+as well as the role.
+
+`audit:export` is separate from `audit:read` on purpose: taking a copy of the
+trail off the platform is a different act from reading it on screen, and it is
+audited as one (`audit.log_exported`, severity HIGH). It is a **permission**
+rather than a superadmin role check because the export is tenant-scoped — the
+opposite of `/admin/email-domains`, whose rules are platform-wide.
 
 ### `compliance` — 11 atoms
 
@@ -274,6 +291,7 @@ Added by migration `f7g8h9i0j1k2`.
 | `organizations:update`           |     ✔     |     —     |    —    |   —    |    —    |
 | `organizations:delete`           |     ✔     |     —     |    —    |   —    |    —    |
 | `audit:read`                     |     ✔     |    ✔     |    —    |   —    |    —    |
+| `audit:export`                   |     ✔     |    ✔     |    —    |   —    |    —    |
 | `compliance:read`                |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
 | `compliance:scan`                |     ✔     |    ✔     |   ✔    |   —    |    —    |
 | `compliance:manage_schedules`    |     ✔     |    ✔     |   ✔    |   —    |    —    |

@@ -1160,6 +1160,32 @@ def auth_headers(client: TestClient, test_user: User) -> dict:
 
 
 @pytest.fixture(scope="function", autouse=True)
+def isolate_compliance_evidence_dir(tmp_path, monkeypatch):
+    """
+    Point evidence storage at a per-test temporary directory.
+
+    ``routers.compliance._evidence_root()`` defaults to
+    ``/app/data/compliance_evidence``, and ``/app`` is the API container's bind
+    mount of ``./Backend``. Two consequences, both wrong for a test run: an
+    upload test drops real evidence files into the working tree, and on a host
+    where ``/app`` does not exist the endpoint tries to create it **at the
+    filesystem root**.
+
+    That second one is why this is autouse rather than a fixture each upload
+    test opts into. Creating ``/app`` succeeds for root and raises
+    ``PermissionError`` for anyone else, so the same test passes in a container
+    running as root and fails on a CI runner running as an ordinary user —
+    ``tests/audit/test_audit_compliance_status.py`` failed on GitHub for
+    exactly this reason while passing locally. A per-file opt-in leaves the
+    next upload test one forgotten fixture away from the same split.
+
+    The root is re-read from the environment on every call, so setting the
+    variable is sufficient; nothing needs patching at import time.
+    """
+    monkeypatch.setenv("COMPLIANCE_EVIDENCE_DIR", str(tmp_path / "compliance_evidence"))
+
+
+@pytest.fixture(scope="function", autouse=True)
 def detect_process_leaks():
     """Autouse fixture that checks for orphaned child processes (e.g. nmap, nuclei) after each test."""
     try:

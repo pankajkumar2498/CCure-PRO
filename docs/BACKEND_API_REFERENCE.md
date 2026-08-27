@@ -690,6 +690,58 @@ a daylight-saving boundary rather than sliding by an hour. See
 
 ---
 
+## 6c. Credentials — `/credentials`
+
+Source: `Backend/routers/credentials.py` — 7 operations. Added by Phase 2.
+
+The `credentials` RBAC resource (`credentials:create`, `:read`, `:delete`) had
+existed in the permission seed since before this phase and was **never wired to
+an API** — the only credential endpoints were under `/compliance`, gated on
+`compliance:read`. That is the wrong authorisation: an analyst who scans
+Windows hosts needs to manage scanning credentials without holding a compliance
+permission. Phase 2 adds `credentials:update` and `credentials:validate` and
+gives the resource the API it was defined for. The `/compliance/credentials`
+endpoints still work; they read the same table.
+
+| Method | Path                                    | Permission             | Limit  |
+| ------ | --------------------------------------- | ---------------------- | ------ |
+| GET    | `/credentials`                          | `credentials:read`     | 60/min |
+| POST   | `/credentials`                          | `credentials:create`   | 20/min |
+| GET    | `/credentials/types`                    | `credentials:read`     | 30/min |
+| GET    | `/credentials/{credential_id}`          | `credentials:read`     | 60/min |
+| PATCH  | `/credentials/{credential_id}`          | `credentials:update`   | 20/min |
+| POST   | `/credentials/{credential_id}/validate` | `credentials:validate` | 10/min |
+| DELETE | `/credentials/{credential_id}`          | `credentials:delete`   | 20/min |
+
+**Body — create**: `name`, `username`, `credential_type` (`ssh` | `windows`),
+`auth_method` (`password` | `key` | `ntlm` | `kerberos`), `password` or
+`private_key`, `domain`, `transport`, `port`, `options`.
+
+**A secret goes in and never comes out.** No response carries
+`encrypted_password` or `encrypted_key_content` — not even redacted. Responses
+carry `has_secret` (boolean) and `principal` (the username in the form the auth
+method expects: `DOMAIN\user` for NTLM, `user@REALM` for Kerberos, bare for
+SSH). `options` is rejected at validation if it contains a key named like a
+secret, because that field _is_ returned to clients.
+
+**PATCH replaces a secret only when one is supplied.** Omitting `password`
+keeps the stored one — otherwise editing a port would blank the password and
+the credential would start failing authentication for a reason nothing
+explains.
+
+**`POST /{id}/validate` authenticates for real** against a named target, and
+the target is re-checked against the organisation's scan scope because this
+makes an outbound authentication attempt at a caller-supplied address. The
+`reason` field is one of `authenticated`, `authentication_failed`,
+`insufficient_privileges`, `unreachable`, `configuration_error`, `failed` —
+distinct because they need distinct actions.
+
+**`GET /types`** reports what this build can authenticate with, including
+whether `pywinrm` is installed. A UI that offered Windows credentials on a
+build without it would collect them and then fail every scan.
+
+---
+
 ## 7. Scan history — `/scans`
 
 Source: `Backend/scans/router.py` — 8 HTTP operations + 1 WebSocket.

@@ -63,7 +63,16 @@ psutil>=5.9.0
 
 # ── Credentialed scanning ─────────────────────────────────────────────────────
 paramiko==4.0.0    # SSH credentialed scan (Linux targets)
-# pywinrm            # Optional: Windows WinRM credentialed scan (uncomment if needed)
+pywinrm==0.4.3     # Windows credentialed scan over native WinRM (Phase 2)
+# Not optional any more. Windows collection previously required OpenSSH Server
+# installed on every target; WinRM is the built-in service every managed
+# Windows estate already runs. Without this the WinRM transport raises
+# WinRMConfigurationError and Windows hosts fall back to needing OpenSSH.
+#
+# Must be present in BOTH environments: the API container (credential
+# validation) and the host scanner worker venv (where credentialed scans
+# actually execute). Installing it in only one is how validation succeeds in
+# the UI and every real scan then fails.
 
 # ── Task Queue (Celery) ────────────────────────────────────────────────────────
 celery[redis]>=5.4.0

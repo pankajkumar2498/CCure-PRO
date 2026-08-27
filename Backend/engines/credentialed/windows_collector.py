@@ -19,7 +19,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 
 from core.mac import collector_mac
-from engines.credentialed.ssh_scanner import SSHScanner
+from engines.credentialed.ssh_scanner import BaseExecutor
 
 log = logging.getLogger("ccure.windows_collector")
 
@@ -316,15 +316,26 @@ COMMANDS: dict[str, str] = {
 
 class WindowsCollector:
     """
-    Runs PowerShell commands over an open SSHScanner connection and parses
-    the output into structured dicts ready for JSON serialisation.
-    Works regardless of whether the SSH default shell is PowerShell or cmd.
+    Runs PowerShell commands over an open executor connection and parses the
+    output into structured dicts ready for JSON serialisation.
+
+    **Transport-agnostic.** The parameter is a ``BaseExecutor``, so this drives
+    either ``SSHScanner`` (OpenSSH on Windows) or ``WinRMExecutor`` (native
+    WinRM, added in Phase 2) without knowing which. Every command below is
+    plain PowerShell and every parser reads its output — none of it depends on
+    how the bytes arrived, which is why native Windows support needed a new
+    transport rather than a second collector.
+
+    ``_detect_shell`` works over both: WinRM answers ``$PSVersionTable`` with a
+    version number, so it reports "powershell" and ``_wrap_ps`` correctly
+    leaves commands alone — pywinrm does its own UTF-16-LE base64 encoding, and
+    wrapping twice would send the encoder its own output.
     """
 
     # Path to PowerShell executable — used when the default shell is cmd.exe
     _PS_EXE = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
-    def __init__(self, ssh: SSHScanner):
+    def __init__(self, ssh: BaseExecutor):
         self._ssh = ssh
         self.shell_type = self._detect_shell()
         if self.shell_type == "cmd":

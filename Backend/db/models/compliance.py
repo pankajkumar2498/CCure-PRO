@@ -836,23 +836,127 @@ class ComplianceNotificationRule(Base):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+#: What a stored credential is *for*. The discriminator that turns this from an
+#: SSH credential store into the platform's credential store.
+#:
+#: ``database``, ``network_device`` and ``snmp`` are reserved: nothing collects
+#: with them yet, and the API refuses to create one, but naming them here means
+#: Phases 10 and 11 add a collector rather than a CHECK-constraint migration on
+#: a table that by then holds customer credentials. Same reasoning as
+#: ``scan_kind`` in ``scan_schedules``.
+CREDENTIAL_TYPE_SSH = "ssh"
+CREDENTIAL_TYPE_WINDOWS = "windows"
+CREDENTIAL_TYPE_DATABASE = "database"
+CREDENTIAL_TYPE_NETWORK_DEVICE = "network_device"
+CREDENTIAL_TYPE_SNMP = "snmp"
+
+CREDENTIAL_TYPES = (
+    CREDENTIAL_TYPE_SSH,
+    CREDENTIAL_TYPE_WINDOWS,
+    CREDENTIAL_TYPE_DATABASE,
+    CREDENTIAL_TYPE_NETWORK_DEVICE,
+    CREDENTIAL_TYPE_SNMP,
+)
+
+#: The types something can actually authenticate with today.
+USABLE_CREDENTIAL_TYPES = (CREDENTIAL_TYPE_SSH, CREDENTIAL_TYPE_WINDOWS)
+
+#: How the credential reaches the target. Kept separate from the type because
+#: they are not the same question — a Windows host can be reached over WinRM or
+#: over SSH (the OpenSSH-on-Windows arrangement this product used to require),
+#: and both are ``windows`` credentials.
+TRANSPORT_SSH = "ssh"
+TRANSPORT_WINRM = "winrm"
+TRANSPORTS = (TRANSPORT_SSH, TRANSPORT_WINRM)
+
+#: ``password`` and ``key`` are the original two and their meaning is unchanged.
+#: ``ntlm`` and ``kerberos`` are Windows domain authentication; both present a
+#: password, so both live in ``encrypted_password``.
+AUTH_METHODS = ("password", "key", "ntlm", "kerberos")
+
+#: Which secret column each method requires. This is a data-integrity rule — a
+#: credential that names a method whose material is absent can never
+#: authenticate, and would fail at scan time on a customer's network rather
+#: than at the moment somebody saved it.
+AUTH_REQUIRES_PASSWORD = ("password", "ntlm", "kerberos")
+AUTH_REQUIRES_KEY = ("key",)
+
+
+#: Rendered exactly as migration a3b4c5d6e7f8 renders them, so a bootstrapped
+#: database and an upgraded one produce byte-identical CHECK constraints.
+def _sql_in_list(values) -> str:
+    """
+    Render a tuple as a SQL ``IN`` list.
+
+    ``str(("key",))`` is ``('key',)`` — Python's one-element tuple repr carries
+    a trailing comma that PostgreSQL rejects with "syntax error at or near )".
+    Every existing constant of this shape in the codebase escapes the problem
+    only by happening to have more than one member, which is luck rather than
+    design: adding a fifth severity is safe, dropping to one is not.
+    """
+    return "(" + ", ".join("'%s'" % v for v in values) + ")"
+
+
+CREDENTIAL_TYPE_SQL = "credential_type IN %s" % _sql_in_list(CREDENTIAL_TYPES)
+TRANSPORT_SQL = "transport IN %s" % _sql_in_list(TRANSPORTS)
+AUTH_METHOD_SQL = "auth_method IN %s" % _sql_in_list(AUTH_METHODS)
+AUTH_MATERIAL_SQL = (
+    "(auth_method IN %s AND encrypted_password IS NOT NULL) OR "
+    "(auth_method IN %s AND encrypted_key_content IS NOT NULL)"
+) % (_sql_in_list(AUTH_REQUIRES_PASSWORD), _sql_in_list(AUTH_REQUIRES_KEY))
+
+
 class ComplianceCredential(Base):
-    """Secure multi-tenant credential storage for automated scans/remediations."""
+    """
+    The platform's credential store — for every authenticated collector, not
+    only compliance.
+
+    **The name is a misnomer and is kept deliberately.** This table was written
+    for compliance remediation and has been the store for credentialed *scans*
+    since before Phase 1; ``scan_schedules.credential_id`` and
+    ``routers/credentialed.py`` both point at it. Renaming it would mean an
+    ALTER on a table holding live encrypted credentials for a purely cosmetic
+    gain, so the misnomer is recorded here instead — the same treatment
+    ``Backend/reports/`` versus ``Backend/reporting/`` gets in CLAUDE.md.
+
+    Generalised in Phase 2 (GAP-00-C) from SSH-only to a discriminated store:
+
+    * ``credential_type`` — what it is for (``ssh``, ``windows``, and three
+      reserved for later phases).
+    * ``transport`` — how it reaches the target (``ssh``, ``winrm``). Separate
+      from the type on purpose: a Windows host reached over OpenSSH is a
+      ``windows`` credential with an ``ssh`` transport.
+    * ``domain`` — the Windows domain or Kerberos realm. Stored in its own
+      column rather than folded into ``username`` as ``DOMAIN\\user``, because
+      the two forms (``DOMAIN\\user`` and ``user@realm``) are not
+      interchangeable across authentication methods and guessing which one a
+      caller meant from a backslash is how a credential silently fails to
+      authenticate.
+    * ``options`` — transport specifics as JSONB, so a later credential type
+      needs no migration.
+
+    Existing rows are unaffected: the backfill makes them ``ssh``/``ssh``,
+    which is what they already were.
+
+    **Secrets live only here.** Scans and schedules store ``credential_id``.
+    """
 
     __tablename__ = "compliance_credentials"
     __table_args__ = (
         UniqueConstraint(
             "name", "tenant_id", name="uq_compliance_credentials_name_tenant"
         ),
-        CheckConstraint(
-            "(auth_method = 'password' AND encrypted_password IS NOT NULL) OR "
-            "(auth_method = 'key' AND encrypted_key_content IS NOT NULL)",
-            name="ck_compliance_credential_auth",
-        ),
-        CheckConstraint(
-            "auth_method IN ('password', 'key')",
-            name="ck_compliance_credential_auth_method",
-        ),
+        CheckConstraint(AUTH_MATERIAL_SQL, name="ck_compliance_credential_auth"),
+        CheckConstraint(AUTH_METHOD_SQL, name="ck_compliance_credential_auth_method"),
+        CheckConstraint(CREDENTIAL_TYPE_SQL, name="ck_compliance_credential_type"),
+        CheckConstraint(TRANSPORT_SQL, name="ck_compliance_credential_transport"),
+        Index("ix_compliance_credentials_type", "credential_type"),
+        # Deliberately *no* CHECK pairing credential_type with auth_method.
+        # The compatibility matrix grows every time a credential type is added
+        # (Phases 10, 11), and a CHECK migration on a table holding customer
+        # credentials for each one is the cost this avoids. The pairing is
+        # enforced in the API and asserted by a test instead — same trade as
+        # scan_kind in scan_schedules.
     )
 
     id = Column(String(100), primary_key=True)
@@ -868,8 +972,63 @@ class ComplianceCredential(Base):
     encrypted_key_content = Column(Text, nullable=True)
     port = Column(Integer, nullable=False, default=22)
     auth_method = Column(String(50), nullable=False, default="password")
+
+    # ── Generalisation (Phase 2, GAP-00-C) ───────────────────────────────────
+    #: No ``index=True``: the index is declared once, by name, in
+    #: ``__table_args__``, matching migration a3b4c5d6e7f8. With both,
+    #: ``create_all`` names it ``ix_compliance_credentials_credential_type``
+    #: while the migration names it ``ix_compliance_credentials_type`` — so a
+    #: fresh install has one index and an upgraded install the other, and
+    #: ``downgrade`` fails on a fresh database with "index does not exist".
+    #: Caught by the migration round-trip; the same trap as ``definition_type``
+    #: in findings.py and ``org_id`` in scan_schedules.py.
+    credential_type = Column(
+        String(32),
+        nullable=False,
+        default=CREDENTIAL_TYPE_SSH,
+        server_default=CREDENTIAL_TYPE_SSH,
+    )
+    transport = Column(
+        String(32),
+        nullable=False,
+        default=TRANSPORT_SSH,
+        server_default=TRANSPORT_SSH,
+    )
+    #: Windows domain (``CORP``) or Kerberos realm (``CORP.EXAMPLE.COM``).
+    #: NULL for a local account, which is a different fact from an empty
+    #: string: ``.\\Administrator`` and ``CORP\\Administrator`` are different
+    #: principals and only one of them exists on a workgroup machine.
+    domain = Column(String(255), nullable=True)
+    #: Transport specifics — ``use_tls``, ``verify_cert``, ``winrm_path``,
+    #: ``read_timeout``. JSONB so a credential type added in a later phase
+    #: needs no migration to carry its own settings.
+    #:
+    #: **Never put a secret here.** Secrets go in the two encrypted columns;
+    #: this is returned to the UI and written to logs.
+    options = Column(JSONB, nullable=False, default=dict, server_default="{}")
+
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+
+    def principal(self) -> str:
+        """
+        The account name in the form its authentication method expects.
+
+        Kerberos wants ``user@REALM``; NTLM and Windows password auth want
+        ``DOMAIN\\user``; SSH wants the bare name. Deriving this in one place
+        is the point — a caller that guessed from the presence of a backslash
+        would build ``CORP\\user@CORP.EXAMPLE.COM`` for a Kerberos credential
+        whose username already carried the domain.
+        """
+        user = (self.username or "").strip()
+        realm = (self.domain or "").strip()
+        if not realm or "\\" in user or "@" in user:
+            return user
+        if self.auth_method == "kerberos":
+            return f"{user}@{realm.upper()}"
+        if self.credential_type == CREDENTIAL_TYPE_WINDOWS:
+            return f"{realm}\\{user}"
+        return user
 
 
 class ComplianceRemediationRequest(Base):

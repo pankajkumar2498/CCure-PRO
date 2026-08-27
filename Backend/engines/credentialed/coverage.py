@@ -261,7 +261,9 @@ COVERAGE_ROWS = (
 )
 
 
-def credentialed_coverage(network_scanned: bool = False) -> dict:
+def credentialed_coverage(
+    network_scanned: bool = False, transport: str = "ssh"
+) -> dict:
     """
     What a credentialed audit did and did not examine.
 
@@ -303,7 +305,21 @@ def credentialed_coverage(network_scanned: bool = False) -> dict:
         ),
         "os_detection": "Authenticated — read from the operating system",
         "timing_template": "Not applicable — no network probing performed",
-        "scanner": "Built-in credentialed collector over SSH",
+        # Names the transport the evidence actually arrived over. This read
+        # "over SSH" unconditionally, which was true until Phase 2 added native
+        # WinRM — after which a Windows audit collected over WinRM still
+        # reported SSH. That is not cosmetic: this block is the audit's own
+        # statement of how its evidence was obtained, and a reader checking
+        # whether a host needed OpenSSH installed would have been told the
+        # wrong thing by the report itself.
+        "scanner": (
+            "Built-in credentialed collector over "
+            + (
+                "WinRM (native Windows remote management)"
+                if str(transport).lower() == "winrm"
+                else "SSH"
+            )
+        ),
         "discovery_scan_method": (
             "None — the target was supplied directly and no host discovery ran"
         ),

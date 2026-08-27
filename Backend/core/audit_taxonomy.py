@@ -128,6 +128,18 @@ SEVERITY_BY_ACTION: dict[str, str] = {
     # because nobody asked for it and the effect is that assurance scanning
     # silently stops — exactly the state a reviewer needs to find.
     "scan_schedule.auto_disabled": HIGH,
+    # ── Credentials (Phase 2) ───────────────────────────────────────────────
+    # Storing a credential gives this platform a way into a host, so it
+    # outranks ordinary configuration changes. Deletion matches: a scheduled
+    # assurance scan whose credential vanished stops producing findings, and
+    # nothing else announces that.
+    "credential.created": HIGH,
+    "credential.updated": HIGH,
+    "credential.deleted": HIGH,
+    # A validation is one deliberate authentication attempt against one named
+    # host. LOW on its own; the value is the trail — repeated failures against
+    # many hosts is credential spraying wearing an administrator's session.
+    "credential.validated": LOW,
     # ── Assets ──────────────────────────────────────────────────────────────
     "asset_updated": LOW,
     "amt_inventory_imported": MEDIUM,

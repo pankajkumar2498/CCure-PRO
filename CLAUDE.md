@@ -590,6 +590,55 @@ backend auto-chains the later phases.
   NetBIOS-NS are UDP; recording them as TCP claims an open TCP port that is
   usually filtered, and that claim reaches the asset registry and the reports.
 
+## Windows credentialed collection (`engines/credentialed/winrm_executor.py`)
+
+Native WinRM, added in Phase 2. **Windows targets no longer need OpenSSH
+Server installed.**
+
+- **It is a transport, not a collector.** `ssh_scanner.py` already declared a
+  `BaseExecutor` protocol, so `WinRMExecutor` drops in and `WindowsCollector`
+  is unchanged — the same ~970 lines of PowerShell commands and parsers drive
+  either transport, and Windows findings flow through the existing evidence →
+  matching → finding → risk → reporting path. If you add a Windows capability,
+  add a command to the catalogue; do not add a collector.
+
+- **A pywinrm NTLM session is not thread-safe, and `collect_all` is parallel.**
+  Sessions are therefore thread-local. Sharing one corrupts the NTLM security
+  context and fails *every* section with `SpnegoError (6): invalid Message
+  Integrity Check`, HTTP 400, and — most misleadingly — "the specified
+  credentials were rejected by the server" on a credential that just
+  authenticated. Measured against a real host: sequential 10/10, concurrent
+  shared 0/8, concurrent per-thread 8/8. Do not "simplify" this to one session.
+
+- **Errors are classified into four types and must stay that way.** A refused
+  password, an unprivileged account, nothing listening, and a bad certificate
+  need four different actions; collapsing them is how a fixable firewall rule
+  becomes "host unreachable". Note that pywinrm's literal rejection string
+  contains none of `401`, "unauthorized" or "authentication", so it is matched
+  explicitly — without that it classified as a connection error.
+
+- **`shell_type` resolves to "powershell" over WinRM and that matters.**
+  pywinrm's `run_ps` already base64-encodes UTF-16-LE, which is the same trick
+  `_wrap_ps` applies by hand for cmd.exe over SSH. Wrapping twice feeds the
+  encoder its own output.
+
+- **Basic auth over plain HTTP is refused.** NTLM encrypts the payload even on
+  5985, so there is no reason to send a password in base64. The validation host
+  had `AllowUnencrypted=false` and `Basic=false`, which is the normal posture.
+
+- **Nessus's primary Windows transport is SMB + Remote Registry + WMI, not
+  WinRM.** WinRM is on by default on Server 2012+ but **off by default on
+  client SKUs**, so on a workstation estate this product currently reaches
+  fewer hosts out of the box than Nessus does. That is a recorded coverage gap
+  needing a second transport, not a defect in this one.
+
+- **Patch assessment does not read installed KBs**, and the real host confirms
+  why: `Get-HotFix` returned **4** entries on a fully patched Windows 11
+  machine, because cumulative updates supersede one another.
+  `windows_patch.py` compares the host's build — UBR included — against MSRC's
+  published fixed builds. `os_assessed` distinguishes "no missing patches" from
+  "could not assess"; never collapse them.
+
 ## Scan scheduling (`core/scheduling/`)
 
 Recurring network and credentialed scans. Phase 1 of the gap-closure
@@ -709,6 +758,17 @@ never had (below).
   the arity and the call site.
 
 ## Data model notes
+
+- **`compliance_credentials` is the platform credential store, not a
+  compliance table.** The name is a misnomer kept deliberately — it has been
+  the store for credentialed scans since before Phase 1 and
+  `scan_schedules.credential_id` points at it, so renaming means an ALTER on
+  live encrypted credentials for a cosmetic gain. It is discriminated by
+  `credential_type` (`ssh`, `windows`; `database`, `network_device`, `snmp`
+  reserved) and `transport` (`ssh`, `winrm`). `domain` is a column rather than
+  a prefix on `username` because NTLM wants `DOMAIN\user` and Kerberos wants
+  `user@REALM`; `principal()` owns that mapping. Never put a secret in
+  `options` — it is returned to clients and logged.
 
 - **The catalogue holds checks as well as CVEs.** `vulnerability_definitions`
   gained `definition_type` (`cve` | `config_check` | `plugin_check` |

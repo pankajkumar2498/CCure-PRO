@@ -173,6 +173,15 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "scan_schedules", action: "read" },
       },
       {
+        id: "scan-credentials",
+        label: "Scan Credentials",
+        Icon: IcoFile,
+        route: "/scan-credentials",
+        // credentials:read, an existing RBAC resource that had no API until
+        // Phase 2 wired one.
+        permission: { resource: "credentials", action: "read" },
+      },
+      {
         id: "scan-history",
         label: "Scan History",
         Icon: IcoFile,

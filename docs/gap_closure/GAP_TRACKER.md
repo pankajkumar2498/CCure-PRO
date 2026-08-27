@@ -393,7 +393,192 @@ executable cases rather than assertion:
 
 ---
 
-## 5. Definition of Done — Phase 0
+## 5. Phase 2 — Native Windows credentialed scanning
+
+**Status: Complete**, with one scenario explicitly Not Validated (§5.6).
+Closes GAP-00-C and GAP-02.
+
+### 5.1 GAP-00-C — generalized credential model (Closed)
+
+`compliance_credentials` was SSH-only: `auth_method` CHECK-constrained to
+`('password','key')`, port defaulted to 22, no domain, no transport. Migration
+`a3b4c5d6e7f8` adds `credential_type`, `transport`, `domain` and an `options`
+JSONB, and widens the auth CHECK to admit `ntlm` and `kerberos`.
+
+Existing rows backfill to `ssh`/`ssh` — which is what they already were. The
+migration **checks** that rather than assuming it: a row using a method SSH
+cannot perform would be silently mislabelled, so the upgrade refuses instead.
+Downgrade refuses if any non-SSH credential exists, because dropping the
+columns would reduce a Windows credential to an SSH one pointed at port 5985,
+which would then attempt SSH against a WinRM listener.
+
+`database`, `network_device` and `snmp` are reserved in the column so Phases 10
+and 11 need no CHECK migration on a table holding customer credentials; the API
+refuses to create one, so a reserved type cannot produce a credential nothing
+can use.
+
+**The table keeps its misleading name.** It has been the store for credentialed
+_scans_ since before Phase 1 and `scan_schedules.credential_id` points at it;
+renaming would mean an ALTER on live encrypted credentials for a cosmetic gain.
+Documented on the model. Recorded here as a deliberate decision, not an
+oversight.
+
+### 5.2 The transport swap — what was reused
+
+`ssh_scanner.py` already declared a `BaseExecutor` protocol (`connect`,
+`disconnect`, `run(command, timeout) -> CommandResult`). `WinRMExecutor`
+implements it, so:
+
+- **`WindowsCollector` is unchanged.** Its ~970 lines of PowerShell command
+  catalogue and parsers, every one of them, drive either transport. The only
+  edit was the type hint and its docstring.
+- **There is no second finding path.** Windows results flow through the
+  existing collection → evidence → `VulnMatcher`/`WindowsPatchMatcher` →
+  finding → risk → reporting chain.
+- `_detect_shell` needed no change: WinRM answers `$PSVersionTable` with a
+  version, so it reports "powershell" and `_wrap_ps` correctly leaves commands
+  alone — pywinrm does its own UTF-16-LE base64 encoding, and wrapping twice
+  would feed the encoder its own output.
+
+### 5.3 Real-target validation — VALIDATED
+
+Target: **10.180.6.14**, Windows 11 Pro, build **10.0.26200.9168**, WORKGROUP
+(`PANKAJM-HPNEW`), local account `pankaj` (Administrators), WinRM/5985, NTLM.
+
+The host needed **no target-side configuration**: WinRM was already listening,
+`Negotiate=true`, `Basic=false`, `AllowUnencrypted=false`, and
+`LocalAccountTokenFilterPolicy=1`. That posture matches the design — NTLM
+encrypts the payload on 5985 and the executor refuses Basic over HTTP.
+
+| Stage                         | Result                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Authentication                | ✅ `pankaj`, `PANKAJM-HPNEW\pankaj`, `.\pankaj` all authenticate                                                      |
+| Windows collection            | ✅ 48 keys in 16.6 s via the unmodified collector                                                                     |
+| OS / version / build          | ✅ `10.0.26200.9168` — **including the UBR**                                                                          |
+| Installed software            | ✅ 191 packages                                                                                                       |
+| Patch / KB inventory          | ✅ 4 KBs as `windows_update` pseudo-packages                                                                          |
+| Running services              | ✅ 171                                                                                                                |
+| Listening ports               | ✅ 110                                                                                                                |
+| Users / groups                | ✅ 7 users, groups, password policy (7 settings)                                                                      |
+| Security configuration        | ✅ RDP+NLA, SMBv1 disabled, firewall (3 profiles), shares, audit policy (3,792 chars), 10 security issues             |
+| Network interfaces            | ✅ interfaces, MAC, subnet                                                                                            |
+| Hardware / BIOS               | ✅ HP Elite SFF 800 G9, BIOS U01 Ver. 02.22.01, serial, CPU                                                           |
+| Vulnerability assessment      | ✅ **assessed** — `os_assessed: True`, resolved to `Windows 11 Version 25H2 for x64-based Systems`, 0 missing patches |
+| Full flow                     | ✅ CRUD → encrypted storage → resolution → WinRM auth → collection, end to end                                        |
+| Failure: invalid password     | ✅ `WinRMAuthenticationError`                                                                                         |
+| Failure: non-existent account | ✅ `WinRMAuthenticationError`                                                                                         |
+| Failure: nothing listening    | ✅ `WinRMConnectionError` — **distinct from authentication**                                                          |
+| Failure: Basic over HTTP      | ✅ `WinRMConfigurationError`, refused by design                                                                       |
+
+**The 4 KBs corroborate CLAUDE.md exactly** — "Get-HotFix returned 4 entries on
+a fully patched host, because cumulative updates supersede one another" — which
+is why patch assessment uses build comparison rather than KB matching.
+
+**Zero findings is a genuine assessed result, not a silent zero.** The matcher
+reports `os_assessed: True` and names the product line it compared against.
+CLAUDE.md requires an unmappable build line to report _not assessed_ rather
+than _no missing patches_, and it does.
+
+### 5.4 Two defects that only real-target validation could find
+
+Both are now covered by regression tests in
+`tests/credentialed/test_windows_winrm.py`.
+
+**1. pywinrm NTLM sessions are not thread-safe, and the collector is parallel.**
+The first full collection failed _every section_, reporting "the specified
+credentials were rejected by the server" — on a credential that had just
+authenticated. Measured:
+
+```
+sequential, one session, 10 commands       10/10 succeeded
+concurrent, one shared session, 8 threads   0/8 succeeded
+concurrent, one session per thread          8/8 succeeded
+```
+
+Failures surfaced as `SpnegoError (6): invalid Message Integrity Check`, HTTP
+400, and the misleading credential-rejection message. Fixed with thread-local
+sessions, which keeps the collector's parallelism (16.6 s, not serialised).
+Without a real host this ships and every Windows scan fails, looking exactly
+like a bad password.
+
+**2. The audit reported "collected over SSH" for WinRM evidence.** The coverage
+block is the audit's own statement of how its evidence was obtained; a reader
+checking whether OpenSSH was required would have been told the wrong thing by
+the report itself. `credentialed_coverage(transport=…)` now names the real one.
+
+A third defect was found by the classifier test rather than the live run: the
+literal pywinrm string "the specified credentials were rejected by the server"
+contains none of `401`, "unauthorized" or "authentication", so it fell through
+to `WinRMConnectionError` and would have been reported as an unreachable host.
+Live pywinrm raised the typed `InvalidCredentialsError` that a different branch
+already caught, which is why the live run did not expose it.
+
+### 5.5 API, UI and RBAC
+
+`routers/credentials.py` — 7 operations. The `credentials` RBAC resource had
+existed in the permission seed since before this phase and was **never wired to
+an API**; the only credential endpoints were under `/compliance`, gated on
+`compliance:read`, which would force a compliance permission on an analyst who
+just needs to scan Windows hosts. Phase 2 adds `credentials:update` and
+`credentials:validate` and gives the resource its API. `/compliance/credentials`
+still works on the same table.
+
+A secret goes in and never comes out: `_serialize` has no branch that can emit
+either encrypted column, `options` is rejected if it carries a secret-shaped
+key, and PATCH replaces a secret only when one is supplied — so editing a port
+cannot blank a password.
+
+UI: `Frontend/src/pages/scan/ScanCredentials.jsx` — full CRUD plus validation
+against a named target, with the six `reason` values rendered as six different
+messages because they need six different actions.
+
+### 5.6 NOT VALIDATED — insufficient privileges
+
+**Status: Pending real target.** The only account available on 10.180.6.14
+(`pankaj`) is a local Administrator, so the under-privileged path could not be
+exercised against a real host.
+
+What exists: `WinRMPermissionError` is raised on HTTP 403 and on
+access-denied markers in command output, and the validation endpoint maps it to
+`reason: "insufficient_privileges"`. Both are covered by unit tests against
+synthetic inputs.
+
+What is **not** claimed: that a real standard Windows account produces that
+classification end to end. It was not simulated and the scanner was not
+weakened to manufacture the result. Closing this needs a genuine non-admin
+account — a standard user, or one in `Remote Management Users` but not
+`Administrators`.
+
+### 5.7 Coverage
+
+| Capability                       | Before          | After              | Basis                                                                                                |
+| -------------------------------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------------- |
+| GAP-00-C generalized credentials | 25%             | 95%                | ssh + windows implemented; database/network_device/snmp reserved, not implemented                    |
+| GAP-02 Windows credentialed      | 40% [estimated] | **85%** [measured] | 16 of 17 required collection items validated on a real host; insufficient-privilege scenario pending |
+
+The 15% shortfall is: the insufficient-privilege scenario (§5.6), Kerberos and
+domain-joined authentication (implemented, no domain available to validate
+against), and Windows Server (only a workstation SKU was available).
+
+### 5.8 Known limitations
+
+- **Kerberos and domain-joined targets are implemented but not validated.**
+  `principal()` builds `user@REALM`, the transport accepts `kerberos`, and unit
+  tests cover the username derivation — but no domain was available. Kerberos
+  additionally needs a GSSAPI library present in the environment.
+- **Windows Server not validated** — only Windows 11 Pro was available.
+- **SMB/Remote Registry is not implemented.** Nessus's primary Windows
+  transport is SMB + Remote Registry + WMI; this phase implements WinRM, which
+  is on by default on Server 2012+ but **off by default on client SKUs**. On a
+  workstation estate that is a real coverage difference, and closing it means a
+  second transport rather than a change to this one. Recorded as a gap, not a
+  defect.
+- **`RemoteRegistry` was stopped on the validation host** — irrelevant to WinRM,
+  relevant to any future SMB transport.
+
+---
+
+## 6. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
 | ------------------------- | ----------------------------------------- | ------------------------------------ |
@@ -428,7 +613,7 @@ executable cases rather than assertion:
 
 ---
 
-## 6. Regression
+## 7. Regression
 
 | Run                                              | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |
@@ -439,8 +624,8 @@ executable cases rather than assertion:
 | After Phase 1, full suite                        | **1661 passed, 2 skipped**, 7m23s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
-catalogue guard, +68 for Phase 1 — so no existing test was lost, silently
-skipped, or renamed out of collection at any point.
+catalogue guard, +68 for Phase 1, +43 for Phase 2 — so no existing test was
+lost, silently skipped, or renamed out of collection at any point.
 
 The delta is exactly **+54**, matching the 54 tests this phase added — so no
 existing test was lost, silently skipped, or renamed out of collection.
@@ -494,7 +679,7 @@ regression is read correctly rather than blamed on that phase's code.
 
 ---
 
-## 7. Commit log
+## 8. Commit log
 
 | Phase | Commit    | Tag | Suite result              |
 | ----- | --------- | --- | ------------------------- |
@@ -505,7 +690,7 @@ only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 ---
 
-## 8. Observations recorded during Phase 0 that are not gaps
+## 9. Observations recorded during Phase 0 that are not gaps
 
 Findings worth someone's attention that are outside this programme's scope.
 

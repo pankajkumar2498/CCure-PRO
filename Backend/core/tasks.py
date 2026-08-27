@@ -2520,16 +2520,32 @@ def _resolve_stored_credential(
             f"Stored credential with ID {credential_id} not found or access denied."
         )
 
+    from db.models.compliance import AUTH_REQUIRES_KEY, AUTH_REQUIRES_PASSWORD
+
     material = {
-        "username": cred.username,
+        # The username in the form this credential's auth method expects.
+        # NTLM wants DOMAIN\user, Kerberos wants user@REALM, SSH wants the bare
+        # name — `principal()` owns that mapping so the two callers of this
+        # function cannot disagree about it.
+        "username": cred.principal(),
         "port": cred.port,
         "auth_method": cred.auth_method,
+        "credential_type": cred.credential_type,
+        "transport": cred.transport,
+        "domain": cred.domain,
+        "options": dict(cred.options or {}),
         "password": None,
         "key_content": None,
     }
-    if cred.auth_method == "password" and cred.encrypted_password:
+    # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
+    # literal method names. The literal form is what made ``ntlm`` and
+    # ``kerberos`` resolve to a credential with no material at all: both
+    # present a password, neither matched ``== "password"``, so the connection
+    # was attempted with None and failed as "authentication rejected" — a
+    # misleading message for a credential that was never actually sent.
+    if cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
         material["password"] = decrypt_credential(cred.encrypted_password)
-    elif cred.auth_method == "key" and cred.encrypted_key_content:
+    elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
         material["key_content"] = decrypt_credential(cred.encrypted_key_content)
     return material
 
@@ -2549,6 +2565,10 @@ def audit_credentialed_host(
     network_scanned: bool = False,
     scanned_ports: list | None = None,
     timeout: int = 20,
+    transport: str = "ssh",
+    auth_method: str = "password",
+    domain: str | None = None,
+    credential_options: dict | None = None,
 ) -> tuple[dict, dict, str]:
     """
     Run the authenticated audit against one host.
@@ -2562,6 +2582,20 @@ def audit_credentialed_host(
     running into a statement about what is actually exposed, which is the
     finding an authenticated scan exists to produce and which neither view can
     reach alone. Without it, only loopback binds can be settled.
+
+    ``transport`` selects how the commands get there — ``ssh`` (the original
+    path, and still the only one for Linux) or ``winrm`` (native Windows,
+    added in Phase 2). Both satisfy the same ``BaseExecutor`` protocol and both
+    drive the *same* collectors, so nothing downstream of this function knows
+    or cares which was used. That is the point: Windows over WinRM produces
+    findings through the identical evidence → matching → finding → risk →
+    reporting path, not a parallel one.
+
+    ``domain`` and ``auth_method`` are carried through for Windows: the caller
+    resolves them from the stored credential, because the username form NTLM
+    wants (``DOMAIN\\user``) differs from the one Kerberos wants
+    (``user@REALM``) and guessing between them is how a credential silently
+    fails to authenticate.
     """
     from engines.credentialed.linux_collector import LinuxCollector
     from engines.credentialed.ssh_scanner import SSHScanner
@@ -2576,22 +2610,61 @@ def audit_credentialed_host(
 
     host_started = time.time()
 
-    _emit(f"Connecting to {ip}:{port}...", 10, "connecting")
+    resolved_transport = (transport or "ssh").strip().lower()
+    _emit(
+        f"Connecting to {ip}:{port} over {resolved_transport.upper()}...",
+        10,
+        "connecting",
+    )
     connect_started = time.perf_counter()
-    with SSHScanner(
-        ip=ip,
-        username=username,
-        password=password,
-        key_path=key_path,
-        key_content=key_content,
-        port=port,
-        timeout=timeout,
-    ) as ssh:
+
+    if resolved_transport == "winrm":
+        from engines.credentialed.winrm_executor import (
+            DEFAULT_HTTP_PORT,
+            WinRMExecutor,
+        )
+
+        winrm_options = dict(credential_options or {})
+        connection = WinRMExecutor(
+            ip=ip,
+            username=username,
+            password=password,
+            port=port or DEFAULT_HTTP_PORT,
+            auth_method=auth_method or "ntlm",
+            use_tls=winrm_options.get("use_tls"),
+            verify_cert=bool(winrm_options.get("verify_cert", False)),
+            timeout=timeout,
+            read_timeout=int(winrm_options.get("read_timeout", 60)),
+            winrm_path=winrm_options.get("winrm_path", "/wsman"),
+            allow_basic_over_http=bool(
+                winrm_options.get("allow_basic_over_http", False)
+            ),
+        )
+    else:
+        connection = SSHScanner(
+            ip=ip,
+            username=username,
+            password=password,
+            key_path=key_path,
+            key_content=key_content,
+            port=port,
+            timeout=timeout,
+        )
+
+    with connection as ssh:
         credentialed_response_time_ms = int(
             round((time.perf_counter() - connect_started) * 1000)
         )
-        _emit("Detecting Operating System...", 20, "detection")
-        os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+        if resolved_transport == "winrm":
+            # WinRM is a Windows-only protocol, so the operating system is
+            # established by the fact that the connection succeeded. Running
+            # _detect_os here would spend a round trip re-deriving something
+            # already known, and its probes are written for a POSIX shell.
+            os_type = "windows"
+            _emit("Windows confirmed by WinRM transport", 20, "detection")
+        else:
+            _emit("Detecting Operating System...", 20, "detection")
+            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
 
         _emit(f"Collecting system data ({os_type})...", 30, "collection")
         collector = (
@@ -3034,7 +3107,9 @@ def audit_credentialed_host(
         "inventory_complete": bool(packages) and not collection_errors,
         # What this audit could and could not see. Without it, a report with no
         # network findings reads as a host with no network exposure.
-        "coverage": credentialed_coverage(network_scanned=network_scanned),
+        "coverage": credentialed_coverage(
+            network_scanned=network_scanned, transport=resolved_transport
+        ),
         "exposure_summary": exposure_summary,
     }
 
@@ -3139,6 +3214,12 @@ def run_credentialed_scan_task(
 
     try:
         key_content = None
+        # Defaults for the direct-material path (a request that supplied a
+        # username and password rather than naming a stored credential). SSH
+        # keeps its existing behaviour: nothing about the ad-hoc path changes.
+        transport = "ssh"
+        domain = None
+        credential_options: dict = {}
         if credential_id:
             # A stored credential supersedes anything the request supplied.
             # Which of password/key is set is what selects the auth method —
@@ -3149,6 +3230,14 @@ def run_credentialed_scan_task(
             port = material["port"]
             password = material["password"]
             key_content = material["key_content"]
+            # A stored credential also decides *how* to reach the host. Without
+            # this the transport stayed "ssh" for every credential, so a
+            # Windows credential on port 5985 attempted SSH against a WinRM
+            # listener and failed as a connection error.
+            transport = material.get("transport") or "ssh"
+            auth_method = material.get("auth_method") or auth_method
+            domain = material.get("domain")
+            credential_options = material.get("options") or {}
 
         reports: list[dict] = []
         collected: list[tuple[dict, dict, str]] = []
@@ -3177,6 +3266,10 @@ def run_credentialed_scan_task(
                     sections=sections,
                     os_type_req=os_type_req,
                     emit=host_emit,
+                    transport=transport,
+                    auth_method=auth_method,
+                    domain=domain,
+                    credential_options=credential_options,
                 )
                 reports.append(stored_report)
                 collected.append((stored_report, system_data, os_type))

@@ -365,16 +365,61 @@ only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 Findings worth someone's attention that are outside this programme's scope.
 
-**23 rows in the live catalogue are keyed `CVE-9999-<hex>`.** [measured]
-`SELECT count(*) FROM vulnerability_definitions WHERE id !~ '^CVE-[0-9]{4}-[0-9]{4,}$'`
-returns 23, all of the form `CVE-9999-0b388ca6`. The only producer of that
-pattern in the tree is `tests/scans/test_scans.py:1177`, so this is **test
-residue in the live application database** — consistent with the 10 Aug 2026
-incident recorded in CLAUDE.md, and predating the current conftest guards. Not
-a production defect, and no current code path can create more. It is noted
-because each of those rows reads to a human, and to any tool, as a published
-CVE — which is precisely the confusion `core/checks/definitions.py` exists to
-prevent for our own identifiers.
+**Catalogue test residue — found, corrected, removed.** [measured] The Phase 0
+report said 23 rows keyed `CVE-9999-*`. The real number was **24**: that count
+used `id !~ '^CVE-[0-9]{4}-[0-9]{4,}$'`, which excluded `CVE-9999-0001/0002/0003`
+because they _do_ match a well-formed CVE pattern. Deleting "the 23" would have
+left one behind.
+
+All 24 are now removed from `ccure_test` (262,632 -> 262,608 catalogue rows;
+findings unchanged at 5,711), after a full 68.9 MB backup. Removal is
+reproducible via `Backend/scripts/cleanup_test_catalogue_residue.py` (dry run by
+default), and recurrence is prevented in `tests/conftest.py`, whose per-test
+purge now removes synthetic catalogue rows — the one table it never reached.
+`tests/repo/test_catalogue_hygiene.py` proves the guard by exercising it, and
+was mutation-tested by disabling the purge.
+
+**Correction to GAP-00-B: non-CVE findings were already possible.** [measured]
+Phase 0 stated that "every finding this product could record had to be a CVE".
+That is false. Production already mints non-CVE catalogue ids under a `MISC-`
+convention -- `MISC-SMB-SIGNING`, `MISC-DNS-AXFR`, `MISC-LDAP-ANON-BIND`,
+`MISC-FTP-ANON`, `MISC-NUCLEI-<template>` and others, across eight plugins plus
+two paths in `core/tasks.py`; `nuclei_probe.py:212` names the convention
+explicitly. The live database carries one with a real finding against it.
+
+What was actually broken, and what GAP-00-B fixes, is narrower and sharper:
+
+- Those rows are written with `cve_id` set to the fabricated id, so they are
+  **indistinguishable from real CVEs** in every query that joins on `cve_id`.
+  `definition_type` plus `ck_vuln_def_cve_id_matches_type` is what separates
+  them -- but only once a writer classifies them, which nothing does yet.
+- `MISC-NUCLEI-` is 12 characters, leaving 18 inside the old `varchar(30)`.
+  `MISC-NUCLEI-GIT-CONFIG-EXPOSURE` is 31 and
+  `MISC-NUCLEI-LARAVEL-ENV-EXPOSURE` is 32. PostgreSQL errors rather than
+  truncating, so those catalogue upserts were failing outright. The widening to
+  120 fixes a latent silent-loss bug across the 7,460-template corpus. The four
+  findings CLAUDE.md expects from `ccure-nuclei-target` happen to use short ids
+  and fit, which is why nobody saw it.
+
+**Open follow-up (not scheduled):** when `e1f2a3b4c5d6` is deployed, existing
+and future `MISC-` rows take the `'cve'` server default while carrying a
+fabricated `cve_id` -- constraint-valid, but labelling plugin checks as CVEs.
+The fix is to classify `MISC-` ids as `plugin_check` with `cve_id` NULL in
+`scans/asset_syncer.py`, plus a backfill.
+
+**A second pre-existing flaky test, diagnosed but not fixed.** [measured]
+`tests/audit/test_audit_chain_concurrency.py::test_concurrent_writers_for_one_org_do_not_fork_the_chain`
+failed once in a full-suite run and passes in isolation and across three
+consecutive runs of its own group. The cause is structural, not timing luck:
+the test starts `WRITERS = 40` concurrent writers, each opening its own
+`SessionLocal()`, against a pool configured `pool_size=10, max_overflow=20` --
+**30 connections**. Ten threads must therefore wait, and under full-suite load
+the default 30-second `pool_timeout` expires. `_insert_one` catches every
+exception and returns `None`, so a timed-out insert is silently lost and the
+test reports "expected 40 chained rows, got 39" -- the swallowed-error pattern
+again, one table over. Fix is to stop swallowing the exception (and to size
+`WRITERS` against the pool). Left alone here because it is unrelated to either
+housekeeping task.
 
 **`tests/repo/test_schema_drift.py` is blind on exactly one path — a
 first-ever bootstrap.** [measured] `tests/conftest.py:495-519` builds the

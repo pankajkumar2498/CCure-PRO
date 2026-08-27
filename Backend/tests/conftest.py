@@ -916,6 +916,53 @@ def _purge_test_data():
             {"system_roles": list(_SYSTEM_ROLES)},
         )
 
+        _purge_synthetic_catalogue_rows(conn)
+
+
+#: The identifier prefix every test-created vulnerability-catalogue row must
+#: use. Year 9999 cannot belong to a published CVE, so the pattern can never
+#: match a real advisory and the cleanup below can never delete feed data.
+#:
+#: Tests mint ids under this prefix rather than a plausible one **and the rows
+#: are removed after every test**, because until now neither was true and the
+#: catalogue was the one table the purge did not reach. Findings are cascaded
+#: away with their organisation; the ``vulnerability_definitions`` rows those
+#: findings pointed at simply stayed, run after run, forever.
+#:
+#: On the live application database that produced 24 permanent rows titled
+#: "Test vulnerability" and "Package CVE", dated between 2026-06-19 and
+#: 2026-08-10 — the last of them on the day of the incident recorded in
+#: CLAUDE.md, when a full-suite run inherited the API container's
+#: ``DATABASE_URL``. The three database-name guards above stop that recurring;
+#: this stops a run leaving catalogue residue behind *at all*, on whatever
+#: database it reaches.
+SYNTHETIC_CVE_PREFIX = "CVE-9999-"
+_SYNTHETIC_CVE_LIKE = SYNTHETIC_CVE_PREFIX + "%"
+
+
+def _purge_synthetic_catalogue_rows(conn) -> None:
+    """
+    Remove catalogue rows a test created, and any findings still pointing at
+    them.
+
+    Findings go first and this is not optional: ``asset_vulnerabilities.vuln_id``
+    references ``vulnerability_definitions.id`` **ON DELETE RESTRICT**, so a
+    finding created under a *baseline* organisation — which the organisation
+    purge above deliberately does not delete — would make the catalogue delete
+    raise instead of clean up.
+
+    Both statements are keyed on an indexed prefix of a primary key, so the
+    common case (a test created nothing) costs two index probes.
+    """
+    conn.execute(
+        text("DELETE FROM asset_vulnerabilities WHERE vuln_id LIKE :p"),
+        {"p": _SYNTHETIC_CVE_LIKE},
+    )
+    conn.execute(
+        text("DELETE FROM vulnerability_definitions WHERE id LIKE :p"),
+        {"p": _SYNTHETIC_CVE_LIKE},
+    )
+
 
 @pytest.fixture(scope="function", autouse=True)
 def reset_database(session_client):

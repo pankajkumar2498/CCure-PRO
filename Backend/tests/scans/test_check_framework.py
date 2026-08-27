@@ -272,7 +272,7 @@ def test_check_identifiers_are_vendor_prefixed_and_never_cve_shaped():
     """
     A reader who meets ``CCURE-CFG-…`` in a report knows the identifier is ours
     and that searching NVD for it will return nothing. That is the whole point:
-    the live catalogue already contains 23 rows keyed ``CVE-9999-…`` (test
+    the live catalogue contained 24 rows keyed ``CVE-9999-…`` (test
     residue), and every one of those reads to a human as a published CVE.
     """
     minted = definition_id_for_check("cis_win2022_2.3.1.1")

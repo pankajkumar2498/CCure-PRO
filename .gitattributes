@@ -1,0 +1,5 @@
+# The OpenAPI contract is generated on Linux in CI and byte-compared against
+# this tracked baseline. Without this rule core.autocrlf rewrites it to CRLF on
+# Windows checkouts, and the CI diff then fails on every line regardless of
+# content.
+Backend/openapi.json text eol=lf

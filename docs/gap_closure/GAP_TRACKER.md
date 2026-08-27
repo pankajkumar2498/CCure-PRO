@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                 | Commit       |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ---------------------- | ------------ |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**             | _this phase_ |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**             | _this phase_ |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Deferred → Phase 2** | —            |
-| GAP-01       | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | Open                   | —            |
-| GAP-02       | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | Open                   | —            |
-| GAP-03       | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | Open                   | —            |
-| GAP-04       | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | Open                   | —            |
-| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                   | —            |
-| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                   | —            |
-| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                   | —            |
-| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                   | —            |
-| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                   | —            |
-| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                   | —            |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                   | —            |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                   | —            |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                   | —            |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                   | —            |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                   | —            |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                   | —            |
-| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                   | —            |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                   | —            |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                   | —            |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                 | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ---------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**             | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**             | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Deferred → Phase 2** | —         |
+| GAP-01       | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | Open                   | —         |
+| GAP-02       | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | Open                   | —         |
+| GAP-03       | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | Open                   | —         |
+| GAP-04       | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | Open                   | —         |
+| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                   | —         |
+| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                   | —         |
+| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                   | —         |
+| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                   | —         |
+| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                   | —         |
+| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                   | —         |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                   | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                   | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                   | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                   | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                   | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                   | —         |
+| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                   | —         |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                   | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                   | —         |
 
 ---
 
@@ -352,9 +352,9 @@ regression is read correctly rather than blamed on that phase's code.
 
 ## 6. Commit log
 
-| Phase | Commit             | Tag | Suite result       |
-| ----- | ------------------ | --- | ------------------ |
-| 0     | _filled at commit_ | —   | _filled at commit_ |
+| Phase | Commit    | Tag | Suite result              |
+| ----- | --------- | --- | ------------------------- |
+| 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

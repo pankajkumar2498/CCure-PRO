@@ -14,6 +14,7 @@ from typing import Any, Optional
 from core.celery_app import celery_app
 from core.compliance_evidence import ComplianceEvidenceProvider
 from core.compliance_frameworks import is_active as is_active_framework
+from core.config_audit.operators import evaluate as _shared_evaluate
 from db.base import SessionLocal
 from db.models import Asset, Service
 from db.models.compliance import (
@@ -225,7 +226,38 @@ def resolve_controls_for_rule(
 
 
 def _evaluate_operator(operator: str, actual: Any, expected: Any) -> bool:
-    """Applies criteria operators to normalize evidence values."""
+    """
+    Applies criteria operators to normalize evidence values.
+
+    The implementation moved to ``core/config_audit/operators.py`` in Phase 3,
+    where the configuration audit engine needs the same comparisons plus a few
+    more. This is now a delegate rather than a second copy: two evaluators for
+    one vocabulary is how ``gte`` comes to mean different things in two parts
+    of one product, and the seeded rule catalogue depends on these semantics
+    exactly as they were.
+
+    Behaviour here is unchanged. The shared module can additionally report
+    "the comparison could not be performed" for an unimplemented operator —
+    which the previous bare ``return False`` recorded as a *failure* against
+    every host — but this entry point keeps collapsing that to False so no
+    existing compliance rule changes verdict. New callers should use
+    ``evaluate_detailed`` and honour the third state.
+    """
+    return _shared_evaluate(operator, actual, expected)
+
+
+def _evaluate_operator_legacy(operator: str, actual: Any, expected: Any) -> bool:
+    """
+    The pre-Phase-3 implementation, retained as the reference the shared
+    module is tested against.
+
+    ``tests/scans/test_config_audit_operators.py`` runs both over a truth table
+    covering every shared operator against list, scalar, numeric, empty and
+    None inputs, and fails on any disagreement. Keeping the original code is
+    what makes that test meaningful — a test comparing a function to itself
+    proves nothing, and simply asserting the new behaviour would not have
+    caught a semantic drift introduced during the move.
+    """
     # Emptiness is a verdict in its own right and has to be decided before the
     # None guard: "this host lists no NTP server" (A.8.17) and "this host was
     # never asked about NTP" are different findings, and only the caller's

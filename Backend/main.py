@@ -49,6 +49,7 @@ from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
 from scans.schema_bootstrap import ensure_scan_schema
 from routers.scan_history import router as scans_router
+from routers.config_audit import router as config_audit_router
 from routers.credentials import router as credentials_router
 from routers.scan_schedules import router as scan_schedules_router
 
@@ -922,6 +923,7 @@ app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
 app.include_router(scan_schedules_router)
 app.include_router(credentials_router)
+app.include_router(config_audit_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_email_domains_router)

@@ -1862,6 +1862,7 @@ def _apply_credentialed_enrichment(
                 "detected_os",
                 "system_info",
                 "hardening_audits",
+                "config_audit",
                 "security_issues",
                 "package_count",
                 "collection_errors",
@@ -2378,6 +2379,120 @@ def run_traditional_scan_task(
 MAX_CREDENTIALED_TARGETS = 256
 
 
+def _run_configuration_audit(
+    *,
+    executor,
+    ip: str,
+    os_type: str,
+    system_data: dict,
+    asset_id: str | None = None,
+    org_id: str | None = None,
+    timeout: int = 45,
+) -> tuple[dict, list[dict]]:
+    """
+    Run the Phase 3 configuration audit over the session that is already open.
+
+    Returns ``(summary, findings)`` where *findings* are shaped like the other
+    entries in ``cve_list`` so they travel the existing finding → risk →
+    reporting path. There is no second finding list and no second report
+    section for configuration results; that is the point of the phase.
+
+    **Called inside the ``with connection`` block, deliberately.** These checks
+    read the host, so they need a live executor — and running them on the
+    session the collectors just used costs no second authentication. Moving
+    this after the block would leave every check reporting "no authenticated
+    session", which the engine renders as ERROR: correct, and uselessly so.
+
+    ``system_data`` is passed as well as the executor because several
+    collectors answer from the inventory already in hand rather than re-reading
+    it. A benchmark with fifty package rules would otherwise enumerate
+    installed software fifty times.
+    """
+    from core.checks.contract import CheckOutcome
+    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
+    from core.config_audit.builtin import builtin_checks
+    from core.config_audit.findings import config_definition_id
+
+    platform = "windows" if os_type == "windows" else "linux"
+    checks = select_checks(builtin_checks(), platform=platform)
+    if not checks:
+        return {"assessed": False, "reason": f"no checks defined for {platform}"}, []
+
+    context = CollectionContext(
+        target=ip,
+        platform=platform,
+        executor=executor,
+        system_data=system_data,
+        asset_id=asset_id,
+        org_id=org_id,
+        timeout=timeout,
+    )
+    report = ConfigAuditEngine().run(checks, context)
+
+    findings: list[dict] = []
+    for result in report.results:
+        if result.outcome is not CheckOutcome.FAIL:
+            continue
+        observation = result.evidence[0] if result.evidence else None
+        findings.append(
+            {
+                # The minted catalogue identifier, not a CVE. `CCURE-CFG-…`
+                # tells a reader the id is ours and that NVD has never heard
+                # of it — the reason the vendor prefix exists.
+                "cve_id": config_definition_id(result.check_id),
+                "cve": config_definition_id(result.check_id),
+                "definition_type": "config_check",
+                "title": result.title,
+                "severity": result.severity.capitalize(),
+                "description": result.title,
+                "desc": result.title,
+                "detection_method": "config_check",
+                "confidence": "Confirmed",
+                "qod": result.qod,
+                "remediation": result.remediation or "",
+                "evidence": (
+                    f"Expected: {observation.expected}\n"
+                    f"Observed: {observation.observed}"
+                    if observation
+                    else ""
+                ),
+                "expected_state": observation.expected if observation else "",
+                "observed_state": observation.observed if observation else "",
+                "package": "",
+                "installed_ver": "",
+                "fixed_ver": "",
+                "source": "config_audit",
+                "matched_by": result.metadata.get("check_type", ""),
+                "cvss_score": 0.0,
+                "cvss": 0.0,
+                "epss_score": 0.0,
+                "epss_percentile": 0.0,
+                "in_kev": False,
+                "kev_due_date": "",
+                "has_exploit": False,
+                "exploit_sources": [],
+                "cpe_uri": "",
+                "cvss_version": "",
+                "cvss_vector": "",
+                "affected_software": [],
+                "references": list(result.references),
+            }
+        )
+
+    summary = {
+        "assessed": True,
+        "platform": platform,
+        "checks_run": len(report.results),
+        # Verdicts only. A configuration score computed over checks that
+        # errored or did not apply would move when the network did.
+        "checks_assessed": len(report.assessed),
+        "score_pct": report.compliance_score(),
+        "counts": report.counts,
+        "results": [r.as_dict() for r in report.results],
+    }
+    return summary, findings
+
+
 def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
     """Host hardening posture, derived from what the authenticated session read."""
     issues = system_data.get("security_issues") or []
@@ -2691,6 +2806,32 @@ def audit_credentialed_host(
         system_data["detected_os"] = os_type
         system_data["credentialed_response_time_ms"] = credentialed_response_time_ms
 
+        # Configuration audit, on the session that is still open.
+        #
+        # A wholesale failure here must not read as "the host is correctly
+        # configured". The engine already reports per-check errors rather than
+        # verdicts, so the only way to reach this handler is a defect in our
+        # own code — and the honest result of that is a recorded gap, not an
+        # empty pass list. `config_audit_error` travels into the stored report
+        # so the omission is visible to a reader rather than only to the log.
+        _emit("Auditing host configuration...", 60, "configuration")
+        try:
+            config_summary, config_findings = _run_configuration_audit(
+                executor=ssh,
+                ip=ip,
+                os_type=os_type,
+                system_data=system_data,
+                timeout=max(timeout, 45),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Configuration audit failed for %s", ip)
+            config_summary = {
+                "assessed": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+            config_findings = []
+        system_data["config_audit"] = config_summary
+
     _emit("Analyzing packages for vulnerabilities...", 70, "analysis")
     packages = system_data.get("packages", [])
     matcher = VulnMatcher()
@@ -3003,6 +3144,39 @@ def audit_credentialed_host(
             ", ".join(sorted(collection_errors)),
         )
 
+    # Configuration findings join the same list the CVE findings are in, so
+    # they are severity-ranked, risk-scored and reported beside them rather
+    # than in a section of their own. A failing hardening control is a security
+    # finding; splitting the two lists is what produces a second risk model and
+    # a second report generator behind it.
+    cve_list.extend(config_findings)
+    if config_findings:
+        log.info(
+            "Configuration audit produced %d finding(s) on %s",
+            len(config_findings),
+            ip,
+        )
+    if not config_summary.get("assessed"):
+        # Same reasoning as the OS and inventory branches above: a dimension
+        # that could not be assessed must not be indistinguishable from one
+        # assessed and found clean.
+        cve_list.append(
+            {
+                "cve_id": "MISC-CREDENTIALED-CONFIG-NOT-ASSESSED",
+                "detection_method": "active_check",
+                "severity": "Medium",
+                "title": "Host configuration not assessed",
+                "description": (
+                    f"The credentialed session to {ip} succeeded, but the host "
+                    f"configuration audit did not run, so no hardening control "
+                    f"was evaluated. "
+                    f"{config_summary.get('reason', 'No reason was recorded.')} "
+                    f"Configuration weaknesses would not appear in this report."
+                ),
+                "package": "",
+            }
+        )
+
     severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
     for cve in cve_list:
         sev = cve.get("severity", "Info")
@@ -3086,6 +3260,9 @@ def audit_credentialed_host(
         "suspicious_scheduled_tasks": system_data.get("suspicious_scheduled_tasks", []),
         "cron_info_raw": system_data.get("cron_info_raw", ""),
         "hardening_audits": hardening_audits,
+        # Phase 3 configuration audit: per-check verdicts, the counts
+        # behind them, and the score computed over verdicts only.
+        "config_audit": config_summary,
         "suid_binaries": system_data.get("suid_binaries", []),
         "world_writable_dirs": system_data.get("world_writable_dirs", []),
         "sudo_nopasswd": system_data.get("sudo_nopasswd", False),

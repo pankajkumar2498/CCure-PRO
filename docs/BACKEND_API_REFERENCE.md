@@ -742,6 +742,62 @@ build without it would collect them and then fail every scan.
 
 ---
 
+## 6d. Configuration audit — `/config-audit`
+
+Source: `Backend/routers/config_audit.py` — 4 operations. Added by Phase 3.
+
+The read surface of the generic configuration audit engine
+(`Backend/core/config_audit/`). All four are gated on `scans:read`: they
+describe what a scan can check, and no new permission was introduced for a
+read-only catalogue.
+
+| Method | Path                              | Permission   | Limit  |
+| ------ | --------------------------------- | ------------ | ------ |
+| GET    | `/config-audit/checks`            | `scans:read` | 60/min |
+| GET    | `/config-audit/capabilities`      | `scans:read` | 60/min |
+| GET    | `/config-audit/checks/{check_id}` | `scans:read` | 60/min |
+| POST   | `/config-audit/validate`          | `scans:read` | 30/min |
+
+**There is deliberately no "run a configuration audit" endpoint.**
+Configuration checks run inside the credentialed scan, on the session the
+collectors already opened — `core.tasks.audit_credentialed_host`. A separate
+dispatch endpoint would be a second way to start a scan against a
+caller-named target, needing its own scope check, quota check, rate limit and
+audit entry, and it would produce a scan row Scan History and the reports
+would have to learn about. Phase 1 made the same call for scheduling.
+
+**`GET /checks`** filters on `platform`, `check_type` and `domain`. Platform
+filtering uses the check's own targeting rule, so a check declared for `any`
+is returned for every platform. Each entry carries `expected` (rendered),
+`remediation`, `rationale`, `references` and `absent_policy`.
+
+**`absent_policy`** is the field a reviewer most often needs. It says what a
+successful reading of "the item is not present" means for that check — `pass`
+(SMBv1 not installed), `fail` (auditd not installed), `not_applicable` (a rule
+conditional on a component being present), or `manual_review` (a Windows
+setting absent from the registry is at a platform default that varies by
+build). There is no default: every value is right for some rule and wrong for
+others, so the rule author has to choose.
+
+**`GET /capabilities`** reports which check types actually have a collector,
+per platform, read from the live registry. `check_type` admits `api` and
+`database_query`, and `target_platform` admits `database` and `container`,
+ahead of the phases that implement them — so a rule can be authored today that
+nothing in this build can execute. The engine reports that as an error rather
+than skipping it, but only after a scan has run; `declared_without_collector`
+answers it beforehand.
+
+**`POST /validate`** checks a rule definition and contacts no target. It
+answers 200 with `valid: false` and the reasons rather than 422 — the caller
+asked whether the rule is valid, and the errors are the answer to that
+question, not a fault in the request. A rule targeting a platform with no
+collector yet is `valid: true` **with a warning**: authoring content ahead of
+its collector is legitimate, and reporting it as invalid would block it while
+reporting nothing would let it ship silently unexecutable. A `matches` pattern
+is compiled to check it parses and is never matched against anything.
+
+---
+
 ## 7. Scan history — `/scans`
 
 Source: `Backend/scans/router.py` — 8 HTTP operations + 1 WebSocket.

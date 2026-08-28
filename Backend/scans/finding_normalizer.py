@@ -250,6 +250,12 @@ class RemediationConfidence(str, Enum):
     VERSION_BOUNDARY = "version_boundary"
     FEED_SUPPLIED = "feed_supplied"
     NONE_PUBLISHED = "none_published"
+    #: The fix is a configuration change this product's own rule prescribes,
+    #: not a patch anybody published. Distinct from NONE_PUBLISHED, which the
+    #: report renders as "no published fix — compensating controls only": that
+    #: is true of an unpatched CVE and false of a hardening control, where the
+    #: fix is known, exact and available now.
+    CONFIGURATION_GUIDANCE = "configuration_guidance"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,6 +334,7 @@ class Remediation:
             RemediationConfidence.VENDOR_PATCH,
             RemediationConfidence.VERSION_BOUNDARY,
             RemediationConfidence.FEED_SUPPLIED,
+            RemediationConfidence.CONFIGURATION_GUIDANCE,
         )
 
 

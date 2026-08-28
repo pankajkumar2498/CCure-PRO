@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                 | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ---------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**             | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**             | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Deferred → Phase 2** | —         |
-| GAP-01       | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | Open                   | —         |
-| GAP-02       | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | Open                   | —         |
-| GAP-03       | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | Open                   | —         |
-| GAP-04       | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | Open                   | —         |
-| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                   | —         |
-| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                   | —         |
-| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                   | —         |
-| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                   | —         |
-| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                   | —         |
-| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                   | —         |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                   | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                   | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                   | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                   | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                   | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                   | —         |
-| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                   | —         |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                   | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                   | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                    | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**                | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**                | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Closed** (95% measured) | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured) | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured) | `dadceb2` |
+| GAP-04       | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | Open                      | —         |
+| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                      | —         |
+| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                      | —         |
+| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                      | —         |
+| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                      | —         |
+| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                      | —         |
+| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                      | —         |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                      | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                      | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                      | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                      | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                      | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                      | —         |
+| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                      | —         |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                      | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                      | —         |
 
 ---
 
@@ -578,7 +578,257 @@ against), and Windows Server (only a workstation SKU was available).
 
 ---
 
-## 6. Definition of Done — Phase 0
+### 5.9 Carried forward from Phase 2 — tracked, non-blocking
+
+Recorded here so that closing Phase 2 does not close these with it. None blocks
+a later phase; each needs something this environment could not supply.
+
+| Item                                  | Status                                 | What it needs                                                                                                                                                                                                       |
+| ------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Insufficient-privilege classification | **Pending real target**                | A genuine non-admin Windows account — a standard user, or one in `Remote Management Users` but not `Administrators`                                                                                                 |
+| Kerberos / domain-joined auth         | Implemented, not real-target validated | A domain-joined host, and a GSSAPI library present in the worker environment                                                                                                                                        |
+| Windows Server SKU                    | Implemented, not real-target validated | A Server 2016+ target                                                                                                                                                                                               |
+| SMB + Remote Registry + WMI transport | **Not implemented**                    | A second transport. Nessus's primary Windows path; WinRM is off by default on client SKUs, so on a workstation estate this product still reaches fewer hosts out of the box. Deliberately not attempted in Phase 3. |
+
+---
+
+## 6. Phase 3 — Generic configuration audit engine
+
+**Status: Complete.** Closes GAP-03.
+
+The reusable engine only. No CIS content, no STIG content, and no vendor name
+appears in any module of `core/config_audit/` — that is the property that lets
+Phases 4, 5, 9, 10, 11 and 16 contribute _rules_ rather than engines.
+
+### 6.1 What already existed and is reused, not rebuilt
+
+Reading the tree first was the whole of the design work. Five things were
+already right and are used as they stand:
+
+| Existing thing                      | How Phase 3 uses it                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `compliance_rules`                  | **Configuration rules live here.** The table already carries `check_type`, a JSONB `check_definition`, `target_platform`, `severity`, versioning, a remediation link and a junction to every framework control. A second rule table would need all of it again — and would bring a second finding table, a second score and a second report behind it. |
+| `core/checks/contract.py` (Phase 0) | `CheckOutcome`, `CheckResult`, `Evidence` and `roll_up_outcomes` are the engine's output types unchanged. The FAIL-must-carry-evidence invariant applies to every configuration finding for free.                                                                                                                                                      |
+| `compliance_findings.status`        | The four non-error outcomes are spelled identically, so a verdict stores with no translation table.                                                                                                                                                                                                                                                    |
+| `scans/finding_normalizer.py`       | A failing check becomes an ordinary `StandardizedFinding` and travels the existing normalizer → risk → PDF path.                                                                                                                                                                                                                                       |
+| `BaseExecutor` (`ssh_scanner.py`)   | Collectors run over SSH or WinRM without knowing which — the same protocol that let Phase 2 swap transports without touching `WindowsCollector`.                                                                                                                                                                                                       |
+
+`_evaluate_operator` was **moved rather than copied**. `core/compliance_tasks`
+now delegates to `core/config_audit/operators.py`; the pre-Phase-3
+implementation is retained as `_evaluate_operator_legacy` and is the reference
+the truth-table test compares against, so the move is held to being a move.
+
+### 6.2 The distinction the engine is built around
+
+Three situations look identical to a collector that returns a bare string, and
+every configuration scanner that reports false results has collapsed them:
+
+| State         | Means                                                     | Becomes                        |
+| ------------- | --------------------------------------------------------- | ------------------------------ |
+| `COLLECTED`   | A value was read                                          | compared → PASS or FAIL        |
+| `ABSENT`      | The collector ran and the thing genuinely is not there    | **the rule's** `AbsencePolicy` |
+| `UNSUPPORTED` | The check cannot apply to this target at all              | NOT_APPLICABLE                 |
+| `UNAVAILABLE` | Collection failed — no credential, refused, non-zero exit | **ERROR, never a verdict**     |
+
+`AbsencePolicy` has **no default**. Absence is a pass for "SMBv1 must not be
+installed", a failure for "auditd must be installed", and not-applicable for
+"if IIS is present it must be configured thus". A default would silently pick
+whichever answer flatters the score, so a rule that does not choose is refused
+at construction.
+
+`WindowsCollector._run` and `LinuxCollector._run` both end with
+`return _clean_output(result.stdout) if result.stdout else ""` — the exit code
+is discarded. Defensible for bulk inventory; for a configuration check it is
+the central defect, because a failed command returns `""` and the comparison
+reads `""` as the host's setting. `ShellRunner` therefore keeps `exit_code` and
+`success`, and has no method that returns a bare string.
+
+### 6.3 What was built
+
+| Module                                            | What it is                                                                                                 |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `core/config_audit/spec.py`                       | `ConfigCheck`, `Expectation`, `AbsencePolicy`; the adapter to and from `compliance_rules.check_definition` |
+| `core/config_audit/collection.py`                 | `CollectedState` (the four states), `CollectionContext`                                                    |
+| `core/config_audit/operators.py`                  | The comparison vocabulary, shared with the compliance engine                                               |
+| `core/config_audit/collectors/`                   | 11 Windows collectors, 10 Linux; `ShellRunner`; the registry                                               |
+| `core/config_audit/engine.py`                     | The pipeline and the outcome table; `ConfigAuditReport`; `select_checks`                                   |
+| `core/config_audit/findings.py`                   | Both joins — `StandardizedFinding` and the compliance verdict                                              |
+| `core/config_audit/builtin/`                      | 10 Windows + 10 Linux real host rules                                                                      |
+| `routers/config_audit.py`                         | 4 read operations                                                                                          |
+| `Frontend/src/pages/scan/ConfigurationChecks.jsx` | The catalogue, with the absence policy and the capability gap made visible                                 |
+
+**Check types** (13): `registry`, `file`, `directory`, `permission`, `service`,
+`process`, `package`, `port`, `config_file`, `command`, `security_policy`, plus
+`api` and `database_query` reserved. Collectors exist for **11 of them on
+Windows and 10 on Linux** (`registry` is Windows-only). The two reserved types
+have no collector; a rule using one reports ERROR rather than being skipped, so
+the gap is visible instead of scoring as a pass.
+
+**Operators**: the 13 pre-existing ones with semantics frozen, plus `matches`,
+`not_matches`, `in`, `not_in`, `between`, `starts_with`, `ends_with`,
+`is_true`, `is_false`.
+
+### 6.4 Where results go — one finding model, not two
+
+A FAIL becomes a `StandardizedFinding` in the same `cve_list` as the CVE
+findings, so it is severity-ranked, risk-scored and reported beside them.
+Identifiers are minted `CCURE-CFG-…` by `definition_id_for_check` and filed as
+`definition_type = config_check` with `cve_id` NULL — which is what Phase 0
+widened `vulnerability_definitions` for.
+
+The audit runs **inside the credentialed scan**, on the session the collectors
+already opened (`core/tasks.audit_credentialed_host`). There is deliberately no
+"run a configuration audit" endpoint: it would be a second way to start a scan
+against a caller-named target, needing its own scope check, quota check, rate
+limit and audit entry, and it would produce scan rows Scan History and the
+reports would have to learn about. Phase 1 made the same call for scheduling.
+
+An audit that could not run is recorded as
+`MISC-CREDENTIALED-CONFIG-NOT-ASSESSED`, the same treatment the OS and
+inventory branches already give an unassessed dimension — because a crashed
+audit leaves no failing checks, which is byte-identical to a host that passed
+every one.
+
+### 6.5 Database change
+
+Migration `b4c5d6e7f8a9` replaces two CHECK constraints on `compliance_rules`.
+No column added, no row rewritten.
+
+- `ck_rule_check_type` gains the 12 new type names; all seven existing names are
+  kept verbatim, so every seeded rule still satisfies it.
+- `ck_rule_target_platform` gains `database` and `container`, reserved ahead of
+  Phases 10, 11 and 17 so those need no CHECK migration on a table holding
+  customer rules.
+
+The old type names are **kept rather than mapped**. The two rule kinds are told
+apart by `check_definition.config_check`, not by the type name, precisely so
+they can share it — renaming would mean an UPDATE across every seeded rule in
+every tenant's database to gain nothing a reader can see.
+
+Verified: `create_all` (fresh install) and `alembic upgrade` (existing install)
+produce **byte-identical** constraint text; up → down → up round-tripped clean;
+downgrade **refuses** with the offending rule named when a Phase 3 rule exists.
+
+### 6.6 Validation
+
+| Area                          | Result                                                          |
+| ----------------------------- | --------------------------------------------------------------- |
+| New tests                     | **241** — 239 across 6 new files, 2 added to the report suite   |
+| Full suite                    | **1945 passed, 2 skipped, 0 failed** (6m56s) — exactly +241     |
+| Migration round-trip          | up / down / up, zero drift; downgrade refusal exercised         |
+| Model ↔ migration constraint | byte-identical, asserted in code                                |
+| OpenAPI contract              | regenerated — **466 insertions, 0 deletions** (purely additive) |
+| `black` 24.4.2                | clean                                                           |
+| `ruff` (project rule set)     | clean                                                           |
+| `bandit -lll`                 | no issues, 3,644 lines scanned                                  |
+| `eslint` / `prettier`         | clean; `npm run build` succeeds                                 |
+| Docs integrity                | 4 new routes documented; test passes                            |
+
+**The three acceptance criteria are asserted directly**, each from several
+directions rather than once:
+
+- _Unavailable evidence must not become PASS_ —
+  `TestFailedCollectionNeverBecomesPassOrFail`, 7 tests.
+- _Unsupported controls must not become FAIL_ —
+  `TestUnsupportedControlsAreNeverFailures`, 3 tests.
+- _Failed collection must not become PASS_ —
+  `TestNoPathReachesPassExceptATrueComparison`, which enumerates every modelled
+  failure and asserts none reaches PASS, plus a sweep over every
+  `CollectionStatus` member so that a state added later cannot land on the
+  flattering answer without this failing.
+
+Scoring is asserted separately: errors are excluded from **both halves** of the
+fraction, and a host with no verdicts scores `None` rather than 0% or 100% —
+both of those are assertions nobody established.
+
+### 6.7 Two defects the tests caught during development
+
+Recorded because neither would have surfaced in a passing scan, and both are
+the shape this engine exists to prevent.
+
+**A multi-line value was truncated to its first line.** Only the first line of
+a command's output carries the `CCURE::VALUE::` sentinel, and the first parser
+returned that line alone. Every configuration file was therefore read as its
+first directive and every other directive in it reported as _absent_ — which
+surfaces as a fleet-wide configuration gap rather than as a parser bug. Caught
+by `test_the_last_occurrence_wins`; now asserted directly by
+`test_a_value_continues_past_the_first_line`.
+
+**The Windows security-policy collector never read its own export.** `secedit`
+ran, the INI parsed, and the parsed result was then discarded — so every policy
+setting not already present in `password_policy` reported UNAVAILABLE. Caught
+by `test_a_setting_absent_from_the_policy_falls_through_to_secedit`.
+
+One pre-existing defect was fixed in passing: `pdf_generator` looked up the
+remediation-provenance label with a **dict subscript**, so any
+`RemediationConfidence` member added later raised `KeyError` _inside PDF
+generation_ — a whole report lost to a missing label. It is a `.get` with a
+fallback now, and `test_every_remediation_confidence_has_a_report_label` keeps
+every member's label specific.
+
+### 6.8 Coverage
+
+| Capability                          | Before         | After              | Basis                                                                                                                                                                                                                   |
+| ----------------------------------- | -------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GAP-03 generic configuration engine | 35% [measured] | **90%** [measured] | 11 of 13 check types have a collector on Windows, 10 of 13 on Linux; the full rule → collector → evaluation → evidence → finding → risk → remediation → report path is exercised end to end through the real collectors |
+
+The 10% shortfall is named, not rounded away: the `api` and `database_query`
+check types are declared and uncollected (Phases 9, 10, 16), and the engine has
+not been run against a live host in this phase — the built-in rules are
+exercised through the real collectors with a stubbed transport, which proves the
+wiring but not the PowerShell and shell fragments against a running OS.
+
+### 6.9 Known limitations
+
+- **Not validated against a live host.** Phase 2's real-target validation proved
+  the transport; Phase 3's commands have not been run on 10.180.6.14. The
+  sentinel protocol, the quoting and the exit-code handling are asserted against
+  a stub executor. **This is the honest gap in this phase** and the first thing
+  to close when a target is available.
+- **`api` and `database_query` have no collector.** Reserved deliberately;
+  reported as ERROR, never skipped.
+- **Configuration results do not yet write `compliance_findings` rows.**
+  `compliance_verdict()` produces the payload and is tested, but nothing calls it
+  from the scan path — configuration rules are not yet linked to framework
+  controls, and linking them is Phase 4's job when there is benchmark content to
+  link. The _finding_ path is wired end to end.
+- **The built-in rule pack is 20 checks.** Deliberately small: it exists to prove
+  the engine, not to be a benchmark. Inflating it would inflate the coverage
+  figure without adding capability.
+- **`config_file` does not follow `Include` directives.** An `sshd_config` that
+  includes fragments is read only at the named path. Absence of a directive is
+  `MANUAL_REVIEW` for exactly this reason.
+
+### 6.10 Definition of Done — Phase 3
+
+| Line                   | GAP-03                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| Backend implemented    | ✅                                                               |
+| Scanner integration    | ✅ runs inside the credentialed scan                             |
+| Database migration     | ✅ `b4c5d6e7f8a9`, round-tripped                                 |
+| API                    | ✅ 4 operations                                                  |
+| UI                     | ✅ catalogue page                                                |
+| Finding integration    | ✅ one finding model                                             |
+| Evidence               | ✅ expected + observed on every result                           |
+| Risk                   | ✅ severity → the existing risk path                             |
+| Remediation            | ✅ `CONFIGURATION_GUIDANCE`, actionable                          |
+| Compliance             | ⚠️ verdict adapter built and tested; not yet called (Phase 4)    |
+| Reporting              | ✅ same PDF path as the CVE findings                             |
+| Logging / audit        | ✅                                                               |
+| RBAC                   | ✅ `scans:read`, no new permission                               |
+| Unit tests             | ✅                                                               |
+| Integration tests      | ✅                                                               |
+| E2E tests              | ✅ through `audit_credentialed_host`                             |
+| Regression suite       | ✅ 1945 passed / 2 skipped / 0 failed                            |
+| Real-target validation | ❌ **not performed** — see §6.9                                  |
+| False-positive testing | ✅ passing and deliberately failing configurations both asserted |
+| Docs                   | ✅                                                               |
+| Tracker                | ✅                                                               |
+| Commit                 | ✅                                                               |
+
+---
+
+## 7. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
 | ------------------------- | ----------------------------------------- | ------------------------------------ |
@@ -613,7 +863,7 @@ against), and Windows Server (only a workstation SKU was available).
 
 ---
 
-## 7. Regression
+## 8. Regression
 
 | Run                                              | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |
@@ -622,10 +872,48 @@ against), and Windows Server (only a workstation SKU was available).
 | After the audit-boundary fix, full suite × 3     | **1589 passed, 2 skipped**, every run                     |
 | After the catalogue-residue cleanup, full suite  | **1592 passed, 2 skipped** + 1 pre-existing flake (below) |
 | After Phase 1, full suite                        | **1661 passed, 2 skipped**, 7m23s                         |
+| After Phase 2, full suite                        | **1704 passed, 2 skipped**, 7m06s                         |
+| After Phase 3, full suite                        | **1945 passed, 2 skipped**, 6m56s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
-catalogue guard, +68 for Phase 1, +43 for Phase 2 — so no existing test was
-lost, silently skipped, or renamed out of collection at any point.
+catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3 — so no
+existing test was lost, silently skipped, or renamed out of collection at any
+point.
+
+### Phase 3 — a real regression, found by attribution rather than assumed away
+
+The first Phase 3 full run came back **6 failed, 9 errors**, scattered across
+`credentialed`, `scans`, `security` and `web`. A second run with identical
+ordering failed in a _different_ place — `tests/audit`, on a foreign-key
+violation — and every affected file passed in isolation. `pytest-randomly` is
+not installed, so ordering was constant: the failures were timing-dependent,
+not order-dependent.
+
+Rather than guess, the suite was run at the Phase 2 commit with the Phase 3
+work stashed: **1704 passed, 2 skipped, zero failures**. That settled
+attribution — the regression was Phase 3's, and the work was not committed
+until it was found.
+
+**The cause:** `TestTheWholeCredentialedAuditEndToEnd` drove the real
+`audit_credentialed_host` without stubbing the CVE-enrichment paths, so every
+run of it opened live connections to the `vuln_intel` database through
+`csaf_advisories_for`, `exploit_intel_for` and `CsafProductMatcher`. A test
+about configuration-audit wiring has no business doing that: it makes the test
+depend on a feed database being present and populated, and it consumes
+connections from a pool the rest of the suite shares. Stubbing the three
+took that file from **24.8s to 6.5s**, and the failures stopped reproducing.
+
+**A self-inflicted detour worth recording.** While chasing a stale-state
+theory, `ccure_pytest_db` was dropped on the assumption that `conftest` would
+rebuild it. It rebuilds the _schema_ but not the three superuser bootstraps —
+`bootstrap_chain.sql`, `bootstrap_chain_retention.sql` and
+`bootstrap_chain_retention_chained.sql` — which the application role cannot
+install (`must be able to SET ROLE audit_chain_writer`, exactly as that
+script's header documents). 205 audit tests skipped rather than failed, which
+is the safe direction but would have made a green run meaningless. A DBA
+reinstalled all three; `verify_chain_bootstrap.py` reports 46/46 and
+`verify_retention_bootstrap.py` 84/84. **`conftest` cannot restore a dropped
+pytest database — do not drop it.**
 
 The delta is exactly **+54**, matching the 54 tests this phase added — so no
 existing test was lost, silently skipped, or renamed out of collection.
@@ -679,18 +967,21 @@ regression is read correctly rather than blamed on that phase's code.
 
 ---
 
-## 8. Commit log
+## 9. Commit log
 
 | Phase | Commit    | Tag | Suite result              |
 | ----- | --------- | --- | ------------------------- |
 | 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅ |
+| 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅ |
+| 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
+| 3     | `dadceb2` | —   | 1945 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 ---
 
-## 9. Observations recorded during Phase 0 that are not gaps
+## 10. Observations recorded during Phase 0 that are not gaps
 
 Findings worth someone's attention that are outside this programme's scope.
 

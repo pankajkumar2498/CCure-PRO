@@ -182,6 +182,16 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "credentials", action: "read" },
       },
       {
+        id: "configuration-checks",
+        label: "Configuration Checks",
+        Icon: IcoFile,
+        route: "/configuration-checks",
+        // scans:read, not a new permission. This is a read-only catalogue of
+        // what a scan checks, and it describes scan capability rather than
+        // granting any.
+        permission: { resource: "scans", action: "read" },
+      },
+      {
         id: "scan-history",
         label: "Scan History",
         Icon: IcoFile,

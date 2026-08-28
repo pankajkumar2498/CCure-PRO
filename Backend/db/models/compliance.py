@@ -20,6 +20,76 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
+
+def _sql_in_list(values) -> str:
+    """
+    Render a tuple as a SQL ``IN`` list.
+
+    ``str(("key",))`` is ``('key',)`` — Python's one-element tuple repr carries
+    a trailing comma that PostgreSQL rejects with "syntax error at or near )".
+    Every existing constant of this shape in the codebase escapes the problem
+    only by happening to have more than one member, which is luck rather than
+    design: adding a fifth severity is safe, dropping to one is not.
+
+    Defined here, above the models, because the ``compliance_rules``
+    vocabularies below are the first constants that need it. The Phase 2
+    credential constants further down use the same function.
+    """
+    return "(" + ", ".join("'%s'" % v for v in values) + ")"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# compliance_rules vocabularies
+#
+# Widened by migration b4c5d6e7f8a9 (Phase 3). These must render
+# byte-identically to the tuples in that migration: a fresh install builds the
+# constraint from here and stamps head, an existing install runs the ALTER, and
+# a textual difference between the two makes autogenerate report a diff that
+# can never be resolved.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The first seven are the pre-existing evidence-key rule types and are kept
+#: verbatim. The rest are the Phase 3 configuration-audit vocabulary, mirroring
+#: ``core.config_audit.spec.CHECK_TYPES``. The two rule kinds share several
+#: names and are told apart by ``check_definition.config_check``, not by type.
+RULE_CHECK_TYPES = (
+    "registry",
+    "file_content",
+    "port_state",
+    "tls_config",
+    "service_status",
+    "api_response",
+    "command_output",
+    "file",
+    "directory",
+    "permission",
+    "service",
+    "process",
+    "package",
+    "port",
+    "config_file",
+    "command",
+    "security_policy",
+    "api",
+    "database_query",
+)
+
+#: ``database`` and ``container`` are reserved ahead of Phases 10, 11 and 17,
+#: so those need no CHECK migration on a table holding customer rules.
+RULE_TARGET_PLATFORMS = (
+    "windows",
+    "linux",
+    "network_device",
+    "database",
+    "container",
+    "cloud",
+    "any",
+)
+
+RULE_CHECK_TYPE_SQL = "check_type IN %s" % _sql_in_list(RULE_CHECK_TYPES)
+RULE_TARGET_PLATFORM_SQL = "target_platform IN %s" % _sql_in_list(RULE_TARGET_PLATFORMS)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Framework Catalog & Multi-Tenancy
 # ─────────────────────────────────────────────────────────────────────────────
@@ -163,14 +233,8 @@ class ComplianceRule(Base):
         UniqueConstraint(
             "rule_family_code", "version_number", name="uq_rule_family_version"
         ),
-        CheckConstraint(
-            "check_type IN ('registry', 'file_content', 'port_state', 'tls_config', 'service_status', 'api_response', 'command_output')",
-            name="ck_rule_check_type",
-        ),
-        CheckConstraint(
-            "target_platform IN ('windows', 'linux', 'network_device', 'cloud', 'any')",
-            name="ck_rule_target_platform",
-        ),
+        CheckConstraint(RULE_CHECK_TYPE_SQL, name="ck_rule_check_type"),
+        CheckConstraint(RULE_TARGET_PLATFORM_SQL, name="ck_rule_target_platform"),
         CheckConstraint(
             "severity IN ('critical', 'high', 'medium', 'low', 'info')",
             name="ck_rule_severity",
@@ -884,19 +948,6 @@ AUTH_REQUIRES_KEY = ("key",)
 
 #: Rendered exactly as migration a3b4c5d6e7f8 renders them, so a bootstrapped
 #: database and an upgraded one produce byte-identical CHECK constraints.
-def _sql_in_list(values) -> str:
-    """
-    Render a tuple as a SQL ``IN`` list.
-
-    ``str(("key",))`` is ``('key',)`` — Python's one-element tuple repr carries
-    a trailing comma that PostgreSQL rejects with "syntax error at or near )".
-    Every existing constant of this shape in the codebase escapes the problem
-    only by happening to have more than one member, which is luck rather than
-    design: adding a fifth severity is safe, dropping to one is not.
-    """
-    return "(" + ", ".join("'%s'" % v for v in values) + ")"
-
-
 CREDENTIAL_TYPE_SQL = "credential_type IN %s" % _sql_in_list(CREDENTIAL_TYPES)
 TRANSPORT_SQL = "transport IN %s" % _sql_in_list(TRANSPORTS)
 AUTH_METHOD_SQL = "auth_method IN %s" % _sql_in_list(AUTH_METHODS)

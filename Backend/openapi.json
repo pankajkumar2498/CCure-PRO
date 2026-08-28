@@ -318,6 +318,260 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "ConfigAuditCapabilitiesOut": {
+        "properties": {
+          "absence_policies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Absence Policies",
+            "type": "array"
+          },
+          "check_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Check Types",
+            "type": "array"
+          },
+          "declared_without_collector": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Declared Without Collector",
+            "type": "array"
+          },
+          "operators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Operators",
+            "type": "array"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "supported": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Supported",
+            "type": "object"
+          }
+        },
+        "required": [
+          "supported",
+          "declared_without_collector",
+          "check_types",
+          "platforms",
+          "operators",
+          "absence_policies"
+        ],
+        "title": "ConfigAuditCapabilitiesOut",
+        "type": "object"
+      },
+      "ConfigAuditCheckOut": {
+        "properties": {
+          "absent_policy": {
+            "title": "Absent Policy",
+            "type": "string"
+          },
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "check_type": {
+            "title": "Check Type",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "string"
+          },
+          "intrusive": {
+            "default": false,
+            "title": "Intrusive",
+            "type": "boolean"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "qod": {
+            "default": 95,
+            "title": "Qod",
+            "type": "integer"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "requires_credentials": {
+            "default": true,
+            "title": "Requires Credentials",
+            "type": "boolean"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id",
+          "title",
+          "check_type",
+          "platforms",
+          "domain",
+          "severity",
+          "absent_policy",
+          "expected"
+        ],
+        "title": "ConfigAuditCheckOut",
+        "type": "object"
+      },
+      "ConfigAuditValidateIn": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "string"
+          },
+          "check_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Check Id",
+            "type": "string"
+          },
+          "check_type": {
+            "title": "Check Type",
+            "type": "string"
+          },
+          "collect": {
+            "title": "Collect",
+            "type": "object"
+          },
+          "domain": {
+            "default": "host_configuration",
+            "title": "Domain",
+            "type": "string"
+          },
+          "expected": {
+            "title": "Expected"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "severity": {
+            "default": "medium",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id",
+          "title",
+          "check_type",
+          "collect",
+          "operator",
+          "absent"
+        ],
+        "title": "ConfigAuditValidateIn",
+        "type": "object"
+      },
+      "ConfigAuditValidateOut": {
+        "properties": {
+          "check_definition": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Definition"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ConfigAuditValidateOut",
+        "type": "object"
+      },
       "CredentialCreate": {
         "properties": {
           "auth_method": {
@@ -13335,6 +13589,218 @@
         "summary": "Get Dashboard Summary",
         "tags": [
           "Compliance"
+        ]
+      }
+    },
+    "/config-audit/capabilities": {
+      "get": {
+        "description": "Which check types actually have a collector, per platform.\n\nRead from the live registry. A hand-maintained list here would be wrong the\nfirst time a collector was added and nobody would notice, because the\nsymptom is an endpoint under-reporting a capability the product has.",
+        "operationId": "capabilities_config_audit_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditCapabilitiesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Capabilities",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/checks": {
+      "get": {
+        "description": "The configuration checks this build can run.\n\nFiltering by ``platform`` uses the check's own targeting rule, so a check\ndeclared for ``any`` is returned for every platform rather than only for a\nliteral \"any\" query.",
+        "operationId": "list_checks_config_audit_checks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "check_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Domain"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigAuditCheckOut"
+                  },
+                  "title": "Response List Checks Config Audit Checks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Checks",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/checks/{check_id}": {
+      "get": {
+        "operationId": "get_check_config_audit_checks__check_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "check_id",
+            "required": true,
+            "schema": {
+              "title": "Check Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Check",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/validate": {
+      "post": {
+        "description": "Check that a rule definition is executable, without contacting any target.\n\nAnswers 200 with ``valid: false`` rather than 422 for a rule that does not\nvalidate: the caller asked whether it is valid, and the errors are the\nanswer to that question, not a fault in the request.\n\nA ``matches`` pattern is compiled but never executed against anything. That\nis the safe half — compilation is bounded, matching a hostile pattern\nagainst attacker-influenced text is not, and the engine only ever matches\nagainst output it collected from a host the operator chose to scan.",
+        "operationId": "validate_rule_config_audit_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigAuditValidateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditValidateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Rule",
+        "tags": [
+          "Configuration Audit"
         ]
       }
     },

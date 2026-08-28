@@ -117,6 +117,18 @@ CONFIDENCE_COLOR: Dict[Confidence, colors.Color] = {
 
 SEVERITY_TIERS = ["Critical", "High", "Medium", "Low", "None", "Unscored"]
 
+#: Where a finding's remediation text came from, printed beneath it so a reader
+#: can weigh advice from a vendor advisory differently from advice inferred
+#: from a version range. Every ``RemediationConfidence`` member must appear
+#: here; ``tests/reports/test_report_integrity.py`` fails if one does not.
+REMEDIATION_PROVENANCE: Dict[RemediationConfidence, str] = {
+    RemediationConfidence.VENDOR_PATCH: "Source: vendor advisory linked below.",
+    RemediationConfidence.VERSION_BOUNDARY: "Source: CPE version range published with this CVE.",
+    RemediationConfidence.FEED_SUPPLIED: "Source: vulnerability feed.",
+    RemediationConfidence.NONE_PUBLISHED: "No published fix — compensating controls only.",
+    RemediationConfidence.CONFIGURATION_GUIDANCE: "Source: configuration rule — apply the change described above.",
+}
+
 #: How many suppressed candidates to sample into the methodology appendix. The
 #: full list goes to the CSV export; printing hundreds of rows here crowds out
 #: the findings the report exists to communicate.
@@ -1453,12 +1465,15 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     # ── Remediation ──────────────────────────────────────────────────────────
     if finding.remediation:
         remediation = finding.remediation
-        provenance = {
-            RemediationConfidence.VENDOR_PATCH: "Source: vendor advisory linked below.",
-            RemediationConfidence.VERSION_BOUNDARY: "Source: CPE version range published with this CVE.",
-            RemediationConfidence.FEED_SUPPLIED: "Source: vulnerability feed.",
-            RemediationConfidence.NONE_PUBLISHED: "No published fix — compensating controls only.",
-        }[remediation.confidence]
+        # Subscripted, this raised KeyError inside PDF generation for any
+        # confidence value added to the enum later — a whole report lost to a
+        # missing label. `.get` keeps the report renderable; the guarantee that
+        # every member has a *specific* label is enforced in the test suite
+        # instead, where a missing one is a failing assertion rather than a
+        # customer's failed download.
+        provenance = REMEDIATION_PROVENANCE.get(
+            remediation.confidence, "Source: recorded with the finding."
+        )
 
         actionable = remediation.is_actionable
         bg = colors.HexColor("#F0FDF4") if actionable else colors.HexColor("#FEF2F2")

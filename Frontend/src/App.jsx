@@ -36,6 +36,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
 import ScanHistory from "./pages/ScanHistory";
 import ScanSchedules from "./pages/scan/ScanSchedules";
+import ConfigurationChecks from "./pages/scan/ConfigurationChecks";
 import ScanCredentials from "./pages/scan/ScanCredentials";
 import ArchivedScans from "./pages/ArchivedScans";
 import RecycleBin from "./pages/RecycleBin";
@@ -95,6 +96,10 @@ export default function App() {
           <Route path="/history" element={<ScanHistory mode="history" />} />
           <Route path="/scan-schedules" element={<ScanSchedules />} />
           <Route path="/scan-credentials" element={<ScanCredentials />} />
+          <Route
+            path="/configuration-checks"
+            element={<ConfigurationChecks />}
+          />
           <Route
             path="/scan-history"
             element={<Navigate to="/history" replace />}

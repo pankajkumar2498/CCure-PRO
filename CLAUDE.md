@@ -703,6 +703,117 @@ programme; tracker in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_T
   silently replaced `routers/compliance.py`'s in the generated contract. The CI
   contract gate caught it — a regeneration showing *deletions* is the signal.
 
+## Configuration audit engine (`core/config_audit/`)
+
+The generic engine for configuration and hardening assessment. Phase 3 of the
+gap-closure programme; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    Configuration Rule → Collector → Expected State → Actual State
+        → PASS / FAIL / MANUAL / N/A → Finding → Risk → Remediation → Reporting
+
+**No benchmark name appears anywhere in this package, and none may.** CIS
+(Phase 4), STIG (Phase 5), application, database, network-device and cloud
+content are all just sets of `ConfigCheck` records. The moment the engine knows
+which benchmark it is running, adding the next one means editing the engine.
+
+- **Rules live in `compliance_rules`, not a new table.** It already carries
+  `check_type`, a JSONB `check_definition`, `target_platform`, `severity`,
+  versioning and a junction to every framework control. A second rule table
+  would need all of that again, and a second finding table, a second score and
+  a second report generator come along behind it — which is exactly why Phase 0
+  widened `vulnerability_definitions` rather than adding one.
+  `ConfigCheck.to_check_definition()` / `.from_rule()` are the adapter.
+  Migration `b4c5d6e7f8a9` widens the two CHECK constraints; the seven
+  pre-existing `check_type` names are kept verbatim, and the two rule kinds are
+  told apart by `check_definition.config_check`, not by the type name.
+
+- **Four collection states, and collapsing any two is the whole class of bug
+  this engine exists to prevent.** `COLLECTED` (a value was read) → compared.
+  `ABSENT` (the collector ran and the thing is genuinely not there) → the
+  *rule's* policy. `UNSUPPORTED` (out of scope for this target) →
+  NOT_APPLICABLE. `UNAVAILABLE` (collection failed) → **ERROR, never a
+  verdict**. "The registry value does not exist" and "the registry value is
+  empty" routinely mean opposite things, and a collector returning `""` for
+  both has lost the distinction before the engine sees it.
+
+- **`AbsencePolicy` has no default, deliberately.** Absence is a PASS for
+  "SMBv1 must not be installed", a FAIL for "auditd must be installed", and
+  NOT_APPLICABLE for "if IIS is present it must be configured thus". A default
+  would silently pick whichever answer flatters the score, so a rule that does
+  not choose is refused at construction. Most Windows rules are
+  `MANUAL_REVIEW`: a security setting absent from the registry is at a platform
+  default that varies by build and SKU, and neither PASS nor FAIL can be
+  asserted from the absence alone.
+
+- **`ShellRunner` keeps the exit code; the collectors' own `_run` does not.**
+  `WindowsCollector._run` and `LinuxCollector._run` both end
+  `return _clean_output(result.stdout) if result.stdout else ""`. For bulk
+  inventory that is defensible. For a check it means a failed command returns
+  `""`, the comparison reads `""` as the host's setting, and a verdict is
+  reported about a machine that never answered. There is no method on
+  `ShellRunner` that returns a bare string.
+
+- **Commands print a sentinel, and a value runs to the end of the output.**
+  `CCURE::VALUE::` / `CCURE::ABSENT::`, with a non-zero exit meaning the read
+  failed. Only the *first* line carries the prefix — the first parser returned
+  that line alone, so every configuration file was read as its first directive
+  and every other directive reported as absent, which surfaces as a fleet-wide
+  configuration gap rather than as a parser bug. Output carrying no sentinel is
+  UNAVAILABLE, never an empty reading.
+
+- **`grep` exiting 1 is a successful read of "no match", and so is
+  `systemctl is-active` on a stopped unit.** The Linux commands are written to
+  exit 0 for all three normal outcomes. Exit **97** is the reserved sentinel for
+  "the tool I needed is not installed" — a host with no `dpkg-query`, no `rpm`,
+  no `ss` or no `systemctl` reports UNAVAILABLE, not ABSENT: nothing was
+  established about the package, only about the package manager.
+
+- **Rule parameters are data.** Every one goes through `ps_quote` (doubling
+  single quotes) or `shlex.quote`. The rules are administrator-editable, so this
+  is an injection boundary inside the product, not defensive style.
+
+- **A FAIL becomes an ordinary `StandardizedFinding`** in the same `cve_list` as
+  the CVE findings, minted `CCURE-CFG-…` and filed as
+  `definition_type = config_check` with `cve_id` NULL. Only a FAIL: a PASS is a
+  compliance verdict, not a vulnerability, and the other three are not verdicts.
+  `RemediationConfidence.CONFIGURATION_GUIDANCE` exists because
+  `NONE_PUBLISHED` renders as "no published fix — compensating controls only",
+  which is true of an unpatched CVE and false of a hardening control.
+  **Every `RemediationConfidence` member needs a label in
+  `pdf_generator.REMEDIATION_PROVENANCE`**; that lookup used to be a dict
+  subscript and a missing member raised KeyError inside PDF generation.
+
+- **The audit runs inside the credentialed scan**, on the session the collectors
+  already opened — `core/tasks.audit_credentialed_host`, inside the `with
+  connection` block. Moving it after that block leaves every check reporting "no
+  authenticated session". There is deliberately **no HTTP endpoint that runs
+  one**: that would be a second way to start a scan against a caller-named
+  target, needing its own scope check, quota check, rate limit and audit entry.
+  An audit that could not run is recorded as
+  `MISC-CREDENTIALED-CONFIG-NOT-ASSESSED`, because a crashed audit leaves no
+  failing checks and that is byte-identical to a host that passed every one.
+
+- **`core/config_audit/operators.py` is the single comparison vocabulary.**
+  `core/compliance_tasks._evaluate_operator` delegates to it and
+  `_evaluate_operator_legacy` is the pre-Phase-3 implementation, kept as the
+  reference `tests/scans/test_config_audit_operators.py` compares against over
+  a truth table. Do not add a second evaluator. The shared operators' semantics
+  are frozen by the seeded rule catalogue, quirks included. `evaluate_detailed`
+  adds a third state, `UNKNOWN_OPERATOR`: the old bare `return False` meant a
+  misspelled operator evaluated False and was recorded as a **fail** against
+  every host it ran on.
+
+- **`api` and `database_query` check types, and the `database`/`container`
+  platforms, are reserved and have no collector.** Naming them now means Phases
+  9–17 need no CHECK migration on a table holding customer rules. A rule using
+  one reports ERROR — "this product cannot perform that check" is a product gap,
+  not a property of the host, and must never render as NOT_APPLICABLE or PASS.
+  `GET /config-audit/capabilities` reports the gap from the live registry.
+
+- **The built-in pack (`builtin/`) is 20 rules and is not a benchmark.** It
+  exists so the engine ships exercised. Growing it does not grow capability.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

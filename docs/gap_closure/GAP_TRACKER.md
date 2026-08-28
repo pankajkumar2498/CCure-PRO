@@ -51,7 +51,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                                     | `37871a6` |
 | **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured)                      | `9e4ecaa` |
 | **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured)                      | `daab13a` |
-| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | **Partial** — capability built, content absent | `PENDING` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | **Partial** — capability built, content absent | `9e762d0` |
 | GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                                           | —         |
 | GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                                           | —         |
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                                           | —         |
@@ -1207,7 +1207,7 @@ regression is read correctly rather than blamed on that phase's code.
 | 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅ |
 | 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
 | 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
-| 4     | `PENDING` | —   | 2044 passed, 2 skipped ✅ |
+| 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

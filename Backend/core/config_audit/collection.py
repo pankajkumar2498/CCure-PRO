@@ -177,6 +177,12 @@ class CollectionContext:
 
     target: str
     platform: str
+    #: The host's own OS string and version, when collection has established
+    #: them. ``platform`` distinguishes Windows from Linux and no further;
+    #: benchmark content needs to tell Ubuntu from RHEL, and a check that names
+    #: an OS constraint cannot be judged without these.
+    os_name: str = ""
+    os_version_id: str = ""
     executor: Optional[Any] = None
     system_data: Mapping[str, Any] = field(default_factory=dict)
     asset_id: Optional[str] = None

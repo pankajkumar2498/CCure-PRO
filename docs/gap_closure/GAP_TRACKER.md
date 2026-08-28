@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                    | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ------------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**                | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**                | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Closed** (95% measured) | `9e4ecaa` |
-| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured) | `9e4ecaa` |
-| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured) | `daab13a` |
-| GAP-04       | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | Open                      | —         |
-| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                      | —         |
-| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                      | —         |
-| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                      | —         |
-| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                      | —         |
-| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                      | —         |
-| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                      | —         |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                      | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                      | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                      | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                      | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                      | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                      | —         |
-| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                      | —         |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                      | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                      | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                                         | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ---------------------------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**                                     | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**                                     | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Closed** (95% measured)                      | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                                     | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured)                      | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured)                      | `daab13a` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | **Partial** — capability built, content absent | `PENDING` |
+| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                                           | —         |
+| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                                           | —         |
+| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                                           | —         |
+| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                                           | —         |
+| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                                           | —         |
+| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                                           | —         |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                                           | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                                           | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                                           | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                                           | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                                           | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                                           | —         |
+| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                                           | —         |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                                           | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                                           | —         |
 
 ---
 
@@ -828,7 +828,231 @@ wiring but not the PowerShell and shell fragments against a running OS.
 
 ---
 
-## 7. Definition of Done — Phase 0
+## 7. Phase 4 — Benchmark assessment capability (CIS)
+
+**Status: Complete as a capability. The CIS Benchmark _content_ is not present
+and is not claimed.** Closes GAP-04 as far as it can be closed without licensed
+content; the remaining gap is named and measured in §7.8.
+
+### 7.1 The finding that shaped the phase
+
+The brief asked for CIS Benchmark assessment for Windows Server, Windows
+Client, Ubuntu and RHEL. Inspecting the repository first produced a distinction
+that changes the whole phase:
+
+| Item                                                                                               | Present?                                                                  |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `cis_v8_1_controls_seed.json` — **CIS Critical Security Controls v8.1**, 153 governance safeguards | **yes**, and real                                                         |
+| **CIS Benchmarks** — per-platform hardening recommendations (`2.3.1.1 (L1) Ensure …`)              | **no**. No XCCDF, no OVAL, no SCAP datastream, no benchmark text anywhere |
+
+These are separate publications. What ships is the governance framework
+("Establish and Maintain Detailed Enterprise Asset Inventory"); what Phase 4
+asked for is the hardening benchmarks.
+
+**Benchmark content was not written from memory, and this is not a shortcut
+taken for time.** A rule labelled `2.3.1.1` carrying a recalled expected value
+is a false compliance claim in a customer's audit report, and it is
+indistinguishable from a correct one until an auditor checks. CIS Benchmark
+recommendation text, rationale and remediation are also the Center for Internet
+Security's, distributed under licence — the programme's own "licensing
+concerns" stop condition, verbatim.
+
+The decision taken, with the operator: **build the capability and the ingestion
+path now; load licensed content when it is available.** Phase 4 therefore
+delivers everything except the copyrighted text, and the two things that were
+genuinely blocked are named rather than approximated.
+
+### 7.2 What was reused rather than rebuilt
+
+| Existing thing                           | How Phase 4 uses it                                                                                                                                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compliance_frameworks/_controls/_rules` | **A benchmark is a framework.** No new table: recommendations are controls, automated recommendations are rules, and the register, score, findings queue and report work the moment the rows exist. |
+| Phase 3 `ConfigAuditEngine`              | Executes benchmark rules unchanged. Phase 4 adds _content_, not an engine.                                                                                                                          |
+| `ConfigCheck`                            | The `check` inside a benchmark control is a Phase 3 check, round-tripped through `compliance_rules.check_definition`.                                                                               |
+| `_save_finding_for_control`              | Writes every compliance finding, including the history transition, the exception-waiver check and the scope columns. Not reimplemented.                                                             |
+| `resolve_controls_for_rule`              | Framework-scoped control resolution, for the reason CLAUDE.md records — 57 of 114 ISO rules once resolved into a _different_ standard.                                                              |
+| `compliance_verdict()` (Phase 3)         | Written and tested in Phase 3, called by nothing. Phase 4 is what calls it.                                                                                                                         |
+| `StandardizedFinding` → risk → PDF       | A failing benchmark control is an ordinary security finding beside the CVEs on the same host.                                                                                                       |
+
+### 7.3 What was built
+
+| Module                                       | What it is                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| `core/benchmarks/pack.py`                    | The content format and the parser that refuses to guess            |
+| `core/benchmarks/loader.py`                  | Writing a pack into the compliance catalogue, idempotently         |
+| `core/benchmarks/selection.py`               | Which benchmark checks apply to a scan, resolved from the database |
+| `core/config_audit/compliance_sync.py`       | Verdict → `compliance_findings` — the link Phase 3 left open       |
+| `scripts/benchmarks/load_benchmark.py`       | The loader CLI, with `--dry-run`                                   |
+| `scripts/benchmarks/build_baseline_packs.py` | Generates the shipped packs from the built-in rules                |
+| `data/benchmarks/README.md`                  | The format, field by field, for converting a licensed CIS export   |
+| `data/benchmarks/*.benchmark.json`           | Two CCURE-authored baselines (**not** CIS Benchmarks)              |
+
+### 7.4 The three states that keep the numbers honest
+
+`assessment` is **declared, never inferred**:
+
+| Value           | Meaning                                                      | `check`                           |
+| --------------- | ------------------------------------------------------------ | --------------------------------- |
+| `automated`     | The benchmark automates it and this product implements it    | required                          |
+| `manual`        | The benchmark itself requires human judgement                | refused                           |
+| `unimplemented` | The benchmark automates it and **this product does not yet** | refused, and a reason is required |
+
+Reading "has a check" as "is automated" is exactly the inference that produced
+the eighteen ISO controls claiming `semi_auto` with no automated rule behind
+them. `unimplemented` is the state that makes coverage honest: without it, the
+only way to represent a control the product cannot assess is to leave it out —
+and a benchmark that omits what it cannot do reports better coverage than it
+has. An `unimplemented` control is loaded, counted, and evaluated as _not
+assessed_.
+
+### 7.5 Operating-system targeting — a gap found while building
+
+`platforms` distinguishes Windows from Linux and no further. That is not enough
+for benchmark content: a CIS Ubuntu 22.04 benchmark and a CIS RHEL 9 benchmark
+are both `linux`, and running one against the other's host checks paths and
+package names that distribution does not use — then reads their absence as a
+verdict. Confident, wrong findings.
+
+A pack now declares `applies_to` once (`os_name_contains`,
+`os_version_prefix`) and it flows onto every check. **An unidentified OS is an
+ERROR, not NOT_APPLICABLE**: "we could not tell what this host runs" and "this
+host is not what the benchmark is for" are different facts, and only the second
+is a legitimate reason for a control to leave the score.
+
+Without this, the four benchmarks the brief names could not have coexisted in
+one installation.
+
+### 7.6 Two pre-existing defects found and fixed
+
+**CIS Controls v8.1 was seeded by nothing.** Its seed file, its theme migration
+(`o6p7q8r9s0t1`) and its `ALL_FRAMEWORK_IDS` entry have all shipped since before
+Phase 4, and `main.py`'s bootstrap named twelve catalogues and not this one. It
+was parked _and_ unseeded, so the omission was invisible — activating it was
+what surfaced it. The bootstrap now seeds it.
+
+**The theme list existed in five places and the test copy silently won.**
+`ck_control_theme`, `ck_score_theme`, every framework migration, and
+`tests/conftest.py` each held their own transcription of ~126 values, and
+conftest rewrites the constraint on every session — so a theme added to the
+model _and_ its migration was still rejected by the test database, with nothing
+saying why. It is now one tuple, `CONTROL_THEMES`, imported by the model and by
+conftest and duplicated only in the migration that changes it (which must
+describe the schema as it was).
+
+Related hazard, recorded rather than fixed: `_build_test_schema` bootstraps
+from the models and stamps head, so a migration written after a bootstrap never
+runs against that database. Column changes are gap-filled; **CHECK constraint
+changes are not**.
+
+### 7.7 Validation
+
+| Area                             | Result                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| New tests                        | **100** across 4 files (net **+99**: the parked-report test lost its `cis_v8_1` parameter when CIS was activated) |
+| Compliance group                 | 223 passed (from 132)                                                                                             |
+| Full suite                       | see §9                                                                                                            |
+| End-to-end chain                 | proven against the shipped packs through the real collectors                                                      |
+| Migration round-trip             | up / down / up clean; downgrade refuses and **names the rows**                                                    |
+| Model ↔ migration constraint    | byte-identical, asserted in code                                                                                  |
+| Loader idempotence               | second load creates 0, updates 22                                                                                 |
+| Pack ↔ generator drift          | `--check` in CI and in the suite                                                                                  |
+| OpenAPI                          | **unchanged** — Phase 4 adds no route                                                                             |
+| `black` / `ruff` / `bandit -lll` | clean                                                                                                             |
+
+The chain, measured on a stubbed transport against the real Windows pack:
+
+```
+10 benchmark checks resolved from compliance_rules
+  → engine: 1 pass, 1 fail, 8 error, score 50.0%
+  → 10 compliance findings across 10 controls
+     1 fail, 1 pass, 8 manual_review
+  → 1 security finding, CCURE-CFG-…, High, actionable remediation
+```
+
+**The eight unreadable checks became `manual_review`, not `pass` and not
+`fail`.** That is the property the whole engine exists for and it is asserted
+from several directions in `test_benchmark_compliance.py`.
+
+### 7.8 Coverage — measured
+
+| Figure                                 | Value                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------- |
+| **CIS Benchmark controls implemented** | **0** — no CIS Benchmark content is present                            |
+| Benchmark packs shipped                | 2 (CCURE-authored baselines, explicitly not CIS)                       |
+| Benchmark controls total               | 22                                                                     |
+| — automated                            | 20                                                                     |
+| — manual                               | 0                                                                      |
+| — unimplemented                        | 2 (each with a recorded reason)                                        |
+| Automation rate                        | 90.9%                                                                  |
+| Platforms covered                      | 2 — `windows`, `linux`                                                 |
+| Profiles covered                       | 2 — L1 (18 controls), L2 (4 controls)                                  |
+| Check types usable by a pack           | 11/13 Windows, 10/13 Linux (`api`, `database_query` have no collector) |
+| CIS Controls v8.1 safeguards reachable | 10 of 153, via crosswalk from shipped benchmark controls               |
+| Real-target validated controls         | **0**                                                                  |
+| Automated-test coverage                | 100 tests over pack, loader, sync and the end-to-end chain             |
+
+| Capability                          | Before        | After              | Basis                                                                                                                                                                                   |
+| ----------------------------------- | ------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GAP-04 CIS benchmark content        | 0% [measured] | **0%** [measured]  | No CIS Benchmark control is implemented. The number does not move and must not be moved.                                                                                                |
+| Benchmark _capability_ (new figure) | 0% [measured] | **85%** [measured] | Format, loader, profiles, OS targeting, selection, verdict→finding→risk→remediation and reporting all work end to end; missing is real-host validation and content ingestion from XCCDF |
+
+**GAP-04 stays at 0% deliberately.** Shipping a loader is not shipping CIS
+content, and moving the number because the machinery exists is exactly the
+inflation the brief warned against.
+
+### 7.9 Known limitations
+
+- **No CIS Benchmark content.** The blocking one. Needs a licensed export;
+  `data/benchmarks/README.md` documents the conversion.
+- **Not validated against a live host.** Inherited from Phase 3 and unchanged:
+  the collectors are exercised through a stubbed transport. No benchmark
+  control has been run against a real machine.
+- **Windows Server and Windows Client are one platform (`windows`); Ubuntu and
+  RHEL are one platform (`linux`).** OS targeting (§7.5) separates them at the
+  _pack_ level, so four benchmarks can coexist — but there is no `windows_server`
+  vs `windows_client` distinction in the platform vocabulary itself, and the
+  server/client split would have to be expressed through `os_name_contains`.
+- **No XCCDF/OVAL importer.** Conversion into the pack format is currently
+  manual. That is Phase 5's neighbourhood (SCAP) and is deliberately not
+  started here.
+- **Profile selection is not per-organisation.** The filter exists and is
+  tested; nothing records which profile a tenant has adopted, so a scan
+  assesses every profile. Assuming Level 1 would silently drop every Level 2
+  control from the score. Phase 12 (scan policy) owns the setting.
+- **`api` and `database_query` check types still have no collector**, so a
+  benchmark using them reports errors rather than verdicts. Phases 9, 10, 16.
+- **Benchmark findings do not yet appear in a benchmark-specific report.** They
+  reach the existing compliance register, score, findings queue and framework
+  report because a benchmark is a framework; there is no bespoke
+  "CIS Benchmark report" endpoint.
+
+### 7.10 Definition of Done — Phase 4
+
+| Line                     | GAP-04                                                             |
+| ------------------------ | ------------------------------------------------------------------ |
+| Backend implemented      | ✅ format, loader, selection, sync                                 |
+| Scanner integration      | ✅ benchmark rules run in the credentialed scan                    |
+| Database migration       | ✅ `c5d6e7f8a9b0`, round-tripped, downgrade refuses safely         |
+| API                      | ➖ none required; a benchmark is a framework and uses those routes |
+| UI                       | ➖ visible through the existing marketplace, register and reports  |
+| Finding integration      | ✅ compliance finding **and** security finding                     |
+| Evidence                 | ✅ expected, observed, collector, timestamp on every verdict       |
+| Risk                     | ✅ severity → the existing canonical scale                         |
+| Remediation              | ✅ `CONFIGURATION_GUIDANCE`, actionable                            |
+| Compliance result        | ✅ the link Phase 3 left open is now connected                     |
+| Reporting                | ✅ through the framework report path                               |
+| Profiles                 | ✅ data on the control, filterable, not hardcoded                  |
+| Unit / integration / E2E | ✅ 100 tests                                                       |
+| Regression suite         | ✅ see §9                                                          |
+| Real-target validation   | ❌ **not performed**                                               |
+| CIS content              | ❌ **absent, and not invented** — see §7.1                         |
+| Docs                     | ✅ `data/benchmarks/README.md`, CLAUDE.md                          |
+| Tracker                  | ✅                                                                 |
+| Commit                   | ✅                                                                 |
+
+---
+
+## 8. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
 | ------------------------- | ----------------------------------------- | ------------------------------------ |
@@ -863,7 +1087,7 @@ wiring but not the PowerShell and shell fragments against a running OS.
 
 ---
 
-## 8. Regression
+## 9. Regression
 
 | Run                                              | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |
@@ -874,11 +1098,19 @@ wiring but not the PowerShell and shell fragments against a running OS.
 | After Phase 1, full suite                        | **1661 passed, 2 skipped**, 7m23s                         |
 | After Phase 2, full suite                        | **1704 passed, 2 skipped**, 7m06s                         |
 | After Phase 3, full suite                        | **1945 passed, 2 skipped**, 6m56s                         |
+| After Phase 4, full suite                        | **2044 passed, 2 skipped**, 7m20s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
-catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3 — so no
-existing test was lost, silently skipped, or renamed out of collection at any
-point.
+catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, and a
+net +99 for Phase 4 — so no existing test was lost, silently skipped, or
+renamed out of collection at any point.
+
+Phase 4's delta is the one that needs a sentence: it adds **100** tests and the
+suite grows by **99**, because activating CIS Controls v8.1 removed one
+parameter from `test_parked_framework_reports_are_refused` — that catalogue is
+no longer parked, so its report renders instead of being refused, and it is
+covered by the active-report test instead. The arithmetic reconciles exactly;
+an unexplained delta of one is how a silently dropped test hides.
 
 ### Phase 3 — a real regression, found by attribution rather than assumed away
 
@@ -967,7 +1199,7 @@ regression is read correctly rather than blamed on that phase's code.
 
 ---
 
-## 9. Commit log
+## 10. Commit log
 
 | Phase | Commit    | Tag | Suite result              |
 | ----- | --------- | --- | ------------------------- |
@@ -975,13 +1207,14 @@ regression is read correctly rather than blamed on that phase's code.
 | 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅ |
 | 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
 | 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
+| 4     | `PENDING` | —   | 2044 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 ---
 
-## 10. Observations recorded during Phase 0 that are not gaps
+## 11. Observations recorded during Phase 0 that are not gaps
 
 Findings worth someone's attention that are outside this programme's scope.
 

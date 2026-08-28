@@ -15,6 +15,7 @@ from core.celery_app import celery_app
 from core.compliance_evidence import ComplianceEvidenceProvider
 from core.compliance_frameworks import is_active as is_active_framework
 from core.config_audit.operators import evaluate as _shared_evaluate
+from core.config_audit.spec import ConfigCheck
 from db.base import SessionLocal
 from db.models import Asset, Service
 from db.models.compliance import (
@@ -512,6 +513,26 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         for asset in assets:
             for rule in rules:
                 control_ids = controls_for_rule[rule.id]
+
+                # 3.0. A configuration-audit rule is not evaluated here.
+                #
+                # These are Phase 3 rules — a registry value, a file mode, a
+                # service state — and they are evaluated by the configuration
+                # audit engine against a *live host* during a credentialed
+                # scan, then written by `core.config_audit.compliance_sync`.
+                #
+                # This loop would find no `key` in the check definition, read
+                # that as missing evidence, and write `manual_review` **over
+                # the real verdict the host scan produced**. A compliance scan
+                # would then silently blank every benchmark result the last
+                # credentialed scan established.
+                #
+                # Skipping leaves the existing finding untouched, which is
+                # correct: it is refreshed when the host is next scanned, and
+                # its `updated_at` is the honest answer to "how old is this
+                # verdict".
+                if ConfigCheck.is_config_rule(rule):
+                    continue
 
                 # 3.1. Prerequisite verification
                 if not _check_prerequisites(db, asset, rule, org_id):

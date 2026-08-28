@@ -1,0 +1,145 @@
+"""
+core/benchmarks/selection.py
+─────────────────────────────────────────────────────────────────────────────
+Which benchmark checks apply to a scan, resolved from the database.
+
+The Phase 3 engine runs whatever ``ConfigCheck`` list it is handed. Phase 3
+handed it the twenty built-in rules. Phase 4 adds the rules a loaded benchmark
+wrote into ``compliance_rules``, which is the link that makes
+"CIS Benchmark → Control → Rule Engine" real rather than diagrammatic.
+
+Resolved before the scan, not during it
+───────────────────────────────────────
+``audit_credentialed_host`` opens no database session today and should not
+start: it runs on the host worker, against a live target, and adding a session
+to it would put a database round trip inside the window a WinRM connection is
+held open. So the caller resolves the checks while it has a session and passes
+them in.
+
+That also means the checks for *both* platforms are resolved together — the
+target's OS is not known until the audit has connected — and the engine's own
+platform targeting narrows them. That is the same filter it already applies to
+the built-ins, so nothing new decides applicability.
+
+Profile scope
+─────────────
+``profile=None`` assesses every control the benchmark defines, which is the
+honest default: nothing in the product yet records which profile an
+organisation has adopted, and assuming Level 1 would silently drop every
+Level 2 control from the score without saying so. Selecting a profile per
+organisation is a scan-policy question and belongs to Phase 12; the filter is
+here and tested so that phase has nothing to build but the setting.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import List, Optional, Sequence
+
+from sqlalchemy.orm import Session
+
+from core.config_audit.spec import ConfigCheck, SpecError
+from db.models.compliance import (
+    ComplianceControl,
+    ComplianceRule,
+    ComplianceRuleControl,
+    ComplianceTenantFramework,
+)
+
+log = logging.getLogger("ccure.benchmarks.selection")
+
+__all__ = ["benchmark_checks_for_org", "benchmark_frameworks_for_org"]
+
+
+def benchmark_frameworks_for_org(db: Session, org_id: str) -> List[str]:
+    """
+    Framework ids this tenant has installed and this installation offers.
+
+    Both gates, in the order ``compliance_sync`` applies them and for the same
+    reasons — a parked catalogue must not be scored, and a tenant must not
+    acquire a score for a benchmark they never installed.
+    """
+    from core.compliance_frameworks import is_active as is_active_framework
+
+    rows = (
+        db.query(ComplianceTenantFramework.framework_id)
+        .filter(
+            ComplianceTenantFramework.tenant_id == org_id,
+            ComplianceTenantFramework.is_enabled.is_(True),
+        )
+        .all()
+    )
+    return [r[0] for r in rows if is_active_framework(r[0])]
+
+
+def benchmark_checks_for_org(
+    db: Session,
+    org_id: str,
+    *,
+    profile: Optional[str] = None,
+    platforms: Optional[Sequence[str]] = None,
+) -> List[ConfigCheck]:
+    """
+    Every executable benchmark check in scope for *org_id*.
+
+    A rule that will not parse back into a ``ConfigCheck`` is **skipped with a
+    warning, not raised**: one malformed row in a six-hundred-control benchmark
+    must not abort the audit of every other control on the host. The warning
+    names the rule so it is fixable, and the control it belongs to then reports
+    as unassessed rather than as passing — which is the direction that
+    under-claims rather than over-claims.
+    """
+    framework_ids = benchmark_frameworks_for_org(db, org_id)
+    if not framework_ids:
+        return []
+
+    query = (
+        db.query(ComplianceRule, ComplianceControl)
+        .join(ComplianceRuleControl, ComplianceRuleControl.rule_id == ComplianceRule.id)
+        .join(
+            ComplianceControl,
+            ComplianceControl.id == ComplianceRuleControl.control_id,
+        )
+        .filter(
+            ComplianceControl.framework_id.in_(framework_ids),
+            ComplianceRule.status == "active",
+        )
+    )
+    if platforms:
+        query = query.filter(ComplianceRule.target_platform.in_(list(platforms)))
+
+    checks: List[ConfigCheck] = []
+    seen: set[str] = set()
+    for rule, control in query.all():
+        if rule.id in seen:
+            # A rule covering several controls appears once per link. It is one
+            # check and must run once, or the host is probed N times and the
+            # result counted N times in the score.
+            continue
+        if not ConfigCheck.is_config_rule(rule):
+            continue
+        if profile:
+            control_profiles = list(control.profiles or [])
+            # An empty profile list means "in scope whatever profile you
+            # selected" — the same reading migration c5d6e7f8a9b0 gives the
+            # column, so the two cannot disagree.
+            if control_profiles and profile not in control_profiles:
+                continue
+        try:
+            checks.append(ConfigCheck.from_rule(rule))
+        except (SpecError, ValueError) as exc:
+            log.warning(
+                "Benchmark rule %s could not be executed and was skipped: %s",
+                rule.id,
+                exc,
+            )
+            continue
+        seen.add(rule.id)
+
+    log.info(
+        "Resolved %d benchmark check(s) for org %s across %d framework(s)",
+        len(checks),
+        org_id,
+        len(framework_ids),
+    )
+    return checks

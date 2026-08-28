@@ -290,6 +290,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_nis2")
                 .first()
             )
+            # CIS Critical Security Controls v8.1. Its seed file, its theme
+            # migration and its entry in ALL_FRAMEWORK_IDS have all shipped
+            # since before Phase 4, and nothing here ever loaded it — the
+            # catalogue was parked *and* unseeded, so the omission was
+            # invisible. Phase 4 activates it, which needs it to exist.
+            cis_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_cis_v8_1")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -340,6 +350,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_nerc_cip")
                 .count()
             )
+            cis_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_cis_v8_1")
+                .count()
+            )
             nis2_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nis2")
@@ -386,6 +401,11 @@ async def lifespan(app: FastAPI):
                 or nist82_ctrl_count < 30
                 or nerc_cip_ctrl_count < 52
                 or nis2_ctrl_count < 42
+                or not cis_fw
+                # 153 safeguards. The threshold is below the real count for the
+                # reason CLAUDE.md records: a condition that can never be
+                # satisfied re-runs the whole seeder on every container start.
+                or cis_ctrl_count < 150
                 or rule_count < 20
             ):
                 log.info(
@@ -452,11 +472,16 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nerc_cip_seed):
                         seed_framework_and_controls(db, nerc_cip_seed)
+                    cis_seed = os.path.join(
+                        base_scripts_dir, "cis_v8_1_controls_seed.json"
+                    )
                     nis2_seed = os.path.join(
                         base_scripts_dir, "nis2_controls_seed.json"
                     )
                     if os.path.exists(nis2_seed):
                         seed_framework_and_controls(db, nis2_seed)
+                    if os.path.exists(cis_seed):
+                        seed_framework_and_controls(db, cis_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")

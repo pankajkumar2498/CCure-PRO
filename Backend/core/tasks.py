@@ -1770,6 +1770,32 @@ def _apply_credentialed_enrichment(
     skipped: list[dict] = []
     upgraded_total = 0
 
+    # Benchmark content this organisation has installed, resolved once for the
+    # whole scan rather than per host: the same query per target repeats work
+    # and could disagree between hosts if content were loaded mid-scan.
+    #
+    # Resolved *here* rather than at the top of the function so a scan with no
+    # credentials configured — which returns long before this point — does not
+    # pay for a query whose results it will never use.
+    #
+    # `getattr` rather than `scan_row.org_id`: a caller that hands this a row
+    # with no organisation has a defect worth a warning, but not one worth
+    # failing an entire scan whose findings are already collected. Without an
+    # organisation there is no installed content to resolve, so the audit falls
+    # back to the built-in rules and says so.
+    _org_id = getattr(scan_row, "org_id", None)
+    _benchmark_checks: list = []
+    if _org_id:
+        from core.benchmarks.selection import benchmark_checks_for_org
+
+        _benchmark_checks = benchmark_checks_for_org(db, str(_org_id))
+    else:
+        log.warning(
+            "Credentialed enrichment has no organisation for scan %s; benchmark "
+            "content will not be applied and only the built-in rules run.",
+            getattr(scan_row, "id", "?"),
+        )
+
     for index, host in enumerate(active):
         ip = host.get("ip_address") or host.get("ip")
         if not ip:
@@ -1811,6 +1837,7 @@ def _apply_credentialed_enrichment(
 
         try:
             stored_report, system_data, _os_type = audit_credentialed_host(
+                config_checks=_benchmark_checks,
                 ip=ip,
                 username=material.get("username"),
                 password=material.get("password"),
@@ -2388,6 +2415,7 @@ def _run_configuration_audit(
     asset_id: str | None = None,
     org_id: str | None = None,
     timeout: int = 45,
+    extra_checks: list | None = None,
 ) -> tuple[dict, list[dict]]:
     """
     Run the Phase 3 configuration audit over the session that is already open.
@@ -2414,13 +2442,30 @@ def _run_configuration_audit(
     from core.config_audit.findings import config_definition_id
 
     platform = "windows" if os_type == "windows" else "linux"
-    checks = select_checks(builtin_checks(), platform=platform)
+    # Built-ins plus whatever benchmark content the organisation has loaded.
+    # `select_checks` applies platform targeting to both, so a Windows
+    # benchmark rule cannot be dispatched at a Linux host — the same filter
+    # that already governed the built-ins, rather than a second one.
+    builtin = builtin_checks()
+    _builtin_ids = {c.check_id for c in builtin}
+    candidates = [*builtin, *(extra_checks or [])]
+    checks = select_checks(candidates, platform=platform)
     if not checks:
         return {"assessed": False, "reason": f"no checks defined for {platform}"}, []
 
+    # The host's own OS string, so a benchmark published for one distribution
+    # is not dispatched at another. The collectors merge system info into the
+    # top level rather than nesting it, so read there first and fall back.
+    _nested = (system_data or {}).get("system_info") or {}
     context = CollectionContext(
         target=ip,
         platform=platform,
+        os_name=str((system_data or {}).get("os_name") or _nested.get("os_name") or ""),
+        os_version_id=str(
+            (system_data or {}).get("os_version_id")
+            or _nested.get("os_version_id")
+            or ""
+        ),
         executor=executor,
         system_data=system_data,
         asset_id=asset_id,
@@ -2483,6 +2528,10 @@ def _run_configuration_audit(
         "assessed": True,
         "platform": platform,
         "checks_run": len(report.results),
+        # How many of the checks came from loaded benchmark content rather than
+        # the built-in pack. A benchmark that loaded but resolved to nothing
+        # executable would otherwise look identical to one nobody installed.
+        "benchmark_checks": sum(1 for c in checks if c.check_id not in _builtin_ids),
         # Verdicts only. A configuration score computed over checks that
         # errored or did not apply would move when the network did.
         "checks_assessed": len(report.assessed),
@@ -2491,6 +2540,69 @@ def _run_configuration_audit(
         "results": [r.as_dict() for r in report.results],
     }
     return summary, findings
+
+
+def _sync_configuration_compliance(
+    db,
+    *,
+    org_id: str,
+    ip: str,
+    system_data: dict,
+    scan_id: str | None = None,
+) -> dict | None:
+    """
+    Turn this host's configuration verdicts into compliance findings.
+
+    Runs inside the scan's own transaction, immediately after the asset it
+    describes was synced, so a finding cannot outlive a rolled-back scan.
+
+    Returns the sync summary, or None where there was nothing to sync. Failures
+    are logged and swallowed: a compliance-mapping problem must not fail a scan
+    that has already collected its results and written its findings — those are
+    the customer's actual deliverable, and losing them to a benchmark mapping
+    error would be a far worse outcome than a missing compliance row. The
+    exception is logged with its traceback so it is fixable.
+    """
+    from db.models.assets import Asset
+
+    summary = (system_data or {}).get("config_audit") or {}
+    results = summary.get("results") or []
+    if not results:
+        return None
+
+    asset = (
+        db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
+    )
+    if asset is None:
+        # The asset sync runs immediately before this and creates the row, so
+        # reaching here means that sync did not produce one. Recorded rather
+        # than guessed at: a finding needs an asset to hang off.
+        log.warning(
+            "Configuration verdicts for %s could not be mapped to compliance: "
+            "no asset row for org %s",
+            ip,
+            org_id,
+        )
+        return None
+
+    try:
+        from core.config_audit.compliance_sync import sync_config_audit_findings
+
+        return sync_config_audit_findings(
+            db,
+            org_id=org_id,
+            asset_id=str(asset.id),
+            results=results,
+            scan_run_id=None,
+        ).as_dict()
+    except Exception:  # noqa: BLE001
+        log.exception(
+            "Configuration compliance sync failed for %s (org %s); the scan's "
+            "own findings are unaffected",
+            ip,
+            org_id,
+        )
+        return None
 
 
 def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
@@ -2684,6 +2796,7 @@ def audit_credentialed_host(
     auth_method: str = "password",
     domain: str | None = None,
     credential_options: dict | None = None,
+    config_checks: list | None = None,
 ) -> tuple[dict, dict, str]:
     """
     Run the authenticated audit against one host.
@@ -2822,6 +2935,7 @@ def audit_credentialed_host(
                 os_type=os_type,
                 system_data=system_data,
                 timeout=max(timeout, 45),
+                extra_checks=config_checks,
             )
         except Exception as exc:  # noqa: BLE001
             log.exception("Configuration audit failed for %s", ip)
@@ -3372,6 +3486,19 @@ def run_credentialed_scan_task(
     start_time = time.time()
     current_target = {"ip": host_list[0]}
 
+    # Benchmark content this organisation has installed, resolved once for the
+    # whole scan rather than per host — the same query per target would repeat
+    # work and could disagree between hosts if content were loaded mid-scan.
+    # Resolved here because `audit_credentialed_host` deliberately opens no
+    # database session: it runs on the host worker while a WinRM connection is
+    # held open, and a round trip inside that window is a round trip too many.
+    benchmark_checks: list = []
+    _scan_owner = db.query(User).filter(User.id == user_id).first()
+    if _scan_owner is not None:
+        from core.benchmarks.selection import benchmark_checks_for_org
+
+        benchmark_checks = benchmark_checks_for_org(db, str(_scan_owner.org_id))
+
     def emit(status, message, percentage=0, stage=None):
         if not scan_id:
             return
@@ -3434,6 +3561,7 @@ def run_credentialed_scan_task(
 
             try:
                 stored_report, system_data, os_type = audit_credentialed_host(
+                    config_checks=benchmark_checks,
                     ip=host_ip,
                     username=username,
                     password=password,
@@ -3567,6 +3695,13 @@ def run_credentialed_scan_task(
                 stored_report=stored_report,
                 cve_list=stored_report.get("cves") or [],
                 severity_counts=stored_report.get("severity_summary") or {},
+            )
+            _sync_configuration_compliance(
+                db,
+                org_id=str(scan.org_id),
+                ip=stored_report["target"],
+                system_data=system_data,
+                scan_id=str(scan.id),
             )
 
         # Trigger AMT reconciliation now that the asset identity has been fully synced

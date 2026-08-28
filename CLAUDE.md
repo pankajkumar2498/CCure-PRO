@@ -814,6 +814,95 @@ which benchmark it is running, adding the next one means editing the engine.
 - **The built-in pack (`builtin/`) is 20 rules and is not a benchmark.** It
   exists so the engine ships exercised. Growing it does not grow capability.
 
+## Benchmark content (`core/benchmarks/`)
+
+Hardening benchmarks as loadable data on top of the Phase 3 engine. Phase 4 of
+the gap-closure programme; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    pack.json → compliance_frameworks/_controls/_rules → ConfigAuditEngine
+      → evidence → verdict → compliance_findings → risk → remediation → report
+
+Format and authoring guide: [`Backend/data/benchmarks/README.md`](Backend/data/benchmarks/README.md).
+
+- **No CIS Benchmark ships in this repository and none may be committed.** CIS
+  Benchmark recommendation text, rationale and remediation are the Center for
+  Internet Security's, distributed under licence. A customer with a SecureSuite
+  membership converts their own export into a pack; nothing in the code changes.
+  **Do not write benchmark content from memory** — a rule labelled `2.3.1.1`
+  carrying a recalled expected value is a false compliance claim in a
+  customer's audit report and is indistinguishable from a correct one until an
+  auditor checks. What *does* ship is `data/benchmarks/*.benchmark.json`, two
+  CCURE-authored baselines generated from `core/config_audit/builtin/`, whose
+  `licence` says in words that they are not CIS Benchmarks.
+
+- **`assessment` is declared, never inferred** — `automated` (has a check),
+  `manual` (the benchmark itself wants a human), `unimplemented` (the benchmark
+  automates it, this product does not yet, and it must say why). Reading "has a
+  check" as "is automated" is the inference the format refuses; it is the same
+  defect as the eighteen ISO controls that claimed `semi_auto` with nothing
+  behind them. `unimplemented` is what keeps the coverage figures honest — a
+  benchmark that omits what it cannot do reports better coverage than it has.
+
+- **A benchmark *is* a framework.** No new table. Recommendations are controls,
+  automated recommendations are rules, and the register, score, findings queue
+  and report all work the moment the rows exist. Framework ids carry the
+  `cfw_bm_` prefix, which is load-bearing: `compliance_frameworks.is_active`
+  uses it to tell loaded content from a *shipped but parked* catalogue. Without
+  it a loaded benchmark can never appear in the hardcoded active tuple and
+  scores nothing. A prefix rather than "anything unknown is active", because
+  that reading would make a misspelled framework id active and the guard could
+  no longer answer 404.
+
+- **`run_scan_task` skips configuration rules, and must keep skipping them.**
+  A benchmark rule has no evidence `key` — it is evaluated against a live host
+  by the configuration audit and synced afterwards by
+  `core/config_audit/compliance_sync.py`. If the compliance scan also evaluated
+  it, it would read the missing key as missing evidence and write
+  `manual_review` **over the real verdict**, silently blanking every benchmark
+  result the last credentialed scan established.
+
+- **`platforms` is windows-or-linux and that is not enough for benchmarks.**
+  A CIS Ubuntu 22.04 benchmark and a CIS RHEL 9 benchmark are both `linux`;
+  running one against the other's host checks paths and package names that
+  distribution does not use and reads their absence as a verdict. A pack
+  declares `applies_to` once (`os_name_contains`, `os_version_prefix`) and it
+  flows onto every check. **An unidentified OS is an ERROR, not
+  NOT_APPLICABLE** — "we could not tell what this host runs" and "this host is
+  not what the benchmark is for" are different facts, and only the second is a
+  legitimate reason for a control to leave the score.
+
+- **Profiles are data on the control**, not engine behaviour:
+  `compliance_controls.profiles` (JSONB, GIN-indexed, migration `c5d6e7f8a9b0`).
+  Empty means in scope whatever profile was selected, which is what every
+  pre-Phase-4 control is. `saq_profiles` expresses the same idea for PCI-DSS
+  and is deliberately left alone — the PCI scoping queries read it — so **new
+  content uses `profiles`**, pinned by a test. Choosing a profile per
+  organisation is a scan-policy question and belongs to Phase 12; the filter
+  exists and is tested.
+
+- **One theme list, in `db/models/compliance.CONTROL_THEMES`.** It was
+  previously copied five ways — the model twice (`ck_control_theme`,
+  `ck_score_theme`), every framework migration, and `tests/conftest.py` — and
+  the conftest copy silently won, because it rewrites the constraint on every
+  session. A theme added to the model and its migration was still rejected by
+  the test database with nothing saying why. Benchmarks use one generic
+  `BENCHMARK` theme; minting one per benchmark section would add ~80 values for
+  four platforms alone. The section travels in `tags`.
+
+- **`_build_test_schema` bootstraps from the models and stamps head**, so a
+  migration written *after* a database was bootstrapped never runs against it.
+  Column changes are gap-filled; **CHECK constraint changes are not**. If a
+  constraint change seems not to have applied, check
+  `SELECT pg_get_constraintdef(...)` before assuming the migration is wrong.
+
+- **CIS Controls v8.1 is active as of Phase 4** and is the framework benchmark
+  crosswalks target. Note it is the *Controls* (153 governance safeguards), not
+  the *Benchmarks* — separate publications. It shipped as a seed file, a theme
+  migration and an `ALL_FRAMEWORK_IDS` entry since before Phase 4 and
+  **`main.py` never seeded it**: parked *and* unseeded, so the omission was
+  invisible. It is in the bootstrap now.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

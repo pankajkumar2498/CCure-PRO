@@ -209,6 +209,21 @@ class ConfigCheck:
     remediation: str = ""
     references: Tuple[str, ...] = ()
 
+    #: Optional operating-system constraints, beyond the coarse ``platforms``.
+    #:
+    #: ``platforms`` distinguishes Windows from Linux and no further, which is
+    #: not enough for benchmark content: a CIS Ubuntu 22.04 benchmark and a CIS
+    #: RHEL 9 benchmark are both ``linux``, and dispatching one at the other's
+    #: host produces confident, wrong findings — checking a path or a package
+    #: name the distribution does not use and reading its absence as a verdict.
+    #:
+    #: Supported keys, all optional and all ANDed:
+    #:   ``os_name_contains``   list of substrings, any of which may match
+    #:   ``os_version_prefix``  list of version prefixes, any of which may match
+    #:
+    #: Empty means the check applies to every host of its platform, which is
+    #: what every Phase 3 built-in is.
+    os_match: Mapping[str, Any] = field(default_factory=dict)
     #: True where the check needs an account on the target. Dispatching one of
     #: these with no credential yields ERROR, never FAIL — see the engine.
     requires_credentials: bool = True
@@ -283,6 +298,52 @@ class ConfigCheck:
             return False
         return str(platform).strip().lower() in self.platforms
 
+    def os_applicability(
+        self, os_name: Optional[str], os_version_id: Optional[str]
+    ) -> Optional[str]:
+        """
+        Whether this check is in scope for a host running *os_name*.
+
+        Returns None when it applies, or a human-readable reason when it does
+        not. A check with no ``os_match`` always applies.
+
+        **An unidentified OS does not match a check that demands one**, and the
+        caller must render that as an error rather than as not-applicable: "we
+        could not tell what this host runs" and "this host is not what the
+        benchmark is for" are different facts, and only the second is a
+        legitimate reason for a control to leave the score.
+        """
+        if not self.os_match:
+            return None
+
+        wanted_names = [
+            str(v).lower() for v in self.os_match.get("os_name_contains", [])
+        ]
+        if wanted_names:
+            haystack = str(os_name or "").lower()
+            if not haystack:
+                return "the host's operating system was not identified"
+            if not any(token in haystack for token in wanted_names):
+                return (
+                    f"benchmark targets {', '.join(wanted_names)}; this host "
+                    f"reports {os_name!r}"
+                )
+
+        wanted_versions = [
+            str(v).lower() for v in self.os_match.get("os_version_prefix", [])
+        ]
+        if wanted_versions:
+            version = str(os_version_id or "").lower()
+            if not version:
+                return "the host's operating system version was not identified"
+            if not any(version.startswith(prefix) for prefix in wanted_versions):
+                return (
+                    f"benchmark targets version(s) {', '.join(wanted_versions)}; "
+                    f"this host reports {os_version_id!r}"
+                )
+
+        return None
+
     # ── Persistence adapter (compliance_rules.check_definition) ──────────────
 
     def to_check_definition(self) -> Dict[str, Any]:
@@ -306,6 +367,8 @@ class ConfigCheck:
             "intrusive": self.intrusive,
             "qod": self.qod,
         }
+        if self.os_match:
+            payload["os_match"] = dict(self.os_match)
         payload.update(self.expect.as_dict())
         if self.description:
             payload["description"] = self.description
@@ -369,6 +432,7 @@ class ConfigCheck:
             rationale=definition.get("rationale", ""),
             remediation=definition.get("remediation", ""),
             references=tuple(definition.get("references") or ()),
+            os_match=definition.get("os_match") or {},
             requires_credentials=bool(definition.get("requires_credentials", True)),
             intrusive=bool(definition.get("intrusive", False)),
             qod=int(definition.get("qod", 95)),

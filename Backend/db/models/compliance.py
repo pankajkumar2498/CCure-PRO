@@ -87,6 +87,149 @@ RULE_TARGET_PLATFORMS = (
 )
 
 RULE_CHECK_TYPE_SQL = "check_type IN %s" % _sql_in_list(RULE_CHECK_TYPES)
+
+#: Every theme any seeded framework uses. Extracted from the inline CHECK
+#: constraint by Phase 4 so that adding one is a tuple entry rather than a
+#: hand-retyped 126-value SQL string — the previous shape had every framework
+#: migration rewrite the whole list, which is a transcription error waiting to
+#: happen on a constraint that silently rejects a control if it loses a value.
+#:
+#: ``BENCHMARK`` is the generic one, added by migration c5d6e7f8a9b0. A
+#: hardening benchmark has its own section numbering ("1 Account Policies",
+#: "2 Local Policies") which differs per benchmark and per platform; minting a
+#: theme per section would add roughly eighty values for four platforms alone
+#: and more for every benchmark after them. The section travels in ``tags``.
+CONTROL_THEMES = (
+    "ORG",
+    "PPL",
+    "PHY",
+    "TECH",
+    "GV",
+    "ID",
+    "PR",
+    "DE",
+    "RS",
+    "RC",
+    "CIS_01",
+    "CIS_02",
+    "CIS_03",
+    "CIS_04",
+    "CIS_05",
+    "CIS_06",
+    "CIS_07",
+    "CIS_08",
+    "CIS_09",
+    "CIS_10",
+    "CIS_11",
+    "CIS_12",
+    "CIS_13",
+    "CIS_14",
+    "CIS_15",
+    "CIS_16",
+    "CIS_17",
+    "CIS_18",
+    "SOC2_CC",
+    "SOC2_A",
+    "SOC2_PI",
+    "SOC2_C",
+    "SOC2_P",
+    "CERT_IR",
+    "CERT_LOG",
+    "CERT_AM",
+    "CERT_VM",
+    "CERT_AC",
+    "CERT_DP",
+    "PCI_01",
+    "PCI_02",
+    "PCI_03",
+    "PCI_04",
+    "PCI_05",
+    "PCI_06",
+    "PCI_07",
+    "PCI_08",
+    "PCI_09",
+    "PCI_10",
+    "PCI_11",
+    "PCI_12",
+    "DPDP_CN",
+    "DPDP_PL",
+    "DPDP_DR",
+    "DPDP_BN",
+    "DPDP_PS",
+    "DPDP_GV",
+    "GDPR_LT",
+    "GDPR_PL",
+    "GDPR_DM",
+    "GDPR_AY",
+    "GDPR_SL",
+    "GDPR_IC",
+    "GDPR_AC",
+    "SP53_AC",
+    "SP53_AT",
+    "SP53_AU",
+    "SP53_CA",
+    "SP53_CM",
+    "SP53_CP",
+    "SP53_IA",
+    "SP53_IR",
+    "SP53_MA",
+    "SP53_MP",
+    "SP53_PE",
+    "SP53_PL",
+    "SP53_PM",
+    "SP53_PS",
+    "SP53_PT",
+    "SP53_RA",
+    "SP53_SA",
+    "SP53_SC",
+    "SP53_SI",
+    "SP53_SR",
+    "IEC_2_1",
+    "IEC_2_3",
+    "IEC_2_4",
+    "FR1_IAC",
+    "FR2_UC",
+    "FR3_SI",
+    "FR4_DC",
+    "FR5_RDF",
+    "FR6_TRE",
+    "FR7_RA",
+    "SP82_AC",
+    "SP82_AU",
+    "SP82_CM",
+    "SP82_IA",
+    "SP82_IR",
+    "SP82_SC",
+    "SP82_SI",
+    "SP82_RA",
+    "SP82_SA",
+    "CIP_002",
+    "CIP_003",
+    "CIP_004",
+    "CIP_005",
+    "CIP_006",
+    "CIP_007",
+    "CIP_008",
+    "CIP_009",
+    "CIP_010",
+    "CIP_011",
+    "CIP_012",
+    "CIP_013",
+    "CIP_014",
+    "NIS2_GOV",
+    "NIS2_INC",
+    "NIS2_BC",
+    "NIS2_SUPPLY",
+    "NIS2_SEC",
+    "NIS2_AUDIT",
+    "NIS2_HYGIENE",
+    "NIS2_CRYPTO",
+    "NIS2_IAM",
+    "NIS2_MFA",
+    "BENCHMARK",
+)
+
+CONTROL_THEME_SQL = "theme IN %s" % _sql_in_list(CONTROL_THEMES)
 RULE_TARGET_PLATFORM_SQL = "target_platform IN %s" % _sql_in_list(RULE_TARGET_PLATFORMS)
 
 
@@ -182,10 +325,7 @@ class ComplianceControl(Base):
         UniqueConstraint(
             "framework_id", "control_number", name="uq_framework_control_number"
         ),
-        CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12', 'DPDP_CN', 'DPDP_PL', 'DPDP_DR', 'DPDP_BN', 'DPDP_PS', 'DPDP_GV', 'GDPR_LT', 'GDPR_PL', 'GDPR_DM', 'GDPR_AY', 'GDPR_SL', 'GDPR_IC', 'GDPR_AC', 'SP53_AC', 'SP53_AT', 'SP53_AU', 'SP53_CA', 'SP53_CM', 'SP53_CP', 'SP53_IA', 'SP53_IR', 'SP53_MA', 'SP53_MP', 'SP53_PE', 'SP53_PL', 'SP53_PM', 'SP53_PS', 'SP53_PT', 'SP53_RA', 'SP53_SA', 'SP53_SC', 'SP53_SI', 'SP53_SR', 'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', 'FR5_RDF', 'FR6_TRE', 'FR7_RA', 'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', 'SP82_SI', 'SP82_RA', 'SP82_SA', 'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', 'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014', 'NIS2_GOV', 'NIS2_INC', 'NIS2_BC', 'NIS2_SUPPLY', 'NIS2_SEC', 'NIS2_AUDIT', 'NIS2_HYGIENE', 'NIS2_CRYPTO', 'NIS2_IAM', 'NIS2_MFA')",
-            name="ck_control_theme",
-        ),
+        CheckConstraint(CONTROL_THEME_SQL, name="ck_control_theme"),
         CheckConstraint(
             "scannability IN ('auto', 'semi_auto', 'manual')",
             name="ck_control_scannability",
@@ -212,7 +352,16 @@ class ComplianceControl(Base):
     tags = Column(JSONB, nullable=False, default=list)
     saq_profiles = Column(
         JSONB, nullable=True, default=list
-    )  # PCI-DSS SAQ profile tags
+    )  # PCI-DSS SAQ profile tags — framework-specific, predates `profiles`
+    #: Which profile(s) of this control's own framework it belongs to —
+    #: ``["L1"]`` or ``["L1", "L2"]`` for a benchmark. Empty means the control
+    #: is in scope whatever profile was selected, which is what every
+    #: pre-Phase-4 control is. Added by migration c5d6e7f8a9b0.
+    #:
+    #: The generic one. `saq_profiles` expresses the same idea for PCI-DSS and
+    #: is left alone because the PCI scoping queries read it; new content must
+    #: use this column, which a test in tests/compliance/ pins.
+    profiles = Column(JSONB, nullable=False, default=list, server_default="[]")
     sdf_scope = Column(String(50), nullable=True)  # DPDP Act 2023 SDF scoping filter
     privacy_role = Column(
         String(50), nullable=True
@@ -741,10 +890,7 @@ class ComplianceScore(Base):
 
     __tablename__ = "compliance_scores"
     __table_args__ = (
-        CheckConstraint(
-            "theme IN ('ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', 'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', 'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', 'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', 'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', 'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', 'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', 'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12', 'DPDP_CN', 'DPDP_PL', 'DPDP_DR', 'DPDP_BN', 'DPDP_PS', 'DPDP_GV', 'GDPR_LT', 'GDPR_PL', 'GDPR_DM', 'GDPR_AY', 'GDPR_SL', 'GDPR_IC', 'GDPR_AC', 'SP53_AC', 'SP53_AT', 'SP53_AU', 'SP53_CA', 'SP53_CM', 'SP53_CP', 'SP53_IA', 'SP53_IR', 'SP53_MA', 'SP53_MP', 'SP53_PE', 'SP53_PL', 'SP53_PM', 'SP53_PS', 'SP53_PT', 'SP53_RA', 'SP53_SA', 'SP53_SC', 'SP53_SI', 'SP53_SR', 'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', 'FR5_RDF', 'FR6_TRE', 'FR7_RA', 'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', 'SP82_SI', 'SP82_RA', 'SP82_SA', 'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', 'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014', 'NIS2_GOV', 'NIS2_INC', 'NIS2_BC', 'NIS2_SUPPLY', 'NIS2_SEC', 'NIS2_AUDIT', 'NIS2_HYGIENE', 'NIS2_CRYPTO', 'NIS2_IAM', 'NIS2_MFA')",
-            name="ck_score_theme",
-        ),
+        CheckConstraint(CONTROL_THEME_SQL, name="ck_score_theme"),
         # See the note on ComplianceFinding — migration k2l3m4n5o6p7 creates
         # this composite index and nothing in the models did.
         Index("ix_compliance_scores_lookup", "tenant_id", "framework_id", "asset_id"),

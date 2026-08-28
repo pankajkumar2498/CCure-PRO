@@ -35,14 +35,26 @@ from core import compliance_frameworks
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_two_finished_frameworks_are_the_default():
+def test_the_finished_frameworks_are_the_default():
+    """
+    ISO 27001 and NIST CSF 2.0 were finished first; CIS Controls v8.1 was
+    activated by Phase 4 so that hardening-benchmark findings have a framework
+    to roll up into.
+
+    Pinned as an exact tuple on purpose. Activating a catalogue makes it
+    offered, scannable, reportable and installable for every tenant, which is a
+    decision worth failing a test over rather than one that arrives as a
+    side effect of an edit elsewhere.
+    """
     assert compliance_frameworks.DEFAULT_ACTIVE_FRAMEWORK_IDS == (
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
+        "cfw_cis_v8_1",
     )
     assert compliance_frameworks.active_framework_ids() == (
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
+        "cfw_cis_v8_1",
     )
 
 
@@ -179,7 +191,9 @@ def test_guard_distinguishes_parked_from_unknown():
 @pytest.mark.parametrize(
     "slug",
     [
-        "cis_v8_1",
+        # "cis_v8_1" is deliberately absent: Phase 4 activated it, so its
+        # report renders rather than being refused. It is covered by
+        # `test_active_framework_reports_still_render` instead.
         "soc2_type2",
         "cert_in_2022",
         "pci_dss_v4",
@@ -233,7 +247,24 @@ def test_marketplace_lists_only_active_frameworks(client, auth_headers):
     body = res.json()
 
     listed = [f["framework_id"] for f in body["data"]]
-    assert listed == ["cfw_iso27001_2022", "cfw_nist_csf_v2"], listed
+    # The shipped catalogues, in their curated order, and nothing parked.
+    #
+    # Asserted as a prefix rather than the whole list because a *loaded
+    # benchmark* (Phase 4) is also active and is appended after them — and
+    # whether one is loaded depends on what the installation did, not on this
+    # module. Anything extra must be a benchmark; a parked catalogue appearing
+    # here is the defect this test exists for.
+    assert listed[:3] == [
+        "cfw_iso27001_2022",
+        "cfw_nist_csf_v2",
+        "cfw_cis_v8_1",
+    ], listed
+    extra = listed[3:]
+    assert all(
+        compliance_frameworks.is_benchmark_framework(fid) for fid in extra
+    ), extra
+    parked = set(compliance_frameworks.parked_framework_ids())
+    assert not parked & set(listed), sorted(parked & set(listed))
     # The query behind this has no ORDER BY, so the order is asserted: the card
     # grid used to come out in whatever order Postgres returned.
     assert body["active_framework_ids"] == listed

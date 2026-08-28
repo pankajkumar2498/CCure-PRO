@@ -218,6 +218,28 @@ class ConfigAuditEngine:
                 references=list(check.references),
             )
 
+        os_reason = check.os_applicability(ctx.os_name, ctx.os_version_id)
+        if os_reason:
+            if "not identified" in os_reason:
+                # "We could not tell what this host runs" is not "this host is
+                # not what the benchmark is for". Only the second is a reason
+                # for a control to leave the score; the first is a gap in
+                # fingerprinting and must be visible as one.
+                return self._error(
+                    check,
+                    ctx,
+                    f"{os_reason}, so the benchmark's operating-system "
+                    f"targeting could not be applied",
+                )
+            return CheckResult.not_applicable(
+                check_id=check.check_id,
+                target=ctx.target,
+                reason=os_reason,
+                title=check.title,
+                severity=check.severity,
+                references=list(check.references),
+            )
+
         if check.requires_credentials and not ctx.has_credentials:
             return self._error(
                 check,

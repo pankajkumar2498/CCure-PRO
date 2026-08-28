@@ -42,6 +42,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from core.checks.contract import CheckOutcome, CheckResult
 from core.checks.definitions import (
     DEFINITION_TYPE_CONFIG_CHECK,
+    DEFINITION_TYPE_PRIVILEGE_CHECK,
     definition_id_for_check,
 )
 from core.config_audit.spec import ConfigCheck
@@ -58,6 +59,7 @@ log = logging.getLogger("ccure.config_audit.findings")
 
 __all__ = [
     "CONFIG_PLUGIN_FAMILY",
+    "PRIVILEGE_PLUGIN_FAMILY",
     "catalogue_row",
     "compliance_verdict",
     "config_definition_id",
@@ -70,16 +72,30 @@ __all__ = [
 #: than missing patches.
 CONFIG_PLUGIN_FAMILY = "Configuration Audit"
 
+#: Privilege findings group separately in the report's family breakdown. A
+#: writable service binary and a missing password-length policy are both
+#: "configuration" in the loose sense, and a reader triaging a host needs them
+#: in different piles: one is a deviation from a baseline, the other is a path
+#: to SYSTEM.
+PRIVILEGE_PLUGIN_FAMILY = "Local Privilege"
+
 #: How an errored or unassessable check is recorded as a compliance verdict.
 #: Deliberately the same value the compliance engine already writes for a host
 #: it could not collect evidence from.
 _UNASSESSED_STATUS = "manual_review"
 
 
-def config_definition_id(check_id: str) -> str:
+def config_definition_id(
+    check_id: str, finding_type: str = DEFINITION_TYPE_CONFIG_CHECK
+) -> str:
     """
     Mint the catalogue identifier, falling back to the raw check id if the
     check is named in a way the minter refuses.
+
+    ``finding_type`` decides the segment: ``CCURE-CFG-…`` for a hardening
+    control, ``CCURE-PRV-…`` for a local privilege condition. A reader triaging
+    findings needs to tell "this host deviates from a baseline" from "this host
+    has a path to SYSTEM", and the identifier is the first place that shows.
 
     The fallback logs loudly rather than raising: one badly named rule must not
     abort the persistence of every other finding on the host. It cannot produce
@@ -88,7 +104,7 @@ def config_definition_id(check_id: str) -> str:
     the log line.
     """
     try:
-        return definition_id_for_check(check_id, DEFINITION_TYPE_CONFIG_CHECK)
+        return definition_id_for_check(check_id, finding_type)
     except ValueError as exc:
         log.error(
             "Check %r could not be given a catalogue identifier (%s); the "
@@ -141,10 +157,18 @@ def finding_from_result(
         rationale = check.rationale
     narrative = "\n\n".join(p for p in (description, rationale) if p)
 
+    finding_type = str(
+        result.metadata.get("finding_type")
+        or (check.finding_type if check is not None else DEFINITION_TYPE_CONFIG_CHECK)
+    )
     return StandardizedFinding(
-        plugin_id=config_definition_id(result.check_id),
+        plugin_id=config_definition_id(result.check_id, finding_type),
         plugin_name=result.title or result.check_id,
-        plugin_family=CONFIG_PLUGIN_FAMILY,
+        plugin_family=(
+            PRIVILEGE_PLUGIN_FAMILY
+            if finding_type == DEFINITION_TYPE_PRIVILEGE_CHECK
+            else CONFIG_PLUGIN_FAMILY
+        ),
         host=result.target,
         hostname=hostname,
         # A configuration control is a property of the host, not of a listening
@@ -242,8 +266,8 @@ def catalogue_row(check: ConfigCheck) -> Dict[str, Any]:
     link that resolves to nothing.
     """
     return {
-        "id": config_definition_id(check.check_id),
-        "definition_type": DEFINITION_TYPE_CONFIG_CHECK,
+        "id": config_definition_id(check.check_id, check.finding_type),
+        "definition_type": check.finding_type,
         "cve_id": None,
         "title": check.title,
         "description": "\n\n".join(

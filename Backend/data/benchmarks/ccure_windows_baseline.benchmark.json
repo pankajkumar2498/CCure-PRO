@@ -32,6 +32,7 @@
         "domain": "host_configuration",
         "expected": 14,
         "expected_description": "at least 14 characters",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "gte",
         "platforms": [
@@ -71,6 +72,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": 24,
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "gte",
         "platforms": [
@@ -114,6 +116,7 @@
           10
         ],
         "expected_description": "between 1 and 10 failed attempts",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "between",
         "platforms": [
@@ -155,6 +158,7 @@
         "domain": "host_configuration",
         "expected": 1,
         "expected_description": "EnableLUA = 1",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [
@@ -198,6 +202,7 @@
         "domain": "host_configuration",
         "expected": 1,
         "expected_description": "RestrictAnonymousSAM = 1",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [
@@ -239,6 +244,7 @@
         "domain": "host_configuration",
         "expected": 0,
         "expected_description": "SMB1 = 0",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [
@@ -279,6 +285,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": "Running",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "not_equals",
         "platforms": [
@@ -320,6 +327,7 @@
         "domain": "host_configuration",
         "expected": 1,
         "expected_description": "UserAuthentication = 1",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [
@@ -360,6 +368,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": "Running",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "not_equals",
         "platforms": [
@@ -400,6 +409,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": "Running",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [

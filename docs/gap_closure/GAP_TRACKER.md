@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                                         | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | ---------------------------------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**                                     | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**                                     | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Closed** (95% measured)                      | `9e4ecaa` |
-| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                                     | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured)                      | `9e4ecaa` |
-| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured)                      | `daab13a` |
-| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | **Partial** — capability built, content absent | `9e762d0` |
-| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                                           | —         |
-| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                                           | —         |
-| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                                           | —         |
-| GAP-08       | Local OS vulnerability assessment        | Credentialed   | 8     | High     | 10% [estimated] | 80%    | Open                                           | —         |
-| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                                           | —         |
-| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                                           | —         |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                                           | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                                           | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                                           | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                                           | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                                           | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                                           | —         |
-| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                                           | —         |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                                           | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                                           | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before | Target | Status                                             | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | --------------- | ------ | -------------------------------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]  | 90%    | **Closed**                                         | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]   | 100%   | **Closed**                                         | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]  | 90%    | **Closed** (95% measured)                          | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]  | 95%    | **Closed**                                         | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated] | 90%    | **Closed** (85% measured)                          | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]  | 90%    | **Closed** (90% measured)                          | `daab13a` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]   | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
+| GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                                               | —         |
+| GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                                               | —         |
+| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                                               | —         |
+| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]   | 75%    | **Closed** (75.9% measured, real-target validated) | `PENDING` |
+| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                                               | —         |
+| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                                               | —         |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                                               | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]  | 85%    | Open                                               | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]  | 90%    | Open                                               | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]  | 85%    | Open                                               | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]  | 85%    | Open                                               | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]   | 60%    | Open                                               | —         |
+| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]  | 60%    | Open                                               | —         |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated] | 60%    | Open                                               | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated] | 70%    | Open                                               | —         |
 
 ---
 
@@ -1052,7 +1052,210 @@ inflation the brief warned against.
 
 ---
 
-## 8. Definition of Done — Phase 0
+## 8. Phase 5 — Local OS privilege & host-exposure assessment
+
+**Status: Complete.** Closes GAP-08 to its agreed target. **The first phase in
+this programme to be validated against real targets on both platforms.**
+
+### 8.1 The gap, measured before touching anything
+
+| Measurement                                    | Before                                                                                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Privilege findings ever minted (`CCURE-PRV-…`) | **0** — `DEFINITION_TYPE_PRIVILEGE_CHECK` was reserved in Phase 0 and used by nothing |
+| Linux privilege signals collected              | 4 — `suid_binaries`, `world_writable_dirs`, `sudo_nopasswd`, `sudo_rules_raw`         |
+| …converted into findings                       | **0** — they became sentences in `security_issues`                                    |
+| Windows privilege signals collected            | **0**                                                                                 |
+| GAP-08 coverage against the agreed scope       | **0 / 29 = 0.0%**                                                                     |
+
+The data was half-collected, the finding type was reserved, and nothing joined
+them. A NOPASSWD sudo rule was a sentence in a PDF: no severity, no risk score,
+no remediation, no lifecycle, no deduplication, not exportable, not triageable.
+
+### 8.2 What was reused rather than rebuilt
+
+Phase 5 adds **no engine**. The checks are Phase 3 `ConfigCheck` records with
+one new check type.
+
+| Existing                               | Used for                                                     |
+| -------------------------------------- | ------------------------------------------------------------ |
+| Phase 3 `ConfigAuditEngine`            | Executes every privilege check unchanged                     |
+| Phase 3 four-state collection contract | COLLECTED / ABSENT / UNSUPPORTED / UNAVAILABLE, unchanged    |
+| Phase 3 `ShellRunner`                  | Exit-code-preserving command execution over either transport |
+| Phase 0 `CCURE-PRV-` minting           | Reserved since Phase 0; this is what finally uses it         |
+| Phase 2 WinRM + SSH                    | Both transports, untouched                                   |
+| `StandardizedFinding` → risk → PDF     | A privilege failure is an ordinary finding beside the CVEs   |
+| Phase 4 `finding_type` groundwork      | Extended from one type to two                                |
+
+### 8.3 What was built
+
+| Component                               | Contents                   |
+| --------------------------------------- | -------------------------- |
+| `collectors/privilege_windows.py`       | 10 probes                  |
+| `collectors/privilege_linux.py`         | 12 probes                  |
+| `builtin/privilege_windows.py`          | 10 checks                  |
+| `builtin/privilege_linux.py`            | 12 checks                  |
+| `scripts/measure_privilege_coverage.py` | The measurement harness    |
+| Migration `d6e7f8a9b0c1`                | The `privilege` check type |
+
+`ConfigCheck.finding_type` decides the identifier: `config_check` → `CCURE-CFG-`,
+`privilege_check` → `CCURE-PRV-`, grouping into different report families
+because "deviates from a baseline" and "has a path to SYSTEM" are different
+piles to a triager. `cve` is refused at construction.
+
+### 8.4 Severity, evidence-based
+
+| Severity | Count | Examples                                                                                                                            |
+| -------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Critical | 6     | weak service ACL, writable service binary, AlwaysInstallElevated, writable root PATH, writable systemd unit, account-file ownership |
+| High     | 9     | unquoted service path, writable task binary, SUID outside the expected set, NOPASSWD sudo, world-writable dirs                      |
+| Medium   | 4     | cached logons, LSA protection, SGID, world-writable files                                                                           |
+| Low      | 3     | PowerShell logging, unowned files, ungrouped files                                                                                  |
+
+The Critical six are direct, unconditional paths to SYSTEM or root. The unquoted
+service path is **High, not Critical, deliberately**: it is only exploitable if
+the attacker can _also_ write to one of the truncated directories, which this
+check does not establish. Rating it Critical would place it above conditions
+that need nothing further.
+
+### 8.5 Real-target validation — both platforms, both directions
+
+#### Windows — 10.180.6.14, read-only
+
+Ten of ten checks assessed, **zero errors**. Nothing on the host was created,
+modified or weakened.
+
+| Result | Checks                                                                  |
+| ------ | ----------------------------------------------------------------------- |
+| PASS   | 4 — service ACLs, AlwaysInstallElevated, unattend files, LSA protection |
+| FAIL   | 6 — see below                                                           |
+
+The six failures are genuine findings on that machine and are reported to its
+owner rather than buried here:
+
+- **`Everyone :: FullControl` on Seqrite antivirus service binaries** and on a
+  Seqrite scheduled-task binary. Any local user can overwrite what that service
+  runs as SYSTEM. This is the most serious finding of the run.
+- **Unquoted service paths** on `GlassFish_personal_domain_3` and
+  `OracleServiceXE`.
+- **`Authenticated Users : Modify`** on an Oracle XE `bin` directory that is on
+  the system PATH.
+- `CachedLogonsCount = 10`; PowerShell script-block logging disabled.
+
+#### Linux — disposable container, both configurations
+
+A throwaway container was built, deliberately weakened, scanned, cleaned, and
+scanned again. It was removed afterwards. No host of the user's was touched.
+
+| Configuration     | Result                                                      |
+| ----------------- | ----------------------------------------------------------- |
+| Deliberately weak | 5 FAIL naming every planted weakness, 6 PASS, 1 UNAVAILABLE |
+| Cleaned           | 11 PASS, 1 UNAVAILABLE, **0 false positives**               |
+
+Every planted weakness was detected and named: the SUID binary, the
+world-writable directory, the world-writable file, the NOPASSWD rule _with its
+text_, and the writable systemd unit. The captured output was then replayed
+through the engine, producing 5 `CCURE-PRV-` findings — Critical through Medium,
+family "Local Privilege", each carrying its offenders as evidence.
+
+`file_capabilities` reported **UNAVAILABLE** on both runs because `getcap` is
+not installed in that image. That is the honest direction working on a real
+host: nothing was established, so nothing was claimed.
+
+### 8.6 Three false positives that only real-target validation could find
+
+Each would have shipped looking correct, and each is the "cries wolf" failure
+the probes' own docstrings warn about.
+
+- **`NT SERVICE\*` virtual accounts.** The service-ACL probe reported seven
+  services on a stock Windows 11 workstation, because TrustedInstaller
+  (`S-1-5-80-956008885-…`) legitimately holds full control over service
+  configuration, and each service's own virtual account holds ChangeConfig over
+  itself. Seven false positives on a clean host is the failure that teaches a
+  reader to skip the check. `S-1-5-80-*` is now trusted.
+
+- **`stat` does not dereference symlinks.** `/bin`, `/sbin` and `/lib` are
+  symlinks into `/usr` on every modern distribution, and a symlink's own mode is
+  always 777 — so the writable-PATH probe reported `/bin` and `/sbin` as
+  world-writable **on every Linux host**. Fixed with `stat -L`.
+
+- **`ssh-keysign` is legitimately SUID** on Debian and Ubuntu, for host-based
+  authentication. Added to the allow-list.
+
+Recorded, not fixed: `LinuxPermissionCollector` (Phase 3) has the same `stat -c`
+without `-L`. It is only pointed at regular files today so it is not currently
+wrong, but a symlinked target would fool it. Out of Phase 5's scope.
+
+### 8.7 Coverage — measured, and the denominator was widened on purpose
+
+| Figure                            | Before          | After                               |
+| --------------------------------- | --------------- | ----------------------------------- |
+| **GAP-08 (implemented + tested)** | 0/29 = **0.0%** | 22/29 = **75.9%**                   |
+| implemented                       | 0               | 22                                  |
+| Windows areas proven              | 0/14            | 10/14 (71.4%)                       |
+| Linux areas proven                | 0/15            | 12/15 (80.0%)                       |
+| `CCURE-PRV-` checks               | 0               | 22                                  |
+| Real-target validated             | 0               | **22 of 22** (10 Windows, 12 Linux) |
+| New tests                         | —               | 200                                 |
+
+**The denominator includes eight areas this build does not implement**, and that
+was a correction made mid-phase. The first version of the measurement listed
+twenty areas, Phase 5 implemented all twenty, and it reported **100%** — a
+tautology wearing a percentage: a list written by the same person who then
+implements every item measures the list, not the capability. Eight real Nessus
+local checks CCURE does not perform were added so the figure can go down.
+
+**The headline number is _implemented and tested_, not implemented.** The
+measurement reads the test sources, so an area whose test is deleted loses its
+coverage credit. Real-target validation is reported beside it and never folded
+in.
+
+### 8.8 Remaining GAP-08 limitations
+
+- **Eight in-scope areas are not implemented** and are named in the denominator:
+  Windows token privileges, DLL search-order hijack paths, autorun binary
+  permissions, Credential Manager entries; Linux `docker` group membership, NFS
+  `no_root_squash` exports, `ld.so.preload`, and writable loader config.
+- **The Linux validation substituted the transport.** The probe commands ran on
+  a real Linux filesystem through the real `ShellRunner`, collector, engine and
+  finding path, with `docker exec` in place of SSH. SSH itself was proven in
+  Phases 2 and 3; it was not re-proven here.
+- **No deliberately-weak Windows configuration was created.** Doing so would
+  have modified the user's workstation and was not authorised. The Windows FAIL
+  path is proven by the host's _own_ six genuine failures, not by a planted one.
+- **`getcap` absent means unassessed, not clean** — correct, and it does mean
+  the capability check is silently unavailable on minimal images.
+- **The SUID allow-list is a fixed tuple**, not per-distribution. It is
+  deliberately generous, so the error direction is a missed SUID binary rather
+  than a false positive on a stock host.
+- Out of scope by agreement and not in the denominator: kernel exploit
+  suggestion, memory-resident checks, agent-based collection.
+
+### 8.9 Definition of Done — Phase 5
+
+| Line                       | GAP-08                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| Backend implemented        | ✅ 22 probes, 22 checks                                                         |
+| Scanner integration        | ✅ runs in the credentialed scan beside the Phase 3 checks                      |
+| Database migration         | ✅ `d6e7f8a9b0c1`, byte-identical constraint, refuses downgrade over live rules |
+| API                        | ➖ none required; surfaced through the existing catalogue                       |
+| UI                         | ➖ appears in the existing Configuration Checks page                            |
+| Finding integration        | ✅ `CCURE-PRV-`, own report family, never a CVE                                 |
+| Evidence                   | ✅ offenders named on every failure                                             |
+| Severity / risk            | ✅ evidence-based, canonical vocabulary, existing risk path                     |
+| Remediation                | ✅ `CONFIGURATION_GUIDANCE`, actionable, names what to fix                      |
+| Lifecycle                  | ✅ via the existing finding model                                               |
+| Reporting                  | ✅ same PDF path, separate family                                               |
+| Unit / integration/E2E     | ✅ 200 tests                                                                    |
+| Regression suite           | ✅ see §9                                                                       |
+| **Real-target validation** | ✅ **Windows and Linux, compliant and non-compliant**                           |
+| Coverage measured          | ✅ 0.0% → 75.9%, denominator widened against self-interest                      |
+| Docs                       | ✅ CLAUDE.md                                                                    |
+| Tracker                    | ✅                                                                              |
+| Commit                     | ✅                                                                              |
+
+---
+
+## 9. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
 | ------------------------- | ----------------------------------------- | ------------------------------------ |
@@ -1087,7 +1290,7 @@ inflation the brief warned against.
 
 ---
 
-## 9. Regression
+## 10. Regression
 
 | Run                                              | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |
@@ -1099,11 +1302,19 @@ inflation the brief warned against.
 | After Phase 2, full suite                        | **1704 passed, 2 skipped**, 7m06s                         |
 | After Phase 3, full suite                        | **1945 passed, 2 skipped**, 6m56s                         |
 | After Phase 4, full suite                        | **2044 passed, 2 skipped**, 7m20s                         |
+| After Phase 5, full suite                        | **2266 passed, 2 skipped**, 7m34s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
-catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, and a
-net +99 for Phase 4 — so no existing test was lost, silently skipped, or
-renamed out of collection at any point.
+catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, a net
++99 for Phase 4 and +222 for Phase 5 — so no existing test was lost, silently
+skipped, or renamed out of collection at any point.
+
+Phase 5's delta needs a sentence too: it adds **200** tests and the suite grows
+by **222**. The extra 22 are not new test functions — they are new _parameters_.
+`test_config_audit_spec.py::test_every_builtin_check_survives_a_round_trip` is
+parameterised over `BUILTIN_CHECKS`, which grew from 20 to 42 when the privilege
+checks were added, so every one of them is now round-tripped through the stored
+JSONB shape for free. The arithmetic reconciles exactly.
 
 Phase 4's delta is the one that needs a sentence: it adds **100** tests and the
 suite grows by **99**, because activating CIS Controls v8.1 removed one
@@ -1199,7 +1410,7 @@ regression is read correctly rather than blamed on that phase's code.
 
 ---
 
-## 10. Commit log
+## 11. Commit log
 
 | Phase | Commit    | Tag | Suite result              |
 | ----- | --------- | --- | ------------------------- |
@@ -1208,13 +1419,14 @@ regression is read correctly rather than blamed on that phase's code.
 | 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
 | 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
 | 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
+| 5     | `PENDING` | —   | 2266 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.
 
 ---
 
-## 11. Observations recorded during Phase 0 that are not gaps
+## 12. Observations recorded during Phase 0 that are not gaps
 
 Findings worth someone's attention that are outside this programme's scope.
 

@@ -2439,6 +2439,7 @@ def _run_configuration_audit(
     from core.checks.contract import CheckOutcome
     from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
     from core.config_audit.builtin import builtin_checks
+    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
     from core.config_audit.findings import config_definition_id
 
     platform = "windows" if os_type == "windows" else "linux"
@@ -2479,14 +2480,24 @@ def _run_configuration_audit(
         if result.outcome is not CheckOutcome.FAIL:
             continue
         observation = result.evidence[0] if result.evidence else None
+        # The check declares whether its failure is a hardening deviation or a
+        # local privilege condition, and the engine carries that onto the
+        # result. Defaulting instead of reading it would file every privilege
+        # finding as CCURE-CFG- — the wrong pile for a reader triaging a path
+        # to SYSTEM.
+        finding_type = str(
+            result.metadata.get("finding_type") or DEFINITION_TYPE_CONFIG_CHECK
+        )
+        definition_id = config_definition_id(result.check_id, finding_type)
         findings.append(
             {
-                # The minted catalogue identifier, not a CVE. `CCURE-CFG-…`
-                # tells a reader the id is ours and that NVD has never heard
-                # of it — the reason the vendor prefix exists.
-                "cve_id": config_definition_id(result.check_id),
-                "cve": config_definition_id(result.check_id),
-                "definition_type": "config_check",
+                # The minted catalogue identifier, not a CVE. The `CCURE-`
+                # prefix tells a reader the id is ours and that NVD has never
+                # heard of it; the segment after it — CFG or PRV — says which
+                # kind of finding it is.
+                "cve_id": definition_id,
+                "cve": definition_id,
+                "definition_type": finding_type,
                 "title": result.title,
                 "severity": result.severity.capitalize(),
                 "description": result.title,

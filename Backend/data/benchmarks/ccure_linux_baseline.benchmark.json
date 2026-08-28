@@ -32,6 +32,7 @@
         "domain": "host_configuration",
         "expected": 365,
         "expected_description": "at most 365 days",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "lte",
         "platforms": [
@@ -72,6 +73,7 @@
         "domain": "host_configuration",
         "expected": 14,
         "expected_description": "at least 14 characters",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "gte",
         "platforms": [
@@ -119,6 +121,7 @@
           "forced-commands-only"
         ],
         "expected_description": "no, prohibit-password or forced-commands-only",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "in",
         "platforms": [
@@ -160,6 +163,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected_description": "no",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "is_false",
         "platforms": [
@@ -202,6 +206,7 @@
         "domain": "host_configuration",
         "expected": 4,
         "expected_description": "at most 4",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "lte",
         "platforms": [
@@ -248,6 +253,7 @@
           "0444"
         ],
         "expected_description": "0644 or stricter",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "in",
         "platforms": [
@@ -298,6 +304,7 @@
           "0640"
         ],
         "expected_description": "0640 or stricter",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "in",
         "platforms": [
@@ -344,6 +351,7 @@
           "0644"
         ],
         "expected_description": "0644 or stricter",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "in",
         "platforms": [
@@ -383,6 +391,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": "listening",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "not_equals",
         "platforms": [
@@ -423,6 +432,7 @@
         "config_check": true,
         "domain": "host_configuration",
         "expected": "active",
+        "finding_type": "config_check",
         "intrusive": false,
         "operator": "equals",
         "platforms": [

@@ -24,6 +24,12 @@ from core.config_audit.collectors.base import (
     collector_registry,
 )
 from core.config_audit.collectors.linux import register_linux_collectors
+from core.config_audit.collectors.privilege_linux import (
+    register_linux_privilege_collector,
+)
+from core.config_audit.collectors.privilege_windows import (
+    register_windows_privilege_collector,
+)
 from core.config_audit.collectors.windows import register_windows_collectors
 
 __all__ = [
@@ -34,7 +40,9 @@ __all__ = [
     "collector_registry",
     "register_builtin_collectors",
     "register_linux_collectors",
+    "register_linux_privilege_collector",
     "register_windows_collectors",
+    "register_windows_privilege_collector",
 ]
 
 _REGISTRATION_LOCK = threading.Lock()
@@ -53,10 +61,14 @@ def register_builtin_collectors(registry: CollectorRegistry | None = None) -> No
     if registry is not None and registry is not collector_registry:
         register_windows_collectors(registry)
         register_linux_collectors(registry)
+        register_windows_privilege_collector(registry)
+        register_linux_privilege_collector(registry)
         return
     with _REGISTRATION_LOCK:
         if _registered:
             return
         register_windows_collectors(collector_registry)
         register_linux_collectors(collector_registry)
+        register_windows_privilege_collector(collector_registry)
+        register_linux_privilege_collector(collector_registry)
         _registered = True

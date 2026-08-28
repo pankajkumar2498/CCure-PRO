@@ -903,6 +903,86 @@ Format and authoring guide: [`Backend/data/benchmarks/README.md`](Backend/data/b
   **`main.py` never seeded it**: parked *and* unseeded, so the omission was
   invisible. It is in the bootstrap now.
 
+## Local privilege checks (`core/config_audit/collectors/privilege_*.py`)
+
+Local privilege-escalation and host-exposure enumeration. Phase 5 of the
+gap-closure programme, closing GAP-08; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine.** These are Phase 3 `ConfigCheck` records with a new check
+type, `privilege`, executed by the same `ConfigAuditEngine` and reaching the
+same finding, risk, remediation and report paths.
+
+- **The shape is "which items are offending", not "read one value".** A probe
+  returns one offender per line; the rule asserts the list is empty. So a clean
+  host produces an ABSENT reading and `AbsencePolicy.PASS` makes it a pass,
+  while a breached one produces a FAIL naming exactly what to fix. That is why
+  these use `absent = PASS` where the Phase 3 Windows rules use
+  `MANUAL_REVIEW`: a missing registry value tells you nothing, but a *search*
+  that returned nothing is a real result.
+
+- **`privilege` is its own check type, not a `command` rule.** Service-ACL
+  parsing is not a shell one-liner and a rule author should not be pasting one.
+  Migration `d6e7f8a9b0c1` adds the type; the probes live in code, are tested
+  against captured output, and a rule just names one.
+
+- **`ConfigCheck.finding_type` decides the identifier.** `config_check` mints
+  `CCURE-CFG-…`, `privilege_check` mints `CCURE-PRV-…`, and they group into
+  different report families. "Deviates from a baseline" and "has a path to
+  SYSTEM" are different piles to a triager. The engine carries `finding_type`
+  on every result, because `core/tasks._run_configuration_audit` builds findings
+  from the *result* and would otherwise file every privilege finding as CFG.
+  `cve` is refused at construction.
+
+- **Three false positives were found by real-target validation, and each is the
+  reason to do it.** All three would have shipped looking correct:
+
+  - **`NT SERVICE\*` virtual accounts.** The service-ACL probe reported seven
+    services on a stock Windows 11 workstation, because TrustedInstaller
+    (`S-1-5-80-956008885-…`) legitimately holds full control over service
+    configuration and each service's own account holds ChangeConfig over
+    itself. `S-1-5-80-*` is now trusted.
+  - **`stat` does not dereference symlinks.** `/bin`, `/sbin` and `/lib` are
+    symlinks into `/usr` on every modern distribution, and a symlink's own mode
+    is always 777 — so the writable-PATH probe reported them as world-writable
+    on every host. It uses `stat -L` now. **The Phase 3
+    `LinuxPermissionCollector` has the same `stat -c` without `-L`**; it is only
+    pointed at regular files today, so it is not currently wrong, but a symlink
+    target would fool it.
+  - **`ssh-keysign` is legitimately SUID** on Debian and Ubuntu.
+
+- **A count is not a check.** "37 SUID binaries found" says nothing — a stock
+  distribution ships about thirty. `EXPECTED_SUID` is the allow-list and the
+  probe reports the *difference*. The list is deliberately generous: a missing
+  legitimate binary is a false positive, and a check that cries wolf is worse
+  than one that misses, because the reader stops looking.
+
+- **Exit 97 means "the tool I needed is not installed".** A host with no `find`
+  has established nothing about its SUID binaries, and `getcap` is absent on
+  many images. That is UNAVAILABLE → ERROR, never "none found". Proven on a real
+  target, where `file_capabilities` correctly reported not-assessed.
+
+- **These replace prose, and the prose stays.**
+  `LinuxCollector._collect_security_audit` still emits its `security_issues`
+  sentences — the report's posture section reads them and nothing should change
+  what an existing report says. The *finding* is now the authoritative form,
+  because a sentence in a PDF has no severity, no risk score, no remediation, no
+  lifecycle and cannot be triaged or exported.
+
+- **The account-file probe is scoped around the Phase 3 checks.**
+  `ccure.linux.passwd.permissions` and `.shadow.permissions` already assert
+  those two files' modes, so the probe checks *ownership* of all four and the
+  *modes* of `/etc/group` and `/etc/gshadow` only. Repeating them would report
+  one condition twice and make the remediation look twice as large.
+
+- **Coverage is measured by `scripts/measure_privilege_coverage.py`, and its
+  denominator deliberately includes eight areas this build does not implement.**
+  The first version listed twenty areas, all of which the phase then
+  implemented, and reported 100% — a tautology wearing a percentage. The
+  headline figure is *implemented and tested*: an area whose test is deleted
+  loses its coverage credit, because the script reads the test sources rather
+  than a hand-maintained list.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

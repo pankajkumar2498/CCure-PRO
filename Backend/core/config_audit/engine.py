@@ -327,6 +327,12 @@ class ConfigAuditEngine:
             metadata={
                 "check_type": check.check_type,
                 "domain": check.domain,
+                # Carried on the result so a caller holding only the result can
+                # mint the right identifier. Without it a privilege check's
+                # failure reaches `finding_from_result` looking like a
+                # configuration one and is filed as CCURE-CFG-, which is the
+                # wrong pile for a reader triaging a path to SYSTEM.
+                "finding_type": check.finding_type,
                 "collection_status": state.status.value,
                 "asset_id": ctx.asset_id,
                 **(
@@ -356,6 +362,7 @@ class ConfigAuditEngine:
             metadata={
                 "check_type": check.check_type,
                 "domain": check.domain,
+                "finding_type": check.finding_type,
                 "asset_id": ctx.asset_id,
             },
         )

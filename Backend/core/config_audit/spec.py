@@ -52,6 +52,11 @@ from enum import Enum
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from core.checks.contract import CHECK_DOMAINS, CheckOutcome, normalize_severity
+from core.checks.definitions import (
+    DEFINITION_TYPE_CONFIG_CHECK,
+    DEFINITION_TYPE_CVE,
+    DEFINITION_TYPES,
+)
 from core.config_audit.operators import is_known_operator
 
 __all__ = [
@@ -89,6 +94,12 @@ CHECK_TYPES: Tuple[str, ...] = (
     "config_file",
     "command",
     "security_policy",
+    #: An *enumeration* of offending items rather than a single-value read —
+    #: "which services have a weak ACL", "which SUID binaries are unexpected".
+    #: Its own type because the shape differs: the collector returns a list and
+    #: the rule asserts the list is empty, so a compliant host produces an
+    #: absence and a breached one produces the offenders as evidence.
+    "privilege",
     "api",
     "database_query",
 )
@@ -209,6 +220,19 @@ class ConfigCheck:
     remediation: str = ""
     references: Tuple[str, ...] = ()
 
+    #: Which kind of catalogue entry a failure of this check becomes.
+    #:
+    #: ``config_check`` mints ``CCURE-CFG-…`` — a hardening control judged
+    #: against an expected state. ``privilege_check`` mints ``CCURE-PRV-…`` — a
+    #: local privilege-escalation or host-exposure condition.
+    #:
+    #: They are separated because a reader triaging findings needs to tell "this
+    #: host deviates from a baseline" from "this host has a path to SYSTEM".
+    #: Both are configuration in the loose sense; only one is an attack.
+    #: ``cve`` is refused — a check does not discover a published vulnerability,
+    #: and filing one as ``cve`` inherits KEV lookups, EPSS scores and an NVD
+    #: link that resolves to nothing.
+    finding_type: str = DEFINITION_TYPE_CONFIG_CHECK
     #: Optional operating-system constraints, beyond the coarse ``platforms``.
     #:
     #: ``platforms`` distinguishes Windows from Linux and no further, which is
@@ -280,6 +304,18 @@ class ConfigCheck:
         object.__setattr__(self, "tags", tuple(self.tags))
         if not 0 <= int(self.qod) <= 100:
             raise SpecError(f"ConfigCheck {self.check_id}: qod must be 0-100")
+        if self.finding_type == DEFINITION_TYPE_CVE:
+            raise SpecError(
+                f"ConfigCheck {self.check_id}: finding_type may not be "
+                f"{DEFINITION_TYPE_CVE!r}. A check does not discover a "
+                f"published vulnerability, and filing one as a CVE row gives it "
+                f"KEV lookups, EPSS scores and an NVD link resolving to nothing."
+            )
+        if self.finding_type not in DEFINITION_TYPES:
+            raise SpecError(
+                f"ConfigCheck {self.check_id}: finding_type "
+                f"{self.finding_type!r} is not one of {DEFINITION_TYPES}"
+            )
 
     # ── Platform targeting ───────────────────────────────────────────────────
 
@@ -366,6 +402,7 @@ class ConfigCheck:
             "requires_credentials": self.requires_credentials,
             "intrusive": self.intrusive,
             "qod": self.qod,
+            "finding_type": self.finding_type,
         }
         if self.os_match:
             payload["os_match"] = dict(self.os_match)
@@ -432,6 +469,7 @@ class ConfigCheck:
             rationale=definition.get("rationale", ""),
             remediation=definition.get("remediation", ""),
             references=tuple(definition.get("references") or ()),
+            finding_type=definition.get("finding_type") or DEFINITION_TYPE_CONFIG_CHECK,
             os_match=definition.get("os_match") or {},
             requires_credentials=bool(definition.get("requires_credentials", True)),
             intrusive=bool(definition.get("intrusive", False)),

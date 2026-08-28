@@ -369,8 +369,17 @@ class TestPhase3StillBehavesAsItDid:
             system_data={},
             extra_checks=extra,
         )
+        from core.config_audit.builtin import builtin_checks
+
+        expected_builtin = len(
+            [c for c in builtin_checks() if c.applies_to_platform("windows")]
+        )
         assert summary["benchmark_checks"] == 10
-        assert summary["checks_run"] == 20  # 10 built-in Windows + 10 benchmark
+        # Derived rather than hardcoded: Phase 5 added privilege checks to the
+        # built-in pack and this assertion was a magic 20 that silently became
+        # wrong. What matters is that the benchmark content is *added to* the
+        # built-ins, not that either count is a particular number.
+        assert summary["checks_run"] == expected_builtin + 10
 
     def test_a_scan_with_no_benchmark_installed_still_runs_the_builtins(self):
         from core.tasks import _run_configuration_audit
@@ -378,8 +387,13 @@ class TestPhase3StillBehavesAsItDid:
         summary, _findings = _run_configuration_audit(
             executor=FakeExecutor(), ip="10.0.0.7", os_type="windows", system_data={}
         )
+        from core.config_audit.builtin import builtin_checks
+
+        expected_builtin = len(
+            [c for c in builtin_checks() if c.applies_to_platform("windows")]
+        )
         assert summary["benchmark_checks"] == 0
-        assert summary["checks_run"] == 10
+        assert summary["checks_run"] == expected_builtin
 
 
 class TestTheShippedPacksAreWhatTheyClaim:

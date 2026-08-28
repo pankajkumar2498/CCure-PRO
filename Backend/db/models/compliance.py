@@ -70,6 +70,7 @@ RULE_CHECK_TYPES = (
     "config_file",
     "command",
     "security_policy",
+    "privilege",
     "api",
     "database_query",
 )

@@ -8,6 +8,11 @@ into their respective normalized PostgreSQL rows (assets, services, findings).
 import logging
 from typing import Any, Dict, List, Optional
 
+from core.checks.definitions import (
+    DEFINITION_TYPE_CVE,
+    definition_type_for_id,
+    is_cve_id,
+)
 from core.mac import mac_identity
 from db.base import gen_asset_id, gen_service_id, utcnow
 from db.models import (
@@ -1015,10 +1020,18 @@ def _enrich_findings_with_intel(hosts: List[dict]) -> None:
         if isinstance(raw, list):
             findings.extend(f for f in raw if isinstance(f, dict))
 
+    # Only real CVEs are looked up. The feeds this reaches — exploit
+    # provenance, CISA KEV, VulnCheck KEV, CSAF vendor advisories — are all
+    # keyed on published CVE identifiers, so passing a check identifier can
+    # only return nothing. Filtering here is not an optimisation: it keeps a
+    # configuration weakness out of the code path whose entire output is
+    # CVE-specific threat intelligence, so it cannot acquire an exploit
+    # record or a KEV due date by a future change to how these tables are
+    # keyed.
     cve_ids = [
         str(_pick(f, "cve_id", "cve", "id") or "").strip().upper() for f in findings
     ]
-    cve_ids = [c for c in cve_ids if c]
+    cve_ids = [c for c in cve_ids if c and is_cve_id(c)]
     if not cve_ids:
         return
 
@@ -1034,7 +1047,12 @@ def _enrich_findings_with_intel(hosts: List[dict]) -> None:
     exploit_hits = advisory_hits = 0
     for finding in findings:
         cve = str(_pick(finding, "cve_id", "cve", "id") or "").strip().upper()
-        if not cve:
+        # Restated rather than relying on `intel` simply not containing the
+        # key. The lookup dictionaries are built from a filtered list above, so
+        # a check identifier misses today by construction; this makes it miss
+        # by intent, so widening what those feeds are keyed on cannot silently
+        # attach an exploit record to a configuration finding.
+        if not cve or not is_cve_id(cve):
             continue
 
         entry = intel.get(cve)
@@ -2027,6 +2045,22 @@ def sync_vulnerability_audit(
                 continue
             found_in_this_scan.add(cve_id)
 
+            # What kind of catalogue row this identifier names. Recovered from
+            # the identifier rather than trusted from the finding, because the
+            # finding is built by a plugin and the catalogue's CHECK constraint
+            # is what has to hold.
+            #
+            # Before this, the insert below set neither `definition_type` nor a
+            # NULL `cve_id`, so every non-CVE network finding — MISC-FTP-ANON,
+            # MISC-REDIS-NOAUTH, every MISC-NUCLEI-<template> — took the column
+            # default 'cve' and stored its own fabricated string in `cve_id`.
+            # It then inherited everything a CVE row means: KEV membership
+            # lookups, EPSS scoring, CVSS band tables, and an NVD link that
+            # resolves to nothing. ck_vuln_def_cve_id_matches_type could not
+            # catch it, because the row did carry a cve_id — just not a real one.
+            definition_type = definition_type_for_id(cve_id)
+            is_real_cve = definition_type == DEFINITION_TYPE_CVE
+
             # Get enriched details from local CVE database if available
             description = None
             cvss_vector = None
@@ -2038,8 +2072,13 @@ def sync_vulnerability_audit(
             try:
                 from core.cve_database import get_cve_database
 
-                cve_db = get_cve_database()
-                if cve_db.db_available:
+                # Only a real CVE is looked up in the CVE feed. A check
+                # identifier has no NVD record by definition, so the query
+                # could only ever return nothing — one wasted round trip per
+                # check finding per host, and a lookup whose *intent* is wrong
+                # even where its result is harmless.
+                cve_db = get_cve_database() if is_real_cve else None
+                if cve_db is not None and cve_db.db_available:
                     # One round trip per CVE, memoised for this sync. The same
                     # CVE is routinely present on several hosts in a scan, and
                     # the record is immutable for the duration of the run.
@@ -2115,7 +2154,13 @@ def sync_vulnerability_audit(
 
             catalog_stmt = insert(VulnerabilityDefinition).values(
                 id=cve_id,
-                cve_id=cve_id,
+                # NULL for anything that is not a published CVE. This is the
+                # column every join to the vulnerability feeds runs through, so
+                # a check row carrying a CVE-shaped string here is how a
+                # configuration weakness acquires an exploit record, a KEV due
+                # date and a CVSS band that belong to nothing.
+                cve_id=cve_id if is_real_cve else None,
+                definition_type=definition_type,
                 title=_catalog_title(v, cve_id, description),
                 description=description,
                 cvss_vector=cvss_vector,
@@ -2191,6 +2236,17 @@ def sync_vulnerability_audit(
                             func.nullif(catalog_stmt.excluded.affected_software, "[]"),
                             VulnerabilityDefinition.affected_software,
                         ),
+                        # Converge the typing on every re-scan rather than only
+                        # on first insert. A row written before this phase is a
+                        # check filed as a `cve` carrying a fabricated cve_id;
+                        # without these two the migration would be the only
+                        # thing that could ever repair it, and a database
+                        # restored from an older dump would silently go back to
+                        # producing fabricated CVEs. Both are computed from the
+                        # identifier, so this can only ever move a row towards
+                        # the constraint, never away from it.
+                        "definition_type": catalog_stmt.excluded.definition_type,
+                        "cve_id": catalog_stmt.excluded.cve_id,
                         "updated_at": utcnow(),
                     },
                 )

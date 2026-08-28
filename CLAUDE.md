@@ -1256,6 +1256,138 @@ theoretical concern — all four produced a confidently clean report:
   predating the columns are NULL and still match, so a partial re-sync degrades
   to the old behaviour rather than dropping ranges.
 
+## Network checks (`engines/vulnerability/network_checks.py`)
+
+The catalogue every unauthenticated network plugin turns an observation into a
+finding through. Phase 6 of the gap-closure programme, closing GAP-06; tracker
+in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine.** `VulnerabilityEngine`, `plugin_selector` and the fifteen
+probes' own detection logic are unchanged. What changed is that a probe which
+has established something now has one correct way to say so.
+
+- **`VulnerabilityEngine._merge` promotes a *top-level* `cves` key and nothing
+  else.** This is the single most important fact about writing a network
+  plugin. Six of fifteen returned their findings nested inside `http_audit`,
+  `ftp_info` or `smb_info` and every condition they detected was discarded —
+  weak SSH algorithms, SMBv1, a `public` SNMP community, an expired
+  certificate, anonymous FTP write access. A finding that is not at the top
+  level does not exist.
+
+- **`ssh_probe` is the shape to watch for.** It initialised `info["cves"] = []`,
+  promoted it with `if info.get("cves")`, and nothing ever appended to it: the
+  CVE lookup had been removed and the plumbing left behind. An AST pass over
+  the fifteen modules answers "8 plugins emit"; the truth was 7. That is why
+  `scripts/measure_network_check_coverage.py` reads a catalogue rather than the
+  sources — a measurement fooled by dead plumbing reports the starting point
+  too high and every later number inherits the error.
+
+- **A network condition must never become a fabricated CVE.** `asset_syncer`
+  set neither `definition_type` nor a NULL `cve_id`, so `MISC-FTP-ANON` and its
+  eleven siblings were filed as `cve` rows carrying their own invented string
+  in `cve_id` — inheriting KEV lookups, EPSS scores, CVSS bands and an NVD link
+  that resolves to nothing. `ck_vuln_def_cve_id_matches_type` could not catch
+  it, because the row *did* carry a `cve_id`, just not a real one. The write
+  path now calls `definition_type_for_id`, and `_enrich_findings_with_intel`
+  skips anything that is not a real CVE.
+
+- **`cve_id` is `varchar(30)` and the catalogue insert is not inside a
+  try/except.** So a fabricated identifier longer than thirty characters raised
+  `StringDataRightTruncation` and **aborted the finding sync for the whole
+  scan**. All three `MISC-CREDENTIALED-*` markers are over the limit (33, 37,
+  39) and so are most Nuclei template ids —
+  `MISC-NUCLEI-WORDPRESS-DIRECTORY-LISTING` is 39. Minted identifiers go in
+  `id`, which is `varchar(120)`, and `cve_id` stays NULL, so the limit no
+  longer applies. Do not put a non-CVE string in `cve_id`.
+
+- **A real CVE stays a real CVE.** Heartbleed, Shellshock and EternalBlue keep
+  their published identifiers, `definition_type = cve`, their NVD links and
+  their KEV and EPSS enrichment, because all of it means something for them.
+  `NetworkCheck` refuses a `cve_id` that is not well-formed at construction.
+
+- **Two probes that detect one condition emit one identifier.**
+  `default_creds` and `ftp_checker` both test anonymous FTP; both report
+  `ftp.anonymous_login`, so `deduplicate_cves` collapses them. Promoting the
+  second without matching the first would have started showing the reader the
+  same problem twice.
+
+- **`detection_method` must be `active_check`.** It maps to
+  `DetectionMethod.CONFIG_CHECK` — QoD 99, Confirmed — and is in the
+  normalizer's `AUTHORITATIVE` set, which lets the finding bypass the CPE
+  version-range test. These checks observed the condition rather than inferring
+  it from a version, so there is no version to range-check and anything else
+  would be withheld as unverified.
+
+- **Three detections are deliberately not promoted**, each because it would
+  fire on ordinary hosts. They stay in the metadata, so no existing report
+  changes:
+  - **`smb_probe.null_session`** is the negotiate response's NT status being
+    zero — STATUS_SUCCESS, which every reachable SMB server returns. Nothing
+    attempts a session setup with an empty username.
+  - **`http.admin_interface_exposed`** matches on path plus a 200/401/403
+    status with no body check, and a single-page application answers every
+    unknown route with 200 and its index document, so all thirteen fingerprints
+    match at once.
+  - **SMBv1 as CVE-2017-0144.** EternalBlue needs SMBv1 *and* an unpatched
+    implementation. SMBv1 alone is `smb.v1_enabled`; only the MS17-010
+    fingerprint claims the CVE. The old companion `CVE-2017-0144-ACTIVE` was a
+    CVE-shaped string that is not a CVE.
+
+- **`_http_request` returned an empty body on every request.** It stopped
+  reading at `\r\n\r\n` — the end of the *headers* — so directory-listing
+  detection tested `"index of /"` against `""` and could never fire, and
+  sensitive-path exposure was decided by status code alone. Pass
+  `read_body=True` when you need the body; it stays opt-in because HEAD has no
+  body and the method probe only needs a status.
+
+- **`http.sensitive_path_exposed` requires a body fingerprint.**
+  `_SENSITIVE_PATHS` probes `/login`, `/admin/`, `/dashboard` and `/console`,
+  which an SPA answers with 200 — so a status match alone reports four exposed
+  files on every SPA, this product's own frontend included.
+
+## Deep TLS on the network path
+
+`engines/vulnerability/plugins/tls_scanner.py` runs the **existing** sslyze
+wrapper (`core/web/sslyze/wrapper.py`), which had driven full TLS audits on the
+`/web-scans` path since before Phase 6 while the main network scan got a
+140-line socket probe. There is one TLS engine; do not add a second.
+
+- **`tls_scanner` used `log` and never imported it.** Four exception handlers
+  called `log.debug(...)`, so any TLS error path raised `NameError` *inside the
+  except block*, and `VulnerabilityEngine` catches plugin exceptions at DEBUG.
+  Same failure mode as `nuclei_probe`'s arity, reached from the other side.
+
+- **It assessed only the first TLS port.** `for port in _TLS_PORTS: if port in
+  open_ports: … return`. A host serving 443 and 8443 was assessed on 443 alone.
+  It now assesses every endpoint, and `_PORT_MAP` names the same ports the
+  plugin does — a port in one list and not the other means the plugin is never
+  selected for a host exposing only that port.
+
+- **`"VULNERABLE" in robot_enum.name` matched `NOT_VULNERABLE_NO_ORACLE`.**
+  sslyze's ROBOT enum has five members and the substring test passed three of
+  them, so **every server sslyze positively cleared was reported vulnerable**,
+  including any TLS 1.3-only listener where RSA key exchange does not exist.
+  It is `startswith("VULNERABLE_")` now, and `UNKNOWN_INCONSISTENT_RESULTS` is
+  deliberately not a finding — "could not determine" is not a verdict.
+
+- **The handshake and the deep engine see different things, and both are
+  needed.** A single handshake reports the suite it negotiated, which on a
+  modern client is the *strongest* the server offers; every weak suite the
+  server would also accept is invisible to it. Measured on a deliberately weak
+  listener: negotiated `ECDHE-RSA-AES256-GCM-SHA384` while the deep engine
+  found three weak suites across TLS 1.0, 1.1 and 1.2. The socket probe is kept
+  because it is fast and produces the `TLSInfo` shape `asset_syncer` and
+  `core/risk.py` already read.
+
+- **Deep assessment is bounded.** It enumerates cipher suites across six
+  protocol versions, so it costs many handshakes per endpoint where the socket
+  probe costs one. `TLS_DEEP_MAX_ENDPOINTS` (4) and `TLS_DEEP_SCAN` exist
+  because this product scans OT segments. Measured at 2.2s per endpoint.
+
+- **`tls_info` keeps its meaning** — the first TLS endpoint that answered.
+  `tls_endpoints` is additive and carries the rest. Nothing downstream should
+  change because a host happens to expose a second TLS port.
+
 ### Active template verification (Nuclei)
 
 `engines/vulnerability/plugins/nuclei_probe.py` runs ProjectDiscovery's
@@ -1263,6 +1395,11 @@ templates and produces the only findings in this product that are *proven*
 rather than inferred — a template matched a live response, so the
 vulnerability is present and reachable now. They grade as `active_check` →
 `CONFIG_CHECK`, QoD 99, Confirmed.
+
+A template with no CVE now mints `CCURE-CHK-NUCLEI-<template>` rather than
+`MISC-NUCLEI-<template>` — see the network-checks section above for why the
+old form aborted the finding sync outright on any template id over eighteen
+characters.
 
 Binary and templates are located via `NUCLEI_BINARY` and
 `NUCLEI_TEMPLATES`; the defaults are `nuclei` on PATH and

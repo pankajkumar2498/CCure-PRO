@@ -137,7 +137,23 @@ class SSLyzeWrapper:
                 robot_result = result.scan_result.robot
                 if robot_result and robot_result.status.name == "COMPLETED":
                     robot_enum = robot_result.result.robot_result
-                    if "VULNERABLE" in robot_enum.name:
+                    # `startswith`, not `in`. sslyze's enum members are
+                    # VULNERABLE_WEAK_ORACLE, VULNERABLE_STRONG_ORACLE,
+                    # NOT_VULNERABLE_NO_ORACLE, NOT_VULNERABLE_RSA_NOT_SUPPORTED
+                    # and UNKNOWN_INCONSISTENT_RESULTS — and the substring test
+                    # this used to perform matched the two NOT_VULNERABLE
+                    # members as well, because "VULNERABLE" is a substring of
+                    # "NOT_VULNERABLE".
+                    #
+                    # So every server sslyze positively cleared was reported as
+                    # vulnerable to ROBOT, including any modern TLS 1.3-only
+                    # listener, where RSA key exchange does not exist. Found by
+                    # pointing this at a correctly configured nginx and
+                    # disbelieving the result.
+                    #
+                    # UNKNOWN_INCONSISTENT_RESULTS is deliberately not a finding
+                    # either: "could not determine" is not a verdict.
+                    if robot_enum.name.startswith("VULNERABLE_"):
                         findings.append(
                             {
                                 "finding_type": "tls_issue",
@@ -217,7 +233,16 @@ class SSLyzeWrapper:
 
     @staticmethod
     def _process_certificate(cert_result) -> dict:
-        """Extract certificate details from sslyze result."""
+        """
+        Extract certificate details from sslyze result.
+
+        ``self_signed``, ``hostname_matches`` and ``days_until_expiry`` are
+        recorded but deliberately produce **no finding here**. The network scan
+        path (``engines/vulnerability/plugins/tls_scanner.py``) builds its own
+        findings from them; adding them to ``_check_certificate_issues`` would
+        change what every existing web-scan report says, which is not this
+        phase's business. Collect once, let each consumer decide.
+        """
         info = {}
         try:
             for deployment in cert_result.certificate_deployments:
@@ -225,6 +250,18 @@ class SSLyzeWrapper:
                 info = {
                     "subject": str(leaf.subject),
                     "issuer": str(leaf.issuer),
+                    # A self-signed certificate is one that vouches for itself.
+                    # sslyze exposes the chain but never compared these two, so
+                    # the condition the raw-socket probe had always detected was
+                    # absent from the deeper engine.
+                    "self_signed": str(leaf.subject) == str(leaf.issuer),
+                    "hostname_matches": getattr(
+                        deployment, "leaf_certificate_subject_matches_hostname", None
+                    ),
+                    "chain_trusted": any(
+                        getattr(r, "was_validation_successful", False)
+                        for r in getattr(deployment, "path_validation_results", [])
+                    ),
                     "not_before": (
                         leaf.not_valid_before_utc.isoformat()
                         if hasattr(leaf, "not_valid_before_utc")
@@ -249,9 +286,37 @@ class SSLyzeWrapper:
             log.debug("Certificate parsing error: %s", exc)
         return info
 
-    @staticmethod
-    def _process_protocols(scan_result) -> dict:
-        """Extract supported protocol versions and cipher counts."""
+    #: Substrings that mark a cipher suite as offering no useful security.
+    #: Matched against the IANA suite name, upper-cased.
+    #:
+    #: ``DES`` deliberately matches ``3DES`` as well — Sweet32 applies to both,
+    #: and the finding names every suite it matched so a reader can see which.
+    #: ``_ANON`` rather than ``ANON``: ``DH_anon`` appears as ``TLS_DH_anon_…``
+    #: and the underscore keeps the marker from matching an unrelated product
+    #: name inside a suite string.
+    WEAK_CIPHER_MARKERS = (
+        "RC4",
+        "DES",
+        "NULL",
+        "EXPORT",
+        "_ANON",
+        "MD5",
+        "IDEA",
+        "SEED",
+    )
+
+    @classmethod
+    def _process_protocols(cls, scan_result) -> dict:
+        """
+        Extract supported protocol versions, cipher counts and weak suites.
+
+        ``weak_ciphers`` is new. The wrapper previously counted accepted suites
+        and never looked at their names, so a server offering RC4 and one
+        offering only AES-GCM were indistinguishable in its output — which is
+        why the shallow raw-socket probe was the only thing in the product that
+        could report a weak cipher, and it could only report the *one* suite it
+        happened to negotiate.
+        """
         protocols = {}
         protocol_checks = [
             ("ssl_2_0", "ssl_2_0_cipher_suites"),
@@ -265,12 +330,32 @@ class SSLyzeWrapper:
             result = getattr(scan_result, attr_name, None)
             if result and result.status.name == "COMPLETED":
                 accepted = result.result.accepted_cipher_suites
+                names = []
+                for entry in accepted:
+                    suite = getattr(entry, "cipher_suite", None)
+                    name = getattr(suite, "name", "") or str(entry)
+                    if name:
+                        names.append(name)
                 protocols[proto_name] = {
                     "supported": len(accepted) > 0,
                     "cipher_count": len(accepted),
+                    "weak_ciphers": sorted(
+                        {
+                            name
+                            for name in names
+                            if any(
+                                marker in name.upper()
+                                for marker in cls.WEAK_CIPHER_MARKERS
+                            )
+                        }
+                    ),
                 }
             else:
-                protocols[proto_name] = {"supported": False, "cipher_count": 0}
+                protocols[proto_name] = {
+                    "supported": False,
+                    "cipher_count": 0,
+                    "weak_ciphers": [],
+                }
         return protocols
 
     @staticmethod

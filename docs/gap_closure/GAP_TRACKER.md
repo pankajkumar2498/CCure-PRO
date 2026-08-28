@@ -55,7 +55,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | GAP-05       | DISA STIG / SCAP ingestion               | Config audit   | 5     | Medium   | 0% [measured]   | 60%    | Open                                               | —         |
 | GAP-06       | Active vulnerability check expansion     | Network checks | 6     | High     | 30% [measured]  | 70%    | Open                                               | —         |
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated] | 90%    | Open                                               | —         |
-| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]   | 75%    | **Closed** (75.9% measured, real-target validated) | `PENDING` |
+| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]   | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
 | GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]  | 70%    | Open                                               | —         |
 | GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]   | 70%    | Open                                               | —         |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated] | 65%    | Open                                               | —         |
@@ -1419,7 +1419,7 @@ regression is read correctly rather than blamed on that phase's code.
 | 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
 | 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
 | 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
-| 5     | `PENDING` | —   | 2266 passed, 2 skipped ✅ |
+| 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

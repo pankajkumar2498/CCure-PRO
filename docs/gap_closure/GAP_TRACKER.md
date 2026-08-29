@@ -1681,12 +1681,22 @@ The definitive Phase 6 run reported one failure,
 The test draws 200 identifiers from `gen_compliance_scan_run_id` and asserts
 all 200 are distinct. The generator appends four random characters, so 200
 draws carry a birthday-collision probability that is small but not negligible.
-Measured directly, 3,000 trials of the same 200 draws: **32 collided, 1.07%**
-— about **one full-suite run in 93**.
+Four independent measurements, taken during the Phase 6 close-out
+verification, all agree:
 
-It passed in the two preceding full runs of this same tree and passes in
-isolation. Neither `db/base.py` nor the compliance suite appears in this
-phase's diff.
+| Method                                                                                                         | Result                                                     |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Analytical** — exact birthday probability over `36^4 = 1,679,616` suffixes for 200 draws                     | **1.178%**, ~1 run in 85                                   |
+| **Empirical at HEAD** — 50,000 trials of the exact assertion                                                   | **1.208%**, ~1 run in 82                                   |
+| **Empirical at `e649bdc`** (the Phase 5 head, _before Phase 6 existed_) — 20,000 trials in a detached worktree | **1.155%**                                                 |
+| **Through pytest at HEAD** — 200 independent invocations of the test node                                      | 1 failure, **0.50%** (expected ~2.4; within Poisson noise) |
+
+The third row is the decisive one: **the identical failure reproduces at the
+commit before this phase**, on a checkout that contains none of its code.
+
+`git diff e649bdc d40800d -- Backend/db/base.py Backend/tests/compliance/test_compliance_iso27001.py`
+is **empty** — the generator and the test that exercises it are byte-identical
+across the Phase 6 commit, so their failure rate cannot have changed.
 
 **Not fixed here**, because widening the suffix or seeding the generator is
 unrelated cleanup in code this phase does not touch. Recorded so it does not

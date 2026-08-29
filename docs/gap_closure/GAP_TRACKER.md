@@ -64,7 +64,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                               | —         |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                               | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                               | —         |
-| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `PENDING` |
+| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `13d6854` |
 | GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                               | —         |
 | GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                               | —         |
 
@@ -2066,7 +2066,7 @@ nginx answers 11 areas, Apache 9, Docker 9, Tomcat 7.
 
 ## 9C. Phase 9 — Container and Kubernetes configuration assessment
 
-Closes **GAP-17**. Commit `PENDING`.
+Closes **GAP-17**. Commit `13d6854`.
 
 ### 9C.1 The gap, measured before touching anything
 
@@ -2536,7 +2536,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
 | 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
 | 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅ |
-| 9     | `PENDING` | —   | 3987 passed, 2 skipped ✅ |
+| 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

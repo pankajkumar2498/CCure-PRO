@@ -92,6 +92,24 @@ pywinrm==0.4.3     # Windows credentialed scan over native WinRM (Phase 2)
 PyMySQL==1.1.1     # MySQL and MariaDB — pure Python, no client library
 pymssql==2.3.13    # Microsoft SQL Server — FreeTDS linked into the wheel
 
+# ── Container and Kubernetes assessment (Phase 9, GAP-17) ─────────────────────
+# YAML parsing for kubelet and k3s configuration.
+#
+# Declared explicitly even though it already arrives transitively — today via
+# bandit and pre-commit, which are *development* tooling and are not installed
+# in the API image at all. That is precisely the silent outage CLAUDE.md
+# records for dnspython: the import is reached at scan time, so a build that
+# trimmed the dev dependencies would lose Kubernetes assessment without a
+# single error at install time.
+#
+# TOML needs no entry: containerd's config.toml is read with `tomllib`, which
+# has been in the standard library since Python 3.11.
+#
+# Only `yaml.safe_load` is ever called. The full loader constructs arbitrary
+# Python objects from tags such as `!!python/object/apply`, which would be
+# remote code execution in the scanner reading a file off a host it audits.
+PyYAML>=6.0.1
+
 # ── Task Queue (Celery) ────────────────────────────────────────────────────────
 celery[redis]>=5.4.0
 redis>=5.0.0

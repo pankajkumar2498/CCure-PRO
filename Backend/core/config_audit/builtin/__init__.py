@@ -21,6 +21,14 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from core.config_audit.builtin.container_config import (
+    CONTAINER_CONFIG_CHECKS,
+    container_config_checks,
+)
+from core.config_audit.builtin.container_runtime import (
+    CONTAINER_RUNTIME_CHECKS,
+    container_runtime_checks,
+)
 from core.config_audit.builtin.database_mssql import MSSQL_CHECKS, mssql_checks
 from core.config_audit.builtin.database_mysql import MYSQL_CHECKS, mysql_checks
 from core.config_audit.builtin.database_postgresql import (
@@ -62,6 +70,9 @@ from core.config_audit.spec import ConfigCheck
 __all__ = [
     "APACHE_CHECKS",
     "BUILTIN_CHECKS",
+    "CONTAINER_CHECKS",
+    "CONTAINER_CONFIG_CHECKS",
+    "CONTAINER_RUNTIME_CHECKS",
     "DATABASE_CHECKS",
     "DOCKER_CHECKS",
     "HARDENING_CHECKS",
@@ -80,6 +91,8 @@ __all__ = [
     "apache_checks",
     "builtin_checks",
     "builtin_checks_by_id",
+    "container_config_checks",
+    "container_runtime_checks",
     "docker_checks",
     "linux_host_checks",
     "linux_privilege_checks",
@@ -139,11 +152,25 @@ MIDDLEWARE_CHECKS: List[ConfigCheck] = [
     *MIDDLEWARE_COMMON_CHECKS,
 ]
 
+#: The Phase 9 container and Kubernetes checks (GAP-17). Platform
+#: ``linux``, because a container runtime is assessed over the *host's*
+#: credentialed session — the reserved ``container`` platform describes a
+#: container as a target in its own right, which is a different idea.
+#:
+#: The Docker *daemon* configuration is deliberately not here: those ten
+#: checks belong to GAP-09 and live with the middleware rules. These are
+#: about what the daemon is running, not how it is set up.
+CONTAINER_CHECKS: List[ConfigCheck] = [
+    *CONTAINER_RUNTIME_CHECKS,
+    *CONTAINER_CONFIG_CHECKS,
+]
+
 BUILTIN_CHECKS: List[ConfigCheck] = [
     *HARDENING_CHECKS,
     *PRIVILEGE_CHECKS,
     *DATABASE_CHECKS,
     *MIDDLEWARE_CHECKS,
+    *CONTAINER_CHECKS,
 ]
 
 

@@ -804,11 +804,14 @@ which benchmark it is running, adding the next one means editing the engine.
   misspelled operator evaluated False and was recorded as a **fail** against
   every host it ran on.
 
-- **`api` and the `container` platform are reserved and have no
-  collector.** (`database_query` and the `database` platform were reserved
-  here until Phase 7 implemented them; Phase 8 added `structured_config`
-  for nested and structured configuration files — see the database and
-  middleware sections below.) Naming them now means Phases
+- **`api` is reserved and has no collector.** (`database_query` and the
+  `database` platform were reserved here until Phase 7 implemented them;
+  Phase 8 added `structured_config` for nested and structured
+  configuration files; Phase 9 added `container` for enumerating live
+  runtime state — see the database, middleware and container sections
+  below. The `container` *platform* is still reserved and unused: the
+  Phase 9 rules target `linux`, because a runtime is assessed over its
+  host's session.) Naming them now means Phases
   9–17 need no CHECK migration on a table holding customer rules. A rule using
   one reports ERROR — "this product cannot perform that check" is a product gap,
   not a property of the host, and must never render as NOT_APPLICABLE or PASS.
@@ -1125,6 +1128,134 @@ implementation and including **twelve areas this build does not implement** —
 six of them IIS, which needs a Windows Server target that is not available
 here. **~3% → 66.7%** (24/36), implemented *and* tested. Product breadth is
 reported separately and never folded in.
+
+## Container and Kubernetes assessment (`core/config_audit/containers.py`)
+
+Authenticated assessment of what a container runtime is *running* and what a
+Kubernetes cluster *allows*. Phase 9 of the gap-closure programme, closing
+GAP-17; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine, no new scan kind, no new route.** 24 checks at
+`platform = linux`, running inside the credentialed host audit — a container
+runtime is assessed over the *host's* session.
+
+- **The Docker daemon configuration belongs to GAP-09, not here.**
+  `daemon.json`, the TCP socket, `icc`, `userns-remap`, insecure registries and
+  the log driver are ten checks built and validated in Phase 8. GAP-17 is about
+  what the daemon is *running*. Two tests enforce the boundary in code, because
+  counting them twice would have inflated this phase by a quarter.
+
+- **`container` is its own check type, for the Phase 5 reason.**
+  `structured_config` reads a document and addresses a value; this enumerates
+  live state and filters it. The rule names a probe, the command is fixed in
+  code, and the filtering happens **in Python** — putting a pipeline of
+  `docker inspect` text-munging into administrator-editable rule data is what
+  Phase 5 refused for service-ACL enumeration. Migration `b0c1d2e3f4a5`.
+
+- **The reserved `container` platform is deliberately unused.** These rules
+  target `linux`. That reservation describes a container as a target in its own
+  right, which is a different idea.
+
+- **Two exit statuses where one would have done, and this is the phase's main
+  design decision.** `97` = the tool is not installed → UNSUPPORTED →
+  NOT_APPLICABLE. `96` = installed but not answering → UNAVAILABLE → ERROR.
+
+  This differs deliberately from Phases 3 and 5, where exit 97 is an *error*.
+  Every Linux host has SUID binaries, so failing to list them is a gap; **most
+  hosts run no Kubernetes**, so not finding it is an answer. Treating it as an
+  error would hand every host in an estate eight findings-shaped errors about
+  software it does not have.
+
+  The second status is what keeps that safe: the probes require `docker info`
+  and `kubectl version` to *succeed*, not merely that a binary exists, because
+  `docker ps` against an unreachable daemon returns an empty container list
+  byte-identical to a clean host.
+
+- **`structured_config` gained `yaml` and `toml` rather than a new collector.**
+  kubelet configuration is YAML, containerd's is TOML, and all three mapping
+  formats parse to the same Python shapes — so `navigate()` is one
+  implementation, not three. `tomllib` is stdlib from 3.11; **PyYAML is
+  declared explicitly** in `requirements.txt` even though it arrives
+  transitively via bandit and pre-commit, which are *development* tooling. That
+  is the dnspython trap: the import is reached at scan time.
+
+- **Only `yaml.safe_load` is ever called.** The full loader constructs
+  arbitrary Python objects from tags such as `!!python/object/apply`, which is
+  remote code execution in the scanner reading a file off a host it audits —
+  the same threat the XML DOCTYPE ban addresses, one format over.
+
+- **A dotted pointer cannot address containerd's keys.**
+  `[plugins."io.containerd.grpc.v1.cri"]` parses to a key literally *named*
+  `io.containerd.grpc.v1.cri`; splitting on dots yields five segments matching
+  nothing, and "matches nothing" is ABSENT, which for these rules means "at the
+  product default". `navigate()` therefore accepts a **list** of segments, and
+  the collector must pass it through without `str()` — see below.
+
+### Three things real targets settled
+
+- **`str(pointer)` silently defeated list pointers.** `_from_mapping` called
+  `str()` on the address, turning `["plugins", "io.containerd…"]` into its repr,
+  which then split on dots into nothing. containerd reported **clean however it
+  was configured**. Found only because a deliberately weakened `config.toml`
+  failed to produce the finding it should have.
+- **`cluster-admin` was reported on every cluster.** The wildcard-role probe
+  excluded roles named `system:*`, but `cluster-admin` is not one and is *the*
+  role that legitimately holds `*` on `*`. The filter is now the
+  `kubernetes.io/bootstrapping: rbac-defaults` label, which 65 of the 69
+  ClusterRoles on a stock k3s carry.
+- **Kubernetes' own components are legitimately privileged.** kube-proxy runs
+  privileged and CNI pods share the host network, so the workload probes skip
+  `kube-system`, `kube-public` and `kube-node-lease`. Without that, every
+  cluster produces a page of findings.
+
+### Content
+
+**No CIS Benchmark content** — same licensing position as Phases 4, 7 and 8.
+These are CCURE-authored rules written from vendor documentation, and every
+probe was run against a live Docker host and a live k3s cluster before its rule
+was written.
+
+**Image scanning, registry scanning and managed-cloud Kubernetes are out of the
+denominator entirely**, not merely unimplemented. They are a different product
+shape needing a Trivy/Grype-class toolchain and cloud credentials.
+
+### Test targets
+
+Disposable containers, destroyed after use:
+
+```powershell
+docker run -d --name ccure-ctr-target --privileged docker:27-dind
+docker run -d --name ccure-k3s-target --privileged -e K3S_KUBECONFIG_MODE=644 `
+  rancher/k3s:v1.31.4-k3s1 server --disable=traefik --disable=metrics-server
+```
+
+Measured weak → hardened: Docker **9 → 0**, Kubernetes **7 → 0**, kubelet
+**4 → 0**, containerd **1 → 0**. The hardened Docker run keeps one deliberately
+well-configured container running (`--user 1000 --read-only --security-opt
+no-new-privileges --cap-drop ALL`), so a clean result proves the probes stay
+silent on a real container rather than on an empty host.
+
+Three things worth knowing:
+
+- **k3s bundles `kubectl` at `/bin/kubectl`.** `k3s kubectl` is not a valid
+  invocation *inside* the image; the guard tries `kubectl` first for that
+  reason.
+- **k3s does not use a kubelet configuration file** — it passes flags. The
+  kubelet rules therefore report NOT_APPLICABLE against it and were validated
+  against a kubeadm-shaped `config.yaml` written to the kubeadm path. That
+  proves the rule, path, parser and verdict; it does not prove a kubeadm
+  kubelet reads the file as assumed.
+- **k3s's containerd config lives at
+  `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`**, not `/etc`.
+
+### Coverage
+
+`scripts/measure_container_coverage.py`, denominator frozen at 42 areas before
+implementation and including **eighteen areas this build does not implement** —
+five of them the Kubernetes control plane, which needs a kubeadm-style static
+manifest that k3s does not have. **~4% → 57.1%** (24/42), implemented *and*
+tested. Runtime breadth is reported separately and never folded in.
 
 ## Assessment framework (`core/checks/`)
 

@@ -64,7 +64,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                               | —         |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                               | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                               | —         |
-| GAP-17       | Virtualization / container / Kubernetes  | Container      | 17    | Low      | 5% [estimated]   | 60%    | Open                                               | —         |
+| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `PENDING` |
 | GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                               | —         |
 | GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                               | —         |
 
@@ -2064,6 +2064,220 @@ nginx answers 11 areas, Apache 9, Docker 9, Tomcat 7.
 
 ---
 
+## 9C. Phase 9 — Container and Kubernetes configuration assessment
+
+Closes **GAP-17**. Commit `PENDING`.
+
+### 9C.1 The gap, measured before touching anything
+
+The denominator was frozen in `Backend/scripts/measure_container_coverage.py`
+before a line of the phase was written, and it contains **eighteen areas this
+phase did not set out to implement**, each with a recorded reason.
+
+| Figure                                      | Value             |
+| ------------------------------------------- | ----------------- |
+| Container / Kubernetes assessment, before   | **0 / 42 = 0.0%** |
+| Container runtime checks in the product     | **0**             |
+| Kubernetes checks in the product            | **0**             |
+| YAML or TOML reading anywhere in the engine | **0**             |
+| Automated tests naming container assessment | **0**             |
+
+**The Docker daemon configuration is not counted here, and that is the most
+important line in this section.** [measured] GAP-09 built and validated ten
+checks over `daemon.json` — the TCP socket, `icc`, `userns-remap`, insecure
+registries, the log driver. Counting them again would have inflated GAP-17 by a
+quarter before any work started. `test_the_docker_daemon_checks_stay_with_gap09`
+and `test_no_container_rule_reads_daemon_json` enforce the boundary in code.
+
+So the honest before-figure is **~4%**: the residual credit for detecting that
+a container runtime is _installed_, which the Phase 3 `package` and `service`
+collectors already do.
+
+### 9C.2 What was reused rather than rebuilt
+
+- **`ConfigAuditEngine`** — unchanged.
+- **`structured_config`** — Phase 8's collector, extended with two formats
+  rather than replaced. kubelet configuration is YAML, containerd's is TOML,
+  and both parse to the same Python shapes JSON already did, so `navigate()` is
+  one implementation for all three.
+- **The credentialed host audit** — unchanged. These run at `platform = linux`
+  because a container runtime is assessed over the _host's_ session. **No new
+  scan kind, no new route, no new task.**
+- **`ShellRunner` and the sentinel protocol** — the probes inherit the Phase 3
+  discipline about output carrying no sentinel.
+- **The finding path** — `CCURE-CFG-…`, risk, remediation, both PDFs.
+
+**`tomllib` needed no dependency** — it has been in the standard library since
+Python 3.11.
+
+### 9C.3 What was built
+
+| Component                                                    | What it is                                   |
+| ------------------------------------------------------------ | -------------------------------------------- |
+| `core/config_audit/containers.py`                            | 16 probes: command + pure Python extractor   |
+| `core/config_audit/collectors/container.py`                  | The `container` collector                    |
+| `core/config_audit/builtin/container_runtime.py`             | 17 checks — Docker runtime and Kubernetes    |
+| `core/config_audit/builtin/container_config.py`              | 7 checks — kubelet (YAML), containerd (TOML) |
+| `structured.py` — `yaml_pointer`, `toml_pointer`, `navigate` | Two new formats on one navigator             |
+| `alembic/versions/b0c1d2e3f4a5_…`                            | One value on one CHECK constraint            |
+| `scripts/measure_container_coverage.py`                      | The frozen denominator                       |
+| `tests/scans/test_container_{probes,content,areas}.py`       | 316 tests                                    |
+
+**`container` is its own check type, for the Phase 5 reason.**
+`structured_config` reads a document and addresses a value; this enumerates
+live state and filters it. The collector enumerates, the probe filters _in
+Python_, and the rule asserts the list is empty — so a clean host produces
+ABSENT and `AbsencePolicy.PASS` makes it a pass. Putting a pipeline of
+`docker inspect` text-munging into administrator-editable rule data is exactly
+what Phase 5 refused for service-ACL enumeration.
+
+**The reserved `container` platform is deliberately not used.** These rules
+target `linux`, because the runtime is reached over the host's shell. That
+reservation describes a container _as a target in its own right_, which is a
+different idea and one this phase does not implement.
+
+### 9C.4 Two exit statuses where one would have done
+
+This is the phase's central design decision and it differs deliberately from
+Phases 3 and 5.
+
+| Exit | Meaning                     | State                        |
+| ---- | --------------------------- | ---------------------------- |
+| 97   | The tool is not installed   | UNSUPPORTED → NOT_APPLICABLE |
+| 96   | Installed but not answering | UNAVAILABLE → ERROR          |
+
+Phases 3 and 5 treat exit 97 as an **error**, because a host with no `find` has
+established nothing about its SUID binaries. That reasoning does not carry
+here: every Linux host has SUID binaries, but **most hosts run no Kubernetes**.
+Reporting ERROR for them would hand every host in an estate eight
+findings-shaped errors about software it does not have — the same failure GAP-09
+avoided by making a missing configuration file UNSUPPORTED.
+
+The second status is what keeps that safe. The probes require `docker info` and
+`kubectl version` to _succeed_, not merely that a binary exists, because
+`docker ps` against an unreachable daemon returns an empty container list that
+is byte-identical to a clean host. `test_a_host_with_no_runtime_produces_no_findings`
+asserts the whole set produces neither a FAIL nor an ERROR on a bare host.
+
+### 9C.5 Three defects found by pointing it at real targets
+
+- **`cluster-admin` was reported on every cluster.** The wildcard-role probe
+  looked for `*` verbs on `*` resources and excluded roles named `system:*` —
+  but `cluster-admin` does not start with `system:` and is _the_ role that
+  legitimately holds exactly that. The fix is the
+  `kubernetes.io/bootstrapping: rbac-defaults` label, which 65 of the 69
+  ClusterRoles on a stock k3s carry. Without it the check fires on every
+  cluster ever built, which is the "37 SUID binaries" failure in a new runtime.
+
+- **The collector stringified list pointers, silently.** `_from_mapping` called
+  `str(pointer)`, so the list form added for containerd became
+  `"['plugins', 'io.containerd…']"`, which `navigate()` then split on dots into
+  segments matching nothing. The result was ABSENT — which for these rules
+  means "at the product default" — so **containerd reported clean however it
+  was configured**. Caught only because a deliberately weakened
+  `config.toml` failed to produce the finding it should have.
+
+- **containerd's keys contain dots.** `[plugins."io.containerd.grpc.v1.cri"]`
+  parses to a key literally named `io.containerd.grpc.v1.cri`, which a dotted
+  path cannot address at all. `navigate()` accepts a list of segments for
+  exactly this, and the module docstring's original claim that "the formats
+  this reaches have no keys containing dots" was simply false.
+
+### 9C.6 Real-target validation — three runtimes, both directions
+
+Disposable containers only, destroyed afterwards.
+
+| Target                         | Weakened       | Hardened | Checks proven to fail |
+| ------------------------------ | -------------- | -------- | --------------------- |
+| Docker 27 (dind)               | **9** findings | **0**    | 9 / 9                 |
+| k3s v1.31.4 — workloads/RBAC   | **7** findings | **0**    | 7 / 8                 |
+| kubelet config (kubeadm shape) | **4** findings | **0**    | 4 / 5                 |
+| containerd (k3s)               | **1** finding  | **0**    | 1 / 2                 |
+
+The hardened Docker host kept one deliberately well-configured container
+running — `--user 1000 --read-only --security-opt no-new-privileges
+--cap-drop ALL` — so the clean run proves the probes stay silent on a real
+container rather than on an empty host.
+
+**Cross-runtime isolation was validated in the same runs**: pointed at the k3s
+host, all nine Docker checks reported NOT_APPLICABLE; pointed at the Docker
+host, all eight Kubernetes checks did.
+
+Three checks could not be exercised in the failing direction and are recorded
+rather than counted as proven-by-target: `k8s.rbac_enabled` (needs a cluster
+with RBAC disabled, which k3s will not do), `ctr.containerd.config_readable`
+(needs a schema-version-1 containerd), and `k8s.kubelet.client_ca` in its
+_absent_ form. All three are exercised in both directions by
+`tests/scans/test_container_areas.py`.
+
+### 9C.7 Coverage — measured, denominator frozen at Stage 1
+
+| Capability                    | Before         | After                | Basis                                           |
+| ----------------------------- | -------------- | -------------------- | ----------------------------------------------- |
+| GAP-17 container / Kubernetes | ~4% [measured] | **57.1%** [measured] | 24 of 42 frozen areas, implemented _and_ tested |
+
+| Theme        | Proven       |
+| ------------ | ------------ |
+| runtime      | 9/14 (64.3%) |
+| containerd   | 2/4 (50.0%)  |
+| kubelet      | 5/8 (62.5%)  |
+| controlplane | 1/6 (16.7%)  |
+| rbac         | 3/4 (75.0%)  |
+| workload     | 4/6 (66.7%)  |
+
+**57.1% is the ceiling this denominator allows**, because eighteen areas are
+declared and not implemented. That is the point of freezing it first.
+
+Runtime breadth is reported separately: Kubernetes answers 13 areas, Docker 9,
+containerd 2.
+
+### 9C.8 Known limitations
+
+- **The Kubernetes control plane is largely unassessed** — five of six areas.
+  k3s runs the API server from process flags rather than
+  `/etc/kubernetes/manifests/*.yaml`, and k3s is the only cluster that could be
+  stood up disposably here. Writing kubeadm-shaped manifest checks blind is
+  what this refuses. The sixth, RBAC enablement, is answered without a manifest
+  by asking whether the API server serves `rbac.authorization.k8s.io`.
+- **The kubelet rules were validated against a synthesised config file**, not a
+  live kubelet consuming one — k3s does not use a kubelet config file at all.
+  The rule, path, parser and verdict are proven; that a kubeadm kubelet reads
+  the file as these rules assume is not.
+- **Image and registry scanning are out of the denominator entirely**, as the
+  brief directed. They are a different product shape needing a Trivy/Grype-class
+  toolchain.
+- **Managed-cloud Kubernetes is out of scope** — EKS, AKS and GKE control
+  planes are not reachable this way.
+- **Only running containers are examined.** A stopped container with a
+  dangerous configuration is not reported, because `docker ps` lists running
+  ones — which is the right default for "what is exposed now" and a gap for
+  "what could be started".
+- **No UI.** Findings render as ordinary configuration findings.
+
+### 9C.9 Definition of Done — Phase 9
+
+| Line                   | GAP-17                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| Backend implemented    | ✅ 16 probes, 1 collector, 2 formats, 24 checks                  |
+| Scanner integration    | ✅ runs inside the existing credentialed host audit              |
+| Database migration     | ✅ `b0c1d2e3f4a5`, downgrade refuses safely and names the rules  |
+| API                    | ➖ none required; no new route or scan kind                      |
+| UI                     | ❌ **not done** — findings render as ordinary configuration ones |
+| Finding integration    | ✅ `CCURE-CFG-…`, same `cve_list`, no second model               |
+| Evidence               | ✅ offenders named, plus raw output on a clean enumeration       |
+| Risk                   | ✅ existing canonical severity scale                             |
+| Remediation            | ✅ asserted present on every rule                                |
+| Reporting              | ✅ executive and technical PDFs, unchanged                       |
+| Unit / integration     | ✅ 316 tests                                                     |
+| Regression suite       | ✅ see §11                                                       |
+| Real-target validation | ✅ **three runtimes, both directions**                           |
+| Coverage measured      | ✅ ~4% → 57.1%, denominator frozen before implementation         |
+| Control plane          | ❌ **declared, largely unimplemented** — no kubeadm cluster      |
+| Docs                   | ✅ CLAUDE.md, this section                                       |
+| Commit                 | ✅                                                               |
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -2115,12 +2329,29 @@ nginx answers 11 areas, Apache 9, Docker 9, Tomcat 7.
 | After Phase 6, full suite                        | **2405 passed, 2 skipped**, 7m29s                         |
 | After Phase 7, full suite                        | **3108 passed, 2 skipped**, 8m06s                         |
 | After Phase 8, full suite                        | **3647 passed, 2 skipped**, 8m43s                         |
+| After Phase 9, full suite                        | **3987 passed, 2 skipped**, 8m37s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
 catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, a net
-+99 for Phase 4, +222 for Phase 5, +139 for Phase 6, +703 for Phase 7 and
-+539 for Phase 8 — so no existing test was lost, silently skipped, or
-renamed out of collection at any point.
++99 for Phase 4, +222 for Phase 5, +139 for Phase 6, +703 for Phase 7,
++539 for Phase 8 and +340 for Phase 9 — so no existing test was lost,
+silently skipped, or renamed out of collection at any point.
+
+Phase 9's delta reconciles in two parts: **316** tests in three new files,
+and **+24** from `BUILTIN_CHECKS` growing 131 → 155, which
+`test_every_builtin_check_survives_a_round_trip` is parameterised over.
+316 + 24 = 340, exactly the observed growth.
+
+**One pre-existing test was amended, and the reason generalises.** Phase
+8's `test_the_check_type_matches_the_migration` asserted that migration
+`a9b0c1d2e3f4`'s hand-rendered vocabulary _equals_ the model's. Phase 9
+added `container` to the model and broke it — correctly, in the sense that
+the test noticed, but the assertion was wrong: a migration renders the
+vocabulary **as of that migration**, so pinning a historical one to the
+current model makes every future check type a failing test in a phase it
+has nothing to do with. It now asserts the subset relation and that it
+adds the value it exists to add; the exact-equality assertion belongs to
+the _newest_ migration and lives with it in `test_container_content.py`.
 
 Phase 8's delta reconciles in two parts: **499** tests in four new files,
 and **+40** that are not new test functions —
@@ -2305,6 +2536,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
 | 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
 | 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅ |
+| 9     | `PENDING` | —   | 3987 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

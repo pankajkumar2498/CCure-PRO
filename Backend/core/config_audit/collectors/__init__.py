@@ -23,6 +23,10 @@ from core.config_audit.collectors.base import (
     ShellRunner,
     collector_registry,
 )
+from core.config_audit.collectors.container import (
+    ContainerCollector,
+    register_container_collector,
+)
 from core.config_audit.collectors.database import (
     DatabaseQueryCollector,
     register_database_collector,
@@ -44,6 +48,7 @@ from core.config_audit.collectors.windows import register_windows_collectors
 __all__ = [
     "Collector",
     "CollectorRegistry",
+    "ContainerCollector",
     "DatabaseQueryCollector",
     "LinuxStructuredConfigCollector",
     "ShellOutput",
@@ -51,6 +56,7 @@ __all__ = [
     "WindowsStructuredConfigCollector",
     "collector_registry",
     "register_builtin_collectors",
+    "register_container_collector",
     "register_database_collector",
     "register_linux_collectors",
     "register_middleware_collectors",
@@ -79,6 +85,7 @@ def register_builtin_collectors(registry: CollectorRegistry | None = None) -> No
         register_linux_privilege_collector(registry)
         register_database_collector(registry)
         register_middleware_collectors(registry)
+        register_container_collector(registry)
         return
     with _REGISTRATION_LOCK:
         if _registered:
@@ -89,4 +96,5 @@ def register_builtin_collectors(registry: CollectorRegistry | None = None) -> No
         register_linux_privilege_collector(collector_registry)
         register_database_collector(collector_registry)
         register_middleware_collectors(collector_registry)
+        register_container_collector(collector_registry)
         _registered = True

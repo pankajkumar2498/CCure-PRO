@@ -68,7 +68,9 @@ from core.config_audit.structured import (
     render_value,
     rescope,
     select_directives,
+    toml_pointer,
     xml_select,
+    yaml_pointer,
 )
 
 log = logging.getLogger("ccure.config_audit.middleware")
@@ -85,7 +87,21 @@ _ABSENT = "CCURE::ABSENT::"
 #: Formats that carry directives in nested blocks, and therefore support
 #: ``scope`` and include expansion.
 _DIRECTIVE_FORMATS = ("nginx", "apache")
-_FORMATS = (*_DIRECTIVE_FORMATS, "xml", "json")
+
+#: Formats that parse to a mapping and are addressed by a dotted path. They
+#: share one navigator — see ``structured.navigate`` — because JSON, YAML and
+#: TOML all parse to the same Python shapes, and three addressing schemes for
+#: one idea is how two vocabularies for one idea begin.
+_MAPPING_FORMATS = ("json", "yaml", "toml")
+
+_FORMATS = (*_DIRECTIVE_FORMATS, "xml", *_MAPPING_FORMATS)
+
+#: Which parser reads each mapping format.
+_MAPPING_READERS = {
+    "json": json_pointer,
+    "yaml": yaml_pointer,
+    "toml": toml_pointer,
+}
 _RESULT_SHAPES = ("value", "values", "count")
 
 #: Bounds on include expansion. A configuration tree is not a filesystem crawl:
@@ -145,8 +161,8 @@ class _StructuredConfigCollector(Collector):
         if read_state is not None:
             return read_state
 
-        if fmt == "json":
-            return self._from_json(params, path, str(text), shape)
+        if fmt in _MAPPING_FORMATS:
+            return self._from_mapping(params, path, str(text), fmt, shape)
         if fmt == "xml":
             return self._from_xml(params, path, str(text), shape)
         return self._from_directives(ctx, params, path, str(text), fmt, shape)
@@ -521,21 +537,37 @@ class _StructuredConfigCollector(Collector):
             return CollectedState.collected(values, raw=raw, collector=self.name)
         return CollectedState.collected(values[-1], raw=raw, collector=self.name)
 
-    # ── JSON ─────────────────────────────────────────────────────────────────
+    # ── Mapping formats: JSON, YAML, TOML ────────────────────────────────────
 
-    def _from_json(
-        self, params: Dict[str, Any], path: str, text: str, shape: str
+    def _from_mapping(
+        self, params: Dict[str, Any], path: str, text: str, fmt: str, shape: str
     ) -> CollectedState:
+        """
+        One handler for all three mapping formats.
+
+        They differ only in how the bytes become a Python mapping; the
+        addressing, the shapes and — most importantly — the meaning of a path
+        that does not resolve are identical, and writing that three times is
+        how three subtly different notions of ABSENT come to exist.
+        """
         pointer = params.get("pointer")
         if not pointer:
             return CollectedState.unavailable(
-                "a json rule must name the pointer to read", collector=self.name
+                f"a {fmt} rule must name the pointer to read", collector=self.name
             )
+        # The pointer is passed through *without* str(), and that is not
+        # incidental. A list pointer is how a rule reaches a key that itself
+        # contains dots — containerd's `[plugins."io.containerd.grpc.v1.cri"]`
+        # — and stringifying it produced "['plugins', 'io.containerd…']", which
+        # navigate() then split on dots into segments matching nothing. The
+        # result was ABSENT, which for these rules means "at the default", so
+        # containerd reported clean no matter how it was configured.
+        address = list(pointer) if isinstance(pointer, (list, tuple)) else str(pointer)
         try:
-            value = json_pointer(text, str(pointer))
+            value = _MAPPING_READERS[fmt](text, address)
         except ParseError as exc:
             return CollectedState.unavailable(
-                f"{path} could not be read as JSON: {exc}",
+                f"{path} could not be read as {fmt.upper()}: {exc}",
                 raw=text[:400],
                 collector=self.name,
             )

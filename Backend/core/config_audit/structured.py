@@ -21,6 +21,11 @@ product this phase assesses:
   on elements.
 * **The Docker daemon** is JSON.
 
+Phase 9 (GAP-17) added two more mapping formats to the same addressing:
+**YAML** for the kubelet and k3s configuration, and **TOML** for containerd.
+All three parse to the same Python shapes, so :func:`navigate` is one
+implementation rather than three.
+
 So a flat reader does not merely miss these, it answers them *wrongly and
 confidently*, which is worse. Everything here is pure Python over text: nothing
 in this module opens a connection, and every parser is exercised against
@@ -58,13 +63,16 @@ __all__ = [
     "apache_includes",
     "apache_server_root",
     "json_pointer",
+    "navigate",
     "nginx_includes",
     "parse_apache",
     "parse_nginx",
     "render_value",
     "rescope",
     "select_directives",
+    "toml_pointer",
     "xml_select",
+    "yaml_pointer",
 ]
 
 
@@ -454,9 +462,36 @@ def json_pointer(text: str, pointer: str) -> Any:
         document = json.loads(text or "")
     except json.JSONDecodeError as exc:
         raise ParseError(f"not valid JSON: {exc}") from exc
+    return navigate(document, pointer)
 
+
+def navigate(document: Any, pointer: Any) -> Any:
+    """
+    Walk a parsed document by a path, or ``None`` where it does not resolve.
+
+    Shared by every mapping format — JSON, YAML and TOML all parse to the same
+    Python shapes, so the addressing is one implementation rather than three.
+
+    ``pointer`` may be a **dotted string** or a **list of segments**, and the
+    list form is not a convenience. containerd's ``config.toml`` uses quoted
+    keys that themselves contain dots::
+
+        [plugins."io.containerd.grpc.v1.cri"]
+
+    which parses to a key literally named ``io.containerd.grpc.v1.cri``. A
+    dotted path cannot address it — splitting produces five segments that
+    resolve to nothing, and "resolves to nothing" is ABSENT, which for most
+    rules means "at the product default". So the dotted form would have
+    reported containerd as unconfigured no matter how it was configured. A rule
+    reaching such a key passes ``["plugins", "io.containerd.grpc.v1.cri", …]``.
+    """
+    segments = (
+        [str(s) for s in pointer]
+        if isinstance(pointer, (list, tuple))
+        else [s for s in str(pointer).split(".") if s]
+    )
     node: Any = document
-    for segment in [s for s in str(pointer).split(".") if s]:
+    for segment in segments:
         if isinstance(node, dict):
             node = node.get(segment, _MISSING)
         elif isinstance(node, list):
@@ -469,6 +504,53 @@ def json_pointer(text: str, pointer: str) -> Any:
         if node is _MISSING:
             return None
     return node
+
+
+def yaml_pointer(text: str, pointer: str) -> Any:
+    """
+    A value addressed by a dotted path inside a YAML document.
+
+    ``safe_load`` and nothing else. YAML's full loader constructs arbitrary
+    Python objects from tags like ``!!python/object/apply``, which is remote
+    code execution in the scanner reading a file off a host it is auditing —
+    and a kubelet configuration is exactly such a file. This is the same
+    threat the XML DOCTYPE ban addresses, one format over.
+
+    A document that is empty, or that is a stream of several documents, is
+    refused rather than guessed at: ``safe_load`` raises on the second, and an
+    empty file parses to ``None``, which would otherwise navigate to ``None``
+    and be indistinguishable from a genuinely absent key.
+    """
+    try:
+        import yaml
+    except ImportError as exc:  # pragma: no cover - dependency guard
+        raise ParseError(
+            "PyYAML is not installed, so YAML configuration cannot be read"
+        ) from exc
+
+    try:
+        document = yaml.safe_load(text or "")
+    except yaml.YAMLError as exc:
+        raise ParseError(f"not valid YAML: {exc}") from exc
+    if document is None:
+        raise ParseError("the YAML document is empty")
+    return navigate(document, pointer)
+
+
+def toml_pointer(text: str, pointer: str) -> Any:
+    """
+    A value addressed by a dotted path inside a TOML document.
+
+    ``tomllib`` is in the standard library from Python 3.11, so this needs no
+    dependency. containerd's ``config.toml`` is the reason it is here.
+    """
+    import tomllib
+
+    try:
+        document = tomllib.loads(text or "")
+    except tomllib.TOMLDecodeError as exc:
+        raise ParseError(f"not valid TOML: {exc}") from exc
+    return navigate(document, pointer)
 
 
 def render_value(value: Any) -> Any:

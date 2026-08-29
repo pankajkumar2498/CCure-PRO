@@ -108,6 +108,13 @@ CHECK_TYPES: Tuple[str, ...] = (
     #: under a document root are different statements, and a type that cannot
     #: express which one is meant will confidently report the wrong one.
     "structured_config",
+    #: An enumeration of *running* things that are offending — which
+    #: containers are privileged, which pods share a host namespace. Its own
+    #: type rather than more parameters on ``structured_config`` because the
+    #: question differs: that one reads a document and addresses a value,
+    #: this one enumerates live state and filters it. Same distinction, and
+    #: the same reason, as ``privilege``.
+    "container",
     "api",
     "database_query",
 )

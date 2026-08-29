@@ -226,9 +226,21 @@ def test_middleware_rules_are_never_selected_for_a_database_audit():
 
 def test_the_check_type_matches_the_migration():
     """
-    Migration a9b0c1d2e3f4 renders the vocabulary by hand. A model that gains a
-    value the migration does not have produces a schema an upgraded database
-    rejects and a bootstrapped one accepts.
+    Migration a9b0c1d2e3f4 renders the vocabulary by hand, and this asserts it
+    is still coherent with the model.
+
+    **It deliberately does not assert equality**, and the reason is worth
+    recording: it did, and Phase 9 broke it by adding ``container`` to the
+    model. A migration renders the vocabulary *as of that migration*, so
+    pinning a historical one to the current model makes every later check type
+    a failing test in a phase it has nothing to do with.
+
+    What must hold forever is that this migration's list is a subset of the
+    model's — a value here that the model has since dropped would produce a
+    constraint admitting something no rule can be — and that it adds exactly
+    the value it exists to add. The stronger "equals the model" assertion
+    belongs to the *newest* migration, and lives with it in
+    ``test_container_content.py``.
     """
     import importlib.util
     from pathlib import Path
@@ -245,7 +257,8 @@ def test_the_check_type_matches_the_migration():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    assert tuple(module.CHECK_TYPES) == tuple(RULE_CHECK_TYPES)
+    assert set(module.CHECK_TYPES) <= set(RULE_CHECK_TYPES)
+    assert "structured_config" in module.CHECK_TYPES
     assert "structured_config" not in module.OLD_CHECK_TYPES
 
 

@@ -57,7 +57,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated]  | 90%    | Open                                               | —         |
 | **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
 | GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]   | 70%    | Open                                               | —         |
-| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `PENDING` |
+| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
 | GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
 | GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                               | —         |
@@ -1519,7 +1519,7 @@ coverage credit.
 
 ## 9A. Phase 7 — Authenticated database assessment
 
-Closes **GAP-10**. Commit `PENDING`.
+Closes **GAP-10**. Commit `9d74a0c`.
 
 ### 9A.1 The gap, measured before touching anything
 
@@ -2021,7 +2021,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
 | 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅ |
 | 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
-| 7     | `PENDING` | —   | 3108 passed, 2 skipped ✅ |
+| 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

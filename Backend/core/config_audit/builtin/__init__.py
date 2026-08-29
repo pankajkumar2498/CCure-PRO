@@ -21,6 +21,12 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from core.config_audit.builtin.database_mssql import MSSQL_CHECKS, mssql_checks
+from core.config_audit.builtin.database_mysql import MYSQL_CHECKS, mysql_checks
+from core.config_audit.builtin.database_postgresql import (
+    POSTGRESQL_CHECKS,
+    postgresql_checks,
+)
 from core.config_audit.builtin.linux_host import LINUX_HOST_CHECKS, linux_host_checks
 from core.config_audit.builtin.privilege_linux import (
     LINUX_PRIVILEGE_CHECKS,
@@ -38,9 +44,13 @@ from core.config_audit.spec import ConfigCheck
 
 __all__ = [
     "BUILTIN_CHECKS",
+    "DATABASE_CHECKS",
     "HARDENING_CHECKS",
     "LINUX_HOST_CHECKS",
     "LINUX_PRIVILEGE_CHECKS",
+    "MSSQL_CHECKS",
+    "MYSQL_CHECKS",
+    "POSTGRESQL_CHECKS",
     "PRIVILEGE_CHECKS",
     "WINDOWS_HOST_CHECKS",
     "WINDOWS_PRIVILEGE_CHECKS",
@@ -48,6 +58,9 @@ __all__ = [
     "builtin_checks_by_id",
     "linux_host_checks",
     "linux_privilege_checks",
+    "mssql_checks",
+    "mysql_checks",
+    "postgresql_checks",
     "windows_host_checks",
     "windows_privilege_checks",
 ]
@@ -64,7 +77,28 @@ PRIVILEGE_CHECKS: List[ConfigCheck] = [
     *LINUX_PRIVILEGE_CHECKS,
 ]
 
-BUILTIN_CHECKS: List[ConfigCheck] = [*HARDENING_CHECKS, *PRIVILEGE_CHECKS]
+#: The Phase 7 database checks (GAP-10). Platform ``database``, so
+#: ``select_checks(platform="linux")`` never returns one and a host audit is
+#: unchanged by their presence — the same platform filter that already keeps
+#: Windows rules off Linux hosts.
+#:
+#: They mint ``CCURE-CFG-…`` like the hardening checks rather than
+#: ``CCURE-PRV-…``, including the privilege and grant rules. ``privilege_check``
+#: was considered and rejected: it files a finding under the report family
+#: "Local Privilege", and an over-granted role on a remote database server is
+#: not a local privilege-escalation condition on the scanning host. The
+#: identifier segment has to describe the finding, and CFG does.
+DATABASE_CHECKS: List[ConfigCheck] = [
+    *POSTGRESQL_CHECKS,
+    *MYSQL_CHECKS,
+    *MSSQL_CHECKS,
+]
+
+BUILTIN_CHECKS: List[ConfigCheck] = [
+    *HARDENING_CHECKS,
+    *PRIVILEGE_CHECKS,
+    *DATABASE_CHECKS,
+]
 
 
 def builtin_checks() -> List[ConfigCheck]:

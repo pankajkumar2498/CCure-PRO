@@ -95,12 +95,18 @@ class TestTheCapabilityReport:
         self, client, auth_headers
     ):
         """
-        ``api`` and ``database_query`` are reserved for Phases 9, 10 and 16 so
-        those need no CHECK migration on a table holding customer rules. Saying
-        so here is what stops a rule author discovering it after a scan.
+        ``api`` is reserved for a later phase so it needs no CHECK migration on
+        a table holding customer rules. Saying so here is what stops a rule
+        author discovering it after a scan.
+
+        ``database_query`` was on this list until Phase 7 (GAP-10) gave it a
+        collector. That it dropped off is the point of reading the live
+        registry: the endpoint reports what this build can do, not what a
+        hand-maintained list says it can.
         """
         body = _get(client, "/config-audit/capabilities", auth_headers).json()
-        assert set(body["declared_without_collector"]) == {"api", "database_query"}
+        assert set(body["declared_without_collector"]) == {"api"}
+        assert "database_query" in body["supported"]["database"]
 
     def test_it_is_read_from_the_live_registry(self, client, auth_headers):
         from core.config_audit import collector_registry
@@ -174,20 +180,43 @@ class TestRuleValidation:
         self, client, auth_headers
     ):
         """
-        Authoring content ahead of its collector is legitimate — Phases 10 and
-        11 will need it. Reporting it as invalid would block that; reporting
+        Authoring content ahead of its collector is legitimate — a later phase
+        will need it. Reporting it as invalid would block that; reporting
         nothing would let it ship silently unexecutable.
+
+        Uses ``api`` on ``container``, because Phase 7 implemented
+        ``database_query`` on ``database`` and this test needs a pair that
+        genuinely has no collector. Swapping the pair rather than deleting the
+        test keeps the warning path covered.
+        """
+        body = self._validate(
+            client,
+            auth_headers,
+            check_type="api",
+            platforms=["container"],
+            collect={"endpoint": "/version"},
+        ).json()
+        assert body["valid"] is True
+        assert body["warnings"]
+        assert "no collector" in body["warnings"][0]
+
+    def test_a_database_rule_no_longer_warns_now_that_it_can_run(
+        self, client, auth_headers
+    ):
+        """
+        The other side of the test above. A ``database_query`` rule was warned
+        about as unexecutable until Phase 7; continuing to warn would tell a
+        rule author their working rule cannot run.
         """
         body = self._validate(
             client,
             auth_headers,
             check_type="database_query",
             platforms=["database"],
-            collect={"query": "SHOW ssl"},
+            collect={"sql": "SHOW ssl", "engine": "postgresql"},
         ).json()
         assert body["valid"] is True
-        assert body["warnings"]
-        assert "no collector" in body["warnings"][0]
+        assert not [w for w in body["warnings"] if "no collector" in w]
 
     def test_validation_contacts_no_target(self, client, auth_headers, monkeypatch):
         """

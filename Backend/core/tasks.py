@@ -22,6 +22,7 @@ from db.models import (
     User,
     VulnerabilityDefinition,
 )
+from db.models.compliance import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
 from engines.credentialed.coverage import (
     correlate_listeners,
     credentialed_coverage,
@@ -3449,6 +3450,227 @@ def audit_credentialed_host(
     return stored_report, system_data, os_type
 
 
+def audit_database_target(
+    *,
+    host: str,
+    engine: str,
+    username: str,
+    password: str | None = None,
+    port: int | None = None,
+    database: str | None = None,
+    timeout: int = 20,
+    emit=None,
+    credential_options: dict | None = None,
+    config_checks: list | None = None,
+) -> tuple[dict, dict, str]:
+    """
+    Run the authenticated configuration audit against one database instance.
+
+    The database counterpart of :func:`audit_credentialed_host`, and
+    deliberately a sibling of it rather than a branch inside it. That function
+    is host-shaped from end to end — detect the operating system, enumerate
+    packages, resolve listeners, match packages against advisories — and a
+    database instance has none of those. Threading a second meaning through it
+    would leave every one of those steps guarded by ``if not database``.
+
+    What it *does* share is everything downstream: the Phase 3 engine, the
+    ``AbsencePolicy`` semantics, the evidence record, the ``CCURE-CFG-``
+    identifier, and the ``cves`` list every report generator already reads. So
+    a failing database check reaches the executive PDF, the risk score and the
+    findings queue through exactly the path a failing Windows registry check
+    does, with no second finding model behind it.
+
+    Returns ``(stored_report, system_data, "database")``, matching the arity of
+    ``audit_credentialed_host`` so the scan task's per-target loop keeps one
+    shape.
+    """
+    from core.checks.contract import CheckOutcome
+    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
+    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
+    from core.config_audit.builtin import builtin_checks
+    from core.config_audit.collectors import register_builtin_collectors
+    from core.config_audit.findings import config_definition_id
+    from engines.credentialed.database_executor import (
+        DEFAULT_PORTS,
+        DatabaseSession,
+        normalize_engine,
+    )
+
+    register_builtin_collectors()
+
+    resolved_engine = normalize_engine(engine)
+    if not resolved_engine:
+        raise ValueError(f"database engine {engine!r} is not one this build can assess")
+
+    options = dict(credential_options or {})
+    started = time.time()
+
+    def _emit(message, percentage=0, stage=None):
+        if emit:
+            emit("running", message, percentage, stage)
+
+    resolved_port = int(port or DEFAULT_PORTS[resolved_engine])
+    target = f"{host}:{resolved_port}"
+    _emit(f"Connecting to {resolved_engine} at {target}...", 10, "connecting")
+
+    connect_started = time.perf_counter()
+    session = DatabaseSession(
+        engine=resolved_engine,
+        host=host,
+        username=username,
+        password=password,
+        port=resolved_port,
+        database=database or options.get("database"),
+        timeout=timeout,
+        use_tls=options.get("use_tls"),
+        verify_cert=bool(options.get("verify_cert", False)),
+        ca_cert=options.get("ca_cert"),
+    )
+
+    with session as db_session:
+        response_ms = int(round((time.perf_counter() - connect_started) * 1000))
+        product = db_session.product_name
+        version = db_session.server_version
+        tls_in_use = db_session.tls_in_use
+        _emit(f"Authenticated to {product or resolved_engine}", 25, "detection")
+
+        # The instance's own product string and version become os_name and
+        # os_version_id, so the Phase 4 targeting written for "Ubuntu 22.04
+        # versus RHEL 9" applies unchanged to "PostgreSQL 16 versus MySQL 8".
+        # There is deliberately no second targeting mechanism.
+        checks = select_checks(
+            [*builtin_checks(), *(config_checks or [])], platform="database"
+        )
+        _emit(f"Assessing {len(checks)} configuration checks...", 40, "configuration")
+
+        context = CollectionContext(
+            target=target,
+            platform="database",
+            os_name=product,
+            os_version_id=version,
+            executor=db_session,
+            timeout=max(timeout, 30),
+        )
+        report = ConfigAuditEngine().run(checks, context)
+
+    cve_list: list[dict] = []
+    for result in report.results:
+        if result.outcome is not CheckOutcome.FAIL:
+            continue
+        observation = result.evidence[0] if result.evidence else None
+        finding_type = str(
+            result.metadata.get("finding_type") or DEFINITION_TYPE_CONFIG_CHECK
+        )
+        definition_id = config_definition_id(result.check_id, finding_type)
+        cve_list.append(
+            {
+                "cve_id": definition_id,
+                "cve": definition_id,
+                "definition_type": finding_type,
+                "title": result.title,
+                "severity": result.severity.capitalize(),
+                "description": result.title,
+                "desc": result.title,
+                "detection_method": "config_check",
+                "confidence": "Confirmed",
+                "qod": result.qod,
+                "remediation": result.remediation or "",
+                "evidence": (
+                    f"Expected: {observation.expected}\n"
+                    f"Observed: {observation.observed}"
+                    if observation
+                    else ""
+                ),
+                "expected_state": observation.expected if observation else "",
+                "observed_state": observation.observed if observation else "",
+                "package": "",
+                "installed_ver": "",
+                "fixed_ver": "",
+                "source": "database_audit",
+                "host": target,
+            }
+        )
+
+    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+    for finding in cve_list:
+        tier = str(finding.get("severity") or "").capitalize()
+        if tier not in severity_counts:
+            tier = "Info"
+        severity_counts[tier] += 1
+
+    counts = report.counts
+    config_summary = {
+        "assessed": True,
+        "platform": "database",
+        "engine": resolved_engine,
+        "counts": counts,
+        "verdicts": len(report.assessed),
+        "compliance_score": report.compliance_score(),
+        "results": [r.as_dict() for r in report.results],
+    }
+
+    system_data = {
+        "detected_os": "database",
+        "db_engine": resolved_engine,
+        "db_product": product,
+        "db_version": version,
+        "credentialed_response_time_ms": response_ms,
+        "config_audit": config_summary,
+    }
+
+    stored_report = {
+        "scan_type": "database",
+        "target": target,
+        "username": username,
+        "detected_os": "database",
+        "system_info": {
+            "os_name": product,
+            "os_family": "database",
+            "os_version_id": version,
+            "hostname": host,
+            "credentialed_response_time_ms": response_ms,
+        },
+        "database": {
+            "engine": resolved_engine,
+            "product": product,
+            "version": version,
+            "host": host,
+            "port": resolved_port,
+            # Whether *this* session was encrypted. None where the instance
+            # could not be asked, which is not the same as plaintext and is
+            # deliberately not rendered as one.
+            "tls_in_use": tls_in_use,
+        },
+        "packages": [],
+        "package_count": 0,
+        "config_audit": config_summary,
+        "cves": cve_list,
+        "cve_count": len(cve_list),
+        "severity_summary": severity_counts,
+        "scan_duration": round(time.time() - started, 2),
+        # A database audit examines the instance's own configuration. It says
+        # nothing about the operating system underneath it, the packages
+        # installed there, or what else that host exposes — and a report which
+        # does not say so reads as a complete audit of the machine.
+        "coverage": {
+            "credentialed": True,
+            "network_scanned": False,
+            "packages_assessed": False,
+            "scope": (
+                f"{resolved_engine} instance configuration only; the host "
+                f"operating system was not assessed"
+            ),
+        },
+        "checks_total": len(report.results),
+        "checks_assessed": len(report.assessed),
+        "checks_errored": counts.get("error", 0),
+        "checks_not_applicable": counts.get("not_applicable", 0),
+    }
+
+    _emit(f"Database audit complete - {len(cve_list)} finding(s)", 90, "analysis")
+    return stored_report, system_data, "database"
+
+
 def _classify_credentialed_failure(reason: str) -> str:
     """Whether a failed host was unreachable or failed for another reason."""
     lowered = reason.lower()
@@ -3534,6 +3756,7 @@ def run_credentialed_scan_task(
         # keeps its existing behaviour: nothing about the ad-hoc path changes.
         transport = "ssh"
         domain = None
+        credential_type = CREDENTIAL_TYPE_SSH
         credential_options: dict = {}
         if credential_id:
             # A stored credential supersedes anything the request supplied.
@@ -3553,6 +3776,11 @@ def run_credentialed_scan_task(
             auth_method = material.get("auth_method") or auth_method
             domain = material.get("domain")
             credential_options = material.get("options") or {}
+            # What *kind* of target this credential is for. Without it a
+            # database credential would be handed to the host auditor, which
+            # would open an SSH connection to a database port and report the
+            # instance as unreachable.
+            credential_type = material.get("credential_type") or CREDENTIAL_TYPE_SSH
 
         reports: list[dict] = []
         collected: list[tuple[dict, dict, str]] = []
@@ -3571,22 +3799,38 @@ def run_credentialed_scan_task(
                 emit(status, message, int(_base + (percentage / 100.0) * _span), stage)
 
             try:
-                stored_report, system_data, os_type = audit_credentialed_host(
-                    config_checks=benchmark_checks,
-                    ip=host_ip,
-                    username=username,
-                    password=password,
-                    key_path=key_path,
-                    key_content=key_content,
-                    port=port,
-                    sections=sections,
-                    os_type_req=os_type_req,
-                    emit=host_emit,
-                    transport=transport,
-                    auth_method=auth_method,
-                    domain=domain,
-                    credential_options=credential_options,
-                )
+                if credential_type == CREDENTIAL_TYPE_DATABASE:
+                    # A database credential names an instance, not a host, and
+                    # `transport` carries which engine it speaks. Dispatched to
+                    # the sibling auditor rather than through a flag on the
+                    # host one — see audit_database_target for why.
+                    stored_report, system_data, os_type = audit_database_target(
+                        host=host_ip,
+                        engine=transport,
+                        username=username,
+                        password=password,
+                        port=port,
+                        emit=host_emit,
+                        credential_options=credential_options,
+                        config_checks=benchmark_checks,
+                    )
+                else:
+                    stored_report, system_data, os_type = audit_credentialed_host(
+                        config_checks=benchmark_checks,
+                        ip=host_ip,
+                        username=username,
+                        password=password,
+                        key_path=key_path,
+                        key_content=key_content,
+                        port=port,
+                        sections=sections,
+                        os_type_req=os_type_req,
+                        emit=host_emit,
+                        transport=transport,
+                        auth_method=auth_method,
+                        domain=domain,
+                        credential_options=credential_options,
+                    )
                 reports.append(stored_report)
                 collected.append((stored_report, system_data, os_type))
             except Exception as host_exc:  # noqa: BLE001 — recorded, not swallowed
@@ -3694,8 +3938,18 @@ def run_credentialed_scan_task(
             commit=False,  # ENTERPRISE FIX: Do not commit yet
         )
 
-        # Sync to Asset Registry within the same transaction
+        # Sync to Asset Registry within the same transaction.
+        #
+        # Database targets are deliberately excluded. Both helpers below are
+        # host-shaped: they write an operating system, a package inventory,
+        # listener correlation and a MAC-based identity onto an Asset row. A
+        # database instance has none of those, and letting it through would
+        # overwrite the asset record of the machine hosting it with an audit
+        # that never looked at the machine — turning a correctly inventoried
+        # server into one reporting no packages and an OS of "database".
         for stored_report, system_data, os_type in collected:
+            if os_type == "database":
+                continue
             _sync_credentialed_asset_identity(
                 db,
                 user_id=user_id,

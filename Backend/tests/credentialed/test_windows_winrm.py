@@ -495,15 +495,38 @@ class TestCredentialAPI:
         assert win_key.status_code == 400
 
     def test_reserved_credential_types_are_refused(self, client, auth_headers):
-        """The column admits them so Phases 10/11 need no CHECK migration; the
-        API must not let one be created that nothing can authenticate with."""
-        for reserved in ("database", "network_device", "snmp"):
+        """The column admits them so a later phase needs no CHECK migration; the
+        API must not let one be created that nothing can authenticate with.
+
+        ``database`` was on this list until Phase 7 (GAP-10) implemented a
+        transport, a collector and validated content for it, at which point it
+        moved to ``USABLE_CREDENTIAL_TYPES``. The two remaining entries keep the
+        property under test — that the column being permissive does not make the
+        API permissive — and the assertion below keeps ``database`` honest from
+        the other side.
+        """
+        for reserved in ("network_device", "snmp"):
             response = client.post(
                 BASE,
                 json=_win_cred_body(credential_type=reserved),
                 headers=auth_headers,
             )
             assert response.status_code == 422, reserved
+
+    def test_the_database_credential_type_is_no_longer_reserved(self):
+        """
+        The other half of the test above. If ``database`` were ever removed from
+        the usable set, the loop there would keep passing while the capability
+        silently disappeared.
+        """
+        from db.models.compliance import (
+            CREDENTIAL_TYPE_DATABASE,
+            CREDENTIAL_TYPES,
+            USABLE_CREDENTIAL_TYPES,
+        )
+
+        assert CREDENTIAL_TYPE_DATABASE in CREDENTIAL_TYPES
+        assert CREDENTIAL_TYPE_DATABASE in USABLE_CREDENTIAL_TYPES
 
     def test_secrets_are_refused_in_the_options_field(self, client, auth_headers):
         """`options` is returned to clients in clear and written to logs."""

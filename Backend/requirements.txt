@@ -74,6 +74,24 @@ pywinrm==0.4.3     # Windows credentialed scan over native WinRM (Phase 2)
 # actually execute). Installing it in only one is how validation succeeds in
 # the UI and every real scan then fails.
 
+# ── Database assessment (Phase 7, GAP-10) ─────────────────────────────────────
+# Authenticated configuration audit of database instances. PostgreSQL needs no
+# entry here: psycopg2-binary is already a dependency of the application's own
+# database access, above.
+#
+# Both ship prebuilt wheels for Windows (cp312) and manylinux, which is the
+# reason these two engines are supported and Oracle and MongoDB are not: the
+# scanner worker runs on the Windows host, so a driver needing a source build
+# or a vendor client library there is not a dependency, it is an installation
+# project on every deployment.
+#
+# Same "both environments" rule as pywinrm above — the API reports which
+# engines it can assess from the installed drivers (`/credentials/types`), so a
+# driver present in the container and absent from the worker venv offers a
+# credential type that every real scan then fails on.
+PyMySQL==1.1.1     # MySQL and MariaDB — pure Python, no client library
+pymssql==2.3.13    # Microsoft SQL Server — FreeTDS linked into the wheel
+
 # ── Task Queue (Celery) ────────────────────────────────────────────────────────
 celery[redis]>=5.4.0
 redis>=5.0.0

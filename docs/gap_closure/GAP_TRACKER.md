@@ -57,7 +57,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated]  | 90%    | Open                                               | —         |
 | **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
 | GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]   | 70%    | Open                                               | —         |
-| GAP-10       | Database assessment                      | Database       | 10    | High     | 5% [measured]    | 70%    | Open                                               | —         |
+| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `PENDING` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
 | GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
 | GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                               | —         |
@@ -1517,6 +1517,291 @@ coverage credit.
 
 ---
 
+## 9A. Phase 7 — Authenticated database assessment
+
+Closes **GAP-10**. Commit `PENDING`.
+
+### 9A.1 The gap, measured before touching anything
+
+The denominator was frozen in `Backend/scripts/measure_database_coverage.py`
+before a line of the phase was written, and it contains **eight areas this
+phase did not set out to implement**, each with a recorded reason. A coverage
+figure that cannot go down is not a measurement.
+
+| Figure                                       | Value             |
+| -------------------------------------------- | ----------------- |
+| Authenticated database assessment, before    | **0 / 31 = 0.0%** |
+| Database configuration checks in the product | **0**             |
+| Database transports                          | **0**             |
+| `database_query` collectors                  | **0**             |
+| Automated tests naming database assessment   | **0**             |
+
+**The matrix said 5% [measured] and that figure was misattributed.** [measured]
+It was counting the _unauthenticated_ view of a database service — port and
+version detection on 1433/1521/3306/5432, the CPE→CVE match on a detected
+banner, and the no-authentication checks for Redis, MongoDB and Memcached. All
+of that exists, all of it works, and all of it is already counted in **GAP-06**,
+whose own frozen denominator names "database service assessment — GAP-10, not
+this phase" as the boundary. Counting it twice is how a programme's numbers
+stop meaning anything, so GAP-10's denominator covers authenticated assessment
+only and starts at zero.
+
+### 9A.2 What was reused rather than rebuilt
+
+Nothing in the assessment pipeline is new. The phase adds a transport and
+content, and both plug into machinery Phases 0–4 already built:
+
+- **`ConfigAuditEngine`** — unchanged. A database check is an ordinary
+  `ConfigCheck`; the four collection states, `AbsencePolicy`, the operator
+  vocabulary and the outcome table all apply as written.
+- **`CollectionContext.scope`** — Phase 3 wrote its docstring as "resolved
+  against a sub-target (**a database instance**, a virtual host)". This is the
+  phase that reservation was for.
+- **`os_match`** — Phase 4's OS targeting, written for "CIS Ubuntu 22.04 versus
+  CIS RHEL 9", applies unchanged to "PostgreSQL 16 versus MySQL 8". The
+  instance's product string becomes `os_name` and its version `os_version_id`.
+  **No second targeting mechanism was added**, which was the main design goal.
+- **`compliance_credentials`** — `credential_type = 'database'` has been
+  reserved since Phase 2, and `compliance_rules` has admitted `database_query`
+  and `target_platform = 'database'` since Phase 3's `b4c5d6e7f8a9`. So the
+  entire persistence cost of GAP-10 is **one CHECK constraint** on
+  `transport`.
+- **The finding path** — `CCURE-CFG-…` through `StandardizedFinding`, the
+  normalizer, risk, remediation and both PDFs. No second finding model.
+- **The dispatch path** — `POST /scan/credentialed` and
+  `core/scheduling/dispatcher.py` are **unchanged**. A schedule stores a
+  credential reference, the credential carries its type, and
+  `run_credentialed_scan_task` branches on it. Scheduling a recurring database
+  audit therefore works today with no new route, no new task and no new
+  dispatcher branch.
+
+### 9A.3 What was built
+
+| Component                                                          | What it is                                                       |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `engines/credentialed/database_executor.py`                        | The transport: sessions, read-only enforcement, four error types |
+| `core/config_audit/collectors/database.py`                         | The `database_query` collector — three result shapes             |
+| `core/config_audit/builtin/database_postgresql.py`                 | 21 checks                                                        |
+| `core/config_audit/builtin/database_mysql.py`                      | 15 checks                                                        |
+| `core/config_audit/builtin/database_mssql.py`                      | 13 checks                                                        |
+| `core/tasks.audit_database_target`                                 | The per-instance audit, sibling of `audit_credentialed_host`     |
+| `alembic/versions/f8a9b0c1d2e3_…`                                  | Five transport values on one CHECK constraint                    |
+| `scripts/measure_database_coverage.py`                             | The frozen denominator                                           |
+| `tests/scans/test_database_{transport,collector,content,areas}.py` | 652 tests                                                        |
+
+**49 checks across three engines.** PostgreSQL, MySQL/MariaDB and Microsoft SQL
+Server. Oracle and MongoDB are reserved in the transport vocabulary and
+implemented by nothing — see §9A.7.
+
+### 9A.4 Read-only is enforced, not intended
+
+Rules are administrator-editable, so the SQL in a rule is an injection boundary
+_inside the product_ — the same position Phase 3 took on `ps_quote` and
+`shlex.quote`. Three layers, and `tests/scans/test_database_content.py` asserts
+that **every one of the 49 shipped rules** passes the guard:
+
+1. `assert_read_only` admits only a single statement beginning SELECT, SHOW,
+   WITH or VALUES, with comments and string literals stripped first so a
+   literal `'delete'` is data and a `-- ; DROP` comment is not a statement.
+2. Rule-supplied values are bound parameters. A rule handing over anything but
+   a sequence is refused rather than interpolated.
+3. The session itself is opened read-only where the engine can express it —
+   `set_session(readonly=True)`, `SET SESSION TRANSACTION READ ONLY`,
+   pymssql's `read_only=True`.
+
+A refused statement is **UNAVAILABLE → ERROR**, never a verdict. A defect in a
+rule must not manufacture a finding about a customer's database.
+
+### 9A.5 Six defects found by pointing it at real databases
+
+Every one would have shipped looking correct, and four of them produce a
+_confidently wrong_ result rather than an obvious failure.
+
+- **Engine targeting was inert on MySQL.** `SELECT version()` returns
+  `PostgreSQL 16.15 on x86_64…` on PostgreSQL but a bare `8.0.46` on MySQL, so
+  `os_name_contains: ["mysql"]` matched nothing and **all 15 MySQL rules
+  reported NOT_APPLICABLE** — a complete rule set that silently never ran. On
+  PostgreSQL alone it looked perfect. `DatabaseSession.product_name` now always
+  names the engine, and labels MariaDB separately so a "MySQL 8.0 or later"
+  rule cannot read MariaDB 10.11 as ancient.
+
+- **`PGSSLROOTCERT` from `Backend/.env` was applied to every scan target.**
+  The variable exists for the application's own database and points at this
+  deployment's private CA. Loading config puts it in the environment, and libpq
+  applies it to any connection that does not set it — so every PostgreSQL
+  _target_ was verified against our CA and failed with "certificate verify
+  failed", which reads as a fault on the target. The asymmetry that hid it:
+  passing `sslmode` explicitly _does_ override `PGSSLMODE`, so the mode was
+  right and only the trust anchor was wrong, and under `prefer` libpq still
+  verifies once a root certificate is configured. `sslrootcert` is now passed
+  explicitly on every connection.
+
+- **A failed statement on a healthy session was reported as an unreachable
+  database.** The classifier's fallback was `DatabaseConnectionError`, so a
+  catalogue view absent from an engine version produced "nothing answered …
+  confirm the instance is listening" while the scanner held an open connection
+  to it. Classification now takes a `context`, and only a _positive_
+  connectivity match becomes a transport error.
+
+- **PostgreSQL's `no pg_hba.conf entry` was classified as a connection
+  failure.** The instance answered and declined; calling it unreachable sends
+  the reader to the firewall for a server that is listening and deliberately
+  refusing. It is an authentication refusal.
+
+- **MySQL's `validate_password` check was a false positive on hardened
+  servers.** It read `information_schema.plugins`, but MySQL 8 installs
+  `validate_password` as a **component** in `mysql.component`. Measured against an
+  instance whose policy had, minutes earlier, rejected a generated password for
+  not meeting it. The query now covers both forms.
+
+- **`secure_file_priv` inverted its own verdict.** `not_empty` treats SQL NULL
+  as empty, and NULL is the _most hardened_ state — server-side file access
+  disabled outright. So a locked-down instance and a completely unrestricted
+  one (`''`) both failed identically. NULL is folded to a token first.
+
+### 9A.6 Five universal false positives caught before they shipped
+
+Each was a stock default on an untouched instance. A check that fires on every
+host is worse than one that misses, because the reader stops looking.
+
+| Would have reported                            | Reality                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| PUBLIC holds CONNECT on `postgres`/`template0` | The default on every PostgreSQL installation                              |
+| `trust` on `local` and `127.0.0.1`             | The postgres image default; how `docker exec psql` works                  |
+| `guest` holds CONNECT in SQL Server            | Mandatory in `master`; cannot be revoked there                            |
+| `BUILTIN\*`, `NT AUTHORITY\*` are sysadmin     | Provisioned by SQL Server itself — two findings on an untouched container |
+| `VIEW ANY DATABASE` granted to `public`        | A default grant on every instance                                         |
+
+Three PostgreSQL rules also read `pg_hba_file_rules` with overlapping
+predicates, so one permissive line produced three findings and made the
+remediation look three times larger than it was. They are now orthogonal: one
+asks whether plaintext is admitted, one asks what the server binds to, and the
+third was dropped.
+
+`information_schema.user_privileges` returning **132 `is_grantable` rows on a
+stock MySQL**, all of them root's, is the measurement behind
+`db.priv.grant_option` being excluded from the denominator rather than
+implemented badly.
+
+### 9A.7 Real-target validation — three engines, both directions
+
+Disposable containers only, destroyed afterwards. Credentials generated at run
+time; none in source, configuration, logs, Celery arguments or git.
+
+| Engine                    | Weakened        | Hardened | Checks proven to fail |
+| ------------------------- | --------------- | -------- | --------------------- |
+| PostgreSQL 16.15          | **12** findings | **0**    | 20 / 21               |
+| MySQL 8.0.46              | **11** findings | **0**    | 13 / 15               |
+| Microsoft SQL Server 2022 | **12** findings | **0**    | 12 / 13               |
+
+Both directions matter and the hardened run is the one that catches false
+positives — it is what found the `validate_password` and `listen_addresses`
+defects above.
+
+**Cross-engine isolation is proven by the same runs.** Scanning MySQL selected
+49 checks and reported 34 NOT_APPLICABLE; scanning SQL Server reported 36. A
+PostgreSQL catalogue read is never dispatched at another product.
+
+**Degradation under an unprivileged credential was measured, not assumed.**
+Against PostgreSQL with a `LOGIN`-only role, `pg_authid` and
+`pg_hba_file_rules` returned "permission denied" → UNAVAILABLE → **ERROR**,
+while `pg_settings` and `pg_roles` still answered. A low-privilege scan
+produces a partial audit that says which parts it could not perform — never a
+pass, and never "no offending accounts".
+
+Six checks could not be exercised in the failing direction and are recorded as
+such rather than counted:
+`ccure.db.postgresql.untrusted_languages` (needs plpython, absent from the
+alpine image), the three `version_supported` rules (need an end-of-life
+release), `ccure.db.mysql.have_ssl` and `ccure.db.mysql.tls_version` (MySQL 8
+generates certificates automatically and has removed TLS 1.0/1.1 entirely).
+All six are exercised in both directions by
+`tests/scans/test_database_areas.py` against the real engine.
+
+### 9A.8 Coverage — measured, denominator frozen at Stage 1
+
+| Capability                 | Before        | After                | Basis                                           |
+| -------------------------- | ------------- | -------------------- | ----------------------------------------------- |
+| GAP-10 database assessment | 0% [measured] | **74.2%** [measured] | 23 of 31 frozen areas, implemented _and_ tested |
+
+| Theme         | Proven      |
+| ------------- | ----------- |
+| auth          | 6/7 (85.7%) |
+| privilege     | 5/6 (83.3%) |
+| encryption    | 3/5 (60.0%) |
+| audit         | 4/5 (80.0%) |
+| configuration | 5/8 (62.5%) |
+
+**Engine breadth is reported separately and never folded into the headline.**
+An area answered on one engine is implemented; saying so on three does not make
+it three areas. PostgreSQL answers 15 areas, MySQL 12, SQL Server 11.
+
+The eight unimplemented areas, each with its reason in `NOT_PLANNED`:
+`db.auth.lockout`, `db.priv.grant_option`, `db.tls.cipher_strength`,
+`db.crypto.at_rest`, `db.audit.log_permissions`, `db.conf.error_verbosity`,
+`db.conf.data_dir_permissions`, `db.conf.backup_configured`.
+
+### 9A.9 Known limitations
+
+- **Oracle and MongoDB are not implemented.** Drivers exist for both
+  (`oracledb` thin mode, `pymongo`) and the transport vocabulary reserves them,
+  but neither could be stood up as a disposable target here — Oracle needs a
+  vendor registry account — so neither was validated and neither ships.
+  `USABLE_TRANSPORTS` stops the API creating such a credential.
+- **`BUILTIN\Administrators` in sysadmin is not reported.** Excluded because it
+  is provisioned on the SQL Server container, which is the only instance this
+  phase could validate against. On a Windows deployment it is a genuine
+  hardening item, and this build will not report it.
+- **SQL Server `guest` access is not assessed.** Correct assessment needs a
+  per-user-database sweep, which cannot be expressed as one read-only
+  statement.
+- **SQL Server login auditing is not read.** The conventional route is
+  `EXEC xp_instance_regread`, and widening the read-only guard for one setting
+  is worth less than the guard.
+- **The audit assesses the instance, not its host.** `coverage.scope` says so
+  in words on every database report. Auditing the operating system underneath
+  needs a _host_ credential and is GAP-03's existing path.
+- **A database target is deliberately excluded from the asset registry sync.**
+  Both sync helpers are host-shaped; letting a database audit through would
+  overwrite the asset record of the machine hosting it with an audit that never
+  looked at the machine.
+- **Version-currency boundaries have a shelf life.** PostgreSQL 14, MySQL 8.0
+  and SQL Server 2017 were the oldest supported releases as at 29 August 2026.
+  Each rule states the date and links the vendor's lifecycle page.
+- **The UI can only create a PostgreSQL credential.** `ScanCredentials.jsx`
+  renders whatever `/credentials/types` returns, so "Database" appears as a
+  selectable type and produces a working credential — but it uses the type's
+  defaults, which are PostgreSQL on 5432, and there is no control for choosing
+  the engine. The `engines` list the endpoint returns for exactly that purpose
+  is currently ignored by the frontend. MySQL and SQL Server credentials must
+  be created through the API until that control exists. This is the one
+  Definition-of-Done line that is not met.
+
+### 9A.10 Definition of Done — Phase 7
+
+| Line                   | GAP-10                                                         |
+| ---------------------- | -------------------------------------------------------------- |
+| Backend implemented    | ✅ transport, collector, 49 checks, dispatch                   |
+| Scanner integration    | ✅ runs inside the credentialed scan task                      |
+| Database migration     | ✅ `f8a9b0c1d2e3`, downgrade refuses safely and names the rows |
+| API                    | ✅ credential type unlocked; no new route needed               |
+| UI                     | ❌ **not done** — credential and scan composition are API-only |
+| Finding integration    | ✅ `CCURE-CFG-…`, same `cve_list`, no second model             |
+| Evidence               | ✅ expected, observed, the statement, and the rows it returned |
+| Risk                   | ✅ existing canonical severity scale                           |
+| Remediation            | ✅ `CONFIGURATION_GUIDANCE`, asserted present on every rule    |
+| Compliance result      | ✅ through the Phase 3 verdict path                            |
+| Reporting              | ✅ executive and technical PDFs, unchanged                     |
+| Scheduling             | ✅ works through the existing credentialed schedule kind       |
+| Unit / integration     | ✅ 652 tests                                                   |
+| Regression suite       | ✅ see §11                                                     |
+| Real-target validation | ✅ **three engines, both directions**                          |
+| Coverage measured      | ✅ 0% → 74.2%, denominator frozen before implementation        |
+| Docs                   | ✅ CLAUDE.md, this section                                     |
+| Commit                 | ✅                                                             |
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -1565,11 +1850,32 @@ coverage credit.
 | After Phase 3, full suite                        | **1945 passed, 2 skipped**, 6m56s                         |
 | After Phase 4, full suite                        | **2044 passed, 2 skipped**, 7m20s                         |
 | After Phase 5, full suite                        | **2266 passed, 2 skipped**, 7m34s                         |
+| After Phase 6, full suite                        | **2405 passed, 2 skipped**, 7m29s                         |
+| After Phase 7, full suite                        | **3108 passed, 2 skipped**, 8m06s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
 catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, a net
-+99 for Phase 4 and +222 for Phase 5 — so no existing test was lost, silently
-skipped, or renamed out of collection at any point.
++99 for Phase 4, +222 for Phase 5, +139 for Phase 6 and +703 for Phase 7 —
+so no existing test was lost, silently skipped, or renamed out of collection
+at any point.
+
+Phase 7's delta reconciles in three parts. It adds **652** tests in four new
+files, **+2** in files it amended, and **+49** that are not new test
+functions at all: `test_config_audit_spec.py::test_every_builtin_check_survives_a_round_trip` is parameterised over
+`BUILTIN_CHECKS`, which grew from 42 to 91 when the database rules were
+added, so every one of them is round-tripped through the stored JSONB shape
+for free. 652 + 2 + 49 = 703, exactly the observed growth.
+
+**Three pre-existing tests were amended rather than deleted, and the reason
+matters.** All three asserted that `database_query`, the `database` platform
+or the `database` credential type were _reserved and unimplemented_ — which
+was true until this phase and is the fact it changed. Each was updated to
+keep the property it was guarding while pointing at something that is still
+unimplemented (`api` on `container`, `network_device` and `snmp`), and each
+gained a companion asserting the new capability from the other side. Deleting
+them would have removed the guard; loosening them would have removed the
+evidence that the endpoint reports capability from the live registry rather
+than from a list.
 
 Phase 5's delta needs a sentence too: it adds **200** tests and the suite grows
 by **222**. The extra 22 are not new test functions — they are new _parameters_.
@@ -1714,6 +2020,8 @@ the assertion is testing the right thing, and the generator really can collide.
 | 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
 | 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
 | 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅ |
+| 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
+| 7     | `PENDING` | —   | 3108 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

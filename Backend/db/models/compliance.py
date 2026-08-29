@@ -1069,8 +1069,15 @@ CREDENTIAL_TYPES = (
     CREDENTIAL_TYPE_SNMP,
 )
 
-#: The types something can actually authenticate with today.
-USABLE_CREDENTIAL_TYPES = (CREDENTIAL_TYPE_SSH, CREDENTIAL_TYPE_WINDOWS)
+#: The types something can actually authenticate with today. ``database`` was
+#: added in Phase 7 (GAP-10) once a collector, a transport and validated
+#: content existed for it — the reservation above is what made that a one-line
+#: change rather than a CHECK migration on a table holding customer records.
+USABLE_CREDENTIAL_TYPES = (
+    CREDENTIAL_TYPE_SSH,
+    CREDENTIAL_TYPE_WINDOWS,
+    CREDENTIAL_TYPE_DATABASE,
+)
 
 #: How the credential reaches the target. Kept separate from the type because
 #: they are not the same question — a Windows host can be reached over WinRM or
@@ -1078,7 +1085,41 @@ USABLE_CREDENTIAL_TYPES = (CREDENTIAL_TYPE_SSH, CREDENTIAL_TYPE_WINDOWS)
 #: and both are ``windows`` credentials.
 TRANSPORT_SSH = "ssh"
 TRANSPORT_WINRM = "winrm"
-TRANSPORTS = (TRANSPORT_SSH, TRANSPORT_WINRM)
+
+#: Database transports, added in Phase 7. There is one per engine rather than a
+#: single ``database`` value because for a database the transport *is* the wire
+#: protocol, and a credential is only usable against the engine it was written
+#: for. Putting the engine in ``options`` instead would express the same thing
+#: while giving up the CHECK constraint that keeps it a closed vocabulary.
+#:
+#: ``oracle`` and ``mongodb`` are reserved exactly as ``database`` itself was:
+#: named here so the phase that implements them adds a collector rather than a
+#: migration on live encrypted credentials. Nothing can create one — the API
+#: validates against ``USABLE_TRANSPORTS`` below.
+TRANSPORT_POSTGRESQL = "postgresql"
+TRANSPORT_MYSQL = "mysql"
+TRANSPORT_MSSQL = "mssql"
+TRANSPORT_ORACLE = "oracle"
+TRANSPORT_MONGODB = "mongodb"
+
+TRANSPORTS = (
+    TRANSPORT_SSH,
+    TRANSPORT_WINRM,
+    TRANSPORT_POSTGRESQL,
+    TRANSPORT_MYSQL,
+    TRANSPORT_MSSQL,
+    TRANSPORT_ORACLE,
+    TRANSPORT_MONGODB,
+)
+
+#: The database transports this build can actually open a session with. Kept
+#: separate from ``TRANSPORTS`` for the same reason ``USABLE_CREDENTIAL_TYPES``
+#: is kept separate from ``CREDENTIAL_TYPES``: the column admits the reserved
+#: values so a later phase needs no migration, and the API refuses them so a
+#: user cannot save a credential nothing would ever use.
+DATABASE_TRANSPORTS = (TRANSPORT_POSTGRESQL, TRANSPORT_MYSQL, TRANSPORT_MSSQL)
+
+USABLE_TRANSPORTS = (TRANSPORT_SSH, TRANSPORT_WINRM, *DATABASE_TRANSPORTS)
 
 #: ``password`` and ``key`` are the original two and their meaning is unchanged.
 #: ``ntlm`` and ``kerberos`` are Windows domain authentication; both present a

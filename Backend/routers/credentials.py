@@ -56,8 +56,11 @@ from db.models.compliance import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
+    CREDENTIAL_TYPE_DATABASE,
     CREDENTIAL_TYPE_SSH,
     CREDENTIAL_TYPE_WINDOWS,
+    DATABASE_TRANSPORTS,
+    TRANSPORT_POSTGRESQL,
     TRANSPORT_SSH,
     TRANSPORT_WINRM,
     USABLE_CREDENTIAL_TYPES,
@@ -82,13 +85,58 @@ router = APIRouter(prefix="/credentials", tags=["Credentials"])
 TYPE_AUTH_MATRIX: Dict[str, tuple] = {
     CREDENTIAL_TYPE_SSH: ("password", "key"),
     CREDENTIAL_TYPE_WINDOWS: ("password", "ntlm", "kerberos"),
+    # Password only. Every engine here also supports certificate and
+    # integrated authentication, and none of those is implemented, so offering
+    # them would let a user save a credential the scanner cannot use.
+    CREDENTIAL_TYPE_DATABASE: ("password",),
+}
+
+#: Which transports each credential type may use.
+#:
+#: New in Phase 7, and it closes a gap rather than only serving the new type:
+#: transport was previously defaulted per type but never *validated*, so a
+#: Windows credential could be stored with an arbitrary transport from the
+#: column's vocabulary. With database engines in that vocabulary the
+#: consequence stops being cosmetic — a Windows credential carrying transport
+#: ``postgresql`` would be dispatched at a database session.
+TYPE_TRANSPORTS: Dict[str, tuple] = {
+    CREDENTIAL_TYPE_SSH: (TRANSPORT_SSH,),
+    # A Windows host is reachable either way: WinRM natively, or SSH through
+    # the OpenSSH-on-Windows arrangement this product used to require.
+    CREDENTIAL_TYPE_WINDOWS: (TRANSPORT_WINRM, TRANSPORT_SSH),
+    CREDENTIAL_TYPE_DATABASE: DATABASE_TRANSPORTS,
 }
 
 #: Default transport and port per type, applied when the caller does not say.
+#:
+#: The database default is PostgreSQL because it is the only engine whose
+#: driver this product already depended on before Phase 7. There is no
+#: defensible "generic" database port, so a caller naming a database credential
+#: without a transport gets the one engine that was always present rather than
+#: a guess.
 TYPE_DEFAULTS: Dict[str, Dict[str, Any]] = {
     CREDENTIAL_TYPE_SSH: {"transport": TRANSPORT_SSH, "port": 22},
     CREDENTIAL_TYPE_WINDOWS: {"transport": TRANSPORT_WINRM, "port": 5985},
+    CREDENTIAL_TYPE_DATABASE: {"transport": TRANSPORT_POSTGRESQL, "port": 5432},
 }
+
+
+#: Default port per database transport, applied when the caller names an engine
+#: but no port. Sourced from ``DEFAULT_PORTS`` in the executor so the two
+#: cannot drift — a credential defaulted to 5432 for a MySQL transport would
+#: fail at scan time on a customer's network rather than at the moment somebody
+#: saved it.
+def _database_default_port(transport: str) -> int:
+    from engines.credentialed.database_executor import DEFAULT_PORTS
+
+    return int(DEFAULT_PORTS.get(transport, 5432))
+
+
+def _database_drivers() -> Dict[str, bool]:
+    """Which database engines this build has a driver for."""
+    from engines.credentialed.database_executor import available_engines
+
+    return available_engines()
 
 
 def _is_superadmin(user: User) -> bool:
@@ -241,11 +289,32 @@ def _apply_type_rules(
                 f"{auth_method!r}; expected one of {', '.join(allowed)}"
             ),
         )
+
     defaults = TYPE_DEFAULTS.get(credential_type, {})
-    return (
-        (transport or defaults.get("transport", TRANSPORT_SSH)),
-        int(port or defaults.get("port", 22)),
-    )
+    resolved_transport = transport or defaults.get("transport", TRANSPORT_SSH)
+
+    permitted = TYPE_TRANSPORTS.get(credential_type, ())
+    if permitted and resolved_transport not in permitted:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"a {credential_type} credential cannot use transport "
+                f"{resolved_transport!r}; expected one of "
+                f"{', '.join(permitted)}"
+            ),
+        )
+
+    if port:
+        resolved_port = int(port)
+    elif credential_type == CREDENTIAL_TYPE_DATABASE:
+        # The port follows the engine, not the type. Defaulting a MySQL
+        # credential to PostgreSQL's 5432 would store something that cannot
+        # connect and would surface as an unreachable host at scan time.
+        resolved_port = _database_default_port(resolved_transport)
+    else:
+        resolved_port = int(defaults.get("port", 22))
+
+    return (resolved_transport, resolved_port)
 
 
 @router.get("/types")
@@ -282,6 +351,32 @@ def credential_types(
                     if WINRM_AVAILABLE
                     else "pywinrm is not installed in this environment"
                 ),
+            },
+            {
+                "value": CREDENTIAL_TYPE_DATABASE,
+                "label": "Database",
+                "auth_methods": list(TYPE_AUTH_MATRIX[CREDENTIAL_TYPE_DATABASE]),
+                "default_port": TYPE_DEFAULTS[CREDENTIAL_TYPE_DATABASE]["port"],
+                "available": any(_database_drivers().values()),
+                "unavailable_reason": (
+                    None
+                    if any(_database_drivers().values())
+                    else "no database driver is installed in this environment"
+                ),
+                # A database credential is only usable against the engine it
+                # names, so the engine list is part of the type rather than a
+                # free-text field. Availability is per engine and read from the
+                # installed drivers: a deployment without pymssql should not be
+                # offered SQL Server and left to discover at scan time that it
+                # cannot connect.
+                "engines": [
+                    {
+                        "value": transport,
+                        "default_port": _database_default_port(transport),
+                        "available": _database_drivers().get(transport, False),
+                    }
+                    for transport in DATABASE_TRANSPORTS
+                ],
             },
         ]
     }

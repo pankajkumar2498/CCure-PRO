@@ -100,6 +100,14 @@ CHECK_TYPES: Tuple[str, ...] = (
     #: the rule asserts the list is empty, so a compliant host produces an
     #: absence and a breached one produces the offenders as evidence.
     "privilege",
+    #: A read from a configuration document that has *structure* — nginx and
+    #: Apache block nesting, XML, JSON. Its own type rather than more
+    #: parameters on ``config_file`` because the addressing differs in kind: a
+    #: flat reader answers "what is this key set to", and these have to answer
+    #: "what is it set to *here*". ``AllowOverride`` under ``<Directory />`` and
+    #: under a document root are different statements, and a type that cannot
+    #: express which one is meant will confidently report the wrong one.
+    "structured_config",
     "api",
     "database_query",
 )

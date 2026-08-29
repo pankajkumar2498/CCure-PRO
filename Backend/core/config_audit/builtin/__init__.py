@@ -28,6 +28,23 @@ from core.config_audit.builtin.database_postgresql import (
     postgresql_checks,
 )
 from core.config_audit.builtin.linux_host import LINUX_HOST_CHECKS, linux_host_checks
+from core.config_audit.builtin.middleware_apache import (
+    APACHE_CHECKS,
+    apache_checks,
+)
+from core.config_audit.builtin.middleware_common import (
+    MIDDLEWARE_COMMON_CHECKS,
+    middleware_common_checks,
+)
+from core.config_audit.builtin.middleware_docker import (
+    DOCKER_CHECKS,
+    docker_checks,
+)
+from core.config_audit.builtin.middleware_nginx import NGINX_CHECKS, nginx_checks
+from core.config_audit.builtin.middleware_tomcat import (
+    TOMCAT_CHECKS,
+    tomcat_checks,
+)
 from core.config_audit.builtin.privilege_linux import (
     LINUX_PRIVILEGE_CHECKS,
     linux_privilege_checks,
@@ -43,24 +60,35 @@ from core.config_audit.builtin.windows_host import (
 from core.config_audit.spec import ConfigCheck
 
 __all__ = [
+    "APACHE_CHECKS",
     "BUILTIN_CHECKS",
     "DATABASE_CHECKS",
+    "DOCKER_CHECKS",
     "HARDENING_CHECKS",
     "LINUX_HOST_CHECKS",
     "LINUX_PRIVILEGE_CHECKS",
+    "MIDDLEWARE_CHECKS",
+    "MIDDLEWARE_COMMON_CHECKS",
     "MSSQL_CHECKS",
     "MYSQL_CHECKS",
+    "NGINX_CHECKS",
     "POSTGRESQL_CHECKS",
     "PRIVILEGE_CHECKS",
+    "TOMCAT_CHECKS",
     "WINDOWS_HOST_CHECKS",
     "WINDOWS_PRIVILEGE_CHECKS",
+    "apache_checks",
     "builtin_checks",
     "builtin_checks_by_id",
+    "docker_checks",
     "linux_host_checks",
     "linux_privilege_checks",
+    "middleware_common_checks",
     "mssql_checks",
     "mysql_checks",
+    "nginx_checks",
     "postgresql_checks",
+    "tomcat_checks",
     "windows_host_checks",
     "windows_privilege_checks",
 ]
@@ -94,10 +122,28 @@ DATABASE_CHECKS: List[ConfigCheck] = [
     *MSSQL_CHECKS,
 ]
 
+#: The Phase 8 middleware checks (GAP-09). Platform ``linux``/``windows``,
+#: so they run inside the ordinary credentialed host audit alongside the
+#: OS hardening rules — a web server's configuration is part of the host's
+#: posture, not a separate scan.
+#:
+#: They mint ``CCURE-CFG-…`` like every other hardening check. A host that
+#: does not run the product reports NOT_APPLICABLE rather than a pile of
+#: findings, which the collector decides by whether the configuration file
+#: exists at all.
+MIDDLEWARE_CHECKS: List[ConfigCheck] = [
+    *NGINX_CHECKS,
+    *APACHE_CHECKS,
+    *TOMCAT_CHECKS,
+    *DOCKER_CHECKS,
+    *MIDDLEWARE_COMMON_CHECKS,
+]
+
 BUILTIN_CHECKS: List[ConfigCheck] = [
     *HARDENING_CHECKS,
     *PRIVILEGE_CHECKS,
     *DATABASE_CHECKS,
+    *MIDDLEWARE_CHECKS,
 ]
 
 

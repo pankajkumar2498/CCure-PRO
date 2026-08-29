@@ -805,9 +805,10 @@ which benchmark it is running, adding the next one means editing the engine.
   every host it ran on.
 
 - **`api` and the `container` platform are reserved and have no
-  collector.** (`database_query` and the `database` platform were also
-  reserved here until Phase 7 implemented them — see the database
-  assessment section below.) Naming them now means Phases
+  collector.** (`database_query` and the `database` platform were reserved
+  here until Phase 7 implemented them; Phase 8 added `structured_config`
+  for nested and structured configuration files — see the database and
+  middleware sections below.) Naming them now means Phases
   9–17 need no CHECK migration on a table holding customer rules. A rule using
   one reports ERROR — "this product cannot perform that check" is a product gap,
   not a property of the host, and must never render as NOT_APPLICABLE or PASS.
@@ -984,6 +985,146 @@ same finding, risk, remediation and report paths.
   headline figure is *implemented and tested*: an area whose test is deleted
   loses its coverage credit, because the script reads the test sources rather
   than a hand-maintained list.
+
+## Middleware configuration assessment (`core/config_audit/structured.py`)
+
+Authenticated assessment of nginx, Apache httpd, Tomcat and the Docker daemon's
+own configuration. Phase 8 of the gap-closure programme, closing GAP-09;
+tracker in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine, no new scan kind, no new route.** These are Phase 3
+`ConfigCheck` records at `platform = linux|windows`, so they run inside the
+credentialed host audit alongside the OS hardening rules — a web server's
+configuration is part of the host's posture, not a separate scan. 40 checks.
+
+- **`config_file` could not have been extended to cover this, and that is the
+  phase's main engineering.** It reads one directive out of a flat
+  `key<separator>value` file. All four products keep their settings inside a
+  structure, and there was no XML or JSON reading anywhere in
+  `core/config_audit/`. The failure a flat reader produces is not "misses the
+  setting" — `AllowOverride None` under `<Directory />` and under a document
+  root are different statements, and a reader that cannot say which it found
+  returns whichever it saw last, confidently.
+
+- **One check type, `structured_config`, with `format` as a parameter.** From
+  the engine's point of view nginx, Apache, XML and JSON are one shape: name a
+  file and an address, get COLLECTED / ABSENT / UNAVAILABLE. Four check types
+  would have been four CHECK-constraint values on a table holding customer
+  rules for a distinction the engine cannot act on. Migration `a9b0c1d2e3f4`.
+
+- **Scope is matched exactly, never by suffix.** `scope: None` means any depth,
+  `[]` means top level only, `["http","server"]` means that exact path. An
+  "ends with" rule would let a directive in `http > server > location` satisfy
+  a rule about `http > server`, and telling those apart is the entire reason to
+  parse structure.
+
+- **A missing configuration file is UNSUPPORTED, not ABSENT.** A Linux host
+  that does not run Apache is not *failing* Apache's rules. Get this wrong and
+  every host in the estate acquires findings about software it does not have,
+  which is how a configuration report gets ignored wholesale.
+
+  **The Docker daemon is the deliberate exception** (`missing_file: absent`).
+  Most installations have no `daemon.json` at all, and that means every setting
+  is at its built-in default — a real state. Those defaults are a mixture, so
+  each rule declares what its own absence means: no `hosts` entry is secure
+  (PASS), no `icc` entry means inter-container traffic is on (MANUAL_REVIEW,
+  because failing it would fire on every Docker host there is).
+
+- **An unresolved include poisons an absence.** nginx and Apache both ship the
+  interesting settings in *included* files, so a directive missing from the
+  named file may be somewhere the collector did not look. Incomplete expansion
+  makes an absent reading UNAVAILABLE; only a *found* value is trusted.
+  Expansion is one level deep, which covers every default layout these products
+  ship.
+
+- **Include globs never reach a shell.** They come out of the *target's own
+  configuration*, so they are attacker-influenced in a way rule parameters are
+  not. Directories are listed and matched with `fnmatch` in Python; a glob
+  handed to a shell for expansion would be command execution on the target
+  during an audit.
+
+- **Any DOCTYPE is refused before the XML parser sees it.** ElementTree *does*
+  expand internal entities — measured, not assumed — and the XML here comes off
+  a host being audited, so an entity bomb in a `server.xml` is a
+  denial-of-service route into the scanner. No configuration file assessed here
+  carries a DTD, so the ban costs nothing.
+
+### Five things real containers settled, each of which had shipped looking right
+
+- **Included files lost their enclosing scope.** nginx ships `server` blocks in
+  `conf.d/*.conf`, included from inside `http`; parsed alone they scope as
+  `server`, so every rule about `http > server` found nothing and reported it
+  as not configured. `rescope()` grafts a child onto the branch its `include`
+  sat on.
+- **Apache resolves a relative `Include` against `ServerRoot`**, not the config
+  file's directory. Assuming the latter left the include unexpanded, which
+  downgraded *every* absent directive in the file to "could not assess". The
+  collector reads `ServerRoot` out of the configuration itself.
+- **A default XML namespace made every Tomcat selection return nothing.**
+  Tomcat 10 declares `xmlns` on `tomcat-users.xml`, so a plain `.//user`
+  matches nothing — the parse succeeds, the selection is empty, the collector
+  reports ABSENT and the rule's `AbsencePolicy.PASS` **declares the server
+  clean**. Namespaces are stripped on parse; pinning rules to the URI would
+  break on the next version, which is the same failure with a longer fuse.
+- **`not_contains` on a list is membership, not substring.** `["apache-coyote"]`
+  against `['Apache-Coyote/1.1']` found no equal element and passed — a server
+  advertising itself, reported clean. Use the scalar path and a regex.
+- **`User` is not a top-level Apache directive.** The stock layout puts it
+  inside `<IfModule unixd_module>`; a rule pinned to the top level reports
+  ABSENT on an entirely normal server.
+
+### Content
+
+**No CIS or STIG content, and none may be added from memory** — same position
+as Phases 4 and 7. These are CCURE-authored rules written from vendor
+documentation, and every directive was read off a live container before its
+rule was written.
+
+**Nothing here duplicates GAP-06.** Missing security headers, dangerous HTTP
+methods, directory listing, banner version disclosure, cookie flags and TLS
+endpoint assessment are observed over the wire and validated there.
+`test_no_rule_duplicates_a_check_gap06_already_makes` enforces the boundary in
+code. GAP-06 answers "what does this server *show* an anonymous client";
+GAP-09 answers "what does its configuration *say*".
+
+**A directive missing from a config file means the compiled-in default**, and
+those differ between builds and distributions — so those rules are
+MANUAL_REVIEW, following the Phase 3 `sshd_config` precedent. Each one must
+name the vendor default in its description, which a test enforces, so the
+reviewer settles it in one step instead of going to look it up.
+
+### Test targets
+
+Disposable containers, destroyed after use:
+
+```powershell
+docker run -d --name ccure-nginx-target   nginx:1.27-alpine
+docker run -d --name ccure-httpd-target   httpd:2.4
+docker run -d --name ccure-tomcat-target  tomcat:10.1-jdk17
+docker run -d --name ccure-dockerd-target --privileged docker:27-dind
+```
+
+Measured weak → hardened: nginx **11 → 0**, Apache **8 → 0**, Tomcat
+**10 → 0**, Docker **10 → 0**. A run returning zero against a *weakened*
+target is a regression, not a clean server.
+
+Two things worth knowing about the stock images:
+
+- **Tomcat's official image is already hardened on two checks.** `webapps/` is
+  empty (the bundled applications live in `webapps.dist/`) and
+  `tomcat-users.xml` defines no users, so proving those checks *fire* needs the
+  applications copied back deliberately.
+- **`shutdown="SHUTDOWN"` on `<Server>` is a real finding on a stock Tomcat.**
+  It is what the image ships and what Tomcat's own documentation tells you to
+  change; anyone who can reach port 8005 and send that word stops the server.
+
+### Coverage
+
+`scripts/measure_middleware_coverage.py`, denominator frozen at 36 areas before
+implementation and including **twelve areas this build does not implement** —
+six of them IIS, which needs a Windows Server target that is not available
+here. **~3% → 66.7%** (24/36), implemented *and* tested. Product breadth is
+reported separately and never folded in.
 
 ## Assessment framework (`core/checks/`)
 

@@ -658,9 +658,21 @@ class TestPrivilegeChecksInTheRealScanPath:
         )
 
     def test_privilege_checks_run_alongside_the_hardening_checks(self):
+        """
+        Asserted by *family* rather than by a total.
+
+        This used to assert ``checks_run == 20`` — 10 Phase 3 hardening plus 10
+        Phase 5 privilege. A hardcoded total breaks on every content phase that
+        adds a built-in (Phase 8's middleware rules took it to 56), and it is
+        the weaker assertion anyway: a total of 20 is equally satisfied by 20
+        hardening checks and no privilege ones, which is the regression this
+        test exists to catch.
+        """
         summary, _findings = self._audit({})
-        # 10 Phase 3 Windows hardening + 10 Phase 5 Windows privilege.
-        assert summary["checks_run"] == 20
+        ran = [r["check_id"] for r in summary["results"]]
+        assert [c for c in ran if c.startswith("ccure.priv.")], ran
+        assert [c for c in ran if c.startswith("ccure.win.")], ran
+        assert summary["checks_run"] == len(ran)
 
     def test_a_privilege_failure_mints_a_prv_identifier_in_the_scan_path(self):
         """
@@ -696,6 +708,10 @@ class TestPrivilegeChecksInTheRealScanPath:
         assert summary["counts"]["fail"] == 0
 
     def test_linux_privilege_checks_run_on_a_linux_host(self):
+        """By family, for the reason given on the Windows test above."""
         summary, _findings = self._audit({}, os_type="linux")
-        # 10 Phase 3 Linux hardening + 12 Phase 5 Linux privilege.
-        assert summary["checks_run"] == 22
+        ran = [r["check_id"] for r in summary["results"]]
+        assert [c for c in ran if c.startswith("ccure.priv.linux.")], ran
+        assert [c for c in ran if c.startswith("ccure.linux.")], ran
+        # And nothing targeted at the other platform leaked in.
+        assert not [c for c in ran if c.startswith("ccure.win.")], ran

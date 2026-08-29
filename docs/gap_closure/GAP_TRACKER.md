@@ -56,7 +56,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (64.5% measured, real-target validated) | `d40800d` |
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated]  | 90%    | Open                                               | —         |
 | **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
-| GAP-09       | Application/middleware config assessment | Config audit   | 9     | Medium   | 5% [estimated]   | 70%    | Open                                               | —         |
+| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated) | `PENDING` |
 | **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
 | GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
@@ -1802,6 +1802,268 @@ The eight unimplemented areas, each with its reason in `NOT_PLANNED`:
 
 ---
 
+## 9B. Phase 8 — Application and middleware configuration assessment
+
+Closes **GAP-09**. Commit `PENDING`.
+
+### 9B.1 The gap, measured before touching anything
+
+The denominator was frozen in `Backend/scripts/measure_middleware_coverage.py`
+before a line of the phase was written, and it contains **twelve areas this
+phase did not set out to implement**, six of them IIS.
+
+| Figure                                               | Value             |
+| ---------------------------------------------------- | ----------------- |
+| Middleware configuration assessment, before          | **0 / 36 = 0.0%** |
+| Middleware configuration rules in the product        | **0**             |
+| Check types able to read a nested or structured file | **0**             |
+| Automated tests naming middleware assessment         | **0**             |
+
+**The matrix said 5% [estimated]; the honest before-figure is ~3%.** [measured]
+The only thing that existed was the ability to detect that the middleware is
+_installed_ — the Phase 3 `package` and `service` collectors. Everything else
+the matrix might have been counting is the unauthenticated web surface, which
+belongs to **GAP-06**: missing security headers, dangerous HTTP methods,
+directory listing observed over the wire, version disclosure in a banner,
+insecure cookie flags and TLS endpoint assessment are all implemented and
+validated there. `test_no_rule_duplicates_a_check_gap06_already_makes` enforces
+the boundary in code.
+
+### 9B.2 The measurement that changed the plan
+
+The GAP-09 proposal called this "content only, lowest complexity". Reading the
+collector before starting showed that was wrong, and the correction is the
+phase's main engineering:
+
+**`config_file` reads one directive out of a flat `key<separator>value` file.**
+It has no notion of nested scope, and all four products keep their settings
+inside a structure — nginx in `{ }` blocks, Apache in `<Directory>` containers,
+Tomcat in XML attributes, the Docker daemon in JSON. There was **no XML or JSON
+reading anywhere in `core/config_audit/`**.
+
+So a flat reader does not merely miss these. `AllowOverride None` under
+`<Directory />` and under a document root are different statements about
+different parts of the filesystem, and a reader that cannot say which one it
+found returns whichever it saw last — confidently.
+
+### 9B.3 What was reused rather than rebuilt
+
+- **`ConfigAuditEngine`** — unchanged. A middleware check is an ordinary
+  `ConfigCheck`; the four collection states, `AbsencePolicy`, the operator
+  vocabulary and the outcome table all apply as written.
+- **The credentialed host audit** — unchanged. These run at
+  `platform = linux|windows` inside `_run_configuration_audit`, alongside the
+  OS hardening rules. A web server's configuration is part of the host's
+  posture, not a separate scan, so there is **no new scan kind, no new route
+  and no new task**.
+- **The `permission` and `directory` check types** — reused as-is for
+  configuration file modes and for "is this bundled application deployed".
+  Reaching for the new collector because the phase added one would have been
+  the wrong instinct.
+- **The finding path** — `CCURE-CFG-…` through `StandardizedFinding`, risk,
+  remediation and both PDFs. No second finding model.
+- **The sentinel protocol** — `CCURE::VALUE::` / `CCURE::ABSENT::` and
+  `_parse_sentinel`, so the new collector inherits the Phase 3 discipline about
+  output that carries no sentinel.
+
+### 9B.4 What was built
+
+| Component                                                          | What it is                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------- |
+| `core/config_audit/structured.py`                                  | The parsers: nginx, Apache, XPath, JSON pointer   |
+| `core/config_audit/collectors/middleware.py`                       | The `structured_config` collector, both platforms |
+| `core/config_audit/builtin/middleware_nginx.py`                    | 10 checks                                         |
+| `core/config_audit/builtin/middleware_apache.py`                   | 8 checks                                          |
+| `core/config_audit/builtin/middleware_tomcat.py`                   | 9 checks                                          |
+| `core/config_audit/builtin/middleware_docker.py`                   | 9 checks                                          |
+| `core/config_audit/builtin/middleware_common.py`                   | 4 configuration-file permission checks            |
+| `alembic/versions/a9b0c1d2e3f4_…`                                  | One value on one CHECK constraint                 |
+| `scripts/measure_middleware_coverage.py`                           | The frozen denominator                            |
+| `tests/scans/test_middleware_{parsers,collector,content,areas}.py` | 200 tests                                         |
+
+**One check type for four formats.** `format` is a parameter. From the engine's
+point of view the four are one shape — name a file and an address, get back
+COLLECTED, ABSENT or UNAVAILABLE — and four types would have meant four
+CHECK-constraint values on a table holding customer rules for a distinction the
+engine cannot act on.
+
+### 9B.5 Two states this phase had to get right
+
+**A missing configuration file is UNSUPPORTED, not ABSENT.** A Linux host that
+does not run Apache is not _failing_ Apache's hardening rules; the check was
+never in scope for it. Getting this wrong hands every host in the estate a pile
+of findings about software it does not have, which is how a configuration
+report gets ignored wholesale. `test_configuration_rules_leave_the_score_on_a_
+host_without_the_product` pins it.
+
+**Except for the Docker daemon, where a missing file is a reading.** Most
+Docker installations have no `daemon.json` at all — the dind image ships
+without one and so do the distribution packages — and that means every setting
+is at its built-in default. Those defaults are a mixture, so each rule declares
+what its own absence means: no `hosts` entry is the secure state (PASS), no
+`icc` entry means inter-container traffic is _on_ (MANUAL_REVIEW, because
+failing it would fire on every Docker host in the estate). `missing_file:
+absent` is set on those rules and nowhere else.
+
+**An unresolved include poisons an absence.** Both nginx and Apache put the
+interesting settings in _included_ files by default, so a directive missing
+from the file the rule names may simply be somewhere the collector did not
+look. When expansion is incomplete the absence is reported UNAVAILABLE, and
+only a _found_ value is trusted.
+
+### 9B.6 Six defects found by pointing it at real containers
+
+Four of them silently produce a wrong answer rather than an obvious failure.
+
+- **Included files lost their enclosing scope.** nginx ships its `server`
+  blocks in `conf.d/*.conf`, included from inside `http`. Parsed on their own
+  they scope as `server`, so every rule about `http > server` found nothing and
+  reported it as not configured. `rescope()` grafts a child onto the branch its
+  `include` sat on.
+
+- **Apache resolves a relative `Include` against `ServerRoot`, not against the
+  config file's directory.** Assuming the latter turned
+  `Include conf/extra/proxy-html.conf` into `…/conf/conf/extra/…`, which does
+  not exist, which left the include unexpanded, which downgraded **every absent
+  directive in the file** from a verdict to "could not assess". The collector
+  reads `ServerRoot` out of the configuration itself.
+
+- **A default XML namespace made every Tomcat selection return nothing.**
+  Tomcat 10 declares `xmlns="http://tomcat.apache.org/xml"` on
+  `tomcat-users.xml`, and ElementTree then requires the URI in the path — a
+  plain `.//user` matches nothing at all. Nothing about that looks like a
+  failure: the parse succeeds, the selection is empty, the collector reports
+  ABSENT, and the rule's `AbsencePolicy.PASS` **declares the server clean**.
+  A namespace declaration produced a false negative on a real container.
+
+- **`not_contains` on a list is membership, not substring.** The Tomcat
+  Server-header rule compared `["apache-coyote"]` against
+  `['Apache-Coyote/1.1']`, found no equal element, and passed — a server
+  advertising itself, reported clean. The rule uses the scalar path and a
+  regex now.
+
+- **An include glob that resolved to nothing was silently dropped.** If the
+  directory could not be listed, `_resolve` returned an empty list and the
+  include was never recorded as unresolved, so the absence was trusted against
+  files that were never read. `_list_directory` now distinguishes "empty
+  directory" from "could not list", which are different facts.
+
+- **ElementTree expands internal entities**, contrary to what this module's
+  first docstring asserted. Measured: a ten-line document expands in the
+  interpreter. The XML parsed here comes off a target being audited, so an
+  entity bomb in a `server.xml` is a denial-of-service route into the scanner.
+  Any DOCTYPE is now refused before the parser sees it — no new dependency, and
+  no configuration file this phase reads carries a DTD.
+
+### 9B.7 Two false positives avoided by reading the stock files first
+
+- **`User` is not a top-level Apache directive.** The stock layout puts `User`
+  and `Group` inside `<IfModule unixd_module>`. A rule asserting them at the
+  top level reports ABSENT on an entirely normal server. The shipped rule
+  matches at any depth.
+
+- **A directive missing from a config file means the compiled-in default**, and
+  those differ between builds and distributions. Following the Phase 3
+  precedent for `sshd_config`, those rules are MANUAL_REVIEW — and
+  `test_a_rule_that_defers_on_absence_says_what_the_default_is` requires each
+  one to name the vendor default in its description, so the reviewer settles it
+  in one step instead of going to look it up.
+
+### 9B.8 Real-target validation — four products, both directions
+
+Disposable containers only, destroyed afterwards.
+
+| Product          | Weakened        | Hardened | Checks proven to fail |
+| ---------------- | --------------- | -------- | --------------------- |
+| nginx 1.27       | **11** findings | **0**    | 11 / 11               |
+| Apache httpd 2.4 | **8** findings  | **0**    | 8 / 9                 |
+| Tomcat 10.1      | **10** findings | **0**    | 10 / 10               |
+| Docker 27 (dind) | **10** findings | **0**    | 10 / 10               |
+
+Apache's `config_permissions` check is the one not exercised on a real target:
+it reads `/etc/apache2/apache2.conf` and the official image uses
+`/usr/local/apache2/conf/`, so it reported NOT_APPLICABLE — which is the
+correct behaviour for a differently packaged install. The identical rule shape
+is validated on nginx, Tomcat and Docker.
+
+**The mixed-estate property was validated too**, and it is what makes this rule
+set usable: pointed at a container running none of the four products, every
+configuration rule reports NOT_APPLICABLE and **no rule produces a finding**.
+
+### 9B.9 Coverage — measured, denominator frozen at Stage 1
+
+| Capability                      | Before         | After                | Basis                                           |
+| ------------------------------- | -------------- | -------------------- | ----------------------------------------------- |
+| GAP-09 middleware configuration | ~3% [measured] | **66.7%** [measured] | 24 of 36 frozen areas, implemented _and_ tested |
+
+| Theme      | Proven       |
+| ---------- | ------------ |
+| disclosure | 3/4 (75.0%)  |
+| access     | 3/4 (75.0%)  |
+| process    | 3/4 (75.0%)  |
+| tls        | 4/5 (80.0%)  |
+| logging    | 4/4 (100.0%) |
+| limits     | 3/4 (75.0%)  |
+| exposure   | 4/4 (100.0%) |
+| currency   | 0/1 (0.0%)   |
+| iis        | 0/6 (0.0%)   |
+
+**66.7% is the ceiling this denominator allows**, because twelve areas are
+declared and not implemented. That is the point of freezing it first.
+
+Product breadth is reported separately and never folded into the headline:
+nginx answers 11 areas, Apache 9, Docker 9, Tomcat 7.
+
+### 9B.10 Known limitations
+
+- **IIS is not implemented** — six areas, declared in the denominator and left
+  unbuilt because there is no Windows Server target here to validate against.
+  This programme does not ship an engine it has not validated.
+- **Include expansion is one level deep.** It covers every default layout these
+  products ship; an include inside an included file is recorded as unresolved,
+  which downgrades an absence to UNAVAILABLE rather than answering from a
+  partial read.
+- **The four "is this bundled Tomcat application deployed" rules pass
+  vacuously on a host with no Tomcat.** A directory that is not there looks the
+  same whether Tomcat is installed without the manager application or not
+  installed at all. Making absence NOT_APPLICABLE would discard the genuine
+  pass on a real Tomcat host that has correctly removed them, which is the
+  verdict most worth having. Asserted, so it stays visible.
+- **The `permission` rules take one path**, unlike the structured rules which
+  take a candidate list, so they miss differently packaged installs.
+- **A server with several nginx `server` blocks or Tomcat `Connector`
+  elements is judged on the last one** for scalar rules.
+- **`mw.version.supported_release` is unimplemented**: no middleware here
+  publishes its version through its configuration file. Reading it needs the
+  package collector (GAP-03's path) or the network banner (GAP-06's).
+- **No UI.** These rules run inside the existing credentialed scan and appear
+  in the existing reports; nothing in the frontend distinguishes a middleware
+  finding from an OS hardening one.
+
+### 9B.11 Definition of Done — Phase 8
+
+| Line                   | GAP-09                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| Backend implemented    | ✅ parsers, collector, 40 checks                                 |
+| Scanner integration    | ✅ runs inside the existing credentialed host audit              |
+| Database migration     | ✅ `a9b0c1d2e3f4`, downgrade refuses safely and names the rules  |
+| API                    | ➖ none required; no new route or scan kind                      |
+| UI                     | ❌ **not done** — findings render as ordinary configuration ones |
+| Finding integration    | ✅ `CCURE-CFG-…`, same `cve_list`, no second model               |
+| Evidence               | ✅ expected, observed, the file, the block path, includes read   |
+| Risk                   | ✅ existing canonical severity scale                             |
+| Remediation            | ✅ asserted present on every rule                                |
+| Reporting              | ✅ executive and technical PDFs, unchanged                       |
+| Unit / integration     | ✅ 200 tests                                                     |
+| Regression suite       | ✅ see §11                                                       |
+| Real-target validation | ✅ **four products, both directions**                            |
+| Coverage measured      | ✅ ~3% → 66.7%, denominator frozen before implementation         |
+| IIS                    | ❌ **declared, not implemented** — no Windows Server target      |
+| Docs                   | ✅ CLAUDE.md, this section                                       |
+| Commit                 | ✅                                                               |
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -1852,12 +2114,32 @@ The eight unimplemented areas, each with its reason in `NOT_PLANNED`:
 | After Phase 5, full suite                        | **2266 passed, 2 skipped**, 7m34s                         |
 | After Phase 6, full suite                        | **2405 passed, 2 skipped**, 7m29s                         |
 | After Phase 7, full suite                        | **3108 passed, 2 skipped**, 8m06s                         |
+| After Phase 8, full suite                        | **3647 passed, 2 skipped**, 8m43s                         |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
 catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, a net
-+99 for Phase 4, +222 for Phase 5, +139 for Phase 6 and +703 for Phase 7 —
-so no existing test was lost, silently skipped, or renamed out of collection
-at any point.
++99 for Phase 4, +222 for Phase 5, +139 for Phase 6, +703 for Phase 7 and
++539 for Phase 8 — so no existing test was lost, silently skipped, or
+renamed out of collection at any point.
+
+Phase 8's delta reconciles in two parts: **499** tests in four new files,
+and **+40** that are not new test functions —
+`test_config_audit_spec.py::test_every_builtin_check_survives_a_round_trip`
+is parameterised over `BUILTIN_CHECKS`, which grew from 91 to 131 when the
+middleware rules were added. 499 + 40 = 539, exactly the observed growth.
+
+**Three pre-existing tests were amended, and two of them were brittle in a
+way worth recording.** `test_privilege_checks.py` asserted `checks_run ==
+20` and `== 22` — hardcoded totals of the built-in catalogue, which break on
+every content phase and are the _weaker_ assertion anyway: a total of 20 is
+equally satisfied by 20 hardening checks and no privilege ones, which is the
+regression the test exists to catch. Both now assert by check-id family.
+The third, `test_platform_filtering_uses_the_checks_own_targeting`, asserted
+that the Windows and Linux check sets are disjoint; that held only because
+every check before Phase 8 targeted exactly one platform, and Apache, Tomcat
+and the Docker daemon legitimately run on both. It now asserts what its name
+says — that filtering respects each check's own declaration — and keeps a
+disjointness assertion for single-platform checks.
 
 Phase 7's delta reconciles in three parts. It adds **652** tests in four new
 files, **+2** in files it amended, and **+49** that are not new test
@@ -2022,6 +2304,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅ |
 | 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
 | 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
+| 8     | `PENDING` | —   | 3647 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

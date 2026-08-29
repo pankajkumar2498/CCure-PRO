@@ -5,13 +5,17 @@ The configuration audit's read surface: authorisation, the catalogue, and the
 capability report.
 
 ``/config-audit/capabilities`` is the one worth explaining. ``check_type``
-admits ``api`` and ``database_query``, and ``target_platform`` admits
-``database`` and ``container``, ahead of the phases that implement them — so a
-rule can be authored today that nothing in this build can execute. The engine
-reports that as an error rather than skipping it, which is correct but only
-visible after a scan has run. This endpoint answers it beforehand, and it is
-read from the live collector registry so it cannot drift from what the product
-can actually do.
+admits ``api``, and ``target_platform`` admits ``container``, ahead of the
+phases that implement them — so a rule can be authored today that nothing in
+this build can execute. The engine reports that as an error rather than
+skipping it, which is correct but only visible after a scan has run. This
+endpoint answers it beforehand.
+
+It is read from the **live collector registry**, and that is what has kept it
+honest across three phases: ``database_query`` and the ``database`` platform
+were on the unimplemented list until Phase 7 gave them a collector, and
+``structured_config`` appeared on both host platforms when Phase 8 added one.
+Neither needed this endpoint to be edited.
 """
 
 
@@ -53,7 +57,25 @@ class TestTheCheckCatalogue:
         ).json()
         assert windows and linux
         assert all("windows" in c["platforms"] for c in windows)
-        assert not {c["check_id"] for c in windows} & {c["check_id"] for c in linux}
+        assert all("linux" in c["platforms"] for c in linux)
+
+        # The two sets are *not* disjoint, and asserting that they were is what
+        # this test used to do. It held only because every check before Phase 8
+        # targeted exactly one platform. The middleware rules legitimately
+        # target both — Apache, Tomcat and the Docker daemon all run on Windows
+        # and Linux — so the real property is that filtering respects each
+        # check's own declaration, which is what the two assertions above say.
+        overlap = {c["check_id"] for c in windows} & {c["check_id"] for c in linux}
+        by_id = {c["check_id"]: c for c in windows}
+        assert all(
+            set(by_id[check_id]["platforms"]) >= {"windows", "linux"}
+            for check_id in overlap
+        )
+
+        # A single-platform check must still appear in one list only.
+        windows_only = {c["check_id"] for c in windows if c["platforms"] == ["windows"]}
+        assert windows_only
+        assert not windows_only & {c["check_id"] for c in linux}
 
     def test_check_type_and_domain_filters(self, client, auth_headers):
         registry = _get(

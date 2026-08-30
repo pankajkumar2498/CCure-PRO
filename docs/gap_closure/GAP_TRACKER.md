@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                             | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | -------------------------------------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                         | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                         | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                          | `9e4ecaa` |
-| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                         | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                          | `9e4ecaa` |
-| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                          | `daab13a` |
-| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
-| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
-| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (64.5% measured, real-target validated) | `d40800d` |
-| GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated]  | 90%    | Open                                               | —         |
-| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
-| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated) | `7520e90` |
-| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                               | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                               | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                               | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                               | —         |
-| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `13d6854` |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                               | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                               | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                                   | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | -------------------------------------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                               | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                               | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                                | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                               | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                                | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                                | `daab13a` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent           | `9e762d0` |
+| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated)       | `6b4c06e` |
+| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (64.5% measured, real-target validated)       | `d40800d` |
+| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 6     | Medium   | 45% [estimated]  | 90%    | **Partial** — delivered in Phase 6, remainder unmeasured | `d40800d` |
+| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated)       | `8a5bbd7` |
+| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated)       | `7520e90` |
+| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)       | `9d74a0c` |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                     | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                     | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                                     | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                     | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                     | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                     | —         |
+| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)       | `13d6854` |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                                     | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                                     | —         |
 
 ---
 
@@ -362,6 +362,9 @@ executable cases rather than assertion:
 - **Not yet deployed to the live database.** `ccure_test` is at
   `d0e1f2a3b4c5`; both `e1f2a3b4c5d6` and `f2a3b4c5d6e7` are committed and
   round-trip-tested but not applied there.
+
+  **Superseded, 30 Aug 2026.** `ccure_test` is at `c1d2e3f4a5b6`, the head of
+  the chain, so both of those and everything after them are applied. See §9E.
 
 ### 4.6 Definition of Done — Phase 1
 
@@ -1479,10 +1482,18 @@ coverage credit.
   that identifier** until the next scan. They cannot be remapped safely: the
   same identifier is also written legitimately by the CVE engine and the feeds,
   and renaming it would destroy genuine findings.
-- **The live database is at `d0e1f2a3b4c5`** — behind `e1f2a3b4c5d6` and
-  everything after it, including this phase's migration. Recorded in §4.5 since
-  Phase 1 and unchanged; the typed catalogue write needs `definition_type` to
-  exist before it can run there.
+- **The live database was at `d0e1f2a3b4c5` when Phase 6 shipped** — behind
+  `e1f2a3b4c5d6` and everything after it, including that phase's migration.
+  Recorded in §4.5 since Phase 1; the typed catalogue write needs
+  `definition_type` to exist before it can run there.
+
+  **Superseded, 30 Aug 2026.** `ccure_test` is at `c1d2e3f4a5b6` — head. It was
+  measured at `b0c1d2e3f4a5` during the Phase 10 carry-forward audit and
+  brought to head in the stabilization that followed. `definition_type`,
+  `scan_schedules` and `scan_schedule_runs` are all present, so the limitation
+  this line records no longer holds. The original is kept because §1 says a
+  contradicted measurement is recorded rather than quietly reconciled.
+
 - **`tls.certificate_expiring_soon` is logged, not reported.** A certificate
   that is still valid is not yet a finding; the data is in the log and the area
   stays in the denominator as unimplemented.
@@ -2592,6 +2603,136 @@ severity now flows onto the check on load, as `to_pack` already does on build.
 | No parallel engine    | ✅ one CHECK-constraint value; no new table, route or scan kind             |
 | No fabricated content | ✅ nothing committed; publisher and licence required on every pack          |
 | Targets destroyed     | ✅ both containers removed, credential never written outside the scratchpad |
+
+## 9E. Stabilization after Phase 10 — carry-forward remediation
+
+**Not a capability phase.** A read-only audit of every unresolved item from
+Phases 0–10 concluded STABILIZATION REQUIRED, on three grounds. This section
+records what was fixed and what deliberately was not.
+
+No gap moved. No detection was added. The one behavioural change removes a
+write to customer hosts.
+
+### 9E.1 The scanner no longer writes to targets by default
+
+`ftp_checker._test_write_access` issued `MKD` then `RMD` against every scanned
+FTP server that accepted an anonymous login. It is the only place in the
+product that changes a host it is assessing, and this product scans production
+networks and OT segments. Phase 6 flagged it "for a decision" (§9.9); four
+phases later there was still no gate.
+
+The detection is worth keeping — a writable anonymous root on a host that also
+serves those files over HTTP is remote code execution, and there is no
+read-only way to establish it. So it is kept and made **opt-in**:
+
+- `core/checks/intrusive.py` owns the decision. Off by default, and it fails to
+  off: configuration that cannot be read means the operator has not turned this
+  on, and the safe reading of "we do not know" is "do not touch the target".
+- `SCAN_ALLOW_INTRUSIVE` turns it on. Deployment-wide rather than per-scan,
+  deliberately: there is no scan-policy engine yet (GAP-12), and inventing half
+  of one here would leave two mechanisms to reconcile. That module is the seam
+  GAP-12 replaces.
+- `NetworkCheck` gained a real `intrusive` field — `spec()` previously
+  hardcoded `intrusive=False` for every check — and `ftp.anonymous_write`
+  declares it. That connects the probe to the policy vocabulary the rest of the
+  product already speaks: `CheckSpec.intrusive`,
+  `CheckRegistry.select(allow_intrusive=...)`,
+  `select_checks(include_intrusive=...)`. One switch, not two.
+
+**Why the policy is not a parameter.** The engine dispatches parallel plugins
+as `run(ip, open_ports)` and `test_plugin_contract.py` pins that arity — a
+plugin with the wrong one raises `TypeError` on every host, is swallowed at
+DEBUG, and produces zero findings indefinitely. Threading a parameter through
+would change the contract that exists to prevent exactly that.
+
+**"Not tested" is not "not writable".** `write_access` is now tri-state, and
+this is the half that matters more than the gate. A skipped test previously
+left the initial `False`, which reports "no write access" about a server nobody
+looked at — a false negative on the most severe condition this plugin can find.
+`None` means nobody looked; the finding is emitted on `is True` only; and the
+probe's `issues` say the test was skipped and name the switch that enables it,
+because a silently omitted check is indistinguishable from one that passed.
+
+Two more corrections fell out of reading it:
+
+- **A failed cleanup is logged, not swallowed.** If `RMD` does not confirm, a
+  directory has been left on somebody's host and they need to know which.
+- **The evidence described a test that never ran.** The finding said "a STOR
+  was allowed to begin" and the catalogue said "able to begin a file upload";
+  the probe sends `MKD`. Both now describe what actually happened.
+
+`tests/scans/test_ftp_write_safety.py` — 15 tests, and they assert on the
+**command transcript**, not only the verdict. A bypassed gate still produces
+the right verdict; only the transcript shows it was bypassed. Verified by
+mutation: replacing the guard with `if False:` fails three of them.
+
+### 9E.2 Three stale statements corrected
+
+The audit found the tracker asserting things that measurement contradicts. §1
+says the measurement wins and the disagreement is recorded rather than quietly
+reconciled, so the originals are kept and marked superseded.
+
+| Where          | Said                                       | Measured, 30 Aug 2026                                    |
+| -------------- | ------------------------------------------ | -------------------------------------------------------- |
+| Matrix, GAP-07 | `Open`, no commit                          | Deep TLS shipped in Phase 6 (`d40800d`); now **Partial** |
+| §9.9 and §4.5  | live DB at `d0e1f2a3b4c5`                  | `b0c1d2e3f4a5` at audit, `c1d2e3f4a5b6` after §9E.3      |
+| `CLAUDE.md`    | 23 `CVE-9999-*` rows in the live catalogue | **0**                                                    |
+
+GAP-07 is marked **Partial**, not Closed, and carries **no new percentage**.
+Phase 6 delivered the gap's own title — deep TLS in the main scan path — but no
+denominator was ever frozen for it, so there is nothing to measure against.
+Claiming a figure would be inventing one; the row now says what is true and
+what is unknown.
+
+The GAP-07 row was the item with real cost: the next capability gap is chosen
+from that matrix, and a delivered capability reading `Open` invites a phase
+that redoes it.
+
+### 9E.3 The live database brought to head
+
+`ccure_test` was at `b0c1d2e3f4a5`, so `ck_rule_check_type` did not admit
+`scap_rule` and **loading a STIG into the deployment would have failed at the
+constraint**. Phase 10 was recorded Closed and was inert where it runs.
+
+A dump was taken immediately before (`ccure_test_20260830_135628_ops.dump`,
+5.7 MB, operational data) on top of the scheduled six-hourly backup, because
+`archive_mode` is still `off` and recovery granularity is "since the last dump".
+
+```
+b0c1d2e3f4a5 -> c1d2e3f4a5b6   compliance_rules: admit the compiled SCAP/OVAL check type
+```
+
+Verified afterwards: `alembic_version` is `c1d2e3f4a5b6`; the constraint admits
+`scap_rule`, and still admits `container`, `structured_config`, `privilege` and
+`database_query` — a hand-rendered CHECK list is exactly where a value gets
+dropped in passing. Data intact: 1,357 compliance rules, 263,938 catalogue
+rows, 6 users, 4 organisations, 39 scans.
+
+### 9E.4 Deliberately not fixed
+
+Named so they are not mistaken for oversights. Each was assessed and is
+recorded in the carry-forward list rather than actioned.
+
+- **Silent truncation** in the Phase 8 and Phase 10 collectors (`head -c 512K`,
+  `head -n 500`). A truncated read is indistinguishable from a complete one, so
+  a directive past the cut yields a wrong verdict. Measured **latent**: the only
+  file over the cap on a stock Rocky 9 is `/etc/services` (692,252 bytes), which
+  no rule reads, and `find /etc -maxdepth 2` is 244 entries against a cap of 500. It becomes real on large nginx or Apache estates. The fix — read
+  `cap + 1` and report UNAVAILABLE when the extra byte appears — is a change to
+  two collectors and belongs with a phase that can validate it against content
+  that triggers it.
+- **The "tested" half of every coverage figure is a substring match** on test
+  sources, in every measurement script since Phase 5. Better than a
+  hand-maintained list, and not proof that an assertion ran.
+- **587 archived compliance rules with no successor.** Measured: **0 controls
+  have all their rules inactive**, so nothing is switched off today. Same shape
+  as the ISO defect that disabled 24 controls; `cleanup_nist_csf_v2.py` repairs
+  only NIST CSF.
+- **`compliance_frameworks.is_active` is `true` for all 13 rows** while the
+  authoritative list names two. Read by no query and guarded by
+  `test_framework_activation.py`, so inert — but misleading data.
+- **`LinuxPermissionCollector` uses `stat -c` without `-L`.** Verified latent:
+  all seven `permission` checks target regular files.
 
 ## 10. Definition of Done — Phase 0
 

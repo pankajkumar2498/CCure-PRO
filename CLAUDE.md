@@ -1534,10 +1534,12 @@ never had (below).
   and a check row does not. Without it a check filed as `cve` inherits KEV
   lookups, EPSS scores, CVSS bands and an NVD link that resolves to nothing.
 
-  Note the live catalogue already contains 23 rows keyed `CVE-9999-<hex>`. They
-  are **test residue** from `tests/scans/test_scans.py`, predating the conftest
-  database guards, and no current code path creates more — but they are exactly
-  the confusion the `CCURE-` prefix exists to prevent.
+  The live catalogue used to hold 23 rows keyed `CVE-9999-<hex>` — test residue
+  from `tests/scans/test_scans.py`, predating the conftest database guards.
+  **They are gone**: measured at 0 on 30 Aug 2026, alongside 0 `cve` rows with
+  a NULL `cve_id` and 0 non-CVE rows carrying one, across 263,938 rows. The
+  episode is kept here because it is exactly the confusion the `CCURE-` prefix
+  exists to prevent, and because nothing stops a future test writing more.
 
 - `services` is a **current-state projection**, not per-scan history. The row id
   is `gen_service_id(asset, port, protocol)`, so re-scanning re-points rows

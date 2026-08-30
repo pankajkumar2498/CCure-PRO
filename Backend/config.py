@@ -110,6 +110,23 @@ class ScanConfig:
         os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
     )
 
+    #: Whether a network probe may *change* the target rather than only observe
+    #: it. Off, and it has to stay off by default.
+    #:
+    #: Exactly one probe is gated by this today — the FTP anonymous-write test,
+    #: which creates and removes a directory on the scanned host. That is the
+    #: only place in the product that writes to a target, and this product
+    #: scans production and OT segments where an audit that changes something
+    #: is worse than the finding it would have produced.
+    #:
+    #: A deployment-wide switch rather than a per-scan one, deliberately: there
+    #: is no scan-policy engine yet (GAP-12), and inventing half of one here
+    #: would be a second mechanism to reconcile when the real one arrives.
+    #: ``core/checks/intrusive.py`` is the seam that policy will take over.
+    SCAN_ALLOW_INTRUSIVE: bool = (
+        os.getenv("SCAN_ALLOW_INTRUSIVE", "False").lower() == "true"
+    )
+
 
 class CeleryConfig:
     """Celery task queue configuration."""
@@ -645,6 +662,7 @@ class AppConfig:
 
     # OT safety config
     PASSIVE_FIRST_DEFAULT = ScanConfig.PASSIVE_FIRST_DEFAULT
+    SCAN_ALLOW_INTRUSIVE = ScanConfig.SCAN_ALLOW_INTRUSIVE
     SCAN_IP_BLACKLIST: list = []
     _raw_blacklist = ScanConfig.SCAN_IP_BLACKLIST
     if _raw_blacklist:

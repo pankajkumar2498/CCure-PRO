@@ -52,7 +52,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                          | `9e4ecaa` |
 | **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                          | `daab13a` |
 | **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
-| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `PENDING` |
+| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
 | **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (64.5% measured, real-target validated) | `d40800d` |
 | GAP-07       | Deep TLS/SSL assessment in main path     | TLS            | 7     | Medium   | 45% [estimated]  | 90%    | Open                                               | —         |
 | **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
@@ -2869,7 +2869,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
 | 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅ |
 | 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅ |
-| 10    | `PENDING` | —   | 4123 passed, 2 skipped ✅ |
+| 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

@@ -49,6 +49,7 @@ from core.benchmarks.pack import (
     BenchmarkProfile,
     PackError,
     discover_packs,
+    dump_pack,
     load_pack,
     parse_pack,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "PackError",
     "control_row_id",
     "discover_packs",
+    "dump_pack",
     "load_pack",
     "load_pack_into_db",
     "parse_pack",

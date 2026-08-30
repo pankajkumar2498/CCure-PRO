@@ -73,6 +73,7 @@ RULE_CHECK_TYPES = (
     "privilege",
     "structured_config",
     "container",
+    "scap_rule",
     "api",
     "database_query",
 )

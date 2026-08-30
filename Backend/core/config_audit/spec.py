@@ -115,6 +115,14 @@ CHECK_TYPES: Tuple[str, ...] = (
     #: this one enumerates live state and filters it. Same distinction, and
     #: the same reason, as ``privilege``.
     "container",
+    #: One compiled OVAL definition from published SCAP content. Its own type
+    #: rather than a translation into the others because an OVAL definition is
+    #: a *criteria tree* over several tests — 619 AND and 333 OR nodes in the
+    #: content measured before Phase 10 — and there is no faithful way to
+    #: flatten "either the package is absent or the directive is set" into one
+    #: read compared against one value. An unfaithful one produces a verdict
+    #: where the honest answer is an error.
+    "scap_rule",
     "api",
     "database_query",
 )

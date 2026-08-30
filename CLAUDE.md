@@ -808,8 +808,8 @@ which benchmark it is running, adding the next one means editing the engine.
   `database` platform were reserved here until Phase 7 implemented them;
   Phase 8 added `structured_config` for nested and structured
   configuration files; Phase 9 added `container` for enumerating live
-  runtime state — see the database, middleware and container sections
-  below. The `container` *platform* is still reserved and unused: the
+  runtime state; Phase 10 added `scap_rule` for a compiled OVAL definition
+  — see the database, middleware, container and SCAP sections below. The `container` *platform* is still reserved and unused: the
   Phase 9 rules target `linux`, because a runtime is assessed over its
   host's session.) Naming them now means Phases
   9–17 need no CHECK migration on a table holding customer rules. A rule using
@@ -1256,6 +1256,193 @@ implementation and including **eighteen areas this build does not implement** �
 five of them the Kubernetes control plane, which needs a kubeadm-style static
 manifest that k3s does not have. **~4% → 57.1%** (24/42), implemented *and*
 tested. Runtime breadth is reported separately and never folded in.
+
+## STIG and SCAP content (`core/scap/`)
+
+Reading published SCAP content — an XCCDF benchmark and the OVAL definitions
+its rules check through — and evaluating it against a credentialed host.
+Phase 10 of the gap-closure programme, closing GAP-05; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    datastream → XCCDF rules + OVAL definitions → compiled definition
+      → ConfigCheck(check_type="scap_rule") → BenchmarkPack
+      → compliance_frameworks/_controls/_rules → ConfigAuditEngine
+      → PASS / FAIL / NOT_APPLICABLE / ERROR → finding → risk → report
+
+**No new engine, no new finding model, no new scan kind, no new route.** The
+persistence cost of the whole phase is one value on one CHECK constraint
+(migration `c1d2e3f4a5b6`). A benchmark *is* a framework (Phase 4), a rule *is*
+a `ConfigCheck` (Phase 3), a failed check *is* a finding (Phase 0).
+
+- **What ships is the reader, not the content.** No STIG is committed and none
+  needs to be — this is the one content gap where licensing is not the blocker.
+  DISA publishes its SCAP benchmarks as US Government works; SCAP Security
+  Guide publishes an `xccdf_org.ssgproject.content_profile_stig` profile per OS
+  under **BSD-3-Clause** (verified against the project's `LICENSE`, not
+  recalled). `scripts/benchmarks/load_stig.py` converts and loads it.
+
+  **An SSG result is not a DISA certification.** SSG renders the STIG's
+  requirements as its own automated content. `--publisher` and `--licence` are
+  required with no defaults, and both land on the framework record, because
+  that distinction has to survive into a report.
+
+- **A definition is compiled, not referenced.** The rule row carries the tests,
+  objects, states and *resolved* variables it needs. The datastream is a 28 MB
+  file on an operator's workstation and the rule runs on a Celery worker months
+  later; a rule that had to reach back to its source content would be
+  unevaluable in exactly the situation it exists for.
+
+- **`UnsupportedConstruct` is the phase's whole honesty mechanism.** OVAL 5.11
+  defines well over a hundred tests and this build evaluates ten, chosen by
+  measuring which ones the available content actually uses (five test types are
+  92.2% of 1,318 test elements). Anything else fails to compile and the
+  converter records the control as `unimplemented` **with the reason** — so it
+  appears in the register, counts against coverage, and can never be mistaken
+  for a control that passed.
+
+- **A refusal knowable from the content belongs at load time, not scan time.**
+  Every shape check — unsupported test type, an entity selected by an operation
+  that cannot be resolved, a path pattern with no literal root — was moved from
+  the probe into the compiler as it was found. The result is that a converted
+  benchmark produces **zero scan-time errors** on a real host: a refusal is
+  reported once, in the load tally, instead of on every host the benchmark ever
+  runs against.
+
+- **Namespaces are read, never stripped** — the opposite of Phase 8. `file_test`
+  exists in the OVAL `unix` schema *and* the `windows` schema; stripping merges
+  them and hands a Windows registry rule to a Unix probe. Every element is keyed
+  `schema:local_name`.
+
+- **Polarity is asserted.** A `compliance`-class definition is TRUE when the
+  host is hardened; a `vulnerability`-class one is TRUE when it is *affected*.
+  Scoring the second with the first's polarity reports every vulnerable host as
+  compliant, so anything but `compliance` is refused rather than negated on a
+  guess.
+
+- **Matching happens in Python, not in the shell.** `textfilecontent54` is 68%
+  of the corpus and its object carries a regex with capture groups plus
+  behaviour flags. Handing that to `grep` means translating one regex dialect
+  into another, on the target, with the rule's own text as input.
+
+### Applicability is not optional, and the measurement says so
+
+A STIG rule is frequently conditional: "if PAM is installed", "if this is a
+real system with a kernel rather than a container". Those are XCCDF
+`<platform>` elements resolving to CPE 2.0 logical tests over OVAL *inventory*
+definitions, and `core/scap/evaluate.evaluate_applicability` runs them with the
+same three-valued logic as everything else.
+
+It was originally declared **not planned**, on the reasoning that
+benchmark-level `applies_to` targeting already answered it. Cross-checking
+against `oscap` on the same host proved that wrong: **without applicability,
+128 rules produced verdicts `oscap` correctly skipped, 102 of them failures** —
+findings about a kernel, a display manager and a PAM stack the target does not
+have.
+
+**The nesting is the semantics, and it was wrong twice.** Platforms declared
+side by side are alternatives; platforms inherited from different levels
+(Benchmark → Group → Rule) are cumulative. Reading the second as the first left
+17 rules applicable that `oscap` skipped — each a Group saying "a system with a
+kernel" and a Rule saying "and PAM is installed", which in a container are
+false and true. `XccdfRule.platform_levels` keeps the structure; `platforms`
+is the flat form and is for tags only.
+
+An applicability that cannot be established is **UNKNOWN → ERROR**, never
+"applies". Reading it as applicable puts the verdict back into the
+false-positive class; reading it as not-applicable silently drops a control
+from the score.
+
+### Six defects real content found, and one a warning found
+
+Every one produced a plausible result and none raised.
+
+- **`<Value>` was read only from the Benchmark's direct children.** XCCDF
+  permits it inside a `<Group>` and SSG puts nearly all of them there, so the
+  real RHEL 9 datastream yielded **zero values** — every parameterised rule then
+  failed to compile for want of a binding and loaded as `unimplemented` with a
+  plausible reason.
+- **Reference *values* were discarded in favour of their href.** SSG writes
+  `<reference href="…/cci/">CCI-000366</reference>`; the href names the
+  catalogue and the **text** is the identifier. Keeping only the href throws
+  away every CCI and NIST control in the benchmark.
+- **No SSG rule carries `<version>`**, so control ids fell back to the full
+  XCCDF rule URI and dozens exceeded the catalogue-key ceiling. Stripping the
+  XCCDF 1.2 identifier scaffolding is defined by the specification.
+- **The NIST crosswalk emitted controls that do not exist** — `PR.DS-01`, a
+  CSF identifier, yielded `DS-1`, and its href says "nist" so a source filter
+  let it through. Entries are now validated against the seeded 800-53
+  catalogue, so a dangling crosswalk is structurally impossible.
+- **`seed_path` returns a `str`.** Calling `.read_text()` on it raised into a
+  broad `except` and every crosswalk vanished while the load reported success.
+  Failing open is right; failing open *quietly* is not.
+- **An empty `<filename/>` selects the directory itself.** Dropping it made a
+  rule about `/var/log/journal` collect nothing, and `check_existence="none_exist"`
+  read "no offending directory" off an empty set — a vacuous truth and a false
+  **negative**. It was the only rule `oscap` and this build ever disagreed on.
+- **Python's `re` does not support POSIX bracket expressions and does not say
+  so.** `[[:blank:]]` parses as a set of the literal characters `[ : b l a n k`,
+  so a pattern written to match whitespace matches punctuation. Found only
+  because a `FutureWarning` about a nested set appeared in scan output nobody
+  would normally read. Unknown class names are refused rather than left in
+  place, which would reproduce the same silent mis-parse.
+
+Two dialect differences are translated rather than declined, each to the
+escape's documented meaning: **inline global flags must lead** in Python
+(`^\s*(?i)X` raises), and **`\N` and `\h` do not exist** — `\N` is read as the
+start of a named-Unicode escape. Scoped pairs `(?i)X(?-i)` become `(?i:X)`;
+handling only the opening half would silently widen the match, which is what
+the content wrote `(?-i)` to prevent.
+
+### Validation
+
+Two disposable containers, destroyed after use. The root credential is
+generated at run time and never written to source, configuration, logs, Celery
+arguments or Git.
+
+```powershell
+docker run -d --name ccure-rocky-target  -p 127.0.0.1:2222:22 rockylinux/rockylinux:9 sleep infinity
+docker run -d --name ccure-ubuntu-target -p 127.0.0.1:2223:22 ubuntu:24.04           sleep infinity
+```
+
+RHEL 9 STIG → Rocky 9: **257 automated, 0 errors**. Ubuntu 24.04 STIG →
+Ubuntu: **144 automated, 0 errors**. Nine rules were proven in both directions
+across all four probe families, including a three-state demonstration: the
+`auditd` rules report NOT_APPLICABLE with the `audit` package absent, FAIL with
+a weak `auditd.conf` once installed, PASS when hardened. Writing the config
+file by hand does not make the rule apply, and it did not.
+
+**`oscap` 1.3.9 agrees on 144 of 144 rules** — same datastream, same profile,
+same host, nothing changed in between. No previous phase has had an independent
+implementation of the same standard to check against.
+
+Two things worth knowing before repeating this:
+
+- **`oscap` will not evaluate RHEL content on Rocky.** The first cross-check
+  returned `notapplicable` for all 1,532 rules, correctly: the benchmark's CPE
+  is `cpe:/o:redhat:enterprise_linux:9`. Running the RHEL STIG against a
+  rebuild is a deliberate operator decision, supplied through
+  `--applies-to-name`; nothing in the code infers that two distributions are
+  interchangeable.
+- **A container satisfies few platforms.** Most SSG rules are gated on
+  `system_with_kernel`, so a stock container reports them NOT_APPLICABLE —
+  correctly. Installing `kernel-core` (Rocky) or `linux-base` (Ubuntu) is what
+  makes the rules behind it reachable for validation.
+
+### Coverage
+
+`scripts/measure_scap_coverage.py`, denominator frozen at 52 areas before
+implementation with **nineteen** declared unimplemented. **0% → 63.5%** (33/52),
+implemented *and* tested. Two areas were found after the freeze —
+`systemdunitdependency` and the OpenSCAP Script Check Engine — and are reported
+separately against a corrected denominator of 54, giving **61.1%**; the frozen
+list is what was predicted beforehand and editing it afterwards destroys the
+only thing it is for.
+
+The converter's own tally is the remaining gap list, produced from real content:
+`local_variable` (111 RHEL 9 rules) and object `<set>` (52) are one problem
+wearing two hats — both need a second collection pass whose results feed the
+first. That is the single change that would move the figure most.
+
 
 ## Assessment framework (`core/checks/`)
 

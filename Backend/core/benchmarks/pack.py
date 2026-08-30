@@ -70,6 +70,7 @@ __all__ = [
     "BenchmarkPack",
     "BenchmarkProfile",
     "PackError",
+    "dump_pack",
     "load_pack",
     "parse_pack",
 ]
@@ -385,7 +386,21 @@ def _parse_control(raw: Mapping[str, Any], index: int) -> BenchmarkControl:
         payload.setdefault("remediation", raw.get("remediation", ""))
         payload.setdefault("references", list(_tuple(raw.get("references"))))
         try:
-            check = ConfigCheck.from_check_definition(payload)
+            # The control's severity is authoritative and flows onto the
+            # check, which is what ``to_pack`` already does when it builds one.
+            # Without this a check loaded from a pack file always came back
+            # ``medium``: ``from_check_definition`` takes severity as an
+            # argument and defaults it, and nothing passed one. The database
+            # path was unaffected — ``_upsert_rule`` writes
+            # ``control.severity`` — so the loss only showed for a check
+            # evaluated straight from a pack, which is how a converted STIG is
+            # validated before it is loaded.
+            check = ConfigCheck.from_check_definition(
+                payload,
+                severity=str(raw.get("severity") or payload.get("severity") or "medium")
+                .strip()
+                .lower(),
+            )
         except (SpecError, ValueError) as exc:
             # Surfaced with the control id attached: a pack of six hundred
             # controls otherwise reports a spec error with no way to find it.
@@ -448,6 +463,68 @@ def parse_pack(data: Mapping[str, Any]) -> BenchmarkPack:
         notes=str(meta.get("notes") or ""),
         applies_to=meta.get("applies_to") or {},
     )
+
+
+def dump_pack(pack: BenchmarkPack) -> Dict[str, Any]:
+    """
+    Render *pack* back to the JSON shape :func:`parse_pack` reads.
+
+    The inverse of :func:`parse_pack`, and it exists because Phase 10 produces
+    packs *in memory* by converting SCAP content. Without a way to write one
+    out, a converted STIG could only ever be loaded by the process that
+    converted it — so the content an operator reviewed, signed off and
+    committed to their own repository would be a different artefact from the
+    one that ran.
+
+    ``code`` is emitted as the pack carries it; ``parse_pack`` upper-cases on
+    the way back in, and :attr:`BenchmarkPack.framework_id` lower-cases either,
+    so the framework a pack becomes is the same through both paths.
+    """
+    controls: List[Dict[str, Any]] = []
+    for control in pack.controls:
+        entry: Dict[str, Any] = {
+            "control_id": control.control_id,
+            "title": control.title,
+            "assessment": control.assessment,
+            "severity": control.severity,
+        }
+        if control.profiles:
+            entry["profiles"] = list(control.profiles)
+        for name in ("section", "description", "rationale", "remediation"):
+            value = getattr(control, name)
+            if value:
+                entry[name] = value
+        if control.references:
+            entry["references"] = list(control.references)
+        if control.crosswalk:
+            entry["crosswalk"] = list(control.crosswalk)
+        if control.unimplemented_reason:
+            entry["unimplemented_reason"] = control.unimplemented_reason
+        if control.check is not None:
+            payload = control.check.to_check_definition()
+            payload["severity"] = control.check.severity
+            entry["check"] = payload
+        controls.append(entry)
+
+    meta: Dict[str, Any] = {
+        "code": pack.code,
+        "name": pack.name,
+        "version": pack.version,
+        "platform": pack.platform,
+        "publisher": pack.publisher,
+        "licence": pack.licence,
+    }
+    if pack.profiles:
+        meta["profiles"] = [
+            {"id": profile.id, "title": profile.title} for profile in pack.profiles
+        ]
+    if pack.source_url:
+        meta["source_url"] = pack.source_url
+    if pack.notes:
+        meta["notes"] = pack.notes
+    if pack.applies_to:
+        meta["applies_to"] = dict(pack.applies_to)
+    return {"benchmark": meta, "controls": controls}
 
 
 def load_pack(path: str | Path) -> BenchmarkPack:

@@ -43,6 +43,10 @@ from core.config_audit.collectors.privilege_linux import (
 from core.config_audit.collectors.privilege_windows import (
     register_windows_privilege_collector,
 )
+from core.config_audit.collectors.scap import (
+    ScapRuleCollector,
+    register_scap_collectors,
+)
 from core.config_audit.collectors.windows import register_windows_collectors
 
 __all__ = [
@@ -51,6 +55,7 @@ __all__ = [
     "ContainerCollector",
     "DatabaseQueryCollector",
     "LinuxStructuredConfigCollector",
+    "ScapRuleCollector",
     "ShellOutput",
     "ShellRunner",
     "WindowsStructuredConfigCollector",
@@ -61,6 +66,7 @@ __all__ = [
     "register_linux_collectors",
     "register_middleware_collectors",
     "register_linux_privilege_collector",
+    "register_scap_collectors",
     "register_windows_collectors",
     "register_windows_privilege_collector",
 ]
@@ -86,6 +92,7 @@ def register_builtin_collectors(registry: CollectorRegistry | None = None) -> No
         register_database_collector(registry)
         register_middleware_collectors(registry)
         register_container_collector(registry)
+        register_scap_collectors(registry)
         return
     with _REGISTRATION_LOCK:
         if _registered:
@@ -97,4 +104,5 @@ def register_builtin_collectors(registry: CollectorRegistry | None = None) -> No
         register_database_collector(collector_registry)
         register_middleware_collectors(collector_registry)
         register_container_collector(collector_registry)
+        register_scap_collectors(collector_registry)
         _registered = True

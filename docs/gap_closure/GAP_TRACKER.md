@@ -43,30 +43,30 @@ wins and the disagreement is recorded rather than quietly reconciled.
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                                   | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | -------------------------------------------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                               | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                               | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                                | `9e4ecaa` |
-| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                               | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                                | `9e4ecaa` |
-| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                                | `daab13a` |
-| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent           | `9e762d0` |
-| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated)       | `6b4c06e` |
-| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (64.5% measured, real-target validated)       | `d40800d` |
-| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 6     | Medium   | 45% [estimated]  | 90%    | **Partial** — delivered in Phase 6, remainder unmeasured | `d40800d` |
-| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated)       | `8a5bbd7` |
-| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated)       | `7520e90` |
-| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)       | `9d74a0c` |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                     | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                     | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                                     | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                     | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                     | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                     | —         |
-| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)       | `13d6854` |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                                     | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                                     | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                             | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | -------------------------------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                         | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                         | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                          | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                         | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                          | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                          | `daab13a` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
+| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
+| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (69.4% measured, raised by Phase 11)    | `d40800d` |
+| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 11    | Medium   | 0% [measured]    | 90%    | **Closed** (71.4% measured, real-target validated) | `PENDING` |
+| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
+| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated) | `7520e90` |
+| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                               | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                               | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                               | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                               | —         |
+| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `13d6854` |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                               | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                               | —         |
 
 ---
 
@@ -2734,6 +2734,206 @@ recorded in the carry-forward list rather than actioned.
 - **`LinuxPermissionCollector` uses `stat -c` without `-L`.** Verified latent:
   all seven `permission` checks target regular files.
 
+## 9F. Phase 11 — Deep TLS assessment on the main scan path
+
+**Gap:** GAP-07. **Status: Closed** — 71.4% measured, real-target validated
+across six listeners and five opportunistic-TLS transports.
+
+**No new TLS engine.** `core/web/sslyze/wrapper.py` has driven full TLS audits
+since before Phase 6; Phase 6 pointed the network path at it, and this phase
+reads what it was already collecting and teaches it to negotiate STARTTLS. The
+whole phase is one wrapper extension, seventeen catalogue entries and a plugin
+that reaches six more transports. No migration, no route, no scan kind, no new
+finding model.
+
+### 9F.1 The two things that were missing
+
+**Reach.** The assessment only looked at ports speaking TLS from the first byte
+— 443, 8443, 993, 995 and a few more. A mail server with an expired certificate
+on port 25, a directory server with a weak key on 389, a database offering TLS
+1.0 on 5432: none were assessed at all, on hosts whose web port was assessed
+thoroughly.
+
+**Results already being discarded.** Three sslyze commands were requested and
+their results thrown away — `TLS_FALLBACK_SCSV` and `SESSION_RENEGOTIATION`
+since before Phase 6, and `path_validation_results` was parsed into a
+`chain_trusted` boolean nothing read. The scan was paying for them already.
+That is why fourteen findings arrive for very little extra time on the wire.
+
+### 9F.2 Denominator, frozen before implementation
+
+`scripts/measure_tls_coverage.py`, **28 areas**, frozen at Stage 1. Eight are
+declared and not implemented, each with its reason.
+
+**The thirteen `tls.*` areas GAP-06 froze are deliberately excluded.** Ten were
+delivered in Phase 6; three were not, and this phase implements them —
+`tls.certificate_expiring_soon`, `tls.weak_dh_parameters`,
+`tls.insecure_renegotiation`. Their coverage credit is **GAP-06's**, whose
+harness reads the same live catalogue and moved from **64.5% to 69.4%**
+accordingly. Counting them here as well would have inflated this phase by an
+eighth before a line of it was written — the mistake Phase 8 and Phase 9 each
+had to correct. `OWNED_BY_GAP06` names the boundary from this side;
+`measure_network_check_coverage.py` names it from the other, and a test asserts
+the two denominators do not intersect.
+
+### 9F.3 What was built
+
+| Area                        | Count                                       |
+| --------------------------- | ------------------------------------------- |
+| STARTTLS transports reached | 6 — SMTP, IMAP, POP3, LDAP, PostgreSQL, FTP |
+| New finding conditions      | 14                                          |
+| GAP-06 areas completed      | 3                                           |
+| New catalogue entries       | 17                                          |
+
+Two carry a **real published CVE** — Heartbleed's `CVE-2014-0160` was already
+there, and CCS injection is `CVE-2014-0224`. Everything else mints a
+`CCURE-CHK-…` identifier. No CVE is fabricated, and a test pins that exactly
+two TLS checks carry one.
+
+**A STARTTLS endpoint never becomes `tls_info`.** That key means "the first
+_implicit_-TLS endpoint that answered"; `asset_syncer` writes the asset's TLS
+record from it and `core/risk.py` scores from it. A mail server appearing there
+would rewrite an asset's TLS identity with a certificate no browser negotiates.
+STARTTLS results go to `tls_endpoints` with a `starttls` marker, and a test
+asserts both directions.
+
+**One budget covers both kinds of endpoint.** `TLS_DEEP_MAX_ENDPOINTS` already
+bounded deep assessment; STARTTLS consumes the same allowance rather than
+adding to it, so a host exposing six opportunistic services cannot silently
+cost six more cipher-suite enumerations. `TLS_STARTTLS_SCAN` disables the
+transport entirely.
+
+### 9F.4 Three defects real listeners found
+
+- **EC certificates could never be reported as weak.** `_describe_public_key`
+  classified by class _name_, and this build of `cryptography` returns
+  `ECPublicKey` where older ones return `_EllipticCurvePublicKey`. The name
+  test missed, the function returned `{}`, and the key-strength check was
+  silently withheld for the entire algorithm. Found against a real LDAP
+  listener whose key came back unclassified; it is `isinstance` against the
+  abstract types now, which is version-proof.
+- **A connectivity failure surfaced as `'NoneType' object has no attribute
+'certificate_info'`.** sslyze leaves `scan_result` as None when it cannot
+  complete a handshake — which is the _normal_ outcome for a STARTTLS probe of
+  a service that does not offer it. Reaching through it produced an opaque
+  AttributeError that read as a broken scanner rather than as a service which
+  does not speak TLS.
+- **PostgreSQL's port-map entry was dead.** `_PORT_MAP` already had
+  `5432: ["default_creds"]`, and the new `5432: ["tls_scanner"]` sat earlier in
+  the same dict literal — where a repeated key keeps only the _last_ value. The
+  transport looked supported and reached nothing. Caught by asserting selection
+  for every port in `STARTTLS_SERVICES`; a test now also refuses any duplicate
+  key in that map.
+
+### 9F.5 Real-target validation
+
+Six disposable listeners, destroyed after use. Certificates generated at run
+time; no credential written to source, configuration, logs or Git.
+
+| Target                        | Purpose                                                   |
+| ----------------------------- | --------------------------------------------------------- |
+| nginx 1.24, deliberately weak | 1024-bit SHA-1 self-signed cert, 1024-bit DH, TLS 1.0/1.1 |
+| nginx 1.24, hardened          | 2048-bit SHA-256, TLS 1.2/1.3, ECDHE only                 |
+| Postfix                       | SMTP STARTTLS                                             |
+| Dovecot 2.3                   | IMAP and POP3 STARTTLS                                    |
+| OpenLDAP (osixia)             | LDAP STARTTLS, EC P-384 key                               |
+| PostgreSQL 16                 | SSLRequest negotiation                                    |
+
+**Weakened → hardened** on the nginx pair:
+
+| Condition                                | Weak  | Hardened |
+| ---------------------------------------- | ----- | -------- |
+| `tls.certificate_weak_key` (RSA 1024)    | ✅    | —        |
+| `tls.certificate_weak_signature` (SHA-1) | ✅    | —        |
+| `tls.deprecated_protocol` (TLS 1.0/1.1)  | ✅    | —        |
+| `tls.weak_dh_parameters` (1024-bit)      | ✅    | —        |
+| **total findings**                       | **7** | **3**    |
+
+The three that remain on the hardened listener are correct: it still serves a
+self-signed certificate and staples no OCSP response. Only the four conditions
+actually remediated disappeared — a check that cleared everything would mean
+the assessment had stopped looking.
+
+**STARTTLS, five transports in one run: 19 findings on services the previous
+scanner could not see at all.**
+
+| Service         | Port | Findings                                                                                   |
+| --------------- | ---- | ------------------------------------------------------------------------------------------ |
+| SMTP (Postfix)  | 25   | deprecated protocol, weak cipher suite, weak DH, self-signed, untrusted chain, no stapling |
+| IMAP (Dovecot)  | 143  | client renegotiation DoS, self-signed, untrusted chain, no stapling                        |
+| POP3 (Dovecot)  | 110  | client renegotiation DoS, self-signed, untrusted chain, no stapling                        |
+| LDAP (OpenLDAP) | 389  | untrusted chain, no stapling                                                               |
+| PostgreSQL 16   | 5432 | self-signed, untrusted chain, no stapling                                                  |
+
+`tls.client_renegotiation_dos` is a discriminating result rather than a blanket
+true: Dovecot accepted **10** client-initiated renegotiations, Postfix and
+nginx **zero**. The LDAP listener's EC P-384 key was correctly _not_ reported —
+384 is above the 224 floor.
+
+### 9F.6 Coverage — measured, denominator frozen at Stage 1
+
+| Capability           | Before        | After                | Basis                                                  |
+| -------------------- | ------------- | -------------------- | ------------------------------------------------------ |
+| GAP-07 deep TLS      | 0% [measured] | **71.4%** [measured] | 20 of 28 frozen areas, implemented _and_ tested        |
+| GAP-06 (side effect) | 64.5%         | **69.4%**            | the three `tls.*` areas it froze and never implemented |
+
+| Theme     | Proven      |
+| --------- | ----------- |
+| starttls  | 6/9 (66.7%) |
+| chain     | 3/5 (60.0%) |
+| cert      | 4/5 (80.0%) |
+| downgrade | 2/2 (100%)  |
+| kex       | 2/3 (66.7%) |
+| protocol  | 3/4 (75.0%) |
+
+The 45% [estimated] the matrix carried for GAP-07 was never measured against a
+frozen denominator, so it is not comparable and the _before_ is recorded as 0%
+against this one. That is the same treatment Phase 8 gave GAP-09's "~3%".
+
+### 9F.7 Known limitations
+
+- **FTP AUTH TLS is implemented and not target-validated.** The code path is
+  identical to the five that were — same sslyze enum, same wrapper call — but
+  vsftpd would not stay up long enough to prove it, and "the mechanism is the
+  same" is an argument, not a measurement. Recorded as implemented, not as
+  validated.
+- **XMPP, RDP and MySQL are declared unimplemented**, each with a reason:
+  XMPP needs a `to` hostname the scanner cannot infer; RDP's port is
+  overwhelmingly self-signed-by-design Windows hosts; sslyze 6.3.1 has no MySQL
+  opportunistic-TLS handler at all, and writing one would be the second TLS
+  implementation this phase exists not to build. MySQL's TLS posture is
+  assessed by GAP-10 over an authenticated session.
+- **Revocation is not checked.** Only the _stapled_ response is read. A live
+  CRL or OCSP fetch from the scanner needs egress OT segments do not have, and
+  turns a network outage into a finding about somebody's certificate.
+- **Session resumption is not assessed.** sslyze reports resumption _support_,
+  which is the desirable state; telling a weak ticket key from a healthy one
+  needs two scans separated in time.
+- **The deep assessment remains bounded** at four endpoints per host. On a host
+  exposing both a web tier and several mail services, some endpoints are not
+  deeply assessed — and the skip is logged with the setting that raises it,
+  rather than passing silently.
+- **`/web-scans` output is unchanged.** The wrapper's own `findings` list was
+  deliberately not extended; that path renders it, and altering what an
+  existing report says is not this phase's business. The network path builds
+  its own findings from the structured data.
+
+### 9F.8 Definition of Done — Phase 11
+
+| Line                    | GAP-07                                                         |
+| ----------------------- | -------------------------------------------------------------- |
+| Denominator frozen      | ✅ 28 areas, before implementation, 8 declared unimplemented   |
+| Implemented             | ✅ 20 areas — 6 transports, 14 conditions                      |
+| No parallel engine      | ✅ one sslyze wrapper, extended; no new TLS implementation     |
+| No duplicate of Phase 6 | ✅ GAP-06's thirteen areas excluded, boundary asserted by test |
+| No fabricated CVEs      | ✅ two real published CVEs, everything else `CCURE-CHK-…`      |
+| No false PASS           | ✅ every reading tri-state; absent commands produce no finding |
+| Automated tests         | ✅ 124 tests in two files                                      |
+| Real-target validated   | ✅ six listeners, weak→hardened, five transports               |
+| Coverage measured       | ✅ 0% → **71.4%**; GAP-06 64.5% → 69.4%                        |
+| Regression              | ✅ full suite, see §11                                         |
+| Targets destroyed       | ✅ all six containers removed                                  |
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -2787,6 +2987,8 @@ recorded in the carry-forward list rather than actioned.
 | After Phase 8, full suite                        | **3647 passed, 2 skipped**, 8m43s                         |
 | After Phase 9, full suite                        | **3987 passed, 2 skipped**, 8m37s                         |
 | After Phase 10, full suite                       | **4123 passed, 2 skipped**, 9m42s                         |
+| After stabilization                              | **4138 passed, 2 skipped**, 11m00s                        |
+| After Phase 11, full suite                       | **4279 passed, 2 skipped**, 11m12s                        |
 
 Each delta matches the tests added exactly — +54 for Phase 0, +4 for the
 catalogue guard, +68 for Phase 1, +43 for Phase 2, +241 for Phase 3, a net
@@ -3011,6 +3213,8 @@ the assertion is testing the right thing, and the generator really can collide.
 | 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅ |
 | 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅ |
 | 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅ |
+| 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅ |
+| 11    | `PENDING` | —   | 4279 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

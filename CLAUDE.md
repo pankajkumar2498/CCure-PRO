@@ -2030,6 +2030,48 @@ wrapper (`core/web/sslyze/wrapper.py`), which had driven full TLS audits on the
   probe costs one. `TLS_DEEP_MAX_ENDPOINTS` (4) and `TLS_DEEP_SCAN` exist
   because this product scans OT segments. Measured at 2.2s per endpoint.
 
+- **STARTTLS is reached through the same wrapper** (Phase 11, GAP-07).
+  `STARTTLS_SERVICES` maps six services to their ports — SMTP, IMAP, POP3,
+  LDAP, PostgreSQL, FTP — and sslyze performs the negotiation, so no second TLS
+  transport exists. The names are looked up against sslyze's own
+  `ProtocolWithOpportunisticTlsEnum`, so a service it cannot negotiate is
+  impossible to add by mistake: MySQL has no handler in 6.3.1 and is declared
+  unimplemented rather than silently producing connection errors.
+
+  **A port in `STARTTLS_SERVICES` must also be in `plugin_selector._PORT_MAP`**,
+  or a host exposing only that port never runs the plugin at all. PostgreSQL hit
+  exactly this: 5432 already had an entry for `default_creds`, and a second dict
+  key for it kept only the last value. A test now asserts selection for every
+  port in the table and refuses any duplicate key in the map.
+
+  **A STARTTLS endpoint never becomes `tls_info`.** That key means the first
+  *implicit*-TLS endpoint that answered; `asset_syncer` and `core/risk.py` read
+  it, and a mail server's certificate appearing there would rewrite an asset's
+  TLS identity with something no browser negotiates. They go to
+  `tls_endpoints` with a `starttls` marker, and one budget covers both kinds.
+
+- **Three sslyze commands were requested and their results discarded.**
+  `TLS_FALLBACK_SCSV` and `SESSION_RENEGOTIATION` since before Phase 6, and
+  `path_validation_results` was parsed into a `chain_trusted` boolean nothing
+  read. Phase 11 reads them, which is why fourteen findings arrived for very
+  little extra time on the wire. Each reading is **tri-state**: True, False, or
+  absent because the command did not complete. Every guard is `is True` /
+  `is False`, never truthiness — an absent command has established nothing, and
+  reading it either way invents a verdict.
+
+- **Classify a public key by type, not by class name.** `_describe_public_key`
+  tested `"EllipticCurve" in type(key).__name__`; this build of `cryptography`
+  returns `ECPublicKey`, so every EC certificate went unclassified and the
+  key-strength check was silently withheld for the whole algorithm. It is
+  `isinstance` against the abstract types now. An algorithm it does not
+  recognise returns `{}` and the check is withheld rather than compared against
+  the wrong floor.
+
+- **`/web-scans` output is deliberately unchanged.** The wrapper's own
+  `findings` list was not extended; that path renders it and altering an
+  existing report was not Phase 11's business. The network path builds its own
+  findings from the structured data the wrapper now returns.
+
 - **`tls_info` keeps its meaning** — the first TLS endpoint that answered.
   `tls_endpoints` is additive and carries the rest. Nothing downstream should
   change because a host happens to expose a second TLS port.

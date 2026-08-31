@@ -20,6 +20,57 @@ from urllib.parse import urlparse
 log = logging.getLogger("ccure.web.sslyze")
 
 
+def _describe_public_key(leaf) -> dict:
+    """
+    The leaf's public key algorithm and size.
+
+    ``{}`` rather than a guess when the key type is one this does not
+    recognise: a size compared against the wrong floor is worse than no
+    comparison, because it produces a confident finding about a key that may be
+    perfectly strong.
+    """
+    try:
+        key = leaf.public_key()
+    except Exception:  # pragma: no cover - malformed certificate
+        return {}
+    # ``isinstance`` against the abstract types, not a substring of the class
+    # name. ``cryptography`` spells the concrete classes differently across
+    # versions and backends — this build returns ``ECPublicKey``, older ones
+    # ``_EllipticCurvePublicKey`` — and a name test that misses returns {},
+    # which silently removes the key-strength check for that whole algorithm.
+    # Measured: every EC certificate went unclassified until this was fixed.
+    try:
+        from cryptography.hazmat.primitives.asymmetric import (
+            dsa,
+            ec,
+            ed448,
+            ed25519,
+            rsa,
+        )
+    except Exception:  # pragma: no cover - cryptography is a hard dependency
+        return {}
+
+    size = getattr(key, "key_size", None)
+    if isinstance(key, rsa.RSAPublicKey):
+        algorithm = "rsa"
+    elif isinstance(key, ec.EllipticCurvePublicKey):
+        algorithm = "ec"
+        size = getattr(getattr(key, "curve", None), "key_size", size)
+    elif isinstance(key, dsa.DSAPublicKey):
+        algorithm = "dsa"
+    elif isinstance(key, (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)):
+        # Edwards keys expose no key_size and need none: both sit at or above
+        # the 112-bit security level the floors are expressed for, so there is
+        # no comparison to make.
+        return {"algorithm": "eddsa", "bits": None}
+    else:
+        # An algorithm this does not recognise. Returning {} withholds the
+        # check rather than comparing a size against the wrong floor, which
+        # would produce a confident finding about a key that may be strong.
+        return {}
+    return {"algorithm": algorithm, "bits": int(size) if size else None}
+
+
 class SSLyzeWrapper:
     """
     TLS/SSL configuration auditor using the sslyze Python library.
@@ -49,15 +100,31 @@ class SSLyzeWrapper:
             self._sslyze_available = False
             return False
 
-    def run(self, target: str, **kwargs) -> dict:
+    def run(self, target: str, starttls: str = "", **kwargs) -> dict:
         """
-        Perform TLS/SSL audit on a target URL or hostname.
+        Perform a TLS/SSL audit on a target URL, hostname, or STARTTLS service.
 
         Args:
-            target: URL or hostname (e.g., "https://example.com" or "example.com:443")
+            target: URL or hostname (e.g. "https://example.com" or "host:443")
+            starttls: an opportunistic-TLS protocol name — ``smtp``, ``imap``,
+                ``pop3``, ``ldap``, ``postgres``, ``ftp``. Empty means the port
+                speaks TLS immediately, which is every caller that existed
+                before GAP-07.
 
         Returns:
-            {"findings": [...], "certificate": {...}, "protocols": {...}, "stats": {...}}
+            ``{"findings", "certificate", "protocols", "renegotiation",
+            "downgrade", "protocol_features", "key_exchange", "stats"}``
+
+        The four keys after ``protocols`` are GAP-07's. Three of the underlying
+        scan commands were **already being requested and their results thrown
+        away** — ``TLS_FALLBACK_SCSV`` and ``SESSION_RENEGOTIATION`` since
+        before Phase 6, and ``path_validation_results`` was parsed into
+        ``chain_trusted`` that nothing read. The cost was already being paid;
+        only the reading is new.
+
+        ``findings`` is deliberately unchanged. ``/web-scans`` renders that list
+        and this phase is not about altering what an existing report says; the
+        network path builds its own findings from the structured data below.
         """
         if not self.is_available():
             return {
@@ -76,13 +143,34 @@ class SSLyzeWrapper:
             from sslyze import (
                 ScanCommand,
                 Scanner,
+                ServerNetworkConfiguration,
                 ServerNetworkLocation,
                 ServerScanRequest,
             )
 
             server_location = ServerNetworkLocation(hostname=hostname, port=port)
+
+            network_configuration = None
+            if starttls:
+                protocol = self._opportunistic_protocol(starttls)
+                if protocol is None:
+                    return {
+                        "findings": [],
+                        "certificate": {},
+                        "protocols": {},
+                        "error": (
+                            f"sslyze {self._sslyze_version()} has no "
+                            f"opportunistic-TLS handler for {starttls!r}"
+                        ),
+                    }
+                network_configuration = ServerNetworkConfiguration(
+                    tls_server_name_indication=hostname,
+                    tls_opportunistic_encryption=protocol,
+                )
+
             scan_request = ServerScanRequest(
                 server_location=server_location,
+                network_configuration=network_configuration,
                 scan_commands={
                     ScanCommand.CERTIFICATE_INFO,
                     ScanCommand.SSL_2_0_CIPHER_SUITES,
@@ -96,6 +184,13 @@ class SSLyzeWrapper:
                     ScanCommand.TLS_COMPRESSION,
                     ScanCommand.TLS_FALLBACK_SCSV,
                     ScanCommand.SESSION_RENEGOTIATION,
+                    # GAP-07. Each is one extra handshake against a listener
+                    # whose cipher suites are already being enumerated across
+                    # six protocol versions, so the marginal cost is small
+                    # beside what this scan already does.
+                    ScanCommand.OPENSSL_CCS_INJECTION,
+                    ScanCommand.TLS_1_3_EARLY_DATA,
+                    ScanCommand.TLS_EXTENDED_MASTER_SECRET,
                 },
             )
 
@@ -105,8 +200,39 @@ class SSLyzeWrapper:
             findings: list[dict] = []
             certificate_info: dict = {}
             protocol_info: dict = {}
+            renegotiation: dict = {}
+            downgrade: dict = {}
+            protocol_features: dict = {}
+            key_exchange: dict = {}
 
             for result in scanner.get_results():
+                # sslyze leaves ``scan_result`` as None when it could not
+                # connect or complete the handshake at all — a port that speaks
+                # something else, a STARTTLS negotiation the service refused, a
+                # timeout. Reaching through it raises AttributeError, which the
+                # outer handler then reports as an opaque
+                # "'NoneType' object has no attribute 'certificate_info'".
+                #
+                # That matters more here than it looks: this is the *normal*
+                # outcome for a STARTTLS probe of a service that does not offer
+                # it, so it has to say so plainly rather than read as a broken
+                # scanner. It is emphatically not evidence that the endpoint's
+                # TLS is fine.
+                if getattr(result, "scan_result", None) is None:
+                    status = getattr(
+                        getattr(result, "connectivity_status", None), "name", "?"
+                    )
+                    return {
+                        "findings": [],
+                        "certificate": {},
+                        "protocols": {},
+                        "error": (
+                            f"no TLS handshake with {hostname}:{port}"
+                            f"{f' via {starttls} STARTTLS' if starttls else ''} "
+                            f"(connectivity: {status})"
+                        ),
+                    }
+
                 # Process certificate info
                 cert_result = result.scan_result.certificate_info
                 if cert_result and cert_result.status.name == "COMPLETED":
@@ -180,10 +306,17 @@ class SSLyzeWrapper:
                             }
                         )
 
+                # ── GAP-07: results already collected and never read ──
+                renegotiation = self._process_renegotiation(result.scan_result)
+                downgrade = self._process_downgrade(result.scan_result)
+                protocol_features = self._process_protocol_features(result.scan_result)
+                key_exchange = self._process_key_exchange(result.scan_result)
+
             stats = {
                 "total_findings": len(findings),
                 "hostname": hostname,
                 "port": port,
+                "starttls": starttls or "",
             }
 
             log.info(
@@ -197,6 +330,10 @@ class SSLyzeWrapper:
                 "findings": findings,
                 "certificate": certificate_info,
                 "protocols": protocol_info,
+                "renegotiation": renegotiation,
+                "downgrade": downgrade,
+                "protocol_features": protocol_features,
+                "key_exchange": key_exchange,
                 "stats": stats,
             }
 
@@ -280,11 +417,204 @@ class SSLyzeWrapper:
                     ),
                     "chain_length": len(deployment.received_certificate_chain),
                     "is_leaf_ev": deployment.leaf_certificate_is_ev,
+                    # ── GAP-07 ────────────────────────────────────────────
+                    # `chain_trusted` above is a bare bool that nothing read.
+                    # These say *why*, which is the difference between a
+                    # finding somebody can act on and one they cannot.
+                    "trust_failures": [
+                        {
+                            "store": getattr(
+                                getattr(r, "trust_store", None), "name", "?"
+                            ),
+                            "error": str(getattr(r, "validation_error", "") or ""),
+                        }
+                        for r in getattr(deployment, "path_validation_results", [])
+                        if not getattr(r, "was_validation_successful", False)
+                    ],
+                    "chain_in_valid_order": getattr(
+                        deployment, "received_chain_has_valid_order", None
+                    ),
+                    "chain_has_sha1": getattr(
+                        deployment, "verified_chain_has_sha1_signature", None
+                    ),
+                    "has_must_staple": getattr(
+                        deployment, "leaf_certificate_has_must_staple_extension", None
+                    ),
+                    "ocsp_stapled": getattr(deployment, "ocsp_response", None)
+                    is not None,
+                    "ocsp_trusted": getattr(
+                        deployment, "ocsp_response_is_trusted", None
+                    ),
+                    "public_key": _describe_public_key(leaf),
                 }
                 break  # First deployment only
         except Exception as exc:
             log.debug("Certificate parsing error: %s", exc)
         return info
+
+    @staticmethod
+    def _sslyze_version() -> str:
+        try:
+            from sslyze.__version__ import __version__
+
+            return str(__version__)
+        except Exception:  # pragma: no cover
+            return "?"
+
+    @staticmethod
+    def _opportunistic_protocol(name: str):
+        """
+        The sslyze enum member for a STARTTLS protocol name, or None.
+
+        None rather than a guess: a name this build of sslyze has no handler
+        for must surface as "not assessed", never as a connection that failed —
+        those look identical in a report and mean opposite things.
+        """
+        try:
+            from sslyze import ProtocolWithOpportunisticTlsEnum
+        except Exception:  # pragma: no cover
+            return None
+        return getattr(
+            ProtocolWithOpportunisticTlsEnum, str(name).strip().upper(), None
+        )
+
+    @staticmethod
+    def _completed(scan_result, attribute):
+        """The ``.result`` of a scan command that completed, else None."""
+        entry = getattr(scan_result, attribute, None)
+        if entry is None or getattr(entry, "status", None) is None:
+            return None
+        if entry.status.name != "COMPLETED":
+            return None
+        return entry.result
+
+    @classmethod
+    def _process_renegotiation(cls, scan_result) -> dict:
+        """
+        Secure renegotiation support, and whether a client may drive it.
+
+        The command has been requested since before Phase 6 and its result was
+        never read. Two separate conditions live in it: a server that does not
+        support RFC 5746 secure renegotiation (the 2009 MITM), and one that
+        permits *client-initiated* renegotiation (asymmetric CPU cost, a
+        denial-of-service lever). They have different remediations.
+
+        ``{}`` when the command did not complete — an absent reading, never a
+        clean bill of health.
+        """
+        result = cls._completed(scan_result, "session_renegotiation")
+        if result is None:
+            return {}
+        return {
+            "supports_secure_renegotiation": bool(
+                getattr(result, "supports_secure_renegotiation", False)
+            ),
+            "client_renegotiation_dos": bool(
+                getattr(result, "is_vulnerable_to_client_renegotiation_dos", False)
+            ),
+            "client_renegotiations_succeeded": int(
+                getattr(result, "client_renegotiations_success_count", 0) or 0
+            ),
+        }
+
+    @classmethod
+    def _process_downgrade(cls, scan_result) -> dict:
+        """
+        Whether the listener honours TLS_FALLBACK_SCSV.
+
+        Also requested since before Phase 6 and never read. A server that
+        ignores the signalling suite cannot refuse a downgrade dance, which is
+        what makes POODLE-over-TLS reachable on a listener that still offers an
+        older version.
+        """
+        result = cls._completed(scan_result, "tls_fallback_scsv")
+        if result is None:
+            return {}
+        return {
+            "supports_fallback_scsv": bool(
+                getattr(result, "supports_fallback_scsv", False)
+            )
+        }
+
+    @classmethod
+    def _process_protocol_features(cls, scan_result) -> dict:
+        """CCS injection, 0-RTT early data, extended master secret."""
+        features: dict = {}
+
+        ccs = cls._completed(scan_result, "openssl_ccs_injection")
+        if ccs is not None:
+            features["ccs_injection"] = bool(
+                getattr(ccs, "is_vulnerable_to_ccs_injection", False)
+            )
+
+        early = cls._completed(scan_result, "tls_1_3_early_data")
+        if early is not None:
+            features["early_data"] = bool(getattr(early, "supports_early_data", False))
+
+        ems = cls._completed(scan_result, "tls_extended_master_secret")
+        if ems is not None:
+            features["extended_master_secret"] = bool(
+                getattr(ems, "supports_ems_extension", False)
+            )
+        return features
+
+    @classmethod
+    def _process_key_exchange(cls, scan_result) -> dict:
+        """
+        Forward secrecy, and the size of the ephemeral groups actually offered.
+
+        Read from the ``ephemeral_key`` on each accepted suite rather than from
+        the suite name: a name says ECDHE, and only the key says whether the
+        group behind it is 256 bits or 128. Logjam is a *parameter* weakness,
+        so a check that reads the name alone cannot see it at all.
+        """
+        smallest_dh = None
+        smallest_ecdh = None
+        forward_secrecy = False
+        assessed = False
+
+        for attribute in (
+            "tls_1_2_cipher_suites",
+            "tls_1_3_cipher_suites",
+            "tls_1_1_cipher_suites",
+            "tls_1_0_cipher_suites",
+        ):
+            result = cls._completed(scan_result, attribute)
+            if result is None:
+                continue
+            assessed = True
+            for accepted in getattr(result, "accepted_cipher_suites", []) or []:
+                name = (
+                    getattr(getattr(accepted, "cipher_suite", None), "name", "") or ""
+                )
+                if "ECDHE" in name or "DHE" in name:
+                    forward_secrecy = True
+                key = getattr(accepted, "ephemeral_key", None)
+                size = getattr(key, "size", None)
+                if not size:
+                    continue
+                kind = type(key).__name__.lower()
+                if (
+                    "ecdh" in kind
+                    or "ecdhe" in kind
+                    or "x25519" in kind
+                    or "x448" in kind
+                ):
+                    smallest_ecdh = (
+                        size if smallest_ecdh is None else min(smallest_ecdh, size)
+                    )
+                elif "dh" in kind:
+                    smallest_dh = (
+                        size if smallest_dh is None else min(smallest_dh, size)
+                    )
+
+        if not assessed:
+            return {}
+        return {
+            "forward_secrecy": forward_secrecy,
+            "smallest_dh_bits": smallest_dh,
+            "smallest_ecdh_bits": smallest_ecdh,
+        }
 
     #: Substrings that mark a cipher suite as offering no useful security.
     #: Matched against the IANA suite name, upper-cased.

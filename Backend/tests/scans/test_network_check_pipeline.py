@@ -38,10 +38,19 @@ from scans.finding_normalizer import (
     verify_host_findings,
 )
 
-_PROMOTION_SOURCE = (
-    Path(__file__)
-    .with_name("test_network_check_promotion.py")
-    .read_text(encoding="utf-8")
+#: The behavioural suites an area's identifier may be proven by.
+#:
+#: ``test_tls_deep.py`` was added by GAP-07 (Phase 11), which declared sixteen
+#: further TLS areas. Their behavioural tests live there rather than in the
+#: promotion suite, so without this the contract below would demand they be
+#: written twice — and the honest reading of "something exercises this area" is
+#: that a test drives it, not that it sits in one particular file.
+_PROMOTION_SOURCE = "".join(
+    Path(__file__).with_name(name).read_text(encoding="utf-8")
+    for name in (
+        "test_network_check_promotion.py",
+        "test_tls_deep.py",
+    )
 )
 
 #: Areas whose identifiers are minted per finding, so no fixed identifier can
@@ -67,6 +76,24 @@ _DYNAMIC_AREAS = {c.area for c in NETWORK_CHECKS if c.dynamic}
         "tls.heartbleed",
         "tls.robot",
         "tls.compression_crime",
+        # ── GAP-07 (Phase 11) ────────────────────────────────────────────────
+        "tls.certificate_expiring_soon",
+        "tls.weak_dh_parameters",
+        "tls.insecure_renegotiation",
+        "tls.certificate_untrusted_chain",
+        "tls.certificate_chain_order",
+        "tls.certificate_sha1_chain",
+        "tls.certificate_not_yet_valid",
+        "tls.certificate_weak_key",
+        "tls.ocsp_stapling_absent",
+        "tls.must_staple_unhonoured",
+        "tls.fallback_scsv_unsupported",
+        "tls.client_renegotiation_dos",
+        "tls.weak_ecdh_curve",
+        "tls.no_forward_secrecy",
+        "tls.ccs_injection",
+        "tls.early_data_enabled",
+        "tls.extended_master_secret_absent",
         "http.missing_security_headers",
         "http.cleartext_service",
         "http.insecure_cookie_flags",

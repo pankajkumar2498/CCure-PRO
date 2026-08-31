@@ -254,7 +254,15 @@ def _tested() -> Set[str]:
     """
     root = Path(__file__).resolve().parents[1] / "tests"
     corpus = ""
-    for pattern in ("test_network_check*.py", "test_plugin_findings*.py"):
+    # ``test_tls*.py`` was added by GAP-07 (Phase 11). Three of the thirteen
+    # tls.* areas in the scope below were frozen here and implemented there, so
+    # their tests live in that phase's files; without this pattern they read as
+    # untested and this figure understates itself.
+    for pattern in (
+        "test_network_check*.py",
+        "test_plugin_findings*.py",
+        "test_tls*.py",
+    ):
         for path in root.rglob(pattern):
             corpus += path.read_text(encoding="utf-8")
     return {area for area, _f, _d in SCOPE if area in corpus}
@@ -344,7 +352,28 @@ def main() -> int:
         )
         print("  A phase that adds checks must not remove one.")
 
-    orphans = sorted(set(implemented) - {a for a, _f, _d in SCOPE})
+    # An area another gap owns is not an orphan. GAP-07 (Phase 11) added
+    # fourteen deep-TLS areas to this same catalogue and measures them against
+    # its own frozen denominator; reporting them as strays would read as a
+    # defect, and counting them would inflate this figure with another phase's
+    # work.
+    try:
+        from scripts.measure_tls_coverage import SCOPE as GAP07_SCOPE
+
+        owned_elsewhere = {a for a, _t, _d in GAP07_SCOPE}
+    except Exception:  # pragma: no cover
+        owned_elsewhere = set()
+
+    outside = set(implemented) - {a for a, _f, _d in SCOPE}
+    elsewhere = sorted(outside & owned_elsewhere)
+    if elsewhere:
+        print(
+            f"\n  {len(elsewhere)} check(s) here belong to GAP-07's denominator, "
+            f"measured by scripts/measure_tls_coverage.py:"
+        )
+        print("    " + ", ".join(elsewhere))
+
+    orphans = sorted(outside - owned_elsewhere)
     if orphans:
         print(
             f"\n  WARNING: {len(orphans)} check(s) declare an area outside the "

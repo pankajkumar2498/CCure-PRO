@@ -3750,6 +3750,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 11    | `426c282` | —   | 4279 passed, 2 skipped ✅ |
 | 11s   | `dd79bee` | —   | 4359 passed, 2 skipped ✅ |
 | 11s2  | `c5ec7b7` | —   | 4412 passed, 2 skipped ✅ |
+| 12    | `4a88723` | —   | 4462 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

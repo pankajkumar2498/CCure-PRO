@@ -3393,13 +3393,13 @@ of the same collection to check against.
 
 ### 9I.6 Coverage — measured
 
-| Capability                                          | Before                | After                     | Basis                                              |
-| --------------------------------------------------- | --------------------- | ------------------------- | -------------------------------------------------- |
-| Windows hosts reachable                             | WinRM or OpenSSH only | **+ every host with SMB** | SMB is on by default; WinRM is not, on client SKUs |
-| Collector items served natively                     | 0                     | **18 of 31 (58.1%)**      | live dispatch table, not a hand list               |
-| Unserved items with a stated reason                 | —                     | **13 of 13 (100%)**       | pinned by test                                     |
-| Windows checks producing a verdict over SMB         | 0                     | **6 of 20**               | measured on the real host                          |
-| Windows checks producing a _wrong_ verdict over SMB | 0                     | **0**                     | the other 13 are ERROR, never PASS                 |
+| Capability                                          | Before                | After                     | Basis                                                                                          |
+| --------------------------------------------------- | --------------------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| Windows hosts reachable                             | WinRM or OpenSSH only | **+ every host with SMB** | SMB is on by default; WinRM is not, on client SKUs                                             |
+| Collector items served natively                     | 0                     | **18 of 31 (58.1%)**      | live dispatch table, not a hand list                                                           |
+| Unserved items with a stated reason                 | —                     | **13 of 13 (100%)**       | pinned by test                                                                                 |
+| Windows checks producing a verdict over SMB         | 0                     | **6 of 20**               | measured on the real host                                                                      |
+| Windows checks producing a _wrong_ verdict over SMB | 0                     | **0**                     | the other 13 are ERROR, never PASS — three posture defects found in review and fixed, see 9I.9 |
 
 The honest framing: **SMB widens reach, WinRM keeps depth.** WinRM produced 19
 verdicts on the same host to SMB's 6, because it can run commands and SMB
@@ -3450,7 +3450,72 @@ pin holds and the conflict is recorded beside the new requirement.
 - **No disposable Windows target exists.** Validation used one live host, so
   the domain-joined case, the standard-user case and Server SKUs are unproven.
 
-### 9I.9 Definition of Done — Phase 12
+### 9I.9 Post-phase review — three integrity defects, found and fixed
+
+A focused read-only review of Phase 12 found two defects, and fixing the first
+uncovered a third of the same kind. None could have been caught by the phase's
+own tests, which asserted the executor's behaviour rather than the path through
+it.
+
+**1. An unserved item became a security verdict.** `_run_json` returns `{}` both
+for "the host answered with nothing" and for "this transport never asked", and
+the posture code read `{}` as data. Over SMB that meant:
+
+| Unserved input   | Derived                       | Effect                                                                                            |
+| ---------------- | ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `telnet_status`  | `telnet_disabled = True`      | **unearned PASS**, reaching compliance rule `crl_telnet_disabled_v1` and a PASS row in the report |
+| `netbios_status` | `netbios_disabled = False`    | fabricated finding on every SMB host                                                              |
+| `tls_status`     | `legacy_tls_disabled = False` | fabricated finding, with `None` in the message text                                               |
+
+This is the "Never synthesise evidence" defect the compliance engine records for
+the hardcoded `password_policy`, reintroduced for one transport.
+
+`WindowsCollector._reading()` now returns `None` for an item the transport did
+not serve, and each derivation **omits its key** rather than defaulting it.
+Absence then travels the whole path: `registry_hardening` and the evidence
+adapter stopped defaulting these keys to `False` — which was the same defect
+pointing the other way, a FAIL nothing established — and `None` is dropped by
+the adapter's existing `if v is not None`, which the engine reads as unassessed.
+`_hardening_row()` gives the report a third state, `NOT_ASSESSED`.
+
+Measured on the real host: `security_issues` went from two fabricated entries to
+two genuine ones (a non-default `D$` share, RDP enabled), the three rows render
+NOT_ASSESSED, and `smbv1` still returns a real PASS.
+
+**2. A type lost a real verdict.** Found while fixing the first, in the same
+function. `read_registry_value` returns text — correctly, because the
+configuration-audit collector compares against the string the WinRM path yields
+— so `_smbv1_status` handed the collector `"1"` where PowerShell yields `1`. The
+collector tests `smb1_raw.get("SMB1", 0) == 1`, and `"1" == 1` is False, so **a
+host with SMBv1 genuinely enabled read as SMBv1 disabled**. A false PASS on a
+real control, caused entirely by a type. The three registry-flag handlers coerce
+with `_as_int` now.
+
+**3. The SCMR fallback was half-built.** `_services` guarded its WMI call and
+fell back to SCMR; `query_service` did not. So on a host permitting 445 alone —
+the exact firewall shape the fallback exists for — every service _check_
+reported ERROR while the service _inventory_ succeeded. SCMR was plumbing with
+no assessment value on the check path.
+
+Validated against the live host with DCOM blocked client-side, nothing on the
+target changed:
+
+| Check                             | Result                                         |
+| --------------------------------- | ---------------------------------------------- |
+| Remote Registry still reachable   | UBR read                                       |
+| `query_service` real state        | `Running`, `source: scmr`                      |
+| Absent service                    | absent, not an error                           |
+| Inventory fallback                | **387** services via SCMR against 175 via WMI  |
+| Service checks producing verdicts | **3 verdicts, 0 errors** (previously 3 errors) |
+
+SCMR sees more than WMI because WMI omits driver services — the difference this
+transport documented from the start and could not previously act on.
+
+All three fixes are mutation-verified, and the tests now walk
+`SMBExecutor → WindowsCollector → registry_hardening → evidence adapter →
+report row` rather than the executor alone.
+
+### 9I.10 Definition of Done — Phase 12
 
 | Line                                                                             | Result                                                 |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------ |

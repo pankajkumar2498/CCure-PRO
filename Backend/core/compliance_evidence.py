@@ -367,7 +367,16 @@ class ComplianceEvidenceProvider:
         custom_attrs = (asset.custom_attributes or {}) if asset else {}
 
         rdp_disabled = registry_attrs.get("rdp_disabled", False)
-        rdp_nla_enforced = registry_attrs.get("rdp_nla_enforced", False) or rdp_disabled
+        # A host with RDP switched off satisfies "NLA is enforced" whatever the
+        # NLA setting says, so that stays a real answer. Otherwise an unread NLA
+        # setting is unknown rather than unenforced.
+        _nla_raw = registry_attrs.get("rdp_nla_enforced")
+        if rdp_disabled:
+            rdp_nla_enforced = True
+        elif _nla_raw is None:
+            rdp_nla_enforced = None
+        else:
+            rdp_nla_enforced = bool(_nla_raw)
 
         # --- PCI-DSS v4.0 FIM (File Integrity Monitoring) Detection ---
         fim_active = registry_attrs.get("fim_active", False) or custom_attrs.get(
@@ -451,10 +460,15 @@ class ComplianceEvidenceProvider:
             "remote_desktop_disabled": rdp_disabled,
             "audit_policy_configured": registry_attrs.get("audit_configured", False),
             # New normalized protocol hardening attributes
-            "smbv1_disabled": registry_attrs.get("smbv1_disabled", False),
-            "netbios_disabled": registry_attrs.get("netbios_disabled", False),
-            "legacy_tls_disabled": registry_attrs.get("legacy_tls_disabled", False),
-            "telnet_disabled": registry_attrs.get("telnet_disabled", False),
+            # No ``False`` default on these four: the key is absent when the
+            # transport did not collect the setting, and a default turns "not
+            # assessed" into a verdict. ``None`` is dropped by the comprehension
+            # at the end of this function, and a dropped key is what the engine
+            # reads as unassessed rather than breached.
+            "smbv1_disabled": registry_attrs.get("smbv1_disabled"),
+            "netbios_disabled": registry_attrs.get("netbios_disabled"),
+            "legacy_tls_disabled": registry_attrs.get("legacy_tls_disabled"),
+            "telnet_disabled": registry_attrs.get("telnet_disabled"),
             "rdp_nla_enforced": rdp_nla_enforced,
             # --- CERT-In Technical Checks ---
             "retention_days": registry_attrs.get("retention_days")

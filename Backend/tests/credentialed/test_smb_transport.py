@@ -596,3 +596,230 @@ def test_a_domain_qualified_principal_is_split_for_ntlm():
     )
     assert x.username == "svc_scan"
     assert x.domain == "CORP"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# An unserved item never becomes a security verdict
+#
+# The Phase 12 review found that `_run_json` returns `{}` both for "the host
+# answered with nothing" and for "this transport never asked", and the posture
+# code read `{}` as data. An absent `telnet_status` became
+# `telnet_disabled = True` — an unearned PASS that reached a compliance control
+# — while an absent `netbios_status` and `tls_status` each raised a finding on
+# every host this transport touched.
+#
+# These walk the whole path rather than the executor alone:
+#   SMBExecutor -> WindowsCollector -> registry_hardening -> compliance_evidence
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_POSTURE_KEYS = (
+    "telnet_disabled",
+    "netbios_disabled",
+    "legacy_tls_disabled",
+    "smbv1_disabled",
+    "rdp_nla_enforced",
+)
+
+
+def _security_section(executor):
+    from engines.credentialed.windows_collector import WindowsCollector
+
+    return WindowsCollector(executor)._collect_security()
+
+
+def test_an_unserved_posture_input_yields_no_derived_key():
+    """
+    The core assertion. Over SMB ``telnet_status``, ``netbios_status`` and
+    ``tls_status`` are unserved, and the derived key must be *absent* — not
+    True, not False. Absent is how this codebase says "not assessed".
+    """
+    data = _security_section(_FakeSMB())
+    for key in ("telnet_disabled", "netbios_disabled", "legacy_tls_disabled"):
+        assert key not in data, f"{key} was derived from an item nobody read"
+
+
+def test_an_unserved_posture_input_raises_no_finding():
+    """
+    The mirror of the above. Reading ``{}`` as data made every SMB scan report
+    NetBIOS enabled and a legacy TLS protocol enabled — on evidence that was
+    never gathered, with ``None`` printed in the message text.
+    """
+    issues = _security_section(_FakeSMB()).get("security_issues") or []
+    joined = " ".join(issues).lower()
+    assert "netbios" not in joined
+    assert "schannel" not in joined
+    assert "telnet" not in joined
+    assert "none" not in joined
+
+
+def test_a_served_posture_input_still_produces_its_verdict():
+    """
+    The fix must not silence a reading that *was* taken. WinRM serves all of
+    these and its behaviour is unchanged.
+    """
+    x = _FakeSMB(
+        registry={
+            (
+                "HKLM",
+                r"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters",
+                "SMB1",
+            ): "1"
+        }
+    )
+    data = _security_section(x)
+    assert data["smbv1_disabled"] is False
+    assert any("SMBv1" in issue for issue in data["security_issues"])
+
+
+def test_the_registry_hardening_block_carries_absence_through():
+    """
+    Second leg of the path. ``registry_hardening`` used to default a missing key
+    to ``False``, which asserts the *insecure* state — the same defect pointing
+    the other way, and a FAIL nothing established.
+    """
+    import inspect
+
+    import core.tasks as tasks_mod
+
+    source = inspect.getsource(tasks_mod)
+    for key in _POSTURE_KEYS:
+        assert 'system_data.get("%s", False)' % key not in source, key
+        assert 'system_data.get("%s")' % key in source, key
+
+
+def test_the_evidence_adapter_drops_an_unassessed_key():
+    """
+    Third leg. The ``if v is not None`` comprehension is what turns absence into
+    "not assessed", and it only fires if the adapter stops defaulting these keys
+    to False first.
+    """
+    import inspect
+
+    from core import compliance_evidence
+
+    source = inspect.getsource(compliance_evidence)
+    for key in (
+        "smbv1_disabled",
+        "netbios_disabled",
+        "legacy_tls_disabled",
+        "telnet_disabled",
+    ):
+        assert 'registry_attrs.get("%s", False)' % key not in source, key
+    assert "if v is not None" in source
+
+
+def test_a_hardening_row_for_an_unread_setting_is_not_assessed():
+    """
+    Fourth leg: the report. A row printing PASS or FAIL for a control nothing
+    examined is worse than one saying the scan looked at less.
+    """
+    from core.tasks import _credentialed_hardening_audits
+
+    audits = _credentialed_hardening_audits({"security_issues": []}, "windows")
+    for name in ("smbv1", "netbios", "legacy_tls", "telnet"):
+        assert audits[name]["status"] == "NOT_ASSESSED", name
+        assert audits[name]["disabled"] is None, name
+
+
+def test_a_hardening_row_for_a_read_setting_still_reports_a_verdict():
+    from core.tasks import _credentialed_hardening_audits
+
+    audits = _credentialed_hardening_audits(
+        {"security_issues": [], "telnet_disabled": True, "smbv1_disabled": False},
+        "windows",
+    )
+    assert audits["telnet"]["status"] == "PASS"
+    assert audits["smbv1"]["status"] == "FAIL"
+
+
+def test_rdp_off_still_satisfies_nla_without_reading_the_setting():
+    """
+    A host with RDP switched off passes whatever NLA says, so that answer needs
+    no reading and must not become NOT_ASSESSED.
+    """
+    from core.tasks import _credentialed_hardening_audits
+
+    audits = _credentialed_hardening_audits(
+        {"security_issues": [], "rdp_enabled": False}, "windows"
+    )
+    assert audits["rdp_nla"]["status"] == "PASS"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCMR is a real fallback, on the check path as well as the inventory path
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _DcomBlocked(_FakeSMB):
+    """SMB and Remote Registry reachable; DCOM refused. A 445-only firewall."""
+
+    def wmi_query(self, query, limit=5000):
+        raise SMBConnectionError("DCOM negotiation failed: [Errno 111] refused")
+
+
+def test_a_service_check_still_gets_real_state_when_dcom_is_blocked():
+    """
+    The defect: ``_services`` had this fallback and ``query_service`` did not,
+    so on exactly the host the fallback exists for, every service *check*
+    reported ERROR while the service *inventory* succeeded.
+    """
+    x = _DcomBlocked(
+        services=[
+            {"Name": "Spooler", "DisplayName": "Print Spooler", "State": "Running"}
+        ]
+    )
+    record = x.query_service("Spooler")
+    assert record is not None
+    assert record["status"] == "Running"
+    assert record["source"] == "scmr"
+
+
+def test_a_service_absent_from_scmr_is_still_absent_not_an_error():
+    x = _DcomBlocked(
+        services=[{"Name": "Spooler", "DisplayName": "s", "State": "Running"}]
+    )
+    assert x.query_service("TlntSvr") is None
+
+
+def test_the_inventory_path_also_falls_back():
+    import json
+
+    x = _DcomBlocked(
+        services=[
+            {"Name": "Spooler", "DisplayName": "Print Spooler", "State": "Running"},
+            {"Name": "Dead", "DisplayName": "d", "State": "Stopped"},
+        ]
+    )
+    payload = json.loads(x.run_named("services").stdout)
+    assert [row["Name"] for row in payload] == ["Spooler"]
+
+
+def test_a_service_check_over_a_dcom_blocked_host_produces_a_verdict():
+    """End to end: the check, not just the primitive."""
+    from core.checks.contract import CheckOutcome
+    from core.config_audit import ConfigAuditEngine
+    from core.config_audit.builtin import builtin_checks
+
+    check = next(
+        c for c in builtin_checks() if c.check_id == "ccure.win.telnet.server_absent"
+    )
+    x = _DcomBlocked(
+        services=[{"Name": "Spooler", "DisplayName": "s", "State": "Running"}]
+    )
+    result = ConfigAuditEngine().run_check(check, _ctx(x))
+    assert result.outcome is not CheckOutcome.ERROR
+
+
+def test_scmr_being_down_too_is_an_error_not_a_clean_result():
+    """
+    Both sources gone means nothing was established. It must not read as "the
+    service is not installed", which for a telnet rule is a pass.
+    """
+
+    class _Nothing(_DcomBlocked):
+        def service_states(self):
+            raise SMBConnectionError("svcctl unreachable")
+
+    with pytest.raises(SMBError):
+        _Nothing().query_service("TlntSvr")

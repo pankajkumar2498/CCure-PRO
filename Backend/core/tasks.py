@@ -591,11 +591,17 @@ def _sync_credentialed_asset_identity(
         "rdp_disabled": not rdp_enabled,
         "uac_enabled": not uac_disabled,
         "audit_configured": audit_configured,
-        "smbv1_disabled": system_data.get("smbv1_disabled", False),
-        "netbios_disabled": system_data.get("netbios_disabled", False),
-        "legacy_tls_disabled": system_data.get("legacy_tls_disabled", False),
-        "telnet_disabled": system_data.get("telnet_disabled", False),
-        "rdp_nla_enforced": system_data.get("rdp_nla_enforced", False),
+        # No ``False`` default: an absent key means the collector did not read
+        # the setting, and defaulting it asserts the insecure state as fact —
+        # a FAIL nothing established, which is the same defect as the PASS the
+        # collector used to synthesise, pointing the other way. ``None`` travels
+        # to the evidence adapter, which drops it, and a dropped key routes the
+        # rule to manual review.
+        "smbv1_disabled": system_data.get("smbv1_disabled"),
+        "netbios_disabled": system_data.get("netbios_disabled"),
+        "legacy_tls_disabled": system_data.get("legacy_tls_disabled"),
+        "telnet_disabled": system_data.get("telnet_disabled"),
+        "rdp_nla_enforced": system_data.get("rdp_nla_enforced"),
     }
 
     asset.custom_attributes = attrs
@@ -2679,6 +2685,31 @@ def _sync_configuration_compliance(
         return None
 
 
+def _hardening_row(label: str, good: bool | None, pass_detail: str, fail_detail: str):
+    """
+    One hardening row, with a third state for "nobody looked".
+
+    ``good is None`` means the collector did not read the setting — the SMB
+    transport serves a subset of the Windows inventory, so this is a normal
+    outcome rather than a fault. It renders as NOT_ASSESSED, never as PASS or
+    FAIL: a report claiming a control passed on evidence it never gathered is
+    the failure mode this whole distinction exists to prevent.
+    """
+    if good is None:
+        return {
+            "label": label,
+            "disabled": None,
+            "status": "NOT_ASSESSED",
+            "detail": "Not assessed — this scan did not read the setting.",
+        }
+    return {
+        "label": label,
+        "disabled": bool(good),
+        "status": "PASS" if good else "FAIL",
+        "detail": pass_detail if good else fail_detail,
+    }
+
+
 def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
     """Host hardening posture, derived from what the authenticated session read."""
     issues = system_data.get("security_issues") or []
@@ -2698,11 +2729,15 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
     else:
         fw_active = not fw_disabled
 
-    smbv1_disabled = system_data.get("smbv1_disabled", False)
-    netbios_disabled = system_data.get("netbios_disabled", False)
-    legacy_tls_disabled = system_data.get("legacy_tls_disabled", False)
-    telnet_disabled = system_data.get("telnet_disabled", False)
-    rdp_nla_enforced = system_data.get("rdp_nla_enforced", False)
+    # ``None`` where the collector did not read the setting. The rows below use
+    # `_hardening_row`, which renders that as NOT ASSESSED — a report that
+    # prints PASS or FAIL for a control nothing examined is worse than one that
+    # says it looked at less.
+    smbv1_disabled = system_data.get("smbv1_disabled")
+    netbios_disabled = system_data.get("netbios_disabled")
+    legacy_tls_disabled = system_data.get("legacy_tls_disabled")
+    telnet_disabled = system_data.get("telnet_disabled")
+    rdp_nla_enforced = system_data.get("rdp_nla_enforced")
 
     hardening_audits = {
         "firewall": {
@@ -2715,46 +2750,31 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
                 else "Host firewall is disabled or ufw/iptables service is inactive."
             ),
         },
-        "smbv1": {
-            "label": "SMBv1 Status",
-            "disabled": smbv1_disabled,
-            "status": "PASS" if smbv1_disabled else "FAIL",
-            "detail": (
-                "Legacy SMBv1 protocol is disabled."
-                if smbv1_disabled
-                else "Legacy SMBv1 protocol is enabled/allowed."
-            ),
-        },
-        "netbios": {
-            "label": "NetBIOS Status",
-            "disabled": netbios_disabled,
-            "status": "PASS" if netbios_disabled else "FAIL",
-            "detail": (
-                "NetBIOS over TCP/IP is disabled."
-                if netbios_disabled
-                else "NetBIOS over TCP/IP is active on one or more network adapters."
-            ),
-        },
-        "legacy_tls": {
-            "label": "Legacy TLS Status",
-            "disabled": legacy_tls_disabled,
-            "status": "PASS" if legacy_tls_disabled else "FAIL",
-            "detail": (
-                "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) are disabled."
-                if legacy_tls_disabled
-                else "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled."
-            ),
-        },
-        "telnet": {
-            "label": "Telnet Status",
-            "disabled": telnet_disabled,
-            "status": "PASS" if telnet_disabled else "FAIL",
-            "detail": (
-                "Telnet service is disabled."
-                if telnet_disabled
-                else "Telnet service/daemon is running or client package is installed."
-            ),
-        },
+        "smbv1": _hardening_row(
+            "SMBv1 Status",
+            smbv1_disabled,
+            "Legacy SMBv1 protocol is disabled.",
+            "Legacy SMBv1 protocol is enabled/allowed.",
+        ),
+        "netbios": _hardening_row(
+            "NetBIOS Status",
+            netbios_disabled,
+            "NetBIOS over TCP/IP is disabled.",
+            "NetBIOS over TCP/IP is active on one or more network adapters.",
+        ),
+        "legacy_tls": _hardening_row(
+            "Legacy TLS Status",
+            legacy_tls_disabled,
+            "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) "
+            "are disabled.",
+            "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled.",
+        ),
+        "telnet": _hardening_row(
+            "Telnet Status",
+            telnet_disabled,
+            "Telnet service is disabled.",
+            "Telnet service/daemon is running or client package is installed.",
+        ),
     }
 
     if os_type == "windows":
@@ -2770,20 +2790,17 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
                         else "Remote Desktop is enabled (requires secure NLA and restricted access)."
                     ),
                 },
-                "rdp_nla": {
-                    "label": "RDP NLA Enforcement",
-                    "disabled": rdp_nla_enforced,
-                    "status": (
-                        "PASS"
-                        if rdp_nla_enforced
-                        else ("FAIL" if rdp_enabled else "PASS")
-                    ),
-                    "detail": (
-                        "Network Level Authentication (NLA) is enforced for RDP."
-                        if rdp_nla_enforced
-                        else "RDP is enabled but Network Level Authentication (NLA) is not enforced."
-                    ),
-                },
+                # A host with RDP switched off passes whatever the NLA setting
+                # says, so that answer needs no reading. Only when RDP *is*
+                # enabled does an unread NLA setting leave the control
+                # unassessed rather than breached.
+                "rdp_nla": _hardening_row(
+                    "RDP NLA Enforcement",
+                    True if not rdp_enabled else rdp_nla_enforced,
+                    "Network Level Authentication (NLA) is enforced for RDP.",
+                    "RDP is enabled but Network Level Authentication (NLA) is "
+                    "not enforced.",
+                ),
             }
         )
 

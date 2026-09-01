@@ -870,66 +870,78 @@ class WindowsCollector:
             data["password_policy"] = pwd_policy
 
         # Safe Protocol Hardening Checks
-        smb1_raw = self._run_json("smbv1_status")
-        smbv1_disabled = not (
-            smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False)
-        )
-        data["smbv1_disabled"] = smbv1_disabled
-        if not smbv1_disabled:
-            issues.append("Legacy SMBv1 protocol is enabled")
-
-        netbios_raw = self._run_json("netbios_status")
-        netbios_list = (
-            netbios_raw
-            if isinstance(netbios_raw, list)
-            else [netbios_raw] if isinstance(netbios_raw, dict) else []
-        )
-        netbios_disabled = True
-        if netbios_list:
-            for adapter in netbios_list:
-                # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
-                if adapter.get("NetbiosOptions") != 2:
-                    netbios_disabled = False
-                    break
-        else:
-            netbios_disabled = False
-        data["netbios_disabled"] = netbios_disabled
-        if not netbios_disabled:
-            issues.append(
-                "NetBIOS over TCP/IP is enabled on one or more network adapters"
+        # Each of the three below omits its key when the item was not collected.
+        # Defaulting instead is how an unread input became a security statement:
+        # an absent `telnet_status` read as "Telnet is disabled" and passed a
+        # compliance control, while an absent `netbios_status` and `tls_status`
+        # each raised a finding on every host this transport touched.
+        smb1_raw = self._reading("smbv1_status")
+        if smb1_raw is not None:
+            smbv1_disabled = not (
+                smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False)
             )
+            data["smbv1_disabled"] = smbv1_disabled
+            if not smbv1_disabled:
+                issues.append("Legacy SMBv1 protocol is enabled")
 
-        tls_raw = self._run_json("tls_status")
-        tls_list = (
-            tls_raw
-            if isinstance(tls_raw, list)
-            else [tls_raw] if isinstance(tls_raw, dict) else []
-        )
-        legacy_tls_disabled = True
-        for proto in tls_list:
-            if proto.get("Enabled", 1) == 1:
-                legacy_tls_disabled = False
+        netbios_raw = self._reading("netbios_status")
+        if netbios_raw is not None:
+            netbios_list = (
+                netbios_raw
+                if isinstance(netbios_raw, list)
+                else [netbios_raw] if isinstance(netbios_raw, dict) else []
+            )
+            netbios_disabled = True
+            if netbios_list:
+                for adapter in netbios_list:
+                    # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
+                    if adapter.get("NetbiosOptions") != 2:
+                        netbios_disabled = False
+                        break
+            else:
+                netbios_disabled = False
+            data["netbios_disabled"] = netbios_disabled
+            if not netbios_disabled:
                 issues.append(
-                    f"Legacy SChannel protocol {proto.get('Protocol')} ({proto.get('Type')}) is enabled"
+                    "NetBIOS over TCP/IP is enabled on one or more network adapters"
                 )
-        data["legacy_tls_disabled"] = legacy_tls_disabled
 
-        nla_raw = self._run_json("rdp_nla_status")
-        rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
-        data["rdp_nla_enforced"] = rdp_nla_enforced
-        if not rdp_nla_enforced and rdp_enabled:
-            issues.append(
-                "RDP is enabled but Network Level Authentication (NLA) is not enforced"
+        tls_raw = self._reading("tls_status")
+        if tls_raw is not None:
+            tls_list = (
+                tls_raw
+                if isinstance(tls_raw, list)
+                else [tls_raw] if isinstance(tls_raw, dict) else []
             )
+            legacy_tls_disabled = True
+            for proto in tls_list:
+                if proto.get("Enabled", 1) == 1:
+                    legacy_tls_disabled = False
+                    issues.append(
+                        f"Legacy SChannel protocol {proto.get('Protocol')} "
+                        f"({proto.get('Type')}) is enabled"
+                    )
+            data["legacy_tls_disabled"] = legacy_tls_disabled
 
-        telnet_raw = self._run_json("telnet_status")
-        telnet_disabled = not (
-            telnet_raw.get("ServiceRunning", False)
-            or telnet_raw.get("FeatureEnabled", False)
-        )
-        data["telnet_disabled"] = telnet_disabled
-        if not telnet_disabled:
-            issues.append("Telnet client or server is enabled/running")
+        nla_raw = self._reading("rdp_nla_status")
+        if nla_raw is not None:
+            rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
+            data["rdp_nla_enforced"] = rdp_nla_enforced
+            if not rdp_nla_enforced and rdp_enabled:
+                issues.append(
+                    "RDP is enabled but Network Level Authentication (NLA) is "
+                    "not enforced"
+                )
+
+        telnet_raw = self._reading("telnet_status")
+        if telnet_raw is not None:
+            telnet_disabled = not (
+                telnet_raw.get("ServiceRunning", False)
+                or telnet_raw.get("FeatureEnabled", False)
+            )
+            data["telnet_disabled"] = telnet_disabled
+            if not telnet_disabled:
+                issues.append("Telnet client or server is enabled/running")
 
         data["security_issues"] = issues
         return data
@@ -1042,6 +1054,26 @@ class WindowsCollector:
     def _run_json(self, key: str) -> Any:
         """Run a named command and parse its output as JSON."""
         return self._decode_json(self._run(key), key)
+
+    def _reading(self, key: str) -> Any:
+        """
+        The parsed reading for a named item, or ``None`` if it was not collected.
+
+        The distinction ``_run_json`` cannot make. It returns ``{}`` both for "the
+        host answered with nothing" and for "this transport never asked", and the
+        posture code below then reads ``{}`` as data: a missing ``telnet_status``
+        became ``telnet_disabled = True``, which is an unearned security
+        assertion that travelled all the way to a passing compliance control.
+
+        A caller must test ``is None`` and **omit the derived key** rather than
+        default it. Omission is the established signal for "not assessed" — the
+        evidence adapter drops ``None`` values, and a dropped key routes the rule
+        to manual review instead of to a verdict nothing established.
+        """
+        raw = self._run(key)
+        if key in self._unavailable:
+            return None
+        return self._decode_json(raw, key)
 
     def _decode_json(self, raw: str, label: str) -> Any:
         """

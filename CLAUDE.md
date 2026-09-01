@@ -685,11 +685,36 @@ still the deeper transport.
   Remote Registry and no WMI. Each subsystem is opened lazily and independently
   so losing one does not lose the others.
 
+- **An item this transport does not serve must not become a security fact.**
+  `_run_json` returns `{}` both for "the host answered with nothing" and for
+  "nobody asked", and the posture code used to read `{}` as data: an absent
+  `telnet_status` became `telnet_disabled = True`, an unearned PASS that reached
+  a compliance control, while an absent `netbios_status` and `tls_status` each
+  raised a finding on every SMB host. Use `WindowsCollector._reading(key)`,
+  which returns `None` when the item was not collected, and **omit the derived
+  key** — absence is how this codebase says "not assessed". Do not restore a
+  `False` default anywhere on that path (`registry_hardening`, the evidence
+  adapter): `False` asserts the insecure state, which is the same defect
+  pointing at a FAIL. `_hardening_row()` renders the third state.
+
+- **Registry values arrive as text, and the posture handlers need numbers.**
+  `read_registry_value` returns a string because the configuration-audit
+  collector compares against the string the WinRM path yields. The posture
+  handlers must coerce with `_as_int`: the collector tests
+  `smb1_raw.get("SMB1", 0) == 1`, and `"1" == 1` is False, so a host with SMBv1
+  genuinely enabled read as SMBv1 disabled.
+
 - **Four error types, as on every other transport** — rejected credential,
   insufficient privilege, nothing listening, subsystem switched off. impacket's
   rejection text contains none of "401", "unauthorized" or "authentication", so
   it is matched explicitly; without that a refused password classifies as a
   connection error and the operator goes looking at the firewall.
+
+- **`query_service` falls back to SCMR, like `_services` does.** It did not, and
+  on a host permitting 445 alone — the firewall shape the fallback exists for —
+  every service *check* reported ERROR while the service *inventory* succeeded.
+  Both sources failing is an exception, never "the service is not installed",
+  which for a telnet rule would be a pass.
 
 - **`UNSERVED_KEYS` is the honest account of what this transport does not
   collect**, and every entry carries a reason. 18 of 31 collector items are

@@ -608,19 +608,37 @@ class SMBExecutor:
         product, not defensive style.
         """
         safe = str(name).replace("\\", "\\\\").replace('"', '\\"')
-        rows = self.wmi_query(
-            "SELECT Name, State, StartMode, PathName, StartName "
-            f'FROM Win32_Service WHERE Name = "{safe}"',
-            limit=2,
-        )
+        try:
+            rows = self.wmi_query(
+                "SELECT Name, State, StartMode, PathName, StartName "
+                f'FROM Win32_Service WHERE Name = "{safe}"',
+                limit=2,
+            )
+        except SMBError as exc:
+            # DCOM unreachable, which is the common shape of a firewall that
+            # permits 445 alone — WMI negotiates a dynamic high port after the
+            # endpoint mapper on 135. SCMR runs over the SMB session that is
+            # already open, so the check still gets a real answer.
+            #
+            # ``_services`` has had this fallback since the transport was
+            # written and this method did not, so on exactly the host the
+            # fallback exists for, every service *check* reported ERROR while
+            # the service *inventory* succeeded.
+            log.debug("WMI service query failed, falling back to SCMR: %s", exc)
+            rows = []
+
         if not rows:
-            # WMI omits driver services entirely, so a name it does not know may
-            # still be a real service. SCMR sees those, and is consulted before
+            # Also reached when WMI answers and knows nothing of the name: it
+            # omits driver services entirely, so SCMR is consulted before
             # concluding the service is absent.
             for entry in self.service_states():
                 if entry["Name"].lower() == str(name).lower():
                     return {
                         "status": entry["State"],
+                        # SCMR carries the running state but not the start mode;
+                        # empty means "not available from this source", and the
+                        # collector renders that as unavailable rather than as a
+                        # start mode of "".
                         "start_mode": "",
                         "source": "scmr",
                     }
@@ -973,6 +991,25 @@ def _network_iface(x: SMBExecutor) -> List[Dict[str, Any]]:
     ]
 
 
+def _as_int(raw: Optional[str]) -> Optional[int]:
+    """
+    A registry DWORD as the number PowerShell would have produced.
+
+    ``read_registry_value`` returns text, because the configuration-audit
+    collector compares against the string the WinRM path yields. The posture
+    handlers below need the *number*: the collector tests
+    ``smb1_raw.get("SMB1", 0) == 1``, and ``"1" == 1`` is False — so a host with
+    SMBv1 genuinely enabled read as SMBv1 disabled. A false PASS on a real
+    security control, caused entirely by a type.
+    """
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _registry_flag(path: str, value: str, key: str):
     """Build a handler that reads one registry value into a named field."""
 
@@ -987,7 +1024,10 @@ def _smbv1_status(x: SMBExecutor) -> Dict[str, Any]:
     raw = x.read_registry_value(
         "HKLM", r"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1"
     )
-    return {"SMB1": None if raw is None else raw, "FeatureEnabled": None}
+    # ``FeatureEnabled`` stays None: it comes from Get-WindowsOptionalFeature,
+    # which this transport cannot run. The collector ORs the two, so None
+    # contributes nothing rather than asserting the feature is absent.
+    return {"SMB1": _as_int(raw), "FeatureEnabled": None}
 
 
 def _rdp_nla_status(x: SMBExecutor) -> Dict[str, Any]:
@@ -996,7 +1036,7 @@ def _rdp_nla_status(x: SMBExecutor) -> Dict[str, Any]:
         r"System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp",
         "UserAuthentication",
     )
-    return {"UserAuthentication": None if raw is None else raw}
+    return {"UserAuthentication": _as_int(raw)}
 
 
 def _rdp_status(x: SMBExecutor) -> Dict[str, Any]:
@@ -1005,7 +1045,7 @@ def _rdp_status(x: SMBExecutor) -> Dict[str, Any]:
         r"System\CurrentControlSet\Control\Terminal Server",
         "fDenyTSConnections",
     )
-    return {"fDenyTSConnections": None if raw is None else raw}
+    return {"fDenyTSConnections": _as_int(raw)}
 
 
 #: Command key → native handler. A key absent from this map falls through to the

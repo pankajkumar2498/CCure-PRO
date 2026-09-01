@@ -3727,6 +3727,241 @@ stamps head, and **CHECK constraint changes are not gap-filled**.
 
 ---
 
+## 9K. Loading published STIG content — the Phase 10 reader applied to real benchmarks
+
+**Content, not code.** Phase 10 built the SCAP reader and validated it against
+two live hosts and against `oscap`. Nothing was ever loaded. Measured on the
+live catalogue immediately before this work:
+
+| Measure                                          | Before |
+| ------------------------------------------------ | ------ |
+| Frameworks with the `cfw_bm_` prefix             | **0**  |
+| `compliance_rules` with `check_type='scap_rule'` | **0**  |
+| `compliance_rules` carrying a `config_check`     | **0**  |
+
+So the Phase 3 engine, the Phase 4 pack loader and the Phase 10 converter were
+all present, tested and loading nothing. The product's assessable content was
+the 155 Python built-ins. This section is the record of closing that, and of
+the one defect that made it impossible.
+
+### 9K.1 What was loaded, and what was deliberately not
+
+Source: **SCAP Security Guide v0.1.81**, published 2026-06-01, BSD-3-Clause,
+from the ComplianceAsCode release page. **Nothing is committed to this
+repository** — the datastreams and the converted packs live outside the tree
+under `D:/ccure-feeds/scap/`, which is also why `Backend/data/benchmarks/` was
+left alone: it is not gitignored, so a pack written there is one `git add -A`
+away from committing content.
+
+The release ships **38 datastreams and every one is Linux**. SSG publishes no
+Windows content at all, which is independent confirmation of Phase 10's
+decision to declare the whole Windows OVAL schema out of scope rather than ship
+it unvalidated.
+
+Six were extracted as candidates; **only four carry an
+`xccdf_org.ssgproject.content_profile_stig` profile**. Debian 12 and AlmaLinux 9
+publish CIS and ANSSI profiles but no STIG, so they are not STIG content and
+were not converted as though they were.
+
+| Benchmark         | Controls | Automated       | Manual | Unimplemented | NIST crosswalk |
+| ----------------- | -------- | --------------- | ------ | ------------- | -------------- |
+| `STIG_RHEL9`      | 488      | **257** (52.7%) | 8      | 223           | 409            |
+| `STIG_RHEL8`      | 392      | **218** (55.6%) | 9      | 165           | 315            |
+| `STIG_UBUNTU2404` | 240      | **144** (60.0%) | 5      | 91            | 151            |
+| `STIG_UBUNTU2204` | 230      | **138** (60.0%) | 5      | 87            | 146            |
+| **Total**         | **1350** | **757**         | 27     | 566           | 1021           |
+
+RHEL 9's **257** and Ubuntu 24.04's **144** reproduce Phase 10's recorded
+validation figures exactly, including the 144 that `oscap` 1.3.9 agreed with
+144/144 — and the `local_variable` gap comes back as 97 + 14 = **111** rules on
+RHEL 9, the precise number §9D.9 names. The converter is deterministic against
+the same content, which is what those numbers being reproducible proves.
+
+Content digests, recorded because `--expected-digest` was supplied on every
+conversion and a mismatch is refused:
+
+| Datastream              | SHA-256                                                            |
+| ----------------------- | ------------------------------------------------------------------ |
+| `ssg-rhel9-ds.xml`      | `c5399594781184f6a0b223dbc74b3bb2730dfdb0a6791ba8b233e3c9b7c36252` |
+| `ssg-rhel8-ds.xml`      | `92106d0a737b2f9ad5d1db77f4a41635c31faf519cc27f4d0eab456a864eb5be` |
+| `ssg-ubuntu2404-ds.xml` | `1e0a80f096a0c4ae86bbc6374b5897c33d303c585c681ae6fbc1f760d9c08742` |
+| `ssg-ubuntu2204-ds.xml` | `e85f31b6780821a1b27dce6d9865a41a2c7985e12fc14df1070143401db4ab53` |
+
+`--publisher "SCAP Security Guide"` and `--licence BSD-3-Clause` were supplied
+on every load and are on all four framework records. **An SSG result is not a
+DISA certification** and the record has to be able to say so.
+
+### 9K.2 The ceiling that made the load impossible
+
+The first load failed outright:
+
+    load failed, nothing written: value too long for type character varying(50)
+      control_number: harden_sshd_ciphers_opensshserver_conf_crypto_policy   (52 chars)
+
+`compliance_controls.control_number` was `varchar(50)`, and its comment says
+what it was sized for: `# e.g. "8.24"`. Every one of the thirteen catalogues
+that ships in this repository numbers its controls — `8.24`, `A.5.1`,
+`PR.AA-05` — so the ceiling was invisible for thirteen frameworks and for both
+CCURE baseline packs.
+
+**A benchmark recommendation is not numbered, it is named.** Measured across
+the four packs: 1,350 controls, of which **24 exceed 50 characters**, longest
+**62**.
+
+Two things make this worth recording rather than just fixing:
+
+- **It is the `cve_id varchar(30)` defect again**, one table over. There too a
+  minted identifier overflowed a column sized for a different kind of
+  identifier, and there too the failure was not local: the load is one
+  transaction, so seven over-long controls rejected all 488 of RHEL 9's.
+- **Phase 10 could not have caught it.** Its validation evaluated converted
+  packs against live hosts — the path that proves the OVAL probes work. The
+  path from a converted pack _into the catalogue_ was only ever exercised with
+  the two CCURE baseline packs, whose control numbers are short. A reader can
+  be fully validated and still have never written a row.
+
+Migration **`f4a5b6c7d8e9`** widens the column to 100, matching the sibling
+`compliance_controls.id` this value is slugged into. Round-tripped on the live
+schema: 50 → 100 → 50 → 100.
+
+**Truncating to fit was rejected**, and the constraint is the argument:
+`uq_framework_control_number` is UNIQUE on `(framework_id, control_number)`, so
+two sibling recommendations sharing a 50-character prefix would collide — one
+row standing for two different requirements in a compliance report. That is the
+rule `definition_id_for_check` already applies to catalogue identifiers, and the
+reason it refuses an over-long id rather than shortening it.
+
+Measured after the load: longest stored `control_number` is **62**, with **24
+rows over 50** — the migration is load-bearing, not precautionary.
+
+### 9K.3 Two failures that were not data failures
+
+Both rolled back cleanly, and both are recorded because they look alarming in a
+log and are not.
+
+- **The truncation above.** `load_stig --load` wraps the write and reported
+  `load failed, nothing written`. Verified against the database: 0 benchmark
+  frameworks, `compliance_controls` still 956. The handling is correct.
+- **A `UnicodeEncodeError` on the Windows console.** `load_benchmark.py` prints
+  an em-dash in its per-pack summary; the default cp1252 console cannot encode
+  it, and the resulting exception reached the script's own rollback. The
+  transaction protection worked — nothing was written — but **the operation
+  failed for a reason that has nothing to do with the data**. Worked around
+  with `PYTHONIOENCODING=utf-8`. Recorded in the carry-forward list, not fixed
+  here: it is a portability defect in a script this section merely used.
+
+### 9K.4 Result
+
+| Measure                   | Before | After    | Δ         |
+| ------------------------- | ------ | -------- | --------- |
+| Frameworks                | 13     | 17       | +4        |
+| Benchmark frameworks      | 0      | **4**    | +4        |
+| `compliance_controls`     | 956    | **2306** | **+1350** |
+| `compliance_rules`        | 1357   | **2114** | **+757**  |
+| …active                   | 770    | 1527     | +757      |
+| …`check_type='scap_rule'` | 0      | **757**  | +757      |
+| Rule → control links      | 2773   | 3530     | +757      |
+
+All four load as `tenant_id IS NULL` global frameworks, and `is_active()`
+returns True for each through `BENCHMARK_FRAMEWORK_PREFIX` — loading a benchmark
+_is_ the decision to use it, so no second installation-wide activation step
+exists or is needed.
+
+### 9K.5 The tenant gate — and the install that made the content live
+
+`benchmark_checks_for_org` applies **two** gates, and loading satisfies only
+one. The second is `ComplianceTenantFramework.is_enabled`. Immediately after
+the load, **0 tenant rows existed for `cfw_bm_%`** against 52 for the shipped
+catalogues — so all 757 rules would have selected **nothing** on a scan.
+Content that loads cleanly and then silently scores nothing is precisely the
+failure the `cfw_bm_` prefix exists to prevent one layer up, and it is
+reachable again at the tenant layer.
+
+That is the designed two-layer model rather than a defect:
+`POST /compliance/marketplace/{id}/install` is the path,
+`require_active_framework` admits a `cfw_bm_` id, and
+`GET /compliance/marketplace` discovers loaded benchmarks from the catalogue
+precisely because they can never appear in a hardcoded tuple.
+
+All four were installed for **`org_default`** by calling the product's own
+`install_marketplace_framework` handler rather than writing tenant rows by
+hand. That distinction matters: the handler also bootstraps the framework's
+default policy baseline and links every active rule into it, so an install
+assembled from SQL would have produced a tenant row with no policy behind it.
+It also writes an audit event, so the install is on the record.
+
+**`org_king` is empty** — no users at all. Its _name_ is "superadmin", which
+makes it read as the administrator's organisation in any listing; the
+superadmin account `admin@ccurepro.com` is in `org_default`, together with the
+org_admin and both analysts. Recorded because the name will mislead the next
+person too.
+
+Verified after installing:
+
+| Measure                                              | Result                                               |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| Frameworks in scope for `org_default`                | 6 — ISO 27001, NIST CSF 2.0, and the four benchmarks |
+| Executable checks `benchmark_checks_for_org` returns | **757**                                              |
+| Their `check_type`                                   | `scap_rule`, all 757                                 |
+| Their platform targeting                             | `linux`, all 757                                     |
+| Severity spread                                      | 55 high, 646 medium, 56 low                          |
+
+The other three organisations were deliberately left alone. Installing is one
+reversible boolean per (tenant, framework) and `POST …/uninstall` is the path
+back.
+
+What is worth recording is that **`scripts/set_active_frameworks.py` cannot do
+this.** It iterates `ALL_FRAMEWORK_IDS`, the thirteen shipped catalogues, so a
+loaded benchmark has no command-line installation path — only the API. That is
+a real gap in the Phase 4 loading story and is left as a recorded decision
+rather than patched in passing.
+
+### 9K.6 Validation status — stated precisely
+
+The programme's rule is that content loading is not capability. Distinguishing
+what this actually establishes:
+
+| Claim                                                                     | Status                                          |
+| ------------------------------------------------------------------------- | ----------------------------------------------- |
+| Content converts with zero errors                                         | ✅ all four, digests pinned                     |
+| Conversion reproduces Phase 10's validated figures                        | ✅ RHEL 9 257, Ubuntu 24.04 144, exactly        |
+| Content loads into the catalogue                                          | ✅ 1350 controls, 757 rules, one transaction    |
+| Frameworks are active and installable                                     | ✅ verified in code and against the database    |
+| Installed for a tenant, via the product's own handler                     | ✅ `org_default`, default policy baseline built |
+| Catalogue → selection returns executable checks                           | ✅ **757**, all `scap_rule`, all `linux`        |
+| RHEL 9 / Ubuntu 24.04 rules evaluate against a live host                  | ✅ **in Phase 10**, from packs — not re-proven  |
+| RHEL 8 / Ubuntu 22.04 rules evaluate against a live host                  | ❌ **never target-validated**                   |
+| A credentialed scan evaluates these **catalogue-loaded** rules end to end | ❌ **not demonstrated**                         |
+
+The last row is the honest limit of this work. Phase 10 proved
+pack → engine → verdict against Rocky 9 and Ubuntu. What is _not_ proven is
+catalogue → `benchmark_checks_for_org` → engine → verdict against a live host.
+Two of those three arrows are now proven: the tenant install is done and the
+selection returns 757 executable checks. The unproven link is the last one —
+no credentialed scan has yet run a catalogue-loaded STIG rule against a real
+Linux target and produced a verdict. `tests/compliance/test_benchmark_end_to_end.py`
+covers the path in automation; a real target has not.
+
+RHEL 8 and Ubuntu 22.04 introduce **no OVAL test type** that RHEL 9 and Ubuntu
+24.04 did not already exercise, so the conversion is on proven ground — but
+"the mechanism is the same" is an argument, not a measurement, exactly as
+§9F.7 records for FTP AUTH TLS.
+
+### 9K.7 Coverage — no figure moves, deliberately
+
+`scripts/measure_scap_coverage.py` measures the **reader** against the SCAP
+surface: 52 frozen areas, 33 implemented, 63.5%. Loading content does not
+implement an OVAL test type, so the figure is unchanged and must be.
+
+What changed is not a percentage but the denominator of the product's useful
+work: assessable Linux hardening content went from **155 built-in checks** to
+**155 + 757 = 912**, of which the 757 are published, attributable, versioned
+and crosswalked to NIST SP 800-53 on 1,021 controls. That is the largest single
+increase in assessable content in the programme, and it required one migration
+and no new engine.
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |

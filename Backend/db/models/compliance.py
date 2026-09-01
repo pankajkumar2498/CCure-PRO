@@ -343,7 +343,16 @@ class ComplianceControl(Base):
         nullable=False,
         index=True,
     )
-    control_number = Column(String(50), nullable=False)  # e.g. "8.24"
+    # 100, not 50. A shipped catalogue *numbers* its controls ("8.24"); a
+    # benchmark *names* its recommendations, and SSG STIG rule ids reach 62
+    # characters. Truncating to fit is not an option —
+    # uq_framework_control_number is UNIQUE, so two siblings sharing a
+    # 50-character prefix would collide into one row standing for two
+    # different requirements. Note `id` below is also 100 and is built from
+    # this value as `cct_<code>_<slug>`, so a control_number near this
+    # ceiling can still overflow it; that fails loudly and rolls back the
+    # whole load rather than truncating. See migration f4a5b6c7d8e9.
+    control_number = Column(String(100), nullable=False)  # e.g. "8.24"
     theme = Column(
         String(20), nullable=False
     )  # ORG, PPL, PHY, TECH, GV, ID, PR, DE, RS, RC, CIS_01..18, PCI_01..12, DPDP_*, GDPR_*

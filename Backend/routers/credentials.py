@@ -61,6 +61,7 @@ from db.models.compliance import (
     CREDENTIAL_TYPE_WINDOWS,
     DATABASE_TRANSPORTS,
     TRANSPORT_POSTGRESQL,
+    TRANSPORT_SMB,
     TRANSPORT_SSH,
     TRANSPORT_WINRM,
     USABLE_CREDENTIAL_TYPES,
@@ -103,7 +104,7 @@ TYPE_TRANSPORTS: Dict[str, tuple] = {
     CREDENTIAL_TYPE_SSH: (TRANSPORT_SSH,),
     # A Windows host is reachable either way: WinRM natively, or SSH through
     # the OpenSSH-on-Windows arrangement this product used to require.
-    CREDENTIAL_TYPE_WINDOWS: (TRANSPORT_WINRM, TRANSPORT_SSH),
+    CREDENTIAL_TYPE_WINDOWS: (TRANSPORT_WINRM, TRANSPORT_SMB, TRANSPORT_SSH),
     CREDENTIAL_TYPE_DATABASE: DATABASE_TRANSPORTS,
 }
 
@@ -329,7 +330,33 @@ def credential_types(
     in the UI, so a build without pywinrm cannot offer Windows credentials it
     would then fail to use.
     """
+    from engines.credentialed.smb_executor import IMPACKET_AVAILABLE
     from engines.credentialed.winrm_executor import WINRM_AVAILABLE
+
+    # A Windows credential is usable if *either* transport is installed, and the
+    # UI needs to know which. Reporting only WinRM's availability would hide the
+    # SMB path on a build that has it — and SMB is the one that reaches a client
+    # SKU with WinRM switched off, which is the case it exists for.
+    windows_transports = [
+        {
+            "value": "winrm",
+            "label": "WinRM (default)",
+            "default_port": 5985,
+            "available": WINRM_AVAILABLE,
+            "unavailable_reason": (
+                None if WINRM_AVAILABLE else "pywinrm is not installed"
+            ),
+        },
+        {
+            "value": "smb",
+            "label": "SMB / Remote Registry / WMI",
+            "default_port": 445,
+            "available": IMPACKET_AVAILABLE,
+            "unavailable_reason": (
+                None if IMPACKET_AVAILABLE else "impacket is not installed"
+            ),
+        },
+    ]
 
     return {
         "types": [
@@ -342,14 +369,15 @@ def credential_types(
             },
             {
                 "value": CREDENTIAL_TYPE_WINDOWS,
-                "label": "Windows (native WinRM)",
+                "label": "Windows (WinRM or SMB)",
                 "auth_methods": list(TYPE_AUTH_MATRIX[CREDENTIAL_TYPE_WINDOWS]),
                 "default_port": 5985,
-                "available": WINRM_AVAILABLE,
+                "available": WINRM_AVAILABLE or IMPACKET_AVAILABLE,
+                "transports": windows_transports,
                 "unavailable_reason": (
                     None
-                    if WINRM_AVAILABLE
-                    else "pywinrm is not installed in this environment"
+                    if (WINRM_AVAILABLE or IMPACKET_AVAILABLE)
+                    else "neither pywinrm nor impacket is installed"
                 ),
             },
             {

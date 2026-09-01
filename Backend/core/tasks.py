@@ -2928,7 +2928,23 @@ def audit_credentialed_host(
     )
     connect_started = time.perf_counter()
 
-    if resolved_transport == "winrm":
+    if resolved_transport == "smb":
+        # The second Windows transport. Same collector, same checks, same
+        # findings — it answers ``WindowsCollector``'s named items from WMI and
+        # the registry instead of from PowerShell. It exists because WinRM is
+        # off by default on Windows client editions, so an estate of
+        # workstations is reachable through this and not through that.
+        from engines.credentialed.smb_executor import SMBExecutor
+
+        connection = SMBExecutor(
+            ip=ip,
+            username=username,
+            password=password,
+            port=port or None,
+            domain=domain,
+            timeout=timeout,
+        )
+    elif resolved_transport == "winrm":
         from engines.credentialed.winrm_executor import WinRMExecutor
 
         winrm_options = dict(credential_options or {})
@@ -2962,13 +2978,19 @@ def audit_credentialed_host(
         credentialed_response_time_ms = int(
             round((time.perf_counter() - connect_started) * 1000)
         )
-        if resolved_transport == "winrm":
-            # WinRM is a Windows-only protocol, so the operating system is
+        if resolved_transport in ("winrm", "smb"):
+            # Both are Windows-only protocols, so the operating system is
             # established by the fact that the connection succeeded. Running
             # _detect_os here would spend a round trip re-deriving something
-            # already known, and its probes are written for a POSIX shell.
+            # already known, and its probes are written for a POSIX shell — on
+            # the SMB transport they would not run at all, since it executes no
+            # commands, and the host would be misread as Linux.
             os_type = "windows"
-            _emit("Windows confirmed by WinRM transport", 20, "detection")
+            _emit(
+                f"Windows confirmed by {resolved_transport.upper()} transport",
+                20,
+                "detection",
+            )
         else:
             _emit("Detecting Operating System...", 20, "detection")
             os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)

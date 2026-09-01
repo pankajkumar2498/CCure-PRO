@@ -49,7 +49,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                         | `31c10b4` |
 | **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                          | `9e4ecaa` |
 | **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                         | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2     | Critical | 40% [estimated]  | 90%    | **Closed** (85% measured)                          | `9e4ecaa` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2, 12 | Critical | 40% [estimated]  | 90%    | **Closed** — WinRM (85%) + SMB/RemoteReg/WMI       | `9e4ecaa` |
 | **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                          | `daab13a` |
 | **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
 | **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
@@ -3252,6 +3252,218 @@ machine this programme does not own.
 | Windows elevation                                  | ✅ measured; none invented, absence guarded by test |
 | Automated tests                                    | ✅ 50 across three files, all mutation-verified     |
 | No new engine, no finding-model change, no SMB/WMI | ✅                                                  |
+
+---
+
+## 9I. Phase 12 — Windows authenticated scanning over SMB / Remote Registry / WMI
+
+**Gap:** the Windows half of GAP-02, reopened by the September assessment.
+**Status: Closed for reach, partial for depth** — 58.1% of the Windows
+inventory served natively, real-target validated, and cross-checked against
+WinRM on the same host with zero disagreements.
+
+### 9I.1 The limitation this closes
+
+WinRM is **off by default on Windows client editions**. Every Windows
+capability this product has — package matching, patch assessment, the
+configuration and privilege checks — ran only where somebody had turned WinRM
+on or installed OpenSSH. On a workstation estate that is a minority of hosts,
+and it was the largest remaining functional difference between this product and
+the tools it is measured against, whose primary Windows transport has always
+been SMB plus Remote Registry plus WMI.
+
+Nothing was wrong with WinRM. The gap was that it was the only door.
+
+### 9I.2 What was built — a transport, not a second collector
+
+    Credential → transport resolver → SMB / RemoteRegistry / WMI
+        → WindowsCollector → existing checks → findings → risk → report
+
+`engines/credentialed/smb_executor.py`. **No new collector, no new scan kind,
+no new route, no new finding model, and no change to any parser.** The whole
+persistence cost is one value on one CHECK constraint (`d2e3f4a5b6c7`).
+
+The seam that made it possible was already there: `WindowsCollector` asked for
+data by _name_ — `_run("os_info")`, `_run_json("services")` — not by command.
+So a transport that can answer a name from WMI or the registry answers it, and
+one that cannot falls through to the PowerShell it always ran. `_run` gained
+that branch; every parser below it is untouched. That is the difference between
+a transport and a duplicate collector, and it is why WinRM needed no change.
+
+| Subsystem                       | Used for                                                  |
+| ------------------------------- | --------------------------------------------------------- |
+| SMB (445/139)                   | session, share enumeration, server identity               |
+| Remote Registry (`winreg` pipe) | OS build + UBR, package inventory, security values        |
+| WMI/DCOM (`root/cimv2`)         | OS, services, users, groups, hardware, hotfixes, adapters |
+| SCMR (`svcctl` pipe)            | service fallback when DCOM is blocked                     |
+
+**It deliberately cannot execute commands.** `run()` refuses. Remote execution
+over SMB means creating a service or a scheduled task on the target — which is
+what psexec does, writes to a host this product only reads, and is exactly the
+elevation mechanism §9H recorded the Windows path as forbidden to invent. So a
+command-shaped check reports UNAVAILABLE, the engine renders it ERROR, and no
+check ever returns a verdict this transport did not establish. A narrower
+honest transport beats a broader dishonest one, and a test guards the refusal
+by name.
+
+### 9I.3 Three defects real hardware found, all of which had shipped looking right
+
+- **Shared handles corrupted the session.** `collect_all` runs its sections in a
+  thread pool, and neither an impacket `SMBConnection` nor a bound DCE/RPC
+  handle is thread-safe. Sharing one made the target reset the connection
+  (WinError 10054) part-way through: the software inventory, the OS revision
+  and the share list were all lost while the WMI sections that happened to
+  finish first succeeded — a _partial_ result that looked like a small host
+  rather than a broken scan. Handles are per-thread now. This is the same trap
+  the WinRM executor documents for pywinrm sessions, one protocol over, and it
+  cost the most valuable field on the host: without the registry read there is
+  no UBR, and **without the UBR every Windows host looks like the day-zero
+  release of its version and every patch since launch reads as missing.**
+- **Remote Registry answers, but not immediately.** The service is
+  trigger-started on client SKUs, so the first pipe bind can lose a race with
+  its own startup and return `STATUS_PIPE_NOT_AVAILABLE` while a bind two
+  seconds later succeeds. Reported as "not supported" on the first attempt, it
+  would have silently halved this transport's value.
+- **impacket returns structures, not dicts.** `SHARE_INFO_1` supports `[]` and
+  has no `.get`, and the remark field is absent rather than empty on some
+  servers. The share list failed on a call that reads correct.
+
+### 9I.4 The scanner must not report a condition it created
+
+Binding the registry pipe can **trigger-start the Remote Registry service** —
+and this product's own `ccure.win.remote_registry.not_running` check treats a
+running Remote Registry as a finding. Left alone, an SMB scan could start the
+service and then report the host for having it running.
+
+The service's state is therefore read over SCMR **before** the transport binds
+the pipe, once per session, and recorded as
+`SMBExecutor.remote_registry_was_running`. On the validation host it was
+`StartType: Automatic` and already running, so the finding is genuine there —
+but that was established rather than assumed, which is the point.
+
+### 9I.5 Real-target validation — VALIDATED
+
+One live Windows 11 Pro host, read-only throughout: WMI SELECTs, registry
+reads, share enumeration. No disposable Windows target was available, and none
+was weakened.
+
+**Authentication states, all four distinguished:**
+
+| Case               | Result                                                       |
+| ------------------ | ------------------------------------------------------------ |
+| Correct credential | authenticated — `PankajM-HPNew` / `Windows 10.0 Build 26100` |
+| Wrong password     | `SMBAuthenticationError`                                     |
+| Unknown user       | `SMBAuthenticationError`                                     |
+| Closed port        | `SMBConnectionError`, _not_ an auth failure                  |
+
+**Port resolution, including non-standard:**
+
+| Case                              | Resolved                               |
+| --------------------------------- | -------------------------------------- |
+| 445 stated                        | 445 (`credential`)                     |
+| discovered on 139 (`netbios-ssn`) | 139 (`discovered`)                     |
+| Samba identified on 4445          | 4445 (`discovered`)                    |
+| a non-SMB open port (3389)        | refused — never offered the credential |
+
+**Collection through the unmodified `WindowsCollector`:**
+
+| Evidence             | Result                                   |
+| -------------------- | ---------------------------------------- |
+| OS                   | Microsoft Windows 11 Pro                 |
+| Build + UBR          | `10.0.26200.9278` — patch matching works |
+| Release              | 25H2                                     |
+| Packages             | **419**                                  |
+| Running services     | 175                                      |
+| Users / groups       | 7 / 1                                    |
+| Shares               | 4                                        |
+| Recorded as unserved | 10, each with a reason                   |
+| Elapsed              | ~60s per host                            |
+
+**Cross-transport agreement — the strongest evidence available.** The same
+host, the same checks, both transports, nothing changed in between:
+
+| Measure                              | Result               |
+| ------------------------------------ | -------------------- |
+| Identity fields compared             | **6 of 6 identical** |
+| Checks where both produced a verdict | 6                    |
+| **Disagreements**                    | **0**                |
+
+No previous transport in this programme has had an independent implementation
+of the same collection to check against.
+
+### 9I.6 Coverage — measured
+
+| Capability                                          | Before                | After                     | Basis                                              |
+| --------------------------------------------------- | --------------------- | ------------------------- | -------------------------------------------------- |
+| Windows hosts reachable                             | WinRM or OpenSSH only | **+ every host with SMB** | SMB is on by default; WinRM is not, on client SKUs |
+| Collector items served natively                     | 0                     | **18 of 31 (58.1%)**      | live dispatch table, not a hand list               |
+| Unserved items with a stated reason                 | —                     | **13 of 13 (100%)**       | pinned by test                                     |
+| Windows checks producing a verdict over SMB         | 0                     | **6 of 20**               | measured on the real host                          |
+| Windows checks producing a _wrong_ verdict over SMB | 0                     | **0**                     | the other 13 are ERROR, never PASS                 |
+
+The honest framing: **SMB widens reach, WinRM keeps depth.** WinRM produced 19
+verdicts on the same host to SMB's 6, because it can run commands and SMB
+cannot. Neither is a superset of the other and the operator chooses; WinRM
+remains the default in `_TYPE_DEFAULTS`.
+
+### 9I.7 A dependency conflict the regression caught, not the unit tests
+
+`impacket` depends on `pyasn1` **without an upper bound**, and installing it
+pulled pyasn1 6.x over the `>=0.4.8,<0.6.0` pin this repository already carried
+for `pysnmp-lextudio`. That broke SNMP topology discovery — and not with an
+import error, which is what makes it worth recording: the FDB table silently
+decoded to **one entry instead of three**, so a switch's MAC table came back
+nearly empty and the topology read as sparse rather than as broken.
+
+Nothing in the SMB work touched SNMP. It surfaced only because the full
+regression runs the topology suite, and it is the argument for running the whole
+suite rather than the tests for the thing being built.
+
+impacket 0.12.0 works correctly on pyasn1 0.5.1 — verified against the live
+Windows host after the downgrade, WMI and Remote Registry both — so the existing
+pin holds and the conflict is recorded beside the new requirement.
+
+### 9I.8 Known limitations
+
+- **13 of 20 Windows built-in checks cannot run over SMB** — the `privilege`,
+  `security_policy` and `command` types are PowerShell probes with no registry
+  or WMI equivalent. They report ERROR, which is a recorded gap and never a
+  pass.
+- **13 of 31 collector items are unserved**, each with a stated reason: open
+  ports (needs netstat), scheduled tasks (task-scheduler RPC), failed logins
+  (event log), password policy (`net accounts`/SAMR), audit policy
+  (`auditpol`), firewall profiles, and the privilege context.
+- **DCOM needs more than port 445.** WMI negotiates a dynamic high port after
+  the endpoint mapper on 135, so a firewall permitting SMB alone yields SMB and
+  Remote Registry and no WMI. Each subsystem is opened independently so losing
+  one does not lose the others, but the coverage on such a host is smaller and
+  the record says so.
+- **~60s per host** against ~35s for WinRM. The package inventory is the cost:
+  419 packages is roughly 1,250 registry round trips. Correct first; batching
+  is available if it matters.
+- **One SMB logon per collecting thread.** The price of a transport whose
+  handles cannot be shared. Bounded by the collector's thread pool, but it is
+  more authentication events in the target's security log than WinRM produces.
+- **Kerberos is not wired on this transport.** The credential model admits it
+  and impacket supports it; only NTLM is exercised, so a Kerberos-only domain
+  is not yet reachable this way.
+- **No disposable Windows target exists.** Validation used one live host, so
+  the domain-joined case, the standard-user case and Server SKUs are unproven.
+
+### 9I.9 Definition of Done — Phase 12
+
+| Line                                                                             | Result                                                 |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Reuses credential model, resolver, `BaseExecutor`, `WindowsCollector`, scan flow | ✅ one seam in `_run`; nothing else changed            |
+| No parallel Windows engine                                                       | ✅ no new collector, scan kind, route or finding model |
+| SMB / Remote Registry / WMI                                                      | ✅ all three, plus SCMR as the service fallback        |
+| Non-standard ports                                                               | ✅ 139 and a Samba port resolved from discovery        |
+| WinRM preserved                                                                  | ✅ untouched and still the default; pinned by test     |
+| Auth success / failure / unavailable distinguished                               | ✅ four error types, validated on real hardware        |
+| Unavailable never becomes PASS                                                   | ✅ mutation-verified                                   |
+| Automated tests                                                                  | ✅ 36, mutation-verified in two directions             |
+| Real-target validated                                                            | ✅ 18/18 checks; 0 disagreements with WinRM            |
+| Migration round-trip                                                             | ✅ upgrade → downgrade → upgrade on the live schema    |
 
 ---
 

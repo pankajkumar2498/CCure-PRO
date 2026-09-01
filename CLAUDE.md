@@ -639,6 +639,70 @@ Server installed.**
   published fixed builds. `os_assessed` distinguishes "no missing patches" from
   "could not assess"; never collapse them.
 
+## Windows over SMB / Remote Registry / WMI (`engines/credentialed/smb_executor.py`)
+
+The second Windows transport, added in Phase 12. **WinRM is off by default on
+Windows client editions**, so an estate of workstations was reachable only where
+somebody had turned it on. SMB is on by default; this closes that reach gap
+without touching WinRM, which remains the default in `_TYPE_DEFAULTS` and is
+still the deeper transport.
+
+- **It is a transport, not a collector, and the seam was already there.**
+  `WindowsCollector` asked for data by *name* (`_run("os_info")`), so `_run`
+  now consults `executor.run_named(key)` first and falls back to PowerShell.
+  Every parser is untouched. If you add a Windows capability, add a command to
+  the catalogue and — if it can be answered from WMI or the registry — a
+  handler to `_NATIVE_HANDLERS`. Do not add a collector.
+
+- **`run()` refuses, deliberately.** Remote execution over SMB means creating a
+  service or a scheduled task, which writes to a host this product only reads
+  and is the elevation mechanism the Windows path may not invent. A
+  command-shaped check therefore reports UNAVAILABLE → ERROR. **Never make this
+  return success**; a test guards it, and `executes_commands` is how the
+  collectors ask.
+
+- **Handles are per-thread and must stay that way.** `collect_all` runs its
+  sections in a thread pool and neither an impacket `SMBConnection` nor a bound
+  DCE/RPC handle is thread-safe. Sharing one made the target reset the
+  connection mid-run and cost the software inventory, the share list and the OS
+  revision — and **without the UBR every Windows host looks like the day-zero
+  release of its version**. Same trap as the pywinrm session, one protocol over.
+
+- **Remote Registry is trigger-started, so the first bind can lose a race** with
+  the service's own startup and return `STATUS_PIPE_NOT_AVAILABLE`. It is
+  retried. **The service is never started by this code**, and its state is read
+  over SCMR *before* the pipe is bound: binding can trigger-start it, and this
+  product's own `ccure.win.remote_registry.not_running` check treats a running
+  one as a finding — so without measuring first the scan could report a
+  condition it created.
+
+- **Packages come from the registry uninstall hives, never `Win32_Product`.**
+  Querying that class triggers an MSI reconfiguration of every installed
+  product: a write to the host, and notoriously slow.
+
+- **DCOM needs more than 445.** WMI negotiates a dynamic high port after the
+  endpoint mapper on 135, so a firewall permitting SMB alone yields SMB and
+  Remote Registry and no WMI. Each subsystem is opened lazily and independently
+  so losing one does not lose the others.
+
+- **Four error types, as on every other transport** — rejected credential,
+  insufficient privilege, nothing listening, subsystem switched off. impacket's
+  rejection text contains none of "401", "unauthorized" or "authentication", so
+  it is matched explicitly; without that a refused password classifies as a
+  connection error and the operator goes looking at the firewall.
+
+- **`UNSERVED_KEYS` is the honest account of what this transport does not
+  collect**, and every entry carries a reason. 18 of 31 collector items are
+  served natively; the rest fall through and are recorded in
+  `collection_errors` under an `item:` prefix rather than left to look like an
+  empty reading from the host.
+
+- **The config-audit `registry` and `service` collectors prefer a native
+  answer**, through `_native(ctx, "read_registry_value")` and
+  `query_service`. WinRM has neither method and keeps running its PowerShell.
+  Rule parameters are bound into WQL with quotes doubled — the rules are
+  administrator-editable, so that is an injection boundary inside the product.
+
 ## Credentialed transport and port resolution (`engines/credentialed/transport_resolver.py`)
 
 Where an authenticated session is opened. Until this existed the answer was

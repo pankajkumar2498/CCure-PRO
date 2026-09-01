@@ -137,7 +137,21 @@ pytest-asyncio
 # ── Optional enhancements ─────────────────────────────────────────────────────
 # pyOpenSSL          # deeper TLS inspection in tls_scanner plugin
 # python-ldap3       # direct LDAP queries in ldap_probe plugin
-# impacket           # SMB deep inspection (EternalBlue probes) — install separately
+impacket==0.12.0   # Windows credentialed scan over SMB / Remote Registry / WMI.
+                   # Declared, not optional: the import is reached at scan time
+                   # by engines/credentialed/smb_executor.py, which is the
+                   # second Windows transport. It also carries the SMB deep
+                   # inspection this line previously described as "install
+                   # separately", so that arrangement is gone.
+                   #
+                   # ⚠ It depends on `pyasn1` WITHOUT an upper bound, and
+                   # installing it will happily pull pyasn1 6.x — which breaks
+                   # pysnmp-lextudio and, with it, SNMP topology discovery. The
+                   # failure is not an import error: the FDB table silently
+                   # decodes to one entry instead of three, so a switch's MAC
+                   # table comes back nearly empty and the topology looks sparse
+                   # rather than broken. Keep the `pyasn1` pin above ahead of
+                   # this line and verify both after any upgrade of either.
 
 # ── Web Application Scanning (DAST) ──────────────────────────────────────────
 playwright>=1.40.0         # Headless browser for SPA crawling

@@ -252,9 +252,15 @@ def test_reserved_transports_are_admitted_by_the_column_but_not_offered():
 
 def test_the_transport_check_constraint_matches_the_model():
     """
-    Migration f8a9b0c1d2e3 renders the vocabulary by hand. A model that gains a
-    value the migration does not have produces a schema an upgraded database
-    rejects and a bootstrapped one accepts.
+    A migration renders the vocabulary by hand. A model that gains a value the
+    migration does not have produces a schema an upgraded database rejects and a
+    bootstrapped one accepts.
+
+    **The exact-equality assertion belongs to the newest migration**, and moves
+    when another one adds a value — d2e3f4a5b6c7 added ``smb`` for the Windows
+    SMB transport. Pinning it to a historical migration would make every future
+    transport a failing test in a phase that has nothing to do with it, which is
+    the trap the check-type constraint tests fell into twice.
     """
     # Loaded by path: `alembic` on sys.path is the installed library, so
     # `alembic.versions` resolves to it and not to this repository's migrations.
@@ -267,14 +273,17 @@ def test_the_transport_check_constraint_matches_the_model():
         Path(__file__).resolve().parents[2]
         / "alembic"
         / "versions"
-        / "f8a9b0c1d2e3_database_credential_transports.py"
+        / "d2e3f4a5b6c7_smb_transport.py"
     )
-    spec = importlib.util.spec_from_file_location("_gap10_migration", path)
+    spec = importlib.util.spec_from_file_location("_newest_transport_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
     assert tuple(module.TRANSPORTS) == tuple(MODEL_TRANSPORTS)
-    assert tuple(module.OLD_TRANSPORTS) == ("ssh", "winrm")
+    # Its own predecessor set: everything except the value it adds.
+    assert tuple(module.OLD_TRANSPORTS) == tuple(
+        t for t in MODEL_TRANSPORTS if t != "smb"
+    )
 
 
 @pytest.mark.parametrize(

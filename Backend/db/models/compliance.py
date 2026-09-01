@@ -1088,6 +1088,11 @@ USABLE_CREDENTIAL_TYPES = (
 #: and both are ``windows`` credentials.
 TRANSPORT_SSH = "ssh"
 TRANSPORT_WINRM = "winrm"
+#: Windows over SMB, Remote Registry and WMI/DCOM. A second Windows transport
+#: rather than a replacement: WinRM is off by default on Windows *client*
+#: editions, so an estate of workstations is reachable through this one and not
+#: through that one. Both drive the same ``WindowsCollector``.
+TRANSPORT_SMB = "smb"
 
 #: Database transports, added in Phase 7. There is one per engine rather than a
 #: single ``database`` value because for a database the transport *is* the wire
@@ -1108,6 +1113,7 @@ TRANSPORT_MONGODB = "mongodb"
 TRANSPORTS = (
     TRANSPORT_SSH,
     TRANSPORT_WINRM,
+    TRANSPORT_SMB,
     TRANSPORT_POSTGRESQL,
     TRANSPORT_MYSQL,
     TRANSPORT_MSSQL,
@@ -1122,7 +1128,12 @@ TRANSPORTS = (
 #: user cannot save a credential nothing would ever use.
 DATABASE_TRANSPORTS = (TRANSPORT_POSTGRESQL, TRANSPORT_MYSQL, TRANSPORT_MSSQL)
 
-USABLE_TRANSPORTS = (TRANSPORT_SSH, TRANSPORT_WINRM, *DATABASE_TRANSPORTS)
+USABLE_TRANSPORTS = (
+    TRANSPORT_SSH,
+    TRANSPORT_WINRM,
+    TRANSPORT_SMB,
+    *DATABASE_TRANSPORTS,
+)
 
 #: ``password`` and ``key`` are the original two and their meaning is unchanged.
 #: ``ntlm`` and ``kerberos`` are Windows domain authentication; both present a

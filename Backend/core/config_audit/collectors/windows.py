@@ -131,6 +131,21 @@ def _runner(ctx: CollectionContext) -> ShellRunner:
     return ctx.cache[key]
 
 
+def _native(ctx: CollectionContext, capability: str):
+    """
+    The executor's own implementation of *capability*, when it has one.
+
+    The SMB transport reads the registry over Remote Registry and services over
+    WMI, natively and better than a shell can — it is what that transport is
+    for. WinRM has no such method and returns ``None`` here, so it keeps running
+    the PowerShell it always ran. One check definition, two ways of answering
+    it; the rule author writes neither.
+    """
+    executor = getattr(ctx, "executor", None)
+    method = getattr(executor, capability, None)
+    return method if callable(method) else None
+
+
 class _WindowsCollector(Collector):
     """Shared plumbing: run a sentinel command and interpret its three outcomes."""
 
@@ -206,6 +221,28 @@ class WindowsRegistryCollector(_WindowsCollector):
                 collector=self.name,
             )
         ps_path = f"{drive}\\{remainder}" if remainder else drive
+
+        # Read it natively where the transport can. Remote Registry answers this
+        # exact question directly, so on the SMB transport the check runs for
+        # real instead of reporting that no shell was available.
+        read = _native(ctx, "read_registry_value")
+        if read is not None and value_name:
+            try:
+                value = read(hive, remainder, str(value_name))
+            except Exception as exc:  # noqa: BLE001 — classified as unreadable
+                return CollectedState.unavailable(
+                    f"registry could not be read over this transport: {exc}",
+                    collector=self.name,
+                )
+            if value is None:
+                # Absent, which is a *reading*: a security value missing from
+                # the registry is at its platform default. The rule's own
+                # AbsencePolicy decides what that means; the collector must not.
+                return CollectedState.absent(
+                    "value is not set, or the key does not exist",
+                    collector=self.name,
+                )
+            return CollectedState.collected(value, raw=value, collector=self.name)
 
         if not value_name:
             # Presence of the key itself is the reading.
@@ -388,6 +425,31 @@ class WindowsServiceCollector(_WindowsCollector):
         if failure:
             return failure
         attribute = str(params.get("attribute", "status")).strip().lower()
+
+        query = _native(ctx, "query_service")
+        if query is not None and attribute in ("status", "start_mode"):
+            try:
+                record = query(str(params["name"]))
+            except Exception as exc:  # noqa: BLE001 — classified as unreadable
+                return CollectedState.unavailable(
+                    f"services could not be read over this transport: {exc}",
+                    collector=self.name,
+                )
+            if record is None:
+                # Not installed. Never "stopped" — a rule saying Telnet must not
+                # run is satisfied by a host that never had it, and one saying
+                # the firewall must run is breached by the same absence, and
+                # only the rule's own AbsencePolicy can tell those apart.
+                return CollectedState.absent(
+                    "service is not installed", collector=self.name
+                )
+            value = record.get("status" if attribute == "status" else "start_mode")
+            if not value:
+                return CollectedState.unavailable(
+                    f"service record carries no {attribute}", collector=self.name
+                )
+            return CollectedState.collected(value, raw=str(record), collector=self.name)
+
         if attribute == "status":
             body = f"Write-Output ('{_VALUE}' + $svc.Status.ToString())"
         elif attribute == "start_mode":

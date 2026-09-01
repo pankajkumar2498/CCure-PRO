@@ -355,6 +355,11 @@ class WindowsCollector:
 
     def __init__(self, ssh: BaseExecutor):
         self._ssh = ssh
+        #: Items this run could not collect, and why. Travels into the report as
+        #: ``collection_errors`` so a transport that serves part of the
+        #: inventory says which part, rather than returning a shorter answer
+        #: that reads as a smaller host.
+        self._unavailable: dict[str, str] = {}
         self.shell_type = self._detect_shell()
         if self.shell_type == "cmd":
             log.warning(
@@ -369,6 +374,11 @@ class WindowsCollector:
 
     def _detect_shell(self) -> str:
         """Returns 'powershell' or 'cmd'."""
+        # A transport that runs no commands has no shell to detect. Probing it
+        # would spend a refusal and then log advice about OpenSSH's DefaultShell
+        # to an operator who is not using OpenSSH.
+        if getattr(self._ssh, "executes_commands", True) is False:
+            return "native"
         result = self._ssh.run("$PSVersionTable.PSVersion.Major", timeout=8)
         cleaned = _clean_output(result.stdout)
         return "powershell" if (result.success and cleaned.isdigit()) else "cmd"
@@ -457,6 +467,14 @@ class WindowsCollector:
                     result.setdefault("collection_errors", {})[name] = str(exc)
 
         result["sections_requested"] = [name for name, _fn in tasks]
+        # Items the transport could not serve. Kept apart from the section
+        # failures above by an ``item:`` prefix: a section that raised is a
+        # defect worth investigating, whereas an item this transport does not
+        # implement is a known and recorded boundary. Both belong in the report;
+        # neither may be left to look like an empty reading from the host.
+        for key, reason in sorted(self._unavailable.items()):
+            result.setdefault("collection_errors", {})[f"item:{key}"] = reason
+        result["transport_collects_by"] = self.shell_type
         return result
 
     def _collect_system_info(self) -> dict[str, Any]:
@@ -960,9 +978,45 @@ class WindowsCollector:
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _run(self, key: str, timeout: int = 45) -> str:
-        """Execute a named command and return cleaned stdout."""
+        """
+        Collect one named item, natively where the transport can, by command
+        otherwise.
+
+        This is the seam that makes the collector transport-independent, and it
+        is the only thing the SMB transport needed. The collector already asked
+        for data by *name* — ``os_info``, ``services`` — so a transport that can
+        answer a name from WMI or the registry answers it, and one that cannot
+        falls through to the PowerShell it has always run. Every parser below is
+        untouched either way, which is what makes SMB a transport rather than a
+        second collector.
+        """
+        native = getattr(self._ssh, "run_named", None)
+        if callable(native):
+            result = native(key, timeout)
+            if result is not None:
+                if result.success:
+                    return _clean_output(result.stdout) if result.stdout else ""
+                # The transport tried and failed. Recorded, and deliberately not
+                # retried as a command: on a transport that cannot execute
+                # commands the retry refuses, and the refusal text would land in
+                # the parser as though the host had answered it.
+                log.debug(
+                    "native collection of '%s' failed on %s: %s",
+                    key,
+                    getattr(self._ssh, "ip", "?"),
+                    (result.stderr or "")[:200],
+                )
+                self._unavailable[key] = (result.stderr or "collection failed")[:300]
+                return ""
+
         cmd = COMMANDS.get(key, "")
         if not cmd:
+            return ""
+        if getattr(self._ssh, "executes_commands", True) is False:
+            # Neither natively answerable nor runnable here. Recording it keeps
+            # "this transport does not collect that" apart from "the host has
+            # none", which a shorter report would otherwise conflate.
+            self._unavailable[key] = "not available over this transport"
             return ""
         final_cmd = self._wrap_ps(cmd)
         result = self._ssh.run(final_cmd, timeout=timeout)

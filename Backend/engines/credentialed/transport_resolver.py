@@ -49,10 +49,11 @@ log = logging.getLogger(__name__)
 
 TRANSPORT_SSH = "ssh"
 TRANSPORT_WINRM = "winrm"
+TRANSPORT_SMB = "smb"
 
 #: Conventional port per transport, used only when a credential names none.
 #: A starting point for resolution, never the answer on its own.
-DEFAULT_PORT = {TRANSPORT_SSH: 22, TRANSPORT_WINRM: 5985}
+DEFAULT_PORT = {TRANSPORT_SSH: 22, TRANSPORT_WINRM: 5985, TRANSPORT_SMB: 445}
 
 #: Additional well-known ports probed when the stated port does not answer and
 #: there is no port-scan evidence to resolve from — the standalone credentialed
@@ -65,6 +66,10 @@ DEFAULT_PORT = {TRANSPORT_SSH: 22, TRANSPORT_WINRM: 5985}
 FALLBACK_PORTS = {
     TRANSPORT_SSH: (22, 2222),
     TRANSPORT_WINRM: (5985, 5986),
+    # 139 is the NetBIOS session service, still found on old estates and still
+    # spoken by the SMB client. Direct-hosted SMB on 445 leads because that is
+    # what every supported Windows prefers.
+    TRANSPORT_SMB: (445, 139),
 }
 
 #: Ports whose TLS posture is settled by convention. Anything else discovered as
@@ -77,6 +82,9 @@ _SSH_BANNER = re.compile(r"^SSH-\d", re.IGNORECASE)
 
 _SSH_PRODUCT_HINTS = ("openssh", "dropbear", "libssh", "tectia", "cisco ssh")
 _WINRM_PRODUCT_HINTS = ("microsoft httpapi", "winrm", "wsman")
+#: nmap names 445 ``microsoft-ds`` and 139 ``netbios-ssn``; a Samba server is
+#: identified by product rather than by service name.
+_SMB_PRODUCT_HINTS = ("samba", "windows smb", "microsoft-ds", "smbd")
 
 _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 
@@ -154,6 +162,22 @@ def _is_winrm_service(record: dict) -> bool:
     return bool(tokens & {"wsman", "winrm"})
 
 
+def _is_smb_service(record: dict) -> bool:
+    """Does the port scan's identification of this port say 'SMB'?"""
+    product = str(record.get("product") or "").lower()
+    if any(hint in product for hint in _SMB_PRODUCT_HINTS):
+        return True
+    tokens = _tokens(record.get("service"), record.get("extra"))
+    # ``microsoft-ds`` tokenises to {microsoft, ds}; ``netbios-ssn`` to
+    # {netbios, ssn}. Both are matched as pairs rather than on the generic
+    # halves, so a service merely called ``microsoft`` does not qualify.
+    if "smb" in tokens or "smbd" in tokens:
+        return True
+    if {"microsoft", "ds"} <= tokens:
+        return True
+    return {"netbios", "ssn"} <= tokens
+
+
 def _winrm_tls_hint(record: dict) -> Optional[bool]:
     """
     What the identification says about TLS on this port, or ``None``.
@@ -178,6 +202,7 @@ def _identifier(transport: str) -> Optional[Callable[[dict], bool]]:
     return {
         TRANSPORT_SSH: _is_ssh_service,
         TRANSPORT_WINRM: _is_winrm_service,
+        TRANSPORT_SMB: _is_smb_service,
     }.get(transport)
 
 
@@ -334,10 +359,15 @@ def candidate_endpoints(
 
 
 def _default_probe(transport: str) -> Callable[..., bool]:
-    if (transport or TRANSPORT_SSH).strip().lower() == TRANSPORT_WINRM:
+    resolved = (transport or TRANSPORT_SSH).strip().lower()
+    if resolved == TRANSPORT_WINRM:
         from engines.credentialed.winrm_executor import WinRMExecutor
 
         return WinRMExecutor.test_connectivity
+    if resolved == TRANSPORT_SMB:
+        from engines.credentialed.smb_executor import SMBExecutor
+
+        return SMBExecutor.test_connectivity
     from engines.credentialed.ssh_scanner import SSHScanner
 
     return SSHScanner.test_connectivity

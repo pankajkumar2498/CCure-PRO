@@ -559,3 +559,196 @@ class TestTheWholeCredentialedAuditEndToEnd:
         report, _system_data, _os = self._audit()
         ids = [f.get("cve_id") for f in report["cves"]]
         assert "MISC-CREDENTIALED-CONFIG-NOT-ASSESSED" not in ids
+
+
+class TestTheCredentialedSyncFilesACheckAsACheck:
+    """
+    ``cve_list`` carries configuration and privilege findings beside package
+    CVEs, and ``_sync_credentialed_vulnerabilities`` is the single writer that
+    turns all of them into catalogue rows. It used to assume every entry was a
+    CVE: it wrote the identifier into ``cve_id`` and let ``definition_type``
+    take its ``'cve'`` default.
+
+    ``vulnerability_definitions.cve_id`` is ``varchar(30)`` and a minted
+    identifier is longer — ``CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING`` is 37 — so
+    the insert raised ``StringDataRightTruncation``. The catalogue write is
+    inside the finding sync, so **one over-long check identifier discarded
+    every finding in the scan**, the package CVEs included. Measured on a real
+    Ubuntu 24.04 host: the audit collected for 615 seconds and then reported
+    the scan as failed.
+
+    These drive the real function against a real session, because the previous
+    guard for this class of defect read the source instead of calling it — and
+    a line that exists is not a line that runs.
+    """
+
+    @staticmethod
+    def _fixture(db_session):
+        import uuid
+
+        from db.models.assets import Asset
+        from db.models.rbac import Organization
+        from db.models.scans import Scan
+        from scans.db_helpers import utcnow
+
+        org_id = f"org_{uuid.uuid4().hex[:8]}"
+        db_session.add(
+            Organization(
+                id=org_id,
+                name="P",
+                slug=f"p-{uuid.uuid4().hex[:8]}",
+                max_assets=10,
+                max_users=10,
+                is_active=True,
+                settings={},
+            )
+        )
+        db_session.commit()
+        asset = Asset(
+            id=f"ast_{org_id}_10_0_0_9",
+            org_id=org_id,
+            ip_address="10.0.0.9",
+            last_seen_at=utcnow(),
+        )
+        db_session.add(asset)
+        scan_id = f"scn_{uuid.uuid4().hex[:8]}"
+        db_session.add(
+            Scan(
+                id=scan_id,
+                org_id=org_id,
+                target_str="10.0.0.9",
+                scan_type="credentialed",
+                pipeline_mode="credentialed",
+            )
+        )
+        db_session.commit()
+        return org_id, asset, scan_id
+
+    #: 37 characters — seven more than ``cve_id`` can hold.
+    LONG_CHECK_ID = "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING"
+
+    def test_an_over_long_check_identifier_does_not_abort_the_sync(self, db_session):
+        from core.tasks import _sync_credentialed_vulnerabilities
+        from db.models.findings import AssetVulnerability
+
+        org_id, asset, scan_id = self._fixture(db_session)
+        assert len(self.LONG_CHECK_ID) > 30, "the id must exceed cve_id's width"
+
+        _sync_credentialed_vulnerabilities(
+            db_session,
+            asset,
+            org_id,
+            scan_id,
+            [
+                {
+                    "cve_id": self.LONG_CHECK_ID,
+                    "definition_type": "config_check",
+                    "title": "The audit daemon is running",
+                    "severity": "Medium",
+                    "evidence": "Expected: running\nObserved: inactive",
+                    "expected_state": "running",
+                    "observed_state": "inactive",
+                },
+                {
+                    "cve_id": "CVE-2024-6387",
+                    "title": "regreSSHion",
+                    "severity": "High",
+                    "cvss_score": 8.1,
+                    "package": "openssh-server",
+                },
+            ],
+        )
+        db_session.commit()
+
+        # The package CVE survives. Before the fix the check's insert raised
+        # first and took this with it.
+        written = {
+            r.vuln_id
+            for r in db_session.query(AssetVulnerability)
+            .filter(AssetVulnerability.scan_id == scan_id)
+            .all()
+        }
+        assert self.LONG_CHECK_ID in written
+        assert "CVE-2024-6387" in written
+
+    def test_a_check_row_carries_no_cve_id_and_a_cve_row_still_does(self, db_session):
+        from core.tasks import _sync_credentialed_vulnerabilities
+        from db.models.findings import VulnerabilityDefinition
+
+        org_id, asset, scan_id = self._fixture(db_session)
+        _sync_credentialed_vulnerabilities(
+            db_session,
+            asset,
+            org_id,
+            scan_id,
+            [
+                {
+                    "cve_id": self.LONG_CHECK_ID,
+                    "definition_type": "config_check",
+                    "title": "The audit daemon is running",
+                    "severity": "Medium",
+                    "evidence": "Expected: running\nObserved: inactive",
+                },
+                {
+                    "cve_id": "CVE-2024-6387",
+                    "title": "regreSSHion",
+                    "severity": "High",
+                    "cvss_score": 8.1,
+                },
+            ],
+        )
+        db_session.commit()
+
+        check = (
+            db_session.query(VulnerabilityDefinition)
+            .filter(VulnerabilityDefinition.id == self.LONG_CHECK_ID)
+            .one()
+        )
+        # NULL here is what keeps a configuration weakness out of the KEV,
+        # EPSS and CVSS joins, all of which run through cve_id.
+        assert check.cve_id is None
+        assert check.definition_type == "config_check"
+
+        cve = (
+            db_session.query(VulnerabilityDefinition)
+            .filter(VulnerabilityDefinition.id == "CVE-2024-6387")
+            .one()
+        )
+        assert cve.cve_id == "CVE-2024-6387"
+        assert cve.definition_type == "cve"
+
+    def test_a_check_finding_is_not_described_as_a_package_query(self, db_session):
+        """
+        The evidence block was written for package matching. On a check it read
+        "Package: unknown", "Fixed in: no fixed version published" and an NVD
+        link for an identifier NVD has never heard of.
+        """
+        from core.tasks import _sync_credentialed_vulnerabilities
+        from db.models.findings import AssetVulnerability
+
+        org_id, asset, scan_id = self._fixture(db_session)
+        _sync_credentialed_vulnerabilities(
+            db_session,
+            asset,
+            org_id,
+            scan_id,
+            [
+                {
+                    "cve_id": self.LONG_CHECK_ID,
+                    "definition_type": "config_check",
+                    "title": "The audit daemon is running",
+                    "severity": "Medium",
+                    "evidence": "Expected: running\nObserved: inactive",
+                }
+            ],
+        )
+        db_session.commit()
+
+        row = (
+            db_session.query(AssetVulnerability)
+            .filter(AssetVulnerability.vuln_id == self.LONG_CHECK_ID)
+            .one()
+        )
+        assert "nvd.nist.gov" not in (row.evidence or "")
+        assert "authenticated package query" not in (row.evidence or "")
+        assert "Observed: inactive" in (row.evidence or "")

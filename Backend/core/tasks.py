@@ -752,13 +752,39 @@ def _sync_credentialed_vulnerabilities(
     scan_id: str,
     cve_list: list[dict],
 ) -> None:
-    from scans.asset_syncer import _resolve_finding_id
+    from core.checks.definitions import (
+        DEFINITION_TYPE_CVE,
+        definition_type_for_id,
+    )
+    from scans.asset_syncer import _catalog_title, _resolve_finding_id
 
     source_family = "credentialed_package"
     for vuln in cve_list or []:
         cve_id = _clean_text(vuln.get("cve_id") or vuln.get("cve") or vuln.get("id"))
         if not cve_id:
             continue
+
+        # What kind of catalogue row this identifier names. `cve_list` carries
+        # configuration and privilege findings alongside package CVEs — that is
+        # deliberate, and `_run_configuration_audit` documents it — so not every
+        # entry here is a CVE. This function assumed they all were: it wrote the
+        # identifier into `cve_id` and let `definition_type` take its 'cve'
+        # default.
+        #
+        # Two consequences, one loud and one silent. `cve_id` is varchar(30) and
+        # a minted id is longer — CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING is 37 —
+        # so the INSERT raised StringDataRightTruncation and **aborted the
+        # finding sync for the entire scan**, losing the package findings with
+        # it. Where the id did fit, the row inherited everything a CVE row
+        # means: KEV lookups, EPSS scores, CVSS bands, and an NVD link that
+        # resolves to nothing.
+        #
+        # Recovered from the identifier rather than trusted from the finding,
+        # exactly as `asset_syncer` does on the network path, because the
+        # finding is built by a plugin and the catalogue's CHECK constraint
+        # `ck_vuln_def_cve_id_matches_type` is what has to hold.
+        definition_type = definition_type_for_id(cve_id)
+        is_real_cve = definition_type == DEFINITION_TYPE_CVE
 
         cvss = float(vuln.get("cvss_score", vuln.get("cvss", 0.0)) or 0.0)
         # Derived from the score and stored in the one canonical (lower) case.
@@ -795,8 +821,8 @@ def _sync_credentialed_vulnerabilities(
         try:
             from core.cve_database import get_cve_database
 
-            cve_db = get_cve_database()
-            if cve_db.db_available:
+            cve_db = get_cve_database() if is_real_cve else None
+            if cve_db is not None and cve_db.db_available:
                 details = cve_db.get_cve_details(cve_id)
                 if details:
                     description = details.get("description") or description
@@ -825,11 +851,17 @@ def _sync_credentialed_vulnerabilities(
         # 1. UPSERT CVE Definition
         cve_insert = insert(VulnerabilityDefinition).values(
             id=cve_id,
-            cve_id=cve_id,
+            # NULL for anything that is not a published CVE. This is the column
+            # every join to the vulnerability feeds runs through, so a check row
+            # carrying a CVE-shaped string here is how a configuration weakness
+            # acquires an exploit record, a KEV due date and a CVSS band that
+            # belong to nothing.
+            cve_id=cve_id if is_real_cve else None,
+            definition_type=definition_type,
             title=(
                 f"{cve_id} in {package_name}"
-                if package_name
-                else f"Vulnerability {cve_id}"
+                if (is_real_cve and package_name)
+                else _catalog_title(vuln, cve_id, description)
             ),
             description=description,
             cvss_vector=cvss_vector,
@@ -862,11 +894,29 @@ def _sync_credentialed_vulnerabilities(
             # product produces: the version came from the host's own package
             # manager, not from a banner.
             evidence=(
-                f"Source           : authenticated package query\n"
-                f"Package          : {package_name or 'unknown'}\n"
-                f"Installed version: {installed_ver or 'not reported'}\n"
-                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
-                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+                (
+                    f"Source           : authenticated package query\n"
+                    f"Package          : {package_name or 'unknown'}\n"
+                    f"Installed version: {installed_ver or 'not reported'}\n"
+                    f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
+                    f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+                )
+                if is_real_cve
+                # A configuration or privilege check has no package and no fixed
+                # version, so three of those lines would read 'unknown' or 'not
+                # reported', and it has no NVD record, so the reference would be
+                # a link to a page that does not exist. The check's own
+                # expected-versus-observed reading is the evidence here.
+                else (
+                    "Source           : authenticated configuration check\n"
+                    + (
+                        _clean_text(vuln.get("evidence"))
+                        or (
+                            f"Expected: {vuln.get('expected_state') or 'not stated'}\n"
+                            f"Observed: {vuln.get('observed_state') or 'not stated'}"
+                        )
+                    )
+                )
             ),
             confidence="Confirmed",
             qod=97,

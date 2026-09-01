@@ -3929,18 +3929,22 @@ what this actually establishes:
 | Frameworks are active and installable                                     | ✅ verified in code and against the database    |
 | Installed for a tenant, via the product's own handler                     | ✅ `org_default`, default policy baseline built |
 | Catalogue → selection returns executable checks                           | ✅ **757**, all `scap_rule`, all `linux`        |
-| RHEL 9 / Ubuntu 24.04 rules evaluate against a live host                  | ✅ **in Phase 10**, from packs — not re-proven  |
+| Ubuntu 24.04 rules evaluate against a live host, from the catalogue       | ✅ **§9L** — 144 rules, real host, 0 errors     |
 | RHEL 8 / Ubuntu 22.04 rules evaluate against a live host                  | ❌ **never target-validated**                   |
-| A credentialed scan evaluates these **catalogue-loaded** rules end to end | ❌ **not demonstrated**                         |
+| A credentialed scan evaluates these **catalogue-loaded** rules end to end | ✅ **real-target validated — see §9L**          |
 
-The last row is the honest limit of this work. Phase 10 proved
-pack → engine → verdict against Rocky 9 and Ubuntu. What is _not_ proven is
-catalogue → `benchmark_checks_for_org` → engine → verdict against a live host.
-Two of those three arrows are now proven: the tenant install is done and the
-selection returns 757 executable checks. The unproven link is the last one —
-no credentialed scan has yet run a catalogue-loaded STIG rule against a real
-Linux target and produced a verdict. `tests/compliance/test_benchmark_end_to_end.py`
-covers the path in automation; a real target has not.
+The last two rows were the honest limit of this section when it was written,
+and the final one has since been closed. Phase 10 proved
+pack → engine → verdict against Rocky 9 and Ubuntu;
+catalogue → `benchmark_checks_for_org` → engine → verdict against a live host
+was left unproven because it needs a tenant install and a credentialed scan.
+**§9L is that run** — 144 Ubuntu 24.04 rules evaluated on real hardware, zero
+errors, three verdicts cross-checked against the machine's own configuration,
+and one defect found and fixed in the process.
+
+RHEL 8 and Ubuntu 22.04 remain target-unvalidated: the Ubuntu 24.04 host
+correctly reported all 356 of their rules NOT_APPLICABLE, which exercises the
+targeting but says nothing about their checks.
 
 RHEL 8 and Ubuntu 22.04 introduce **no OVAL test type** that RHEL 9 and Ubuntu
 24.04 did not already exercise, so the conversion is on proven ground — but
@@ -3959,6 +3963,223 @@ work: assessable Linux hardening content went from **155 built-in checks** to
 and crosswalked to NIST SP 800-53 on 1,021 controls. That is the largest single
 increase in assessable content in the programme, and it required one migration
 and no new engine.
+
+---
+
+## 9L. Real-target validation of the catalogue → credentialed scan → verdict path
+
+§9K.6 recorded one unproven link and named it precisely: no credentialed scan
+had run a **catalogue-loaded** STIG rule against a real Linux host and produced
+a verdict. Phase 10 proved pack → engine → verdict against containers; this
+closes the remaining arrow, on real hardware, and found one defect doing it.
+
+### 9L.1 Target and method
+
+`10.180.6.45` — **Ubuntu 24.04.4 LTS, kernel 6.8.0-138-generic**. A real kernel
+rather than a container, so the `system_with_kernel` platform that suppressed
+most rules in Phase 10's validation is satisfied here and the rules behind it
+are reachable.
+
+The credential was created through the product's own encrypted store
+(`POST /compliance/credentials` → `encrypt_credential`), and the scan was
+dispatched exactly as `routers/credentialed.py` dispatches it —
+`run_credentialed_scan_task.delay(..., credential_id=…, password=None)`. The
+worker resolves the secret itself, so **no credential appears in the broker
+payload, the task arguments, the logs or this repository**. The account is an
+ordinary unprivileged user: `id -u` 1000, sudo present but password-gated.
+
+### 9L.2 The defect this found, on the first run
+
+Scan 47 authenticated, collected for 615 seconds, and then **failed**:
+
+    StringDataRightTruncation: value too long for type character varying(30)
+      id:              CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING   (37 characters)
+      cve_id:          CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING
+      definition_type: cve
+
+`core/tasks._sync_credentialed_vulnerabilities` wrote `cve_id=cve_id`
+unconditionally and set no `definition_type`, so every entry took the column
+default `'cve'`. `cve_list` deliberately carries configuration and privilege
+findings alongside package CVEs — `_run_configuration_audit` documents that as
+the design — so the assumption that every entry is a CVE was wrong for all of
+them.
+
+**This is the `cve_id varchar(30)` defect CLAUDE.md already records, on a second
+write path.** The network path was fixed in Phase 6 via `definition_type_for_id`;
+`asset_syncer` carries the fix and a comment explaining it. The credentialed
+path never got it.
+
+Two consequences, one loud and one silent:
+
+- **Loud.** The catalogue insert is inside the finding sync, so the first
+  over-long identifier **aborted the sync for the entire scan** — the 833
+  package CVE findings were lost along with the configuration findings, and the
+  scan reported `failed` after having done all the work correctly.
+- **Silent.** Where a minted id _did_ fit in 30 characters, the row was filed as
+  a `cve`: inheriting KEV lookups, EPSS scores, CVSS bands and an NVD link that
+  resolves to nothing. `ck_vuln_def_cve_id_matches_type` could not catch it,
+  because the row did carry a `cve_id` — just not a real one.
+
+Note what this says about the built-in content: the failure is triggered by
+`ccure.linux.auditd.running`, a **Phase 3 built-in**, not by STIG content. Any
+credentialed Linux scan producing a configuration finding with an identifier
+over 30 characters failed this way. It was not found earlier because Phases 3
+and 5 validated the _engine_ against containers rather than the full scan →
+sync → finding path — the same shape of gap as §9K.2, where a fully validated
+reader had never written a catalogue row.
+
+**The fix** mirrors `asset_syncer` exactly rather than inventing a variant:
+derive `definition_type` from the identifier, NULL `cve_id` for anything that is
+not a published CVE, skip the CVE-feed lookup for check identifiers, take the
+title from the shared `_catalog_title`, and replace the package-shaped evidence
+block — which for a check read "Package: unknown", "Fixed in: no fixed version
+published" and a dead NVD link — with the check's own expected-versus-observed
+reading.
+
+**Guarded by three tests** in `tests/credentialed/test_config_audit_findings.py`,
+all mutation-verified — reverted against the unfixed function, all three fail;
+restored, all three pass. They drive the real `_sync_credentialed_vulnerabilities`
+against a real session rather than reading its source, which is the lesson
+§9J.9 records: a line that exists is not a line that runs. Nothing had covered
+this function at all before.
+
+### 9L.3 Result — scan 48
+
+Completed in **184.5 seconds**, `hosts_failed: 0`, **902 findings**: 833 `cve`,
+62 `config_check`, 7 `privilege_check`. Catalogue integrity over every row the
+scan wrote: **0 non-CVE rows carrying a `cve_id`, 0 `cve` rows with a NULL
+one.**
+
+All **757** catalogue-loaded STIG rules were evaluated, and the distribution is
+exactly what the content and the target predict:
+
+| Framework                | pass | fail | not_applicable | manual_review | error |
+| ------------------------ | ---: | ---: | -------------: | ------------: | ----: |
+| `cfw_bm_stig_ubuntu2404` |   22 |   58 |             59 |             5 | **0** |
+| `cfw_bm_stig_ubuntu2204` |    — |    — |            138 |             — | **0** |
+| `cfw_bm_stig_rhel9`      |    — |    — |            257 |             — | **0** |
+| `cfw_bm_stig_rhel8`      |    — |    — |            218 |             — | **0** |
+| **Total**                |   22 |   58 |            672 |             5 | **0** |
+
+Two things to read off that table. The four numbers for Ubuntu 24.04 sum to
+**144**, which is exactly that benchmark's automated rule count — every rule
+reached a state, none was skipped. And the other three benchmarks are
+**entirely NOT_APPLICABLE**: the Phase 4 `applies_to` targeting correctly
+withheld 613 RHEL and Ubuntu 22.04 rules from an Ubuntu 24.04 host, rather than
+running them and reporting their absence as a verdict.
+
+**Zero errors**, which is what §9D claimed for the pack path and is now shown
+for the catalogue path.
+
+### 9L.4 Evidence checked against the host, not taken on trust
+
+Three verdicts were cross-checked directly against the machine:
+
+| Rule                           | Verdict | Evidence recorded                                           | Host                                         |
+| ------------------------------ | ------- | ----------------------------------------------------------- | -------------------------------------------- |
+| `package_audit_installed`      | FAIL    | `linux:dpkginfo_object: 0 item(s) collected … all_exist`    | `unknown ok not-installed` ✅                |
+| `package_telnetd_removed`      | PASS    | `the host is in the state the rule requires`                | not installed ✅                             |
+| `accounts_password_pam_minlen` | FAIL    | `textfilecontent54_object: 0 item(s) … at_least_one_exists` | no active `minlen`; file wholly commented ✅ |
+
+The evidence is diagnostic rather than decorative: it names the OVAL object and
+the existence check that was not satisfied, which is what makes a FAIL
+actionable without re-running the scan by hand. 56 of the 58 FAILs also carry
+SSG's own remediation text.
+
+`oscap` was **not** used as a cross-check here. It is absent from the target and
+installing it means adding software to a machine this exercise is not permitted
+to modify. Phase 10 already established 144/144 agreement with `oscap` on this
+exact Ubuntu 24.04 content, so what was unproven was the catalogue path, not the
+rule semantics — and the host's own configuration is a more direct check of
+those three verdicts than a second scanner would have been.
+
+### 9L.5 The most important result: privilege degraded safely
+
+Five rules returned **MANUAL_REVIEW**, and every one is an unprivileged read:
+
+    /etc/sudoers  Permission denied  — sudo_remove_nopasswd,
+                                       sudo_require_authentication,
+                                       sudo_restrict_privilege_elevation_to_authorized
+    /etc/shadow   Permission denied  — no_empty_passwords_etc_shadow,
+                                       prevent_direct_root_logins
+
+CLAUDE.md records that the configuration-audit collectors **do not elevate** —
+`ShellRunner` has no sudo path, so every check reads what the scanning account
+can read. This is that limitation meeting a real host, and the outcome is the
+one the architecture exists to produce: a read that failed became
+**MANUAL_REVIEW, not PASS and not FAIL**.
+
+`no_empty_passwords_etc_shadow` is the case worth stating plainly. The collector
+saw zero items. A scanner that treated "0 items collected" as "no empty
+passwords found" would report a **PASS on one of the most security-critical
+checks in the benchmark**, on a file it never read. The four collection states
+were not collapsed, under real insufficient privilege, on real hardware. That is
+the invariant `core/checks/contract.py` was written for, demonstrated rather
+than asserted.
+
+### 9L.6 Finding and report linkage
+
+The 58 STIG FAILs reach `asset_vulnerabilities` with correctly minted
+`CCURE-CFG-RULE-STIG-UBUNTU2404-…` identifiers, `definition_type =
+config_check` and `cve_id` NULL. A technical PDF was generated
+(`credentialed_scan_01-09-2026_20-29-40_technical.pdf`, 891 KB) from the same
+902-finding payload the phase summary records, and `pdf_generator.py:1256`
+resolves a finding's identifier as `primary_cve or plugin_id`, so a finding with
+no CVE renders under its minted id rather than blank.
+
+**Stated as a limit rather than a claim:** the rendered PDF text was not read.
+No PDF text-extraction library is present and installing one would modify the
+environment. The linkage is therefore verified at the data layer and in the
+generator's code, not by reading the artefact.
+
+### 9L.7 Recorded, not fixed
+
+- **`compliance_findings.scan_run_id` is empty for configuration verdicts**, and
+  `source` is `auto_scan` for all 757. The verdicts carry `last_seen` and
+  nothing else tying them to the scan that produced them, so "which run
+  established this" is answerable only by timestamp. Findings on the
+  vulnerability side do carry `scan_id`.
+- **NOT_APPLICABLE carries no `not_assessed_reason`** — for all 672, including
+  the 613 withheld by OS targeting. The verdict is right and the reason is
+  correct, but a reader cannot tell "wrong operating system" from any other
+  cause without going to the benchmark.
+- **The minted identifiers double a prefix**:
+  `CCURE-CFG-RULE-STIG-UBUNTU2404-…`, because the rule row id already begins
+  `rule_stig_…`. Cosmetic, stable, and not worth a migration on live findings.
+- **Two of the 58 FAILs carry no remediation text**, which is a property of the
+  SSG content rather than of the conversion.
+- **The project virtualenv has no `impacket`, so Phase 12's SMB transport is
+  unavailable in the runtime.** `Backend/.venv` is what
+  `start_host_scanner_worker.ps1` launches the worker from, and
+  `import impacket` fails there — `SMBExecutor.__init__` raises
+  `SMBConfigurationError` before it does anything. The capability is
+  implemented and was real-target validated in Phase 12; it simply cannot run
+  as this machine is currently set up, and a Windows client-edition host would
+  fall back to WinRM or not be reached at all. Found because this section's
+  regression run used the venv interpreter while every earlier baseline in this
+  tracker used the global Python 3.12, where a previous session installed
+  impacket — so `test_smb_transport.py` passes there and fails here, and the
+  suite totals in §12 are not strictly comparable across that boundary.
+  **Not fixed here**, because `impacket` depends on `pyasn1` with no upper
+  bound and will pull 6.x over the `pyasn1>=0.4.8,<0.6.0` pin that
+  `pysnmp-lextudio` needs; that silently degrades SNMP topology, where an FDB
+  table decodes to one entry instead of three. Installing it needs
+  `pyasn1==0.5.1` pinned alongside and a topology check afterwards.
+
+- **`detection_method` is `credentialed_package` and `source_family` is
+  `credentialed_package` on configuration findings**, because the write path is
+  shared with package matching. Pre-existing, unchanged by this work, and it
+  affects how those findings group in a report. Changing it moves finding
+  grading and deserves its own decision.
+
+### 9L.8 Coverage
+
+**No coverage figure moves, and none should.** `measure_scap_coverage.py`
+measures the reader against the SCAP surface — 52 frozen areas, 33 implemented,
+**63.5%**. This exercise implemented no OVAL test type and loaded no content;
+it proved a path. GAP-05 stays **Closed at 63.5%**, now with the
+catalogue → credentialed scan → verdict link validated on a real host rather
+than declared.
 
 ---
 

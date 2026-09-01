@@ -321,7 +321,10 @@ def _dispatch_credentialed(
         username=None,
         password=None,
         key_path=None,
-        port=credential.port or 22,
+        # Not ``or 22``: the task resolves the endpoint from the credential
+        # it fetches, and an SSH port defaulted here for a Windows credential
+        # would be a wrong answer standing in for a missing one.
+        port=credential.port or None,
         auth_method=credential.auth_method or "password",
         sections=options.get("sections"),
         os_type_req=str(options.get("os_type") or "auto"),

@@ -15,7 +15,8 @@ from typing import List, Optional
 from auth.rbac import require_permission
 from db.base import SessionLocal
 from db.models import ComplianceCredential, User
-from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE, SSHScanner
+from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
+from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -68,7 +69,11 @@ class CredentialedScanRequest(BaseModel):
     username: str | None = Field(None, examples=["root"])
     password: SecretStr | None = Field(None)
     key_path: str | None = Field(None)
-    port: int = Field(22, ge=1, le=65535)
+    #: ``None`` means "whatever this credential says", not 22. The default used
+    #: to be 22, which is indistinguishable from an operator asking for 22 — so
+    #: a stored credential's port had to overwrite it unconditionally and there
+    #: was no way to run one credential against a host whose listener had moved.
+    port: int | None = Field(None, ge=1, le=65535)
     auth_method: str = Field("password")
     sections: list[str] | None = Field(None)
     os_type: str = Field("auto", description="'linux' | 'windows' | 'auto'")
@@ -209,6 +214,8 @@ async def scan_credentialed(
 
     # Validate based on credential input type
     target_port = req.port
+    target_transport = TRANSPORT_SSH
+    credential_use_tls = None
     if not req.credential_id:
         if not req.username:
             raise HTTPException(
@@ -245,7 +252,13 @@ async def scan_credentialed(
                     status_code=404,
                     detail="Stored credential not found or access denied.",
                 )
-            target_port = cred.port
+            # An explicit port on the request wins. Previously the stored
+            # credential's port overwrote it unconditionally, so the field was
+            # dead whenever a credential was named and an operator could not
+            # point one credential at a host whose listener had moved.
+            target_port = req.port or cred.port
+            target_transport = cred.transport or TRANSPORT_SSH
+            credential_use_tls = (cred.options or {}).get("use_tls")
         finally:
             db.close()
 
@@ -279,10 +292,28 @@ async def scan_credentialed(
     # several, one dead host must not block the rest; those are recorded as
     # failed hosts in the report instead.
     if len(hosts) == 1:
-        if not SSHScanner.test_connectivity(hosts[0], target_port, timeout=5):
+        # Resolved rather than probed on one fixed port. A bare
+        # ``test_connectivity`` on the credential's stated port rejected the
+        # scan here — before the worker, which now resolves the endpoint, ever
+        # ran — so a host whose listener had moved could not be scanned at all
+        # however good the resolution downstream was. This probes the same
+        # candidates the worker will, and only refuses when none answers.
+        preflight = resolve_endpoint(
+            ip=hosts[0],
+            transport=target_transport,
+            stated_port=target_port,
+            use_tls=credential_use_tls,
+            include_fallbacks=True,
+            timeout=5,
+        )
+        if not preflight.resolved:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot reach {hosts[0]}:{target_port} — host is down or port is closed.",
+                detail=(
+                    f"Cannot reach {hosts[0]} — host is down or no "
+                    f"{target_transport.upper()} port is open. "
+                    f"{preflight.reason}"
+                ),
             )
 
     target_str = ", ".join(hosts)

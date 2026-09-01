@@ -54,7 +54,7 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
 | **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
 | **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (69.4% measured, raised by Phase 11)    | `d40800d` |
-| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 11    | Medium   | 0% [measured]    | 90%    | **Closed** (71.4% measured, real-target validated) | `PENDING` |
+| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 11    | Medium   | 0% [measured]    | 90%    | **Closed** (71.4% measured, real-target validated) | `426c282` |
 | **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
 | **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated) | `7520e90` |
 | **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
@@ -2934,6 +2934,203 @@ against this one. That is the same treatment Phase 8 gave GAP-09's "~3%".
 | Regression              | ✅ full suite, see §11                                         |
 | Targets destroyed       | ✅ all six containers removed                                  |
 
+## 9G. Stabilization after Phase 11 — credentialed transport and port resolution
+
+**Not a capability phase, and no gap moved.** No check, rule, probe or finding
+was added. What changed is where an authenticated session is opened, which had
+been decided by a constant since before Phase 1.
+
+### 9G.1 Root cause
+
+`compliance_credentials.port` is `NOT NULL` with a model-level default of `22`.
+So "the operator chose 22" and "nobody said anything" are the same row, and
+until this fix that row was the _only_ input to the decision. Four consequences,
+each of which produced a plausible failure a support ticket would have blamed on
+the target:
+
+- **The phase-3.5 enrichment path dropped the transport entirely.** It resolved
+  the stored credential — reading `transport`, `auth_method`, `domain` and
+  `options` — and then called `audit_credentialed_host` **without any of them**,
+  so the auditor's `transport="ssh"` default applied to every credential on the
+  main scan path. A Windows credential opened an SSH handshake against a WinRM
+  listener and the host was recorded as a connection failure. The standalone
+  `/scan/credentialed` route passed them correctly, so the defect was invisible
+  to anyone testing that route.
+
+- **`port = int(material.get("port") or 22)`** in the same path: an SSH port
+  standing in for every credential type. Combined with the open-port guard
+  (`if open_numbers and port not in open_numbers: skip`), a host running sshd on
+  2222 was skipped with "Port 22/tcp not open" **on a scan that had already
+  discovered and identified sshd on 2222 two phases earlier**. The evidence was
+  in the same dictionary the guard was reading.
+
+- **`audit_credentialed_host(port: int = 22)`** and
+  `run_credentialed_scan_task(port: int = 22)` — the same SSH constant as a
+  signature default for a function that dispatches two transports.
+
+- **`use_tls` was re-derived from `port == 5986`.** Right for the conventional
+  layout, wrong for every other one: an HTTPS WinRM listener on any other port
+  would be addressed as `http://` and fail with a handshake error that reads as
+  a broken host.
+
+Two further sites carried the same constant: `core/scheduling/dispatcher.py`
+passed `port=credential.port or 22` (inert, because the task re-reads the
+credential, but wrong-looking and one refactor away from mattering), and the
+enrichment path did not branch on `credential_type`, so a **database credential
+in a scan's credential list was handed to the host auditor** — the exact defect
+the standalone task documents itself as avoiding.
+
+### 9G.2 The fix — one resolver, no new engine
+
+`engines/credentialed/transport_resolver.py`. No new scan kind, no new route, no
+migration, no change to any collector. Both call sites resolve; everything
+downstream is unchanged.
+
+**The port scan's service identification is evidence, and the resolver reads
+it.** Candidates are the stated port plus every open TCP port the scan
+_positively identified_ as that transport's service — `ssh` by service token,
+RFC 4253 banner or product string; WinRM by `wsman`/`winrm` token or the
+`Microsoft HTTPAPI` product string that is the only thing identifying a listener
+moved off 5985.
+
+Three properties hold the design, and each is asserted by test:
+
+- **A credential is only ever offered a port that is stated on it or identified
+  as that transport.** Walking every open port until something authenticates is
+  credential spraying against the customer's own estate, and it is what a "try
+  harder" resolver becomes the moment identification is dropped.
+
+- **Selection is by TCP reachability, never by attempting authentication.** Both
+  executors already expose `test_connectivity`, which opens a socket and closes
+  it. Exactly one authentication attempt is made however many candidates were
+  considered, so resolution can never become the account lockout this product
+  documents as a control it must not trip. A **rejected** credential is never
+  retried elsewhere; only a _transport_ failure — nothing answered — advances.
+
+- **`use_tls` is carried, not re-derived.** 5985 and 5986 are settled by
+  convention; anything else carries `None`, because nmap keeps the TLS fact in a
+  `tunnel` attribute this product does not parse and a guess there addresses an
+  HTTPS listener as `http://`.
+
+**Discovery is authoritative where it exists; a TCP probe is the fallback where
+it does not.** The enrichment path has the port scan's view, so it opens no
+socket — the rule it already had, kept deliberately, because a 5-second connect
+per host is minutes across a large scan. The standalone scan runs no discovery,
+so it attempts the stated port directly (unchanged cost for a conventional host)
+and probes the conventional alternates only after a transport failure.
+
+**The stated port leads, except when discovery contradicts it.** Because 22 can
+be on a Windows credential without anyone having chosen it, a stated port that
+the scan positively identified as _some other_ service goes second rather than
+first. It is never dropped — service detection can be wrong.
+
+### 9G.3 Real-target validation — VALIDATED
+
+Two live hosts supplied for the purpose, plus one disposable container.
+Credentials were held in the environment for the duration and written nowhere.
+**Nothing on either host was modified**; every check is a resolution followed by
+one authenticated session.
+
+`10.180.6.14` is the case the demotion rule exists for: it runs **sshd on 22 and
+WinRM on 5985 simultaneously**, so a Windows credential carrying the model
+default would have authenticated against the wrong service.
+
+| #   | Case                                                           | Result                          |
+| --- | -------------------------------------------------------------- | ------------------------------- |
+| 1   | Linux, credential states 22, discovery agrees                  | 22 (`credential`)               |
+| 2   | Linux, credential states 2222, discovery identified sshd on 22 | 22 (`discovered`)               |
+| 3   | Linux, no discovery, stated 2222 closed                        | 22 (`fallback`)                 |
+| 4   | Linux, authenticated session on the resolved port              | `Linux 6.8.0-138-generic`       |
+| 5   | **Windows, WinRM credential carrying the model default 22**    | **5985, not 22** (`discovered`) |
+| 6   | Windows, WinRM credential states 5985                          | 5985 (`credential`)             |
+| 7   | Windows, SSH credential on the same host                       | 22, not 5985                    |
+| 8   | Windows, WinRM authenticated                                   | `Microsoft Windows 11 Pro`      |
+| 9   | Windows, SSH-on-Windows authenticated                          | hostname returned               |
+| 10  | SSH credential where no sshd was discovered                    | refused, no attempt             |
+
+**Non-default port, proven end to end** against a disposable Ubuntu 24.04
+container running sshd on 2222 (`sshd -T` reported `port 2222`), destroyed
+afterwards:
+
+| Case                                                    | Result                       |
+| ------------------------------------------------------- | ---------------------------- |
+| Credential states 22, discovery identified sshd on 2222 | resolved 2222 (`discovered`) |
+| **Authenticated on the resolved non-default port**      | ✅ `root` on Ubuntu 24.04    |
+| Credential configured for 2222, no discovery            | resolved 2222 (`credential`) |
+| **Authenticated on the configured non-default port**    | ✅                           |
+
+**Non-standard WinRM port, authenticated.** Neither host could be reconfigured
+to move its listener, so the session was opened through a local TCP relay on
+`127.0.0.1:15985` forwarding to the target's 5985 — nothing on the Windows host
+changed. Discovery described the relay port only by its `Microsoft HTTPAPI`
+product string, which is the sole identifying evidence for a WinRM listener off
+5985:
+
+| Case                                       | Result                               |
+| ------------------------------------------ | ------------------------------------ |
+| Resolved from the product string alone     | 15985 (`discovered`), `use_tls=None` |
+| **Authenticated over WinRM on port 15985** | ✅ `Microsoft Windows 11 Pro`        |
+
+`use_tls` was correctly left `None` — the port is in no convention table and
+nothing established TLS — so the executor applied its plaintext default, which
+is what the listener speaks.
+
+Two results recorded as _not_ validated:
+
+- **WinRM over TLS on 5986** is resolved correctly (case 6 variants) but neither
+  host exposes an HTTPS listener, so no authenticated session proves it.
+- `10.180.6.14` also has **47001** open, and the resolver correctly identified it
+  as WinRM from the same product string — but a WS-Management request there
+  returned **HTTP 404**, classified as `WinRMConfigurationError` ("answered, but
+  configured in a way that prevents the scan"). That is the right outcome: the
+  listener is real, the endpoint is not served at `/wsman` on that host, and
+  nothing was reported as a pass.
+
+### 9G.4 Tests
+
+49 new tests across two files, both mutation-verified:
+
+- `tests/credentialed/test_transport_resolution.py` (54 cases) — identification,
+  the spraying guard, TLS carriage, ordering, and the required port matrix.
+- `tests/credentialed/test_transport_selection_pipeline.py` (26 cases) — the two
+  call sites, the database-credential skip, the retry discipline, and the API's
+  port override.
+
+Mutation-verified in both directions: restoring `port = int(... or 22)` fails
+three tests by name; removing `transport=transport` from the enrichment call
+fails two.
+
+Three existing tests in `test_credentialed_pipeline.py` were repointed. They
+patched `routers.credentialed.SSHScanner.test_connectivity` to stand the
+pre-flight socket down; the router no longer imports that class, so they now
+name it directly from `engines.credentialed.ssh_scanner`. Same class attribute,
+same intent, nothing relaxed.
+
+### 9G.5 Coverage
+
+**No coverage figure moves, and none should.** This is a correctness fix on the
+path every credentialed capability runs through, not a new check. What it
+changes is how often the existing capabilities are _reachable_: GAP-02, GAP-03,
+GAP-04, GAP-05, GAP-08, GAP-09 and GAP-17 all execute over this transport, and
+on a host with a non-conventional listener every one of them previously scored
+zero for reasons that had nothing to do with the check.
+
+### 9G.6 Recorded, not fixed
+
+- **`compliance_credentials.port` still defaults to 22 at the model level.**
+  The API applies the correct per-type default (`22`/`5985`/`5432`), so a
+  credential created through the product is right; a row created directly by ORM
+  is not. Changing the column means a migration on live encrypted credentials
+  for a default the resolver now compensates for.
+- **Compliance remediation is SSH-only.** `_execute_ssh_remediation` wraps
+  PowerShell over SSH and has no WinRM branch, so a Windows host reachable only
+  by WinRM can be assessed but not remediated. That is a capability gap in the
+  remediation path, not a port defect, and adding the branch is new work.
+- **`POST /scan/credentialed` refuses when paramiko is missing**, even for a
+  WinRM credential that does not need it.
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -3215,6 +3412,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅ |
 | 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅ |
 | 11    | `426c282` | —   | 4279 passed, 2 skipped ✅ |
+| 11s   | `PENDING` | —   | 4359 passed, 2 skipped ✅ |
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

@@ -651,10 +651,13 @@ def test_scan_records_the_pipeline_it_actually_ran(
     executed.
     """
     import routers.credentialed as credentialed_router
+    from engines.credentialed.ssh_scanner import SSHScanner
 
-    monkeypatch.setattr(
-        credentialed_router.SSHScanner, "test_connectivity", lambda *a, **k: True
-    )
+    # The router's pre-flight check resolves the endpoint rather than probing
+    # one fixed port, and reaches SSHScanner.test_connectivity through the
+    # resolver. Patching the class attribute is still what stands the socket
+    # down; the router no longer imports the class, so this names it directly.
+    monkeypatch.setattr(SSHScanner, "test_connectivity", lambda *a, **k: True)
     captured = {}
 
     class _Task:
@@ -684,10 +687,13 @@ def test_multiple_targets_are_expanded_into_one_scan(
     client: TestClient, auth_headers: dict, db_session: Session, monkeypatch
 ):
     import routers.credentialed as credentialed_router
+    from engines.credentialed.ssh_scanner import SSHScanner
 
-    monkeypatch.setattr(
-        credentialed_router.SSHScanner, "test_connectivity", lambda *a, **k: True
-    )
+    # The router's pre-flight check resolves the endpoint rather than probing
+    # one fixed port, and reaches SSHScanner.test_connectivity through the
+    # resolver. Patching the class attribute is still what stands the socket
+    # down; the router no longer imports the class, so this names it directly.
+    monkeypatch.setattr(SSHScanner, "test_connectivity", lambda *a, **k: True)
     captured = {}
 
     class _Task:
@@ -754,11 +760,9 @@ def test_single_unreachable_target_still_fails_fast(
     With one target an unreachable host means the scan has nothing to do, so
     the operator is told immediately rather than after a queued job fails.
     """
-    import routers.credentialed as credentialed_router
+    from engines.credentialed.ssh_scanner import SSHScanner
 
-    monkeypatch.setattr(
-        credentialed_router.SSHScanner, "test_connectivity", lambda *a, **k: False
-    )
+    monkeypatch.setattr(SSHScanner, "test_connectivity", lambda *a, **k: False)
 
     response = client.post(
         "/scan/credentialed",

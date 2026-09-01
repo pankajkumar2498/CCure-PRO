@@ -639,6 +639,68 @@ Server installed.**
   published fixed builds. `os_assessed` distinguishes "no missing patches" from
   "could not assess"; never collapse them.
 
+## Credentialed transport and port resolution (`engines/credentialed/transport_resolver.py`)
+
+Where an authenticated session is opened. Until this existed the answer was
+`compliance_credentials.port`, which is **NOT NULL with a model default of 22** —
+so "the operator chose 22" and "nobody said anything" are the same row.
+
+- **The port scan's service identification is evidence, and the resolver reads
+  it.** Candidates are the stated port plus every open TCP port positively
+  identified as that transport's service. A host running sshd on 2222 used to be
+  skipped with "Port 22/tcp not open" on a scan that had already identified sshd
+  on 2222 — the evidence was in the same dictionary the guard was reading.
+
+- **A credential is only ever offered a port that is stated on it or identified
+  as that transport.** Walking every open port until something authenticates is
+  credential spraying against the customer's own estate, and it is what a "try
+  harder" resolver becomes the moment identification is dropped. `ssh` is
+  matched by service *token* (so `SSH-Alt` qualifies and `ssl` does not), by the
+  RFC 4253 banner, or by product; WinRM by `wsman`/`winrm` or the
+  `Microsoft HTTPAPI` product string — which is the only thing identifying a
+  listener moved off 5985.
+
+- **Selection is by TCP reachability, never by attempting authentication.** Both
+  executors already expose `test_connectivity`. Exactly one authentication
+  attempt is made however many candidates were considered. A **rejected**
+  credential is never retried on another port; only a transport failure —
+  nothing answered — advances, which is what `_is_transport_failure` in
+  `core/tasks.py` decides. Retrying a rejection turns one failed logon into
+  three against an account the lockout control must not trip.
+
+- **Discovery is authoritative where it exists; a TCP probe is the fallback
+  where it does not.** The phase-3.5 enrichment path has the port scan's view
+  and opens no socket — a 5-second connect per host is minutes across a large
+  scan. The standalone `/scan/credentialed` runs no discovery, so it attempts
+  the stated port directly and probes the conventional alternates *only after a
+  transport failure*. `FALLBACK_PORTS` is deliberately two entries per
+  transport, not a port scan.
+
+- **`use_tls` is carried, not re-derived.** `WinRMExecutor` infers TLS from
+  `port == 5986` when it is not told, which is right for the conventional layout
+  and wrong for every other one. 5985/5986 are settled by convention; anything
+  else carries `None`, because nmap keeps the TLS fact in a `tunnel` attribute
+  this product does not parse and a guess addresses an HTTPS listener as
+  `http://`.
+
+- **The stated port leads, except when discovery contradicts it.** Since 22 can
+  sit on a Windows credential without anyone having chosen it, a stated port the
+  scan identified as *some other* service goes second. It is never dropped —
+  service detection can be wrong. Validated against a real host running sshd on
+  22 **and** WinRM on 5985 at once.
+
+- **`_apply_credentialed_enrichment` must pass `transport`, `auth_method`,
+  `domain` and `credential_options`.** It resolved all four from the stored
+  credential and then called the auditor with none of them, so the auditor's
+  `transport="ssh"` default applied to every credential on the main scan path
+  and a Windows credential opened an SSH handshake against a WinRM listener. The
+  standalone route passed them correctly, which is why the defect was invisible
+  to anyone testing that route.
+
+- **That path must also skip `credential_type == database`.** A database
+  credential names an instance, not a host; the standalone task branches on this
+  and the enrichment path did not.
+
 ## Scan scheduling (`core/scheduling/`)
 
 Recurring network and credentialed scans. Phase 1 of the gap-closure

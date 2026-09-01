@@ -28,6 +28,10 @@ from engines.credentialed.coverage import (
     credentialed_coverage,
     mark_credentialed_confirmed,
 )
+from engines.credentialed.transport_resolver import (
+    DEFAULT_PORT as DEFAULT_TRANSPORT_PORT,
+)
+from engines.credentialed.transport_resolver import resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scan_helpers import (
     carry_scan_coverage,
@@ -1807,22 +1811,62 @@ def _apply_credentialed_enrichment(
             skipped.append({"target": ip, "reason": "No credential in scope"})
             continue
 
-        port = int(material.get("port") or 22)
-        open_ports = host.get("open_ports") or []
-        open_numbers = {
-            p.get("port") for p in open_ports if isinstance(p, dict) and p.get("port")
-        }
-        # The port scan has already established what is reachable. Attempting a
-        # 20-second SSH handshake against a port it found closed would add
-        # minutes to a large scan to learn what is already known.
-        if open_numbers and port not in open_numbers:
+        # A database credential names an instance, not a host. Handing one to
+        # the host auditor opens an SSH session against a database port and
+        # reports the machine as unreachable — the standalone task branches on
+        # this and this path did not, so a scan carrying a mixed credential set
+        # produced a spurious failure for every host the database credential
+        # was in scope for.
+        credential_type = material.get("credential_type") or CREDENTIAL_TYPE_SSH
+        if credential_type == CREDENTIAL_TYPE_DATABASE:
             skipped.append(
                 {
                     "target": ip,
-                    "reason": f"Port {port}/tcp not open — no authenticated session attempted",
+                    "reason": (
+                        "Credential in scope is a database credential; host "
+                        "enrichment needs an SSH or WinRM credential"
+                    ),
                 }
             )
             continue
+
+        transport = material.get("transport") or "ssh"
+        credential_options = dict(material.get("options") or {})
+        open_ports = host.get("open_ports") or []
+
+        # Where to authenticate is resolved from the port scan's own service
+        # identification, not from a constant. This used to be
+        # ``int(material.get("port") or 22)`` — an SSH port for every credential
+        # type — and the host was then skipped whenever the port scan did not
+        # find that exact number open. A host running sshd on 2222 was skipped
+        # on a scan that had already identified sshd on 2222.
+        #
+        # The port scan's view stays authoritative: a candidate it found closed
+        # is still not attempted, because a 20-second handshake per host to
+        # learn what is already known is minutes across a large scan.
+        resolution = resolve_endpoint(
+            ip=ip,
+            transport=transport,
+            stated_port=material.get("port"),
+            use_tls=credential_options.get("use_tls"),
+            open_ports=open_ports,
+        )
+        if not resolution.resolved:
+            skipped.append({"target": ip, "reason": resolution.reason})
+            continue
+
+        endpoint = resolution.endpoint
+        port = endpoint.port
+        if endpoint.use_tls is not None:
+            credential_options["use_tls"] = endpoint.use_tls
+        if endpoint.source != "credential":
+            log.info(
+                "Credentialed enrichment: %s resolved to port %s over %s — %s",
+                ip,
+                port,
+                transport.upper(),
+                endpoint.evidence,
+            )
 
         if scan_id:
             publish_progress_sync(
@@ -1848,6 +1892,15 @@ def _apply_credentialed_enrichment(
                 network_ports=open_ports,
                 network_scanned=True,
                 scanned_ports=scanned_ports,
+                # Carried through so a Windows credential reaches its host over
+                # WinRM. Without these four this path defaulted every credential
+                # to SSH whatever the stored record said, so a Windows
+                # credential opened an SSH handshake against a WinRM listener
+                # and the host was recorded as a connection failure.
+                transport=transport,
+                auth_method=material.get("auth_method") or "password",
+                domain=material.get("domain"),
+                credential_options=credential_options,
             )
         except Exception as exc:  # noqa: BLE001 — recorded, scan continues
             log.warning("Credentialed enrichment failed for %s: %s", ip, exc)
@@ -2796,7 +2849,7 @@ def audit_credentialed_host(
     password: str | None = None,
     key_path: str | None = None,
     key_content: str | None = None,
-    port: int = 22,
+    port: int | None = None,
     sections: list[str] | None = None,
     os_type_req: str = "auto",
     emit=None,
@@ -2851,25 +2904,30 @@ def audit_credentialed_host(
     host_started = time.time()
 
     resolved_transport = (transport or "ssh").strip().lower()
+    # ``port`` used to default to 22 in this signature, which is an SSH port
+    # standing in for every transport. A WinRM caller that named no port got 22
+    # and opened a WS-Management request against sshd. Each transport now
+    # supplies its own default, and WinRM's is left to the executor because it
+    # is TLS-dependent: 5986 when ``use_tls`` is set, 5985 otherwise.
+    if resolved_transport != "winrm" and not port:
+        port = DEFAULT_TRANSPORT_PORT.get(resolved_transport, 22)
     _emit(
-        f"Connecting to {ip}:{port} over {resolved_transport.upper()}...",
+        f"Connecting to {ip}:{port or 'default port'} over "
+        f"{resolved_transport.upper()}...",
         10,
         "connecting",
     )
     connect_started = time.perf_counter()
 
     if resolved_transport == "winrm":
-        from engines.credentialed.winrm_executor import (
-            DEFAULT_HTTP_PORT,
-            WinRMExecutor,
-        )
+        from engines.credentialed.winrm_executor import WinRMExecutor
 
         winrm_options = dict(credential_options or {})
         connection = WinRMExecutor(
             ip=ip,
             username=username,
             password=password,
-            port=port or DEFAULT_HTTP_PORT,
+            port=port or None,
             auth_method=auth_method or "ntlm",
             use_tls=winrm_options.get("use_tls"),
             verify_cert=bool(winrm_options.get("verify_cert", False)),
@@ -3682,6 +3740,102 @@ def _classify_credentialed_failure(reason: str) -> str:
     return "failed"
 
 
+def _is_transport_failure(exc: Exception) -> bool:
+    """
+    Did nothing answer, as opposed to something answering and saying no?
+
+    The distinction decides whether another port may be tried. A refused
+    password means the credential reached a listener and was rejected, so
+    repeating it elsewhere adds failed-logon events against an account this
+    product must not lock out; nothing listening means the endpoint was wrong
+    and resolution is exactly the right response.
+
+    WinRM is settled by type, because its executor already separates the four
+    cases. SSH raises ``RuntimeError`` with a message, so it is settled by the
+    same classifier the scan record uses — one vocabulary, not two.
+    """
+    try:
+        from engines.credentialed.winrm_executor import (
+            WinRMAuthenticationError,
+            WinRMConnectionError,
+        )
+
+        if isinstance(exc, WinRMAuthenticationError):
+            return False
+        if isinstance(exc, WinRMConnectionError):
+            return True
+    except ImportError:  # pragma: no cover - pywinrm is optional
+        pass
+
+    reason = str(exc).lower()
+    if "authentication failed" in reason or "credentials were rejected" in reason:
+        return False
+    if "ssh connection error" in reason:
+        return True
+    return _classify_credentialed_failure(reason) == "unreachable"
+
+
+def _audit_host_over_transport(**kwargs):
+    """
+    Audit one host, resolving the endpoint if the stated one does not answer.
+
+    The stated port is attempted directly, so a scan against a conventionally
+    configured host costs exactly what it always did — no probe, one
+    authentication attempt. Resolution engages only after a *transport* failure,
+    and then selects by TCP reachability, so the second attempt is made against
+    a port something is actually listening on.
+
+    **A rejected credential is never retried on another port.** That would turn
+    one failed logon into three against the same account, which is the lockout
+    this product documents as a control it must not trip.
+    """
+    ip = kwargs["ip"]
+    transport = (kwargs.get("transport") or "ssh").strip().lower()
+    stated_port = kwargs.get("port")
+
+    try:
+        return audit_credentialed_host(**kwargs)
+    except Exception as first_exc:  # noqa: BLE001 — re-raised unless resolvable
+        if not _is_transport_failure(first_exc):
+            raise
+        options = dict(kwargs.get("credential_options") or {})
+        # Resolution is a best-effort second look, so it must never become the
+        # error the operator sees. A fault in here would otherwise replace
+        # "Cannot reach 10.0.0.6:22 — host is down" with something about the
+        # resolver, and the scan record's unreachable/failed distinction — which
+        # drives different UI — would be decided by the wrong exception.
+        try:
+            resolution = resolve_endpoint(
+                ip=ip,
+                transport=transport,
+                stated_port=None,
+                use_tls=options.get("use_tls"),
+                include_fallbacks=True,
+                exclude_ports=[stated_port] if stated_port else None,
+            )
+        except Exception:  # noqa: BLE001 — the original failure is the answer
+            log.debug("Endpoint resolution for %s failed", ip, exc_info=True)
+            raise first_exc from None
+        if not resolution.resolved:
+            raise
+        endpoint = resolution.endpoint
+        if endpoint.use_tls is not None:
+            options["use_tls"] = endpoint.use_tls
+        log.info(
+            "Credentialed scan: %s did not answer on port %s; retrying on %s "
+            "over %s — %s",
+            ip,
+            stated_port,
+            endpoint.port,
+            transport.upper(),
+            endpoint.evidence,
+        )
+        retry = dict(kwargs)
+        retry["port"] = endpoint.port
+        retry["credential_options"] = options
+        return audit_credentialed_host(**retry)
+
+
 @celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
 def run_credentialed_scan_task(
     user_id: str,
@@ -3689,7 +3843,7 @@ def run_credentialed_scan_task(
     username: str | None = None,
     password: str | None = None,
     key_path: str | None = None,
-    port: int = 22,
+    port: int | None = None,
     auth_method: str = "password",
     sections: list[str] | None = None,
     os_type_req: str = "auto",
@@ -3815,7 +3969,7 @@ def run_credentialed_scan_task(
                         config_checks=benchmark_checks,
                     )
                 else:
-                    stored_report, system_data, os_type = audit_credentialed_host(
+                    stored_report, system_data, os_type = _audit_host_over_transport(
                         config_checks=benchmark_checks,
                         ip=host_ip,
                         username=username,

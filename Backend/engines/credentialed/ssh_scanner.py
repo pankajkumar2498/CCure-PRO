@@ -52,42 +52,143 @@ class CommandResult:
     success: bool = False
 
 
+def _load_private_key(content: str, passphrase: Optional[str] = None):
+    """
+    Parse private key material, encrypted or not, whatever its algorithm.
+
+    Paramiko has no auto-detecting loader for a *string*: ``PKey`` itself cannot
+    be constructed from one, and each concrete class only recognises its own
+    format. So the types are tried in turn — Ed25519 first because it is what
+    modern hosts issue.
+
+    This replaces a call to ``paramiko.pkey.load_private_key``, **which does not
+    exist in paramiko 4**. Every key-content credential therefore failed with
+    ``module 'paramiko.pkey' has no attribute 'load_private_key'``, re-raised as
+    "Failed to parse private key content" — so the fault read as a malformed key
+    supplied by the operator rather than as a call to a function that was never
+    there. Found while adding passphrase support, which is what made anyone
+    exercise this path.
+
+    ``PasswordRequiredException`` is re-raised immediately rather than collected:
+    it means the key is fine and locked, which is a different thing to tell an
+    operator than "this is not a key I recognise".
+    """
+    import io
+
+    last: list[str] = []
+    for key_class in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
+        try:
+            return key_class.from_private_key(io.StringIO(content), password=passphrase)
+        except paramiko.PasswordRequiredException:
+            raise RuntimeError(
+                "the private key is encrypted and no passphrase was supplied"
+            ) from None
+        except Exception as exc:  # noqa: BLE001 — try the next algorithm
+            last.append(f"{key_class.__name__}: {type(exc).__name__}")
+
+    raise RuntimeError(
+        "not a recognised private key, or the passphrase is wrong "
+        f"({'; '.join(last)})"
+    )
+
+
 #: One ``sudo`` invocation and the bundle of short flags immediately after it.
 #: The flag group stops at the first token that does not begin with ``-``,
 #: which is the command sudo is being asked to run.
 _SUDO_INVOCATION = re.compile(r"\bsudo\b(?P<flags>(?:\s+-[A-Za-z]+)*)")
 
+#: Elevation programs this scanner can drive, and how.
+#:
+#: ``stdin`` means the program reads its password from standard input, which is
+#: the only shape this scanner will use: a password on the command line is
+#: visible in ``ps`` to every local user on the target. ``none`` means the
+#: program takes no password at all.
+ELEVATION_METHODS = {
+    # sudo(8). ``-S`` reads the password from stdin, ``-p ''`` silences the
+    # prompt that would otherwise land in stderr and be read as command output.
+    "sudo": {"binary": "sudo", "password": "stdin", "flags": ("-S", "-p", "''")},
+    # Delinea/Centrify dzdo, documented as a drop-in sudo replacement with
+    # compatible options, so the same rewrite drives it.
+    "dzdo": {"binary": "dzdo", "password": "stdin", "flags": ("-S", "-p", "''")},
+    # Solaris pfexec(1). Authorisation comes from the account's RBAC profile, so
+    # there is no password to send and none is written — one would sit unread in
+    # the command's stdin. It accepts none of sudo's options either, so they are
+    # dropped rather than translated into something pfexec would reject.
+    "pfexec": {"binary": "pfexec", "password": "none", "flags": ()},
+}
 
-def _rewrite_sudo_for_stdin(command: str) -> tuple[str, int]:
+#: Elevation programs this scanner deliberately does not drive, with the reason.
+#: Named so an operator gets an explanation rather than a silent failure, and so
+#: the phase that adds one starts from why it was left out.
+UNSUPPORTED_ELEVATION = {
+    # su(1) reads its password from the controlling terminal, not stdin, so
+    # driving it needs a PTY — and a PTY merges stderr into stdout and echoes
+    # the prompt into the output every command in the catalogue is parsed from.
+    "su": (
+        "su reads its password from the terminal rather than stdin, so it needs "
+        "a PTY, which merges stderr into stdout and puts the prompt into the "
+        "output the collectors parse"
+    ),
+    # BeyondTrust pbrun does not share sudo's option syntax, is driven by a
+    # policy server, and no instance was available to validate against.
+    # Shipping an untested translation of somebody's privilege-escalation
+    # command is how a scanner runs the wrong thing as root.
+    "pbrun": (
+        "BeyondTrust pbrun does not share sudo's option syntax and no instance "
+        "was available to validate against"
+    ),
+    # ksu(1) authenticates with a Kerberos ticket, and Kerberos is not supported
+    # on any transport in this build — see USABLE_AUTH_METHODS.
+    "ksu": (
+        "ksu authenticates with a Kerberos ticket, and Kerberos is not "
+        "supported on any transport in this build"
+    ),
+}
+
+
+def _rewrite_sudo_for_stdin(command: str, method: str = "sudo") -> tuple[str, int]:
     """
-    Rewrite every ``sudo`` in *command* to take its password from stdin.
+    Rewrite every ``sudo`` in *command* to elevate through *method*.
 
-    Returns ``(rewritten, invocations)``. ``-S`` tells sudo to read the password
-    from standard input and ``-p ''`` silences the prompt, which would otherwise
-    land in stderr and be mistaken for command output.
+    Returns ``(rewritten, password_lines)``. ``password_lines`` is how many lines
+    the caller must write to stdin — one per invocation for a program that reads
+    a password there, and **zero** for one that does not.
 
     ``-n`` is stripped wherever it appears, including inside a bundle such as
-    ``-ln``. It means "never prompt", and sudo honours it over ``-S``: leaving
-    it in place would make sudo refuse the password this rewrite exists to
-    deliver, which reads on the target as a permission failure rather than as a
-    scanner bug. ``-n`` is the right flag when there is no password, and that
-    case never reaches here.
+    ``-ln``. It means "never prompt", and sudo honours it over ``-S``: leaving it
+    in place would make sudo refuse the password this rewrite exists to deliver,
+    which reads on the target as a permission failure rather than as a scanner
+    bug. ``-n`` is the right flag when there is no password, and that case never
+    reaches here.
+
+    The command catalogue is written in terms of ``sudo`` because that is the
+    overwhelmingly common case; this substitutes the configured program, so a
+    host using another one needs no second catalogue.
     """
+    spec = ELEVATION_METHODS.get((method or "sudo").strip().lower())
+    if spec is None:
+        # An unsupported method elevates nothing rather than guessing. The
+        # command still runs unprivileged, and whatever it could not read is
+        # recorded as unavailable — never as a clean result.
+        return command, 0
+
     count = 0
 
     def _replace(match: "re.Match[str]") -> str:
         nonlocal count
         count += 1
         flags: list[str] = []
-        for token in match.group("flags").split():
-            # ``-n`` is the only sudo short flag containing the letter, so
-            # removing it from a bundle cannot disturb another option.
-            remaining = "-" + token[1:].replace("n", "")
-            if remaining != "-":
-                flags.append(remaining)
-        return " ".join(["sudo", "-S", "-p", "''", *flags])
+        if spec["flags"]:
+            for token in match.group("flags").split():
+                # ``-n`` is the only sudo short flag containing the letter, so
+                # removing it from a bundle cannot disturb another option.
+                remaining = "-" + token[1:].replace("n", "")
+                if remaining != "-":
+                    flags.append(remaining)
+        return " ".join([spec["binary"], *spec["flags"], *flags])
 
-    return _SUDO_INVOCATION.sub(_replace, command), count
+    rewritten = _SUDO_INVOCATION.sub(_replace, command)
+    return rewritten, (count if spec["password"] == "stdin" else 0)
 
 
 from typing import Protocol
@@ -140,12 +241,19 @@ class SSHScanner:
         key_content: str | None = None,
         port: int = 22,
         timeout: int = 10,
+        key_passphrase: str | None = None,
+        elevation_method: str = "sudo",
     ):
         self.ip = ip
         self.username = username
         self._password = password  # leading underscore = not serialised
         self._key_path = key_path
         self._key_content = key_content
+        #: Unlocks an encrypted private key. Held here for the same reason the
+        #: password is — so no collector ever handles it — and wiped by
+        #: ``disconnect`` alongside the others.
+        self._key_passphrase = key_passphrase
+        self.elevation_method = (elevation_method or "sudo").strip().lower()
         self.port = port
         self.timeout = timeout
         self._client: paramiko.SSHClient | None = None
@@ -187,12 +295,13 @@ class SSHScanner:
             import io
 
             try:
-                pkey = paramiko.pkey.load_private_key(io.StringIO(self._key_content))
-                connect_kwargs["pkey"] = pkey
+                connect_kwargs["pkey"] = _load_private_key(
+                    self._key_content, self._key_passphrase
+                )
             except Exception as exc:
                 raise RuntimeError(
-                    f"Failed to parse private key content: {exc}"
-                ) from exc
+                    f"Failed to parse private key content: {self._redact(str(exc))}"
+                ) from None
         elif self._key_path:
             connect_kwargs["key_filename"] = self._key_path
         elif self._password:
@@ -227,6 +336,7 @@ class SSHScanner:
         self._password = None
         self._key_path = None
         self._key_content = None
+        self._key_passphrase = None
 
     def run(
         self,
@@ -345,14 +455,42 @@ class SSHScanner:
         it, and the shell may write it to history.
 
         With no password configured the command runs unchanged — a key-only
-        session keeps whatever ``sudo -n`` behaviour the caller wrote.
+        session keeps whatever ``sudo -n`` behaviour the caller wrote — except
+        under an elevation program that needs no password at all, where there is
+        nothing to be missing.
+
+        ``self.elevation_method`` selects the program. An unsupported one
+        elevates nothing rather than guessing at its option syntax: the command
+        still runs unprivileged, and whatever it could not read is recorded as
+        unavailable rather than as a clean result.
         """
-        if not self._password:
+        spec = ELEVATION_METHODS.get(self.elevation_method)
+        if spec is None:
+            reason = UNSUPPORTED_ELEVATION.get(self.elevation_method)
+            log.warning(
+                "elevation method %r is not supported on %s, so the command "
+                "runs unprivileged%s",
+                self.elevation_method,
+                self.ip,
+                f" — {reason}" if reason else "",
+            )
             return self.run(command, timeout=timeout)
 
-        elevated, invocations = _rewrite_sudo_for_stdin(command)
-        if not invocations:
+        needs_password = spec["password"] == "stdin"
+        if needs_password and not self._password:
             return self.run(command, timeout=timeout)
+
+        elevated, password_lines = _rewrite_sudo_for_stdin(
+            command, self.elevation_method
+        )
+        if elevated == command:
+            return self.run(command, timeout=timeout)
+
+        if not needs_password:
+            # pfexec and its kind authorise from the account's own RBAC profile.
+            # Writing a password here would leave it unread in the command's
+            # stdin, where whatever the command runs could consume it.
+            return self.run(elevated, timeout=timeout)
 
         # The rewrite reads sudo's option bundle up to the first token that is
         # not a flag, so a ``-n`` sitting *after* an option's value — as in
@@ -374,15 +512,15 @@ class SSHScanner:
         # runs because the first failed must find another waiting. Relying on
         # sudo's credential cache instead would break wherever
         # ``timestamp_timeout=0`` is set.
-        payload = (self._password + "\n") * invocations
+        payload = (self._password + "\n") * password_lines
         return self.run(elevated, timeout=timeout, stdin_data=payload)
 
     def _redact(self, text: str) -> str:
-        """Mask this session's password anywhere it appears in *text*."""
-        secret = self._password
-        if not secret or secret not in text:
-            return text
-        return text.replace(secret, "***REDACTED***")
+        """Mask every secret this session holds, anywhere it appears in *text*."""
+        for secret in (self._password, self._key_passphrase):
+            if secret and secret in text:
+                text = text.replace(secret, "***REDACTED***")
+        return text
 
     # ── Convenience ────────────────────────────────────────────────────────
 

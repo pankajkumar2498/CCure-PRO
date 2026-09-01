@@ -728,6 +728,44 @@ still the deeper transport.
   Rule parameters are bound into WQL with quotes doubled — the rules are
   administrator-editable, so that is an injection boundary inside the product.
 
+## Credential authentication methods
+
+- **`USABLE_AUTH_METHODS` is to `auth_method` what `USABLE_TRANSPORTS` is to
+  `transport`.** The column admits a reserved value so a later phase adds a
+  mechanism rather than a migration; the API validates against the *usable* set
+  so nobody saves a credential that cannot authenticate. `auth_method` had no
+  such split, which is how `kerberos` came to be accepted by the API, the model
+  and `WinRMExecutor` while the runtime had none — pywinrm raises
+  `requested auth method is kerberos, but pykerberos is not installed` at the
+  **first command**, so the credential failed on the customer's network rather
+  than when it was saved. It is refused at construction now, and stays in the
+  CHECK constraint deliberately.
+
+- **`ntlm_hash` is Pass-the-Hash, and the password is never sent with it.**
+  `login(user, "", domain, lmhash=…, nthash=…)` — passing both would let
+  impacket fall back to the password when the hash is refused, which is two
+  failed logons instead of one and hides which material the target rejected. The
+  hash is stored in `encrypted_password` but **must not leave
+  `_resolve_stored_credential` as `material["password"]`**: every transport
+  would present it as plaintext against the account. A value that is not 32 hex
+  characters is refused rather than sent — an unparsed one produces a failed
+  logon against a real account, which is a lockout caused by a typo.
+
+- **`paramiko.pkey.load_private_key` does not exist in paramiko 4**, and calling
+  it is what made every key-content credential fail as "Failed to parse private
+  key content" — a fault that reads as a malformed key from the operator rather
+  than a missing function. `_load_private_key` tries Ed25519, RSA then ECDSA,
+  because paramiko has no auto-detecting loader for a string. An encrypted key
+  with no passphrase says exactly that, which is different from "not a key".
+
+- **Elevation is `sudo`, `dzdo` or `pfexec`; `su`, `pbrun` and `ksu` are
+  refused with reasons in `UNSUPPORTED_ELEVATION`.** `pfexec` takes **no
+  password** — Solaris RBAC authorises from the account's profile, and writing
+  one would leave it unread in the command's stdin where the command could
+  consume it. An unsupported method elevates nothing rather than guessing at its
+  option syntax. `dzdo` and `pfexec` are implemented and **not target-validated**;
+  say so rather than implying otherwise.
+
 ## Credentialed transport and port resolution (`engines/credentialed/transport_resolver.py`)
 
 Where an authenticated session is opened. Until this existed the answer was

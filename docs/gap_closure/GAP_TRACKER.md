@@ -3532,6 +3532,201 @@ report row` rather than the executor alone.
 
 ---
 
+## 9J. Phase 13 — Credential authentication methods
+
+**Not a capability phase and no coverage figure moves.** Authentication methods
+decide _how many hosts can be logged into_, not what is assessed on them. Three
+methods were added, three were refused with reasons, and two pre-existing
+defects were found while doing it. Not one check was added, and no gap
+percentage changes as a result — saying otherwise would be exactly the coverage
+inflation this tracker exists to prevent.
+
+### 9J.1 The rule this phase applies
+
+The credential store already had it, for transports and credential types:
+**the column admits a reserved value so a later phase adds a mechanism rather
+than a migration, and the API refuses it so nobody saves a credential that
+cannot authenticate.** `USABLE_TRANSPORTS` and `USABLE_CREDENTIAL_TYPES` are
+that rule. `auth_method` never had an equivalent, and Kerberos is what happens
+without one.
+
+### 9J.2 Kerberos — refused, not half-implemented
+
+`auth_method = "kerberos"` was accepted by the API, by the credential model and
+by `WinRMExecutor`. The runtime had no Kerberos at all: pywinrm raises
+`requested auth method is kerberos, but pykerberos is not installed` at the
+**first command**, so the credential authenticated nothing and failed on the
+customer's network rather than at the moment somebody saved it.
+
+Implementing it properly needs a GSSAPI stack, a ticket cache and a domain
+controller to validate against. None was available, and shipping an unvalidated
+Kerberos path would be the fake support this programme refuses. So:
+
+- `USABLE_AUTH_METHODS` is added and excludes it; the API validates against that
+  rather than against the column's vocabulary.
+- It is **not** removed from the CHECK constraint — narrowing it would mean an
+  ALTER on a table of live encrypted credentials to delete a value nothing can
+  create, and would make the phase that implements Kerberos need a migration.
+- `WinRMExecutor` refuses it **at construction**, naming a method that does
+  work, instead of at the first command.
+
+Verified before removing it: zero stored credentials used it.
+
+**CredSSP was explicitly out of scope and is not present anywhere.**
+
+### 9J.3 Pass-the-Hash — implemented and real-target validated
+
+`auth_method = "ntlm_hash"`. The NT hash is presented where a password would be,
+so a domain estate need not store a reversible plaintext password in this table
+to be scanned — a security improvement to the credential store, not only a reach
+improvement.
+
+- The hash lives in `encrypted_password`, encrypted at rest exactly as a
+  password is. A column of its own would be a migration for no gain.
+- **It never leaves `_resolve_stored_credential` as a `password`.** The material
+  dict feeds every transport, and a hash arriving as a password would be
+  presented as plaintext against the account by any of them.
+- **The password is not sent alongside it.** `login(user, "", domain,
+lmhash=…, nthash=…)`: passing both would let impacket fall back to the
+  password if the hash were refused — two failed logons instead of one, and no
+  way to tell which material the target rejected.
+- The LM half is the documented all-zero placeholder. Computing a real one would
+  mean holding the plaintext this method exists to avoid, and modern Windows
+  does not accept LM authentication.
+- `LM:NT` is accepted as well as a bare NT hash, because that is the form every
+  dumping tool prints. Anything that is not 32 hex characters is **refused
+  rather than sent**: an unparsed value would be presented as though it were a
+  hash and produce a failed logon against a real account — a lockout caused by a
+  typo. The refusal does not quote the value.
+
+**Validated against a live Windows 11 Pro host**, hash derived in memory from
+the known password and never written anywhere:
+
+| Case                                              | Result                                          |
+| ------------------------------------------------- | ----------------------------------------------- |
+| Authenticate by hash, no password supplied        | ✅ `PankajM-HPNew` / `Windows 10.0 Build 26100` |
+| Remote Registry over the PtH session              | ✅ UBR read                                     |
+| Wrong hash **with a valid password also present** | ✅ refused — no fallback                        |
+| `LM:NT` paste form                                | ✅ NT half used                                 |
+
+### 9J.4 Encrypted SSH keys — and a pre-existing defect they uncovered
+
+Passphrase-protected private keys are supported: `encrypted_key_passphrase`, its
+own column because overloading `encrypted_password` would make
+`AUTH_REQUIRES_PASSWORD` — a data-integrity rule — mean two incompatible things
+at once. It is held privately on the session, wiped by `disconnect`, redacted
+from anything logged, and kept out of raised exceptions.
+
+**Adding it revealed that key-content authentication was broken outright.**
+`SSHScanner.connect` called `paramiko.pkey.load_private_key`, **which does not
+exist in paramiko 4**. Every key-content credential therefore failed with
+`module 'paramiko.pkey' has no attribute 'load_private_key'`, re-raised as
+"Failed to parse private key content" — so the fault read as a malformed key
+supplied by the operator rather than as a call to a function that was never
+there. Nothing exercised the path, because nobody in this deployment uses key
+auth: all three stored credentials are passwords.
+
+`_load_private_key` replaces it, trying Ed25519, RSA and ECDSA in turn because
+paramiko has no auto-detecting loader for a string. An encrypted key with no
+passphrase reports exactly that, which is a different thing to tell an operator
+than "not a key I recognise".
+
+### 9J.5 Linux elevation — two added, three refused
+
+The command catalogue is written in terms of `sudo`; `_rewrite_sudo_for_stdin`
+now substitutes the configured program, so a host using another needs no second
+catalogue. The method is a per-credential setting in `options`, not a column: it
+is not a secret, and `options` is already where per-credential transport
+settings live.
+
+| Method   | Status                                 | Basis                                                                                                                                                                                                                                                                         |
+| -------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sudo`   | implemented, **real-target validated** | unchanged; validated in §9H                                                                                                                                                                                                                                                   |
+| `dzdo`   | **implemented, not validated**         | Delinea/Centrify document it as a drop-in sudo replacement with compatible options, so the same rewrite drives it. No Centrify instance was available.                                                                                                                        |
+| `pfexec` | **implemented, not validated**         | Solaris RBAC authorises from the account's profile, so no password is written — one would sit unread in the command's stdin where the command could consume it. It accepts none of sudo's options, so they are dropped rather than translated. No Solaris host was available. |
+| `su`     | **unsupported**                        | reads its password from the controlling terminal, not stdin, so driving it needs a PTY — which merges stderr into stdout and echoes the prompt into the output every command in the catalogue is parsed from                                                                  |
+| `pbrun`  | **unsupported**                        | BeyondTrust's option syntax is not sudo's, it is policy-server driven, and no instance was available. Shipping an untested translation of somebody's privilege-escalation command is how a scanner runs the wrong thing as root.                                              |
+| `ksu`    | **unsupported**                        | authenticates with a Kerberos ticket, and Kerberos is not supported on any transport in this build                                                                                                                                                                            |
+
+An unsupported method **elevates nothing rather than guessing**: the command
+runs unprivileged and whatever it could not read is recorded as unavailable,
+never as a clean result.
+
+### 9J.6 SMB remote execution — still refused
+
+Unchanged and deliberately so. No `New-Service`, no scheduled task, no
+PsExec-shaped execution, no remote service creation. `SMBExecutor.run()` still
+returns UNAVAILABLE and the guard test still names each mechanism. The
+`SCAN_ALLOW_INTRUSIVE` policy remains available for genuinely intrusive checks
+and was not used to smuggle this in.
+
+### 9J.7 Security validation
+
+Every new secret was checked against the surfaces it could reach — 9 of 9:
+
+| Surface                    | Passphrase                                | NT hash        |
+| -------------------------- | ----------------------------------------- | -------------- |
+| Raised exceptions          | ✅ absent                                 | ✅ absent      |
+| Log records (DEBUG and up) | ✅ absent                                 | ✅ absent      |
+| `repr()` of the session    | ✅ absent                                 | ✅ absent      |
+| Wiped on `disconnect`      | ✅                                        | ✅             |
+| Command line / argv        | never placed there — stdin only           | not applicable |
+| Celery arguments           | resolved worker-side from `credential_id` | same           |
+
+gitleaks passes on the commit, as do black, ruff and bandit.
+
+### 9J.8 Coverage impact — none, deliberately
+
+No check was added, so no capability percentage moves. What changed is the set
+of hosts those checks can reach: an estate on passphrase-protected keys, or one
+that will not release plaintext domain passwords, was previously unreachable and
+now is not. That is worth recording and is **not** a coverage number.
+
+### 9J.9 Two defects the full regression caught that the targeted tests did not
+
+Both were mine, and both are worth recording because the targeted tests passed
+while the code was broken.
+
+**A constant that was referenced and never defined.** `_resolve_stored_credential`
+branches on `AUTH_METHOD_NTLM_HASH`, which was imported but never added to the
+model — so the resolver raised `ImportError` on **every** credential, not only
+hash ones. The credential-validation endpoint catches broadly and reported it as
+a generic `failed`, which is how it surfaced: as a Phase 2 test asserting
+`authentication_failed`.
+
+The targeted test for this missed it because it reads the source with
+`inspect.getsource` and asserts the line is written. Reading the source proves
+the line exists; only calling it proves the line runs. Two behavioural tests
+were added that construct a real credential and resolve it.
+
+**A second constraint naming the same vocabulary.** `ck_compliance_credential_auth`
+renders `AUTH_REQUIRES_PASSWORD`, so adding `ntlm_hash` to the model's tuple
+without moving that constraint left a schema that admits the method in one
+constraint and rejects every row using it in the other. The migration moves
+both now.
+
+The scratch test database needed the change applied directly, for the reason
+CLAUDE.md already records: `_build_test_schema` bootstraps from the models and
+stamps head, and **CHECK constraint changes are not gap-filled**.
+
+### 9J.10 Definition of Done — Phase 13
+
+| Line                              | Result                                                         |
+| --------------------------------- | -------------------------------------------------------------- |
+| Kerberos resolved                 | ✅ refused at API, model and executor; reserved in the column  |
+| CredSSP                           | ✅ not implemented, and absent everywhere                      |
+| SSH key passphrase                | ✅ implemented, tested; uncovered and fixed a broken key path  |
+| Pass-the-Hash                     | ✅ implemented, tested, **real-target validated**              |
+| No fallback from hash to password | ✅ mutation-verified                                           |
+| Elevation methods                 | ✅ 2 implemented (unvalidated, stated), 3 refused with reasons |
+| SMB remote execution              | ✅ still refused, guard intact                                 |
+| No parallel auth framework        | ✅ same model, resolver, executors and scan path               |
+| Secrets contained                 | ✅ 9 of 9 surfaces                                             |
+| Migration round-trip              | ✅ upgrade → downgrade → upgrade on the live schema            |
+| Coverage inflated                 | ✅ no — no figure moved                                        |
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |

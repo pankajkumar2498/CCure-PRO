@@ -55,6 +55,7 @@ from db.models import ComplianceCredential, Organization, User
 from db.models.compliance import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
+    USABLE_AUTH_METHODS,
     AUTH_REQUIRES_PASSWORD,
     CREDENTIAL_TYPE_DATABASE,
     CREDENTIAL_TYPE_SSH,
@@ -85,7 +86,17 @@ router = APIRouter(prefix="/credentials", tags=["Credentials"])
 #: applies it.
 TYPE_AUTH_MATRIX: Dict[str, tuple] = {
     CREDENTIAL_TYPE_SSH: ("password", "key"),
-    CREDENTIAL_TYPE_WINDOWS: ("password", "ntlm", "kerberos"),
+    # ``kerberos`` is gone from this matrix, not because Windows does not use
+    # it but because this build cannot: pywinrm raises "requested auth method
+    # is kerberos, but pykerberos is not installed" at the first command, so a
+    # credential saved with it failed on the customer's network rather than at
+    # the moment somebody saved it. It stays in the column's vocabulary — see
+    # USABLE_AUTH_METHODS — so the phase that implements it adds a mechanism
+    # rather than a migration.
+    #
+    # ``ntlm_hash`` is Pass-the-Hash over SMB, which also means a domain estate
+    # need not store a reversible plaintext password here to be scanned.
+    CREDENTIAL_TYPE_WINDOWS: ("password", "ntlm", "ntlm_hash"),
     # Password only. Every engine here also supports certificate and
     # integrated authentication, and none of those is implemented, so offering
     # them would let a user save a credential the scanner cannot use.
@@ -232,8 +243,14 @@ class ScanCredentialCreate(BaseModel):
     @classmethod
     def _check_method(cls, value: str) -> str:
         text = str(value or "").strip().lower()
-        if text not in AUTH_METHODS:
-            raise ValueError(f"auth_method must be one of {', '.join(AUTH_METHODS)}")
+        if text not in USABLE_AUTH_METHODS:
+            # Validated against the *usable* set, not the column's vocabulary.
+            # The column admits a reserved method so a later phase needs no
+            # migration; the API refuses it so nobody saves a credential that
+            # cannot authenticate.
+            raise ValueError(
+                f"auth_method must be one of {', '.join(USABLE_AUTH_METHODS)}"
+            )
         return text
 
     @field_validator("options")

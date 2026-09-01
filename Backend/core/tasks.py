@@ -1897,6 +1897,8 @@ def _apply_credentialed_enrichment(
                 username=material.get("username"),
                 password=material.get("password"),
                 key_content=material.get("key_content"),
+                key_passphrase=material.get("key_passphrase"),
+                nt_hash=material.get("nt_hash"),
                 port=port,
                 os_type_req="auto",
                 network_ports=open_ports,
@@ -2838,7 +2840,11 @@ def _resolve_stored_credential(
             f"Stored credential with ID {credential_id} not found or access denied."
         )
 
-    from db.models.compliance import AUTH_REQUIRES_KEY, AUTH_REQUIRES_PASSWORD
+    from db.models.compliance import (
+        AUTH_METHOD_NTLM_HASH,
+        AUTH_REQUIRES_KEY,
+        AUTH_REQUIRES_PASSWORD,
+    )
 
     material = {
         # The username in the form this credential's auth method expects.
@@ -2854,6 +2860,13 @@ def _resolve_stored_credential(
         "options": dict(cred.options or {}),
         "password": None,
         "key_content": None,
+        #: Unlocks an encrypted private key. Separate from ``password``: the two
+        #: unlock different things and a key credential may carry only this one.
+        "key_passphrase": None,
+        #: Pass-the-Hash material. Kept out of ``password`` deliberately — every
+        #: transport that receives a password would present this as one, and
+        #: only the SMB executor knows how to send a hash.
+        "nt_hash": None,
     }
     # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
     # literal method names. The literal form is what made ``ntlm`` and
@@ -2861,10 +2874,19 @@ def _resolve_stored_credential(
     # present a password, neither matched ``== "password"``, so the connection
     # was attempted with None and failed as "authentication rejected" — a
     # misleading message for a credential that was never actually sent.
-    if cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
+    if cred.auth_method == AUTH_METHOD_NTLM_HASH and cred.encrypted_password:
+        # The hash is stored in the password column and must not leave this
+        # function as one: handing it to a transport that expects a password
+        # would present the hash as plaintext against the account.
+        material["nt_hash"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
         material["password"] = decrypt_credential(cred.encrypted_password)
     elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
         material["key_content"] = decrypt_credential(cred.encrypted_key_content)
+        if cred.encrypted_key_passphrase:
+            material["key_passphrase"] = decrypt_credential(
+                cred.encrypted_key_passphrase
+            )
     return material
 
 
@@ -2875,6 +2897,8 @@ def audit_credentialed_host(
     password: str | None = None,
     key_path: str | None = None,
     key_content: str | None = None,
+    key_passphrase: str | None = None,
+    nt_hash: str | None = None,
     port: int | None = None,
     sections: list[str] | None = None,
     os_type_req: str = "auto",
@@ -2957,6 +2981,7 @@ def audit_credentialed_host(
             ip=ip,
             username=username,
             password=password,
+            nt_hash=nt_hash,
             port=port or None,
             domain=domain,
             timeout=timeout,
@@ -2987,8 +3012,16 @@ def audit_credentialed_host(
             password=password,
             key_path=key_path,
             key_content=key_content,
+            key_passphrase=key_passphrase,
             port=port,
             timeout=timeout,
+            # Which program elevates on this host. It lives in ``options``
+            # rather than a column because it is a setting, not a secret, and
+            # ``options`` is already the place for per-credential transport
+            # settings that need no migration to add.
+            elevation_method=str(
+                (credential_options or {}).get("elevation_method") or "sudo"
+            ),
         )
 
     with connection as ssh:
@@ -3959,6 +3992,8 @@ def run_credentialed_scan_task(
 
     try:
         key_content = None
+        key_passphrase = None
+        nt_hash = None
         # Defaults for the direct-material path (a request that supplied a
         # username and password rather than naming a stored credential). SSH
         # keeps its existing behaviour: nothing about the ad-hoc path changes.
@@ -3976,6 +4011,8 @@ def run_credentialed_scan_task(
             port = material["port"]
             password = material["password"]
             key_content = material["key_content"]
+            key_passphrase = material["key_passphrase"]
+            nt_hash = material["nt_hash"]
             # A stored credential also decides *how* to reach the host. Without
             # this the transport stayed "ssh" for every credential, so a
             # Windows credential on port 5985 attempted SSH against a WinRM
@@ -4030,6 +4067,8 @@ def run_credentialed_scan_task(
                         password=password,
                         key_path=key_path,
                         key_content=key_content,
+                        key_passphrase=key_passphrase,
+                        nt_hash=nt_hash,
                         port=port,
                         sections=sections,
                         os_type_req=os_type_req,

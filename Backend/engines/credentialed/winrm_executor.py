@@ -121,7 +121,23 @@ class WinRMConfigurationError(WinRMError):
 #: ``ntlm`` is the default rather than ``basic`` because it is what a
 #: domain-managed estate actually uses, it does not require WinRM's
 #: ``AllowUnencrypted``, and it encrypts the payload even over port 5985.
-SUPPORTED_AUTH = ("ntlm", "kerberos", "basic", "certificate")
+SUPPORTED_AUTH = ("ntlm", "basic", "certificate")
+
+#: Methods pywinrm names but this build cannot perform, with the reason.
+#:
+#: ``kerberos`` was in ``SUPPORTED_AUTH`` while the runtime had none: the
+#: session constructs, and the *first command* raises "requested auth method is
+#: kerberos, but pykerberos is not installed". A credential saved with it
+#: therefore failed on the customer's network rather than at the moment somebody
+#: saved it. Refusing at construction moves that error to where it is
+#: actionable. Implementing it needs a GSSAPI stack, a ticket cache and a domain
+#: controller to validate against, none of which was available.
+UNAVAILABLE_AUTH = {
+    "kerberos": (
+        "Kerberos needs the pywinrm[kerberos] extra and a ticket cache, neither "
+        "of which this build has. Use ntlm, or ntlm_hash over the SMB transport."
+    ),
+}
 
 
 class WinRMExecutor:
@@ -159,6 +175,8 @@ class WinRMExecutor:
         # require AllowUnencrypted on the target.
         if method == "password":
             method = "ntlm"
+        if method in UNAVAILABLE_AUTH:
+            raise WinRMConfigurationError(UNAVAILABLE_AUTH[method])
         if method not in SUPPORTED_AUTH:
             raise WinRMConfigurationError(
                 f"unsupported WinRM auth method {auth_method!r}; "

@@ -158,6 +158,41 @@ def classify_smb_error(exc: Exception) -> SMBError:
     return SMBConnectionError(f"SMB error: {text}")
 
 
+#: The documented all-zero LM half of a Pass-the-Hash pair. Modern Windows does
+#: not accept LM authentication at all, and computing a real LM hash would mean
+#: holding the plaintext password that Pass-the-Hash exists to avoid storing.
+_EMPTY_LM_HASH = "aad3b435b51404eeaad3b435b51404ee"
+
+_NT_HASH = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+def _normalise_nt_hash(raw: Optional[str]) -> Optional[str]:
+    """
+    Accept an NT hash, in either of the two forms operators paste.
+
+    ``LM:NT`` is how every dumping tool prints a pair, so an operator who copies
+    one gets it whole; only the NT half is used. A value that is not 32 hex
+    characters is refused rather than sent — an unparsed hash would be presented
+    as though it were one and produce a failed logon against a real account,
+    which is a lockout risk created by a typo.
+
+    The value is never logged, and the exception deliberately does not quote it.
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if ":" in text:
+        text = text.rsplit(":", 1)[-1].strip()
+    if not _NT_HASH.match(text):
+        raise SMBConfigurationError(
+            "the NT hash is not 32 hexadecimal characters. Expected an NT hash "
+            "or an LM:NT pair as dumping tools print it."
+        )
+    return text.lower()
+
+
 def _s(value: Any) -> str:
     """impacket returns null-terminated strings; trim and normalise."""
     if value is None:
@@ -185,6 +220,7 @@ class SMBExecutor:
         port: Optional[int] = None,
         domain: Optional[str] = None,
         timeout: int = 30,
+        nt_hash: Optional[str] = None,
         **_ignored: Any,
     ):
         if not IMPACKET_AVAILABLE:
@@ -201,6 +237,9 @@ class SMBExecutor:
         self.username = user
         self.domain = resolved_domain or ""
         self._password = password
+        #: NT hash for Pass-the-Hash. Held beside the password and wiped with
+        #: it. When set it is the *only* material presented: see ``_new_smb``.
+        self._nt_hash = _normalise_nt_hash(nt_hash)
         self.port = int(port or DEFAULT_SMB_PORT)
         self.timeout = int(timeout)
 
@@ -245,7 +284,25 @@ class SMBExecutor:
             smb = SMBConnection(
                 self.ip, self.ip, sess_port=self.port, timeout=self.timeout
             )
-            smb.login(self.username, self._password or "", self.domain)
+            if self._nt_hash:
+                # Pass-the-Hash. The password is sent as an empty string
+                # deliberately: impacket authenticates with the hash when one is
+                # supplied, and passing both would let it fall back to the
+                # password if the hash were rejected — which turns one failed
+                # logon into two and hides which material the target refused.
+                #
+                # The LM half is the documented all-zero placeholder. Modern
+                # Windows does not accept LM at all, and computing a real one
+                # would mean holding the plaintext this method exists to avoid.
+                smb.login(
+                    self.username,
+                    "",
+                    self.domain,
+                    lmhash=_EMPTY_LM_HASH,
+                    nthash=self._nt_hash,
+                )
+            else:
+                smb.login(self.username, self._password or "", self.domain)
             return smb
         except Exception as exc:  # noqa: BLE001 — classified, not swallowed
             raise classify_smb_error(exc) from exc
@@ -311,6 +368,7 @@ class SMBExecutor:
                 log.debug("SMB executor: closing a session raised", exc_info=True)
         self._local = threading.local()
         self._password = None
+        self._nt_hash = None
 
     def run(self, command: str, timeout: Optional[int] = None) -> CommandResult:
         """

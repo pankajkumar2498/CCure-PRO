@@ -1138,13 +1138,43 @@ USABLE_TRANSPORTS = (
 #: ``password`` and ``key`` are the original two and their meaning is unchanged.
 #: ``ntlm`` and ``kerberos`` are Windows domain authentication; both present a
 #: password, so both live in ``encrypted_password``.
-AUTH_METHODS = ("password", "key", "ntlm", "kerberos")
+#: Pass-the-Hash. Named so the resolver can branch on it without repeating the
+#: literal, which is how ``ntlm`` and ``kerberos`` came to be compared against
+#: ``== "password"`` and resolve to no material at all.
+AUTH_METHOD_NTLM_HASH = "ntlm_hash"
+
+#: ``ntlm_hash`` is Pass-the-Hash: the NT hash is presented where a password
+#: would be, so a domain estate never has to store a reversible plaintext
+#: password in this table to be scanned. ``kerberos`` remains in the column's
+#: vocabulary and is deliberately **not** usable — see ``USABLE_AUTH_METHODS``.
+AUTH_METHODS = ("password", "key", "ntlm", "ntlm_hash", "kerberos")
+
+#: The methods something can actually authenticate with today.
+#:
+#: Kept separate from ``AUTH_METHODS`` for exactly the reason
+#: ``USABLE_TRANSPORTS`` is kept separate from ``TRANSPORTS``: the column admits
+#: the reserved value so the phase that implements it adds a mechanism rather
+#: than a migration on live encrypted credentials, and the API refuses it so
+#: nobody can save a credential that cannot work.
+#:
+#: ``kerberos`` is the reserved one. It was accepted by the API and by
+#: ``WinRMExecutor`` while the runtime had no Kerberos at all — pywinrm raises
+#: ``requested auth method is kerberos, but pykerberos is not installed`` at the
+#: first command, so the credential failed on the customer's network rather than
+#: at the moment somebody saved it. Implementing it needs a GSSAPI stack, a
+#: ticket cache and a domain controller to validate against; none of those could
+#: be stood up here, so it is refused rather than half-supported.
+USABLE_AUTH_METHODS = ("password", "key", "ntlm", "ntlm_hash")
 
 #: Which secret column each method requires. This is a data-integrity rule — a
 #: credential that names a method whose material is absent can never
 #: authenticate, and would fail at scan time on a customer's network rather
 #: than at the moment somebody saved it.
-AUTH_REQUIRES_PASSWORD = ("password", "ntlm", "kerberos")
+#:
+#: ``ntlm_hash`` stores the hash in ``encrypted_password``: it is the material
+#: presented in the password's place, encrypted at rest exactly as a password
+#: is, and giving it a column of its own would add a migration for no gain.
+AUTH_REQUIRES_PASSWORD = ("password", "ntlm", "ntlm_hash", "kerberos")
 AUTH_REQUIRES_KEY = ("key",)
 
 
@@ -1223,6 +1253,15 @@ class ComplianceCredential(Base):
     username = Column(String(150), nullable=False)
     encrypted_password = Column(Text, nullable=True)
     encrypted_key_content = Column(Text, nullable=True)
+    #: Passphrase for an encrypted private key. Its own column rather than a
+    #: second meaning for ``encrypted_password``: the two unlock different
+    #: things, an operator can hold one without the other, and overloading the
+    #: password column would make ``AUTH_REQUIRES_PASSWORD`` — which is a
+    #: data-integrity rule — mean two incompatible things at once.
+    #:
+    #: A key with no passphrase leaves this NULL, which is how every existing
+    #: row reads, so unencrypted keys keep working untouched.
+    encrypted_key_passphrase = Column(Text, nullable=True)
     port = Column(Integer, nullable=False, default=22)
     auth_method = Column(String(50), nullable=False, default="password")
 

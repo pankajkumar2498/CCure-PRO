@@ -4470,9 +4470,11 @@ the assertion is testing the right thing, and the generator really can collide.
 | 12f   | `adf88c7` | —   | 4475 passed, 2 skipped ✅ |
 | 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅ |
 | 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅ |
+| 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅ |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
-post-phase fix, `c` a content load against a reader an earlier phase built.
+post-phase fix, `c` a content load against a reader an earlier phase built,
+and `v` a real-target validation of a path an earlier phase left unproven.
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.

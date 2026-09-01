@@ -180,6 +180,37 @@ def _service_identity_from_process(
     return service_product, service_version
 
 
+#: What an authenticated pass concluded about a host, recorded on the asset.
+#:
+#: ``success`` is the only value the compliance engine treats as "this host was
+#: authenticated to"; everything else routes a credentialed rule to
+#: ``manual_review`` rather than to a verdict, which is the safe direction.
+CREDENTIALED_STATUS_SUCCESS = "success"
+CREDENTIALED_STATUS_FAILED = "failed"
+
+
+def set_credentialed_status(asset, status: str) -> None:
+    """
+    Record whether this scan authenticated to *asset*.
+
+    One definition, called from both authenticated paths. The standalone audit
+    set this inline while the Vulnerability Audit's credentialed pass did not,
+    so a host that was authenticated to, collected from and audited for
+    configuration still read as ``unknown`` — and
+    ``core.compliance_tasks`` routes every rule in
+    ``CREDENTIALED_EVIDENCE_SOURCES`` to ``manual_review`` unless this says
+    ``success``. The scan had the evidence; the compliance register reported it
+    as unassessed.
+
+    ``custom_attributes`` is reassigned rather than mutated in place: it is a
+    JSONB column and SQLAlchemy does not track mutation of a plain dict, so an
+    in-place write is silently dropped at flush.
+    """
+    attrs = dict(asset.custom_attributes or {})
+    attrs["credentialed_status"] = status
+    asset.custom_attributes = attrs
+
+
 def upsert_credentialed_services(
     db: Session,
     asset_id: str,
@@ -1928,6 +1959,16 @@ def sync_vulnerability_audit(
             upsert_credentialed_services(
                 db, asset_id, scan_id, host.get("open_ports_credentialed") or []
             )
+
+        # Whether this pass authenticated. Absent means nothing was attempted —
+        # no credential was in scope, or no endpoint was open — and that must
+        # stay distinct from an attempt that was refused, so it is left unset
+        # rather than written as a failure.
+        credentialed_status = host.get("credentialed_status")
+        if credentialed_status is None and host.get("credentialed"):
+            credentialed_status = CREDENTIALED_STATUS_SUCCESS
+        if credentialed_status:
+            set_credentialed_status(asset, credentialed_status)
 
         _set_asset_field(
             db,

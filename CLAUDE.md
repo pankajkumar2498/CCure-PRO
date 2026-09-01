@@ -701,6 +701,78 @@ so "the operator chose 22" and "nobody said anything" are the same row.
   credential names an instance, not a host; the standalone task branches on this
   and the enrichment path did not.
 
+## Elevation on the credentialed path
+
+- **The sudo password goes on the remote command's stdin, never in the
+  command.** `SSHScanner.run_sudo()` owns this and the secret never leaves that
+  class. `LinuxCollector._run` previously built
+  ``echo 'PASSWORD' | sudo -S …`` and passed it to `exec_command`, which puts
+  the customer's password in the argv of the shell sshd spawns — visible in
+  `ps` to every local user on the target, captured permanently by any `execve`
+  audit rule, and from there into this scanner's own debug log, which logged
+  the full command string on failure.
+
+  `run_sudo` rewrites each `sudo` to `sudo -S -p ''` and writes **one password
+  line per invocation**. `-S` reads the password from stdin and `-p ''`
+  suppresses the prompt, which would otherwise land in stderr and be read as
+  command output. `-n` is stripped wherever it appears, bundled forms such as
+  `-ln` included: it means "never prompt" and sudo honours it over `-S`, so
+  leaving it makes sudo refuse the password and the failure reads on the target
+  as a permissions problem rather than as a scanner bug. One line *per
+  invocation* because `sudo -l || sudo -l` runs at most one of them but which
+  is decided on the target, and relying on sudo's credential cache instead
+  breaks wherever `timestamp_timeout=0` is set.
+
+  A collector must never read `ssh._password`. `has_password` answers whether
+  elevation is worth attempting without exposing the secret, and
+  `tests/credentialed/test_sudo_password_safety.py` pins both — including a
+  source-level guard against the `echo … | sudo` shape returning.
+
+- **`SSHScanner._redact()` masks the session password in anything logged.**
+  With the stdin fix the command no longer carries it, so this is defence in
+  depth: a log line is the one place a regression here would be written to disk
+  and kept.
+
+- **The configuration-audit collectors do not elevate at all.** `ShellRunner`
+  has no sudo path, so every Phase 3+ Linux check reads what the scanning
+  account can read. That is a recorded limitation, not an oversight — adding
+  elevation there widens what a compromised scanner credential can do on every
+  host in the estate, and it needs its own decision.
+
+- **There is no elevation mechanism on the Windows path and none may be
+  invented.** WinRM and OpenSSH both run as whoever authenticated; escalating
+  by creating a service or a scheduled task changes a host this product is only
+  meant to read. `test_windows_privilege_context.py` guards the absence by
+  name (`New-Service`, `Register-ScheduledTask`, `schtasks`, `psexec`,
+  `runas`, …).
+
+  What is recorded instead is **which token the session held** —
+  `system_data["privilege_context"]` carries `account`, `is_administrator` and
+  `is_system`, read via `WindowsBuiltInRole.Administrator` (which resolves to
+  S-1-5-32-544, so it works on a non-English install where matching the group
+  *name* fails). A probe that could not be read yields `None`, not `False`:
+  reading it as "not an administrator" would attribute a complete audit's
+  findings to a partial one.
+
+  **Measured, not assumed:** against a real Windows 11 Pro host over WinRM as a
+  member of Administrators, all 20 Windows built-in checks completed with
+  **zero errors** and no check in the current set needs SYSTEM. The three empty
+  fields in the Windows collector — `arp_table_raw`, `env_vars_summary`,
+  `login_history_raw` — are hardcoded placeholders in `_collect_network` and
+  `_collect_login_history`, not privilege failures.
+
+- **`credentialed_status` has one writer**, `asset_syncer.set_credentialed_status`.
+  The standalone audit set the literal inline and the Vulnerability Audit's
+  credentialed pass did not, so a host that was authenticated to, collected
+  from and configuration-audited still read as `unknown` — and
+  `core/compliance_tasks.py` routes every rule in
+  `CREDENTIALED_EVIDENCE_SOURCES` to `manual_review` unless it says `success`.
+  Measured on the live database: **zero** assets carried the attribute despite
+  that path having written eight configuration and privilege findings against a
+  real Windows host. `success` and `failed` are both written; a host nothing
+  was attempted against is left **unset**, because "no credential was in scope"
+  and "the credential was refused" are different facts.
+
 ## Scan scheduling (`core/scheduling/`)
 
 Recurring network and credentialed scans. Phase 1 of the gap-closure

@@ -17,6 +17,7 @@ Usage::
 """
 
 import logging
+import re
 import socket
 import threading
 from dataclasses import dataclass
@@ -49,6 +50,44 @@ class CommandResult:
     stderr: str = ""
     exit_code: int = -1
     success: bool = False
+
+
+#: One ``sudo`` invocation and the bundle of short flags immediately after it.
+#: The flag group stops at the first token that does not begin with ``-``,
+#: which is the command sudo is being asked to run.
+_SUDO_INVOCATION = re.compile(r"\bsudo\b(?P<flags>(?:\s+-[A-Za-z]+)*)")
+
+
+def _rewrite_sudo_for_stdin(command: str) -> tuple[str, int]:
+    """
+    Rewrite every ``sudo`` in *command* to take its password from stdin.
+
+    Returns ``(rewritten, invocations)``. ``-S`` tells sudo to read the password
+    from standard input and ``-p ''`` silences the prompt, which would otherwise
+    land in stderr and be mistaken for command output.
+
+    ``-n`` is stripped wherever it appears, including inside a bundle such as
+    ``-ln``. It means "never prompt", and sudo honours it over ``-S``: leaving
+    it in place would make sudo refuse the password this rewrite exists to
+    deliver, which reads on the target as a permission failure rather than as a
+    scanner bug. ``-n`` is the right flag when there is no password, and that
+    case never reaches here.
+    """
+    count = 0
+
+    def _replace(match: "re.Match[str]") -> str:
+        nonlocal count
+        count += 1
+        flags: list[str] = []
+        for token in match.group("flags").split():
+            # ``-n`` is the only sudo short flag containing the letter, so
+            # removing it from a bundle cannot disturb another option.
+            remaining = "-" + token[1:].replace("n", "")
+            if remaining != "-":
+                flags.append(remaining)
+        return " ".join(["sudo", "-S", "-p", "''", *flags])
+
+    return _SUDO_INVOCATION.sub(_replace, command), count
 
 
 from typing import Protocol
@@ -189,7 +228,13 @@ class SSHScanner:
         self._key_path = None
         self._key_content = None
 
-    def run(self, command: str, timeout: int | None = None) -> CommandResult:
+    def run(
+        self,
+        command: str,
+        timeout: int | None = None,
+        *,
+        stdin_data: str | None = None,
+    ) -> CommandResult:
         """
         Execute a command on the remote host.
 
@@ -197,6 +242,13 @@ class SSHScanner:
         ----------
         command : Shell command string.
         timeout : Per-command timeout (defaults to self.timeout).
+        stdin_data :
+            Written to the remote command's standard input, then EOF. This is
+            the channel a secret travels on — ``sudo -S`` reads its password
+            here — so it is **never logged, never echoed and never placed in
+            the command string**. Anything a program can read from argv is
+            visible in ``ps`` to every user on the target and is captured by an
+            ``execve`` audit rule; stdin is not.
 
         Returns
         -------
@@ -209,9 +261,21 @@ class SSHScanner:
         with self._lock:
             try:
                 _timeout = timeout or self.timeout
-                _, stdout_fh, stderr_fh = self._client.exec_command(
+                stdin_fh, stdout_fh, stderr_fh = self._client.exec_command(
                     command, timeout=_timeout, get_pty=False
                 )  # nosec B601
+                if stdin_data is not None:
+                    # Write, flush, then half-close. Without the shutdown the
+                    # remote command waits on a stdin that never reaches EOF
+                    # and the read below blocks until the timeout.
+                    try:
+                        stdin_fh.write(stdin_data)
+                        stdin_fh.flush()
+                    finally:
+                        try:
+                            stdin_fh.channel.shutdown_write()
+                        except Exception:  # noqa: BLE001 — best effort
+                            pass
                 stdout_fh.channel.settimeout(_timeout)
                 stderr_fh.channel.settimeout(_timeout)
 
@@ -232,7 +296,16 @@ class SSHScanner:
                     success=(exit_code == 0),
                 )
             except Exception as exc:
-                log.debug("Command '%s' failed on %s: %s", command, self.ip, exc)
+                # Redacted, not trusted to be clean. The command should never
+                # carry a secret now that sudo reads its password from stdin,
+                # but a log line is the one place a regression here would be
+                # written to disk and kept, so it is filtered on the way out.
+                log.debug(
+                    "Command '%s' failed on %s: %s",
+                    self._redact(command),
+                    self.ip,
+                    self._redact(str(exc)),
+                )
                 return CommandResult(
                     stderr=str(exc),
                     exit_code=-1,
@@ -245,6 +318,71 @@ class SSHScanner:
             return False
         transport = self._client.get_transport()
         return transport is not None and transport.is_active()
+
+    # ── Elevation ──────────────────────────────────────────────────────────
+
+    @property
+    def has_password(self) -> bool:
+        """
+        Can this session answer a sudo password prompt?
+
+        Exposed so a collector can decide whether elevation is worth trying
+        **without reading the password itself**. Callers used to reach for
+        ``getattr(ssh, "_password", None)`` and build the sudo command by hand,
+        which is how the secret ended up in the remote argv.
+        """
+        return bool(self._password)
+
+    def run_sudo(self, command: str, timeout: int | None = None) -> CommandResult:
+        """
+        Run a command whose ``sudo`` invocations may need a password.
+
+        The password is supplied on **stdin**, which is the whole point of this
+        method. The previous implementation built
+        ``echo 'PASSWORD' | sudo -S …`` and handed it to ``exec_command``; the
+        remote shell then carried the customer's password in its argv, where
+        ``ps`` shows it to every local user, an ``execve`` audit rule records
+        it, and the shell may write it to history.
+
+        With no password configured the command runs unchanged — a key-only
+        session keeps whatever ``sudo -n`` behaviour the caller wrote.
+        """
+        if not self._password:
+            return self.run(command, timeout=timeout)
+
+        elevated, invocations = _rewrite_sudo_for_stdin(command)
+        if not invocations:
+            return self.run(command, timeout=timeout)
+
+        # The rewrite reads sudo's option bundle up to the first token that is
+        # not a flag, so a ``-n`` sitting *after* an option's value — as in
+        # ``sudo -u postgres -n psql`` — is out of its reach. No shipped command
+        # has that shape. If one is added, sudo will honour the surviving ``-n``
+        # and refuse the password on stdin, which shows up on the target as a
+        # permission failure; saying so here is what makes that findable.
+        if re.search(r"\s-n(\s|$)", elevated):
+            log.warning(
+                "sudo elevation on %s left a -n flag in place, so sudo will "
+                "refuse the password: %s",
+                self.ip,
+                elevated,
+            )
+
+        # One line per sudo invocation. A command such as
+        # ``sudo -l || sudo -n -l`` runs at most one of them, but which one is
+        # decided on the target: the first consumes a line, and a second that
+        # runs because the first failed must find another waiting. Relying on
+        # sudo's credential cache instead would break wherever
+        # ``timestamp_timeout=0`` is set.
+        payload = (self._password + "\n") * invocations
+        return self.run(elevated, timeout=timeout, stdin_data=payload)
+
+    def _redact(self, text: str) -> str:
+        """Mask this session's password anywhere it appears in *text*."""
+        secret = self._password
+        if not secret or secret not in text:
+            return text
+        return text.replace(secret, "***REDACTED***")
 
     # ── Convenience ────────────────────────────────────────────────────────
 

@@ -3131,6 +3131,130 @@ zero for reasons that had nothing to do with the check.
 
 ---
 
+## 9H. Credentialed security defects — remediation
+
+**Not a capability phase, and no gap moved.** Three defects on the authenticated
+path, found by the code-level verification in §9G's follow-up assessment. Two
+were security defects in this product's own handling of a customer's
+credentials; one under-reported compliance automation the scan had already
+earned.
+
+### 9H.1 The sudo password was placed in the target's argv
+
+`LinuxCollector._run` built `echo 'PASSWORD' | sudo -S …` and handed it to
+`SSHScanner.run`, which passes the string to paramiko's `exec_command`. The
+shell sshd spawns on the target therefore carried the customer's password in
+its **argv**:
+
+- visible in `ps` to every local user on the scanned host, for the life of the
+  command;
+- captured permanently by any `execve` audit rule, which is precisely what a
+  hardened host being assessed for compliance is most likely to have; and
+- written to this scanner's own log — `run` logged the full command string on
+  failure at DEBUG.
+
+The irony is complete: the scanner leaked the credential most reliably on the
+hosts most carefully configured to record what runs on them.
+
+**The fix is stdin.** `sudo -S` reads its password there, so
+`SSHScanner.run_sudo()` rewrites each invocation to `sudo -S -p ''` and writes
+the password to the remote command's standard input. Nothing outside that class
+sees the secret: the collector asks `has_password` and calls `run_sudo`, where
+it previously read `ssh._password` and did the interpolation itself.
+
+Three details that are not obvious and are each pinned by a test:
+
+- **`-p ''` is required.** Without it sudo writes `[sudo] password for …` to
+  stderr, where the collector reads it as command output.
+- **`-n` must be stripped, bundled forms included.** It means "never prompt"
+  and sudo honours it over `-S`. Left in place — and `sudo -ln` in the real
+  catalogue contains it — sudo refuses the password this rewrite exists to
+  deliver, and the failure reads on the target as a permissions problem.
+- **One password line per invocation.** `sudo -l || sudo -l` runs at most one
+  of them, but which is decided on the target: a second that runs because the
+  first failed must find another line waiting. Relying on sudo's credential
+  cache instead breaks wherever `timestamp_timeout=0` is set.
+
+`_redact()` masks the session password in anything logged. With the stdin fix
+the command no longer carries it, so this is defence in depth — but a log line
+is the one place a regression here would be written to disk and kept.
+
+**Validated on a live Linux host.** `sudo -n id -u` returned `0`; the real
+`sudo_rules` command returned `(ALL : ALL) ALL`; and a **32 KB process table
+captured from a second session while the elevated command was running** —
+proven to be the right moment by the presence of `sleep 3` — contains neither
+the password nor the `| sudo` shape.
+
+### 9H.2 An authenticated host was not recorded as authenticated
+
+`credentialed_status` was written by the standalone audit and by nothing else.
+The Vulnerability Audit's credentialed pass — the path that actually runs on the
+main pipeline — never set it, so a host that was authenticated to, collected
+from and configuration-audited still read as `unknown`. `core/compliance_tasks`
+routes every rule in `CREDENTIALED_EVIDENCE_SOURCES` to `manual_review` unless
+the value is `success`.
+
+Measured on the live database before the fix: **zero** assets carried the
+attribute, despite that path having written eight configuration and privilege
+findings against a real Windows 11 host on 31 Aug 2026. The scan had the
+evidence; the compliance register reported the control as unassessed.
+
+`asset_syncer.set_credentialed_status()` is now the single writer and both paths
+call it. Three states, deliberately: `success`, `failed`, and **absent** for a
+host nothing was attempted against — "no credential was in scope" and "the
+credential was refused" are different facts, and only the second is a statement
+about the host.
+
+### 9H.3 Windows elevation — measured, and deliberately not invented
+
+There is no elevation mechanism on the Windows path. WinRM and OpenSSH both run
+as whoever authenticated, and escalating by creating a service or a scheduled
+task changes a host this product is only meant to read. **None was added.**
+
+What the code-level assessment claimed — that Windows checks "read partial
+state" for want of elevation — was not borne out by measurement. Against a real
+Windows 11 Pro host over WinRM as a member of Administrators:
+
+| Outcome       | Count |
+| ------------- | ----- |
+| PASS          | 11    |
+| FAIL          | 8     |
+| MANUAL_REVIEW | 1     |
+| **ERROR**     | **0** |
+
+All 20 Windows built-in checks completed. No check in the current set needs
+SYSTEM: every one reads `HKLM\SOFTWARE`, `HKLM\SYSTEM`, a service or task ACL,
+or `net accounts`, all of which a member of Administrators can read. The three
+empty fields in the Windows collector — `arp_table_raw`, `env_vars_summary`,
+`login_history_raw` — are **hardcoded placeholders** in `_collect_network` and
+`_collect_login_history`, not privilege failures. That corrects the assessment.
+
+What was added is provenance, not elevation: `system_data["privilege_context"]`
+records `account`, `is_administrator` and `is_system`. A failed probe yields
+`None`, never `False` — reading it as "not an administrator" would attribute a
+complete audit's findings to a partial one. The role test goes through
+`WindowsBuiltInRole.Administrator`, which resolves to S-1-5-32-544, because
+matching the group's _name_ fails on a non-English install.
+
+**What remains partial, and why:** a scan run as a standard user. Such an
+account cannot read service ACLs, the LSA policy or `net accounts`, so those
+checks report ERROR — correctly, and now with a recorded reason. This was not
+measured, because measuring it means creating a non-administrator account on a
+machine this programme does not own.
+
+### 9H.4 Definition of Done
+
+| Line                                               | Result                                              |
+| -------------------------------------------------- | --------------------------------------------------- |
+| Sudo password out of argv, `ps`, logs, exceptions  | ✅ stdin; validated against a live process table    |
+| Existing sudo functionality preserved              | ✅ `uid=0`, real catalogue commands work            |
+| `credentialed_status` written by the main path     | ✅ one writer, three states                         |
+| Windows elevation                                  | ✅ measured; none invented, absence guarded by test |
+| Automated tests                                    | ✅ 50 across three files, all mutation-verified     |
+| No new engine, no finding-model change, no SMB/WMI | ✅                                                  |
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |

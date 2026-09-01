@@ -549,31 +549,28 @@ class LinuxCollector:
         if not cmd:
             return ""
 
-        # If the command uses sudo and we have password credentials, try injecting the sudo password
-        if "sudo" in cmd and getattr(self._ssh, "_password", None):
-            import re
-
-            passwd = self._ssh._password
-            escaped_passwd = passwd.replace("'", "'\\''")
-            injected_cmd = re.sub(
-                r"\bsudo\s+(?:-n\s+)?", f"echo '{escaped_passwd}' | sudo -S ", cmd
+        # A command that needs sudo is handed to the executor, which supplies
+        # the password on the remote command's stdin.
+        #
+        # This code used to build ``echo 'PASSWORD' | sudo -S …`` here and pass
+        # it to ``run()``. That put the customer's password in the argv of the
+        # shell sshd spawns on the target, where ``ps`` shows it to every local
+        # user and an ``execve`` audit rule records it permanently — and from
+        # there into this scanner's own debug log. Nothing in this module sees
+        # the secret now: it never leaves ``SSHScanner``.
+        if "sudo" in cmd and getattr(self._ssh, "has_password", False):
+            log.debug(
+                "Running '%s' with sudo elevation on %s", command_key, self._ssh.ip
             )
-            log.info(
-                "Executing sudo command '%s' with password injection on %s",
-                command_key,
-                self._ssh.ip,
-            )
-            result = self._ssh.run(injected_cmd, timeout=30)
-            log.info(
-                "Injected command '%s' exit_code=%d, success=%s, stdout_len=%d, stderr='%s'",
-                command_key,
-                result.exit_code,
-                result.success,
-                len(result.stdout),
-                result.stderr,
-            )
+            result = self._ssh.run_sudo(cmd, timeout=30)
             if result.success and result.stdout.strip():
                 return result.stdout
+            log.debug(
+                "Elevated '%s' on %s returned exit_code=%d",
+                command_key,
+                self._ssh.ip,
+                result.exit_code,
+            )
 
         result = self._ssh.run(cmd, timeout=30)
         if not result.success and result.stderr:

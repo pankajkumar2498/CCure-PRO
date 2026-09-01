@@ -257,6 +257,7 @@ def _sync_credentialed_asset_identity(
     """
     from core.oui_lookup import lookup_vendor
     from scans.asset_syncer import (
+        CREDENTIALED_STATUS_SUCCESS,
         _confidence_to_percent,
         _finding_family,
         _finding_source_from_record,
@@ -522,8 +523,10 @@ def _sync_credentialed_asset_identity(
         if value is not None and value != ""
     }
 
-    # Compliance Engine Evidence Mappings
-    attrs["credentialed_status"] = "success"
+    # Compliance Engine Evidence Mappings. The literal used to live here and
+    # only here, which is why the Vulnerability Audit's credentialed pass never
+    # set it — there was nothing to call.
+    attrs["credentialed_status"] = CREDENTIALED_STATUS_SUCCESS
 
     # Password policy is *collected*, never assumed. This used to be a
     # hard-coded {complexity: True, history_length: 24, min_length: 14}
@@ -1725,6 +1728,7 @@ def _apply_credentialed_enrichment(
     """
     from core.redis_client import publish_progress_sync
     from core.risk import calculate_risk
+    from scans.asset_syncer import CREDENTIALED_STATUS_FAILED
     from scans.finding_normalizer import verify_host_findings
 
     plan = _credentialed_plan_for_scan(db, scan_row)
@@ -1905,6 +1909,11 @@ def _apply_credentialed_enrichment(
         except Exception as exc:  # noqa: BLE001 — recorded, scan continues
             log.warning("Credentialed enrichment failed for %s: %s", ip, exc)
             skipped.append({"target": ip, "reason": str(exc)})
+            # An attempt that was made and refused is a different fact from one
+            # that was never made, and the asset sync writes both distinctly.
+            # Reading either as "success" would let the compliance engine turn
+            # a host nobody could authenticate to into a passing verdict.
+            host["credentialed_status"] = CREDENTIALED_STATUS_FAILED
             continue
 
         # Resolve each listening process to its installed package here, while
@@ -3429,6 +3438,12 @@ def audit_credentialed_host(
             ),
             "serial_number": system_data.get("serial_number", ""),
             "bios_version": system_data.get("bios_version", ""),
+            # What privilege the session held. Windows only, and absent on
+            # Linux, where elevation is per-command through sudo rather than a
+            # property of the whole session. The same Windows check set gives
+            # different answers to an administrator and to a standard user, and
+            # without this the result carries nothing to say which produced it.
+            "privilege_context": system_data.get("privilege_context") or {},
         },
         "packages": packages,
         "package_count": len(packages),

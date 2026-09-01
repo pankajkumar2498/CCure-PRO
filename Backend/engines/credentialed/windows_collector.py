@@ -220,6 +220,24 @@ COMMANDS: dict[str, str] = {
     ),
     "hostname": "hostname",
     "uptime": "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
+    # What privilege this session actually holds.
+    #
+    # There is no elevation mechanism on the Windows path and none is invented
+    # here: WinRM and OpenSSH both run as whoever authenticated, and this
+    # product does not create a service or a scheduled task to escalate. So the
+    # honest thing is to record the token, because the same check set produces
+    # different answers under an administrator and under a standard user — a
+    # registry read that returns nothing to one and a value to the other.
+    #
+    # S-1-5-32-544 is the Administrators group SID, which is stable across
+    # locales; matching on the group's *name* fails on a non-English install.
+    "privilege_context": (
+        "$id=[Security.Principal.WindowsIdentity]::GetCurrent();"
+        "@{Name=$id.Name;"
+        "IsAdministrator=(New-Object Security.Principal.WindowsPrincipal($id))"
+        ".IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);"
+        "IsSystem=$id.IsSystem} | ConvertTo-Json"
+    ),
     # Hardware & Identity
     "computer_system": "(Get-CimInstance Win32_ComputerSystem | Select-Object Name, DNSHostName, Domain, PartOfDomain, Manufacturer, Model | ConvertTo-Json)",
     "bios": "(Get-CimInstance Win32_BIOS | Select-Object SerialNumber, SMBIOSBIOSVersion | ConvertTo-Json)",
@@ -494,6 +512,32 @@ class WindowsCollector:
         else:
             data["hostname_fqdn"] = self._run("hostname")
         data["uptime"] = self._run("uptime")
+
+        # Provenance for every Windows reading that follows. A standard user
+        # cannot read the service ACLs, the LSA policy or `net accounts`, and
+        # the checks that depend on them then report ERROR — correctly, but
+        # with nothing to say *why*. Recording the token turns "this check
+        # could not be performed" into "this check could not be performed by a
+        # non-administrator", which is the difference between an unexplained
+        # gap and an actionable one.
+        privilege_raw = self._run_json("privilege_context")
+        if isinstance(privilege_raw, list):
+            privilege_raw = privilege_raw[0] if privilege_raw else {}
+        if isinstance(privilege_raw, dict) and privilege_raw:
+            data["privilege_context"] = {
+                "account": str(privilege_raw.get("Name") or ""),
+                "is_administrator": bool(privilege_raw.get("IsAdministrator")),
+                "is_system": bool(privilege_raw.get("IsSystem")),
+            }
+        else:
+            # Unknown is a third state and must not read as "not an
+            # administrator": that would attribute a complete audit's findings
+            # to a partial one.
+            data["privilege_context"] = {
+                "account": "",
+                "is_administrator": None,
+                "is_system": None,
+            }
 
         bios_raw = self._run_json("bios")
         if isinstance(bios_raw, list):

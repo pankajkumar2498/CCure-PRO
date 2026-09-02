@@ -4,10 +4,10 @@ test_nvd_sync.py
 Unit tests covering:
   1. Severity mapping — every CVSS score boundary produces a value accepted by
      the ck_vuln_def_severity_canonical DB constraint.
-  2. _flush_batch resilience — bad rows are isolated; good rows are saved;
-     each engine is handled independently.
+  2. _flush_batch resilience — bad rows are isolated, good rows are saved, and
+     a wholesale failure is reported as fatal rather than as bad data.
   3. NVD client retry logic — 429 / 5xx cause retries; 4xx are permanent;
-     exhausted retries return None.
+     exhausted retries raise NvdFetchError.
   4. Telemetry — _SYNC_STATE exposes cves_skipped; lock helper is usable.
 """
 
@@ -100,39 +100,13 @@ def _make_upsert_sql():
     return text("SELECT 1")  # content irrelevant for unit tests
 
 
-def _simulate_flush(batch: list, engines: list, sql) -> tuple:
-    """
-    Reproduce the _flush_batch logic locally so we can unit-test it without
-    importing the closure from inside the async function.
-    """
-    import logging
-
-    log = logging.getLogger("test_flush")
-
-    if not batch:
-        return 0, 0
-
-    bad_ids: set = set()
-
-    for eng in engines:
-        try:
-            with eng.connect() as conn:
-                conn.execute(sql, batch)
-                conn.commit()
-        except Exception as bulk_err:
-            log.warning("Bulk failed (%s), falling back row-by-row.", bulk_err)
-            for row in batch:
-                try:
-                    with eng.connect() as conn:
-                        conn.execute(sql, [row])
-                        conn.commit()
-                except Exception as row_err:
-                    bad_ids.add(row.get("id"))
-                    log.error("Skipping %s: %s", row.get("id"), row_err)
-
-    skipped = len(bad_ids)
-    flushed = len(batch) - skipped
-    return flushed, skipped
+# `_flush_batch` used to be a closure inside the async sync function, so this
+# file carried a hand-written copy of its logic and tested that. The copy is why
+# nothing caught the accounting defect it had: `bad_ids` was shared across the
+# two write targets, so a row committed to the application catalogue but
+# rejected by the second database counted as skipped. It is a module-level
+# function now and the tests call it directly.
+from scans.nvd_sync import _flush_batch  # noqa: E402
 
 
 # ─── 2. _flush_batch resilience ──────────────────────────────────────────────
@@ -144,10 +118,11 @@ def test_flush_batch_all_rows_succeed():
     eng = _TrackingEngine(fail_ids=set())
     batch = [{"id": f"CVE-2026-{i:04d}"} for i in range(5)]
 
-    flushed, skipped = _simulate_flush(batch, [eng], sql)
+    flushed, skipped, fatal = _flush_batch(eng, batch, sql)
 
     assert flushed == 5
     assert skipped == 0
+    assert fatal is False
     assert eng._conn.written == [r["id"] for r in batch]
 
 
@@ -159,10 +134,11 @@ def test_flush_batch_single_bad_row_does_not_lose_good_rows():
     eng = _TrackingEngine(fail_ids={bad_id})
     batch = [{"id": bid} for bid in good_ids + [bad_id]]
 
-    flushed, skipped = _simulate_flush(batch, [eng], sql)
+    flushed, skipped, fatal = _flush_batch(eng, batch, sql)
 
     assert skipped == 1, f"Expected 1 skipped, got {skipped}"
     assert flushed == len(good_ids), f"Expected {len(good_ids)} flushed, got {flushed}"
+    assert fatal is False, "Isolated bad data must not block the checkpoint"
     assert bad_id not in eng._conn.written
     for gid in good_ids:
         assert gid in eng._conn.written, f"{gid} was not written"
@@ -176,41 +152,32 @@ def test_flush_batch_multiple_bad_rows():
     eng = _TrackingEngine(fail_ids=bad_ids)
     batch = [{"id": bid} for bid in good_ids] + [{"id": b} for b in bad_ids]
 
-    flushed, skipped = _simulate_flush(batch, [eng], sql)
+    flushed, skipped, fatal = _flush_batch(eng, batch, sql)
 
     assert skipped == 2
     assert flushed == len(good_ids)
+    assert fatal is False
     for bad in bad_ids:
         assert bad not in eng._conn.written
 
 
-def test_flush_batch_engines_handled_independently():
+def test_flush_batch_reports_wholesale_failure_as_fatal():
     """
-    A batch failing on engine-0 must fall back to row-by-row on engine-0 only.
-    Engine-1 (clean) should also receive and accept the full batch.
-    The bad row's ID must appear in bad_ids only once (set deduplication).
+    Every row failing is a database problem, not bad data, and must be told
+    apart from it — the checkpoint may advance over rows Postgres rejected on
+    their content, because re-fetching them can only produce the same
+    rejection, but never over rows that were never stored at all.
     """
-    bad_id = "CVE-2026-MULTI"
-    good_id = "CVE-2026-GOOD"
     sql = _make_upsert_sql()
+    ids = [f"CVE-2026-{i:04d}" for i in range(4)]
+    eng = _TrackingEngine(fail_ids=set(ids))
+    batch = [{"id": i} for i in ids]
 
-    eng0 = _TrackingEngine(fail_ids={bad_id})  # engine that will reject bad_id
-    eng1 = _TrackingEngine(fail_ids=set())  # clean engine, accepts everything
+    flushed, skipped, fatal = _flush_batch(eng, batch, sql)
 
-    batch = [{"id": good_id}, {"id": bad_id}]
-    flushed, skipped = _simulate_flush(batch, [eng0, eng1], sql)
-
-    # bad_id skipped on eng0; good_id written on eng0
-    assert good_id in eng0._conn.written
-    assert bad_id not in eng0._conn.written
-
-    # eng1 gets the bulk and succeeds for both rows
-    assert good_id in eng1._conn.written
-    assert bad_id in eng1._conn.written  # eng1 has no constraint on bad_id
-
-    # Reported skipped is 1 (unique bad ID), not 2
-    assert skipped == 1
-    assert flushed == 1  # only good_id counted as flushed (bad_id was in bad_ids)
+    assert flushed == 0
+    assert skipped == len(ids)
+    assert fatal is True, "A batch that saved nothing must be reported as fatal"
 
 
 def test_flush_batch_empty_returns_zero():
@@ -218,10 +185,11 @@ def test_flush_batch_empty_returns_zero():
     sql = _make_upsert_sql()
     eng = _TrackingEngine(fail_ids=set())
 
-    flushed, skipped = _simulate_flush([], [eng], sql)
+    flushed, skipped, fatal = _flush_batch(eng, [], sql)
 
     assert flushed == 0
     assert skipped == 0
+    assert fatal is False
     assert eng._conn.written == []
 
 
@@ -230,8 +198,8 @@ def test_flush_batch_empty_returns_zero():
 
 @pytest.mark.asyncio
 async def test_nvd_client_retries_on_429():
-    """A 429 response must be retried (up to _MAX_RETRIES) before giving up."""
-    from scans.cve_engine.nvd_client import NvdClient, _MAX_RETRIES
+    """A 429 response must be retried (up to _MAX_RETRIES), then raise."""
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError, _MAX_RETRIES
 
     client = NvdClient(api_key="test-key")
 
@@ -249,9 +217,14 @@ async def test_nvd_client_retries_on_429():
     with patch("asyncio.sleep", new_callable=AsyncMock):
         async with __import__("httpx").AsyncClient() as http_client:
             http_client.get = fake_get
-            result = await client._fetch_with_retry(http_client, {"startIndex": 0})
+            with pytest.raises(NvdFetchError) as excinfo:
+                await client._fetch_with_retry(http_client, {"startIndex": 0})
 
-    assert result is None, "Should return None after exhausting retries"
+    # Exhausted retries must raise, not return a sentinel. Returning None let
+    # `fetch_modified_since` break out of pagination normally, which the sync
+    # could not tell from a finished window — so it advanced its checkpoint
+    # past CVEs it had never fetched.
+    assert excinfo.value.start_index == 0
     assert (
         call_count == _MAX_RETRIES
     ), f"Expected {_MAX_RETRIES} attempts, got {call_count}"
@@ -259,9 +232,9 @@ async def test_nvd_client_retries_on_429():
 
 @pytest.mark.asyncio
 async def test_nvd_client_does_not_retry_on_4xx():
-    """A non-retryable 4xx (e.g. 403) must return None immediately without retrying."""
+    """A non-retryable 4xx (e.g. 403) must raise immediately without retrying."""
     import httpx
-    from scans.cve_engine.nvd_client import NvdClient
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError
 
     client = NvdClient(api_key="test-key")
     call_count = 0
@@ -279,9 +252,10 @@ async def test_nvd_client_does_not_retry_on_4xx():
     with patch("asyncio.sleep", new_callable=AsyncMock):
         async with httpx.AsyncClient() as http_client:
             http_client.get = fake_get
-            result = await client._fetch_with_retry(http_client, {"startIndex": 0})
+            with pytest.raises(NvdFetchError) as excinfo:
+                await client._fetch_with_retry(http_client, {"startIndex": 0})
 
-    assert result is None
+    assert excinfo.value.status_code == 403
     assert (
         call_count == 1
     ), f"Non-retryable error should not retry; got {call_count} calls"
@@ -322,6 +296,206 @@ async def test_nvd_client_succeeds_after_transient_error():
     assert result is not None
     assert result == {"vulnerabilities": [], "totalResults": 0}
     assert attempt == 2
+
+
+# â”€â”€â”€ 3b. Transient connection / TLS errors are retried â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#
+# A real 420-day backfill died at page 12 of 187 on
+# `[SSL: WRONG_VERSION_NUMBER]`. The checkpoint correctly held, but the window
+# was lost to a fault that cleared by itself â€” the requests either side of it
+# succeeded. These pin the classification rather than the symptom.
+
+
+def _always_raising_client(exc):
+    """An httpx client whose every request raises `exc`, counting attempts."""
+    calls = {"n": 0}
+
+    async def fake_get(*_args, **_kwargs):
+        calls["n"] += 1
+        raise exc
+
+    return fake_get, calls
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        __import__("httpx").ConnectError("connection refused"),
+        __import__("httpx").ReadError("connection reset by peer"),
+        __import__("httpx").RemoteProtocolError("server disconnected"),
+        __import__("httpx").ProxyError("tunnel failed"),
+        __import__("httpx").ConnectError(
+            "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1016)"
+        ),
+        __import__("ssl").SSLError(
+            "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1016)"
+        ),
+    ],
+    ids=["connect", "read", "remote-protocol", "proxy", "tls-wrapped", "tls-raw"],
+)
+@pytest.mark.asyncio
+async def test_transient_transport_errors_are_retried(exc):
+    """Each of these clears by itself; one occurrence must not cost the window."""
+    import httpx
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError, _MAX_RETRIES
+
+    client = NvdClient(api_key="test-key")
+    fake_get, calls = _always_raising_client(exc)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        async with httpx.AsyncClient() as http_client:
+            http_client.get = fake_get
+            with pytest.raises(NvdFetchError):
+                await client._fetch_with_retry(http_client, {"startIndex": 0})
+
+    assert calls["n"] == _MAX_RETRIES, (
+        f"{type(exc).__name__} should be retried {_MAX_RETRIES} times, "
+        f"got {calls['n']} attempt(s)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_recovers_when_a_transient_tls_error_clears():
+    """Retry succeeding must return the page, not merely fail more slowly."""
+    import httpx
+    from scans.cve_engine.nvd_client import NvdClient
+
+    client = NvdClient(api_key="test-key")
+    attempt = 0
+
+    async def fake_get(*_args, **_kwargs):
+        nonlocal attempt
+        attempt += 1
+        if attempt == 1:
+            raise httpx.ConnectError("[SSL: WRONG_VERSION_NUMBER] wrong version number")
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = {}
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"vulnerabilities": [], "totalResults": 0})
+        return resp
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        async with httpx.AsyncClient() as http_client:
+            http_client.get = fake_get
+            result = await client._fetch_with_retry(http_client, {"startIndex": 0})
+
+    assert result == {"vulnerabilities": [], "totalResults": 0}
+    assert attempt == 2
+
+
+@pytest.mark.parametrize(
+    "exc,label",
+    [
+        (__import__("httpx").LocalProtocolError("illegal header"), "local-protocol"),
+        (__import__("httpx").UnsupportedProtocol("unknown scheme"), "unsupported"),
+    ],
+    ids=["local-protocol", "unsupported-protocol"],
+)
+@pytest.mark.asyncio
+async def test_permanent_transport_errors_are_not_retried(exc, label):
+    """
+    Both are `TransportError` subclasses, which is why the retryable set is an
+    explicit tuple and not the parent class. A malformed request this client
+    built, or a wrong URL scheme, is repeated verbatim by a retry.
+    """
+    import httpx
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError
+
+    client = NvdClient(api_key="test-key")
+    fake_get, calls = _always_raising_client(exc)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        async with httpx.AsyncClient() as http_client:
+            http_client.get = fake_get
+            with pytest.raises(NvdFetchError):
+                await client._fetch_with_retry(http_client, {"startIndex": 0})
+
+    assert calls["n"] == 1, f"{label} is permanent and must not be retried"
+
+
+def test_retryable_set_excludes_permanent_errors():
+    """The classification itself, asserted rather than left to the handlers."""
+    import httpx
+    from scans.cve_engine.nvd_client import _RETRYABLE_TRANSPORT_ERRORS
+
+    for permanent in (
+        httpx.HTTPStatusError,
+        httpx.LocalProtocolError,
+        httpx.UnsupportedProtocol,
+        httpx.DecodingError,
+        httpx.TooManyRedirects,
+    ):
+        assert not issubclass(
+            permanent, _RETRYABLE_TRANSPORT_ERRORS
+        ), f"{permanent.__name__} is permanent â€” retrying only repeats the fault"
+
+    for transient in (
+        httpx.ConnectError,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.ConnectTimeout,
+        httpx.ReadTimeout,
+        httpx.RemoteProtocolError,
+        httpx.ProxyError,
+    ):
+        assert issubclass(
+            transient, _RETRYABLE_TRANSPORT_ERRORS
+        ), f"{transient.__name__} clears by itself and should be retried"
+
+
+@pytest.mark.asyncio
+async def test_exhausted_transport_retries_name_the_cause():
+    """
+    Folding connection errors into the retry loop must not cost the diagnostic
+    the catch-all used to give. "failed after 3 retries" alone would not have
+    identified the TLS fault on the real backfill.
+    """
+    import httpx
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError
+
+    client = NvdClient(api_key="test-key")
+    fake_get, _ = _always_raising_client(
+        httpx.ConnectError("[SSL: WRONG_VERSION_NUMBER] wrong version number")
+    )
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        async with httpx.AsyncClient() as http_client:
+            http_client.get = fake_get
+            with pytest.raises(NvdFetchError) as excinfo:
+                await client._fetch_with_retry(http_client, {"startIndex": 4000})
+
+    message = str(excinfo.value)
+    assert "WRONG_VERSION_NUMBER" in message
+    assert "ConnectError" in message
+    assert excinfo.value.start_index == 4000
+
+
+@pytest.mark.asyncio
+async def test_retry_after_header_is_still_honoured():
+    """The 429 path is untouched by the transport-error change."""
+    import httpx
+    from scans.cve_engine.nvd_client import NvdClient, NvdFetchError
+
+    client = NvdClient(api_key="test-key")
+    resp = MagicMock()
+    resp.status_code = 429
+    resp.headers = {"Retry-After": "1"}
+
+    async def fake_get(*_args, **_kwargs):
+        return resp
+
+    sleeper = AsyncMock()
+    with patch("asyncio.sleep", sleeper):
+        async with httpx.AsyncClient() as http_client:
+            http_client.get = fake_get
+            with pytest.raises(NvdFetchError):
+                await client._fetch_with_retry(http_client, {"startIndex": 0})
+
+    waits = [call.args[0] for call in sleeper.call_args_list]
+    assert waits and all(
+        w == 1.0 for w in waits
+    ), f"Retry-After: 1 must drive the back-off, got {waits}"
 
 
 # ─── 4. Telemetry & lock ─────────────────────────────────────────────────────

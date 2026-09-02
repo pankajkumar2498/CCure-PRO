@@ -580,7 +580,14 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
     async def nvd_auto_sync_loop():
-        """Option A: Background 24-hour automatic NVD live catalog sync into vuln_intel DB."""
+        """
+        Background 24-hour automatic NVD sync into the application catalogue.
+
+        The target is `vulnerability_definitions` in the application database,
+        not the vulnerability-intelligence database — this message used to say
+        the latter, which is where the belief that the two were one store came
+        from. Cadence is unchanged at 24 hours.
+        """
         from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
 
         # Initial delay on startup to allow DB migrations to finish
@@ -590,7 +597,8 @@ async def lifespan(app: FastAPI):
                 status = get_nvd_sync_status()
                 if status.get("status") != "SYNCING":
                     log.info(
-                        "Starting automatic 24-hour live NVD catalog sync into vuln_intel DB..."
+                        "Starting automatic 24-hour incremental NVD catalogue "
+                        "sync into vulnerability_definitions..."
                     )
                     await sync_nvd_to_vuln_intel(days_back=90)
             except Exception as e:

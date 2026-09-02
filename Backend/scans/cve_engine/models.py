@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 
 class CvssVector(BaseModel):
-    version: str  # "3.1", "3.0", "2.0"
+    version: str  # "4.0", "3.1", "3.0", "2.0"
     vector_string: str
     base_score: float
     attack_vector: str  # N / A / L / P
@@ -70,6 +70,14 @@ class CveRecord(BaseModel):
     published_date: datetime
     last_modified_date: datetime
     cvss: CvssVector
+    #: The CVSS 4.0 metric when NVD publishes one, carried *beside* ``cvss``
+    #: rather than in place of it. ``cvss`` keeps the established
+    #: v3.1 → v3.0 → v2.0 selection, so no record that already had a score
+    #: changes the one it reports; this field is what lets the v4 score still
+    #: be stored, and it is what ``cvss`` falls back to for a CVE carrying v4
+    #: metrics *only* — which previously left the record unscored and made the
+    #: parser discard it before it ever reached the catalogue.
+    cvss_v4: Optional[CvssVector] = None
     cpe_matches: List[CpeMatch] = Field(default_factory=list)
     references: List[CveReference] = Field(default_factory=list)
     cwe_ids: List[str] = Field(default_factory=list)

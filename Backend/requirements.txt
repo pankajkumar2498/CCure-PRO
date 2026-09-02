@@ -32,7 +32,14 @@ python-jose[cryptography]==3.3.0   # JWT signing/verification
 passlib[bcrypt]==1.7.4             # password hashing (bcrypt)
 bcrypt==4.0.1                      # passlib 1.7.4 compatibility pin
 argon2-cffi==23.1.0                # argon2 fallback hasher
-cryptography>=41.0.0,<48           # avoid TripleDES deprecation in v48+
+cryptography>=43,<48               # lower bound is sslyze 6.3.1's (>=43): a
+                                   # dependency that caps cryptography below
+                                   # it — impacket 0.12.0 via pyOpenSSL==24.0.0
+                                   # — silently downgrades this and takes sslyze
+                                   # out of contract, reaching paramiko,
+                                   # pysnmpcrypto, pyspnego and requests_ntlm
+                                   # too. Upper bound avoids the TripleDES
+                                   # deprecation in v48+.
 sqlalchemy==2.0.30                 # ORM (scan history, user DB)
 alembic>=1.13.0                    # Database migrations
 psycopg2-binary==2.9.9             # PostgreSQL adapter for SQLAlchemy
@@ -137,21 +144,51 @@ pytest-asyncio
 # ── Optional enhancements ─────────────────────────────────────────────────────
 # pyOpenSSL          # deeper TLS inspection in tls_scanner plugin
 # python-ldap3       # direct LDAP queries in ldap_probe plugin
-impacket==0.12.0   # Windows credentialed scan over SMB / Remote Registry / WMI.
+impacket==0.13.1   # Windows credentialed scan over SMB / Remote Registry / WMI.
                    # Declared, not optional: the import is reached at scan time
                    # by engines/credentialed/smb_executor.py, which is the
                    # second Windows transport. It also carries the SMB deep
                    # inspection this line previously described as "install
                    # separately", so that arrangement is gone.
                    #
-                   # ⚠ It depends on `pyasn1` WITHOUT an upper bound, and
-                   # installing it will happily pull pyasn1 6.x — which breaks
+                   # ⚠ 0.13.1, NOT 0.12.0, and the reason is a hard conflict
+                   # rather than a preference. 0.12.0 pins `pyOpenSSL==24.0.0`,
+                   # which caps `cryptography<43`; sslyze 6.3.1 requires
+                   # `cryptography>=43,<47`. The two cannot both be satisfied,
+                   # so installing impacket 0.12.0 downgrades cryptography to
+                   # 42.0.8 and leaves sslyze's requirement violated — measured
+                   # with `pip check`, which reports it in those words. That
+                   # matters beyond tidiness: cryptography is also depended on
+                   # by paramiko, pysnmpcrypto, pyspnego and requests_ntlm, so
+                   # the downgrade reaches SSH, SNMPv3 and WinRM NTLM as well.
+                   # 0.13.1 declares `pyOpenSSL` unpinned and resolves against
+                   # cryptography 46 with nothing displaced.
+                   #
+                   # ⚠ It also depends on `pyasn1` WITHOUT an upper bound, and
+                   # an unconstrained install can pull pyasn1 6.x — which breaks
                    # pysnmp-lextudio and, with it, SNMP topology discovery. The
-                   # failure is not an import error: the FDB table silently
-                   # decodes to one entry instead of three, so a switch's MAC
-                   # table comes back nearly empty and the topology looks sparse
+                   # failure is not an import error: pyasn1 6 removed
+                   # `pyasn1.compat.octets`, and the FDB table silently decodes
+                   # to one entry instead of three, so a switch's MAC table
+                   # comes back nearly empty and the topology looks sparse
                    # rather than broken. Keep the `pyasn1` pin above ahead of
                    # this line and verify both after any upgrade of either.
+                   #
+                   # Installing into an existing environment therefore means
+                   # naming the constraints so pip cannot resolve around them:
+                   #
+                   #   pip install "impacket==0.13.1" \
+                   #       "pyasn1>=0.4.8,<0.6.0" "cryptography>=43,<47"
+                   #
+                   # `pip install -r requirements.txt` does this on its own,
+                   # because both pins are in this file. The failure mode to
+                   # watch for is an environment that was built before this
+                   # line existed and never reinstalled: `Backend/.venv` was in
+                   # exactly that state until 2 Sep 2026 — 44 of 45 declared
+                   # packages present, impacket the only one missing — so the
+                   # SMB transport raised SMBConfigurationError in the worker
+                   # while passing in a developer's global interpreter that had
+                   # been given impacket by hand.
 
 # ── Web Application Scanning (DAST) ──────────────────────────────────────────
 playwright>=1.40.0         # Headless browser for SPA crawling

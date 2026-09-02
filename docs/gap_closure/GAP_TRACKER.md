@@ -4148,23 +4148,14 @@ generator's code, not by reading the artefact.
   `rule_stig_…`. Cosmetic, stable, and not worth a migration on live findings.
 - **Two of the 58 FAILs carry no remediation text**, which is a property of the
   SSG content rather than of the conversion.
-- **The project virtualenv has no `impacket`, so Phase 12's SMB transport is
-  unavailable in the runtime.** `Backend/.venv` is what
-  `start_host_scanner_worker.ps1` launches the worker from, and
-  `import impacket` fails there — `SMBExecutor.__init__` raises
-  `SMBConfigurationError` before it does anything. The capability is
-  implemented and was real-target validated in Phase 12; it simply cannot run
-  as this machine is currently set up, and a Windows client-edition host would
-  fall back to WinRM or not be reached at all. Found because this section's
-  regression run used the venv interpreter while every earlier baseline in this
-  tracker used the global Python 3.12, where a previous session installed
-  impacket — so `test_smb_transport.py` passes there and fails here, and the
-  suite totals in §12 are not strictly comparable across that boundary.
-  **Not fixed here**, because `impacket` depends on `pyasn1` with no upper
-  bound and will pull 6.x over the `pyasn1>=0.4.8,<0.6.0` pin that
-  `pysnmp-lextudio` needs; that silently degrades SNMP topology, where an FDB
-  table decodes to one entry instead of three. Installing it needs
-  `pyasn1==0.5.1` pinned alongside and a topology check afterwards.
+- **The project virtualenv had no `impacket`, so Phase 12's SMB transport could
+  not run in the worker at all.** Found here because this section's regression
+  used the venv interpreter while every earlier baseline in this tracker used
+  the global Python 3.12, where an earlier session had installed impacket by
+  hand — so `test_smb_transport.py` passed there and failed here. **Fixed in
+  §9M**, which also corrects the diagnosis recorded at the time: the hazard is
+  not `pyasn1` but `pyOpenSSL`/`cryptography`, and the cause was a stale
+  environment rather than a dependency conflict.
 
 - **`detection_method` is `credentialed_package` and `source_family` is
   `credentialed_package` on configuration findings**, because the write path is
@@ -4180,6 +4171,217 @@ measures the reader against the SCAP surface — 52 frozen areas, 33 implemented
 it proved a path. GAP-05 stays **Closed at 63.5%**, now with the
 catalogue → credentialed scan → verdict link validated on a real host rather
 than declared.
+
+---
+
+## 9M. The worker runtime did not have the SMB dependency
+
+§9L.7 recorded that `Backend/.venv` had no `impacket`, so Phase 12's Windows
+transport could not run in the process that actually runs scans, and left it
+unfixed on the stated grounds that installing it would break SNMP. **That
+reasoning was wrong**, and the real conflict turned out to be somewhere else
+entirely. This section is the correction and the fix.
+
+### 9M.1 Root cause: a stale environment, not a conflict
+
+`requirements.txt` has declared `impacket==0.12.0` since **`4a88723`** — the
+Phase 12 commit that added the transport. Nothing was missing from the
+declaration. The virtualenv was simply never reinstalled afterwards.
+
+Measured before the fix: **44 of the 45 declared distributions were present and
+`impacket` was the only one absent.** Not dependency resolution, not a conflict
+— an environment that had drifted from the file that describes it.
+
+It survived a day and two phases because the _developer's global_ Python 3.12
+had been given impacket by hand in an earlier session. Every regression figure
+in §12 was produced there. So `tests/credentialed/test_smb_transport.py` passed
+in the interpreter nobody deploys and failed in the one the worker runs, and a
+green suite said nothing about the runtime.
+
+### 9M.2 The conflict that is real, and it is not pyasn1
+
+The recorded fear was that `impacket` would drag `pyasn1` past the
+`<0.6.0` pin that `pysnmp-lextudio` needs. A dry run settles it: with both
+requirements named, **pip does not touch `pyasn1` at all** — impacket asks for
+`>=0.2.3` and 0.5.1 satisfies it. The pin does its job.
+
+The actual conflict was one layer down and had already done damage:
+
+| Package          | Requires                    |
+| ---------------- | --------------------------- |
+| impacket 0.12.0  | `pyOpenSSL==24.0.0` (exact) |
+| pyOpenSSL 24.0.0 | `cryptography<43,>=41.0.5`  |
+| **sslyze 6.3.1** | **`cryptography>=43,<47`**  |
+
+These cannot both hold. Installing impacket 0.12.0 downgrades `cryptography`
+to 42.0.8 and leaves sslyze out of contract — which is exactly the state the
+global interpreter was already in, and `pip check` says so in those words:
+
+    sslyze 6.3.1 has requirement cryptography<47,>=43, but you have cryptography 42.0.8
+
+That reaches further than TLS scanning. `cryptography` is also depended on by
+`paramiko`, `pysnmpcrypto`, `pyspnego` and `requests_ntlm` — so the downgrade
+touches SSH, SNMPv3 and WinRM NTLM as well. **The earlier session that
+installed impacket globally silently broke sslyze's dependency contract**, and
+the tracker recorded the wrong package as the hazard.
+
+`requirements.txt` did not prevent it because its `cryptography` range was
+`>=41.0.0,<48`, which _permits_ 42.0.8. The lower bound is now `>=43`, sslyze's
+own, so a dependency that caps cryptography below it fails resolution instead
+of silently winning.
+
+### 9M.3 Version chosen: impacket 0.13.1
+
+**impacket 0.13.1 declares `pyOpenSSL` with no version constraint**, where
+0.12.0 pins it exactly. Dry-run with both project pins held names what it
+would install:
+
+    Flask Werkzeug blinker impacket-0.13.1 itsdangerous ldap3
+    ldapdomaindump pyOpenSSL-26.2.0 pyasn1_modules pycryptodomex pyreadline3
+
+`cryptography` and `pyasn1` are **absent from that list** — neither is
+displaced. 0.13.1 also drops 0.12.0's `setuptools` dependency.
+
+Measured in `Backend/.venv` after installing:
+
+| Package         | Before   | After      |
+| --------------- | -------- | ---------- |
+| cryptography    | 46.0.7   | **46.0.7** |
+| pyasn1          | 0.5.1    | **0.5.1**  |
+| pysnmp-lextudio | 6.1.2    | 6.1.2      |
+| sslyze          | 6.3.1    | 6.3.1      |
+| impacket        | _absent_ | **0.13.1** |
+| pyOpenSSL       | _absent_ | 26.2.0     |
+
+`pip check` in the venv reports no impacket, cryptography or pyasn1 conflict —
+only a pre-existing `pytest-asyncio` note unrelated to this work. The sslyze
+violation that exists in the global interpreter does **not** exist here.
+
+**No second environment was created.** `Backend/.venv` is the one the worker
+launches from and the one that was fixed.
+
+### 9M.4 Verified in the worker process, not just an interpreter
+
+Importing impacket in a shell proves the site-packages, not the runtime. The
+worker was restarted (it caches `IMPACKET_AVAILABLE` at import) and an SMB-transport
+credential was dispatched through Celery at **192.0.2.1** — RFC 5737 TEST-NET-1,
+so no real host is touched and no real credential exists. The distinction is the
+whole point:
+
+- impacket missing → `SMBConfigurationError: impacket is not installed`
+- impacket present → a _connection_ error, because the transport got as far as
+  a socket
+
+The worker logged:
+
+    Credentialed audit of 192.0.2.1 failed:
+      Cannot reach SMB: [Errno Connection error (192.0.2.1:445)] timed out
+
+That is impacket's own error. The probe credential and scan row were deleted
+afterwards.
+
+**Containers were already correct.** `Backend/Dockerfile` runs
+`pip install --user -r requirements.txt`, so every container build has had
+impacket since Phase 12. Only the host worker's virtualenv — the one built by
+hand and never refreshed — was affected.
+
+### 9M.5 SNMP proven, not assumed
+
+The documented failure is silent: an FDB table decoding to one entry instead of
+three, so a switch's MAC table looks sparse rather than broken. Passing tests
+alone would not settle that, so three things were checked:
+
+- `pyasn1` is **unchanged at 0.5.1** — the SNMP chain was not modified at all,
+  so no behaviour in it can have changed.
+- `pysnmp` references `pyasn1_modules` **nowhere**, so the one newly-arrived
+  package in that family cannot reach it.
+- A three-entry FDB-shaped walk was encoded and decoded through
+  `pysnmp.proto.rfc1902` and returned **3 of 3**, with `Integer32` and
+  `Counter32` round-tripping. `tests/repo/test_runtime_dependencies.py` keeps
+  that assertion.
+
+`tests/topology/` — 69 tests — passes in the venv.
+
+### 9M.6 The guard
+
+`tests/repo/test_runtime_dependencies.py` walks `requirements.txt` and asserts
+every declared distribution is installed **in whichever interpreter is running
+the suite**, which is what makes a stale environment fail where it is stale
+rather than where it is not. Mutation-verified: a bogus requirement line makes
+it fail, naming the package.
+
+It checks **presence, not versions**, deliberately. `pytest` (9.1.1 against a
+7.4.4 pin) and `python-docx` (1.2.0 against 1.1.2) are both installed _newer_
+than pinned, and downgrading the test runner that produced every figure in §12
+is a larger and riskier change than the drift it would fix. Those are recorded
+below, not actioned. The defect worth failing a build over is a declared
+distribution that is entirely absent, because that turns a shipped capability
+into a runtime error.
+
+It resolves distribution names rather than import names: `python-docx` imports
+as `docx` and `pysnmp-lextudio` as `pysnmp`, so importing by declared name
+would invent failures.
+
+### 9M.7 Dependency security check
+
+No `pip-audit` or `safety` is installed and neither was added. `ccure_user`
+lacks privileges on `vuln_intel.osv_ranges`, and that was not escalated for a
+convenience query. Every package this change installed or preserved was checked
+against **OSV.dev** at its exact installed version:
+
+| Package                                                                    | Result       |
+| -------------------------------------------------------------------------- | ------------ |
+| impacket, Flask, Werkzeug, ldap3, pyOpenSSL, pycryptodomex, ldapdomaindump | **clean**    |
+| cryptography 46.0.7                                                        | 4 advisories |
+| pyasn1 0.5.1                                                               | 4 advisories |
+
+**Everything this change added is clean.** The two that are not are packages it
+deliberately did _not_ move, and both are blocked by pins that exist for
+functional reasons:
+
+- `cryptography` — fixed in **48.0.1** / **49.0.0**; `requirements.txt` caps
+  `<48` to avoid the TripleDES deprecation.
+- `pyasn1` — fixed in **0.6.4**; pinned `<0.6.0` because `pysnmp-lextudio`
+  6.1.2 imports `pyasn1.compat.octets`, which 0.6 removed.
+
+Both are denial-of-service class (quadratic OID parsing, unbounded REAL
+conversion, exponential certificate path-building), not remote code execution.
+Each needs its own decision — raising either cap means retiring a functional
+constraint — so both are recorded here rather than changed under a dependency
+fix.
+
+### 9M.8 Result
+
+| Check                                    | Result                                       |
+| ---------------------------------------- | -------------------------------------------- |
+| `impacket` imports in the worker venv    | ✅ `IMPACKET_AVAILABLE = True`               |
+| SMB transport in the live worker process | ✅ connection error, not configuration error |
+| SMB tests (venv)                         | ✅ **63 passed** (was 1 failed)              |
+| Topology / SNMP tests (venv)             | ✅ **69 passed**                             |
+| FDB three-entry decode                   | ✅ 3 of 3                                    |
+| `pyasn1` / `cryptography` displaced      | ✅ neither                                   |
+| Full regression (venv)                   | ✅ **4606 passed, 2 skipped, 0 failed**      |
+| Second environment created               | ✅ no                                        |
+
+**No capability figure moves.** GAP-02 was already Closed and Phase 12 was
+already real-target validated; this restores the runtime's ability to execute
+what was built, and a dependency fix is not new capability.
+
+### 9M.9 Recorded, not fixed
+
+- **`pytest` 9.1.1 against a `==7.4.4` pin**, and `pytest-asyncio` 0.23.8
+  requires `pytest<9`. Every regression figure in this tracker was produced on
+  9.1.1, so the pin is what is stale, not the environment. Correcting it means
+  choosing between raising the pin and downgrading the runner, and the second
+  would revalidate nothing.
+- **`python-docx` 1.2.0 against a `==1.1.2` pin.** Newer than declared; the
+  compliance DOCX exports are exercised by the suite and pass.
+- **The global Python 3.12 still has `cryptography` 42.0.8 and a violated
+  sslyze requirement**, from the earlier by-hand impacket install. It is not a
+  deployment target, but it is where §12's figures were produced. Aligning it
+  is `pip install "impacket==0.13.1" "cryptography>=43,<47"`; not done here
+  because it is a developer machine's environment rather than the runtime, and
+  changing `cryptography` there reaches unrelated global tooling.
 
 ---
 

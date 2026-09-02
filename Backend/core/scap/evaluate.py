@@ -130,6 +130,31 @@ def _compare(
         equal = str(actual).strip().lower() == str(expected).strip().lower()
         return equal if operation == "case insensitive equals" else not equal
 
+    if datatype == "record":
+        # A WMI row against the fields the content names. Every field the state
+        # declares must be present on the row and equal; a field the row does
+        # not carry is UNKNOWN, never False, because "this build did not
+        # collect that column" is not "the host disagrees".
+        if not isinstance(expected, Mapping):
+            return None
+        if not isinstance(actual, Mapping):
+            return None
+        if operation not in ("equals", "case insensitive equals"):
+            return None
+        lowered = {str(k).strip().lower(): v for k, v in actual.items()}
+        for field, want in expected.items():
+            key = str(field).strip().lower()
+            if key not in lowered:
+                return None
+            got = str(lowered[key]).strip()
+            wanted = str(want).strip()
+            if operation == "case insensitive equals":
+                if got.lower() != wanted.lower():
+                    return False
+            elif got != wanted:
+                return False
+        return True
+
     if datatype == "boolean":
         left, right = _as_bool(actual), _as_bool(expected)
         if left is None or right is None:

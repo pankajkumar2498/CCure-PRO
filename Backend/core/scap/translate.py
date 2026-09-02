@@ -61,6 +61,7 @@ log = logging.getLogger("ccure.scap.translate")
 __all__ = [
     "ConversionReport",
     "applies_to_from_platforms",
+    "platform_from_content",
     "to_pack",
 ]
 
@@ -284,6 +285,7 @@ def _check_for_rule(
     values: Mapping[str, str],
     severity: str,
     profile_label: str,
+    platform: str,
 ) -> Tuple[Optional[ConfigCheck], str, Tuple[str, ...]]:
     """
     Build the ``scap_rule`` check for *rule*.
@@ -368,7 +370,11 @@ def _check_for_rule(
             # deliberate choice, and MANUAL_REVIEW is the value that could
             # never flatter a score if the collector ever changed.
             absent=AbsencePolicy.MANUAL_REVIEW,
-            platforms=("linux",),
+            # The benchmark's own platform, never a constant. A Windows
+            # benchmark filed as Linux is offered to hosts that cannot
+            # evaluate one rule of it and withheld from the ones it
+            # describes; `BenchmarkPack` refuses the mismatch outright.
+            platforms=(platform,),
             severity=severity,
             description=rule.description,
             rationale=rule.rationale,
@@ -462,6 +468,11 @@ def to_pack(
         else applies_to_from_platforms(benchmark.platforms)
     )
 
+    # Resolved once, before any rule is converted, because every check the
+    # pack carries must agree with the pack's own platform — `BenchmarkPack`
+    # refuses a check targeting a platform the benchmark does not.
+    pack_platform = platform_from_content(content)
+
     controls: List[BenchmarkControl] = []
     used: set[str] = set()
     for rule in rules:
@@ -525,6 +536,7 @@ def to_pack(
             values=values,
             severity=rule.severity,
             profile_label=label,
+            platform=pack_platform,
         )
         if check is None:
             controls.append(
@@ -553,7 +565,7 @@ def to_pack(
         code=str(code).strip().upper(),
         name=benchmark.title or code,
         version=benchmark.version or "unversioned",
-        platform="linux",
+        platform=pack_platform,
         publisher=publisher,
         licence=licence,
         profiles=(BenchmarkProfile(id=label, title=label.upper()),),
@@ -566,6 +578,46 @@ def to_pack(
 
 
 _ID_IN_MESSAGE = re.compile(r"oval:[a-z0-9._-]+:(?:def|tst|obj|ste|var):\d+", re.I)
+
+
+#: OVAL's ``<affected family>`` → the platform vocabulary ``ConfigCheck`` uses.
+#: Only the two this build can evaluate against; anything else leaves the
+#: platform undecided rather than guessing at a third.
+_FAMILY_PLATFORMS = {
+    "windows": "windows",
+    "unix": "linux",
+    "linux": "linux",
+}
+
+
+def platform_from_content(content: ScapContent) -> str:
+    """
+    Which platform a converted benchmark targets, read from the content.
+
+    This was hardcoded to ``"linux"``, which was true of every benchmark that
+    had been loaded and silently wrong for the first Windows one. The effect is
+    not a cosmetic mislabel: ``ConfigCheck.platforms`` is what the engine
+    filters on, so a Windows benchmark filed as Linux is offered to Linux hosts
+    — where not one of its rules can be evaluated — and withheld from the
+    Windows hosts it describes. Every rule would report an error, on the wrong
+    machines.
+
+    Decided by majority of the families the OVAL definitions declare, because a
+    datastream can carry an inventory definition of a different family from the
+    compliance definitions that make up the benchmark. Content that declares no
+    family at all keeps the historical default, so nothing that loaded before
+    changes.
+    """
+    counts: Dict[str, int] = {}
+    for document in (getattr(content, "oval", None) or {}).values():
+        for definition_id in getattr(document, "definitions", {}) or {}:
+            family = document.definition_family(definition_id)
+            platform = _FAMILY_PLATFORMS.get(family)
+            if platform:
+                counts[platform] = counts.get(platform, 0) + 1
+    if not counts:
+        return "linux"
+    return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
 def _generalise(reason: str) -> str:

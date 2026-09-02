@@ -58,7 +58,11 @@ class ScapRuleCollector(Collector):
     """Walks a compiled OVAL definition and reports the host's state."""
 
     check_type = "scap_rule"
-    platforms = ("linux",)
+    # Windows joined this when the Windows OVAL probes landed. Until then a
+    # Windows context selected no collector at all and every rule reported
+    # ERROR — the correct direction (a product gap is never a verdict), but
+    # it meant the whole DISA Windows corpus was unevaluable.
+    platforms = ("linux", "windows")
     name = "scap_rule"
 
     def collect(self, check: ConfigCheck, ctx: CollectionContext) -> CollectedState:

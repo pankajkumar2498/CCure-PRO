@@ -36,6 +36,7 @@ which is what every ``none_exist`` check in the corpus depends on.
 from __future__ import annotations
 
 import re
+import json
 import shlex
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -1154,6 +1155,643 @@ def _probe_variable(ctx: CollectionContext, obj: Mapping[str, Any]) -> ProbeResu
 #: Object type → probe. Read by ``core.scap.supported_areas`` through
 #: :data:`core.scap.oval.SUPPORTED_TESTS`, so removing one removes both the
 #: capability and its coverage credit.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Windows
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Added for the DISA Microsoft Windows 11 STIG. Frequencies measured over
+# V2R10, MAC-2_Classified, 219 rules: registry 117, audit subcategories 43,
+# userright 25, password policy 7, lockout policy 3 — 195 of 219.
+#
+# Every one of these reads. None writes to the host except the `secedit`
+# export, which lands in `$env:TEMP` under a GUID name and is removed in the
+# same command — the shape `WindowsSecurityPolicyCollector._run_secedit`
+# already established, reused here rather than reinvented.
+
+
+def _win_native(ctx: CollectionContext, capability: str):
+    """
+    The executor's own implementation of *capability*, when it has one.
+
+    The SMB transport reads the registry over Remote Registry, natively and
+    without a shell. WinRM has no such method and returns None here, so it
+    keeps running PowerShell. Same seam ``core/config_audit/collectors/
+    windows.py`` uses, and for the same reason.
+    """
+    executor = getattr(ctx, "executor", None)
+    method = getattr(executor, capability, None)
+    return method if callable(method) else None
+
+
+#: PowerShell sentinels. Three outcomes a registry read has to keep apart: the
+#: key is not there, the key is there and the value is not, and a value was
+#: read. Collapsing the first two loses the distinction between "this setting
+#: was never configured" and "this whole feature is absent", and collapsing
+#: either into a read produces a verdict about a value nobody found.
+_WIN_NOKEY = "CCURE::NOKEY"
+_WIN_NOVALUE = "CCURE::NOVALUE"
+_WIN_TYPE = "CCURE::TYPE::"
+_WIN_VALUE = "CCURE::VALUE::"
+_WIN_FAILED = "CCURE::FAILED"
+
+#: ``RegistryValueKind`` → the vocabulary OVAL's ``registry_state/type`` uses.
+_WIN_REG_TYPES = {
+    "string": "reg_sz",
+    "expandstring": "reg_expand_sz",
+    "binary": "reg_binary",
+    "dword": "reg_dword",
+    "multistring": "reg_multi_sz",
+    "qword": "reg_qword",
+    "none": "reg_none",
+    "unknown": "reg_none",
+}
+
+
+def _ps_quote(value: str) -> str:
+    """Single-quote for PowerShell, doubling any quote inside."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _probe_registry(ctx: CollectionContext, obj: Mapping[str, Any]) -> ProbeResult:
+    """
+    One registry value.
+
+    A missing key or a missing value is ``collected([])`` — an *absence*, which
+    is what ``check_existence`` is there to judge. Only a read that failed is
+    ``failed()``, and that becomes ERROR rather than a verdict. Getting that
+    boundary wrong is the whole class of defect this package exists to avoid:
+    ``none_exist`` over an absence the scanner invented reads as a clean host.
+    """
+    entities = obj.get("entities") or {}
+    hive = _entity_one(entities, "hive")
+    key = _entity_one(entities, "key")
+    name = _entity_one(entities, "name")
+    if not hive or key is None:
+        return ProbeResult.failed("the registry object names no hive or no key")
+
+    # A registry_object with no `name` addresses the key itself. The content
+    # measured here always names a value, and a key-existence probe is a
+    # different read, so it is declined rather than answered with a guess.
+    if name is None:
+        return ProbeResult.failed(
+            "the registry object names no value, which addresses the key itself "
+            "rather than a value; this build reads values"
+        )
+
+    common = {"hive": hive, "key": key, "name": name}
+
+    native = _win_native(ctx, "read_registry_value")
+    if native is not None:
+        try:
+            value = native(hive, key, name)
+        except Exception as exc:
+            return ProbeResult.failed(
+                f"the registry read failed: {type(exc).__name__}: {exc}"
+            )
+        if value is None:
+            # Remote Registry cannot separate a missing key from a missing
+            # value; both are an absence, which is the answer this returns.
+            return ProbeResult.collected([])
+        # No `type`: this transport returns the data and not its kind. The
+        # entity is therefore omitted rather than guessed, and a state that
+        # checks `type` evaluates to UNKNOWN — never to a verdict.
+        return ProbeResult.collected([{**common, "value": str(value)}])
+
+    runner = _runner(ctx)
+    if not runner.available:
+        return ProbeResult.failed("no authenticated session to the target")
+
+    path = f"{hive}\\{key}" if key else hive
+    command = (
+        "$ErrorActionPreference='SilentlyContinue'; "
+        f"$p = 'Registry::' + {_ps_quote(path)}; "
+        "$k = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue; "
+        f"if ($k -eq $null) {{ Write-Output '{_WIN_NOKEY}' }} else {{ "
+        f"  $n = {_ps_quote(name)}; "
+        f"  if ($k.GetValueNames() -notcontains $n) {{ Write-Output '{_WIN_NOVALUE}' }} "
+        "  else { "
+        "    $t = $k.GetValueKind($n); $v = $k.GetValue($n); "
+        "    if ($v -is [System.Array]) { $v = ($v -join [char]10) } "
+        f"    Write-Output ('{_WIN_TYPE}' + $t); "
+        f"    Write-Output ('{_WIN_VALUE}' + $v) }} }}"
+    )
+    out = runner.run(command, timeout=ctx.timeout)
+    if not out.ok:
+        return ProbeResult.failed(out.failure_detail(), raw=out.stderr or out.stdout)
+
+    text = out.stdout or ""
+    if _WIN_NOKEY in text or _WIN_NOVALUE in text:
+        return ProbeResult.collected([])
+    if _WIN_VALUE not in text:
+        # The command succeeded and printed nothing this probe recognises.
+        # Reading that as an absence would let `none_exist` pass on a read
+        # that never happened.
+        return ProbeResult.failed(
+            "the registry read produced no result marker", raw=text[:400]
+        )
+
+    reg_type = ""
+    for line in text.splitlines():
+        if line.startswith(_WIN_TYPE):
+            reg_type = _WIN_REG_TYPES.get(
+                line[len(_WIN_TYPE) :].strip().lower(), "reg_sz"
+            )
+    value = text.split(_WIN_VALUE, 1)[1]
+    item = {**common, "value": value.strip("\r\n")}
+    if reg_type:
+        item["type"] = reg_type
+    return ProbeResult.collected([item], raw=text[:400])
+
+
+# ── Audit policy ─────────────────────────────────────────────────────────────
+
+#: OVAL entity name → the subcategory GUID `auditpol /r` reports. GUIDs rather
+#: than display names because the display name is localised: on a German or
+#: Japanese install "Credential Validation" is not that string, and a probe
+#: matching on it would report every audit subcategory as not-configured on a
+#: correctly configured host. The GUIDs are read from the target's own
+#: `auditpol` output, so this table maps entity → GUID and nothing is assumed
+#: about spelling.
+_AUDIT_SUBCATEGORY_ALIASES = {
+    # Measured against a live host: 27 of the 28 entities the DISA Windows 11
+    # STIG names normalise directly from `auditpol`'s own subcategory text.
+    # This is the one that does not — Windows calls it "Plug and Play Events".
+    # Listed rather than guessed, and the direction is OVAL entity → the
+    # host's normalised name.
+    "pnp_activity": ("plug_and_play_events",),
+}
+
+
+def _normalise_audit_name(text: str) -> str:
+    """``Other Logon/Logoff Events`` → ``other_logon_logoff_events``."""
+    out = []
+    for ch in str(text).strip().lower():
+        out.append(ch if ch.isalnum() else "_")
+    collapsed = "_".join(part for part in "".join(out).split("_") if part)
+    return collapsed
+
+
+#: `auditpol /r`'s Inclusion Setting → OVAL's vocabulary.
+#:
+#: Measured against a live Windows 11 Pro host: the column holds a *phrase* —
+#: "No Auditing", "Success and Failure" — not the numeric code the API uses.
+#: An earlier version of this table was keyed on "0".."3", which matched no row
+#: at all, emptied the policy and turned all forty-three audit rules into
+#: errors. Keyed on the normalised phrase, so spacing and case cannot break it.
+_AUDIT_SETTINGS = {
+    "no_auditing": "AUDIT_NONE",
+    "success": "AUDIT_SUCCESS",
+    "failure": "AUDIT_FAILURE",
+    "success_and_failure": "AUDIT_SUCCESS_FAILURE",
+}
+
+
+def _collect_audit_policy(ctx: CollectionContext) -> Any:
+    """
+    The whole audit policy, once per audit.
+
+    Forty-three rules read this on a Windows 11 STIG; running `auditpol` once
+    per rule would be forty-three round trips for one listing.
+    """
+    runner = _runner(ctx)
+    if not runner.available:
+        return "no authenticated session to the target"
+    command = (
+        "$ErrorActionPreference='SilentlyContinue'; "
+        "$o = auditpol /get /category:* /r 2>$null; "
+        f"if (-not $o) {{ Write-Output '{_WIN_FAILED}' }} else {{ $o }}"
+    )
+    out = runner.run(command, timeout=max(ctx.timeout, 60))
+    if not out.ok or _WIN_FAILED in (out.stdout or ""):
+        return f"auditpol could not be read: {out.failure_detail()}"
+
+    policy: Dict[str, str] = {}
+    for line in (out.stdout or "").splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 5 or parts[0].lower().startswith("machine name"):
+            continue
+        subcategory, guid, setting = parts[2], parts[3], parts[4]
+        if not subcategory:
+            continue
+        value = _AUDIT_SETTINGS.get(_normalise_audit_name(setting))
+        if value is None:
+            # A phrase this build does not know is not translated into one it
+            # does. The subcategory is then simply absent from the item, and a
+            # state naming it evaluates to UNKNOWN rather than to a verdict.
+            continue
+        policy[_normalise_audit_name(subcategory)] = value
+        if guid:
+            policy[guid.strip().lower()] = value
+
+    # The entities whose OVAL name is not the host's name for them.
+    for entity, host_names in _AUDIT_SUBCATEGORY_ALIASES.items():
+        for host_name in host_names:
+            if host_name in policy:
+                policy.setdefault(entity, policy[host_name])
+                break
+    return policy or "auditpol returned no subcategories"
+
+
+def _probe_auditeventpolicysubcategories(
+    ctx: CollectionContext, obj: Mapping[str, Any]
+) -> ProbeResult:
+    """
+    The local audit policy, as one item whose entities are the subcategories.
+
+    The object names nothing — there is exactly one audit policy — so the
+    single item carries every subcategory the host reported. A subcategory the
+    host did not report is simply not a key on the item, and the evaluator
+    reads a missing entity as UNKNOWN rather than as a verdict.
+    """
+    policy = ctx.cached("__scap_auditpol__", lambda: _collect_audit_policy(ctx))
+    if isinstance(policy, str):
+        return ProbeResult.failed(policy)
+    if not isinstance(policy, dict) or not policy:
+        return ProbeResult.failed("the audit policy could not be established")
+    return ProbeResult.collected([dict(policy)])
+
+
+# ── Local security policy: password, lockout and user rights ─────────────────
+
+#: OVAL's ``SE_*`` constant → the name `secedit` exports under
+#: ``[Privilege Rights]``. Every constant in this table appears in the DISA
+#: Windows 11 STIG V2R10; the mapping is the Windows API's own and is stable.
+_USER_RIGHTS = {
+    "SE_BACKUP_NAME": "SeBackupPrivilege",
+    "SE_CREATE_GLOBAL_NAME": "SeCreateGlobalPrivilege",
+    "SE_CREATE_PAGEFILE_NAME": "SeCreatePagefilePrivilege",
+    "SE_CREATE_PERMANENT_NAME": "SeCreatePermanentPrivilege",
+    "SE_CREATE_SYMBOLIC_LINK_NAME": "SeCreateSymbolicLinkPrivilege",
+    "SE_CREATE_TOKEN_NAME": "SeCreateTokenPrivilege",
+    "SE_DEBUG_NAME": "SeDebugPrivilege",
+    "SE_DENY_BATCH_LOGON_NAME": "SeDenyBatchLogonRight",
+    "SE_DENY_INTERACTIVE_LOGON_NAME": "SeDenyInteractiveLogonRight",
+    "SE_DENY_NETWORK_LOGON_NAME": "SeDenyNetworkLogonRight",
+    "SE_DENY_REMOTE_INTERACTIVE_LOGON_NAME": "SeDenyRemoteInteractiveLogonRight",
+    "SE_DENY_SERVICE_LOGON_NAME": "SeDenyServiceLogonRight",
+    "SE_ENABLE_DELEGATION_NAME": "SeEnableDelegationPrivilege",
+    "SE_IMPERSONATE_NAME": "SeImpersonatePrivilege",
+    "SE_INTERACTIVE_LOGON_NAME": "SeInteractiveLogonRight",
+    "SE_LOAD_DRIVER_NAME": "SeLoadDriverPrivilege",
+    "SE_LOCK_MEMORY_NAME": "SeLockMemoryPrivilege",
+    "SE_MANAGE_VOLUME_NAME": "SeManageVolumePrivilege",
+    "SE_NETWORK_LOGON_NAME": "SeNetworkLogonRight",
+    "SE_PROF_SINGLE_PROCESS_NAME": "SeProfileSingleProcessPrivilege",
+    "SE_REMOTE_SHUTDOWN_NAME": "SeRemoteShutdownPrivilege",
+    "SE_RESTORE_NAME": "SeRestorePrivilege",
+    "SE_SECURITY_NAME": "SeSecurityPrivilege",
+    "SE_SYSTEMTIME_NAME": "SeSystemtimePrivilege",
+    "SE_SYSTEM_ENVIRONMENT_NAME": "SeSystemEnvironmentPrivilege",
+    "SE_TAKE_OWNERSHIP_NAME": "SeTakeOwnershipPrivilege",
+    "SE_TCB_NAME": "SeTcbPrivilege",
+    "SE_TRUSTED_CREDMAN_ACCESS_NAME": "SeTrustedCredManAccessPrivilege",
+}
+
+#: Prefixes Windows puts in front of *built-in* principals when it resolves a
+#: SID, and which the content does not write.
+#:
+#: Measured on a live host: `S-1-5-32-544` translates to
+#: ``BUILTIN\Administrators`` and `S-1-5-19` to ``NT AUTHORITY\LOCAL
+#: SERVICE``, while the DISA Windows 11 STIG compares `trustee_name` against
+#: bare ``Administrators`` and ``LOCAL SERVICE``. Left qualified, every user-
+#: right rule on a correctly configured host reports FAIL — a false finding
+#: that looks exactly like a real one.
+#:
+#: Only these two are stripped. A genuinely qualified trustee the content does
+#: write — ``RESTRICTED SERVICES\PrintSpoolerService`` — keeps its prefix, and
+#: the content's own optional-prefix patterns (``^(?i)(.+\\)?Domain
+#: Admins$``) match a domain account either way. Emitting both spellings under
+#: one entity is not an option: `entity_check` defaults to "all", so a second
+#: spelling would have to match too.
+_TRUSTEE_AUTHORITIES = ("builtin\\", "nt authority\\")
+
+
+def _bare_trustee(name: str) -> str:
+    lowered = str(name or "").lower()
+    for prefix in _TRUSTEE_AUTHORITIES:
+        if lowered.startswith(prefix):
+            return str(name)[len(prefix) :]
+    return str(name)
+
+
+_SEC_INI = "INI::"
+_SEC_SID = "SID::"
+
+
+def _collect_security_policy(ctx: CollectionContext) -> Any:
+    """
+    Export the local security policy and user rights, once per audit.
+
+    One `secedit` run covers password policy, lockout policy and all
+    twenty-eight user rights. The export lands in ``$env:TEMP`` under a GUID
+    name and is removed in the same command — this is the only write any probe
+    in this module performs, and it is the shape the Phase 3 security-policy
+    collector already established.
+
+    SIDs are translated on the target in the same round trip. ``secedit``
+    writes trustees as ``*S-1-5-32-544`` and the content compares against
+    ``Administrators``; translating here rather than by table means a
+    non-English install resolves correctly, which matching the group *name*
+    would not.
+    """
+    runner = _runner(ctx)
+    if not runner.available:
+        return "no authenticated session to the target"
+    command = (
+        "$ErrorActionPreference='SilentlyContinue'; "
+        "$f = Join-Path $env:TEMP ('ccure_scap_' + [guid]::NewGuid().ToString() + '.inf'); "
+        "secedit /export /areas SECURITYPOLICY USER_RIGHTS /cfg $f | Out-Null; "
+        "if (-not (Test-Path -LiteralPath $f)) { "
+        f"  Write-Output '{_WIN_FAILED}' }} else {{ "
+        "  $lines = Get-Content -LiteralPath $f; "
+        "  Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue; "
+        f"  foreach ($l in $lines) {{ Write-Output ('{_SEC_INI}' + $l) }} "
+        "  $joined = ($lines -join [char]10); "
+        "  $sids = [regex]::Matches($joined, '\\*(S-1-[0-9\\-]+)') | "
+        "    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique; "
+        "  foreach ($s in $sids) { "
+        "    $n = ''; "
+        "    try { $n = (New-Object System.Security.Principal.SecurityIdentifier($s))."
+        "Translate([System.Security.Principal.NTAccount]).Value } catch { $n = '' } "
+        f"    Write-Output ('{_SEC_SID}' + $s + '::' + $n) }} }}"
+    )
+    out = runner.run(command, timeout=max(ctx.timeout, 90))
+    if not out.ok or _WIN_FAILED in (out.stdout or ""):
+        return f"the security policy could not be exported: {out.failure_detail()}"
+
+    ini: Dict[str, str] = {}
+    sids: Dict[str, str] = {}
+    for line in (out.stdout or "").splitlines():
+        if line.startswith(_SEC_INI):
+            body = line[len(_SEC_INI) :].strip()
+            if not body or body.startswith((";", "#", "[")):
+                continue
+            key, sep, value = body.partition("=")
+            if sep:
+                ini[key.strip()] = value.strip()
+        elif line.startswith(_SEC_SID):
+            _, _, rest = line.partition(_SEC_SID)
+            sid, _, display = rest.partition("::")
+            if sid:
+                sids[sid.strip()] = display.strip()
+    if not ini:
+        return "the exported security policy contained no settings"
+    return {"ini": ini, "sids": sids}
+
+
+def _security_policy(ctx: CollectionContext) -> Any:
+    return ctx.cached("__scap_secpol__", lambda: _collect_security_policy(ctx))
+
+
+def _as_number(text: Any) -> Optional[int]:
+    try:
+        return int(str(text).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+#: ``secedit`` INI name → (OVAL entity, multiplier). OVAL's Windows schema
+#: states these ages and windows in **seconds**; `secedit` exports the ages in
+#: days and the lockout figures in minutes. Comparing the exported number
+#: directly against the content's would report a 60-day maximum password age
+#: as 60 seconds and fail a correctly configured host — a wrong verdict that
+#: looks exactly like a right one.
+_PASSWORD_POLICY_MAP = {
+    "PasswordHistorySize": ("password_hist_len", 1),
+    "MaximumPasswordAge": ("max_passwd_age", 86400),
+    "MinimumPasswordAge": ("min_passwd_age", 86400),
+    "MinimumPasswordLength": ("min_passwd_len", 1),
+    "PasswordComplexity": ("password_complexity", 1),
+    "ClearTextPassword": ("reversible_encryption", 1),
+    # OVAL's passwordpolicy_item is wider than its name: it carries the LSA
+    # anonymous SID/name translation flag too, which WN11-SO-000140 reads.
+    # Without it that rule collected an item the state could not be compared
+    # against and reported ERROR — correct, but avoidable.
+    "LSAAnonymousNameLookup": ("anonymous_name_lookup", 1),
+}
+
+_LOCKOUT_POLICY_MAP = {
+    "LockoutBadCount": ("lockout_threshold", 1),
+    "LockoutDuration": ("lockout_duration", 60),
+    "ResetLockoutCount": ("lockout_observation_window", 60),
+    "ForceLogoffWhenHourExpire": ("force_logoff", 1),
+}
+
+#: What Windows reports for "locked out until an administrator unlocks".
+#: `secedit` writes -1; the Win32 API and the OVAL content both use the
+#: unsigned sentinel.
+_FOREVER = 4294967295
+
+
+def _policy_items(ctx: CollectionContext, mapping) -> ProbeResult:
+    policy = _security_policy(ctx)
+    if isinstance(policy, str):
+        return ProbeResult.failed(policy)
+    ini = policy.get("ini") or {}
+    item: Dict[str, Any] = {}
+    for ini_name, (entity, multiplier) in mapping.items():
+        if ini_name not in ini:
+            # Absent from the export is not zero. Leaving the entity off the
+            # item is what makes the evaluator answer UNKNOWN for it.
+            continue
+        number = _as_number(ini[ini_name])
+        if number is None:
+            continue
+        if number < 0:
+            item[entity] = str(_FOREVER)
+        else:
+            item[entity] = str(number * multiplier)
+    if not item:
+        return ProbeResult.failed(
+            "the exported security policy carried none of the entities this "
+            "object selects"
+        )
+    return ProbeResult.collected([item])
+
+
+def _probe_passwordpolicy(
+    ctx: CollectionContext, obj: Mapping[str, Any]
+) -> ProbeResult:
+    return _policy_items(ctx, _PASSWORD_POLICY_MAP)
+
+
+def _probe_lockoutpolicy(ctx: CollectionContext, obj: Mapping[str, Any]) -> ProbeResult:
+    return _policy_items(ctx, _LOCKOUT_POLICY_MAP)
+
+
+def _probe_userright(ctx: CollectionContext, obj: Mapping[str, Any]) -> ProbeResult:
+    """
+    Who holds one user right.
+
+    One item per trustee, which is what the OVAL schema describes and what
+    ``check`` values such as "all" and "at least one" are written against. A
+    right nobody holds is ``collected([])`` — an absence, and the correct
+    reading for the many STIG rules of the form "no account shall hold this".
+    """
+    entities = obj.get("entities") or {}
+    right = _entity_one(entities, "userright")
+    if not right:
+        return ProbeResult.failed("the object names no user right")
+    ini_name = _USER_RIGHTS.get(right.strip().upper())
+    if ini_name is None:
+        return ProbeResult.failed(
+            f"user right {right!r} has no known secedit name in this build"
+        )
+
+    policy = _security_policy(ctx)
+    if isinstance(policy, str):
+        return ProbeResult.failed(policy)
+    ini = policy.get("ini") or {}
+    sids = policy.get("sids") or {}
+
+    if ini_name not in ini:
+        # `secedit` omits a right nobody holds, and the reading is "no trustee"
+        # rather than "could not look" — so this is data, not a failure.
+        #
+        # It is reported as **one item carrying an empty trustee**, not as zero
+        # items, because that is what the content is written against. Every
+        # userright rule in the DISA Windows 11 STIG uses
+        # `check_existence="at_least_one_exists"`, and the rules that mean "this
+        # right must not be assigned to anyone" — WN11-UR-000015, -000045 and
+        # their siblings — compare against a state of `trustee_name equals ''`.
+        # Returning zero items makes `at_least_one_exists` fail, so a host that
+        # correctly grants the right to nobody is reported as violating the very
+        # rule it satisfies. Measured against a real Windows 11 host: with zero
+        # items, 0 of 25 userright rules could pass.
+        return ProbeResult.collected([{"userright": right, "trustee_name": ""}])
+
+    items = []
+    for raw in str(ini[ini_name]).split(","):
+        trustee = raw.strip()
+        if not trustee:
+            continue
+        if trustee.startswith("*"):
+            sid = trustee[1:]
+            display = sids.get(sid, "")
+            item = {"userright": right, "trustee_sid": sid}
+            if display:
+                item["trustee_name"] = _bare_trustee(display)
+                item["trustee_qualified_name"] = display
+        else:
+            # secedit writes a bare name where it could not resolve a SID.
+            item = {"userright": right, "trustee_name": trustee}
+        items.append(item)
+    return ProbeResult.collected(items)
+
+
+_WMI_ROWS = "CCURE::WMI::"
+
+#: The namespace ``SMBExecutor.wmi_query`` is bound to. A WQL query against any
+#: other namespace — BitLocker's
+#: ``root/cimv2/security/microsoftvolumeencryption``, for instance — cannot be
+#: served by that method and falls through to PowerShell rather than being run
+#: against the wrong namespace, which would answer confidently about the wrong
+#: class.
+_WMI_DEFAULT_NAMESPACE = "root/cimv2"
+
+
+def _normalise_namespace(text: str) -> str:
+    return str(text or "").strip().lower().replace("\\", "/").strip("/")
+
+
+def _probe_wmi57(ctx: CollectionContext, obj: Mapping[str, Any]) -> ProbeResult:
+    """
+    One WQL query, as one item per row.
+
+    The item carries a single ``result`` entity holding the row as a mapping,
+    because that is the shape ``wmi57_state`` compares against: a ``record``
+    whose ``<field name=…>`` children name columns. Field names are lower-cased
+    on both sides — WMI answers ``DomainRole`` where the content writes
+    ``domainrole``.
+
+    A query that returns no rows is ``collected([])``: an absence, which is
+    what ``check_existence`` judges. Only a query that could not be run is
+    ``failed()``, and that is an ERROR rather than a verdict about the host.
+    """
+    entities = obj.get("entities") or {}
+    namespace = _entity_one(entities, "namespace") or _WMI_DEFAULT_NAMESPACE
+    wql = _entity_one(entities, "wql")
+    if not wql:
+        return ProbeResult.failed("the wmi57 object names no WQL query")
+
+    native = _win_native(ctx, "wmi_query")
+    if native is not None and _normalise_namespace(namespace) == _WMI_DEFAULT_NAMESPACE:
+        try:
+            rows = native(wql)
+        except Exception as exc:
+            return ProbeResult.failed(
+                f"the WMI query failed: {type(exc).__name__}: {exc}"
+            )
+        return ProbeResult.collected(
+            [
+                {
+                    "result": {
+                        str(k).strip().lower(): "" if v is None else str(v)
+                        for k, v in (row or {}).items()
+                    }
+                }
+                for row in (rows or [])
+            ]
+        )
+
+    runner = _runner(ctx)
+    if not runner.available:
+        return ProbeResult.failed("no authenticated session to the target")
+
+    command = (
+        "$ErrorActionPreference='Stop'; "
+        "try { "
+        f"  $r = @(Get-CimInstance -Namespace {_ps_quote(namespace)} "
+        f"-Query {_ps_quote(wql)} -ErrorAction Stop); "
+        "  $out = $r | ForEach-Object { $h=@{}; "
+        "    $_.CimInstanceProperties | ForEach-Object { $h[$_.Name] = "
+        "      $(if ($_.Value -eq $null) { '' } else { [string]$_.Value }) }; $h }; "
+        f"  Write-Output ('{_WMI_ROWS}' + (ConvertTo-Json -InputObject @($out) "
+        "-Compress -Depth 3)) "
+        "} catch { Write-Output ('" + _WIN_FAILED + "::' + $_.Exception.Message) }"
+    )
+    out = runner.run(command, timeout=max(ctx.timeout, 60))
+    text = out.stdout or ""
+    if not out.ok or _WIN_FAILED in text:
+        detail = (
+            text.split(_WIN_FAILED + "::", 1)[-1].strip()
+            if _WIN_FAILED in text
+            else out.failure_detail()
+        )
+        return ProbeResult.failed(
+            f"the WMI query failed: {detail}"[:300], raw=text[:400]
+        )
+    if _WMI_ROWS not in text:
+        return ProbeResult.failed(
+            "the WMI query produced no result marker", raw=text[:400]
+        )
+
+    payload = text.split(_WMI_ROWS, 1)[1].strip()
+    try:
+        rows = json.loads(payload) if payload else []
+    except ValueError as exc:
+        return ProbeResult.failed(
+            f"the WMI result did not parse as JSON: {exc}", raw=payload[:400]
+        )
+    if isinstance(rows, dict):
+        rows = [rows]
+    items = []
+    for row in rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        items.append(
+            {
+                "result": {
+                    str(k).strip().lower(): "" if v is None else str(v)
+                    for k, v in row.items()
+                }
+            }
+        )
+    return ProbeResult.collected(items, raw=payload[:400])
+
+
 PROBES: Mapping[str, Callable[[CollectionContext, Mapping[str, Any]], ProbeResult]] = {
     "independent:textfilecontent54_object": _probe_textfilecontent,
     "unix:file_object": _probe_file,
@@ -1165,6 +1803,14 @@ PROBES: Mapping[str, Callable[[CollectionContext, Mapping[str, Any]], ProbeResul
     "independent:family_object": _probe_family,
     "unix:uname_object": _probe_uname,
     "independent:variable_object": _probe_variable,
+    "windows:registry_object": _probe_registry,
+    "windows:auditeventpolicysubcategories_object": (
+        _probe_auditeventpolicysubcategories
+    ),
+    "windows:userright_object": _probe_userright,
+    "windows:passwordpolicy_object": _probe_passwordpolicy,
+    "windows:lockoutpolicy_object": _probe_lockoutpolicy,
+    "windows:wmi57_object": _probe_wmi57,
 }
 
 

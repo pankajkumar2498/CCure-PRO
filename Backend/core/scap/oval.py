@@ -95,6 +95,18 @@ SUPPORTED_TESTS: Mapping[str, str] = {
     "independent:family_test": "scap.oval.family",
     "unix:uname_test": "scap.oval.uname",
     "independent:variable_test": "scap.oval.variable_external",
+    # Windows. Frequencies are measured over the DISA Microsoft Windows 11
+    # STIG V2R10 (MAC-2_Classified, 219 rules), which is the content these
+    # were written against: registry 117, audit subcategories 43,
+    # userright 25, password policy 7, lockout policy 3 — 195 of 219.
+    "windows:registry_test": "scap.oval.registry",
+    "windows:auditeventpolicysubcategories_test": (
+        "scap.oval.auditeventpolicysubcategories"
+    ),
+    "windows:userright_test": "scap.oval.userright",
+    "windows:passwordpolicy_test": "scap.oval.passwordpolicy",
+    "windows:lockoutpolicy_test": "scap.oval.lockoutpolicy",
+    "windows:wmi57_test": "scap.oval.wmi57",
 }
 
 SUPPORTED_OBJECT_TYPES: Tuple[str, ...] = tuple(
@@ -138,6 +150,16 @@ _OBJECT_ENTITIES: Mapping[str, Tuple[str, ...]] = {
     "independent:family_object": (),
     "unix:uname_object": (),
     "independent:variable_object": ("var_ref",),
+    # `hive`, `key` and `name` address one value. A registry_object with no
+    # `name` addresses the key itself, which the probe reports as a distinct
+    # shape rather than as a value of ''.
+    "windows:registry_object": ("hive", "key", "name", "behaviors", "filter"),
+    # Singletons: the object names nothing and the whole policy is the item.
+    "windows:auditeventpolicysubcategories_object": (),
+    "windows:passwordpolicy_object": (),
+    "windows:lockoutpolicy_object": (),
+    "windows:userright_object": ("userright", "behaviors", "filter"),
+    "windows:wmi57_object": ("namespace", "wql", "behaviors", "filter"),
 }
 
 #: Which operations each object *entity* can be resolved by, per object type.
@@ -176,6 +198,20 @@ _ENTITY_OPERATIONS: Mapping[str, Mapping[str, Tuple[str, ...]]] = {
     "linux:rpminfo_object": {
         "name": ("equals", "case insensitive equals", "pattern match"),
     },
+    "windows:registry_object": {
+        # Windows registry paths are case-insensitive, so DISA content uses
+        # both spellings for the same key. A pattern match over hive/key/name
+        # would mean enumerating the hive to find what matches, which is a
+        # different and far more expensive operation than reading one value —
+        # so it is refused at compile time and the rule loads as
+        # unimplemented, rather than erroring on every host it ever runs on.
+        "hive": ("equals", "case insensitive equals"),
+        "key": ("equals", "case insensitive equals"),
+        "name": ("equals", "case insensitive equals"),
+    },
+    "windows:userright_object": {
+        "userright": ("equals", "case insensitive equals"),
+    },
     "linux:dpkginfo_object": {
         "name": ("equals", "case insensitive equals"),
     },
@@ -210,6 +246,10 @@ _SUPPORTED_DATATYPES: Tuple[str, ...] = (
     "ios_version",
     "debian_evr_string",
     "binary",
+    # A WMI row. The value is not text but a set of named fields, so it is
+    # carried as a mapping and compared field by field — see `_entity` and
+    # `evaluate._compare`.
+    "record",
 )
 
 _CHECK_EXISTENCE: Tuple[str, ...] = (
@@ -398,6 +438,28 @@ class OvalDocument:
         """
         node = self.definitions.get(definition_id)
         return (node.get("class") or "").strip().lower() if node is not None else ""
+
+    def definition_family(self, definition_id: str) -> str:
+        """
+        The ``<affected family=…>`` this definition declares.
+
+        Read so that a converted benchmark can say which platform it targets
+        instead of assuming. ``translate.to_pack`` hardcoded ``linux``, which
+        was true of every benchmark that had been loaded and silently wrong
+        for the first Windows one: the rules would have been filed against
+        Linux hosts, where none of them can be evaluated, and withheld from
+        the Windows hosts they describe.
+
+        An empty string when the definition declares none, so the caller
+        decides what to do about it rather than inheriting a guess.
+        """
+        node = self.definitions.get(definition_id)
+        if node is None:
+            return ""
+        for child in node.iter():
+            if local_name(child.tag) == "affected":
+                return (child.get("family") or "").strip().lower()
+        return ""
 
     def definition_title(self, definition_id: str) -> str:
         node = self.definitions.get(definition_id)
@@ -875,6 +937,23 @@ class OvalDocument:
                 "values": [str(v) for v in resolved],
                 "operation": (node.get("operation") or "equals").strip().lower(),
                 "from_variable": var_ref,
+            }
+        fields = [child for child in node if local_name(child.tag) == "field"]
+        if fields:
+            # A `record` entity. Its value lives in named <field> children, so
+            # reading `node.text` would yield whitespace and compare a WMI row
+            # against the empty string — which is a verdict about nothing.
+            # Field names are lower-cased here and by the probe, because WMI
+            # answers `DomainRole` where the content writes `domainrole`.
+            record = {
+                str(child.get("name") or "")
+                .strip()
+                .lower(): (child.text if child.text is not None else "")
+                for child in fields
+            }
+            return {
+                "values": [record],
+                "operation": (node.get("operation") or "equals").strip().lower(),
             }
         return {
             "values": [node.text if node.text is not None else ""],

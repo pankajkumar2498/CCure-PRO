@@ -412,6 +412,114 @@ OUT_OF_SCOPE = (
 )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Windows
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `SCOPE` above is frozen at the start of Phase 10 and says so. It deliberately
+# excluded the Windows OVAL schema, because no Windows STIG had been validated
+# and shipping one unvalidated is what Phase 8 recorded as refused for IIS.
+# Windows therefore gets its own denominator rather than an edit to that one.
+#
+# **Derived from the content, before anything was built.** The DISA Microsoft
+# Windows 11 STIG V2R10 (SCAP 1.3, MAC-2_Classified) was converted first and
+# reported 219 controls, 0 automated, 0.0% — and named the ten Windows OVAL
+# test types its rules use, with the rule count each costs. Those ten are the
+# denominator. Nothing was added to it afterwards to flatter the result, and
+# the four that are still unimplemented are listed with what they cost.
+
+#: (area id, theme, description). Frozen from the pre-implementation tally.
+WINDOWS_SCOPE: Tuple[Tuple[str, str, str], ...] = (
+    (
+        "scap.oval.registry",
+        "windows",
+        "windows:registry_test — one registry value (117 of 219 rules)",
+    ),
+    (
+        "scap.oval.auditeventpolicysubcategories",
+        "windows",
+        "windows:auditeventpolicysubcategories_test — audit policy (43 rules)",
+    ),
+    (
+        "scap.oval.userright",
+        "windows",
+        "windows:userright_test — who holds a privilege (25 rules)",
+    ),
+    (
+        "scap.oval.wmi57",
+        "windows",
+        "windows:wmi57_test — a WQL query returning records (15 rules)",
+    ),
+    (
+        "scap.oval.passwordpolicy",
+        "windows",
+        "windows:passwordpolicy_test — local password policy (7 rules)",
+    ),
+    (
+        "scap.oval.lockoutpolicy",
+        "windows",
+        "windows:lockoutpolicy_test — account lockout policy (3 rules)",
+    ),
+    (
+        "scap.oval.fileeffectiverights53",
+        "windows",
+        "windows:fileeffectiverights53_test — effective ACL on a path (3 rules)",
+    ),
+    (
+        "scap.oval.ntuser",
+        "windows",
+        "windows:ntuser_test — per-user registry under HKU (3 rules)",
+    ),
+    (
+        "scap.oval.sid_sid",
+        "windows",
+        "windows:sid_sid_test — group membership by SID (2 rules)",
+    ),
+    (
+        "scap.oval.user_sid55",
+        "windows",
+        "windows:user_sid55_test — local account flags by SID (1 rule)",
+    ),
+)
+
+#: Why the four that remain are not implemented. Each states what it costs, so
+#: the figure below can be read as a decision rather than an omission.
+WINDOWS_NOT_IMPLEMENTED: Dict[str, str] = {
+    "scap.oval.fileeffectiverights53": (
+        "resolving an effective ACL means expanding group membership and "
+        "inherited ACEs into a per-trustee answer; every object in the measured "
+        "corpus also composes filepaths with <set>, which needs the second "
+        "collection pass this build does not make. 3 of 219 rules"
+    ),
+    "scap.oval.ntuser": (
+        "reads HKEY_USERS for *each loaded profile*, so the item set depends on "
+        "who is logged in at scan time — a rule whose answer changes with the "
+        "session count needs a defined policy before it can be a verdict. "
+        "3 of 219 rules"
+    ),
+    "scap.oval.sid_sid": (
+        "group membership expanded transitively by SID. The measured rules pair "
+        "it with <set> composition, so implementing the probe alone would not "
+        "make them evaluable. 2 of 219 rules"
+    ),
+    "scap.oval.user_sid55": (
+        "local account flags by SID; needs SAMR enumeration this build does not "
+        "perform over either Windows transport. 1 of 219 rules"
+    ),
+}
+
+
+def windows_area_ids() -> Tuple[str, ...]:
+    return tuple(area for area, _, _ in WINDOWS_SCOPE)
+
+
+def windows_coverage() -> Tuple[int, int, float]:
+    """(implemented, total, percent) over the frozen Windows denominator."""
+    total = len(WINDOWS_SCOPE)
+    implemented = total - len(WINDOWS_NOT_IMPLEMENTED)
+    return implemented, total, round(100.0 * implemented / total, 1)
+
+
 def _capabilities() -> Set[str]:
     """
     Areas the code supports, read from the live registries.

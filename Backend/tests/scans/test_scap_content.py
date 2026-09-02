@@ -34,11 +34,22 @@ from core.checks.definitions import (
 from core.config_audit.spec import CHECK_TYPES, AbsencePolicy
 from core.scap import applies_to_from_platforms, parse_content, supported_areas, to_pack
 from db.models.compliance import RULE_CHECK_TYPES
-from scripts.measure_scap_coverage import DISCOVERED_AFTER_FREEZE, NOT_PLANNED, SCOPE
+from scripts.measure_scap_coverage import (
+    DISCOVERED_AFTER_FREEZE,
+    NOT_PLANNED,
+    SCOPE,
+    WINDOWS_NOT_IMPLEMENTED,
+    WINDOWS_SCOPE,
+)
 
 from test_scap_parsers import BENCHMARK, SIMPLE_OVAL, datastream, oval  # noqa: F401
 
 SCOPE_AREAS = {area for area, _t, _d in SCOPE}
+#: Windows has its own frozen denominator. `SCOPE` was frozen at the start
+#: of Phase 10 with the Windows OVAL schema deliberately excluded, and it
+#: says it must not be edited to match what was built — so the Windows
+#: areas are declared separately rather than appended to it.
+WINDOWS_AREAS = {area for area, _t, _d in WINDOWS_SCOPE}
 
 
 @pytest.fixture()
@@ -394,8 +405,29 @@ def test_every_claimed_area_is_in_the_frozen_denominator():
     The one failure this whole harness exists to prevent: a denominator that
     quietly grew to match the implementation.
     """
-    unknown = supported_areas() - SCOPE_AREAS
+    unknown = supported_areas() - SCOPE_AREAS - WINDOWS_AREAS
     assert not unknown, f"code claims area(s) outside the frozen denominator: {unknown}"
+
+
+def test_no_windows_area_is_both_claimed_and_excused():
+    """
+    The Windows half of the same guard. An area cannot be implemented and also
+    carry a reason for not being implemented.
+    """
+    overlap = supported_areas() & set(WINDOWS_NOT_IMPLEMENTED)
+    assert not overlap, f"{sorted(overlap)} are claimed and also excused"
+
+
+def test_every_windows_area_is_either_implemented_or_has_a_reason():
+    """
+    No silent gaps: each of the ten Windows OVAL test types the DISA Windows 11
+    STIG uses is either supported or listed with what it costs.
+    """
+    for area in WINDOWS_AREAS:
+        assert area in supported_areas() or area in WINDOWS_NOT_IMPLEMENTED, (
+            f"{area} is in the Windows denominator but is neither implemented "
+            f"nor recorded as unimplemented"
+        )
 
 
 def test_no_area_recorded_as_not_planned_is_claimed_as_implemented():

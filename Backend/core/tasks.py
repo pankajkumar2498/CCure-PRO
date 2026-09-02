@@ -633,6 +633,23 @@ def _extract_credentialed_identity_names(system_data: dict) -> tuple[str, str, s
     return hostname, fqdn, raw_hostname_fqdn
 
 
+def _unique_lines(text) -> str:
+    """
+    Collapse repeated lines, keeping order and every distinct one.
+
+    A SCAP rule evaluates one object per branch of its criteria and each
+    contributes a line to the raw reading, so a rule with seven registry
+    objects that all found nothing produces the same sentence seven times.
+    The distinct lines are what a reader needs; the repeats push them off
+    the page.
+    """
+    seen = []
+    for line in str(text or "").splitlines():
+        if line not in seen:
+            seen.append(line)
+    return "\n".join(seen)
+
+
 def _clean_text(value) -> str:
     return str(value or "").strip()
 
@@ -877,6 +894,32 @@ def _sync_credentialed_vulnerabilities(
 
         # 2. UPSERT Finding
         finding_id = _resolve_finding_id(db, org_id, asset.id, cve_id, source_family)
+        evidence_text = (
+            (
+                f"Source           : authenticated package query\n"
+                f"Package          : {package_name or 'unknown'}\n"
+                f"Installed version: {installed_ver or 'not reported'}\n"
+                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
+                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+            )
+            if is_real_cve
+            # A configuration or privilege check has no package and no fixed
+            # version, so three of those lines would read 'unknown' or 'not
+            # reported', and it has no NVD record, so the reference would be
+            # a link to a page that does not exist. The check's own
+            # expected-versus-observed reading is the evidence here.
+            else (
+                "Source           : authenticated configuration check\n"
+                + (
+                    _clean_text(vuln.get("evidence"))
+                    or (
+                        f"Expected: {vuln.get('expected_state') or 'not stated'}\n"
+                        f"Observed: {vuln.get('observed_state') or 'not stated'}"
+                    )
+                )
+            )
+        )
+
         fnd_insert = insert(AssetVulnerability).values(
             id=finding_id,
             org_id=org_id,
@@ -893,31 +936,7 @@ def _sync_credentialed_vulnerabilities(
             # An authenticated package match is the strongest evidence this
             # product produces: the version came from the host's own package
             # manager, not from a banner.
-            evidence=(
-                (
-                    f"Source           : authenticated package query\n"
-                    f"Package          : {package_name or 'unknown'}\n"
-                    f"Installed version: {installed_ver or 'not reported'}\n"
-                    f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
-                    f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
-                )
-                if is_real_cve
-                # A configuration or privilege check has no package and no fixed
-                # version, so three of those lines would read 'unknown' or 'not
-                # reported', and it has no NVD record, so the reference would be
-                # a link to a page that does not exist. The check's own
-                # expected-versus-observed reading is the evidence here.
-                else (
-                    "Source           : authenticated configuration check\n"
-                    + (
-                        _clean_text(vuln.get("evidence"))
-                        or (
-                            f"Expected: {vuln.get('expected_state') or 'not stated'}\n"
-                            f"Observed: {vuln.get('observed_state') or 'not stated'}"
-                        )
-                    )
-                )
-            ),
+            evidence=evidence_text,
             confidence="Confirmed",
             qod=97,
             detection_method="credentialed_package",
@@ -953,6 +972,16 @@ def _sync_credentialed_vulnerabilities(
                 "cvss_score": cvss,
                 "source_family": source_family,
                 "evidence_source": "credentialed",
+                # Refreshed for the same reason the version fields below are.
+                # Evidence describes what *this* scan observed; a finding that
+                # stays open otherwise reports the reading from the day it was
+                # first seen. On a configuration check that is the whole
+                # content of the finding — "Observed: 0" survives a partial
+                # remediation to 8 — and the report then argues from a
+                # measurement the host has already moved past.
+                "evidence": func.coalesce(
+                    func.nullif(evidence_text, ""), AssetVulnerability.evidence
+                ),
                 "proof": func.coalesce(
                     func.nullif(proof, ""), AssetVulnerability.proof
                 ),
@@ -2628,8 +2657,23 @@ def _run_configuration_audit(
                 "qod": result.qod,
                 "remediation": result.remediation or "",
                 "evidence": (
-                    f"Expected: {observation.expected}\n"
-                    f"Observed: {observation.observed}"
+                    (
+                        f"Expected: {observation.expected}\n"
+                        f"Observed: {observation.observed}"
+                        # The reading that makes the finding actionable. For
+                        # a SCAP rule `observed` is only the verdict word —
+                        # "non_compliant" — while `raw` names the OVAL object
+                        # and the existence check it failed, e.g.
+                        # "windows:registry_object: 0 item(s) collected,
+                        # which does not satisfy at_least_one_exists".
+                        # Without it a reader has to re-run the scan by hand
+                        # to learn what was actually wrong.
+                        + (
+                            f"\n{_unique_lines(observation.raw)}"
+                            if observation.raw
+                            else ""
+                        )
+                    )
                     if observation
                     else ""
                 ),
@@ -3771,8 +3815,23 @@ def audit_database_target(
                 "qod": result.qod,
                 "remediation": result.remediation or "",
                 "evidence": (
-                    f"Expected: {observation.expected}\n"
-                    f"Observed: {observation.observed}"
+                    (
+                        f"Expected: {observation.expected}\n"
+                        f"Observed: {observation.observed}"
+                        # The reading that makes the finding actionable. For
+                        # a SCAP rule `observed` is only the verdict word —
+                        # "non_compliant" — while `raw` names the OVAL object
+                        # and the existence check it failed, e.g.
+                        # "windows:registry_object: 0 item(s) collected,
+                        # which does not satisfy at_least_one_exists".
+                        # Without it a reader has to re-run the scan by hand
+                        # to learn what was actually wrong.
+                        + (
+                            f"\n{_unique_lines(observation.raw)}"
+                            if observation.raw
+                            else ""
+                        )
+                    )
                     if observation
                     else ""
                 ),

@@ -1705,6 +1705,86 @@ wearing two hats — both need a second collection pass whose results feed the
 first. That is the single change that would move the figure most.
 
 
+### The Windows OVAL schema (Phase 15)
+
+Phase 10 excluded Windows deliberately. Six test types are implemented now,
+measured over the **DISA Microsoft Windows 11 STIG V2R10** — `registry` (117 of
+its 219 rules), `auditeventpolicysubcategories` (43), `userright` (25),
+`wmi57` (15), `passwordpolicy` (7), `lockoutpolicy` (3). **198 of 219 rules
+automate; 63 pass / 126 fail / 9 N/A / 0 errors** against a real Windows 11 Pro
+host. `fileeffectiverights53`, `ntuser`, `sid_sid` and `user_sid55` are
+declared unimplemented with reasons in `WINDOWS_NOT_IMPLEMENTED`.
+
+- **The pack's platform is read from OVAL's `<affected family>`, never
+  assumed.** `to_pack` hardcoded `linux`, which was true of every benchmark
+  loaded until the first Windows one. Left alone it files Windows rules against
+  Linux hosts — where none can be evaluated — and withholds them from the hosts
+  they describe. `BenchmarkPack` refuses a check whose platform disagrees with
+  the pack's, which is what caught it.
+
+- **`ScapRuleCollector.platforms` must include `windows`.** It did not, so a
+  Windows context selected no collector and every rule reported ERROR. Correct
+  direction, zero capability.
+
+- **Four things a live host settled, each of which had shipped looking right:**
+
+  - **`auditpol /get /category:* /r` prints a phrase, not a number** —
+    "Success and Failure", not `3`. A table keyed on `"0".."3"` matches no row,
+    empties the policy and turns all 43 audit rules into errors.
+  - **`pnp_activity` is the one subcategory whose OVAL name is not Windows'.**
+    27 of 28 normalise from `auditpol`'s own text; that one is "Plug and Play
+    Events".
+  - **Windows qualifies built-in trustees and the content does not.**
+    `S-1-5-32-544` resolves to `BUILTIN\Administrators`; the STIG compares
+    against bare `Administrators`. Left qualified, *every* user-right rule
+    fails on a correctly configured host. Strip `BUILTIN\` and `NT AUTHORITY\`
+    only — the content writes `RESTRICTED SERVICES\PrintSpoolerService`
+    qualified. Emitting both spellings is not an option: `entity_check`
+    defaults to "all", so the second would have to match too.
+  - **A user right nobody holds is one item with an empty trustee, not zero
+    items.** Every userright rule here uses `at_least_one_exists`, and "must
+    not be assigned" is expressed as `trustee_name equals ''`. Zero items makes
+    those rules fail on hosts that satisfy them — 0 of 25 could pass.
+
+- **`record` is an OVAL datatype, and a missing column is UNKNOWN.**
+  `wmi57_state` compares a WMI row against `<field name=…>` children.
+  `_compare` matches field by field; a column the row does not carry returns
+  None, because "this build did not collect that" is not "the host disagrees".
+
+- **One `secedit` export serves password policy, lockout policy and all 28 user
+  rights**, memoised per audit. It is the only write any probe performs — a
+  GUID-named file in `$env:TEMP`, removed in the same command, the shape
+  `WindowsSecurityPolicyCollector._run_secedit` established. **Ages and windows
+  are converted**: OVAL states them in seconds, `secedit` exports ages in days
+  and lockout figures in minutes, and comparing the raw number reports a 60-day
+  maximum password age as 60 seconds.
+
+- **`SMBExecutor.wmi_query` is bound to `root/cimv2`.** A query against another
+  namespace — BitLocker's `…\security\microsoftvolumeencryption` — falls
+  through to PowerShell rather than being answered about the wrong namespace.
+
+- **The audit probe matches `auditpol`'s subcategory *text*, so a non-English
+  host resolves fewer subcategories.** The entity is then absent from the item
+  and the rule reads UNKNOWN, which is the safe direction but is not coverage.
+  The GUID column is captured and would be the robust key.
+
+### Reporting is part of done
+
+**A gap is not closed until its results appear correctly in the reports** —
+recorded in the tracker as a standing rule for every phase. Two defects on that
+path were found and fixed in Phase 15, and both affect all configuration
+findings rather than only Windows:
+
+- **The OVAL reading must reach the finding.** Evidence carried
+  `Observed: non_compliant` — the verdict word alone. `observation.raw` names
+  the OVAL object and the existence check it failed, and is appended now with
+  duplicate lines collapsed (a rule with seven registry objects that all found
+  nothing printed the same sentence seven times).
+- **Evidence is refreshed on re-detection.** It was absent from the finding
+  upsert's `set_`, so a finding that stayed open kept the text from the day it
+  was first seen — the same staleness the version fields beside it already fix.
+  On a configuration check the evidence *is* the finding.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

@@ -39,34 +39,58 @@ wins and the disagreement is recorded rather than quietly reconciled.
 | **Closed**      | Every applicable Definition of Done line is true.                                                        |
 | **Deferred**    | Deliberately moved to a later phase, with the reason recorded. Not the same as Open.                     |
 
+### A gap is not closed until its results are in the reports
+
+**Mandatory for every phase from Phase 15 onward, and applied retrospectively
+where a phase is revisited.** A capability that produces correct verdicts the
+reports do not show is not delivered — the operator's evidence is the report,
+not the database.
+
+Closing a gap therefore means tracing, on a real target:
+
+    backend check → evidence → finding / compliance result → risk & status
+      → API and reporting data → generated PDF / HTML / UI
+
+and confirming the control identifier, title, verdict, evidence, remediation,
+severity, benchmark mapping and affected host all arrive intact — including
+that an unsupported or unavailable check is represented as such and **not** as
+a PASS or a FAIL. Where the backend is right and the reporting is not, the
+reporting is fixed in the same phase rather than deferred, and a test is added
+that proves a representative result reaches the report.
+
+Phase 15 is the worked example: the backend produced correct Windows STIG
+verdicts while the finding carried only the word "non_compliant", and the
+evidence was never refreshed on re-detection. Both were reporting defects, both
+were fixed in-phase, and §9N.6 records them.
+
 ---
 
 ## 2. Summary matrix
 
-| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                             | Commit    |
-| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | -------------------------------------------------- | --------- |
-| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                         | `31c10b4` |
-| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                         | `31c10b4` |
-| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                          | `9e4ecaa` |
-| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                         | `37871a6` |
-| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2, 12 | Critical | 40% [estimated]  | 90%    | **Closed** — WinRM (85%) + SMB/RemoteReg/WMI       | `9e4ecaa` |
-| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                          | `daab13a` |
-| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent     | `9e762d0` |
-| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10    | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% measured, real-target validated) | `6b4c06e` |
-| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (69.4% measured, raised by Phase 11)    | `d40800d` |
-| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 11    | Medium   | 0% [measured]    | 90%    | **Closed** (71.4% measured, real-target validated) | `426c282` |
-| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated) | `8a5bbd7` |
-| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated) | `7520e90` |
-| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated) | `9d74a0c` |
-| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                               | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                               | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                               | —         |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                               | —         |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                               | —         |
-| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                               | —         |
-| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated) | `13d6854` |
-| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                               | —         |
-| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                               | —         |
+| Gap ID       | Capability                               | Domain         | Phase | Priority | Coverage before  | Target | Status                                                                            | Commit    |
+| ------------ | ---------------------------------------- | -------------- | ----- | -------- | ---------------- | ------ | --------------------------------------------------------------------------------- | --------- |
+| **GAP-00-A** | Common check/plugin framework            | Architecture   | 0     | Critical | 20% [measured]   | 90%    | **Closed**                                                                        | `31c10b4` |
+| **GAP-00-B** | Finding model admits non-CVE findings    | Architecture   | 0     | Critical | 0% [measured]    | 100%   | **Closed**                                                                        | `31c10b4` |
+| **GAP-00-C** | Generalized credential model             | Architecture   | 0     | High     | 25% [measured]   | 90%    | **Closed** (95% measured)                                                         | `9e4ecaa` |
+| **GAP-01**   | Network & credentialed scan scheduling   | Orchestration  | 1     | Critical | 30% [measured]   | 95%    | **Closed**                                                                        | `37871a6` |
+| **GAP-02**   | Native Windows credentialed scanning     | Credentialed   | 2, 12 | Critical | 40% [estimated]  | 90%    | **Closed** — WinRM (85%) + SMB/RemoteReg/WMI                                      | `9e4ecaa` |
+| **GAP-03**   | Generic configuration audit engine       | Config audit   | 3     | Critical | 35% [measured]   | 90%    | **Closed** (90% measured)                                                         | `daab13a` |
+| **GAP-04**   | CIS benchmark content                    | Config audit   | 4     | High     | 0% [measured]    | 70%    | **Partial** — capability built, content absent                                    | `9e762d0` |
+| **GAP-05**   | DISA STIG / SCAP ingestion               | Config audit   | 10,15 | Medium   | 0% [measured]    | 60%    | **Closed** (63.5% reader; Windows OVAL 60%, 90.4% of the DISA Win11 STIG's rules) | `6b4c06e` |
+| **GAP-06**   | Active vulnerability check expansion     | Network checks | 6     | High     | 25.8% [measured] | 65%    | **Closed** (69.4% measured, raised by Phase 11)                                   | `d40800d` |
+| **GAP-07**   | Deep TLS/SSL assessment in main path     | TLS            | 11    | Medium   | 0% [measured]    | 90%    | **Closed** (71.4% measured, real-target validated)                                | `426c282` |
+| **GAP-08**   | Local OS privilege & host exposure       | Credentialed   | 5     | High     | 0% [measured]    | 75%    | **Closed** (75.9% measured, real-target validated)                                | `8a5bbd7` |
+| **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated)                                | `7520e90` |
+| **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)                                | `9d74a0c` |
+| GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
+| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                                              | —         |
+| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                                                              | —         |
+| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                                              | —         |
+| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
+| GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
+| **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)                                | `13d6854` |
+| GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                                                              | —         |
+| GAP-19       | Continuous security assessment           | Orchestration  | 19    | Low      | 10% [estimated]  | 70%    | Open                                                                              | —         |
 
 ---
 
@@ -4382,6 +4406,265 @@ what was built, and a dependency fix is not new capability.
   is `pip install "impacket==0.13.1" "cryptography>=43,<47"`; not done here
   because it is a developer machine's environment rather than the runtime, and
   changing `cryptography` there reaches unrelated global tooling.
+
+---
+
+## 9N. Phase 15 — Windows STIG/SCAP: the Windows OVAL schema
+
+Phase 10 built the SCAP reader and §9D.10 recorded a deliberate exclusion: _"the
+whole Windows schema is out, because no Windows STIG was validated and shipping
+it unvalidated is what Phase 8 recorded as refused for IIS."_ §9K then loaded
+757 Linux STIG rules and left the product with **929 assessable checks on Linux
+against 112 on Windows** — an 8:1 asymmetry in a product whose customers are
+mostly Windows estates. This phase closes it.
+
+**No new engine, no new scan kind, no new route, no migration.** Six OVAL test
+types, one collector platform tuple, and a platform that is now read rather
+than assumed.
+
+### 9N.1 The denominator, frozen from real content before anything was built
+
+Source: **DISA Microsoft Windows 11 STIG V2R10, SCAP 1.3**, downloaded from
+`dl.dod.cyber.mil` and corroborated against NIST's National Checklist Program,
+which names DISA as the author and carries the same URL. A US Government work,
+which is the same licensing position that made GAP-05 possible where GAP-04
+(CIS) remains blocked. **Nothing is committed to this repository** — the
+datastream and the converted pack live outside the tree.
+
+Converted first, with the reader exactly as Phase 10 left it:
+
+    controls  : 219
+      automated     : 0  (0.0%)
+      unimplemented : 219
+
+and the tally named the ten Windows OVAL test types the rules use, with what
+each costs:
+
+| Test type                                    | Rules | Share |
+| -------------------------------------------- | ----: | ----: |
+| `windows:registry_test`                      |   117 | 53.4% |
+| `windows:auditeventpolicysubcategories_test` |    43 | 19.6% |
+| `windows:userright_test`                     |    25 | 11.4% |
+| `windows:wmi57_test`                         |    15 |  6.8% |
+| `windows:passwordpolicy_test`                |     7 |  3.2% |
+| `windows:lockoutpolicy_test`                 |     3 |  1.4% |
+| `windows:fileeffectiverights53_test`         |     3 |  1.4% |
+| `windows:ntuser_test`                        |     3 |  1.4% |
+| `windows:sid_sid_test`                       |     2 |  0.9% |
+| `windows:user_sid55_test`                    |     1 |  0.5% |
+
+Those ten are the denominator, in `WINDOWS_SCOPE`. It is separate from Phase
+10's `SCOPE`, which says in the file that it is frozen and must not be edited
+to match what was built — so Windows is declared alongside it rather than
+appended to it. **The measurement above was taken before a line was written**,
+which is what makes the figure a prediction rather than a description.
+
+Note the brief's expected priorities and the corpus differ, and the corpus won:
+there is no `windows:file_test` in this content, and the audit type is
+`auditeventpolicysubcategories_test` rather than `auditeventpolicy_test`.
+
+### 9N.2 What was built
+
+Six probes in `core/scap/probes.py`, registered in the one `PROBES` table
+beside the Unix ones. No parallel registry, no second module of Windows
+collectors.
+
+- **`registry`** — prefers the SMB transport's own `read_registry_value` over
+  Remote Registry and falls back to PowerShell. Keeps three outcomes apart:
+  no key, no value under an existing key, and a value read.
+- **`auditeventpolicysubcategories`** — one `auditpol /get /category:* /r` per
+  audit, memoised, rendered as a single item whose entities are the
+  subcategories.
+- **`userright`**, **`passwordpolicy`**, **`lockoutpolicy`** — one `secedit`
+  export of `SECURITYPOLICY USER_RIGHTS`, memoised, shared by all three. This
+  is the only write any probe performs: a GUID-named file in `$env:TEMP`,
+  removed in the same command, which is the shape
+  `WindowsSecurityPolicyCollector._run_secedit` already established.
+- **`wmi57`** — a WQL query returning rows as records. Prefers
+  `SMBExecutor.wmi_query`, but **only for `root/cimv2`**, the namespace that
+  method is bound to; a BitLocker query against
+  `root/cimv2/security/microsoftvolumeencryption` falls through to PowerShell
+  rather than being answered confidently about the wrong namespace.
+
+Three things around them:
+
+- **`record` is a new OVAL datatype.** `wmi57_state` compares a WMI row against
+  `<field name=…>` children, so the entity's value is a mapping rather than
+  text. `oval._entity` reads the fields and `evaluate._compare` compares them
+  field by field — and a column the row does not carry is **UNKNOWN, never
+  False**, because "this build did not collect that" is not "the host
+  disagrees".
+- **The pack's platform is read, not assumed.** `translate.to_pack` hardcoded
+  `platform="linux"`, true of every benchmark loaded until now. Left alone, the
+  Windows benchmark would have been offered to Linux hosts, where not one rule
+  can be evaluated, and withheld from the Windows hosts it describes.
+  `platform_from_content` reads OVAL's own `<affected family>`, and
+  `BenchmarkPack`'s existing guard caught the mismatch the moment the platform
+  changed but the checks did not.
+- **`ScapRuleCollector.platforms` gained `windows`.** Until it did, a Windows
+  context selected no collector and every rule reported ERROR — the correct
+  direction, and the reason the first live run produced 25 errors and not 25
+  false passes.
+
+### 9N.3 Coverage — measured, and two figures that answer different questions
+
+| Measure                                |  Before | After                 |
+| -------------------------------------- | ------: | --------------------- |
+| Windows OVAL test types (frozen at 10) |       0 | **6 — 60.0%**         |
+| DISA Windows 11 STIG rules automated   | 0 / 219 | **198 / 219 — 90.4%** |
+
+Both are reported because neither alone is honest. 60% is the share of the
+Windows OVAL _surface_ this build evaluates; 90.4% is the share of the real
+benchmark's _rules_ it can answer, and it is higher because the four
+unimplemented types are the rare ones. Each of the four carries its reason in
+`WINDOWS_NOT_IMPLEMENTED` and what it costs: `fileeffectiverights53` 3 rules,
+`ntuser` 3, `sid_sid` 2, `user_sid55` 1. The remaining 21 unautomated rules are
+those four types (9 rules), object `<set>` composition (11 — the same
+second-pass gap Linux has), and one registry object selecting its key by
+pattern match.
+
+**GAP-05's own figure does not move.** `measure_scap_coverage`'s Phase 10
+denominator is 52 areas, 33 implemented, **63.5%**, and it measures the reader
+against the SCAP surface. Windows is a second denominator beside it, not an
+addition to it.
+
+### 9N.4 Real-target validation — 10.180.6.14, Windows 11 Pro
+
+Authenticated over WinRM as a local administrator. All 198 automated rules
+evaluated against the live host:
+
+| Verdict        | Count |
+| -------------- | ----: |
+| pass           |    63 |
+| fail           |   126 |
+| not_applicable |     9 |
+| **error**      | **0** |
+
+Zero errors, which is what §9D claimed for Linux and is now shown for Windows.
+Every implemented test type produced verdicts in both directions.
+
+**Verdicts cross-checked against the host's own configuration**, not merely
+against each other:
+
+| Rule             | Verdict | Host                               |
+| ---------------- | ------- | ---------------------------------- |
+| `WN11-AU-000500` | FAIL    | `MaxSize` — key absent             |
+| `WN11-CC-000215` | PASS    | `NoDataExecutionPrevention` absent |
+| `WN11-00-000150` | FAIL    | value absent under an existing key |
+
+Those first two are the whole four-state argument in one pair: the _same_
+absence is a FAIL under `at_least_one_exists` and a PASS under `none_exist`.
+A probe that reported an absence when a read had failed would declare the host
+compliant on the strength of a command that never ran.
+
+`oscap` was not used as a cross-check. It does not run on Windows, so unlike
+§9D there is no independent implementation to compare against — the host's own
+registry, `secedit` export and `auditpol` output are the reference, and they
+were read directly.
+
+### 9N.5 Four defects real hardware found, every one of which had shipped looking right
+
+None could have been caught without the live host, and each produced confident
+wrong answers rather than errors.
+
+- **`auditpol /r` reports a phrase, not a number.** The setting column holds
+  "Success and Failure", not `3`. The first table was keyed on `"0".."3"`,
+  matched no row, emptied the policy, and turned **all 43 audit rules into
+  errors**.
+- **`pnp_activity` is the one subcategory whose OVAL name is not the host's.**
+  27 of 28 normalise straight from `auditpol`'s own text; Windows calls that
+  one "Plug and Play Events".
+- **Windows qualifies built-in trustees and the content does not.**
+  `S-1-5-32-544` resolves to `BUILTIN\Administrators` while the STIG compares
+  against bare `Administrators`. Left qualified, **every user-right rule fails
+  on a correctly configured host**. Only `BUILTIN\` and `NT AUTHORITY\` are
+  stripped — the content writes `RESTRICTED SERVICES\PrintSpoolerService`
+  qualified, and its own optional-prefix patterns match a domain account either
+  way. Emitting both spellings is not available: `entity_check` defaults to
+  "all", so the second would have to match too.
+- **A right nobody holds is one item with an empty trustee, not zero items.**
+  Every userright rule in this content uses `at_least_one_exists`, and the
+  rules meaning "this must not be assigned" compare against
+  `trustee_name equals ''`. Returning zero items made `at_least_one_exists`
+  fail, so a host that correctly grants the right to nobody was reported as
+  violating the rule it satisfies: **0 of 25 userright rules could pass**. With
+  the empty-trustee item, 6 pass — exactly the six privileges genuinely
+  unassigned on the host.
+
+A fifth was found by the corpus rather than the host: OVAL's
+`passwordpolicy_item` is wider than its name and carries the LSA anonymous
+SID/name translation flag, which `WN11-SO-000140` reads. Without it that rule
+reported ERROR.
+
+### 9N.6 Reporting — traced end to end, and two defects fixed on the way
+
+The phase brief makes reporting part of done, so the whole path was driven on
+the real host rather than assumed:
+
+    OVAL probe → CheckResult → finding_from_result → cve_list
+      → _sync_credentialed_vulnerabilities → asset_vulnerabilities
+      → compliance_findings → technical PDF
+
+Measured on scan #51 against 10.180.6.14: **126 findings** written with
+`CCURE-CFG-RULE-STIG-WIN11-…` identifiers, `definition_type = config_check`,
+**`cve_id` NULL on all 126**, real STIG titles, severities mapped, and a
+technical PDF generated. The compliance side carries 63 pass / 126 fail /
+9 not-applicable for `cfw_bm_stig_win11`.
+
+Two things were wrong and are fixed here rather than deferred:
+
+- **The OVAL reading did not reach the finding.** The evidence written to a
+  configuration finding was `Expected: … / Observed: non_compliant` — the
+  verdict word and nothing else. What makes it actionable is
+  `observation.raw`, which names the OVAL object and the existence check it
+  failed. It is appended now, with duplicate lines collapsed: a rule with seven
+  registry objects that all found nothing produced the same sentence seven
+  times, which pushes the useful part off the page.
+- **Evidence was never refreshed on re-detection.** `evidence` was absent from
+  the finding upsert's `set_`, so a finding that stayed open kept the text from
+  the day it was first seen — the identical defect the block immediately above
+  it fixes for version fields, where a host upgraded from Chrome 138 to 139
+  went on reporting 138. On a configuration check the evidence _is_ the
+  finding, so a partial remediation from `Observed: 0` to `Observed: 8` went
+  unreported. Both sites now share one hoisted `evidence_text`.
+
+`tests/scans/test_scap_windows.py` drives the real `_finding_card` the
+technical PDF renders each finding with, and asserts the identifier, title and
+OVAL evidence all appear — plus, parametrised over PASS, NOT_APPLICABLE, ERROR
+and MANUAL_REVIEW, that **only a FAIL becomes a finding at all**.
+
+### 9N.7 Tests
+
+**50 tests** in `tests/scans/test_scap_windows.py`, covering each probe for a
+value read, a genuine absence, an unavailable read, malformed output, and no
+session; the record datatype's three-valued comparison; the collector's
+platform tuple; and the report path. The three host-found defects each have a
+test whose failure message says what the defect cost.
+
+### 9N.8 Known limitations
+
+- **One host, one SKU.** Windows 11 Pro, workgroup, local administrator. A
+  domain-joined machine, a Server SKU and a standard-user session are unproven,
+  and the domain case matters most: `userright` trustees, `sid_sid` and the
+  applicability rules that ask whether the host is a member workstation all
+  behave differently there.
+- **No independent reference.** `oscap` does not run on Windows, so unlike the
+  Linux STIG work there is no second implementation of the standard to
+  cross-check against. The host's own configuration is the reference.
+- **`secedit` writes a temporary file.** In `$env:TEMP`, GUID-named, removed in
+  the same command. It is the only write in the phase and it follows the
+  existing Phase 3 collector, but it is a write, and a host that forbids it
+  reports ERROR rather than a verdict.
+- **Non-English installs are untested.** The audit-policy probe matches
+  `auditpol`'s subcategory _text_, so a localised host would resolve fewer
+  subcategories — the entity would be absent from the item and the rule would
+  read UNKNOWN, which is the safe direction but is not coverage. The GUID
+  column is captured and would be the robust key; binding OVAL entities to
+  GUIDs needs a table this phase would have had to invent.
+- **21 rules remain unautomated**, listed with reasons in §9N.3.
+- **`profiles`**: the eleven MAC-\*/CAT-\* profiles this content ships are not
+  selectable per organisation; the loader takes one and `BenchmarkControl.profiles`
+  carries it. Choosing one per tenant is GAP-12's business.
 
 ---
 

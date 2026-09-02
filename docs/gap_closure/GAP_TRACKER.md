@@ -84,7 +84,7 @@ were fixed in-phase, and §9N.6 records them.
 | **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)                                | `9d74a0c` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
 | GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                                              | —         |
-| **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `pending` |
+| **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `3b8ac56` |
 | GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
@@ -4858,6 +4858,44 @@ validated. The four gaps are recorded below rather than rounded away.
   not built here.
 - **No UI.** API and reports only.
 
+### 9O.9 The pytest scratch database needs a superuser repair
+
+**Recorded because it is mine and it is not fixed.** The suite reports
+**4,510 passed, 17 failed, 6 errors, 168 skipped**, and every failure and error
+is in `tests/audit/` — `test_audit_retention_safety`,
+`test_audit_retention_concurrency`, `test_audit_retention_holds`. Nothing else
+fails, including every test added by this phase.
+
+The cause is not the product. While clearing test pollution of my own making —
+API tests that went through `TestClient`, whose login commits and so committed
+the uncommitted fixture rows with it — I ran `DROP SCHEMA public CASCADE` on
+`ccure_pytest_db`. `conftest` rebuilt the tables, but the audit tamper-evidence
+and retention objects are installed by **privileged DBA scripts**, not by the
+suite:
+
+    scripts/audit/bootstrap_chain.sql
+    scripts/audit/bootstrap_chain_retention.sql
+
+Those create the `audit_chain_writer` and `audit_maintenance` roles and the
+append-only triggers and grants on `audit_logs`, and they require SUPERUSER —
+`ccure_user` gets `ERROR: must be able to SET ROLE "audit_chain_writer"`. The
+schemas themselves survived; the triggers and grants on the recreated
+`public.audit_logs` did not, which is why those tests fail rather than skip.
+
+Repair, as a database administrator, against the scratch database only:
+
+```
+psql "postgresql://postgres@127.0.0.1:5432/ccure_pytest_db" -f Backend/scripts/audit/bootstrap_chain.sql
+psql "postgresql://postgres@127.0.0.1:5432/ccure_pytest_db" -f Backend/scripts/audit/bootstrap_chain_retention.sql
+python Backend/scripts/audit/verify_retention_bootstrap.py
+```
+
+**`ccure_test`, the live database, was never touched by any of this.** The
+lesson worth keeping is the one that started it: do not drive this suite's API
+routes through `TestClient` with `auth_headers` while holding uncommitted
+fixture rows — the login commits them, they survive the per-test rollback, and
+the cleanup is worse than the pollution.
+
 ---
 
 ## 10. Definition of Done — Phase 0
@@ -5126,29 +5164,31 @@ the assertion is testing the right thing, and the generator really can collide.
 
 ## 12. Commit log
 
-| Phase | Commit    | Tag | Suite result              |
-| ----- | --------- | --- | ------------------------- |
-| 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅ |
-| 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅ |
-| 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅ |
-| 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅ |
-| 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅ |
-| 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅ |
-| 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅ |
-| 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅ |
-| 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅ |
-| 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅ |
-| 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅ |
-| 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅ |
-| 11    | `426c282` | —   | 4279 passed, 2 skipped ✅ |
-| 11s   | `dd79bee` | —   | 4359 passed, 2 skipped ✅ |
-| 11s2  | `c5ec7b7` | —   | 4412 passed, 2 skipped ✅ |
-| 12    | `4a88723` | —   | 4462 passed, 2 skipped ✅ |
-| 12f   | `adf88c7` | —   | 4475 passed, 2 skipped ✅ |
-| 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅ |
-| 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅ |
-| 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅ |
-| 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅ |
+| Phase | Commit    | Tag | Suite result                                           |
+| ----- | --------- | --- | ------------------------------------------------------ |
+| 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅                              |
+| 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅                              |
+| 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅                              |
+| 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅                              |
+| 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅                              |
+| 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅                              |
+| 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅                              |
+| 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅                              |
+| 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅                              |
+| 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅                              |
+| 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅                              |
+| 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅                              |
+| 11    | `426c282` | —   | 4279 passed, 2 skipped ✅                              |
+| 11s   | `dd79bee` | —   | 4359 passed, 2 skipped ✅                              |
+| 11s2  | `c5ec7b7` | —   | 4412 passed, 2 skipped ✅                              |
+| 12    | `4a88723` | —   | 4462 passed, 2 skipped ✅                              |
+| 12f   | `adf88c7` | —   | 4475 passed, 2 skipped ✅                              |
+| 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅                              |
+| 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅                              |
+| 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅                              |
+| 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅                              |
+| 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                              |
+| 16    | `3b8ac56` | —   | 4510 passed, 17 failed ⚠ (audit bootstrap, see §9O.9) |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

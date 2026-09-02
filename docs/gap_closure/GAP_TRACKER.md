@@ -4673,10 +4673,14 @@ the assertion is testing the right thing, and the generator really can collide.
 | 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅ |
 | 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅ |
 | 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅ |
+| 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅ |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,
-and `v` a real-target validation of a path an earlier phase left unproven.
+`v` a real-target validation of a path an earlier phase left unproven, and
+`d` a runtime dependency fix. Figures from `13d` onward are measured in
+`Backend/.venv`, the interpreter the worker runs; earlier rows were measured
+in a developer's global Python, so the two are not strictly comparable.
 
 Tags are applied at maturity milestones, not per phase. `v0.2.0` is claimed
 only when Phases 1–2 are Closed and Level 3 is demonstrable.
